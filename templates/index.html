@@ -649,7 +649,7 @@
         var atrMultiplierTP = 3.0;         // Multiplicateur ATR pour TP (non utilisé)
         var trailingDistance = 0.15;       // Distance trailing stop 0.15%
         var breakEvenTrigger = 0.3;        // Profit pour activer break-even 0.3%
-        var partialTPTrigger = 0.25;       // Profit pour activer TP partiel 0.25%
+        var partialTPTrigger = 0.3;        // 🔥 v6.4: Profit pour activer TP partiel 0.3%
         var minVolumeRatio = 0.5;          // Ratio volume minimum
         
         // 🔥 NOUVEAU v6.3: Frais MEXC 0% pour paires scalables
@@ -1040,6 +1040,11 @@
             updateStateDisplay();
             saveState(); // 🔥 Sauvegarder immédiatement
             
+            // 🔥 v6.4: Initialiser variables position partielle
+            activePosition.size_remaining = null;
+            activePosition.partial_profit_usdt = 0.0;
+            activePosition.capital = accountSize;
+            
             debugLog('🟢 POSITION OUVERTE', setup.direction + ' ' + setup.symbol + ' Entry:' + setup.entry + ' SL:' + activePosition.sl);
             debugLog('💰 Position Size', 'Size: ' + positionInfo.size + ' USDT | Risk: ' + positionInfo.risk + ' (' + positionInfo.reason + ')');
             showSuccess('Position ouverte: ' + setup.direction + ' ' + setup.symbol);
@@ -1230,32 +1235,41 @@
                 var secs = duration % 60;
                 document.getElementById('positionDuration').textContent = 'Durée: ' + mins + 'm ' + secs + 's';
                 
-                // 🔥 NOUVEAU v4.2: TP/SL selon mode
+                // 🔥 v6.4: TP/SL selon mode avec position partielle PHYSIQUE
                 if (!useATR) {
-                    // MODE FIXE: TP partiel + Break-even + Trailing
-                    if (usePartialTP && !partialTPSold && pnl > partialTPTrigger) {
+                    // MODE FIXE: TP partiel physique 50% + Trailing 0.15%
+                    if (usePartialTP && !partialTPSold && pnl >= partialTPTrigger) {
                         partialTPSold = true;
-                        debugLog('🎯 TP PARTIEL 50%', 'Profit: ' + pnl.toFixed(2) + '% - Position réduite de 50%');
+                        
+                        // Calculer profit du TP partiel en USDT
+                        var sizePartial = activePosition.size * 0.5;
+                        var priceDiff = Math.abs(currentPrice - entry);
+                        activePosition.partial_profit_usdt = sizePartial * (priceDiff / entry);
+                        activePosition.size_remaining = activePosition.size * 0.5;
+                        
+                        debugLog(
+                            '🎯 TP PARTIEL 50%',
+                            'Profit: ' + pnl.toFixed(2) + '% | Profit USDT: ' + activePosition.partial_profit_usdt.toFixed(4) + 
+                            ' | Restant: ' + activePosition.size_remaining.toFixed(2)
+                        );
                         showSuccess('🎯 TP Partiel! 50% clôturé à +' + pnl.toFixed(2) + '%');
-                    }
-                    
-                    if (useBreakEven && !breakEvenSet && pnl > breakEvenTrigger && partialTPSold) {
+                        
+                        // Move SL to entry (break-even) immédiatement
                         activePosition.sl = entry;
                         sl = entry;
-                        breakEvenSet = true;
-                        debugLog('🔒 BREAK-EVEN', 'SL au prix d\'entrée (profit: ' + pnl.toFixed(2) + '%)');
+                        debugLog('🔒 BREAK-EVEN IMMÉDIAT', 'SL au prix d\'entrée pour 50% restants');
                         document.getElementById('posSL').textContent = activePosition.sl + ' (BE)';
-                        showInfo('🔒 Break-even activé! SL = Entry');
                     }
                     
-                    if (useTrailingStop && breakEvenSet && pnl > breakEvenTrigger) {
+                    // 🔥 v6.4: Trailing stop 0.15% à partir du TP partiel
+                    if (useTrailingStop && partialTPSold) {
                         var newSL;
                         if (activePosition.direction === 'LONG') {
                             newSL = currentPrice * (1 - trailingDistance/100);
                             if (newSL > sl) {
                                 activePosition.sl = newSL.toFixed(6);
                                 sl = newSL;
-                                debugLog('📈 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (profit: ' + pnl.toFixed(2) + '%)');
+                                debugLog('📈 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
                                 document.getElementById('posSL').textContent = activePosition.sl;
                             }
                         } else {
@@ -1263,7 +1277,7 @@
                             if (newSL < sl) {
                                 activePosition.sl = newSL.toFixed(6);
                                 sl = newSL;
-                                debugLog('📉 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (profit: ' + pnl.toFixed(2) + '%)');
+                                debugLog('📉 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
                                 document.getElementById('posSL').textContent = activePosition.sl;
                             }
                         }
@@ -1396,18 +1410,42 @@
             
             stats.totalTrades++;
             
-            // 🔥 NOUVEAU v6.3: Calculer PnL avec frais + slippage
-            var grossPnl = pnl;
+            // 🔥 v6.4: Gérer position partielle
+            var hasPartialTP = partialTPSold;
+            var sizeToClose = activePosition.size;
+            var partialProfitUSDT = activePosition.partial_profit_usdt || 0;
+            
+            if (hasPartialTP) {
+                // On ferme les 50% restants
+                sizeToClose = activePosition.size_remaining || (activePosition.size * 0.5);
+            }
+            
+            // 🔥 v6.4: Calculer P&L en USDT
+            var pnlFinalUSDT = 0;
+            var pnlTotalPct = pnl;
+            
+            if (hasPartialTP) {
+                // P&L final = TP partiel + fermeture finale
+                pnlFinalUSDT = partialProfitUSDT + (sizeToClose * pnl / 100);
+                pnlTotalPct = (pnlFinalUSDT / activePosition.size) * 100;
+            } else {
+                // Position fermée en entier
+                pnlFinalUSDT = activePosition.size * (pnl / 100);
+                pnlFinalUSDT = pnlFinalUSDT * (exitPrice / entry); // Ajustement exact
+                pnlTotalPct = pnl;
+            }
+            
+            // 🔥 v6.4: Calculer frais et slippage (doublé si TP partiel)
+            var grossPnl = pnlTotalPct;
             var fees = 0;
             var slippage = 0;
             var totalCosts = 0;
-            var netPnl = pnl;
+            var netPnl = pnlTotalPct;
             
             if (useFeeCalculation) {
-                // Frais maker/taker (0% pour paires scalables)
-                fees = 0;
+                fees = 0;  // 0% pour paires scalables
                 
-                // Slippage dynamique si activé et données disponibles
+                // Slippage dynamique
                 if (useSlippageCalculation && activePosition.scalability_data) {
                     var scalData = activePosition.scalability_data;
                     var spread = scalData.spread || 0;
@@ -1416,23 +1454,39 @@
                     var bidVol = scalData.bidVol;
                     var askVol = scalData.askVol;
                     
-                    // Estimer slippage pour entrée et sortie
                     if (spread > 0 && depth > 0) {
-                        var orderSize = activePosition.size || 1000; // Taille de l'ordre
-                        slippage = estimateSlippage(orderSize, spread, depth, balance, bidVol, askVol) * 2; // x2 (entrée + sortie)
+                        // 🔥 v6.4: Slippage doublé si position partielle
+                        if (hasPartialTP) {
+                            // 2 entrées/sorties au lieu de 1
+                            var slippagePartial = estimateSlippage(
+                                activePosition.size * 0.5, spread, depth, balance, bidVol, askVol
+                            );
+                            var slippageFinal = estimateSlippage(
+                                sizeToClose, spread, depth, balance, bidVol, askVol
+                            );
+                            slippage = slippagePartial + slippageFinal;
+                        } else {
+                            // Slippage normal (entrée + sortie)
+                            var orderSize = activePosition.size || 1000;
+                            var slippageEntry = estimateSlippage(orderSize, spread, depth, balance, bidVol, askVol);
+                            var slippageExit = estimateSlippage(orderSize, spread, depth, balance, bidVol, askVol);
+                            slippage = slippageEntry + slippageExit;
+                        }
                     }
                 } else {
-                    // Fallback: estimation conservatrice
-                    slippage = 0.05; // 0.05% par défaut
+                    slippage = 0.05; // Fallback
                 }
                 
                 totalCosts = fees + slippage;
-                netPnl = grossPnl - totalCosts;
             }
             
-            stats.totalPnl += netPnl;
+            // 🔥 v6.4: Net P&L en % et USDT
+            var netPnlPct = pnlTotalPct - totalCosts;
+            var netPnlUSDT = pnlFinalUSDT - (totalCosts / 100 * activePosition.size);
             
-            // 🔥 NOUVEAU v2.8: Enregistrer dans l'historique
+            stats.totalPnl += netPnlPct;
+            
+            // 🔥 v6.4: Enregistrer dans l'historique avec USDT
             var tradeRecord = {
                 timestamp: Date.now(),
                 date: new Date().toLocaleDateString('fr-FR'),
@@ -1445,9 +1499,12 @@
                 fees: fees.toFixed(2),
                 slippage: slippage.toFixed(2),
                 totalCosts: totalCosts.toFixed(2),
-                netPnl: netPnl.toFixed(2),
+                netPnl: netPnlPct.toFixed(2),
+                netPnlUSDT: netPnlUSDT.toFixed(4),  // 🔥 v6.4
                 duration: duration,
-                reason: reason
+                reason: reason,
+                hasPartialTP: hasPartialTP,  // 🔥 v6.4
+                sizeClosed: sizeToClose.toFixed(4)  // 🔥 v6.4
             };
             
             stats.tradeHistory.unshift(tradeRecord); // Ajouter au début

@@ -36,6 +36,11 @@ class Position:
     
     # Dynamic SL (for trailing)
     dynamic_sl: Optional[float] = None
+    
+    # 🔥 v6.4: Position partielle physique
+    size_remaining: Optional[float] = None  # Taille restante après TP partiel
+    partial_profit_usdt: float = 0.0  # Profit du TP partiel en USDT
+    capital: Optional[float] = None  # Capital total en USDT
 
 
 @dataclass
@@ -58,9 +63,9 @@ class PositionConfig:
     use_break_even: bool = True
     break_even_trigger: float = 0.3  # %
     use_trailing_stop: bool = True
-    trailing_distance: float = 0.1  # %
+    trailing_distance: float = 0.15  # % 🔥 v6.4: 0.15% au lieu de 0.1%
     use_partial_tp: bool = True
-    partial_tp_trigger: float = 0.25  # %
+    partial_tp_trigger: float = 0.3  # % 🔥 v6.4: 0.3% au lieu de 0.25%
     
     # Break-even progressif (ATR mode)
     be_atr_factor: float = 1.5
@@ -276,34 +281,44 @@ class PositionManager:
         return pnl
     
     def _update_fixed_mode_sl(self, current_price: float, pnl: float):
-        """Mettre à jour SL en mode FIXE"""
-        # TP partiel
+        """Mettre à jour SL en mode FIXE avec gestion de position partielle"""
+        # 🔥 v6.4: TP partiel PHYSIQUE 50% à +0.3%
         if self.config.use_partial_tp and not self.active_position.partial_tp_sold:
-            if pnl > self.config.partial_tp_trigger:
+            if pnl >= self.config.partial_tp_trigger:  # +0.3%
                 self.active_position.partial_tp_sold = True
-                logger.info(f"🎯 TP PARTIEL 50%: Profit={pnl:.2f}%")
+                
+                # Calculer profit du TP partiel en USDT
+                size_partial = self.active_position.size * 0.5
+                price_diff = abs(current_price - self.active_position.entry)
+                self.active_position.partial_profit_usdt = size_partial * (price_diff / self.active_position.entry)
+                self.active_position.size_remaining = self.active_position.size * 0.5
+                
+                logger.info(
+                    f"🎯 TP PARTIEL 50%: Profit={pnl:.2f}% | "
+                    f"Profit USDT={self.active_position.partial_profit_usdt:.4f} | "
+                    f"Restant={self.active_position.size_remaining:.2f}"
+                )
+                
+                # Réduire le SL initial des 50% restants pour protection immédiate
+                if self.active_position.direction == 'LONG':
+                    self.active_position.sl = self.active_position.entry  # Break-even immédiat
+                else:
+                    self.active_position.sl = self.active_position.entry
         
-        # Break-even
-        if self.config.use_break_even and not self.active_position.break_even_set:
-            if pnl > self.config.break_even_trigger and self.active_position.partial_tp_sold:
-                self.active_position.sl = self.active_position.entry
-                self.active_position.break_even_set = True
-                logger.info(f"🔒 BREAK-EVEN: SL au prix d'entrée (profit={pnl:.2f}%)")
-        
-        # Trailing stop
-        if self.config.use_trailing_stop and self.active_position.break_even_set:
+        # 🔥 v6.4: Trailing stop à 0.15% à partir du TP partiel
+        if self.config.use_trailing_stop and self.active_position.partial_tp_sold:
             new_sl = None
             
             if self.active_position.direction == 'LONG':
                 new_sl = current_price * (1 - self.config.trailing_distance / 100)
                 if new_sl > self.active_position.sl:
                     self.active_position.sl = round(new_sl, 6)
-                    logger.info(f"📈 TRAILING STOP: Nouveau SL={new_sl:.6f} (profit={pnl:.2f}%)")
+                    logger.info(f"📈 TRAILING STOP: Nouveau SL={new_sl:.6f} (distance={self.config.trailing_distance}%)")
             else:  # SHORT
                 new_sl = current_price * (1 + self.config.trailing_distance / 100)
                 if new_sl < self.active_position.sl:
                     self.active_position.sl = round(new_sl, 6)
-                    logger.info(f"📉 TRAILING STOP: Nouveau SL={new_sl:.6f} (profit={pnl:.2f}%)")
+                    logger.info(f"📉 TRAILING STOP: Nouveau SL={new_sl:.6f} (distance={self.config.trailing_distance}%)")
     
     def _update_atr_mode_sl(self, current_price: float, pnl: float):
         """Mettre à jour SL en mode ATR (break-even progressif)"""
@@ -351,7 +366,7 @@ class PositionManager:
         return None
     
     def close_position(self, reason: str, exit_price: Optional[float] = None) -> Dict[str, Any]:
-        """Fermer la position et calculer le résultat"""
+        """Fermer la position et calculer le résultat (avec support position partielle)"""
         if not self.active_position:
             return {}
         
@@ -371,22 +386,40 @@ class PositionManager:
         else:
             exit_price = entry
         
-        # Calculer P&L brut
-        pnl = ((exit_price - entry) / entry) * 100
-        if self.active_position.direction == 'SHORT':
-            pnl = -pnl
+        # 🔥 v6.4: Gérer la position partielle
+        has_partial_tp = self.active_position.partial_tp_sold
+        size_to_close = self.active_position.size
+        partial_profit_usdt = self.active_position.partial_profit_usdt
         
-        # Calculer frais et slippage
+        if has_partial_tp:
+            # On ferme les 50% restants
+            size_to_close = self.active_position.size_remaining or (self.active_position.size * 0.5)
+        
+        # Calculer P&L brut pour la partie fermée
+        pnl_pct = ((exit_price - entry) / entry) * 100
+        if self.active_position.direction == 'SHORT':
+            pnl_pct = -pnl_pct
+        
+        # 🔥 v6.4: Calculer P&L en USDT
+        if has_partial_tp:
+            # P&L final = TP partiel + fermeture finale
+            pnl_final_usdt = partial_profit_usdt + (size_to_close * pnl_pct / 100)
+            pnl_total_pct = (pnl_final_usdt / self.active_position.size) * 100
+        else:
+            # Position fermée en entier
+            pnl_final_usdt = self.active_position.size * (pnl_pct / 100)
+            pnl_total_pct = pnl_pct
+            pnl_final_usdt = pnl_final_usdt * (exit_price / entry)  # Ajustement exact
+        
+        # 🔥 v6.4: Calculer frais et slippage (doublé si TP partiel)
         fees = 0
         slippage = 0
         total_costs = 0
-        net_pnl = pnl
         
         if self.config.use_fee_calculation:
-            # Frais maker/taker (0% pour paires scalables)
-            fees = 0
+            fees = 0  # 0% pour paires scalables
             
-            # Slippage dynamique si activé et données disponibles
+            # Slippage dynamique
             if self.config.use_slippage_calculation and self.active_position.scalability_data:
                 scal_data = self.active_position.scalability_data
                 spread = scal_data.get('spread', 0)
@@ -395,22 +428,35 @@ class PositionManager:
                 bid_vol = scal_data.get('bidVol')
                 ask_vol = scal_data.get('askVol')
                 
-                # Estimer slippage pour entrée et sortie
                 if spread > 0 and depth > 0:
-                    order_size = self.active_position.size
-                    slippage_entry = self._estimate_slippage(
-                        order_size, spread, depth, balance, bid_vol, ask_vol
-                    )
-                    slippage_exit = self._estimate_slippage(
-                        order_size, spread, depth, balance, bid_vol, ask_vol
-                    )
-                    slippage = slippage_entry + slippage_exit
+                    # 🔥 v6.4: Slippage doublé si position partielle (entrée + sortie partielle + sortie finale)
+                    if has_partial_tp:
+                        # 2 entrées/sorties au lieu de 1
+                        slippage_partial = self._estimate_slippage(
+                            self.active_position.size * 0.5, spread, depth, balance, bid_vol, ask_vol
+                        )
+                        slippage_final = self._estimate_slippage(
+                            size_to_close, spread, depth, balance, bid_vol, ask_vol
+                        )
+                        slippage = slippage_partial + slippage_final
+                    else:
+                        # Slippage normal (entrée + sortie)
+                        order_size = self.active_position.size
+                        slippage_entry = self._estimate_slippage(
+                            order_size, spread, depth, balance, bid_vol, ask_vol
+                        )
+                        slippage_exit = self._estimate_slippage(
+                            order_size, spread, depth, balance, bid_vol, ask_vol
+                        )
+                        slippage = slippage_entry + slippage_exit
             else:
-                # Fallback: estimation conservatrice
-                slippage = 0.05  # 0.05% par défaut
+                slippage = 0.05  # Fallback
             
             total_costs = fees + slippage
-            net_pnl = pnl - total_costs
+        
+        # 🔥 v6.4: Net P&L en % et USDT
+        net_pnl_pct = pnl_total_pct - total_costs
+        net_pnl_usdt = pnl_final_usdt - (total_costs / 100 * self.active_position.size)
         
         # Durée
         duration = int(
@@ -423,18 +469,22 @@ class PositionManager:
             'direction': self.active_position.direction,
             'entry': round(entry, 6),
             'exit': round(exit_price, 6),
-            'pnl': round(pnl, 2),
+            'pnl': round(pnl_total_pct, 2),
+            'pnl_usdt': round(pnl_final_usdt, 4),  # 🔥 v6.4
             'fees': round(fees, 2),
             'slippage': round(slippage, 2),
             'total_costs': round(total_costs, 2),
-            'net_pnl': round(net_pnl, 2),
+            'net_pnl': round(net_pnl_pct, 2),
+            'net_pnl_usdt': round(net_pnl_usdt, 4),  # 🔥 v6.4
             'duration': duration,
             'reason': reason,
-            'timestamp': self.active_position.timestamp
+            'timestamp': self.active_position.timestamp,
+            'has_partial_tp': has_partial_tp,  # 🔥 v6.4
+            'size_closed': round(size_to_close, 4)  # 🔥 v6.4
         }
         
         # Mettre à jour les streaks
-        if net_pnl > 0:
+        if net_pnl_pct > 0:
             self.config.win_streak += 1
             self.config.loss_streak = 0
         else:
@@ -443,12 +493,10 @@ class PositionManager:
         
         # Réinitialiser
         self.active_position = None
-        self.active_position.break_even_set = False
-        self.active_position.partial_tp_sold = False
         
         logger.info(
             f"🔴 POSITION FERMÉE: {result['symbol']} | "
-            f"Raison: {reason} | PnL net: {net_pnl:.2f}%"
+            f"Raison: {reason} | PnL net: {net_pnl_pct:.2f}% ({net_pnl_usdt:.4f} USDT)"
         )
         
         return result
