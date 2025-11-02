@@ -155,7 +155,12 @@ class TechnicalAnalyzer:
             macd_prev = self.indicators.calculate_macd_previous(closes, 3, 10, 16)
             bb = self.indicators.calculate_bollinger_bands(closes, 20, 2)
             adx = self.indicators.calculate_adx(highs, lows, closes, 14)
+            
+            # Patterns (simple + multi-bougies)
             pattern = self.indicators.detect_pattern(current_candle)
+            # Si pattern simple non trouvé, essayer multi-bougies
+            if pattern == 'NONE':
+                pattern = self.indicators.detect_pattern_multi(ohlcv[-3:])
             
             # Volume spike
             avg_vol = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 1
@@ -283,7 +288,12 @@ class TechnicalAnalyzer:
                 long_conditions.append("ADX+ (>30)")
             
             # 7. Pattern
-            if pattern in ['ENGULFING_BULLISH', 'HAMMER']:
+            long_patterns = [
+                'ENGULFING_BULLISH', 'HAMMER',
+                'DOJI_DRAGONFLY', 'MARUBOZU_BULLISH',
+                'MORNING_STAR', 'DOJI'
+            ]
+            if pattern in long_patterns:
                 long_conditions.append(f"Pattern: {pattern}")
             
             # Conditions SHORT
@@ -331,7 +341,12 @@ class TechnicalAnalyzer:
                 short_conditions.append("ADX- (>30)")
             
             # 7. Pattern
-            if pattern in ['ENGULFING_BEARISH', 'SHOOTING_STAR']:
+            short_patterns = [
+                'ENGULFING_BEARISH', 'SHOOTING_STAR',
+                'DOJI_GRAVESTONE', 'MARUBOZU_BEARISH',
+                'EVENING_STAR'
+            ]
+            if pattern in short_patterns:
                 short_conditions.append(f"Pattern: {pattern}")
             
             # Tolérance dynamique ADX

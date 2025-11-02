@@ -4,6 +4,11 @@ RSI, EMA, MACD, ATR, Bollinger Bands, ADX, Patterns
 """
 import numpy as np
 from typing import List, Dict, Tuple, Optional
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError:
+    TALIB_AVAILABLE = False
 
 
 class Indicators:
@@ -265,6 +270,78 @@ class Indicators:
         # Shooting star
         if upper_shadow > body * 2 and lower_shadow < body * 0.3:
             return 'SHOOTING_STAR'
+        
+        return 'NONE'
+    
+    @staticmethod
+    def detect_pattern_multi(candles: List[Dict], prev_candles: List[Dict] = None) -> str:
+        """
+        Détecte les patterns multi-bougies (Doji, Marubozu, Morning/Evening Star)
+        
+        Args:
+            candles: Liste des dernières bougies [current, prev, prev-1, ...]
+            prev_candles: Bougies précédentes (optionnel)
+            
+        Returns:
+            Nom du pattern ou 'NONE'
+        """
+        if not candles or len(candles) < 2:
+            return 'NONE'
+        
+        current = candles[-1]
+        prev = candles[-2] if len(candles) >= 2 else None
+        
+        open_price = current.get('open', current.get('o', 0))
+        high = current.get('high', current.get('h', 0))
+        low = current.get('low', current.get('l', 0))
+        close = current.get('close', current.get('c', 0))
+        
+        body = abs(close - open_price)
+        upper_shadow = high - max(open_price, close)
+        lower_shadow = min(open_price, close) - low
+        range_price = high - low
+        
+        if range_price == 0:
+            return 'NONE'
+        
+        # 1. DOJI (hésitation, possible reversal)
+        if body < range_price * 0.1:  # Corps très petit
+            # Dragonfly Doji (Longue mèche basse, bullish)
+            if lower_shadow > range_price * 0.6 and upper_shadow < range_price * 0.2:
+                return 'DOJI_DRAGONFLY'
+            # Gravestone Doji (Longue mèche haute, bearish)
+            elif upper_shadow > range_price * 0.6 and lower_shadow < range_price * 0.2:
+                return 'DOJI_GRAVESTONE'
+            else:
+                return 'DOJI'
+        
+        # 2. MARUBOZU (bougie pleine, momentum fort)
+        if body > range_price * 0.95:  # Corps > 95% de la range
+            if open_price < close:
+                return 'MARUBOZU_BULLISH'
+            else:
+                return 'MARUBOZU_BEARISH'
+        
+        # 3. MORNING/EVENING STAR (3 bougies)
+        if len(candles) >= 3:
+            prev2 = candles[-3]
+            prev_open = prev.get('open', prev.get('o', 0))
+            prev_close = prev.get('close', prev.get('c', 0))
+            prev2_close = prev2.get('close', prev2.get('c', 0))
+            
+            # Morning Star (reversal haussier)
+            # Bougie 1: rouge, Bougie 2: petite (doji), Bougie 3: verte forte
+            if (prev2_close < prev2.get('open', prev2.get('o', 0)) and  # Rouge
+                abs(prev_close - prev_open) < prev.get('high', prev.get('h', 0)) - prev.get('low', prev.get('l', 0)) * 0.3 and  # Petite
+                close > open_price):  # Verte
+                return 'MORNING_STAR'
+            
+            # Evening Star (reversal baissier)
+            # Bougie 1: verte, Bougie 2: petite (doji), Bougie 3: rouge forte
+            if (prev2_close > prev2.get('open', prev2.get('o', 0)) and  # Verte
+                abs(prev_close - prev_open) < prev.get('high', prev.get('h', 0)) - prev.get('low', prev.get('l', 0)) * 0.3 and  # Petite
+                close < open_price):  # Rouge
+                return 'EVENING_STAR'
         
         return 'NONE'
 
