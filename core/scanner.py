@@ -61,19 +61,19 @@ class ScalabilityScanner:
             orderbook = await self.client.fetch_order_book(symbol, limit=5)
             
             if not orderbook or 'bids' not in orderbook or 'asks' not in orderbook:
-                return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0}
+                return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0, 'bidVol': 0, 'askVol': 0}
             
             asks = orderbook['asks']
             bids = orderbook['bids']
             
             if not asks or not bids:
-                return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0}
+                return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0, 'bidVol': 0, 'askVol': 0}
             
             best_ask = float(asks[0][0])
             best_bid = float(bids[0][0])
             
             if not best_ask or not best_bid or best_ask <= 0 or best_bid <= 0:
-                return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0}
+                return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0, 'bidVol': 0, 'askVol': 0}
             
             # Calcul spread
             mid_price = (best_ask + best_bid) / 2
@@ -91,13 +91,15 @@ class ScalabilityScanner:
             return {
                 'spread': spread,
                 'bookDepth': total_vol,
-                'balanceScore': balance_score
+                'balanceScore': balance_score,
+                'bidVol': bid_vol,
+                'askVol': ask_vol
             }
             
         except Exception as e:
             if DEBUG_ENABLED:
                 logger.error(f"Erreur spread pour {symbol}: {e}")
-            return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0}
+            return {'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0, 'bidVol': 0, 'askVol': 0}
     
     def calculate_score(self, pair: Dict, max_volume: float, max_depth: float) -> float:
         """
@@ -177,7 +179,9 @@ class ScalabilityScanner:
                 'vol15': vol15_volatility,
                 'spread': spread_data['spread'],
                 'bookDepth': spread_data['bookDepth'],
-                'balanceScore': spread_data['balanceScore']
+                'balanceScore': spread_data['balanceScore'],
+                'bidVol': spread_data['bidVol'],
+                'askVol': spread_data['askVol']
             }
             
             return pair
@@ -251,6 +255,8 @@ class ScalabilityScanner:
                             'spread': float('nan'),
                             'bookDepth': 0,
                             'balanceScore': 0,
+                            'bidVol': 0,
+                            'askVol': 0,
                             'price': 0
                         })
                 

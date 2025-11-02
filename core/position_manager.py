@@ -27,6 +27,9 @@ class Position:
     confirmed_by: str = ""
     timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
     
+    # Scalability data for slippage calculation
+    scalability_data: Optional[Dict] = None
+    
     # State flags
     break_even_set: bool = False
     partial_tp_sold: bool = False
@@ -63,8 +66,11 @@ class PositionConfig:
     be_atr_factor: float = 1.5
     
     # Fees
-    taker_fee: float = 0.0004  # 0.04%
+    taker_fee: float = 0.0  # 0% pour paires scalables
     use_fee_calculation: bool = True
+    
+    # Slippage estimation
+    use_slippage_calculation: bool = True
     
     # Win/Loss streaks
     win_streak: int = 0
@@ -90,7 +96,8 @@ class PositionManager:
         size: float,
         atr: Optional[float] = None,
         atr5m: Optional[float] = None,
-        confirmed_by: str = ""
+        confirmed_by: str = "",
+        scalability_data: Optional[Dict] = None
     ) -> Position:
         """Ouvrir une nouvelle position"""
         
@@ -110,7 +117,8 @@ class PositionManager:
             tp=tp,
             atr=atr,
             atr5m=atr5m,
-            confirmed_by=confirmed_by
+            confirmed_by=confirmed_by,
+            scalability_data=scalability_data
         )
         
         logger.info(
@@ -119,6 +127,51 @@ class PositionManager:
         )
         
         return self.active_position
+    
+    def _estimate_slippage(
+        self,
+        order_size: float,
+        spread_pct: float,
+        depth: float,
+        balance_score: float,
+        bid_vol: Optional[float] = None,
+        ask_vol: Optional[float] = None
+    ) -> float:
+        """
+        Estime le slippage réaliste pour un ordre
+        
+        Args:
+            order_size: Taille de l'ordre en USDT
+            spread_pct: Spread moyen en %
+            depth: Profondeur totale du carnet
+            balance_score: Équilibre bid/ask (0-1)
+            bid_vol: Volume bid total (optionnel)
+            ask_vol: Volume ask total (optionnel)
+            
+        Returns:
+            Slippage estimé en %
+        """
+        if spread_pct <= 0 or depth <= 0:
+            return 0.0
+        
+        # Imbalance factor
+        imbalance_factor = 1 / balance_score if balance_score > 0 else 1.0
+        
+        # Depth factor
+        if bid_vol and ask_vol:
+            # Version précise avec bid_vol/ask_vol séparés
+            depth_factor = order_size / (bid_vol + ask_vol)
+        else:
+            # Version simplifiée avec depth total
+            depth_factor = order_size / depth if depth > 0 else 0
+        
+        # Slippage estimé
+        slippage_pct = spread_pct * (1 + depth_factor * imbalance_factor)
+        
+        # Limiter à un maximum raisonnable (1% = plafond)
+        slippage_pct = min(slippage_pct, 1.0)
+        
+        return round(slippage_pct, 4)
     
     def _calculate_fixed_levels(self, entry: float, direction: str) -> tuple[float, float]:
         """Calculer TP/SL en mode FIXE"""
@@ -323,13 +376,41 @@ class PositionManager:
         if self.active_position.direction == 'SHORT':
             pnl = -pnl
         
-        # Calculer frais et P&L net
+        # Calculer frais et slippage
         fees = 0
+        slippage = 0
+        total_costs = 0
         net_pnl = pnl
         
         if self.config.use_fee_calculation:
-            fees = ((entry + exit_price) / entry) * self.config.taker_fee * 100
-            net_pnl = pnl - fees
+            # Frais maker/taker (0% pour paires scalables)
+            fees = 0
+            
+            # Slippage dynamique si activé et données disponibles
+            if self.config.use_slippage_calculation and self.active_position.scalability_data:
+                scal_data = self.active_position.scalability_data
+                spread = scal_data.get('spread', 0)
+                depth = scal_data.get('bookDepth', 0)
+                balance = scal_data.get('balanceScore', 1.0)
+                bid_vol = scal_data.get('bidVol')
+                ask_vol = scal_data.get('askVol')
+                
+                # Estimer slippage pour entrée et sortie
+                if spread > 0 and depth > 0:
+                    order_size = self.active_position.size
+                    slippage_entry = self._estimate_slippage(
+                        order_size, spread, depth, balance, bid_vol, ask_vol
+                    )
+                    slippage_exit = self._estimate_slippage(
+                        order_size, spread, depth, balance, bid_vol, ask_vol
+                    )
+                    slippage = slippage_entry + slippage_exit
+            else:
+                # Fallback: estimation conservatrice
+                slippage = 0.05  # 0.05% par défaut
+            
+            total_costs = fees + slippage
+            net_pnl = pnl - total_costs
         
         # Durée
         duration = int(
@@ -344,6 +425,8 @@ class PositionManager:
             'exit': round(exit_price, 6),
             'pnl': round(pnl, 2),
             'fees': round(fees, 2),
+            'slippage': round(slippage, 2),
+            'total_costs': round(total_costs, 2),
             'net_pnl': round(net_pnl, 2),
             'duration': duration,
             'reason': reason,

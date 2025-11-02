@@ -652,10 +652,11 @@
         var partialTPTrigger = 0.25;       // Profit pour activer TP partiel 0.25%
         var minVolumeRatio = 0.5;          // Ratio volume minimum
         
-        // 🔥 NOUVEAU v3.2: Frais MEXC corrigés
-        var makerFee = 0.0002;  // 0.02%
-        var takerFee = 0.0004;  // 0.04%
+        // 🔥 NOUVEAU v6.3: Frais MEXC 0% pour paires scalables
+        var makerFee = 0.0;  // 0% pour paires scalables
+        var takerFee = 0.0;  // 0% pour paires scalables
         var useFeeCalculation = true;
+        var useSlippageCalculation = true;  // Slippage dynamique activé
         
         // 🔥 NOUVEAU v3.7: Multiplicateur volume à la volée
         var volumeMultiplier = 1.0;  // 1.0 = ATR pur, <1 = plus permissif, >1 = plus strict
@@ -893,7 +894,7 @@
             html += '<th style="padding:6px;text-align:center;color:#888;">Dir</th>';
             html += '<th style="padding:6px;text-align:center;color:#888;">Raison</th>';
             html += '<th style="padding:6px;text-align:right;color:#888;">PnL Brut</th>';
-            html += '<th style="padding:6px;text-align:right;color:#888;">Frais</th>';
+            html += '<th style="padding:6px;text-align:right;color:#888;">Slippage</th>';
             html += '<th style="padding:6px;text-align:right;color:#888;">PnL Net</th>';
             html += '</tr></thead><tbody>';
             
@@ -928,7 +929,7 @@
                 html += '<td style="padding:6px;text-align:center;color:' + dirColor + ';font-weight:bold;">' + trade.direction + '</td>';
                 html += '<td style="padding:6px;text-align:center;color:' + reasonColor + ';font-weight:bold;">' + reasonText + '</td>';
                 html += '<td style="padding:6px;text-align:right;">' + (parseFloat(trade.grossPnl) >= 0 ? '+' : '') + trade.grossPnl + '%</td>';
-                html += '<td style="padding:6px;text-align:right;color:#ff8800;">-' + trade.fees + '%</td>';
+                html += '<td style="padding:6px;text-align:right;color:#ff8800;">-' + (trade.slippage || '0.00') + '%</td>';
                 html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnl) >= 0 ? '+' : '') + trade.netPnl + '%</td>';
                 html += '</tr>';
             });
@@ -1021,6 +1022,11 @@
             var positionInfo = calculateSimplePositionSize(setup, accountSize);
             activePosition.size = positionInfo.size;
             activePosition.risk = positionInfo.risk;
+            
+            // 🔥 NOUVEAU v6.3: Préserver scalability_data pour slippage
+            if (setup.scalability_data) {
+                activePosition.scalability_data = setup.scalability_data;
+            }
             
             document.getElementById('positionPanel').style.display = 'block';
             document.getElementById('posSymbol').textContent = setup.symbol;
@@ -1327,6 +1333,32 @@
             }
         }
         
+        // 🔥 NOUVEAU v6.3: Fonction estimation slippage dynamique
+        function estimateSlippage(orderSize, spreadPct, depth, balanceScore, bidVol, askVol) {
+            if (spreadPct <= 0 || depth <= 0) return 0;
+            
+            // Imbalance factor
+            var imbalanceFactor = 1 / balanceScore;
+            
+            // Depth factor
+            var depthFactor;
+            if (bidVol && askVol) {
+                // Version précise avec bid_vol/ask_vol séparés
+                depthFactor = orderSize / (bidVol + askVol);
+            } else {
+                // Version simplifiée avec depth total
+                depthFactor = orderSize / depth;
+            }
+            
+            // Slippage estimé
+            var slippagePct = spreadPct * (1 + depthFactor * imbalanceFactor);
+            
+            // Limiter à 1% maximum
+            slippagePct = Math.min(slippagePct, 1.0);
+            
+            return parseFloat(slippagePct.toFixed(4));
+        }
+        
         function closePosition(reason) {
             if (!activePosition) return;
             
@@ -1364,15 +1396,38 @@
             
             stats.totalTrades++;
             
-            // 🔥 NOUVEAU v2.8: Calculer PnL avec frais
+            // 🔥 NOUVEAU v6.3: Calculer PnL avec frais + slippage
             var grossPnl = pnl;
             var fees = 0;
+            var slippage = 0;
+            var totalCosts = 0;
             var netPnl = pnl;
             
             if (useFeeCalculation) {
-                // Frais = (entry + exit) * takerFee
-                fees = ((entry + exitPrice) / entry) * takerFee * 100;
-                netPnl = grossPnl - fees;
+                // Frais maker/taker (0% pour paires scalables)
+                fees = 0;
+                
+                // Slippage dynamique si activé et données disponibles
+                if (useSlippageCalculation && activePosition.scalability_data) {
+                    var scalData = activePosition.scalability_data;
+                    var spread = scalData.spread || 0;
+                    var depth = scalData.bookDepth || 0;
+                    var balance = scalData.balanceScore || 1.0;
+                    var bidVol = scalData.bidVol;
+                    var askVol = scalData.askVol;
+                    
+                    // Estimer slippage pour entrée et sortie
+                    if (spread > 0 && depth > 0) {
+                        var orderSize = activePosition.size || 1000; // Taille de l'ordre
+                        slippage = estimateSlippage(orderSize, spread, depth, balance, bidVol, askVol) * 2; // x2 (entrée + sortie)
+                    }
+                } else {
+                    // Fallback: estimation conservatrice
+                    slippage = 0.05; // 0.05% par défaut
+                }
+                
+                totalCosts = fees + slippage;
+                netPnl = grossPnl - totalCosts;
             }
             
             stats.totalPnl += netPnl;
@@ -1388,6 +1443,8 @@
                 exit: exitPrice.toFixed(6),
                 grossPnl: grossPnl.toFixed(2),
                 fees: fees.toFixed(2),
+                slippage: slippage.toFixed(2),
+                totalCosts: totalCosts.toFixed(2),
                 netPnl: netPnl.toFixed(2),
                 duration: duration,
                 reason: reason
@@ -2740,6 +2797,9 @@
                                 lastPrice: p.price || 0,
                                 volume24: estimatedVol24h
                             };
+                            
+                            // 🔥 NOUVEAU v6.3: Ajouter flag pour indiquer que scalability_data est disponible
+                            p.scalability_data = true;
                         }
                         
                         // Mettre à jour multiPairList
@@ -2868,6 +2928,18 @@
                 if (analysis1m && analysis5m) {
                     best.atr5m = analysis5m.atr; // Ajouter ATR 5m pour multi-TF
                 }
+                
+                // 🔥 NOUVEAU v6.3: Ajouter scalability_data pour slippage
+                if (pair.scalability_data) {
+                    best.scalability_data = {
+                        spread: pair.spread,
+                        bookDepth: pair.bookDepth,
+                        balanceScore: pair.balanceScore,
+                        bidVol: pair.bidVol,
+                        askVol: pair.askVol
+                    };
+                }
+                
                 return best;
             } else {
                 // 🔥 NOUVEAU v5.2 Phase 2: MODE PERMISSIF avec priorité par force
@@ -2880,6 +2952,18 @@
                     if (analysis1m && analysis5m) {
                         best.atr5m = analysis5m.atr;
                     }
+                    
+                    // 🔥 NOUVEAU v6.3: Ajouter scalability_data pour slippage
+                    if (pair.scalability_data) {
+                        best.scalability_data = {
+                            spread: pair.spread,
+                            bookDepth: pair.bookDepth,
+                            balanceScore: pair.balanceScore,
+                            bidVol: pair.bidVol,
+                            askVol: pair.askVol
+                        };
+                    }
+                    
                     return best;
                 }
             }
