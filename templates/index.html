@@ -1,0 +1,3117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Cursor v5.1 PARALLEL - MEXC Smart Scalping Scanner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', monospace; background: #0a0e27; color: #fff; min-height: 100vh; padding: 10px; font-size: 14px; line-height: 1.4; }
+        .container { max-width: 100%; margin: 0 auto; }
+        .header { text-align: center; padding: 15px 0; border-bottom: 2px solid #1e2749; margin-bottom: 15px; }
+        h1 { font-size: 24px; color: #00ff88; text-shadow: 0 0 20px rgba(0,255,136,0.5); margin-bottom: 8px; }
+        .subtitle { color: #888; font-size: 12px; line-height: 1.4; }
+        .mexc-badge { display: inline-block; background: linear-gradient(135deg, #1e90ff 0%, #00bfff 100%); color: white; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-top: 8px; }
+
+        .scan-config { background: #1e2749; border-radius: 10px; padding: 18px; margin-bottom: 15px; border: 2px solid #2a3a6b; }
+        .config-row { display: flex; gap: 15px; align-items: center; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .config-group { display: flex; gap: 8px; align-items: center; flex-direction: column; }
+        .config-label { font-size: 12px; color: #888; font-weight: bold; margin-bottom: 8px; text-align: center; }
+        .pair-count-selector { display: flex; gap: 8px; flex-wrap: wrap; }
+        .count-option { padding: 10px 18px; background: #0a0e27; border: 2px solid #2a3a6b; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-size: 14px; font-weight: bold; min-width: 55px; text-align: center; }
+        .count-option:hover { border-color: #00ff88; }
+        .count-option.active { background: #00ff88; color: #0a0e27; border-color: #00ff88; }
+        
+        .pair-selection { background: linear-gradient(135deg, #1e2749 0%, #2a3a6b 100%); border-radius: 12px; padding: 18px; margin-bottom: 15px; border: 2px solid #00ff88; display: none; }
+        .pair-header { text-align: center; margin-bottom: 15px; }
+        .pair-title { font-size: 17px; font-weight: bold; color: #00ff88; margin-bottom: 8px; }
+        .selected-pair { font-size: 32px; font-weight: bold; color: #00ff88; text-shadow: 0 0 30px rgba(0,255,136,0.8); }
+        .pair-score { font-size: 20px; color: #00aaff; margin-top: 10px; }
+        
+        .pair-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 15px 0; }
+        .pair-metric { background: #0a0e27; padding: 14px; border-radius: 10px; text-align: center; border: 2px solid #2a3a6b; }
+        .pair-metric.good { border-color: #00ff88; }
+        .metric-label { font-size: 11px; color: #888; margin-bottom: 8px; font-weight: bold; }
+        .metric-value { font-size: 18px; font-weight: bold; color: #00ff88; }
+        
+        .pair-controls { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; }
+        select { padding: 12px 18px; background: #0a0e27; color: #00ff88; border: 2px solid #00ff88; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; cursor: pointer; min-width: 200px; }
+        
+        .control-panel { background: #1e2749; border-radius: 10px; padding: 18px; margin-bottom: 15px; border: 2px solid #2a3a6b; }
+        .control-row { display: flex; gap: 18px; align-items: center; justify-content: center; flex-wrap: wrap; }
+        .control-group { display: flex; gap: 10px; align-items: center; }
+        .control-label { font-size: 12px; color: #888; font-weight: bold; }
+        
+        .btn { padding: 14px 35px; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; transition: all 0.3s; font-family: 'Courier New', monospace; text-transform: uppercase; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .btn-primary { background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%); color: #0a0e27; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,255,136,0.4); }
+        .btn-danger { background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: white; }
+        .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,68,68,0.4); }
+        
+        .status { background: #1e2749; border-radius: 10px; padding: 18px; margin-bottom: 15px; display: flex; gap: 18px; align-items: center; justify-content: space-around; flex-wrap: wrap; border: 2px solid #2a3a6b; }
+        .status-item { text-align: center; }
+        .status-label { font-size: 11px; color: #888; margin-bottom: 6px; font-weight: bold; }
+        .status-value { font-size: 20px; font-weight: bold; color: #00ff88; }
+        .countdown { font-size: 40px; font-weight: bold; color: #00aaff; text-shadow: 0 0 20px rgba(0,170,255,0.5); }
+        
+        .results { display: none; }
+        
+        /* Fenêtre scalping collapsible compacte */
+        .scalping-results-panel { background: #1e2749; border-radius: 8px; margin-bottom: 15px; border: 2px solid #2a3a6b; overflow: hidden; }
+        .scalping-results-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; cursor: pointer; background: rgba(0,255,136,0.05); transition: background 0.3s; }
+        .scalping-results-header:hover { background: rgba(0,255,136,0.1); }
+        .scalping-results-title { color: #00ff88; font-weight: bold; font-size: 12px; }
+        .scalping-results-arrow { color: #00ff88; font-size: 14px; transition: transform 0.3s; }
+        .scalping-results-arrow.collapsed { transform: rotate(-90deg); }
+        .scalping-results-content { max-height: 500px; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .scalping-results-content.collapsed { max-height: 0; }
+        
+        .timeframe-section { background: #1e2749; border-radius: 8px; padding: 8px; border: 1px solid #2a3a6b; }
+        .tf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #2a3a6b; }
+        .tf-title { font-size: 12px; font-weight: bold; color: #00ff88; }
+        
+        .direction-section { margin-bottom: 10px; }
+        .direction-header { font-size: 11px; font-weight: bold; margin-bottom: 8px; padding: 6px; border-radius: 6px; }
+        .direction-header.long { background: rgba(0,255,136,0.1); color: #00ff88; border-left: 3px solid #00ff88; }
+        .direction-header.short { background: rgba(255,68,68,0.1); color: #ff4444; border-left: 3px solid #ff4444; }
+        
+        .opportunities-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+        .opportunity-card { background: linear-gradient(135deg, #0a0e27 0%, #1a1e3a 100%); border-radius: 6px; padding: 8px; border: 1px solid #2a3a6b; transition: all 0.3s; position: relative; overflow: hidden; }
+        .opportunity-card:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,255,136,0.2); }
+        .opportunity-card.long { border-color: #00ff88; }
+        .opportunity-card.short { border-color: #ff4444; }
+        
+        .opp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .opp-symbol { font-size: 14px; font-weight: bold; color: #00ff88; }
+        .opp-score { font-size: 16px; font-weight: bold; padding: 4px 8px; border-radius: 6px; }
+        .opp-score.long { background: rgba(0,255,136,0.2); color: #00ff88; }
+        .opp-score.short { background: rgba(255,68,68,0.2); color: #ff4444; }
+        
+        .opp-prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+        .price-box { background: #0a0e27; padding: 6px; border-radius: 6px; text-align: center; border: 1px solid #2a3a6b; }
+        .price-label { font-size: 9px; color: #888; margin-bottom: 3px; text-transform: uppercase; font-weight: bold; }
+        .price-value { font-size: 12px; font-weight: bold; color: #00aaff; }
+        
+        .opp-signals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .signal-badge { background: rgba(0,170,255,0.2); color: #00aaff; padding: 3px 8px; border-radius: 10px; font-size: 9px; font-weight: bold; border: 1px solid #00aaff; }
+        
+        .no-opportunities { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+        
+        .loading-overlay { display: none; position: fixed; top: 80px; right: 20px; background: rgba(30,39,73,0.95); backdrop-filter: blur(10px); z-index: 1000; padding: 22px; border-radius: 12px; border: 2px solid #00ff88; box-shadow: 0 8px 32px rgba(0,255,136,0.3); max-width: 320px; }
+        .loading-spinner { width: 45px; height: 45px; border: 4px solid #2a3a6b; border-top: 4px solid #00ff88; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 18px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-text { font-size: 15px; color: #00ff88; font-weight: bold; text-align: center; }
+        
+        .message { position: fixed; top: 20px; right: 20px; padding: 18px 28px; border-radius: 10px; font-size: 14px; font-weight: bold; z-index: 2000; animation: slideIn 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.3); max-width: 380px; }
+        .message.info { background: #00aaff; color: white; }
+        .message.success { background: #00ff88; color: #0a0e27; }
+        .message.error { background: #ff4444; color: white; }
+        @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        
+        .debug-log { background: #0a0e27; border: 2px solid #2a3a6b; border-radius: 10px; padding: 18px; margin-top: 15px; max-height: 450px; overflow-y: auto; font-size: 12px; }
+        .debug-log-entry { padding: 6px; margin: 3px 0; border-left: 3px solid #00ff88; padding-left: 10px; line-height: 1.5; }
+        .debug-log-entry:nth-child(even) { background: rgba(255,255,255,0.02); }
+        
+        /* 🔥 v3.0: Panneaux collapsibles */
+        .collapsible-panel { background: #1e2749; border-radius: 10px; margin-bottom: 15px; border: 2px solid #2a3a6b; overflow: hidden; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 18px; cursor: pointer; background: rgba(0,255,136,0.05); transition: background 0.3s; }
+        .panel-header:hover { background: rgba(0,255,136,0.1); }
+        .panel-title { color: #00ff88; font-weight: bold; font-size: 14px; }
+        .panel-arrow { color: #00ff88; font-size: 16px; transition: transform 0.3s; }
+        .panel-arrow.collapsed { transform: rotate(-90deg); }
+        .panel-content { max-height: 1000px; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .panel-content.collapsed { max-height: 0; }
+        
+        input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+        
+        /* 🔥 PANNEAU POSITION COMPACT */
+        #positionPanel { 
+            display: none; 
+            background: #1e2749; 
+            border: 2px solid #00ff88; 
+            border-radius: 8px; 
+            padding: 10px; 
+            margin-bottom: 15px;
+            box-shadow: 0 4px 16px rgba(0,255,136,0.2);
+        }
+        .position-active #positionPanel { animation: glow 2s infinite; }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 15px rgba(0,255,136,0.3); } 50% { box-shadow: 0 0 25px rgba(0,255,136,0.5); } }
+        
+        /* En-tête position */
+        .position-title-section {
+            text-align: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .position-main-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #00ff88;
+            margin-bottom: 2px;
+        }
+        .position-duration {
+            font-size: 11px;
+            color: #00aaff;
+        }
+        
+        /* Infos principales */
+        .position-main-info {
+            background: #0a0e27;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #2a3a6b;
+        }
+        .position-info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        .position-info-item {
+            text-align: center;
+        }
+        .position-info-label {
+            font-size: 9px;
+            color: #888;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+        }
+        .position-info-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+        .position-info-value.large {
+            font-size: 16px;
+        }
+        
+        /* Prix actuel compact */
+        .current-price-highlight {
+            background: rgba(0,170,255,0.1);
+            border: 1px solid #00aaff;
+            border-radius: 6px;
+            padding: 6px;
+            margin: 8px 0;
+            text-align: center;
+        }
+        .current-price-label {
+            font-size: 9px;
+            color: #888;
+            margin-bottom: 3px;
+        }
+        .current-price-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00aaff;
+        }
+        
+        /* TP/SL Grid compact */
+        .tp-sl-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .tp-box, .sl-box {
+            border-radius: 6px;
+            padding: 6px;
+            text-align: center;
+        }
+        .tp-box {
+            background: rgba(0,255,136,0.08);
+            border: 1px solid #00ff88;
+        }
+        .sl-box {
+            background: rgba(255,68,68,0.08);
+            border: 1px solid #ff4444;
+        }
+        .tp-sl-label {
+            font-size: 9px;
+            margin-bottom: 3px;
+        }
+        .tp-box .tp-sl-label { color: #00ff88; }
+        .sl-box .tp-sl-label { color: #ff4444; }
+        .tp-sl-value {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+        .tp-box .tp-sl-value { color: #00ff88; }
+        .sl-box .tp-sl-value { color: #ff4444; }
+        .tp-sl-distance {
+            font-size: 9px;
+        }
+        .tp-box .tp-sl-distance { color: #00ff88; }
+        .sl-box .tp-sl-distance { color: #ff4444; }
+        
+        /* P&L Display compact */
+        .pnl-display {
+            background: #0a0e27;
+            border-radius: 6px;
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #2a3a6b;
+        }
+        .pnl-label {
+            font-size: 9px;
+            color: #888;
+            margin-bottom: 3px;
+        }
+        .pnl-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        /* Responsive mobile AMÉLIORÉ */
+        @media (max-width: 768px) {
+            body { padding: 10px; font-size: 14px; }
+            h1 { font-size: 22px; }
+            .subtitle { font-size: 11px; }
+            .selected-pair { font-size: 28px; }
+            .pair-metrics { grid-template-columns: repeat(2, 1fr); }
+            .opportunities-grid { grid-template-columns: 1fr; }
+            .status { gap: 12px; padding: 15px; }
+            .countdown { font-size: 34px; }
+            .loading-overlay { top: 70px; right: 12px; max-width: 280px; padding: 18px; }
+            
+            /* Position panel mobile compact */
+            #positionPanel { padding: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ TRADE CURSOR v5.1 - PARALLEL SCANNER</h1>
+            <div class="subtitle">✅ Stats temps réel • ✅ Volume à la volée • ✅ ATR auto • ✅ No timeout<br>📊 Mode FIXE/ATR • 🧩 Clamp ATR • ⚖️ Win/Loss adjust • 🛡️ BE ATR • 💰 Position Sizing • 📊 Volume Quality • 🎯 Confluence • 🔥 Scanner Scalabilité 0% fees • ⚡ SCAN PARALLÈLE • 🎯 Filtre ATR Optimal</div>
+            <span class="mexc-badge">MEXC FUTURES</span>
+        </div>
+
+        <div class="scan-config">
+            <div class="config-row" style="margin-top: 20px;">
+                <div class="config-group">
+                    <div class="config-label">🎚️ VOLUME MULTIPLIER</div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                        <input type="range" id="volumeMultiplierSlider" min="0.10" max="2.00" step="0.05" value="1.00" 
+                               style="width: 200px; height: 20px; cursor: pointer;" 
+                               oninput="volumeMultiplier = parseFloat(this.value); document.getElementById('volumeMultiplierValue').textContent = volumeMultiplier.toFixed(2); updateVolumeStatsUI(false);">
+                        <span id="volumeMultiplierValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">1.00</span>
+                        <span style="color: #888; font-size: 11px;">&lt;1 permissif | &gt;1 strict</span>
+                    </div>
+                    <div id="volumeStats" style="margin-top: 8px; padding: 8px; background: #0a0e27; border-radius: 5px; border: 1px solid #2a3a6b; font-size: 11px; color: #888; text-align: center;">
+                        📊 Stats: En attente scan...
+                    </div>
+                </div>
+            </div>
+            <div class="config-row" style="margin-top: 20px;">
+                <div class="config-group">
+                    <div class="config-label">📊 MODE TP/SL</div>
+                    <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="atrModeToggle" onchange="useATR = this.checked; document.getElementById('atrModeStatus').textContent = this.checked ? 'ATR' : 'FIXE'; document.getElementById('atrModeStatus').style.color = this.checked ? '#00ff88' : '#888';" style="width: 25px; height: 25px;">
+                            <span style="color: #00ff88; font-weight: bold; font-size: 15px;">Mode ATR</span>
+                        </label>
+                        <span id="atrModeStatus" style="color: #888; font-weight: bold;">FIXE</span>
+                        <span style="color: #888; font-size: 10px;">(TP/SL adaptatif vs fixe)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="config-row" style="margin-top: 20px;">
+                <div class="config-group">
+                    <div class="config-label">💰 CAPITAL</div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                        <input type="number" id="accountSizeInput" value="1000" min="100" max="100000" 
+                               onchange="accountSize = parseFloat(this.value);" 
+                               style="width: 120px; padding: 10px; background: #0a0e27; color: #00ff88; border: 2px solid #00ff88; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace;">
+                        <span style="color: #888; font-size: 11px;">USDT</span>
+                    </div>
+                </div>
+                <div class="config-group">
+                    <div class="config-label">🎯 CONFLUENCE</div>
+                    <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="confluenceToggle" onchange="useConfluence = this.checked; document.getElementById('confluenceStatus').textContent = this.checked ? 'STRICTE' : 'PERMISSIVE'; document.getElementById('confluenceStatus').style.color = this.checked ? '#00ff88' : '#888';" style="width: 25px; height: 25px;">
+                            <span style="color: #00ff88; font-weight: bold; font-size: 15px;">Confluence</span>
+                        </label>
+                        <span id="confluenceStatus" style="color: #888; font-weight: bold;">PERMISSIVE</span>
+                        <span style="color: #888; font-size: 10px;">(1m+5m vs 1m ou 5m)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="config-row" style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="initScanner()" id="scanPairsBtn">🔍 SCANNER LES PAIRES</button>
+            </div>
+        </div>
+        
+        <!-- Top 20 Paires Scalables -->
+        <div class="scan-config">
+            <div class="config-row">
+                <div class="config-group" style="width: 100%;">
+                    <div class="config-label" style="text-align: center; font-size: 16px; margin-bottom: 15px;">🏆 TOP 20 PAIRES SCALABLES</div>
+                    <div id="top20ScalablePairs" style="min-height: 300px; max-height: 600px; overflow-y: auto; background: #0a0e27; border-radius: 8px; padding: 15px; border: 2px solid #2a3a6b;">
+                        <div style="text-align: center; color: #888; padding: 50px;">Cliquez sur "SCANNER LES PAIRES" pour charger</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="pair-selection" id="pairSelection">
+            <div class="pair-controls" style="display: flex; gap: 15px; justify-content: center;">
+                <button class="btn btn-primary" onclick="startScanning()">🚀 START SCANNER</button>
+                <button class="btn btn-danger" onclick="stopScanning()" style="display:none;" id="stopBtn">⏹ STOP</button>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="control-row">
+                <div class="control-group">
+                    <label class="control-label">📈 TREND TIMEFRAME:</label>
+                    <select id="trendTfSelector" onchange="trendTimeframe = this.value" style="min-width: 100px;">
+                        <option value="5m">5m</option>
+                        <option value="15m" selected>15m</option>
+                        <option value="30m">30m</option>
+                        <option value="1h">1h</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">🧪 MODE TEST</label>
+                    <input type="checkbox" id="mockToggle" onchange="MOCK_MODE = this.checked">
+                </div>
+            </div>
+        </div>
+
+        <div class="status">
+            <div class="status-item"><div class="status-label">ÉTAT</div><div class="status-value" id="statState" style="color: #00aaff;">ARRÊTÉ</div></div>
+            <div class="status-item"><div class="status-label">TRADES</div><div class="status-value" id="statTrades">0</div></div>
+            <div class="status-item"><div class="status-label">WINS</div><div class="status-value" id="statWins" style="color: #00ff88;">0</div></div>
+            <div class="status-item"><div class="status-label">LOSSES</div><div class="status-value" id="statLosses" style="color: #ff4444;">0</div></div>
+            <div class="status-item"><div class="status-label">WINRATE</div><div class="status-value" id="statWinrate" style="color: #ffaa00;">0%</div></div>
+            <div class="countdown" id="countdown">60</div>
+        </div>
+        
+        <!-- 🔥 v3.0: Statistiques détaillées collapsible -->
+        <div class="collapsible-panel">
+            <div class="panel-header" onclick="togglePanel('statsPanel')">
+                <div class="panel-title">📊 STATISTIQUES DÉTAILLÉES SESSION</div>
+                <div class="panel-arrow" id="statsPanel-arrow">▼</div>
+            </div>
+            <div class="panel-content" id="statsPanel-content">
+            <div style="padding: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 12px;">
+                <div style="background: rgba(0,255,136,0.1); padding: 8px; border-radius: 6px; border-left: 2px solid #00ff88;">
+                    <div style="color: #888; font-size: 10px; margin-bottom: 3px;">BREAK-EVENS</div>
+                    <div style="color: #00ff88; font-size: 16px; font-weight: bold;" id="statBreakevens">0</div>
+                </div>
+                <div style="background: rgba(0,255,136,0.1); padding: 8px; border-radius: 6px; border-left: 2px solid #00ff88;">
+                    <div style="color: #888; font-size: 10px; margin-bottom: 3px;">GAIN MOYEN / WIN</div>
+                    <div style="color: #00ff88; font-size: 16px; font-weight: bold;" id="statAvgWin">N/A</div>
+                </div>
+                <div style="background: rgba(255,68,68,0.1); padding: 8px; border-radius: 6px; border-left: 2px solid #ff4444;">
+                    <div style="color: #888; font-size: 10px; margin-bottom: 3px;">PERTE MOYENNE / LOSS</div>
+                    <div style="color: #ff4444; font-size: 16px; font-weight: bold;" id="statAvgLoss">N/A</div>
+                </div>
+            </div>
+            <div style="margin-top: 8px; padding: 8px; background: linear-gradient(135deg, rgba(0,255,136,0.1) 0%, rgba(0,170,255,0.1) 100%); border-radius: 6px; text-align: center;">
+                <div style="color: #888; font-size: 10px; margin-bottom: 4px;">💰 GAIN/PERTE CUMULÉ SESSION</div>
+                <div style="font-size: 22px; font-weight: bold;" id="statTotalPnl">+0.00%</div>
+            </div>
+            </div>
+            </div>
+        </div>
+
+        <!-- 🔥 v3.0: Historique des trades collapsible -->
+        <div class="collapsible-panel">
+            <div class="panel-header" onclick="togglePanel('historyPanel')">
+                <div class="panel-title">📋 HISTORIQUE DES TRADES (20 derniers)</div>
+                <div class="panel-arrow" id="historyPanel-arrow">▼</div>
+            </div>
+            <div class="panel-content" id="historyPanel-content">
+                <div style="padding: 15px;">
+                    <div id="tradeHistory" style="overflow-x: auto;">
+                        <div style="text-align:center;color:#888;padding:20px;">Aucun trade pour le moment</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 🔥 NOUVEAU PANNEAU POSITION OPTIMISÉ -->
+        <div id="positionPanel">
+            <div class="position-title-section">
+                <div class="position-main-title">🟢 POSITION ACTIVE</div>
+                <div class="position-duration" id="positionDuration">Durée: 0m 0s</div>
+            </div>
+            
+            <div class="position-main-info">
+                <div class="position-info-grid">
+                    <div class="position-info-item">
+                        <div class="position-info-label">Paire</div>
+                        <div class="position-info-value large" id="posSymbol">---</div>
+                    </div>
+                    <div class="position-info-item">
+                        <div class="position-info-label">Direction</div>
+                        <div class="position-info-value large" id="posDirection">---</div>
+                    </div>
+                    <div class="position-info-item">
+                        <div class="position-info-label">Entry</div>
+                        <div class="position-info-value" id="posEntry">---</div>
+                    </div>
+                    <div class="position-info-item">
+                        <div class="position-info-label">Confirmé par</div>
+                        <div class="position-info-value" id="posConfirm" style="font-size: 12px; color: #00aaff;">---</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Prix actuel mis en évidence -->
+            <div class="current-price-highlight">
+                <div class="current-price-label">💲 PRIX ACTUEL <span id="priceStatus" style="font-size: 9px; color: #00ff88;">● LIVE</span></div>
+                <div class="current-price-value" id="posCurrent">---</div>
+            </div>
+            
+            <!-- TP/SL -->
+            <div class="tp-sl-grid">
+                <div class="tp-box">
+                    <div class="tp-sl-label">🎯 TAKE PROFIT</div>
+                    <div class="tp-sl-value" id="posTP">---</div>
+                    <div class="tp-sl-distance" id="posTPDist">---</div>
+                </div>
+                <div class="sl-box">
+                    <div class="tp-sl-label">⚠️ STOP LOSS</div>
+                    <div class="tp-sl-value" id="posSL">---</div>
+                    <div class="tp-sl-distance" id="posSLDist">---</div>
+                </div>
+            </div>
+            
+            <!-- P&L -->
+            <div class="pnl-display">
+                <div class="pnl-label">PROFIT & LOSS</div>
+                <div class="pnl-value" id="posPnL">+0.00%</div>
+            </div>
+            
+            <!-- 🔥 v3.0: Bouton fermeture manuelle -->
+            <button id="closePositionBtn" onclick="closePositionManual()" style="width: 100%; padding: 8px; margin-top: 8px; background: #ff4444; border: none; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold;">⚠️ CLÔTURER TRADE</button>
+        </div>
+
+        <!-- Fenêtre scalping collapsible -->
+        <div class="scalping-results-panel">
+            <div class="scalping-results-header" onclick="togglePanel('scalpingResultsPanel')">
+                <div class="scalping-results-title">📊 SCALPING (1m + 5m confirmés)</div>
+                <div class="scalping-results-arrow" id="scalpingResultsPanel-arrow">▼</div>
+            </div>
+            <div class="scalping-results-content" id="scalpingResultsPanel-content">
+                <div class="results" id="results"></div>
+            </div>
+        </div>
+
+        <!-- 🔥 v3.0: Debug logs collapsible -->
+        <div class="collapsible-panel">
+            <div class="panel-header" onclick="togglePanel('debugPanel')">
+                <div class="panel-title">🔍 DEBUG LOGS</div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button id="pauseLogsBtn" onclick="togglePauseLogs()" style="padding: 5px 10px; background: #ff6b6b; border: none; color: white; border-radius: 5px; cursor: pointer; font-size: 12px;">⏸️ PAUSE</button>
+                    <div class="panel-arrow" id="debugPanel-arrow">▼</div>
+                </div>
+            </div>
+            <div class="panel-content" id="debugPanel-content">
+                <div class="debug-log" id="debugLog"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingText">Chargement...</div>
+    </div>
+
+    <script>
+        // 🔥 NOUVEAU: Appel direct + proxies fiables
+        var PROXIES = [
+            {name: 'Direct', url: url => url}, // Essai direct d'abord
+            {name: 'CorsAnywhere', url: url => 'https://cors-anywhere.herokuapp.com/' + url},
+            {name: 'AllOrigins', url: url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)},
+            {name: 'ThingProxy', url: url => 'https://thingproxy.freeboard.io/fetch/' + url},
+            {name: 'CorsProxy', url: url => 'https://corsproxy.io/?' + encodeURIComponent(url)},
+            {name: 'ProxyAny', url: url => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url)}
+        ];
+        var currentProxyIndex = 0;
+        var lastWorkingProxyIndex = 0; // 🔥 Mémoriser le dernier proxy fonctionnel
+        var priceCache = {}; // 🔥 Cache des derniers prix
+        const MEXC_FUTURES_URL = 'https://contract.mexc.com';
+        
+        // 🔥 NOUVEAU v5.1: Paires 0% fees MEXC (liste statique à maintenir manuellement depuis https://www.mexc.com/fr/zero-fee)
+        var ZERO_FEE_PAIRS = [
+            'AAVE_USDT', 'ADA_USDT', 'ALGO_USDT', 'ANKR_USDT', 'APT_USDT', 'ARB_USDT', 'ATOM_USDT', 'AXS_USDT',
+            'BAND_USDT', 'BAT_USDT', 'BNB_USDT', 'BTC_USDT', 'CELO_USDT', 'CHZ_USDT', 'COMP_USDT', 'CRV_USDT',
+            'DASH_USDT', 'DCR_USDT', 'DOGE_USDT', 'DOT_USDT', 'ENJ_USDT', 'EOS_USDT', 'ETC_USDT', 'ETH_USDT',
+            'FIL_USDT', 'FLOW_USDT', 'GALA_USDT', 'GRT_USDT', 'HBAR_USDT', 'HNT_USDT', 'ICP_USDT', 'IOTA_USDT',
+            'KLAY_USDT', 'KSM_USDT', 'LINK_USDT', 'LRC_USDT', 'LSK_USDT', 'LTC_USDT', 'MANA_USDT', 'MATIC_USDT',
+            'MKR_USDT', 'NEAR_USDT', 'OCEAN_USDT', 'OMG_USDT', 'ONT_USDT', 'OP_USDT', 'QTUM_USDT', 'REN_USDT',
+            'ROSE_USDT', 'RVN_USDT', 'SAND_USDT', 'SNX_USDT', 'SOL_USDT', 'SUSHI_USDT', 'TRX_USDT', 'UNI_USDT',
+            'VET_USDT', 'WAVES_USDT', 'XLM_USDT', 'XRP_USDT', 'XTZ_USDT', 'YFI_USDT', 'ZEC_USDT', 'ZEN_USDT',
+            'ZIL_USDT', 'ZRX_USDT'
+        ];
+        
+        var isScanning = false, scanInterval = null, countdownInterval = null, scanCount = 0;
+        var isScanningScalability = false;
+        var selectedPair = null, allPairs = [];
+        var currentData = { 'scalp': {longs:[],shorts:[]} };
+        var previousData = { 'scalp': {longs:[],shorts:[]} };
+        var audioContext = null, countdownValue = 45, trendTimeframe = '15m', filterCounterTrend = true, debugEnabled = true;
+        var MOCK_MODE = false;
+        
+        // 🔥 NOUVEAU: Variables multi-paires
+        var scanMode = 'parallel'; // Mode parallèle par défaut
+        var multiPairList = [];
+        
+        var tradingState = 'SCANNING';
+        var activePosition = null, positionStartTime = null, positionCheckInterval = null, resumeScanTimeout = null;
+        var stats = { 
+            totalTrades: 0, 
+            wins: 0, 
+            losses: 0, 
+            timeouts: 0,
+            breakevens: 0,
+            // 🔥 NOUVEAU v2.7: Stats détaillées
+            winPnls: [],      // Liste des gains en %
+            lossPnls: [],     // Liste des pertes en %
+            winDurations: [], // Durées des wins en secondes
+            lossDurations: [],
+            bestTrade: { pnl: 0, symbol: '', duration: 0 },
+            worstTrade: { pnl: 0, symbol: '', duration: 0 },
+            totalPnl: 0,      // Cumul session
+            // 🔥 NOUVEAU v2.8: Historique trades
+            tradeHistory: []  // Historique complet des trades
+        };
+        
+        // 🔥 NOUVEAU v3.1: Variables pour nouvelle gestion TP/SL
+        var useDynamicTPSL = false;        // TP/SL statiques (désactivé)
+        var useTrailingStop = true;        // Trailing stop activé
+        var useBreakEven = true;           // Break-even automatique
+        var useAdaptiveTimeout = true;     // Timeout adaptatif
+        var useVolumeConfirmation = true;  // Confirmation volume
+        var usePartialTP = true;           // TP partiel
+        var breakEvenSet = false;          // Flag break-even
+        var partialTPSold = false;         // Flag TP partiel 50%
+        var atrMultiplierSL = 1.5;         // Multiplicateur ATR pour SL (non utilisé)
+        var atrMultiplierTP = 3.0;         // Multiplicateur ATR pour TP (non utilisé)
+        var trailingDistance = 0.15;       // Distance trailing stop 0.15%
+        var breakEvenTrigger = 0.3;        // Profit pour activer break-even 0.3%
+        var partialTPTrigger = 0.25;       // Profit pour activer TP partiel 0.25%
+        var minVolumeRatio = 0.5;          // Ratio volume minimum
+        
+        // 🔥 NOUVEAU v3.2: Frais MEXC corrigés
+        var makerFee = 0.0002;  // 0.02%
+        var takerFee = 0.0004;  // 0.04%
+        var useFeeCalculation = true;
+        
+        // 🔥 NOUVEAU v3.7: Multiplicateur volume à la volée
+        var volumeMultiplier = 1.0;  // 1.0 = ATR pur, <1 = plus permissif, >1 = plus strict
+        
+        // 🔥 NOUVEAU v3.7: Stats volume en temps réel
+        var volumeStats = {
+            total: 0,
+            validated: 0,
+            ratio: 0
+        };
+        
+        // 🔥 NOUVEAU v4.2: Mode TP/SL
+        var useATR = false;  // false = fixe, true = ATR
+        
+        // 🔥 NOUVEAU v4.2: Protection anti-pertes consécutives
+        var pairLosses = {};  // {symbol: {lastLossTime, consecutiveLosses}}
+        
+        // 🔥 NOUVEAU v4.3: Variables pour ajustement dynamique
+        var winStreak = 0;   // Série de wins consécutifs
+        var lossStreak = 0;  // Série de pertes consécutives
+        
+        // 🔥 NOUVEAU v4.3.1 Phase 2: Position sizing et confluence
+        var accountSize = 1000;        // Capital total en USDT
+        var useConfluence = false;     // false = 1m OU 5m, true = 1m ET 5m
+        
+        // 🔥 v3.0: Surveillance API (prix figé)
+        var lastPriceUpdate = Date.now();
+        var lastPrice = 0;
+        var priceStuckThreshold = 20000;   // 20 secondes sans changement = alerte
+        var apiAlertShown = false;
+        
+        // 🔥 NOUVEAU: Gestion de la persistance d'état
+        function saveState() {
+            if (!activePosition) return;
+            
+            const state = {
+                tradingState: tradingState,
+                activePosition: activePosition,
+                positionStartTime: positionStartTime,
+                stats: stats,
+                selectedPair: selectedPair,
+                timestamp: Date.now()
+            };
+            
+            try {
+                localStorage.setItem('mexcScannerState', JSON.stringify(state));
+                debugLog('💾 État sauvegardé', 'Position: ' + activePosition.symbol);
+            } catch(e) {
+                debugLog('⚠️ Sauvegarde échouée', e.message);
+            }
+        }
+        
+        function loadState() {
+            try {
+                const saved = localStorage.getItem('mexcScannerState');
+                if (!saved) return false;
+                
+                const state = JSON.parse(saved);
+                const age = Date.now() - state.timestamp;
+                
+                // Expire après 30 minutes
+                if (age > 30 * 60 * 1000) {
+                    localStorage.removeItem('mexcScannerState');
+                    debugLog('⏱️ État expiré', 'Supprimé (> 30min)');
+                    return false;
+                }
+                
+                // Restaurer l'état
+                tradingState = state.tradingState;
+                activePosition = state.activePosition;
+                positionStartTime = state.positionStartTime;
+                stats = state.stats;
+                selectedPair = state.selectedPair;
+                
+                debugLog('♻️ État restauré', 'Position: ' + (activePosition ? activePosition.symbol : 'Aucune'));
+                
+                if (activePosition) {
+                    // Réafficher le panneau position
+                    displayRestoredPosition();
+                    // Relancer le monitoring
+                    positionCheckInterval = setInterval(checkPosition, 2000);
+                    
+                    // Réactiver le timeout
+                    const elapsed = Date.now() - positionStartTime;
+                    const remaining = (5 * 60 * 1000) - elapsed;
+                    
+                    if (remaining > 0) {
+                        setTimeout(function() {
+                            if (tradingState === 'IN_POSITION' && activePosition) {
+                                debugLog('⏱️ TIMEOUT', '5 minutes atteintes (après restauration)');
+                                closePosition('TIMEOUT');
+                            }
+                        }, remaining);
+                    } else {
+                        // Déjà expiré
+                        closePosition('TIMEOUT');
+                    }
+                }
+                
+                updateStats();
+                updateStateDisplay();
+                
+                return true;
+            } catch(e) {
+                debugLog('❌ Restauration échouée', e.message);
+                localStorage.removeItem('mexcScannerState');
+                return false;
+            }
+        }
+        
+        function displayRestoredPosition() {
+            if (!activePosition) return;
+            
+            document.getElementById('positionPanel').style.display = 'block';
+            document.getElementById('posSymbol').textContent = activePosition.symbol;
+            document.getElementById('posDirection').textContent = activePosition.direction;
+            document.getElementById('posDirection').style.color = activePosition.direction === 'LONG' ? '#00ff88' : '#ff4444';
+            document.getElementById('posEntry').textContent = activePosition.entry;
+            document.getElementById('posTP').textContent = activePosition.tp;
+            document.getElementById('posSL').textContent = activePosition.sl;
+            document.getElementById('posConfirm').textContent = activePosition.confirmedBy || 'N/A';
+            
+            showInfo('✅ Position restaurée: ' + activePosition.symbol);
+        }
+        
+        // 🔥 NOUVEAU: Gestion de la visibilité (veille/changement d'onglet)
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                debugLog('😴 Page masquée', 'Sauvegarde de l\'état...');
+                saveState();
+            } else {
+                debugLog('👁️ Page visible', 'Vérification de l\'état...');
+                
+                // Si position active, forcer un check immédiat
+                if (activePosition && tradingState === 'IN_POSITION') {
+                    debugLog('🔄 Check immédiat', 'Position active détectée');
+                    checkPosition();
+                }
+            }
+        });
+        
+        // Sauvegarde périodique toutes les 5 secondes si position active
+        setInterval(function() {
+            if (activePosition && tradingState === 'IN_POSITION') {
+                saveState();
+            }
+        }, 5000);
+        
+        function updateStats() {
+            document.getElementById('statTrades').textContent = stats.totalTrades;
+            document.getElementById('statWins').textContent = stats.wins;
+            document.getElementById('statLosses').textContent = stats.losses;
+            var winrate = stats.totalTrades > 0 ? ((stats.wins / stats.totalTrades) * 100).toFixed(1) : 0;
+            document.getElementById('statWinrate').textContent = winrate + '%';
+            
+            // 🔥 NOUVEAU v2.7: Stats détaillées
+            if (document.getElementById('statBreakevens')) {
+                document.getElementById('statBreakevens').textContent = stats.breakevens;
+            }
+            
+            if (document.getElementById('statAvgWin')) {
+                var avgWin = stats.winPnls.length > 0 ? 
+                    stats.winPnls.reduce((a,b) => a+b, 0) / stats.winPnls.length : 0;
+                document.getElementById('statAvgWin').textContent = '+' + avgWin.toFixed(2) + '%';
+            }
+            
+            if (document.getElementById('statAvgLoss')) {
+                var avgLoss = stats.lossPnls.length > 0 ? 
+                    stats.lossPnls.reduce((a,b) => a+b, 0) / stats.lossPnls.length : 0;
+                document.getElementById('statAvgLoss').textContent = avgLoss.toFixed(2) + '%';
+            }
+            
+            if (document.getElementById('statTotalPnl')) {
+                var color = stats.totalPnl >= 0 ? '#00ff88' : '#ff4444';
+                document.getElementById('statTotalPnl').textContent = (stats.totalPnl >= 0 ? '+' : '') + stats.totalPnl.toFixed(2) + '%';
+                document.getElementById('statTotalPnl').style.color = color;
+            }
+            
+            if (document.getElementById('statBestTrade')) {
+                if (stats.bestTrade.pnl > 0) {
+                    var mins = Math.floor(stats.bestTrade.duration / 60);
+                    var secs = stats.bestTrade.duration % 60;
+                    document.getElementById('statBestTrade').textContent = 
+                        '+' + stats.bestTrade.pnl.toFixed(2) + '% (' + stats.bestTrade.symbol + ' - ' + mins + 'm' + secs + 's)';
+                } else {
+                    document.getElementById('statBestTrade').textContent = 'N/A';
+                }
+            }
+            
+            if (document.getElementById('statWorstTrade')) {
+                if (stats.worstTrade.pnl < 0) {
+                    var mins = Math.floor(stats.worstTrade.duration / 60);
+                    var secs = stats.worstTrade.duration % 60;
+                    document.getElementById('statWorstTrade').textContent = 
+                        stats.worstTrade.pnl.toFixed(2) + '% (' + stats.worstTrade.symbol + ' - ' + mins + 'm' + secs + 's)';
+                } else {
+                    document.getElementById('statWorstTrade').textContent = 'N/A';
+                }
+            }
+            
+            if (document.getElementById('statAvgDuration')) {
+                var allDurations = stats.winDurations.concat(stats.lossDurations);
+                if (allDurations.length > 0) {
+                    var avgDur = allDurations.reduce((a,b) => a+b, 0) / allDurations.length;
+                    var mins = Math.floor(avgDur / 60);
+                    var secs = Math.floor(avgDur % 60);
+                    document.getElementById('statAvgDuration').textContent = mins + 'm ' + secs + 's';
+                } else {
+                    document.getElementById('statAvgDuration').textContent = 'N/A';
+                }
+            }
+        }
+        
+        // 🔥 NOUVEAU v2.8: Mettre à jour l'historique des trades
+        function updateTradeHistory() {
+            var historyDiv = document.getElementById('tradeHistory');
+            if (!historyDiv) return;
+            
+            if (stats.tradeHistory.length === 0) {
+                historyDiv.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">Aucun trade pour le moment</div>';
+                return;
+            }
+            
+            var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+            html += '<thead><tr style="border-bottom:2px solid #2a3a6b;">';
+            html += '<th style="padding:6px;text-align:left;color:#888;">#</th>';
+            html += '<th style="padding:6px;text-align:left;color:#888;">Heure</th>';
+            html += '<th style="padding:6px;text-align:left;color:#888;">Paire</th>';
+            html += '<th style="padding:6px;text-align:center;color:#888;">Dir</th>';
+            html += '<th style="padding:6px;text-align:center;color:#888;">Raison</th>';
+            html += '<th style="padding:6px;text-align:right;color:#888;">PnL Brut</th>';
+            html += '<th style="padding:6px;text-align:right;color:#888;">Frais</th>';
+            html += '<th style="padding:6px;text-align:right;color:#888;">PnL Net</th>';
+            html += '</tr></thead><tbody>';
+            
+            stats.tradeHistory.forEach(function(trade, index) {
+                var pnlColor = parseFloat(trade.netPnl) >= 0 ? '#00ff88' : '#ff4444';
+                var dirColor = trade.direction === 'LONG' ? '#00ff88' : '#ff4444';
+                
+                // Formatage de la raison
+                var reasonText = 'N/A';
+                var reasonColor = '#888';
+                if (trade.reason === 'TP') {
+                    reasonText = '🎯 TP';
+                    reasonColor = '#00ff88';
+                } else if (trade.reason === 'SL') {
+                    reasonText = '🛑 SL';
+                    reasonColor = '#ff4444';
+                } else if (trade.reason === 'TIMEOUT') {
+                    reasonText = '⏱️ Timeout';
+                    reasonColor = '#ff8800';
+                } else if (trade.reason === 'API_STUCK') {
+                    reasonText = '⚠️ API';
+                    reasonColor = '#ff4444';
+                } else if (trade.reason === 'MANUAL') {
+                    reasonText = '👤 Manuel';
+                    reasonColor = '#00aaff';
+                }
+                
+                html += '<tr style="border-bottom:1px solid #1e2749;">';
+                html += '<td style="padding:6px;color:#888;">' + (index + 1) + '</td>';
+                html += '<td style="padding:6px;">' + trade.time + '</td>';
+                html += '<td style="padding:6px;font-weight:bold;">' + trade.symbol + '</td>';
+                html += '<td style="padding:6px;text-align:center;color:' + dirColor + ';font-weight:bold;">' + trade.direction + '</td>';
+                html += '<td style="padding:6px;text-align:center;color:' + reasonColor + ';font-weight:bold;">' + reasonText + '</td>';
+                html += '<td style="padding:6px;text-align:right;">' + (parseFloat(trade.grossPnl) >= 0 ? '+' : '') + trade.grossPnl + '%</td>';
+                html += '<td style="padding:6px;text-align:right;color:#ff8800;">-' + trade.fees + '%</td>';
+                html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnl) >= 0 ? '+' : '') + trade.netPnl + '%</td>';
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            historyDiv.innerHTML = html;
+        }
+        
+        function updateStateDisplay() {
+            var stateEl = document.getElementById('statState');
+            if (tradingState === 'SCANNING') {
+                stateEl.textContent = 'SCANNING';
+                stateEl.style.color = '#00aaff';
+                document.body.classList.remove('position-active');
+            } else if (tradingState === 'IN_POSITION') {
+                stateEl.textContent = 'IN POSITION';
+                stateEl.style.color = '#00ff88';
+                document.body.classList.add('position-active');
+            } else {
+                stateEl.textContent = 'PAUSED';
+                stateEl.style.color = '#888';
+            }
+        }
+        
+        function openPosition(setup) {
+            tradingState = 'IN_POSITION';
+            activePosition = setup;
+            positionStartTime = Date.now();
+            breakEvenSet = false;  // 🔥 Reset flag break-even
+            partialTPSold = false; // 🔥 Reset flag TP partiel
+            
+            // 🔥 NOUVEAU v4.2: Calculer SL/TP selon mode (FIXE ou ATR)
+            var entryPrice = parseFloat(setup.entry);
+            
+            if (useATR && setup.atr) {
+                // Mode ATR
+                // 🔥 NOUVEAU v4.3: ATR Multi-Timeframe (70% 1m + 30% 5m si disponible)
+                var atr1m = setup.atr;
+                var atr5m = setup.atr5m || setup.atr;
+                var atrPercent = ((atr1m * 0.7) + (atr5m * 0.3)) / entryPrice * 100;
+                debugLog('📊 ATR Multi-TF', 'ATR1m=' + atr1m.toFixed(6) + ' | ATR5m=' + atr5m.toFixed(6) + ' → ATR%=' + atrPercent.toFixed(3));
+                
+                // 🔥 OPTIMISATION v5.1: Clamp ATR aligné avec filtres (0.15% - 1.5%)
+                var minATR = 0.15;  // Aligné avec filtres
+                var maxATR = 1.5;   // Aligné avec filtres
+                if (atrPercent < minATR) atrPercent = minATR;
+                if (atrPercent > maxATR) atrPercent = maxATR;
+                debugLog('🧩 Clamp ATR', 'ATR ajusté à ' + atrPercent.toFixed(2) + '% (plage ' + minATR + '–' + maxATR + '%)');
+                
+                // 🔥 OPTIMISATION v5.0: Ajustement selon série win/loss
+                var atrMultSL = 1.5;
+                var atrMultTP = 3.0;
+                
+                if (winStreak >= 3) {
+                    atrMultTP = 4.0;
+                    atrMultSL = 1.2;
+                    debugLog('⚖️ Gestion dynamique', 'Wins=' + winStreak + ' | TPx=' + atrMultTP + ' | SLx=' + atrMultSL + ' (agressif)');
+                } else if (lossStreak >= 2) {
+                    atrMultTP = 1.5;
+                    atrMultSL = 1.2;
+                    debugLog('⚖️ Gestion dynamique', 'Losses=' + lossStreak + ' | TPx=' + atrMultTP + ' | SLx=' + atrMultSL + ' (prudent)');
+                }
+                
+                if (setup.direction === 'LONG') {
+                    activePosition.sl = (entryPrice * (1 - atrPercent / 100 * atrMultSL)).toFixed(6);
+                    activePosition.tp = (entryPrice * (1 + atrPercent / 100 * atrMultTP)).toFixed(6);
+                } else {
+                    activePosition.sl = (entryPrice * (1 + atrPercent / 100 * atrMultSL)).toFixed(6);
+                    activePosition.tp = (entryPrice * (1 - atrPercent / 100 * atrMultTP)).toFixed(6);
+                }
+                
+                // 🔥 OPTIMISATION v4.2.1: Log enrichi pour debug visuel
+                debugLog('📊 Mode ATR', 'ATR=' + setup.atr.toFixed(6) + ' (' + atrPercent.toFixed(3) + '%) | SL=' + activePosition.sl + ' | TP=' + activePosition.tp);
+            } else {
+                // Mode FIXE
+                if (setup.direction === 'LONG') {
+                    activePosition.sl = (entryPrice * 0.9975).toFixed(6);
+                    activePosition.tp = (entryPrice * 1.0025).toFixed(6);
+                } else {
+                    activePosition.sl = (entryPrice * 1.0025).toFixed(6);
+                    activePosition.tp = (entryPrice * 0.9975).toFixed(6);
+                }
+                debugLog('📊 Mode FIXE', 'SL: ' + activePosition.sl + ' (-0.25%) | TP: ' + activePosition.tp + ' (+0.25%)');
+            }
+            setup.sl = activePosition.sl;
+            setup.tp = activePosition.tp;
+            
+            // 🔥 NOUVEAU v4.3.1 Phase 2: Calcul position size
+            setup.price = entryPrice;
+            var positionInfo = calculateSimplePositionSize(setup, accountSize);
+            activePosition.size = positionInfo.size;
+            activePosition.risk = positionInfo.risk;
+            
+            document.getElementById('positionPanel').style.display = 'block';
+            document.getElementById('posSymbol').textContent = setup.symbol;
+            document.getElementById('posDirection').textContent = setup.direction;
+            document.getElementById('posDirection').style.color = setup.direction === 'LONG' ? '#00ff88' : '#ff4444';
+            document.getElementById('posEntry').textContent = setup.entry;
+            document.getElementById('posTP').textContent = useATR ? 'TP: ' + activePosition.tp : 'TP partiel: +0.25%';
+            document.getElementById('posSL').textContent = useATR ? 'SL: ' + activePosition.sl : activePosition.sl + ' (-0.25%)';
+            document.getElementById('posConfirm').textContent = setup.confirmedBy || 'N/A';
+            
+            updateStateDisplay();
+            saveState(); // 🔥 Sauvegarder immédiatement
+            
+            debugLog('🟢 POSITION OUVERTE', setup.direction + ' ' + setup.symbol + ' Entry:' + setup.entry + ' SL:' + activePosition.sl);
+            debugLog('💰 Position Size', 'Size: ' + positionInfo.size + ' USDT | Risk: ' + positionInfo.risk + ' (' + positionInfo.reason + ')');
+            showSuccess('Position ouverte: ' + setup.direction + ' ' + setup.symbol);
+            
+            positionCheckInterval = setInterval(checkPosition, 2000);
+            
+            // 🔥 NOUVEAU v3.4: Timeout retiré - position se ferme uniquement par SL/TP
+        }
+        
+        // 🔥 FONCTION checkPosition ULTRA-OPTIMISÉE v2.3
+        async function checkPosition() {
+            if (!activePosition || tradingState !== 'IN_POSITION') {
+                return;
+            }
+            
+            try {
+                debugLog('🔄 Check Position', activePosition.symbol + ' - ' + activePosition.direction);
+                
+                // 🔥 NOUVEAU v2.3: Essayer endpoint individuel, sinon fallback sur liste
+                var response = null;
+                
+                // Tentative 1: Endpoint individuel /ticker/{symbol}
+                var tickerUrl = MEXC_FUTURES_URL + '/api/v1/contract/ticker/' + activePosition.symbol;
+                response = await fetchWithFallbackOptimized(tickerUrl, activePosition.symbol);
+                
+                // Si 404, essayer l'endpoint de liste
+                if (response && response.success === false && response.code === 404) {
+                    debugLog('⚠️ Endpoint individuel 404', 'Fallback sur liste des tickers...');
+                    
+                    // Tentative 2: Endpoint liste /ticker (tous les symboles)
+                    // 🔥 Ajouter timestamp pour éviter le cache
+                    var listUrl = MEXC_FUTURES_URL + '/api/v1/contract/ticker?_t=' + Date.now();
+                    var listResponse = await fetchWithFallbackOptimized(listUrl, activePosition.symbol);
+                    
+                    if (listResponse && listResponse.data && Array.isArray(listResponse.data)) {
+                        // Filtrer pour trouver notre symbole
+                        var ticker = listResponse.data.find(t => t.symbol === activePosition.symbol);
+                        if (ticker) {
+                            // 🔥 DEBUG: Afficher la structure du ticker
+                            debugLog('✅ Symbole trouvé', 'lastPrice: ' + (ticker.lastPrice || ticker.last || 'N/A'));
+                            if (debugEnabled) {
+                                debugLog('🔍 Structure ticker', JSON.stringify(ticker).substring(0, 200));
+                            }
+                            response = { success: true, data: ticker };
+                        } else {
+                            debugLog('❌ Symbole introuvable', activePosition.symbol + ' pas dans la liste');
+                            response = null;
+                        }
+                    } else {
+                        debugLog('❌ Liste vide', 'Impossible de récupérer les tickers');
+                        response = null;
+                    }
+                }
+                
+                if (!response) {
+                    debugLog('⚠️ Response null', 'Utilisation prix caché...');
+                    // 🔥 Utiliser le prix caché si disponible
+                    if (priceCache[activePosition.symbol]) {
+                        var cacheAge = Date.now() - priceCache[activePosition.symbol].timestamp;
+                        var cacheAgeSeconds = Math.floor(cacheAge / 1000);
+                        debugLog('💾 Prix caché', 'Utilisation du dernier prix connu (obsolète depuis ' + cacheAgeSeconds + 's)');
+                        response = priceCache[activePosition.symbol];
+                    } else {
+                        debugLog('❌ Aucun prix', 'Skip ce check');
+                        return;
+                    }
+                }
+                
+                // 🔥 FIX: Parser correctement selon la structure MEXC
+                var currentPrice = null;
+                
+                // Structure possible 1: {success: true, data: {lastPrice: "..."}}
+                if (response.success && response.data && response.data.lastPrice) {
+                    currentPrice = parseFloat(response.data.lastPrice);
+                }
+                // Structure possible 2: {data: {lastPrice: "..."}}
+                else if (response.data && response.data.lastPrice) {
+                    currentPrice = parseFloat(response.data.lastPrice);
+                }
+                // Structure possible 3: {lastPrice: "..."}
+                else if (response.lastPrice) {
+                    currentPrice = parseFloat(response.lastPrice);
+                }
+                // Structure possible 4: Tableau avec un seul élément
+                else if (Array.isArray(response.data) && response.data.length > 0) {
+                    currentPrice = parseFloat(response.data[0].lastPrice || response.data[0].last);
+                }
+                // Structure possible 6: {price: "..."} (certains proxies)
+                else if (response.price) {
+                    currentPrice = parseFloat(response.price);
+                }
+                // Structure possible 5: Direct
+                else if (response.last) {
+                    currentPrice = parseFloat(response.last);
+                }
+                
+                if (!currentPrice || isNaN(currentPrice)) {
+                    debugLog('❌ Prix invalide', 'Structure: ' + JSON.stringify(response).substring(0, 300));
+                    // 🔥 Essayer d'utiliser le prix caché
+                    if (priceCache[activePosition.symbol] && priceCache[activePosition.symbol].price) {
+                        currentPrice = priceCache[activePosition.symbol].price;
+                        debugLog('💾 Fallback cache', 'Prix: ' + currentPrice);
+                    } else {
+                        return;
+                    }
+                }
+                
+                // 🔥 Mettre à jour le cache
+                priceCache[activePosition.symbol] = {
+                    price: currentPrice,
+                    timestamp: Date.now(),
+                    data: response
+                };
+                
+                // 🔥 Affichage du prix actuel avec décimales adaptées au prix réel (lastPrice)
+                var decimals = 6;  // Par défaut 6 décimales
+                if (activePosition.symbol.includes('BTC') || currentPrice >= 100) decimals = 2;
+                else if (currentPrice >= 10) decimals = 4;
+                else if (currentPrice >= 1) decimals = 4;
+                else if (currentPrice >= 0.1) decimals = 5;
+                else decimals = 8;  // Pour les prix < 0.1, 8 décimales
+                               
+                var priceDisplay = currentPrice.toFixed(decimals);
+                document.getElementById('posCurrent').textContent = priceDisplay;
+                
+                debugLog('💲 Prix actuel', currentPrice.toFixed(8));
+                
+                // 🔥 NOUVEAU v5.1: Surveillance API (prix figé OU cache obsolète)
+                var now = Date.now();
+                var priceChanged = Math.abs(currentPrice - lastPrice) > 0.0001;
+                var cacheAge = priceCache[activePosition.symbol] ? (now - priceCache[activePosition.symbol].timestamp) : 0;
+                var cacheObsolete = cacheAge > 20000;  // Cache obsolète si > 20s
+                
+                if (priceChanged && !cacheObsolete) {
+                    // Prix a changé ET cache frais → Tout va bien
+                    lastPriceUpdate = now;
+                    lastPrice = currentPrice;
+                    apiAlertShown = false;
+                    document.getElementById('priceStatus').textContent = '● LIVE';
+                    document.getElementById('priceStatus').style.color = '#00ff88';
+                } else {
+                    // Prix identique OU cache obsolète → Vérifier depuis combien de temps
+                    var timeSinceUpdate = now - lastPriceUpdate;
+                    var triggerCondition = priceChanged ? cacheObsolete : timeSinceUpdate > 20000;
+                    
+                    if (triggerCondition && !apiAlertShown) {
+                        // Cache obsolète > 20s OU prix figé > 20s
+                        apiAlertShown = true;
+                        var secondsStuck = priceChanged ? Math.floor(cacheAge / 1000) : Math.floor(timeSinceUpdate / 1000);
+                        var reason = cacheObsolete ? 'Cache obsolète' : 'Prix figé';
+                        
+                        debugLog('⚠️ ALERTE API', reason + ' depuis ' + secondsStuck + 's !');
+                        
+                        // Afficher une alerte critique
+                        showApiAlert(currentPrice, secondsStuck, reason);
+                    }
+                }
+                
+                var entry = parseFloat(activePosition.entry);
+                var tp = parseFloat(activePosition.tp);
+                var sl = parseFloat(activePosition.sl);
+                
+                // Calcul P&L
+                var pnl = ((currentPrice - entry) / entry) * 100;
+                if (activePosition.direction === 'SHORT') pnl = -pnl;
+                
+                var pnlDisplay = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+                document.getElementById('posPnL').textContent = pnlDisplay;
+                document.getElementById('posPnL').style.color = pnl >= 0 ? '#00ff88' : '#ff4444';
+                debugLog('📊 P&L', pnlDisplay);
+                
+                // Distance au TP et SL
+                var distTP, distSL;
+                if (activePosition.direction === 'LONG') {
+                    distTP = ((tp - currentPrice) / currentPrice) * 100;
+                    distSL = ((currentPrice - sl) / sl) * 100;
+                } else {
+                    distTP = ((currentPrice - tp) / tp) * 100;
+                    distSL = ((sl - currentPrice) / currentPrice) * 100;
+                }
+                
+                document.getElementById('posTPDist').textContent = '🎯 ' + distTP.toFixed(2) + '% restant';
+                document.getElementById('posSLDist').textContent = '⚠️ ' + (distSL >= 0 ? '+' : '') + distSL.toFixed(2) + '%';
+                
+                // Durée
+                var duration = Math.floor((Date.now() - positionStartTime) / 1000);
+                var mins = Math.floor(duration / 60);
+                var secs = duration % 60;
+                document.getElementById('positionDuration').textContent = 'Durée: ' + mins + 'm ' + secs + 's';
+                
+                // 🔥 NOUVEAU v4.2: TP/SL selon mode
+                if (!useATR) {
+                    // MODE FIXE: TP partiel + Break-even + Trailing
+                    if (usePartialTP && !partialTPSold && pnl > partialTPTrigger) {
+                        partialTPSold = true;
+                        debugLog('🎯 TP PARTIEL 50%', 'Profit: ' + pnl.toFixed(2) + '% - Position réduite de 50%');
+                        showSuccess('🎯 TP Partiel! 50% clôturé à +' + pnl.toFixed(2) + '%');
+                    }
+                    
+                    if (useBreakEven && !breakEvenSet && pnl > breakEvenTrigger && partialTPSold) {
+                        activePosition.sl = entry;
+                        sl = entry;
+                        breakEvenSet = true;
+                        debugLog('🔒 BREAK-EVEN', 'SL au prix d\'entrée (profit: ' + pnl.toFixed(2) + '%)');
+                        document.getElementById('posSL').textContent = activePosition.sl + ' (BE)';
+                        showInfo('🔒 Break-even activé! SL = Entry');
+                    }
+                    
+                    if (useTrailingStop && breakEvenSet && pnl > breakEvenTrigger) {
+                        var newSL;
+                        if (activePosition.direction === 'LONG') {
+                            newSL = currentPrice * (1 - trailingDistance/100);
+                            if (newSL > sl) {
+                                activePosition.sl = newSL.toFixed(6);
+                                sl = newSL;
+                                debugLog('📈 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (profit: ' + pnl.toFixed(2) + '%)');
+                                document.getElementById('posSL').textContent = activePosition.sl;
+                            }
+                        } else {
+                            newSL = currentPrice * (1 + trailingDistance/100);
+                            if (newSL < sl) {
+                                activePosition.sl = newSL.toFixed(6);
+                                sl = newSL;
+                                debugLog('📉 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (profit: ' + pnl.toFixed(2) + '%)');
+                                document.getElementById('posSL').textContent = activePosition.sl;
+                            }
+                        }
+                    }
+                } else {
+                    // MODE ATR: Break-even progressif v5.0
+                    if (activePosition.atr) {
+                        var atrPercentBE = ((activePosition.atr / entry) * 100);
+                        var pnl50pct = atrPercentBE * 0.5;
+                        var pnl100pct = atrPercentBE * 1.0;
+                        
+                        if (pnl >= pnl50pct && !breakEvenSet) {
+                            // Phase 1: Lock 50% du profit
+                            var newSL = activePosition.direction === 'LONG' ? 
+                                (entry + (currentPrice - entry) * 0.5) : 
+                                (entry - (entry - currentPrice) * 0.5);
+                            activePosition.sl = newSL.toFixed(6);
+                            sl = parseFloat(newSL.toFixed(6));
+                            breakEvenSet = true;
+                            debugLog('🛡️ BE Progressif', '50% locked: PnL=' + pnl.toFixed(2) + '% → SL=' + newSL.toFixed(6));
+                            document.getElementById('posSL').textContent = activePosition.sl;
+                        }
+                        
+                        if (pnl >= pnl100pct && breakEvenSet) {
+                            // Phase 2: BE total
+                            activePosition.sl = entry;
+                            sl = parseFloat(entry);
+                            debugLog('🛡️ BE Total', '100% locked: PnL=' + pnl.toFixed(2) + '% → SL=' + entry);
+                            document.getElementById('posSL').textContent = activePosition.sl;
+                        }
+                    }
+                }
+                
+                // Vérification SL et TP
+                if (activePosition.direction === 'LONG') {
+                    if (currentPrice <= sl) {
+                        debugLog('🛑 SL TOUCHÉ!', 'Prix ' + currentPrice.toFixed(6) + ' <= SL ' + sl);
+                        closePosition('SL');
+                        return;
+                    }
+                    // Vérifier le TP (ATR ou FIXE)
+                    if (currentPrice >= tp) {
+                        debugLog('🎯 TP ATTEINT!', 'Prix ' + currentPrice.toFixed(6) + ' >= TP ' + tp);
+                        closePosition('TP');
+                        return;
+                    }
+                } else { // SHORT
+                    if (currentPrice >= sl) {
+                        debugLog('🛑 SL TOUCHÉ!', 'Prix ' + currentPrice.toFixed(6) + ' >= SL ' + sl);
+                        closePosition('SL');
+                        return;
+                    }
+                    // Vérifier le TP (ATR ou FIXE)
+                    if (currentPrice <= tp) {
+                        debugLog('🎯 TP ATTEINT!', 'Prix ' + currentPrice.toFixed(6) + ' <= TP ' + tp);
+                        closePosition('TP');
+                        return;
+                    }
+                }
+                
+                // 🔥 Sauvegarder l'état après chaque check réussi
+                saveState();
+                
+            } catch(e) {
+                debugLog('❌ Erreur check', e.message);
+                console.error('Error in checkPosition:', e);
+            }
+        }
+        
+        function closePosition(reason) {
+            if (!activePosition) return;
+            
+            clearInterval(positionCheckInterval);
+            
+            var duration = Math.floor((Date.now() - positionStartTime) / 1000);
+            var mins = Math.floor(duration / 60);
+            var secs = duration % 60;
+            
+            // 🔥 NOUVEAU v2.7: Calculer le PnL réel
+            var entry = parseFloat(activePosition.entry);
+            var exitPrice;
+            var pnl = 0;
+            
+            if (reason === 'TP') {
+                exitPrice = parseFloat(activePosition.tp);
+                pnl = ((exitPrice - entry) / entry) * 100;
+                if (activePosition.direction === 'SHORT') pnl = -pnl;
+            } else if (reason === 'SL') {
+                exitPrice = parseFloat(activePosition.sl);
+                pnl = ((exitPrice - entry) / entry) * 100;
+                if (activePosition.direction === 'SHORT') pnl = -pnl;
+            } else if (reason === 'API_STUCK') {
+                // 🔥 NOUVEAU v5.1: Utiliser le dernier prix connu au lieu de l'entry
+                var lastKnownPrice = priceCache[activePosition.symbol] ? priceCache[activePosition.symbol].price : entry;
+                exitPrice = lastKnownPrice;
+                pnl = ((exitPrice - entry) / entry) * 100;
+                if (activePosition.direction === 'SHORT') pnl = -pnl;
+                debugLog('💾 API_STUCK Close', 'Utilisation dernier prix: ' + exitPrice.toFixed(8) + ' (PnL: ' + pnl.toFixed(2) + '%)');
+            } else {
+                // TIMEOUT ou autre: utiliser le prix d'entrée (pas de display)
+                exitPrice = entry;
+                pnl = 0;
+            }
+            
+            stats.totalTrades++;
+            
+            // 🔥 NOUVEAU v2.8: Calculer PnL avec frais
+            var grossPnl = pnl;
+            var fees = 0;
+            var netPnl = pnl;
+            
+            if (useFeeCalculation) {
+                // Frais = (entry + exit) * takerFee
+                fees = ((entry + exitPrice) / entry) * takerFee * 100;
+                netPnl = grossPnl - fees;
+            }
+            
+            stats.totalPnl += netPnl;
+            
+            // 🔥 NOUVEAU v2.8: Enregistrer dans l'historique
+            var tradeRecord = {
+                timestamp: Date.now(),
+                date: new Date().toLocaleDateString('fr-FR'),
+                time: new Date().toLocaleTimeString('fr-FR'),
+                symbol: activePosition.symbol,
+                direction: activePosition.direction,
+                entry: entry.toFixed(6),
+                exit: exitPrice.toFixed(6),
+                grossPnl: grossPnl.toFixed(2),
+                fees: fees.toFixed(2),
+                netPnl: netPnl.toFixed(2),
+                duration: duration,
+                reason: reason
+            };
+            
+            stats.tradeHistory.unshift(tradeRecord); // Ajouter au début
+            if (stats.tradeHistory.length > 20) {
+                stats.tradeHistory.pop(); // Garder seulement les 20 derniers
+            }
+            
+            updateTradeHistory();
+            
+            // 🔥 NOUVEAU v4.2: Enregistrer pertes pour protection anti-consécutifs
+            if (pnl < 0) {
+                var symbol = activePosition.symbol;
+                if (!pairLosses[symbol]) {
+                    pairLosses[symbol] = { lastLossTime: 0, consecutiveLosses: 0 };
+                }
+                pairLosses[symbol].lastLossTime = Date.now();
+                pairLosses[symbol].consecutiveLosses++;
+                debugLog('🔒 Protection', symbol + ': ' + pairLosses[symbol].consecutiveLosses + ' perte(s) consécutive(s) - Blocage 15min si >= 2');
+            } else {
+                // Réinitialiser compteur si win ou break-even
+                var symbol = activePosition.symbol;
+                if (pairLosses[symbol]) {
+                    pairLosses[symbol].consecutiveLosses = 0;
+                }
+            }
+            
+            // 🔥 FIX v2.7.1: Logique basée sur le PnL réel, pas sur le reason
+            // WIN = profit positif (même si SL touché via trailing)
+            // LOSS = perte négative
+            // BREAK-EVEN = proche de 0%
+            
+            // 🔥 NOUVEAU v4.3: Mise à jour win/loss streak
+            if (pnl > 0) {
+                winStreak++;
+                lossStreak = 0;
+            } else if (pnl < 0) {
+                lossStreak++;
+                winStreak = 0;
+            }
+            
+            if (Math.abs(pnl) < 0.05) {
+                // BREAK-EVEN (entre -0.05% et +0.05%)
+                stats.breakevens++;
+                
+                var reasonText = reason === 'TP' ? 'TP' : (reason === 'SL' ? 'SL' : 'Timeout');
+                debugLog('⚖️ BREAK-EVEN', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: ' + pnl.toFixed(2) + '%');
+                showInfo('⚖️ BREAK-EVEN! ' + activePosition.symbol + ' ' + pnl.toFixed(2) + '% en ' + mins + 'm' + secs + 's');
+                
+            } else if (pnl > 0) {
+                // WIN (profit positif)
+                stats.wins++;
+                stats.winPnls.push(pnl);
+                stats.winDurations.push(duration);
+                
+                // Meilleur trade
+                if (pnl > stats.bestTrade.pnl) {
+                    stats.bestTrade = { pnl: pnl, symbol: activePosition.symbol, duration: duration };
+                }
+                
+                var reasonText = reason === 'TP' ? 'TP atteint' : (reason === 'SL' ? 'SL (trailing)' : 'Timeout');
+                debugLog('✅ WIN', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: +' + pnl.toFixed(2) + '%');
+                showSuccess('✅ WIN! ' + activePosition.symbol + ' +' + pnl.toFixed(2) + '% en ' + mins + 'm' + secs + 's');
+                
+            } else {
+                // LOSS (perte négative)
+                stats.losses++;
+                stats.lossPnls.push(pnl);
+                stats.lossDurations.push(duration);
+                
+                if (reason === 'TIMEOUT' || reason === 'API_STUCK') {
+                    stats.timeouts++;
+                }
+                
+                // Pire trade
+                if (pnl < stats.worstTrade.pnl) {
+                    stats.worstTrade = { pnl: pnl, symbol: activePosition.symbol, duration: duration };
+                }
+                
+                var reasonText = reason === 'TP' ? 'TP' : (reason === 'SL' ? 'SL touché' : (reason === 'TIMEOUT' ? 'Timeout' : 'API bloquée'));
+                debugLog('❌ LOSS', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: ' + pnl.toFixed(2) + '%');
+                showError('❌ LOSS! ' + activePosition.symbol + ' ' + pnl.toFixed(2) + '% après ' + mins + 'm' + secs + 's');
+            }
+            
+            updateStats();
+            
+            document.getElementById('positionPanel').style.display = 'none';
+            activePosition = null;
+            positionStartTime = null;
+            tradingState = 'PAUSED';
+            updateStateDisplay();
+            
+            // 🔥 Nettoyer le localStorage
+            localStorage.removeItem('mexcScannerState');
+            
+            debugLog('⏸️ PAUSE', 'Reprise dans 5s...');
+            resumeScanTimeout = setTimeout(function() {
+                tradingState = 'SCANNING';
+                updateStateDisplay();
+                debugLog('▶️ REPRISE', 'Scan actif');
+            }, 5000);
+        }
+        
+        // 🔥 v3.0: Toggle panneaux collapsibles
+        function togglePanel(panelId) {
+            var content = document.getElementById(panelId + '-content');
+            var arrow = document.getElementById(panelId + '-arrow');
+            
+            if (content && arrow) {
+                content.classList.toggle('collapsed');
+                arrow.classList.toggle('collapsed');
+            }
+        }
+        
+        // 🔥 v3.0: Variable pause logs
+        var logsPaused = false;
+        
+        function togglePauseLogs() {
+            logsPaused = !logsPaused;
+            var btn = document.getElementById('pauseLogsBtn');
+            if (btn) {
+                if (logsPaused) {
+                    btn.textContent = '▶️ RESUME';
+                    btn.style.background = '#00ff88';
+                } else {
+                    btn.textContent = '⏸️ PAUSE';
+                    btn.style.background = '#ff6b6b';
+                }
+            }
+        }
+        
+        function closePositionManual() {
+            if (!activePosition) {
+                showInfo('Aucune position active');
+                return;
+            }
+            
+            if (confirm('⚠️ Voulez-vous vraiment clôturer cette position manuellement ?')) {
+                debugLog('⚠️ Fermeture manuelle', activePosition.symbol + ' ' + activePosition.direction);
+                closePosition('MANUAL');
+            }
+        }
+        
+        function debugLog(category, message) {
+            if (!debugEnabled) return;
+            
+            var time = new Date().toLocaleTimeString('fr-FR');
+            var logEntry = document.createElement('div');
+            logEntry.className = 'debug-log-entry';
+            logEntry.innerHTML = '<span style="color: #00aaff;">[' + time + ']</span> <span style="color: #00ff88;">' + category + ':</span> ' + message;
+            
+            var debugLogEl = document.getElementById('debugLog');
+            if (debugLogEl) {
+                debugLogEl.appendChild(logEntry);
+                // 🔥 v3.0: Ne pas scroller si pause activée
+                if (!logsPaused) {
+                    debugLogEl.scrollTop = debugLogEl.scrollHeight;
+                }
+            }
+            
+            console.log('[' + time + '] ' + category + ': ' + message);
+        }
+        
+        function showMessage(text, type) {
+            var msg = document.createElement('div');
+            msg.className = 'message ' + type;
+            msg.textContent = text;
+            document.body.appendChild(msg);
+            setTimeout(function() { msg.remove(); }, 5000);
+        }
+        
+        function showInfo(text) { showMessage(text, 'info'); }
+        function showSuccess(text) { showMessage(text, 'success'); }
+        function showError(text) { showMessage(text, 'error'); }
+        
+        // 🔥 NOUVEAU v3.0: Alerte critique API avec auto-close 10s
+        var apiAlertTimeout = null;
+        var apiAlertCountdown = 10;
+        var apiAlertCountdownInterval = null;
+        
+        function showApiAlert(price, secondsStuck, reason) {
+            var alertDiv = document.getElementById('apiAlert');
+            if (!alertDiv) {
+                alertDiv = document.createElement('div');
+                alertDiv.id = 'apiAlert';
+                alertDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#ff4444;color:#fff;padding:30px;border-radius:15px;box-shadow:0 0 50px rgba(255,68,68,0.8);z-index:10000;max-width:500px;text-align:center;border:3px solid #fff;';
+                document.body.appendChild(alertDiv);
+            }
+            
+            apiAlertCountdown = 10;
+            reason = reason || 'API bloquée';
+            
+            function updateAlertContent() {
+                alertDiv.innerHTML = `
+                    <div style="font-size:48px;margin-bottom:15px;">⚠️</div>
+                    <div style="font-size:24px;font-weight:bold;margin-bottom:15px;">ALERTE CRITIQUE</div>
+                    <div style="font-size:16px;line-height:1.6;margin-bottom:20px;">
+                        ❌ <strong>${reason.toUpperCase()} DÉTECTÉ !</strong><br><br>
+                        Problème détecté depuis <strong>${secondsStuck} secondes</strong><br>
+                        Dernier prix: <strong>${price.toFixed(6)}</strong><br><br>
+                        ⚠️ <strong>RISQUE:</strong> API bloquée ou problème réseau<br>
+                        Impossible de vérifier le TP/SL en temps réel<br><br>
+                        <div style="font-size:20px;color:#ffff00;font-weight:bold;margin-top:15px;">
+                            ⏱️ Fermeture automatique dans ${apiAlertCountdown}s
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:15px;justify-content:center;">
+                        <button onclick="closePositionFromAlert()" style="background:#fff;color:#ff4444;border:none;padding:12px 24px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;">
+                            🛑 FERMER MAINTENANT
+                        </button>
+                        <button onclick="continueTrading()" style="background:rgba(255,255,255,0.2);color:#fff;border:2px solid #fff;padding:12px 24px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;">
+                            ▶️ CONTINUER QUAND MÊME
+                        </button>
+                    </div>
+                `;
+            }
+            
+            updateAlertContent();
+            alertDiv.style.display = 'block';
+            
+            // Countdown avec vérification prix
+            if (apiAlertCountdownInterval) clearInterval(apiAlertCountdownInterval);
+            apiAlertCountdownInterval = setInterval(function() {
+                // Vérifier si le prix a bougé ou cache frais
+                var now = Date.now();
+                var cacheAge = priceCache[activePosition.symbol] ? (now - priceCache[activePosition.symbol].timestamp) : 999999;
+                var cacheOk = cacheAge < 20000;
+                var priceOk = (now - lastPriceUpdate) < 20000;
+                
+                if (priceOk && cacheOk) {
+                    // Prix OK ET cache OK → Annuler l'alerte
+                    continueTrading();
+                    debugLog('✅ API DÉBLOQUÉE', 'Alerte annulée, API fonctionnelle à nouveau');
+                    return;
+                }
+                
+                apiAlertCountdown--;
+                updateAlertContent();
+                
+                if (apiAlertCountdown <= 0) {
+                    clearInterval(apiAlertCountdownInterval);
+                }
+            }, 1000);
+            
+            // Fermeture auto après 20s
+            if (apiAlertTimeout) clearTimeout(apiAlertTimeout);
+            apiAlertTimeout = setTimeout(function() {
+                var now = Date.now();
+                var cacheAge = priceCache[activePosition.symbol] ? (now - priceCache[activePosition.symbol].timestamp) : 999999;
+                var priceOk = (now - lastPriceUpdate) < 20000;
+                
+                if (priceOk && cacheAge < 20000) {
+                    // API récupérée → annuler
+                    continueTrading();
+                } else {
+                    // API toujours bloquée après 20s → fermer
+                    closePositionFromAlert();
+                    debugLog('🔴 AUTO-CLOSE', 'Position fermée automatiquement après 20s sans récupération API');
+                }
+            }, 20000);
+        }
+        
+        function closePositionFromAlert() {
+            if (apiAlertTimeout) clearTimeout(apiAlertTimeout);
+            if (apiAlertCountdownInterval) clearInterval(apiAlertCountdownInterval);
+            var alertDiv = document.getElementById('apiAlert');
+            if (alertDiv) alertDiv.style.display = 'none';
+            closePosition('API_STUCK');
+            showError('Position fermée suite à un blocage API');
+        }
+        
+        function continueTrading() {
+            if (apiAlertTimeout) clearTimeout(apiAlertTimeout);
+            if (apiAlertCountdownInterval) clearInterval(apiAlertCountdownInterval);
+            var alertDiv = document.getElementById('apiAlert');
+            if (alertDiv) alertDiv.style.display = 'none';
+            apiAlertShown = false;
+            lastPriceUpdate = Date.now();
+            showInfo('Trading continué malgré l\'alerte');
+        }
+        
+        // 🔥 NOUVEAU v3.7: Update volume stats UI
+        function updateVolumeStatsUI(valid) {
+            // 🔥 NOUVEAU v4.3.1: Réinitialiser tous les 50 trades pour avoir un % fiable
+            if (volumeStats.total >= 50) {
+                volumeStats.total = 0;
+                volumeStats.validated = 0;
+            }
+            
+            volumeStats.total++;
+            if (valid) volumeStats.validated++;
+            volumeStats.ratio = volumeStats.total > 0 ? (volumeStats.validated / volumeStats.total) * 100 : 0;
+            
+            var statsEl = document.getElementById('volumeStats');
+            if (!statsEl) return;
+            
+            var status = 'optimal';
+            var statusColor = '#00ff88';
+            if (volumeStats.ratio < 15) {
+                status = '⚠️ Sous-trading';
+                statusColor = '#ffaa00';
+            } else if (volumeStats.ratio > 40) {
+                status = '⚠️ Sur-trading';
+                statusColor = '#ff4444';
+            }
+            
+            statsEl.innerHTML = '📊 Validées: ' + volumeStats.validated + '/' + volumeStats.total + ' (' + volumeStats.ratio.toFixed(1) + '%)<br>' +
+                               '<span style="color: ' + statusColor + '">' + status + '</span>';
+        }
+        
+        // 🔥 NOUVELLE FONCTION: Fetch optimisé pour checkPosition
+        async function fetchWithFallbackOptimized(url, symbol) {
+            // MODE TEST
+            if (MOCK_MODE) {
+                await new Promise(r => setTimeout(r, 200));
+                var mockPrice = 50000 + (Math.random() - 0.5) * 100;
+                return {
+                    success: true,
+                    data: { symbol: symbol, lastPrice: mockPrice.toFixed(6) }
+                };
+            }
+            
+            // 🔥 Essayer d'abord le dernier proxy qui a fonctionné
+            var proxyOrder = [lastWorkingProxyIndex];
+            for (var i = 0; i < PROXIES.length; i++) {
+                if (i !== lastWorkingProxyIndex) proxyOrder.push(i);
+            }
+            
+            for (var idx of proxyOrder) {
+                var proxy = PROXIES[idx];
+                
+                try {
+                    var fetchUrl = proxy.url(url);
+                    
+                    var controller = new AbortController();
+                    var timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+                    
+                    var response = await fetch(fetchUrl, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    
+                    var data = await response.json();
+                    
+                    // 🔥 Succès! Mémoriser ce proxy
+                    lastWorkingProxyIndex = idx;
+                    if (idx !== 0) debugLog('✅ ' + proxy.name, 'Proxy fonctionnel mémorisé');
+                    
+                    return data;
+                    
+                } catch(e) {
+                    // Silencieux pour ne pas polluer les logs
+                    if (idx === proxyOrder[proxyOrder.length - 1]) {
+                        debugLog('⚠️ Tous proxies KO', 'Utilisation cache si dispo');
+                    }
+                }
+            }
+            
+            return null;
+        }
+        
+        async function fetchWithFallback(url, retries = 2) {
+            // MODE TEST avec données mockées
+            if (MOCK_MODE) {
+                debugLog('🧪 MOCK MODE', 'Données de test utilisées');
+                await new Promise(r => setTimeout(r, 500));
+                
+                if (url.includes('/api/v1/contract/ticker/') && !url.includes('ticker/ticker')) {
+                    // Mock pour un ticker unique
+                    var symbol = url.split('/').pop();
+                    return {
+                        success: true,
+                        data: {
+                            symbol: symbol,
+                            lastPrice: '50000.00',
+                            volume24: '1000000000',
+                            fundingRate: '0.0001'
+                        }
+                    };
+                }
+                
+                if (url.includes('/api/v1/contract/ticker') && !url.includes('ticker/')) {
+                    return {
+                        success: true,
+                        data: [
+                            { symbol: 'BTC_USDT', volume24: '1000000000', lastPrice: '50000', fundingRate: '0.0001', high24: '51000', low24: '49000' },
+                            { symbol: 'ETH_USDT', volume24: '500000000', lastPrice: '3000', fundingRate: '0.0002', high24: '3100', low24: '2900' },
+                            { symbol: 'BNB_USDT', volume24: '300000000', lastPrice: '400', fundingRate: '0.0001', high24: '410', low24: '390' },
+                            { symbol: 'SOL_USDT', volume24: '200000000', lastPrice: '100', fundingRate: '0.0003', high24: '105', low24: '95' },
+                            { symbol: 'ADA_USDT', volume24: '150000000', lastPrice: '0.5', fundingRate: '0.0001', high24: '0.52', low24: '0.48' },
+                            { symbol: 'XRP_USDT', volume24: '180000000', lastPrice: '0.6', fundingRate: '0.0002', high24: '0.62', low24: '0.58' },
+                            { symbol: 'DOGE_USDT', volume24: '120000000', lastPrice: '0.08', fundingRate: '0.0001', high24: '0.082', low24: '0.078' },
+                            { symbol: 'MATIC_USDT', volume24: '100000000', lastPrice: '0.9', fundingRate: '0.0002', high24: '0.95', low24: '0.85' }
+                        ]
+                    };
+                }
+                
+                if (url.includes('/api/v1/contract/kline/')) {
+                    var closes = [], opens = [], highs = [], lows = [], volumes = [], times = [];
+                    var basePrice = 50000;
+                    
+                    for (var i = 0; i < 100; i++) {
+                        var volatility = Math.random() * 0.02 - 0.01;
+                        var open = basePrice;
+                        var close = basePrice * (1 + volatility);
+                        var high = Math.max(open, close) * 1.005;
+                        var low = Math.min(open, close) * 0.995;
+                        
+                        times.push(Date.now() - (100 - i) * 60000);
+                        opens.push(open);
+                        closes.push(close);
+                        highs.push(high);
+                        lows.push(low);
+                        volumes.push(100 + Math.random() * 50);
+                        
+                        basePrice = close;
+                    }
+                    
+                    return {
+                        success: true,
+                        data: { time: times, open: opens, close: closes, high: highs, low: lows, vol: volumes }
+                    };
+                }
+                
+                return { success: true, data: [] };
+            }
+            
+            // MODE NORMAL - Essai avec tous les proxies (pour scan initial)
+            // 🔥 Essayer d'abord le dernier proxy qui a fonctionné
+            var proxyOrder = [lastWorkingProxyIndex];
+            for (var i = 0; i < PROXIES.length; i++) {
+                if (i !== lastWorkingProxyIndex) proxyOrder.push(i);
+            }
+            
+            for (var proxyIdx of proxyOrder) {
+                var proxy = PROXIES[proxyIdx];
+                
+                for (var i = 0; i < retries; i++) {
+                    try {
+                        var fetchUrl = proxy.url(url);
+                        
+                        debugLog('🔄 ' + proxy.name, 'Tentative ' + (i+1) + '/' + retries);
+                        
+                        var controller = new AbortController();
+                        var timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+                        
+                        var response = await fetch(fetchUrl, {
+                            method: 'GET',
+                            headers: { 'Accept': 'application/json' },
+                            signal: controller.signal
+                        });
+                        
+                        clearTimeout(timeoutId);
+                        
+                        if (!response.ok) {
+                            throw new Error('HTTP ' + response.status);
+                        }
+                        
+                        var data = await response.json();
+                        debugLog('✅ ' + proxy.name, 'Succès!');
+                        currentProxyIndex = proxyIdx;
+                        lastWorkingProxyIndex = proxyIdx; // 🔥 Mémoriser
+                        return data;
+                        
+                    } catch(e) {
+                        debugLog('⚠️ ' + proxy.name, 'Erreur tentative ' + (i+1) + ': ' + e.message);
+                        
+                        if (i === retries - 1) {
+                            debugLog('❌ ' + proxy.name, 'Échec total');
+                            break;
+                        }
+                        
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+                }
+            }
+            
+            debugLog('❌ TOUS PROXIES', 'Échec - Activez MODE TEST');
+            throw new Error('Tous les proxies ont échoué. Activez le MODE TEST.');
+        }
+        
+        function calculateEMA(values, period) {
+            var k = 2 / (period + 1);
+            var ema = values[0];
+            for (var i = 1; i < values.length; i++) ema = values[i] * k + ema * (1 - k);
+            return ema;
+        }
+        
+        function calculateRSI(closes, period) {
+            var gains = 0, losses = 0;
+            for (var i = 1; i <= period; i++) {
+                var diff = closes[closes.length - i] - closes[closes.length - i - 1];
+                if (diff > 0) gains += diff;
+                else losses -= diff;
+            }
+            var avgGain = gains / period, avgLoss = losses / period;
+            if (avgLoss === 0) return 100;
+            return 100 - (100 / (1 + avgGain / avgLoss));
+        }
+        
+        // 🔥 NOUVEAU v5.2: RSI previous pour vérifier direction
+        function calculateRSIPrevious(closes, period) {
+            if (closes.length < period + 1) return 50;
+            var prevCloses = closes.slice(0, -1); // Enlever dernière bougie
+            var gains = 0, losses = 0;
+            for (var i = 1; i <= period; i++) {
+                var diff = prevCloses[prevCloses.length - i] - prevCloses[prevCloses.length - i - 1];
+                if (diff > 0) gains += diff;
+                else losses -= diff;
+            }
+            var avgGain = gains / period, avgLoss = losses / period;
+            if (avgLoss === 0) return 100;
+            return 100 - (100 / (1 + avgGain / avgLoss));
+        }
+        
+        function calculateATR(highs, lows, closes, period) {
+            var tr = [];
+            for (var i = 1; i < highs.length; i++) {
+                tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1])));
+            }
+            return tr.slice(-period).reduce((a,b) => a+b, 0) / period;
+        }
+        
+        // 🔥 NOUVEAU v3.1: MACD paramètres optimisés (3/10/16)
+        function calculateMACD(closes, fastPeriod, slowPeriod, signalPeriod) {
+            if (closes.length < slowPeriod + signalPeriod) return {macd: 0, signal: 0, histogram: 0};
+            
+            var emaFast = calculateEMA(closes, fastPeriod);
+            var emaSlow = calculateEMA(closes, slowPeriod);
+            var macd = emaFast - emaSlow;
+            
+            // Calculer signal line (EMA de MACD)
+            var macdValues = [];
+            for (var i = slowPeriod; i < closes.length; i++) {
+                var emaF = calculateEMA(closes.slice(0, i+1), fastPeriod);
+                var emaS = calculateEMA(closes.slice(0, i+1), slowPeriod);
+                macdValues.push(emaF - emaS);
+            }
+            var signal = macdValues.length >= signalPeriod ? calculateEMA(macdValues, signalPeriod) : 0;
+            var histogram = macd - signal;
+            
+            return {macd, signal, histogram};
+        }
+        
+        // 🔥 NOUVEAU v5.2: MACD previous pour vérifier momentum
+        function calculateMACDPrevious(closes, fastPeriod, slowPeriod, signalPeriod) {
+            if (closes.length < slowPeriod + signalPeriod + 1) return {macd: 0, signal: 0, histogram: 0};
+            var prevCloses = closes.slice(0, -1); // Enlever dernière bougie
+            var emaFast = calculateEMA(prevCloses, fastPeriod);
+            var emaSlow = calculateEMA(prevCloses, slowPeriod);
+            var macd = emaFast - emaSlow;
+            
+            var macdValues = [];
+            for (var i = slowPeriod; i < prevCloses.length; i++) {
+                var emaF = calculateEMA(prevCloses.slice(0, i+1), fastPeriod);
+                var emaS = calculateEMA(prevCloses.slice(0, i+1), slowPeriod);
+                macdValues.push(emaF - emaS);
+            }
+            var signal = macdValues.length >= signalPeriod ? calculateEMA(macdValues, signalPeriod) : 0;
+            var histogram = macd - signal;
+            
+            return {macd, signal, histogram};
+        }
+        
+        // 🔥 NOUVEAU v3.1: Bollinger Bands paramètres (20 périodes, déviation 2)
+        function calculateBollingerBands(closes, period, stdDev) {
+            if (closes.length < period) return {upper: 0, middle: 0, lower: 0, width: 0};
+            
+            var recentCloses = closes.slice(-period);
+            var sma = recentCloses.reduce((a,b) => a+b, 0) / period;
+            
+            var variance = recentCloses.reduce((sum, val) => sum + Math.pow(val - sma, 2), 0) / period;
+            var deviation = Math.sqrt(variance);
+            
+            var upper = sma + (deviation * stdDev);
+            var lower = sma - (deviation * stdDev);
+            var width = (upper - lower) / sma;
+            
+            return {upper, middle: sma, lower, width};
+        }
+        
+        // 🔥 NOUVEAU v3.2: ADX (Average Directional Index) pour momentum
+        function calculateADX(highs, lows, closes, period) {
+            if (highs.length < period + 1) return {adx: 0, diPlus: 0, diMinus: 0};
+            
+            var plusDM = [], minusDM = [];
+            var trArray = [];
+            
+            // Calculer +DM, -DM et TR
+            for (var i = 1; i < highs.length; i++) {
+                var upMove = highs[i] - highs[i-1];
+                var downMove = lows[i-1] - lows[i];
+                
+                plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+                minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+                
+                var tr = Math.max(
+                    highs[i] - lows[i],
+                    Math.abs(highs[i] - closes[i-1]),
+                    Math.abs(lows[i] - closes[i-1])
+                );
+                trArray.push(tr);
+            }
+            
+            // Utiliser les dernières valeurs
+            var recentPlusDM = plusDM.slice(-period);
+            var recentMinusDM = minusDM.slice(-period);
+            var recentTR = trArray.slice(-period);
+            
+            var avgPlusDM = recentPlusDM.reduce((a,b) => a+b, 0) / period;
+            var avgMinusDM = recentMinusDM.reduce((a,b) => a+b, 0) / period;
+            var avgTR = recentTR.reduce((a,b) => a+b, 0) / period;
+            
+            if (avgTR === 0) return {adx: 0, diPlus: 0, diMinus: 0};
+            
+            var diPlus = 100 * (avgPlusDM / avgTR);
+            var diMinus = 100 * (avgMinusDM / avgTR);
+            var dx = 100 * Math.abs(diPlus - diMinus) / (diPlus + diMinus);
+            
+            return {adx: dx, diPlus: diPlus, diMinus: diMinus};
+        }
+        
+        // 🔥 TRADE CURSOR v3.0: Détecter patterns chandeliers
+        function detectPattern(candle) {
+            var open = parseFloat(candle.open || candle.o || candle[1]);
+            var high = parseFloat(candle.high || candle.h || candle[2]);
+            var low = parseFloat(candle.low || candle.l || candle[3]);
+            var close = parseFloat(candle.close || candle.c || candle[4]);
+            
+            var body = Math.abs(close - open);
+            var upperShadow = high - Math.max(open, close);
+            var lowerShadow = Math.min(open, close) - low;
+            var range = high - low;
+            
+            // Engulfing bullish
+            if (open < close && body > range * 0.7) return 'ENGULFING_BULLISH';
+            // Engulfing bearish
+            if (open > close && body > range * 0.7) return 'ENGULFING_BEARISH';
+            // Hammer
+            if (lowerShadow > body * 2 && upperShadow < body * 0.3) return 'HAMMER';
+            // Shooting star
+            if (upperShadow > body * 2 && lowerShadow < body * 0.3) return 'SHOOTING_STAR';
+            
+            return 'NONE';
+        }
+        
+        async function getTrendData(symbol, tf) {
+            try {
+                var intervalMap = {'5m':'Min5','15m':'Min15','30m':'Min30','1h':'Min60'};
+                var interval = intervalMap[tf] || 'Min15';
+                var limit = 100;
+                
+                var klines = await fetchWithFallback(MEXC_FUTURES_URL + '/api/v1/contract/kline/' + symbol + '?interval=' + interval + '&limit=' + limit);
+                
+                if (!klines || !klines.data) return null;
+                
+                var candleData = klines.data;
+                var closes;
+                
+                if (!Array.isArray(candleData)) {
+                    if (candleData.time && candleData.close) {
+                        closes = candleData.close;
+                        if (!closes || closes.length < 100) return null;
+                        
+                        var ema20 = calculateEMA(closes, 20), ema50 = calculateEMA(closes, 50), ema100 = calculateEMA(closes, 100);
+                        var price = closes[closes.length-1];
+                        
+                        var trend = 'NEUTRAL', strength = 'NONE', bonus = 0;
+                        if (ema20 > ema50 && ema50 > ema100 && price > ema20) { 
+                            trend = 'BULLISH'; strength = 'STRONG'; bonus = 25; 
+                        } else if (ema20 > ema50 && price > ema20) { 
+                            trend = 'BULLISH'; strength = 'MODERATE'; bonus = 15; 
+                        } else if (ema20 < ema50 && ema50 < ema100 && price < ema20) { 
+                            trend = 'BEARISH'; strength = 'STRONG'; bonus = 25; 
+                        } else if (ema20 < ema50 && price < ema20) { 
+                            trend = 'BEARISH'; strength = 'MODERATE'; bonus = 15; 
+                        }
+                        
+                        return {trend, strength, bonus};
+                    }
+                    return null;
+                }
+                
+                if (candleData.length < 100) return null;
+                
+                closes = candleData.map(k => parseFloat(k.close || k.c || k[4]));
+                
+                var ema20 = calculateEMA(closes, 20), ema50 = calculateEMA(closes, 50), ema100 = calculateEMA(closes, 100);
+                var price = closes[closes.length-1];
+                
+                var trend = 'NEUTRAL', strength = 'NONE', bonus = 0;
+                if (ema20 > ema50 && ema50 > ema100 && price > ema20) { 
+                    trend = 'BULLISH'; strength = 'STRONG'; bonus = 25; 
+                } else if (ema20 > ema50 && price > ema20) { 
+                    trend = 'BULLISH'; strength = 'MODERATE'; bonus = 15; 
+                } else if (ema20 < ema50 && ema50 < ema100 && price < ema20) { 
+                    trend = 'BEARISH'; strength = 'STRONG'; bonus = 25; 
+                } else if (ema20 < ema50 && price < ema20) { 
+                    trend = 'BEARISH'; strength = 'MODERATE'; bonus = 15; 
+                }
+                
+                return {trend, strength, bonus};
+            } catch(e) {
+                debugLog('⚠️ Erreur trend', e.message);
+                return null;
+            }
+        }
+        
+        async function analyzeSymbol(symbol, ticker, tf, trendData) {
+            var intervalMap = {'1m':'Min1','5m':'Min5'};
+            var interval = intervalMap[tf];
+            
+            try {
+                var klines = await fetchWithFallback(MEXC_FUTURES_URL + '/api/v1/contract/kline/' + symbol + '?interval=' + interval + '&limit=100');
+                
+                if (!klines || !klines.data) return null;
+                
+                var candleData = klines.data;
+                var ohlcv = [];
+                
+                if (!Array.isArray(candleData)) {
+                    if (candleData.time && candleData.close) {
+                        var times = candleData.time, opens = candleData.open, highs = candleData.high, lows = candleData.low, closes = candleData.close, volumes = candleData.vol || candleData.amount;
+                        
+                        if (!closes || closes.length === 0) return null;
+                        
+                        for (var i = 0; i < closes.length; i++) {
+                            ohlcv.push({
+                                time: times[i],
+                                open: parseFloat(opens[i]),
+                                high: parseFloat(highs[i]),
+                                low: parseFloat(lows[i]),
+                                close: parseFloat(closes[i]),
+                                volume: parseFloat(volumes[i])
+                            });
+                        }
+                    } else return null;
+                } else {
+                    for (var i = 0; i < candleData.length; i++) {
+                        var k = candleData[i];
+                        ohlcv.push({
+                            time: k.time || k.t || k[0],
+                            open: parseFloat(k.open || k.o || k[1]),
+                            high: parseFloat(k.high || k.h || k[2]),
+                            low: parseFloat(k.low || k.l || k[3]),
+                            close: parseFloat(k.close || k.c || k[4]),
+                            volume: parseFloat(k.vol || k.v || k[5] || k.amount)
+                        });
+                    }
+                }
+                
+                if (ohlcv.length < 20) return null;
+                
+                return analyzeTimeframe(symbol, ohlcv, ticker, tf, trendData);
+                
+            } catch(e) {
+                debugLog('⚠️ Erreur analyzeSymbol', symbol + ' ' + tf + ': ' + e.message);
+                return null;
+            }
+        }
+        
+        function analyzeTimeframe(symbol, ohlcv, ticker, tf, trendData) {
+            var closes = ohlcv.map(c => c.close), volumes = ohlcv.map(c => c.volume);
+            var highs = ohlcv.map(c => c.high), lows = ohlcv.map(c => c.low);
+            var price = closes[closes.length-1];
+            
+            var avgVol = volumes.slice(-20).reduce((a,b) => a+b, 0) / 20;
+            var recentVol = volumes.slice(-5).reduce((a,b) => a+b, 0) / 5;
+            var volSpike = avgVol > 0 ? recentVol / avgVol : 1;
+            var rsi = calculateRSI(closes, 14);
+            // 🔥 NOUVEAU v5.2: RSI previous pour vérifier direction
+            var rsiPrev = calculateRSIPrevious(closes, 14);
+            var atr = calculateATR(highs, lows, closes, 14);
+            var vol = atr / price;
+            
+            // 🔥 NOUVEAU v3.2: Indicateurs
+            var ema9 = calculateEMA(closes, 9);
+            var ema21 = calculateEMA(closes, 21);
+            var macd = calculateMACD(closes, 3, 10, 16);
+            // 🔥 NOUVEAU v5.2: MACD previous pour vérifier momentum
+            var macdPrev = calculateMACDPrevious(closes, 3, 10, 16);
+            var bb = calculateBollingerBands(closes, 20, 2);
+            var adx = calculateADX(highs, lows, closes, 14);
+            var currentCandle = ohlcv[ohlcv.length - 1];
+            var pattern = detectPattern(currentCandle);
+            
+            // 🔥 NOUVEAU v5.0: Volume spike plus permissif
+            var atrPercent = (atr / price) * 100;
+            
+            // Base plus simple et permissive
+            var minVolRatio = 0.8; // Minimum absolu
+            
+            // Ajustement selon volatilité
+            if (atrPercent > 1.0) minVolRatio = 1.0;  // Volatil = plus strict
+            else if (atrPercent < 0.3) minVolRatio = 0.6;  // Calme = plus permissif
+            
+            // Ajustement selon slider
+            minVolRatio = minVolRatio * volumeMultiplier;
+            
+            // Clamp final
+            minVolRatio = Math.max(0.4, Math.min(1.5, minVolRatio));
+            
+            if (volSpike < minVolRatio) {
+                if (debugEnabled) {
+                    debugLog('❌ Volume insuffisant', symbol + ' ' + tf + ' - Actuel: ' + volSpike.toFixed(2) + 'x < Final: ' + minVolRatio.toFixed(2) + 'x (ATR: ' + atrPercent.toFixed(3) + '% Mult: ' + volumeMultiplier.toFixed(2) + 'x)');
+                }
+                updateVolumeStatsUI(false); // Volume insuffisant
+                return null;
+            }
+            
+            // 🔥 NOUVEAU v3.6: Filtre micro-range adaptatif selon ATR moyen
+            // Range minimum = 20% de l'ATR moyen
+            var minRange = (atrPercent * 0.2);
+            minRange = Math.max(0.0003, Math.min(0.003, minRange)); // Borné entre 0.0003% et 0.003%
+            
+            var candleRange = ((currentCandle.high - currentCandle.low) / price) * 100;
+            if (candleRange < minRange) {
+                if (debugEnabled) {
+                    debugLog('❌ Bougie plate', symbol + ' ' + tf + ' - Range: ' + candleRange.toFixed(4) + '% < ' + minRange.toFixed(4) + '% (ATR: ' + atrPercent.toFixed(3) + '%)');
+                }
+                updateVolumeStatsUI(false); // Autre filtre (range)
+                return null;
+            }
+            
+            // 🔥 NOUVEAU v5.1: Filtre ATR optimal adaptatif selon timeframe
+            var optimalATRMin = tf === '1m' ? 0.15 : 0.3;  // 1m plus permissif, 5m plus strict
+            var optimalATRMax = tf === '1m' ? 0.8 : 1.5;   // 1m plus serré, 5m plus large
+            
+            if (atrPercent < optimalATRMin || atrPercent > optimalATRMax) {
+                if (debugEnabled) {
+                    var atrStatus = atrPercent < optimalATRMin ? 'trop bas' : 'trop élevé';
+                    debugLog('❌ ATR sous-optimal', symbol + ' ' + tf + ' - ATR: ' + atrPercent.toFixed(3) + '% (' + atrStatus + ') | Optimal ' + tf + ': ' + optimalATRMin + '-' + optimalATRMax + '%');
+                }
+                return null;
+            }
+            
+            // 🔥 NOUVEAU v3.7: Volume validé
+            updateVolumeStatsUI(true);
+            
+            // 🔥 NOUVEAU v5.2 Phase 1: Conditions LONG optimisées
+            var longConditions = [];
+            
+            // 1. Prix au-dessus EMAs (EMA9 > EMA21) → direction haussière + écart minimum 0.05%
+            var emaDiffPercent = ((ema9 - ema21) / ema21) * 100;
+            if (ema9 > ema21 && emaDiffPercent > 0.05) {
+                longConditions.push('EMAs Up (' + emaDiffPercent.toFixed(3) + '%)');
+            }
+            
+            // 2. RSI contextualisé par ADX (rebond si ADX<20, pullback si ADX>25) + direction montante
+            var rsiRebound = rsi >= 30 && rsi <= 40 && adx.adx < 20 && rsi > rsiPrev;
+            var rsiPullback = rsi >= 45 && rsi <= 55 && macd.histogram > 0 && adx.adx > 25 && rsi > rsiPrev;
+            if (rsiRebound || rsiPullback) {
+                longConditions.push(rsiRebound ? 'RSI Rebound↑ (ADX<' + adx.adx.toFixed(1) + ')' : 'RSI Pullback↑ (ADX>' + adx.adx.toFixed(1) + ')');
+            }
+            
+            // 3. Volume spike adaptatif (bonus si volume fort >1.5x)
+            var volBonus = volSpike > 1.5;
+            if (volBonus) {
+                longConditions.push('Vol >>' + volSpike.toFixed(1) + 'x');
+            } else {
+                longConditions.push('Vol >' + minVolRatio.toFixed(1) + 'x');
+            }
+            
+            // 4. MACD croise au-dessus signal OU histogramme positif + momentum croissant
+            var macdBullish = macd.macd > macd.signal || macd.histogram > 0;
+            var macdMomentum = macd.histogram > macdPrev.histogram;
+            if (macdBullish && macdMomentum) {
+                longConditions.push('MACD+↑ (momentum)');
+            } else if (macdBullish) {
+                longConditions.push('MACD+');
+            }
+            
+            // 5. Bollinger : prix touche bande inférieure (adaptatif selon ATR)
+            var distToLower = bb.upper > 0 ? ((price - bb.lower) / bb.lower) * 100 : 0;
+            var bbThreshold = Math.max(0.3, atrPercent * 0.5); // Adaptatif: max(0.3%, ATR*0.5)
+            if (distToLower < bbThreshold) {
+                longConditions.push('BB Lower');
+            }
+            
+            // 6. ADX élevé ET DI+ > DI- (couplé) - seuil augmenté à 30
+            if (adx.adx > 30 && adx.diPlus > adx.diMinus) {
+                longConditions.push('ADX+ (>30)');
+            }
+            
+            // 7. Pattern chandelier haussier (INTÉGRÉ)
+            var patternBullish = pattern === 'ENGULFING_BULLISH' || pattern === 'HAMMER';
+            if (patternBullish) {
+                longConditions.push('Pattern: ' + pattern);
+            }
+            
+            // 🔥 NOUVEAU v5.2 Phase 1: Conditions SHORT optimisées
+            var shortConditions = [];
+            
+            // 1. Prix en dessous EMAs (EMA9 < EMA21) → biais baissier + écart minimum 0.05%
+            var emaDiffPercentShort = ((ema21 - ema9) / ema21) * 100;
+            if (ema9 < ema21 && emaDiffPercentShort > 0.05) {
+                shortConditions.push('EMAs Down (' + emaDiffPercentShort.toFixed(3) + '%)');
+            }
+            
+            // 2. RSI contextualisé par ADX (sur-achat si ADX<20, rejet si ADX>25) + direction descendante
+            var rsiOverbought = rsi >= 60 && rsi <= 70 && adx.adx < 20 && rsi < rsiPrev;
+            var rsiRejection = rsi >= 45 && rsi <= 55 && macd.histogram < 0 && adx.adx > 25 && rsi < rsiPrev;
+            if (rsiOverbought || rsiRejection) {
+                shortConditions.push(rsiOverbought ? 'RSI Overbought↓ (ADX<' + adx.adx.toFixed(1) + ')' : 'RSI Rejection↓ (ADX>' + adx.adx.toFixed(1) + ')');
+            }
+            
+            // 3. Volume spike adaptatif (bonus si volume fort >1.5x)
+            var volBonusShort = volSpike > 1.5;
+            if (volBonusShort) {
+                shortConditions.push('Vol >>' + volSpike.toFixed(1) + 'x');
+            } else {
+                shortConditions.push('Vol >' + minVolRatio.toFixed(1) + 'x');
+            }
+            
+            // 4. MACD croise vers le bas OU histogramme négatif + momentum décroissant
+            var macdBearish = macd.macd < macd.signal || macd.histogram < 0;
+            var macdMomentumDown = macd.histogram < macdPrev.histogram;
+            if (macdBearish && macdMomentumDown) {
+                shortConditions.push('MACD-↓ (momentum)');
+            } else if (macdBearish) {
+                shortConditions.push('MACD-');
+            }
+            
+            // 5. Bollinger : prix touche bande supérieure (adaptatif selon ATR)
+            var distToUpper = bb.upper > 0 ? ((bb.upper - price) / price) * 100 : 0;
+            var bbThresholdShort = Math.max(0.3, atrPercent * 0.5); // Adaptatif: max(0.3%, ATR*0.5)
+            if (distToUpper < bbThresholdShort) {
+                shortConditions.push('BB Upper');
+            }
+            
+            // 6. ADX élevé ET DI- > DI+ (couplé) - seuil augmenté à 30
+            if (adx.adx > 30 && adx.diMinus > adx.diPlus) {
+                shortConditions.push('ADX- (>30)');
+            }
+            
+            // 7. Pattern chandelier baissier (INTÉGRÉ)
+            var patternBearish = pattern === 'ENGULFING_BEARISH' || pattern === 'SHOOTING_STAR';
+            if (patternBearish) {
+                shortConditions.push('Pattern: ' + pattern);
+            }
+            
+            // 🔥 NOUVEAU v5.2 Phase 1: Tolérance dynamique selon ADX avec zone grise
+            var direction = 'NEUTRAL';
+            var minConditions = 6; // Par défaut
+            
+            if (adx.adx > 30) {
+                // Marché en feu : autorise 5/7
+                minConditions = 5;
+            } else if (adx.adx >= 25 && adx.adx <= 30) {
+                // Zone grise : tolérance intermédiaire 5.5
+                minConditions = 5.5;
+            } else {
+                // Marché plat : exige 6/7
+                minConditions = 6;
+            }
+            
+            // 🔥 NOUVEAU v5.2 Phase 1: Calculer direction temporaire d'abord
+            var tempDirection = 'NEUTRAL';
+            if (longConditions.length >= minConditions) {
+                tempDirection = 'LONG';
+            } else if (shortConditions.length >= minConditions) {
+                tempDirection = 'SHORT';
+            }
+            
+            // 🔥 NOUVEAU v5.2 Phase 1: Trend Data bonus appliqué
+            var trendBonus = 0;
+            if (trendData && tempDirection !== 'NEUTRAL') {
+                if (tempDirection === 'LONG' && trendData.trend === 'BULLISH') {
+                    trendBonus = trendData.bonus > 0 ? Math.floor(trendData.bonus / 10) : 0; // Bonus en conditions (0-2)
+                } else if (tempDirection === 'SHORT' && trendData.trend === 'BEARISH') {
+                    trendBonus = trendData.bonus > 0 ? Math.floor(trendData.bonus / 10) : 0;
+                }
+            }
+            
+            // 🔥 NOUVEAU v5.2: Vérifier avec bonus
+            var longWithBonus = longConditions.length + (tempDirection === 'LONG' && trendBonus > 0 ? trendBonus : 0);
+            var shortWithBonus = shortConditions.length + (tempDirection === 'SHORT' && trendBonus > 0 ? trendBonus : 0);
+            
+            // LONG: Tolérance selon ADX + bonus
+            if (longWithBonus >= minConditions) {
+                direction = 'LONG';
+            }
+            // SHORT: Tolérance selon ADX + bonus
+            else if (shortWithBonus >= minConditions) {
+                direction = 'SHORT';
+            } else {
+                if (debugEnabled) {
+                    debugLog('❌ Conditions insuffisantes', symbol + ' ' + tf + ' - Long:' + longConditions.length + ' (+' + trendBonus + ') Short:' + shortConditions.length + ' (min:' + minConditions + ')');
+                }
+                return null;
+            }
+            
+            // 🔥 NOUVEAU v5.0: Cohérence EMA/MACD assouplie
+            if (direction === 'LONG' && ema9 > ema21 && macd.histogram <= -0.001) {
+                // Divergence forte → rejet
+                if (debugEnabled) {
+                    debugLog('❌ Incohérence forte EMA/MACD', symbol + ' ' + tf + ' - MACD très négatif');
+                }
+                return null;
+            }
+            
+            if (direction === 'SHORT' && ema9 < ema21 && macd.histogram >= 0.001) {
+                // Divergence forte → rejet
+                if (debugEnabled) {
+                    debugLog('❌ Incohérence forte EMA/MACD', symbol + ' ' + tf + ' - MACD très positif');
+                }
+                return null;
+            }
+            
+            // Divergence mineure → warning seulement (continue le trade)
+            if (direction === 'LONG' && ema9 > ema21 && macd.histogram <= 0 && macd.histogram > -0.001) {
+                if (debugEnabled) {
+                    debugLog('⚠️ Divergence mineure EMA/MACD', symbol + ' ' + tf + ' - MACD quasi neutre');
+                }
+            }
+            
+            if (direction === 'SHORT' && ema9 < ema21 && macd.histogram >= 0 && macd.histogram < 0.001) {
+                if (debugEnabled) {
+                    debugLog('⚠️ Divergence mineure EMA/MACD', symbol + ' ' + tf + ' - MACD quasi neutre');
+                }
+            }
+            
+            // 🔥 NOUVEAU v5.2 Phase 1: Volume quality check BLOQUANT
+            var volQuality = checkVolumeQuality({
+                volumeSpike: volSpike,
+                atr: atr,
+                price: price,
+                volume24h: ticker.volume24 * price
+            });
+            
+            if (volQuality.warnings.length > 0 && debugEnabled) {
+                debugLog('⚠️ Volume Quality', volQuality.warnings.join(', ') + ' (Quality: ' + volQuality.quality + '%)');
+            }
+            
+            // 🔥 NOUVEAU v5.2: Rejeter si quality < 75 (bloquant)
+            if (!volQuality.shouldTrade || volQuality.quality < 75) {
+                if (debugEnabled) {
+                    debugLog('❌ Volume Quality Rejeté', symbol + ' ' + tf + ' - Quality: ' + volQuality.quality + '% < 75%');
+                }
+                return null;
+            }
+            
+            if (debugEnabled) {
+                var conditions = direction === 'LONG' ? longConditions : shortConditions;
+                var trendInfo = trendBonus > 0 ? ' (+' + trendBonus + ' Trend)' : '';
+                debugLog('✅ ' + direction, symbol + ' ' + tf + ' - ' + conditions.length + '/' + minConditions + ' (' + conditions.length + ' base' + trendInfo + ')');
+                debugLog('📊 Indicateurs', 'RSI:' + rsi.toFixed(1) + ' MACD:' + macd.histogram.toFixed(4) + ' ADX:' + adx.adx.toFixed(1) + ' DI+:' + adx.diPlus.toFixed(1) + ' DI-:' + adx.diMinus.toFixed(1));
+                debugLog('✓ Cohérence', 'EMA:' + (direction === 'LONG' ? 'HAUSSIER' : 'BAISSIER') + ' MACD:' + (macd.histogram > 0 ? 'POSITIF' : 'NÉGATIF'));
+                debugLog('📈 Volume', 'ATR: ' + atrPercent.toFixed(3) + '% × Mult: ' + volumeMultiplier.toFixed(2) + 'x = Final: ' + minVolRatio.toFixed(2) + 'x');
+            }
+            
+            var conditions = direction === 'LONG' ? longConditions : shortConditions;
+            
+            // TPs/SLs pour monitoring (nouvelle gestion v3.1)
+            var entry = price;
+            var sl = direction === 'LONG' ? entry * 0.9975 : entry * 1.0025; // SL fixe -0.25%
+            var tp = direction === 'LONG' ? entry * 1.0025 : entry * 0.9975; // TP partiel +0.25%
+            
+            return {
+                symbol: symbol,
+                direction,
+                entry: entry.toFixed(6), sl: sl.toFixed(6), tp: tp.toFixed(6),
+                rsi: rsi.toFixed(1), volumeSpike: volSpike.toFixed(1),
+                signals: conditions,
+                timeframe: tf,
+                volatility: vol, atr: atr
+            };
+        }
+        
+        // 🔥 NOUVEAU v4.3.1 Phase 2: Position sizing simple
+        function calculateSimplePositionSize(setup, accountSize) {
+            var baseRisk = 0.02; // 2% par défaut
+            
+            // Ajustement selon nombre de conditions
+            var conditionCount = setup.signals ? setup.signals.length : 7;
+            var qualityMultiplier = 1.0;
+            
+            if (conditionCount >= 7) qualityMultiplier = 1.5;      // 3% si parfait
+            else if (conditionCount >= 6) qualityMultiplier = 1.2; // 2.4%
+            else if (conditionCount >= 5) qualityMultiplier = 0.8; // 1.6%
+            else qualityMultiplier = 0.5;                          // 1%
+            
+            // Ajustement selon volatilité
+            var atrPercent = (setup.atr / setup.price) * 100;
+            var volMultiplier = 1.0;
+            if (atrPercent > 2.0) volMultiplier = 0.7;  // Réduire si très volatil
+            else if (atrPercent < 0.5) volMultiplier = 1.3;  // Augmenter si stable
+            
+            var finalRisk = baseRisk * qualityMultiplier * volMultiplier;
+            finalRisk = Math.max(0.005, Math.min(finalRisk, 0.05)); // Borné 0.5%-5%
+            
+            // Calcul taille
+            var stopLossPercent = Math.abs((setup.sl - setup.entry) / setup.entry * 100);
+            var positionSize = (accountSize * finalRisk) / (stopLossPercent / 100);
+            
+            return {
+                size: positionSize.toFixed(2),
+                risk: (finalRisk * 100).toFixed(2) + '%',
+                reason: 'Conditions: ' + conditionCount + ' | Quality: ' + qualityMultiplier.toFixed(2) + 'x | Vol: ' + volMultiplier.toFixed(2) + 'x'
+            };
+        }
+        
+        // 🔥 NOUVEAU v4.3.1 Phase 2: Volume quality check
+        function checkVolumeQuality(setup) {
+            var volRatio = parseFloat(setup.volumeSpike);
+            var atr = setup.atr;
+            var price = setup.price || parseFloat(setup.entry);
+            var volume24h = setup.volume24h || 0;
+            
+            var warnings = [];
+            var quality = 100;
+            
+            // Cohérence Volume/ATR
+            var atrPercent = (atr / price) * 100;
+            var volumeATRRatio = volRatio / Math.max(atrPercent * 0.1, 0.1);
+            
+            if (volumeATRRatio > 3.0) {
+                warnings.push('Volume élevé sans mouvement');
+                quality -= 20;
+            }
+            
+            // Liquidité
+            if (volume24h < 1000000 && volume24h > 0) {
+                warnings.push('Liquidité faible');
+                quality -= 15;
+            }
+            
+            return {
+                quality: quality,
+                warnings: warnings,
+                shouldTrade: quality >= 70
+            };
+        }
+        // 🔥 SCANNER SCALABILITÉ - Fonctions intégrées
+        function parseKlinesScalability(klineData) {
+            var volumes = [], closes = [];
+            if (!klineData || !klineData.data) return {volumes: volumes, closes: closes};
+            if (!Array.isArray(klineData.data) && klineData.data.time) {
+                var times = klineData.data.time || [];
+                var vols = klineData.data.vol || klineData.data.amount || [];
+                var cls = klineData.data.close || [];
+                for (var j = 0; j < times.length; j++) {
+                    var vol = parseFloat(vols[j] || 0);
+                    var close = parseFloat(cls[j] || 0);
+                    if (!isNaN(vol) && !isNaN(close) && close > 0) { volumes.push(vol); closes.push(close); }
+                }
+            } else if (Array.isArray(klineData.data)) {
+                klineData.data.forEach(function(k) {
+                    var vol = parseFloat(k.vol || k.v || k[5] || 0);
+                    var close = parseFloat(k.close || k.c || k[4] || 0);
+                    if (!isNaN(vol) && !isNaN(close) && close > 0) { volumes.push(vol); closes.push(close); }
+                });
+            }
+            return {volumes: volumes, closes: closes};
+        }
+
+        function calculateVolatilityScalability(volumes, closes, period) {
+            var recentCloses = closes.slice(-period);
+            var recentVolume = volumes.slice(-period).reduce(function(a, b) { return a + b; }, 0);
+            var volatility = recentCloses.length > 0 ? (function() {
+                var mean = recentCloses.reduce(function(a, b) { return a + b; }, 0) / recentCloses.length;
+                var std = Math.sqrt(recentCloses.reduce(function(sum, v) { return sum + Math.pow(v - mean, 2); }, 0) / recentCloses.length);
+                return (std / mean) * 100;
+            })() : 0;
+            return {recentVolume: recentVolume, volatility: volatility};
+        }
+
+        async function fetchSpreadDataScalability(symbol) {
+            try {
+                var bookData = await fetchWithFallback(MEXC_FUTURES_URL + '/api/v1/contract/depth/' + symbol + '?depth=5');
+                if (bookData && bookData.data && bookData.data.asks && bookData.data.bids && bookData.data.asks.length > 0 && bookData.data.bids.length > 0) {
+                    var bestAsk = parseFloat(bookData.data.asks[0][0]);
+                    var bestBid = parseFloat(bookData.data.bids[0][0]);
+                    if (!isNaN(bestAsk) && !isNaN(bestBid) && bestAsk > 0 && bestBid > 0) {
+                        var spread = ((bestAsk - bestBid) / ((bestAsk + bestBid) / 2)) * 100;
+                        var askVol = bookData.data.asks.slice(0, 5).reduce(function(a, b) { return a + parseFloat(b[1] || 0); }, 0);
+                        var bidVol = bookData.data.bids.slice(0, 5).reduce(function(a, b) { return a + parseFloat(b[1] || 0); }, 0);
+                        var totalVol = askVol + bidVol;
+                        var bidAskRatio = totalVol > 0 ? (bidVol / totalVol) : 0.5;
+                        var balanceScore = 1 - (Math.abs(bidAskRatio - 0.5) * 2);
+                        return {spread: spread, bookDepth: totalVol, balanceScore: balanceScore};
+                    }
+                }
+                return {spread: NaN, bookDepth: 0, balanceScore: 0};
+            } catch(e) {
+                console.log('Erreur spread pour', symbol, e.message);
+                return {spread: NaN, bookDepth: 0, balanceScore: 0};
+            }
+        }
+
+        async function getAllScalpingPairsScalability() {
+            if (isScanningScalability) {
+                console.log('⏸️ Scanner scalabilité déjà en cours');
+                return [];
+            }
+            
+            isScanningScalability = true;
+            
+            try {
+                debugLog('📡 Scanner Scalabilité', 'Récupération détails futures...');
+                var data = await fetchWithFallback(MEXC_FUTURES_URL + '/api/v1/contract/detail');
+                var futuresPairs = [];
+                
+                if (data && data.data) {
+                    for (var i = 0; i < data.data.length; i++) {
+                        var f = data.data[i];
+                        var maker = parseFloat(f.makerFeeRate || f.makerFee || 0);
+                        var taker = parseFloat(f.takerFeeRate || f.takerFee || 0);
+                        if (maker === 0 && taker === 0 && f.symbol.endsWith('USDT')) {
+                            futuresPairs.push({symbol: f.symbol, maker: maker, taker: taker});
+                        }
+                    }
+                }
+                
+                debugLog('✅ Scanner Scalabilité', futuresPairs.length + ' paires 0% fees récupérées');
+                
+                var BATCH_SIZE = 5;
+                var startTime = Date.now();
+                
+                for (var i = 0; i < futuresPairs.length; i += BATCH_SIZE) {
+                    var batch = futuresPairs.slice(i, i + BATCH_SIZE);
+                    var progress = (i + 1) + '-' + Math.min(i + BATCH_SIZE, futuresPairs.length);
+                    var batchNumber = Math.ceil((i + 1) / BATCH_SIZE);
+                    var totalBatches = Math.ceil(futuresPairs.length / BATCH_SIZE);
+                    
+                    debugLog('📊 Batch ' + batchNumber + '/' + totalBatches, '(' + progress + '/' + futuresPairs.length + ' paires)');
+                    
+                    var batchResults = await Promise.all(batch.map(async function(p) {
+                        try {
+                            var klineData = await fetchWithFallback(MEXC_FUTURES_URL + '/api/v1/contract/kline/' + p.symbol + '?interval=Min1&limit=60');
+                            var spreadData = await fetchSpreadDataScalability(p.symbol);
+                            var parsed = parseKlinesScalability(klineData);
+                            var vol5 = calculateVolatilityScalability(parsed.volumes, parsed.closes, 5);
+                            var vol15 = calculateVolatilityScalability(parsed.volumes, parsed.closes, 15);
+                            
+                            p.recentVolume = vol5.recentVolume;
+                            p.vol5 = vol5.volatility;
+                            p.vol15 = vol15.volatility;
+                            p.spread = spreadData.spread;
+                            p.bookDepth = spreadData.bookDepth;
+                            p.balanceScore = spreadData.balanceScore;
+                            // Ajouter prix actuel depuis closes
+                            p.price = parsed.closes.length > 0 ? parsed.closes[parsed.closes.length - 1] : 0;
+                            
+                            return p;
+            } catch(e) {
+                            console.log('Erreur batch', p.symbol, e.message);
+                return null;
+            }
+                    }));
+                    
+                    batchResults.forEach(function(res, idx) {
+                        if (res) {
+                            Object.assign(futuresPairs[i + idx], res);
+                        } else {
+                            if (futuresPairs[i + idx]) {
+                                futuresPairs[i + idx].recentVolume = 0;
+                                futuresPairs[i + idx].vol5 = 0;
+                                futuresPairs[i + idx].vol15 = 0;
+                                futuresPairs[i + idx].spread = NaN;
+                                futuresPairs[i + idx].bookDepth = 0;
+                                futuresPairs[i + idx].balanceScore = 0;
+                                futuresPairs[i + idx].price = 0;
+                            }
+                        }
+                    });
+                    
+                    if (i + BATCH_SIZE < futuresPairs.length) {
+                        await new Promise(function(r) { setTimeout(r, 50); });
+                    }
+                }
+                
+                var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                debugLog('⚡ Traitement terminé', elapsed + 's (batch ' + BATCH_SIZE + ')');
+                
+                // Normalisation
+                var maxVolume = futuresPairs.length > 0 
+                    ? Math.max.apply(null, futuresPairs.map(function(p) { return p.recentVolume || 0; }).filter(function(v) { return v > 0; }), 1) 
+                    : 1;
+                var maxDepth = futuresPairs.length > 0 
+                    ? Math.max.apply(null, futuresPairs.map(function(p) { return p.bookDepth || 0; }).filter(function(v) { return v > 0; }), 1) 
+                    : 1;
+                
+                // Score de scalabilité
+                futuresPairs.forEach(function(p) {
+                    if (p.spread > 0.05 || p.recentVolume < 100000 || (p.balanceScore || 0) < 0.7) {
+                        p.score = 0;
+                    } else {
+                        var volSpreadRatio = (p.spread > 0 && !isNaN(p.spread) && !isNaN(p.vol5)) 
+                            ? (p.vol5 / p.spread) 
+                            : 0;
+                        var normFactor = 0.5 * (p.recentVolume / maxVolume) + 0.5 * (p.bookDepth / maxDepth);
+                        var balanceBonus = p.balanceScore || 1.0;
+                        var rawScore = volSpreadRatio * Math.log10(p.recentVolume + 1) * normFactor * balanceBonus;
+                        p.score = (isFinite(rawScore) && rawScore >= 0) 
+                            ? parseFloat(rawScore.toFixed(2)) 
+                            : 0;
+                    }
+                });
+                
+                futuresPairs = futuresPairs.filter(function(p) { return p.score > 0; }).sort(function(a, b) { return b.score - a.score; }).slice(0, 50);
+                
+                debugLog('✅ Scanner Scalabilité', futuresPairs.length + ' paires scalables classées');
+                
+                return futuresPairs;
+                
+            } catch(e) {
+                console.error('Erreur getAllScalpingPairsScalability:', e);
+                return [];
+            } finally {
+                isScanningScalability = false;
+            }
+        }
+        
+        function selectPair(pair) {
+            selectedPair = pair;
+            document.getElementById('pairSelection').style.display = 'block';
+        }
+        
+        // 🔥 NOUVEAU v5.1: Rafraîchir scanner scalabilité toutes les 90s
+        var refreshScalabilityScannerInterval = null;
+        function startAutoRefreshScalabilityScanner() {
+            if (refreshScalabilityScannerInterval) clearInterval(refreshScalabilityScannerInterval);
+            refreshScalabilityScannerInterval = setInterval(async function() {
+                if (tradingState === 'SCANNING' && !isScanningScalability && !activePosition) {
+                    debugLog('🔄 Scanner Scalabilité', 'Rafraîchissement toutes les 90s...');
+                    try {
+                        allPairs = await getAllScalpingPairsScalability();
+                        
+                        if (!allPairs || allPairs.length === 0) {
+                            debugLog('⚠️ Scanner', 'Aucune paire trouvée');
+                            return;
+                        }
+                        
+                        // Ajouter ticker pour compatibilité
+                        for (var i = 0; i < allPairs.length; i++) {
+                            var p = allPairs[i];
+                            var estimatedVol24h = p.recentVolume * 24;
+                            p.ticker = {
+                                symbol: p.symbol,
+                                lastPrice: p.price || 0,
+                                volume24: estimatedVol24h
+                            };
+                        }
+                        
+                        // Mettre à jour multiPairList
+                        multiPairList = allPairs;
+                        
+                        // Rafraîchir affichage Top 20
+                        displayTop20ScalablePairs();
+                        
+                        debugLog('✅ Scanner Scalabilité', allPairs.length + ' paires rafraîchies');
+                        
+                    } catch(error) {
+                        debugLog('❌ Scanner Scalabilité', 'Erreur: ' + error.message);
+                    }
+                }
+            }, 90000); // 🔥 NOUVEAU v5.1: Toutes les 90s
+        }
+        
+        // 🔥 Affichage Top 20 Paires Scalables
+        function displayTop20ScalablePairs() {
+            var container = document.getElementById('top20ScalablePairs');
+            if (!container || !allPairs || allPairs.length === 0) return;
+            
+            var top20 = allPairs.slice(0, 20);
+            var html = '<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">';
+            
+            for (var i = 0; i < top20.length; i++) {
+                var p = top20[i];
+                var spreadColor = p.spread < 0.02 ? '#00ff88' : p.spread < 0.05 ? '#ffaa00' : '#ff4444';
+                var volColor = p.recentVolume > 1000000 ? '#00ff88' : p.recentVolume > 500000 ? '#ffaa00' : '#888';
+                var balanceColor = p.balanceScore > 0.8 ? '#00ff88' : p.balanceScore > 0.5 ? '#ffaa00' : '#888';
+                
+                html += '<div style="background: linear-gradient(135deg, #1e2749 0%, #2a3a6b 100%); border-radius: 8px; padding: 10px; border: 2px solid #2a3a6b;">';
+                html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">';
+                html += '<span style="font-size: 14px; font-weight: bold; color: #00ff88;">' + (i+1) + '. ' + p.symbol + '</span>';
+                html += '<span style="font-size: 14px; font-weight: bold; color: #00aaff;">' + (p.score || 0).toFixed(2) + '</span>';
+                html += '</div>';
+                
+                html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px;">';
+                html += '<div><span style="color: #888;">Spread:</span> <span style="color: ' + spreadColor + ';">' + (p.spread || 0).toFixed(4) + '%</span></div>';
+                html += '<div><span style="color: #888;">Vol 5m:</span> <span style="color: ' + volColor + ';">' + ((p.recentVolume/1000000) || 0).toFixed(2) + 'M</span></div>';
+                html += '<div><span style="color: #888;">Vol:</span> <span style="color: #00aaff;">' + (p.vol5 || 0).toFixed(2) + '%</span></div>';
+                html += '<div><span style="color: #888;">Bal:</span> <span style="color: ' + balanceColor + ';">' + ((p.balanceScore*100) || 0).toFixed(0) + '%</span></div>';
+                html += '</div>';
+                
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        // 🔥 NOUVEAU: Logique de scan d'une paire (extraite)
+        async function scanPairLogic(pair) {
+            var ticker = pair.ticker;
+            
+            // 🔥 NOUVEAU v4.2: Vérifier protection anti-pertes consécutives
+            var symbol = pair.symbol;
+            if (pairLosses[symbol] && pairLosses[symbol].consecutiveLosses >= 2) {
+                var timeSinceLastLoss = Date.now() - pairLosses[symbol].lastLossTime;
+                var minutesToWait = 15 - Math.floor(timeSinceLastLoss / 60000);
+                
+                if (minutesToWait > 0) {
+                    debugLog('🔒 PAIRE BLOQUÉE', symbol + ': ' + pairLosses[symbol].consecutiveLosses + ' pertes consécutives - Blocage ' + minutesToWait + ' min restantes');
+                    return null;
+                }
+                // Temps écoulé, réinitialiser le compteur
+                pairLosses[symbol].consecutiveLosses = 0;
+            }
+            
+            // Analyse tendance
+            var trendData = await getTrendData(pair.symbol, trendTimeframe);
+                
+                if (trendData) {
+                    debugLog('✓ Trend ' + trendTimeframe, trendData.trend + ' (' + trendData.strength + ') → Bonus: ' + (trendData.bonus > 0 ? '+' : '') + trendData.bonus);
+                } else {
+                    debugLog('✗ Trend ' + trendTimeframe, 'Données insuffisantes');
+                }
+                
+            // Analyse 1m
+            var analysis1m = await analyzeSymbol(pair.symbol, ticker, '1m', trendData);
+                
+                if (analysis1m) {
+                    debugLog('✓ 1m VALIDE', analysis1m.direction + ' - ' + analysis1m.signals.length + '/6 conditions');
+                    debugLog('  📊 Détails 1m', 'RSI:' + analysis1m.rsi + ' | Vol:' + analysis1m.volumeSpike + 'x');
+                    debugLog('  🎯 Niveaux 1m', 'Entry:' + analysis1m.entry + ' | TP:' + analysis1m.tp + ' | SL:' + analysis1m.sl);
+                    if (analysis1m.signals && analysis1m.signals.length > 0) {
+                        debugLog('  💡 Signaux 1m', analysis1m.signals.join(', '));
+                    }
+                } else {
+                    debugLog('✗ 1m REJETÉ', 'Conditions insuffisantes');
+                }
+                
+            // Analyse 5m
+            var analysis5m = await analyzeSymbol(pair.symbol, ticker, '5m', trendData);
+                
+                if (analysis5m) {
+                    debugLog('✓ 5m VALIDE', analysis5m.direction + ' - ' + analysis5m.signals.length + '/6 conditions');
+                    debugLog('  📊 Détails 5m', 'RSI:' + analysis5m.rsi + ' | Vol:' + analysis5m.volumeSpike + 'x');
+                    debugLog('  🎯 Niveaux 5m', 'Entry:' + analysis5m.entry + ' | TP:' + analysis5m.tp + ' | SL:' + analysis5m.sl);
+                    if (analysis5m.signals && analysis5m.signals.length > 0) {
+                        debugLog('  💡 Signaux 5m', analysis5m.signals.join(', '));
+                    }
+                } else {
+                    debugLog('✗ 5m REJETÉ', 'Conditions insuffisantes');
+                }
+                
+            // 🔥 NOUVEAU v4.3.1 Phase 2: Confluence optionnelle
+            if (useConfluence && analysis1m && analysis5m) {
+                // MODE CONFLUENCE STRICTE
+                if (analysis1m.direction !== analysis5m.direction) {
+                    debugLog('❌ Confluence', symbol + ' - Directions opposées (1m: ' + analysis1m.direction + ', 5m: ' + analysis5m.direction + ')');
+                    return null;
+                }
+                
+                var strength1m = analysis1m.signals ? analysis1m.signals.length : 0;
+                var strength5m = analysis5m.signals ? analysis5m.signals.length : 0;
+                
+                if (strength5m < strength1m * 0.8) {
+                    debugLog('⚠️ Confluence', symbol + ' - 5m trop faible (1m: ' + strength1m + ', 5m: ' + strength5m + ')');
+                    return null;
+                }
+                
+                // Les deux valides et alignés → retourner le meilleur
+                var best = strength1m >= strength5m ? analysis1m : analysis5m;
+                best.confirmedBy = '1m + 5m confluence';
+                if (analysis1m && analysis5m) {
+                    best.atr5m = analysis5m.atr; // Ajouter ATR 5m pour multi-TF
+                }
+                return best;
+            } else {
+                // 🔥 NOUVEAU v5.2 Phase 2: MODE PERMISSIF avec priorité par force
+                var strength1m = analysis1m ? (analysis1m.signals ? analysis1m.signals.length : 0) : 0;
+                var strength5m = analysis5m ? (analysis5m.signals ? analysis5m.signals.length : 0) : 0;
+                
+                if (strength1m > 0 || strength5m > 0) {
+                    var best = strength1m > strength5m ? analysis1m : analysis5m;
+                    best.confirmedBy = best === analysis1m ? '1m only (' + strength1m + ' conds)' : '5m only (' + strength5m + ' conds)';
+                    if (analysis1m && analysis5m) {
+                        best.atr5m = analysis5m.atr;
+                    }
+                    return best;
+                }
+            }
+            
+            return null;
+        }
+        
+        // 🔥 Mode parallèle: scanner toutes les paires simultanément
+        async function scan() {
+            if (tradingState !== 'SCANNING') return;
+            
+            scanCount++;
+            document.getElementById('loading').style.display = 'block';
+            
+            try {
+                    // MODE PARALLÈLE - Scans simultanés
+                    var maxPairs = Math.min(multiPairList.length, 20);
+                    document.getElementById('loadingText').textContent = '⚡ Scan parallèle ' + maxPairs + ' paires...';
+                    debugLog('🔍 === SCAN #' + scanCount + ' ===', 'Multi-paires (TOP ' + maxPairs + ') en PARALLÈLE');
+                debugLog('⚙️ Mode', 'Parallèle Ultra-Rapide');
+                    
+                    var scanPromises = [];
+                    for (var i = 0; i < maxPairs; i++) {
+                        var pair = multiPairList[i];
+                        debugLog('📊 Analyse lancée', (i+1) + '/' + maxPairs + ' - ' + pair.symbol + '...');
+                        
+                        // Créer toutes les promesses sans await avec closure correcte
+                        (function(currentPair) {
+                            scanPromises.push(
+                                scanPairLogic(currentPair).then(function(setup) {
+                                    if (setup) {
+                                        debugLog('✓ Setup trouvé', currentPair.symbol + ' - ' + setup.direction);
+                                        return setup;
+                                    }
+                                    return null;
+                                }).catch(function(error) {
+                                    debugLog('❌ Erreur scan', currentPair.symbol + ': ' + error.message);
+                                    return null;
+                                })
+                            );
+                        })(pair);
+                    }
+                    
+                    // Attendre tous les scans en parallèle (allSettled pour résilience)
+                    var results = await Promise.allSettled(scanPromises);
+                    var validSetups = results
+                        .filter(function(result) { return result.status === 'fulfilled' && result.value !== null; })
+                        .map(function(result) { return result.value; });
+                    
+                    if (validSetups.length > 0) {
+                    // Prendre le meilleur setup (premier valide)
+                    var best = validSetups[0];
+                    debugLog('🏆 Meilleur setup', best.symbol + ' - ' + best.direction);
+                        debugLog('🚀 Ouverture position', best.direction + ' ' + best.symbol);
+                        openPosition(best);
+                        currentData = { 'scalp': {longs: best.direction === 'LONG' ? [best] : [], shorts: best.direction === 'SHORT' ? [best] : []} };
+                    } else {
+                        debugLog('❌ Aucun setup', 'Sur ' + maxPairs + ' paires analysées en parallèle');
+                    showInfo('Aucun setup confirmé sur ' + maxPairs + ' paires. Prochain scan dans 60s...');
+                        currentData = { 'scalp': {longs: [], shorts: []} };
+                    }
+                    
+                    displayResults();
+                
+            } catch(error) {
+                debugLog('❌ SCAN ERROR', error.message);
+                showError('Erreur: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        function displayResults() {
+            var html = '';
+            var data = currentData['scalp'];
+            
+            html += '<div class="timeframe-section">';
+            html += '<div class="tf-header"><div class="tf-title">⚡ SCALPING (1m + 5m confirmés)</div></div>';
+            
+            html += '<div class="direction-section">';
+            html += '<div class="direction-header long">🟢 LONG SETUPS</div>';
+            
+            if (data.longs.length > 0) {
+                html += '<div class="opportunities-grid">';
+                data.longs.forEach(function(o) {
+                    html += '<div class="opportunity-card long">';
+                    html += '<div class="opp-header"><div class="opp-symbol">' + o.symbol + '</div><div class="opp-score long">' + o.totalScore + '</div></div>';
+                    html += '<div style="font-size: 12px; color: #00aaff; margin-bottom: 10px;">Confirmé: ' + (o.confirmedBy || 'N/A') + '</div>';
+                    html += '<div class="opp-prices">';
+                    html += '<div class="price-box"><div class="price-label">ENTRY</div><div class="price-value">' + o.entry + '</div></div>';
+                    html += '<div class="price-box"><div class="price-label">TP</div><div class="price-value" style="color: #00ff88;">' + o.tp + '</div></div>';
+                    html += '<div class="price-box"><div class="price-label">SL</div><div class="price-value" style="color: #ff4444;">' + o.sl + '</div></div>';
+                    html += '</div>';
+                    html += '<div style="display: flex; justify-content: space-between; margin: 10px 0; font-size: 13px;">';
+                    html += '<span style="color: #888;">RSI: <span style="color: #00aaff;">' + o.rsi + '</span></span>';
+                    html += '<span style="color: #888;">Vol: <span style="color: #00aaff;">' + o.volumeSpike + 'x</span></span>';
+                    html += '<span style="color: #888;">Mom: <span style="color: #00aaff;">' + o.momentum + '%</span></span>';
+                    html += '</div>';
+                    if (o.signals && o.signals.length > 0) {
+                        html += '<div class="opp-signals">';
+                        o.signals.forEach(s => html += '<span class="signal-badge">' + s + '</span>');
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+            } else {
+                html += '<div class="no-opportunities">Aucun setup LONG confirmé</div>';
+            }
+            html += '</div>';
+            
+            html += '<div class="direction-section">';
+            html += '<div class="direction-header short">🔴 SHORT SETUPS</div>';
+            
+            if (data.shorts.length > 0) {
+                html += '<div class="opportunities-grid">';
+                data.shorts.forEach(function(o) {
+                    html += '<div class="opportunity-card short">';
+                    html += '<div class="opp-header"><div class="opp-symbol">' + o.symbol + '</div><div class="opp-score short">' + o.totalScore + '</div></div>';
+                    html += '<div style="font-size: 12px; color: #00aaff; margin-bottom: 10px;">Confirmé: ' + (o.confirmedBy || 'N/A') + '</div>';
+                    html += '<div class="opp-prices">';
+                    html += '<div class="price-box"><div class="price-label">ENTRY</div><div class="price-value">' + o.entry + '</div></div>';
+                    html += '<div class="price-box"><div class="price-label">TP</div><div class="price-value" style="color: #00ff88;">' + o.tp + '</div></div>';
+                    html += '<div class="price-box"><div class="price-label">SL</div><div class="price-value" style="color: #ff4444;">' + o.sl + '</div></div>';
+                    html += '</div>';
+                    html += '<div style="display: flex; justify-content: space-between; margin: 10px 0; font-size: 13px;">';
+                    html += '<span style="color: #888;">RSI: <span style="color: #00aaff;">' + o.rsi + '</span></span>';
+                    html += '<span style="color: #888;">Vol: <span style="color: #00aaff;">' + o.volumeSpike + 'x</span></span>';
+                    html += '<span style="color: #888;">Mom: <span style="color: #00aaff;">' + o.momentum + '%</span></span>';
+                    html += '</div>';
+                    if (o.signals && o.signals.length > 0) {
+                        html += '<div class="opp-signals">';
+                        o.signals.forEach(s => html += '<span class="signal-badge">' + s + '</span>');
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+            } else {
+                html += '<div class="no-opportunities">Aucun setup SHORT confirmé</div>';
+            }
+            html += '</div></div>';
+            
+            document.getElementById('results').innerHTML = html;
+        }
+        
+        // 🔥 NOUVEAU: Sélectionner les paires pour le multi-scan
+        function selectMultiPairs() {
+            // Mode parallèle: scanner toutes les paires allPairs
+            multiPairList = allPairs;
+            debugLog('✓ Mode parallèle', multiPairList.length + ' paires à scanner');
+            
+            return true;
+        }
+        
+        function startScanning() {
+            // Mode parallèle: scanner toutes les paires allPairs
+                if (!selectMultiPairs()) return;
+            
+            isScanning = true;
+            tradingState = 'SCANNING';
+            updateStateDisplay();
+            
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.querySelector('.btn-primary').style.display = 'none';
+            
+            scan();
+            scanInterval = setInterval(scan, 45000); // 🔥 NOUVEAU v5.1: Rafraîchir toutes les 45s
+            
+            countdownValue = 45;
+            countdownInterval = setInterval(function() {
+                if (tradingState === 'SCANNING') {
+                    countdownValue--;
+                    if (countdownValue < 0) countdownValue = 45;
+                    document.getElementById('countdown').textContent = countdownValue;
+                } else {
+                    document.getElementById('countdown').textContent = '--';
+                }
+            }, 1000);
+            
+            showSuccess('Scanner démarré en mode parallèle');
+        }
+        
+        function stopScanning() {
+            isScanning = false;
+            tradingState = 'PAUSED';
+            updateStateDisplay();
+            
+            clearInterval(scanInterval);
+            clearInterval(countdownInterval);
+            clearInterval(positionCheckInterval);
+            clearInterval(refreshScalabilityScannerInterval);
+            clearTimeout(resumeScanTimeout);
+            
+            document.getElementById('stopBtn').style.display = 'none';
+            document.querySelector('.btn-primary').style.display = 'inline-block';
+            document.getElementById('countdown').textContent = '--';
+            
+            if (activePosition) closePosition('MANUAL');
+            
+            showInfo('Scanner arrêté');
+        }
+        
+        async function initScanner() {
+            var btn = document.getElementById('scanPairsBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳ SCAN EN COURS...';
+            }
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('loadingText').textContent = 'Connexion à MEXC...';
+            
+            debugLog('🚀 INIT', 'Démarrage du scanner scalabilité');
+            debugLog('⚙️ Config', 'Mode: ' + (MOCK_MODE ? 'TEST' : 'LIVE'));
+            
+            // 🔥 NOUVEAU v3.7: Reset volume stats
+            volumeStats = {total: 0, validated: 0, ratio: 0};
+            var statsEl = document.getElementById('volumeStats');
+            if (statsEl) {
+                statsEl.innerHTML = '📊 Stats: En attente scan...';
+            }
+            
+            try {
+                // 🔥 NOUVEAU: Scanner scalabilité intégré
+                debugLog('📡 Scanner Scalabilité', 'Récupération paires 0% fees...');
+                document.getElementById('loadingText').textContent = 'Scanner scalabilité...';
+                
+                allPairs = await getAllScalpingPairsScalability();
+                
+                if (!allPairs || allPairs.length === 0) {
+                    throw new Error('Aucune paire scalable trouvée');
+                }
+                
+                // Ajouter ticker pour compatibilité analyse 1m/5m
+                for (var i = 0; i < allPairs.length; i++) {
+                    var p = allPairs[i];
+                    // Estimer volume24h depuis recentVolume (approximation 1h)
+                    var estimatedVol24h = p.recentVolume * 24;
+                    p.ticker = {
+                        symbol: p.symbol,
+                        lastPrice: p.price || 0,
+                        volume24: estimatedVol24h
+                    };
+                }
+                
+                // Sélection automatique meilleure paire
+                selectPair(allPairs[0]);
+                
+                // Afficher Top 20
+                displayTop20ScalablePairs();
+                
+                // Démarrer auto-refresh scanner scalabilité
+                startAutoRefreshScalabilityScanner();
+                
+                debugLog('✅ Scanner Scalabilité', allPairs.length + ' paires scalables trouvées');
+                debugLog('🏆 Meilleure paire', allPairs[0].symbol + ' - Score: ' + allPairs[0].score.toFixed(2));
+                debugLog('📋 Top 5', allPairs.slice(0, 5).map(function(p, i) { return (i+1) + '. ' + p.symbol + ' (' + p.score.toFixed(2) + ')'; }).join(' | '));
+                
+                debugLog('✅ SUCCÈS', 'Scanner prêt! ' + allPairs.length + ' paires scalables');
+                showSuccess('Scanner prêt! ' + allPairs.length + ' paires scalables trouvées');
+                
+                if (btn) {
+                    btn.style.display = 'none';
+                }
+                
+            } catch(error) {
+                debugLog('❌ ERREUR FATALE', error.message);
+                console.error('Fatal error in initScanner:', error);
+                showError('Erreur: ' + error.message);
+                
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🔍 RÉESSAYER';
+                }
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        // Tous les boutons obsolètes ont été supprimés
+        
+        // 🔥 NOUVEAU v5.2: Ne plus restaurer d'état au chargement (reset à chaque fois)
+        window.addEventListener('load', function() {
+            debugLog('🚀 APP LOADED', 'Scanner prêt à démarrer');
+            
+            // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre
+            localStorage.removeItem('mexcScannerState');
+            debugLog('🔄 Reset Clean', 'Aucun état restauré - Session neuve');
+        });
+    </script>
+</body>
+</html>
