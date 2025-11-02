@@ -44,6 +44,13 @@ TRADING_CONFIG = {
     "dynamic_tolerance_adx_high": 30,  # ADX > 30 → 5 conditions
     "dynamic_tolerance_adx_low": 25,  # ADX < 25 → 6 conditions
     
+    # Phase 1+2: New filters (configurable)
+    "snr_threshold": 0.3,  # Signal-to-Noise Ratio minimum
+    "breakout_threshold": 0.3,  # Breakout multiplier (ATR * threshold)
+    "wick_ratio_max": 2.5,  # Max wick ratio before rejection
+    "di_gap_min": 5,  # Minimum DI+ - DI- gap
+    "di_gap_adx_threshold": 25,  # ADX threshold for DI gap
+    
     # Scalability scanner
     "top_pairs_limit": 20,
     "balance_score_min": 0.7,

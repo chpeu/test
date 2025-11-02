@@ -210,16 +210,18 @@ class TechnicalAnalyzer:
             
             # 1. SNR Filter (Signal-to-Noise Ratio)
             snr = abs(price - ema21) / atr if atr > 0 else 0
-            if snr < 0.3:
+            snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
+            if snr < snr_threshold:
                 if DEBUG_ENABLED:
-                    logger.debug(f"SNR trop faible {symbol} {timeframe}: {snr:.3f} < 0.3 (signal plat)")
+                    logger.debug(f"SNR trop faible {symbol} {timeframe}: {snr:.3f} < {snr_threshold} (signal plat)")
                 return None
             
             # 2. Breakout Filter
-            breakout_threshold = atr * 0.3
+            breakout_mult = TRADING_CONFIG.get('breakout_threshold', 0.3)
+            breakout_threshold = atr * breakout_mult
             if price < ema21 + breakout_threshold and price > ema21 - breakout_threshold:
                 if DEBUG_ENABLED:
-                    logger.debug(f"Pas de breakout {symbol} {timeframe}: prix dans range ±ATR*0.3")
+                    logger.debug(f"Pas de breakout {symbol} {timeframe}: prix dans range ±ATR*{breakout_mult}")
                 return None
             
             # 3. Wick Ratio Filter (manipulation)
@@ -227,9 +229,10 @@ class TechnicalAnalyzer:
             if body == 0:
                 body = 0.0001  # Éviter division par 0
             wick_ratio = (current_candle[2] - current_candle[3]) / body  # high - low
-            if wick_ratio > 2.5:
+            wick_max = TRADING_CONFIG.get('wick_ratio_max', 2.5)
+            if wick_ratio > wick_max:
                 if DEBUG_ENABLED:
-                    logger.debug(f"Wicks suspects {symbol} {timeframe}: ratio={wick_ratio:.2f} > 2.5")
+                    logger.debug(f"Wicks suspects {symbol} {timeframe}: ratio={wick_ratio:.2f} > {wick_max}")
                 return None
             
             # Conditions LONG
@@ -272,7 +275,9 @@ class TechnicalAnalyzer:
             
             # 6. ADX + DI Gap (remplace ADX >30 seul)
             di_gap = adx['diPlus'] - adx['diMinus']
-            if adx['adx'] > 25 and adx['diPlus'] > adx['diMinus'] and abs(di_gap) > 5:
+            di_gap_min = TRADING_CONFIG.get('di_gap_min', 5)
+            di_gap_adx_threshold = TRADING_CONFIG.get('di_gap_adx_threshold', 25)
+            if adx['adx'] > di_gap_adx_threshold and adx['diPlus'] > adx['diMinus'] and abs(di_gap) > di_gap_min:
                 long_conditions.append("ADX+ + DI Gap>" + str(abs(di_gap)))
             elif adx['adx'] > 30 and adx['diPlus'] > adx['diMinus']:
                 long_conditions.append("ADX+ (>30)")
@@ -320,7 +325,7 @@ class TechnicalAnalyzer:
             
             # 6. ADX + DI Gap (remplace ADX >30 seul)
             di_gap_short = adx['diMinus'] - adx['diPlus']
-            if adx['adx'] > 25 and adx['diMinus'] > adx['diPlus'] and abs(di_gap_short) > 5:
+            if adx['adx'] > di_gap_adx_threshold and adx['diMinus'] > adx['diPlus'] and abs(di_gap_short) > di_gap_min:
                 short_conditions.append("ADX- + DI Gap>" + str(abs(di_gap_short)))
             elif adx['adx'] > 30 and adx['diMinus'] > adx['diPlus']:
                 short_conditions.append("ADX- (>30)")
