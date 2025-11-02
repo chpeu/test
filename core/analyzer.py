@@ -206,6 +206,32 @@ class TechnicalAnalyzer:
                     logger.debug(f"ATR sous-optimal {symbol} {timeframe}: {atr_percent:.3f}% ({atr_status})")
                 return None
             
+            # === PHASE 1 + 2: NOUVEAUX FILTRES ===
+            
+            # 1. SNR Filter (Signal-to-Noise Ratio)
+            snr = abs(price - ema21) / atr if atr > 0 else 0
+            if snr < 0.3:
+                if DEBUG_ENABLED:
+                    logger.debug(f"SNR trop faible {symbol} {timeframe}: {snr:.3f} < 0.3 (signal plat)")
+                return None
+            
+            # 2. Breakout Filter
+            breakout_threshold = atr * 0.3
+            if price < ema21 + breakout_threshold and price > ema21 - breakout_threshold:
+                if DEBUG_ENABLED:
+                    logger.debug(f"Pas de breakout {symbol} {timeframe}: prix dans range ±ATR*0.3")
+                return None
+            
+            # 3. Wick Ratio Filter (manipulation)
+            body = abs(current_candle[1] - current_candle[4])  # open - close
+            if body == 0:
+                body = 0.0001  # Éviter division par 0
+            wick_ratio = (current_candle[2] - current_candle[3]) / body  # high - low
+            if wick_ratio > 2.5:
+                if DEBUG_ENABLED:
+                    logger.debug(f"Wicks suspects {symbol} {timeframe}: ratio={wick_ratio:.2f} > 2.5")
+                return None
+            
             # Conditions LONG
             long_conditions = []
             
@@ -244,8 +270,11 @@ class TechnicalAnalyzer:
             if dist_to_lower < bb_threshold:
                 long_conditions.append("BB Lower")
             
-            # 6. ADX
-            if adx['adx'] > 30 and adx['diPlus'] > adx['diMinus']:
+            # 6. ADX + DI Gap (remplace ADX >30 seul)
+            di_gap = adx['diPlus'] - adx['diMinus']
+            if adx['adx'] > 25 and adx['diPlus'] > adx['diMinus'] and abs(di_gap) > 5:
+                long_conditions.append("ADX+ + DI Gap>" + str(abs(di_gap)))
+            elif adx['adx'] > 30 and adx['diPlus'] > adx['diMinus']:
                 long_conditions.append("ADX+ (>30)")
             
             # 7. Pattern
@@ -289,8 +318,11 @@ class TechnicalAnalyzer:
             if dist_to_upper < bb_threshold:
                 short_conditions.append("BB Upper")
             
-            # 6. ADX
-            if adx['adx'] > 30 and adx['diMinus'] > adx['diPlus']:
+            # 6. ADX + DI Gap (remplace ADX >30 seul)
+            di_gap_short = adx['diMinus'] - adx['diPlus']
+            if adx['adx'] > 25 and adx['diMinus'] > adx['diPlus'] and abs(di_gap_short) > 5:
+                short_conditions.append("ADX- + DI Gap>" + str(abs(di_gap_short)))
+            elif adx['adx'] > 30 and adx['diMinus'] > adx['diPlus']:
                 short_conditions.append("ADX- (>30)")
             
             # 7. Pattern
@@ -318,6 +350,17 @@ class TechnicalAnalyzer:
                     trend_bonus = math.floor(trend_data.get('bonus', 0) / 10)
                 elif temp_direction == 'SHORT' and trend_data.get('trend') == 'BEARISH':
                     trend_bonus = math.floor(trend_data.get('bonus', 0) / 10)
+            
+            # PHASE 2: Divergence RSI/MACD (calcul avant direction)
+            divergence_bonus = 0
+            if temp_direction == 'LONG':
+                if rsi < rsi_prev and macd['histogram'] > macd_prev['histogram']:
+                    divergence_bonus = 1
+                    long_conditions.append("Divergence+ ↑")
+            elif temp_direction == 'SHORT':
+                if rsi > rsi_prev and macd['histogram'] < macd_prev['histogram']:
+                    divergence_bonus = 1
+                    short_conditions.append("Divergence- ↓")
             
             # Vérifier avec bonus
             long_with_bonus = len(long_conditions) + (trend_bonus if temp_direction == 'LONG' else 0)
@@ -351,7 +394,26 @@ class TechnicalAnalyzer:
                     logger.debug(f"Volume quality rejeté {symbol} {timeframe}: {vol_quality['quality']}% < 75%")
                 return None
             
-            # Sélectionner conditions
+            # PHASE 2: Structure swing HH/HL (blocking)
+            if len(highs) >= 5 and len(lows) >= 5:
+                recent_highs = highs[-5:]
+                recent_lows = lows[-5:]
+                
+                if direction == 'LONG':
+                    hh = recent_highs[-1] > recent_highs[-2]
+                    hl = recent_lows[-1] > recent_lows[-2]
+                    has_swing = hh or hl
+                else:  # SHORT
+                    lh = recent_highs[-1] < recent_highs[-2]
+                    ll = recent_lows[-1] < recent_lows[-2]
+                    has_swing = lh or ll
+                
+                if not has_swing:
+                    if DEBUG_ENABLED:
+                        logger.debug(f"Pas de structure swing {symbol} {timeframe}: {direction}")
+                    return None
+            
+            # Sélectionner conditions finales
             conditions = long_conditions if direction == 'LONG' else short_conditions
             
             # TP/SL pour monitoring
