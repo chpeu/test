@@ -319,12 +319,21 @@
             </div>
             <div class="config-row" style="margin-top: 20px;">
                 <div class="config-group">
-                    <div class="config-label">💰 CAPITAL</div>
+                    <div class="config-label">💰 CAPITAL TOTAL</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="number" id="accountSizeInput" value="1000" min="100" max="100000" 
                                onchange="accountSize = parseFloat(this.value);" 
                                style="width: 120px; padding: 10px; background: #0a0e27; color: #00ff88; border: 2px solid #00ff88; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace;">
                         <span style="color: #888; font-size: 11px;">USDT</span>
+                    </div>
+                </div>
+                <div class="config-group">
+                    <div class="config-label">📊 RISK PAR TRADE</div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                        <input type="range" id="riskPerTradeSlider" min="0.5" max="5.0" step="0.1" value="2.0" 
+                               style="width: 150px; height: 20px; cursor: pointer;" 
+                               oninput="riskPerTrade = parseFloat(this.value); document.getElementById('riskPerTradeValue').textContent = riskPerTrade.toFixed(1) + '%';">
+                        <span id="riskPerTradeValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">2.0%</span>
                     </div>
                 </div>
                 <div class="config-group">
@@ -451,9 +460,9 @@
             <div class="panel-content" id="statsPanel-content">
             <div style="padding: 8px;">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 12px;">
-                <div style="background: rgba(0,255,136,0.1); padding: 8px; border-radius: 6px; border-left: 2px solid #00ff88;">
-                    <div style="color: #888; font-size: 10px; margin-bottom: 3px;">BREAK-EVENS</div>
-                    <div style="color: #00ff88; font-size: 16px; font-weight: bold;" id="statBreakevens">0</div>
+                <div style="background: rgba(255,165,0,0.1); padding: 8px; border-radius: 6px; border-left: 2px solid #ffaa00;">
+                    <div style="color: #888; font-size: 10px; margin-bottom: 3px;">🔒 API BLOQUÉE</div>
+                    <div style="color: #ffaa00; font-size: 16px; font-weight: bold;" id="statApiStuck">0</div>
                 </div>
                 <div style="background: rgba(0,255,136,0.1); padding: 8px; border-radius: 6px; border-left: 2px solid #00ff88;">
                     <div style="color: #888; font-size: 10px; margin-bottom: 3px;">GAIN MOYEN / WIN</div>
@@ -467,6 +476,7 @@
             <div style="margin-top: 8px; padding: 8px; background: linear-gradient(135deg, rgba(0,255,136,0.1) 0%, rgba(0,170,255,0.1) 100%); border-radius: 6px; text-align: center;">
                 <div style="color: #888; font-size: 10px; margin-bottom: 4px;">💰 GAIN/PERTE CUMULÉ SESSION</div>
                 <div style="font-size: 22px; font-weight: bold;" id="statTotalPnl">+0.00%</div>
+                <div style="color: #666; font-size: 11px; margin-top: 3px;" id="statTotalPnlUSDT">+0.00 USDT</div>
             </div>
             </div>
             </div>
@@ -539,6 +549,13 @@
             <div class="pnl-display">
                 <div class="pnl-label">PROFIT & LOSS</div>
                 <div class="pnl-value" id="posPnL">+0.00%</div>
+                <div class="pnl-label" style="margin-top: 5px; font-size: 11px;" id="posPnLUSDT">+0.00 USDT</div>
+            </div>
+            
+            <!-- 🔥 v6.4.1: Position restante si TP partiel -->
+            <div id="positionRemaining" style="display: none; margin-top: 8px; padding: 8px; background: rgba(0,255,136,0.1); border-radius: 6px; border: 1px solid #00ff88; text-align: center;">
+                <div style="color: #00ff88; font-size: 11px; font-weight: bold;">POSITION RESTANTE</div>
+                <div style="color: #00ff88; font-size: 16px; font-weight: bold;" id="posRemainingValue">50%</div>
             </div>
             
             <!-- 🔥 v3.0: Bouton fermeture manuelle -->
@@ -624,6 +641,7 @@
             losses: 0, 
             timeouts: 0,
             breakevens: 0,
+            apiStuck: 0,  // 🔥 v6.4.1: Fermetures pour blocage API
             // 🔥 NOUVEAU v2.7: Stats détaillées
             winPnls: [],      // Liste des gains en %
             lossPnls: [],     // Liste des pertes en %
@@ -632,6 +650,7 @@
             bestTrade: { pnl: 0, symbol: '', duration: 0 },
             worstTrade: { pnl: 0, symbol: '', duration: 0 },
             totalPnl: 0,      // Cumul session
+            totalPnlUSDT: 0,  // 🔥 v6.4.1: Cumul session en USDT
             // 🔥 NOUVEAU v2.8: Historique trades
             tradeHistory: []  // Historique complet des trades
         };
@@ -686,6 +705,7 @@
         
         // 🔥 NOUVEAU v4.3.1 Phase 2: Position sizing et confluence
         var accountSize = 1000;        // Capital total en USDT
+        var riskPerTrade = 2.0;        // 🔥 v6.4.1: % de capital par trade
         var useConfluence = false;     // false = 1m OU 5m, true = 1m ET 5m
         
         // 🔥 v3.0: Surveillance API (prix figé)
@@ -818,9 +838,9 @@
             var winrate = stats.totalTrades > 0 ? ((stats.wins / stats.totalTrades) * 100).toFixed(1) : 0;
             document.getElementById('statWinrate').textContent = winrate + '%';
             
-            // 🔥 NOUVEAU v2.7: Stats détaillées
-            if (document.getElementById('statBreakevens')) {
-                document.getElementById('statBreakevens').textContent = stats.breakevens;
+            // 🔥 v6.4.1: Stats API bloquée au lieu de breakevens
+            if (document.getElementById('statApiStuck')) {
+                document.getElementById('statApiStuck').textContent = stats.apiStuck;
             }
             
             if (document.getElementById('statAvgWin')) {
@@ -839,6 +859,11 @@
                 var color = stats.totalPnl >= 0 ? '#00ff88' : '#ff4444';
                 document.getElementById('statTotalPnl').textContent = (stats.totalPnl >= 0 ? '+' : '') + stats.totalPnl.toFixed(2) + '%';
                 document.getElementById('statTotalPnl').style.color = color;
+            }
+            
+            // 🔥 v6.4.1: Afficher P&L USDT cumulé
+            if (document.getElementById('statTotalPnlUSDT')) {
+                document.getElementById('statTotalPnlUSDT').textContent = (stats.totalPnlUSDT >= 0 ? '+' : '') + stats.totalPnlUSDT.toFixed(2) + ' USDT';
             }
             
             if (document.getElementById('statBestTrade')) {
@@ -893,9 +918,8 @@
             html += '<th style="padding:6px;text-align:left;color:#888;">Paire</th>';
             html += '<th style="padding:6px;text-align:center;color:#888;">Dir</th>';
             html += '<th style="padding:6px;text-align:center;color:#888;">Raison</th>';
-            html += '<th style="padding:6px;text-align:right;color:#888;">PnL Brut</th>';
-            html += '<th style="padding:6px;text-align:right;color:#888;">Slippage</th>';
             html += '<th style="padding:6px;text-align:right;color:#888;">PnL Net</th>';
+            html += '<th style="padding:6px;text-align:right;color:#888;">PnL USDT</th>';
             html += '</tr></thead><tbody>';
             
             stats.tradeHistory.forEach(function(trade, index) {
@@ -928,9 +952,8 @@
                 html += '<td style="padding:6px;font-weight:bold;">' + trade.symbol + '</td>';
                 html += '<td style="padding:6px;text-align:center;color:' + dirColor + ';font-weight:bold;">' + trade.direction + '</td>';
                 html += '<td style="padding:6px;text-align:center;color:' + reasonColor + ';font-weight:bold;">' + reasonText + '</td>';
-                html += '<td style="padding:6px;text-align:right;">' + (parseFloat(trade.grossPnl) >= 0 ? '+' : '') + trade.grossPnl + '%</td>';
-                html += '<td style="padding:6px;text-align:right;color:#ff8800;">-' + (trade.slippage || '0.00') + '%</td>';
                 html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnl) >= 0 ? '+' : '') + trade.netPnl + '%</td>';
+                html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnlUSDT || 0) >= 0 ? '+' : '') + (trade.netPnlUSDT || '0.0000') + ' USDT</td>';
                 html += '</tr>';
             });
             
@@ -1007,12 +1030,13 @@
                 // Mode FIXE
                 if (setup.direction === 'LONG') {
                     activePosition.sl = (entryPrice * 0.9975).toFixed(6);
-                    activePosition.tp = (entryPrice * 1.0025).toFixed(6);
+                    // 🔥 v6.4.1: TP fixe désactivé en mode partiel physique (on utilise seulement TP partiel 0.3%)
+                    activePosition.tp = (entryPrice * 1.01).toFixed(6); // TP très élevé pour éviter déclenchement avant partiel
                 } else {
                     activePosition.sl = (entryPrice * 1.0025).toFixed(6);
-                    activePosition.tp = (entryPrice * 0.9975).toFixed(6);
+                    activePosition.tp = (entryPrice * 0.99).toFixed(6); // TP très bas
                 }
-                debugLog('📊 Mode FIXE', 'SL: ' + activePosition.sl + ' (-0.25%) | TP: ' + activePosition.tp + ' (+0.25%)');
+                debugLog('📊 Mode FIXE', 'SL: ' + activePosition.sl + ' (-0.25%) | TP partiel: +0.3% (+ trailing)');
             }
             setup.sl = activePosition.sl;
             setup.tp = activePosition.tp;
@@ -1033,7 +1057,7 @@
             document.getElementById('posDirection').textContent = setup.direction;
             document.getElementById('posDirection').style.color = setup.direction === 'LONG' ? '#00ff88' : '#ff4444';
             document.getElementById('posEntry').textContent = setup.entry;
-            document.getElementById('posTP').textContent = useATR ? 'TP: ' + activePosition.tp : 'TP partiel: +0.25%';
+            document.getElementById('posTP').textContent = useATR ? 'TP: ' + activePosition.tp : 'TP partiel: +0.3%';
             document.getElementById('posSL').textContent = useATR ? 'SL: ' + activePosition.sl : activePosition.sl + ' (-0.25%)';
             document.getElementById('posConfirm').textContent = setup.confirmedBy || 'N/A';
             
@@ -1214,7 +1238,31 @@
                 var pnlDisplay = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
                 document.getElementById('posPnL').textContent = pnlDisplay;
                 document.getElementById('posPnL').style.color = pnl >= 0 ? '#00ff88' : '#ff4444';
-                debugLog('📊 P&L', pnlDisplay);
+                
+                // 🔥 v6.4.1: Calculer et afficher P&L USDT
+                var pnlUSDT = 0;
+                if (partialTPSold && activePosition.partial_profit_usdt) {
+                    // Position partielle: profit TP partiel + unrealized sur 50%
+                    var unrealizedPnL = (pnl / 100) * (activePosition.size_remaining || 0);
+                    pnlUSDT = activePosition.partial_profit_usdt + unrealizedPnL;
+                } else {
+                    // Position complète: unrealized sur 100%
+                    pnlUSDT = (pnl / 100) * activePosition.size;
+                }
+                var pnlUSDTDisplay = (pnlUSDT >= 0 ? '+' : '') + pnlUSDT.toFixed(2) + ' USDT';
+                document.getElementById('posPnLUSDT').textContent = pnlUSDTDisplay;
+                
+                // 🔥 v6.4.1: Afficher position restante si TP partiel
+                if (partialTPSold) {
+                    document.getElementById('positionRemaining').style.display = 'block';
+                    var sizeRemaining = activePosition.size_remaining || 0;
+                    var percentRemaining = (sizeRemaining / activePosition.size * 100).toFixed(0);
+                    document.getElementById('posRemainingValue').textContent = percentRemaining + '%';
+                } else {
+                    document.getElementById('positionRemaining').style.display = 'none';
+                }
+                
+                debugLog('📊 P&L', pnlDisplay + ' (' + pnlUSDTDisplay + ')');
                 
                 // Distance au TP et SL
                 var distTP, distSL;
@@ -1485,6 +1533,7 @@
             var netPnlUSDT = pnlFinalUSDT - (totalCosts / 100 * activePosition.size);
             
             stats.totalPnl += netPnlPct;
+            stats.totalPnlUSDT += netPnlUSDT;  // 🔥 v6.4.1: Cumul USDT
             
             // 🔥 v6.4: Enregistrer dans l'historique avec USDT
             var tradeRecord = {
@@ -1576,6 +1625,9 @@
                 
                 if (reason === 'TIMEOUT' || reason === 'API_STUCK') {
                     stats.timeouts++;
+                    if (reason === 'API_STUCK') {
+                        stats.apiStuck++;  // 🔥 v6.4.1: Compteur API bloquée
+                    }
                 }
                 
                 // Pire trade
@@ -2580,18 +2632,19 @@
             };
         }
         
-        // 🔥 NOUVEAU v4.3.1 Phase 2: Position sizing simple
+        // 🔥 v6.4.1: Position sizing simple avec riskPerTrade
         function calculateSimplePositionSize(setup, accountSize) {
-            var baseRisk = 0.02; // 2% par défaut
+            // 🔥 v6.4.1: Utiliser riskPerTrade au lieu de 0.02 hardcodé
+            var baseRisk = riskPerTrade / 100; // Convertir % en décimal
             
             // Ajustement selon nombre de conditions
             var conditionCount = setup.signals ? setup.signals.length : 7;
             var qualityMultiplier = 1.0;
             
-            if (conditionCount >= 7) qualityMultiplier = 1.5;      // 3% si parfait
-            else if (conditionCount >= 6) qualityMultiplier = 1.2; // 2.4%
-            else if (conditionCount >= 5) qualityMultiplier = 0.8; // 1.6%
-            else qualityMultiplier = 0.5;                          // 1%
+            if (conditionCount >= 7) qualityMultiplier = 1.5;      // x1.5 si parfait
+            else if (conditionCount >= 6) qualityMultiplier = 1.2; // x1.2
+            else if (conditionCount >= 5) qualityMultiplier = 0.8; // x0.8
+            else qualityMultiplier = 0.5;                          // x0.5
             
             // Ajustement selon volatilité
             var atrPercent = (setup.atr / setup.price) * 100;
