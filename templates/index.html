@@ -478,7 +478,7 @@
                 <div style="font-size: 22px; font-weight: bold;" id="statTotalPnl">+0.00%</div>
                 <div style="color: #666; font-size: 11px; margin-top: 3px;" id="statTotalPnlUSDT">+0.00 USDT</div>
                 <div style="color: #888; font-size: 9px; margin-top: 5px; padding-top: 5px; border-top: 1px solid #2a3a6b;">
-                    💸 FRAIS: <span id="statTotalCosts" style="color: #ff8800;">0.00%</span> / <span id="statTotalCostsUSDT" style="color: #ff8800;">0.00 USDT</span>
+                    💸 FRAIS: <span id="statTotalCosts" style="color: #ff8800;">0.00%</span> / <span id="statTotalCostsUSDT" style="color: #ff8800;">0.00 USDT</span> | Moyenne: <span id="statAvgCosts" style="color: #ffaa00;">0.00%</span> / <span id="statAvgCostsUSDT" style="color: #ffaa00;">0.00 USDT</span>
                 </div>
             </div>
             </div>
@@ -879,6 +879,16 @@
                 document.getElementById('statTotalCostsUSDT').textContent = stats.totalCostsUSDT.toFixed(2) + ' USDT';
             }
             
+            // 🔥 v6.4.3: Afficher moyenne frais par trade
+            if (document.getElementById('statAvgCosts') && stats.totalTrades > 0) {
+                var avgCosts = stats.totalCosts / stats.totalTrades;
+                document.getElementById('statAvgCosts').textContent = avgCosts.toFixed(2) + '%';
+            }
+            if (document.getElementById('statAvgCostsUSDT') && stats.totalTrades > 0) {
+                var avgCostsUSDT = stats.totalCostsUSDT / stats.totalTrades;
+                document.getElementById('statAvgCostsUSDT').textContent = avgCostsUSDT.toFixed(2) + ' USDT';
+            }
+            
             if (document.getElementById('statBestTrade')) {
                 if (stats.bestTrade.pnl > 0) {
                     var mins = Math.floor(stats.bestTrade.duration / 60);
@@ -932,7 +942,7 @@
             html += '<th style="padding:6px;text-align:center;color:#888;">Dir</th>';
             html += '<th style="padding:6px;text-align:center;color:#888;">Raison</th>';
             html += '<th style="padding:6px;text-align:right;color:#888;">PnL Brut %</th>';
-            html += '<th style="padding:6px;text-align:right;color:#888;">PnL Brut USDT</th>';
+            html += '<th style="padding:6px;text-align:right;color:#888;">Slippage</th>';
             html += '<th style="padding:6px;text-align:right;color:#888;">PnL Net %</th>';
             html += '<th style="padding:6px;text-align:right;color:#888;">PnL Net USDT</th>';
             html += '</tr></thead><tbody>';
@@ -970,7 +980,7 @@
                 html += '<td style="padding:6px;text-align:center;color:' + dirColor + ';font-weight:bold;">' + trade.direction + '</td>';
                 html += '<td style="padding:6px;text-align:center;color:' + reasonColor + ';font-weight:bold;">' + reasonText + '</td>';
                 html += '<td style="padding:6px;text-align:right;color:' + grossPnlColor + '">' + (parseFloat(trade.grossPnlPct || trade.netPnl) >= 0 ? '+' : '') + (trade.grossPnlPct || trade.netPnl) + '%</td>';
-                html += '<td style="padding:6px;text-align:right;color:' + grossPnlColor + '">' + (parseFloat(trade.grossPnlUSDT || trade.netPnlUSDT || 0) >= 0 ? '+' : '') + (trade.grossPnlUSDT || trade.netPnlUSDT || '0.0000') + ' USDT</td>';
+                html += '<td style="padding:6px;text-align:right;color:#ff8800;">-' + (trade.slippage || '0.00') + '%</td>';
                 html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnl) >= 0 ? '+' : '') + trade.netPnl + '%</td>';
                 html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnlUSDT || 0) >= 0 ? '+' : '') + (trade.netPnlUSDT || '0.0000') + ' USDT</td>';
                 html += '</tr>';
@@ -1328,24 +1338,35 @@
                         document.getElementById('posSL').textContent = activePosition.sl + ' (BE)';
                     }
                     
-                    // 🔥 v6.4: Trailing stop 0.15% à partir du TP partiel
+                    // 🔥 v6.4.3: TP total 0.15% si trade > 5min, sinon trailing stop 0.15%
                     if (useTrailingStop && partialTPSold) {
-                        var newSL;
-                        if (activePosition.direction === 'LONG') {
-                            newSL = currentPrice * (1 - trailingDistance/100);
-                            if (newSL > sl) {
-                                activePosition.sl = newSL.toFixed(6);
-                                sl = newSL;
-                                debugLog('📈 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
-                                document.getElementById('posSL').textContent = activePosition.sl;
-                            }
+                        // Si trade > 5min, TP total à 0.15% du profit
+                        if (duration > 300) {  // 5 minutes = 300 secondes
+                            var tpTotal = activePosition.direction === 'LONG' ? 
+                                (entry * 1.0015) :  // +0.15%
+                                (entry * 0.9985);   // -0.15%
+                            activePosition.tp = tpTotal.toFixed(6);
+                            document.getElementById('posTP').textContent = activePosition.tp;
+                            debugLog('⏱️ TP TOTAL 5MIN', 'TP modifié à +0.15% (durée: ' + mins + 'm' + secs + 's)');
                         } else {
-                            newSL = currentPrice * (1 + trailingDistance/100);
-                            if (newSL < sl) {
-                                activePosition.sl = newSL.toFixed(6);
-                                sl = newSL;
-                                debugLog('📉 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
-                                document.getElementById('posSL').textContent = activePosition.sl;
+                            // Trailing stop 0.15% si < 5min
+                            var newSL;
+                            if (activePosition.direction === 'LONG') {
+                                newSL = currentPrice * (1 - trailingDistance/100);
+                                if (newSL > sl) {
+                                    activePosition.sl = newSL.toFixed(6);
+                                    sl = newSL;
+                                    debugLog('📈 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
+                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                }
+                            } else {
+                                newSL = currentPrice * (1 + trailingDistance/100);
+                                if (newSL < sl) {
+                                    activePosition.sl = newSL.toFixed(6);
+                                    sl = newSL;
+                                    debugLog('📉 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
+                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                }
                             }
                         }
                     }
