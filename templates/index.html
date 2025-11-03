@@ -308,12 +308,13 @@
                 <div class="config-group">
                     <div class="config-label">📊 MODE TP/SL</div>
                     <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
-                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="checkbox" id="atrModeToggle" onchange="useATR = this.checked; document.getElementById('atrModeStatus').textContent = this.checked ? 'ATR' : 'FIXE'; document.getElementById('atrModeStatus').style.color = this.checked ? '#00ff88' : '#888';" style="width: 25px; height: 25px;">
-                            <span style="color: #00ff88; font-weight: bold; font-size: 15px;">Mode ATR</span>
-                        </label>
+                        <select id="tpSlModeSelect" onchange="changeTPslMode(this.value);" style="width: 200px;">
+                            <option value="FIXE" selected>FIXE</option>
+                            <option value="ATR">ATR Simple</option>
+                            <option value="ATR_MULTI">ATR Multi</option>
+                        </select>
                         <span id="atrModeStatus" style="color: #888; font-weight: bold;">FIXE</span>
-                        <span style="color: #888; font-size: 10px;">(TP/SL adaptatif vs fixe)</span>
+                        <span style="color: #888; font-size: 10px;">(TP/SL adaptatif vs fixe vs multi)</span>
                     </div>
                 </div>
             </div>
@@ -698,8 +699,9 @@
             ratio: 0
         };
         
-        // 🔥 NOUVEAU v4.2: Mode TP/SL
-        var useATR = false;  // false = fixe, true = ATR
+        // 🔥 NOUVEAU v4.2: Mode TP/SL (v6.5: 3 modes)
+        var useATR = false;  // false = fixe, true = ATR simple
+        var useATRMulti = false;  // v6.5: ATR Multi mode
         
         // 🔥 NOUVEAU v4.2: Protection anti-pertes consécutives
         var pairLosses = {};  // {symbol: {lastLossTime, consecutiveLosses}}
@@ -811,6 +813,27 @@
             document.getElementById('posConfirm').textContent = activePosition.confirmedBy || 'N/A';
             
             showInfo('✅ Position restaurée: ' + activePosition.symbol);
+        }
+        
+        // 🔥 v6.5: Changer le mode TP/SL
+        function changeTPslMode(mode) {
+            useATR = false;
+            useATRMulti = false;
+            
+            if (mode === 'ATR') {
+                useATR = true;
+                document.getElementById('atrModeStatus').textContent = 'ATR SIMPLE';
+                document.getElementById('atrModeStatus').style.color = '#00ff88';
+            } else if (mode === 'ATR_MULTI') {
+                useATRMulti = true;
+                document.getElementById('atrModeStatus').textContent = 'ATR MULTI';
+                document.getElementById('atrModeStatus').style.color = '#00aaff';
+            } else {  // FIXE
+                document.getElementById('atrModeStatus').textContent = 'FIXE';
+                document.getElementById('atrModeStatus').style.color = '#888';
+            }
+            
+            debugLog('📊 Mode TP/SL', mode);
         }
         
         // 🔥 NOUVEAU: Gestion de la visibilité (veille/changement d'onglet)
@@ -1264,7 +1287,14 @@
                 var pnl = ((currentPrice - entry) / entry) * 100;
                 if (activePosition.direction === 'SHORT') pnl = -pnl;
                 
+                // 🔥 v6.5: PnL effectif pour mode ATR Multi avec TP partiel
                 var pnlDisplay = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+                if (useATRMulti && partialTPSold && activePosition.atr) {
+                    // Afficher PnL effectif (moyenne pondérée)
+                    var atrPercent = ((activePosition.atr / entry) * 100);
+                    var pnlEffective = (0.5 * atrPercent) + (0.5 * pnl);
+                    pnlDisplay = (pnlEffective >= 0 ? '+' : '') + pnlEffective.toFixed(2) + '% (eff.)';
+                }
                 document.getElementById('posPnL').textContent = pnlDisplay;
                 document.getElementById('posPnL').style.color = pnl >= 0 ? '#00ff88' : '#ff4444';
                 
@@ -1313,7 +1343,7 @@
                 document.getElementById('positionDuration').textContent = 'Durée: ' + mins + 'm ' + secs + 's';
                 
                 // 🔥 v6.4: TP/SL selon mode avec position partielle PHYSIQUE
-                if (!useATR) {
+                if (!useATR && !useATRMulti) {
                     // MODE FIXE: TP partiel physique 50% + Trailing 0.15%
                     if (usePartialTP && !partialTPSold && pnl >= partialTPTrigger) {
                         partialTPSold = true;
@@ -1370,8 +1400,8 @@
                             }
                         }
                     }
-                } else {
-                    // MODE ATR: Break-even progressif v5.0
+                } else if (useATR) {
+                    // MODE ATR SIMPLE: Break-even progressif v5.0
                     if (activePosition.atr) {
                         var atrPercentBE = ((activePosition.atr / entry) * 100);
                         var pnl50pct = atrPercentBE * 0.5;
@@ -1395,6 +1425,58 @@
                             sl = parseFloat(entry);
                             debugLog('🛡️ BE Total', '100% locked: PnL=' + pnl.toFixed(2) + '% → SL=' + entry);
                             document.getElementById('posSL').textContent = activePosition.sl;
+                        }
+                    }
+                } else if (useATRMulti) {
+                    // 🔥 v6.5 MODE ATR MULTI: TP partiel 1× ATR + Trailing 0.5× ATR
+                    if (activePosition.atr) {
+                        var atrPercent = ((activePosition.atr / entry) * 100);
+                        var tpPartialThreshold = atrPercent * 1.0;  // 1× ATR
+                        var trailingDistanceATR = atrPercent * 0.5;  // 0.5× ATR
+                        
+                        // TP PARTIEL PHYSIQUE à 1× ATR
+                        if (!partialTPSold && pnl >= tpPartialThreshold) {
+                            partialTPSold = true;
+                            
+                            var sizePartial = activePosition.size * 0.5;
+                            var priceDiff = Math.abs(currentPrice - entry);
+                            activePosition.partial_profit_usdt = sizePartial * (priceDiff / entry);
+                            activePosition.size_remaining = sizePartial;
+                            
+                            debugLog(
+                                '🎯 TP PARTIEL ATR 50%',
+                                'Profit: ' + pnl.toFixed(2) + '% | Profit USDT: ' + activePosition.partial_profit_usdt.toFixed(4) + 
+                                ' | Restant: ' + activePosition.size_remaining.toFixed(2)
+                            );
+                            showSuccess('🎯 TP Partiel ATR! 50% clôturé à +' + pnl.toFixed(2) + '%');
+                            
+                            // SL → Entry (break-even immédiat)
+                            activePosition.sl = entry;
+                            sl = entry;
+                            debugLog('🔒 BREAK-EVEN IMMÉDIAT', 'SL au prix d\'entrée pour 50% restants');
+                            document.getElementById('posSL').textContent = activePosition.sl + ' (BE)';
+                        }
+                        
+                        // TRAILING STOP ADAPTATIF (seulement après TP partiel)
+                        if (partialTPSold && useTrailingStop) {
+                            var newSL;
+                            if (activePosition.direction === 'LONG') {
+                                newSL = currentPrice * (1 - trailingDistanceATR/100);
+                                if (newSL > sl) {
+                                    activePosition.sl = newSL.toFixed(6);
+                                    sl = newSL;
+                                    debugLog('📈 TRAILING ATR', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistanceATR.toFixed(3) + '%)');
+                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                }
+                            } else {
+                                newSL = currentPrice * (1 + trailingDistanceATR/100);
+                                if (newSL < sl) {
+                                    activePosition.sl = newSL.toFixed(6);
+                                    sl = newSL;
+                                    debugLog('📉 TRAILING ATR', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistanceATR.toFixed(3) + '%)');
+                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                }
+                            }
                         }
                     }
                 }
