@@ -389,3 +389,5 @@ Total coûts = 0.212% × 2 = 0.424%  ❌ Très élevé
 **Commit**: `fc03b3d`  
 **Status**: ✅ Implémenté et commité
 
+
+

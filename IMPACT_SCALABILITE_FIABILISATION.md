@@ -195,3 +195,5 @@ Incompatible: Scan a besoin de DONNÉES HISTORIQUES
 
 **Verdict**: Les optimisations **améliorent** le scan de scalabilité, **sauf Circuit Breaker qui le ralentit** ❌
 
+
+

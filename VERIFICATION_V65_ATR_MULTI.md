@@ -339,3 +339,5 @@ if (useATRMulti && partialTPSold && activePosition.atr) {
 
 **Commande**: `git commit -m "Fix ATR Multi mode display and verification"`
 
+
+

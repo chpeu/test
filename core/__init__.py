@@ -5,6 +5,8 @@ from .indicators import Indicators
 from .scanner import ScalabilityScanner
 from .analyzer import TechnicalAnalyzer
 from .position_manager import PositionManager, Position, PositionConfig
+from .scheduler import Scheduler
+from .metrics import MetricsCollector, get_metrics_collector
 
 __all__ = [
     'Indicators',
@@ -12,6 +14,9 @@ __all__ = [
     'TechnicalAnalyzer',
     'PositionManager',
     'Position',
-    'PositionConfig'
+    'PositionConfig',
+    'Scheduler',
+    'MetricsCollector',
+    'get_metrics_collector'
 ]
 

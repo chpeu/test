@@ -171,7 +171,11 @@ class WebSocketManager:
                 # Parser et appeler callback
                 import json
                 data = json.loads(message)
-                await asyncio.to_thread(self.callback, data)
+                # 🔥 FIX: Si callback est async, l'appeler directement, sinon via to_thread
+                if asyncio.iscoroutinefunction(self.callback):
+                    await self.callback(data)
+                else:
+                    await asyncio.to_thread(self.callback, data)
                 
             except asyncio.TimeoutError:
                 # Timeout = envoyer ping MEXC
@@ -258,18 +262,36 @@ class WebSocketManager:
     
     # 🔥 v6.6.1 Phase 2A: Méthodes MEXC spécifiques
     async def subscribe_ticker(self, symbol: str):
-        """Subscribe to real-time ticker for a MEXC symbol"""
+        """
+        Subscribe to real-time ticker for a MEXC symbol
+        
+        🔥 FIX: Format symbole MEXC WebSocket
+        - ccxt utilise: "WLD/USDT:USDT"
+        - MEXC WebSocket attend: "WLD_USDT" (sans les :USDT)
+        """
         if not self._ws:
             raise Exception("WebSocket not connected")
         
+        # 🔥 FIX: Convertir format ccxt vers format MEXC WebSocket
+        # "WLD/USDT:USDT" -> "WLD_USDT"
+        mexc_symbol = symbol
+        if '/' in symbol and ':' in symbol:
+            # Format ccxt: "WLD/USDT:USDT"
+            base = symbol.split('/')[0]
+            quote = symbol.split(':')[0].split('/')[1]
+            mexc_symbol = f"{base}_{quote}"
+        elif '/' in symbol:
+            # Format: "WLD/USDT"
+            mexc_symbol = symbol.replace('/', '_')
+        
         message = {
             "method": "sub.ticker",
-            "param": {"symbol": symbol}
+            "param": {"symbol": mexc_symbol}
         }
         
         await self.send(message)
         if DEBUG_ENABLED:
-            logger.info(f"📡 Subscribed to ticker: {symbol}")
+            logger.info(f"📡 Subscribed to ticker: {symbol} (MEXC format: {mexc_symbol})")
     
     async def subscribe_multiple_tickers(self, symbols: list):
         """Subscribe to multiple tickers (max 30 per connection)"""

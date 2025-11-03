@@ -153,3 +153,5 @@ Fix: clearInterval avant chaque nouveau setInterval
 **Status**: 🔍 **ANALYSE EN COURS**  
 **Prochaine étape**: Diagnostics console navigateur
 
+
+

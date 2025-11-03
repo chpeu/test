@@ -183,3 +183,5 @@ Le core est solide, l'UI est identique, il reste l'intégration finale.
 
 **On continue Jour 5 maintenant?**
 
+
+

@@ -166,3 +166,5 @@ ccxt.mexc() → MEXC Futures API
 **Tests**: À valider avec `python test_api.py`  
 **Production**: Prêt pour déploiement ⏳
 
+
+

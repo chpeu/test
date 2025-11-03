@@ -344,3 +344,5 @@ Si 2 pertes consécutives sur même paire:
 
 **Documentation complète**: Voir `core/analyzer.py` et `config.py`
 
+
+

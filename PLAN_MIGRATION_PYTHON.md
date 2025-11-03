@@ -379,3 +379,5 @@ curl http://localhost:5000/api/price/BTC_USDT
 
 **PRÊT À COMMENCER?** 🎯
 
+
+

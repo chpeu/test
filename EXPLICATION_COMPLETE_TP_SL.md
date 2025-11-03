@@ -602,3 +602,5 @@ Mode ATR plus favorable pour réduire l'impact des frais proportionnellement.
 **Version**: v6.2  
 **Document**: Explication complète TP/SL
 
+
+

@@ -89,3 +89,5 @@ Cela permet d'identifier clairement pourquoi un trade est rejeté en mode conflu
 **Commit Git**: `faece59`  
 **Status**: ✅ **BUG CORRIGÉ**
 
+
+

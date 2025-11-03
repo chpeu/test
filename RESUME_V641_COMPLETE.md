@@ -259,3 +259,5 @@ stats.totalPnlUSDT += netPnlUSDT
 **Prêt pour**: Tests en conditions réelles  
 **Git**: `8304073`
 
+
+

@@ -139,3 +139,5 @@ ticker = await fetch('/api/price/' + symbol);
 
 **Trade Cursor v6.6.1** a une **infrastructure solide** prête! 🚀
 
+
+

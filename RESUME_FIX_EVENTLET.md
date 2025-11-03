@@ -76,3 +76,5 @@ Flask + SocketIO fonctionnel avec Python 3.12
 
 **Commit**: `0b07023` - "Update eventlet to 0.36.1 for Python 3.12 compatibility"
 
+
+

@@ -295,7 +295,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="volumeMultiplierSlider" min="0.10" max="2.00" step="0.05" value="1.00" 
                                style="width: 200px; height: 20px; cursor: pointer;" 
-                               oninput="volumeMultiplier = parseFloat(this.value); document.getElementById('volumeMultiplierValue').textContent = volumeMultiplier.toFixed(2); updateVolumeStatsUI(false);">
+                               oninput="volumeMultiplier = parseFloat(this.value); document.getElementById('volumeMultiplierValue').textContent = volumeMultiplier.toFixed(2); updateVolumeMultiplierConfig(volumeMultiplier, false);">
                         <span id="volumeMultiplierValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">1.00</span>
                         <span style="color: #888; font-size: 11px;">&lt;1 permissif | &gt;1 strict</span>
                     </div>
@@ -597,8 +597,13 @@
         <div class="loading-text" id="loadingText">Chargement...</div>
     </div>
 
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        // 🔥 NOUVEAU: Appel direct + proxies fiables
+        // 🔥 v7.0: SocketIO client pour FastAPI
+        var socket = null;
+        var API_BASE_URL = window.location.origin; // Utilise le même serveur
+        
+        // 🔥 NOUVEAU: Appel direct + proxies fiables (gardé pour compatibilité)
         var PROXIES = [
             {name: 'Direct', url: url => url}, // Essai direct d'abord
             {name: 'CorsAnywhere', url: url => 'https://cors-anywhere.herokuapp.com/' + url},
@@ -611,6 +616,120 @@
         var lastWorkingProxyIndex = 0; // 🔥 Mémoriser le dernier proxy fonctionnel
         var priceCache = {}; // 🔥 Cache des derniers prix
         const MEXC_FUTURES_URL = 'https://contract.mexc.com';
+        
+        // 🔥 v7.0: Initialiser SocketIO
+        function initSocketIO() {
+            if (socket) return; // Déjà initialisé
+            
+            socket = io(API_BASE_URL);
+            
+            socket.on('connect', function() {
+                debugLog('✅ SocketIO', 'Connecté au serveur FastAPI');
+            });
+            
+            socket.on('disconnect', function() {
+                debugLog('⚠️ SocketIO', 'Déconnecté du serveur');
+            });
+            
+            // Écouter les logs du serveur
+            socket.on('log', function(logEntry) {
+                var level = logEntry.level || 'INFO';
+                var message = logEntry.message || '';
+                var detail = logEntry.detail || '';
+                var timestamp = logEntry.timestamp || '';
+                
+                debugLog('📡 ' + level, message + (detail ? ' - ' + detail : ''));
+            });
+            
+            // Écouter les updates de status
+            socket.on('status', function(status) {
+                if (status.is_scanning !== undefined) {
+                    isScanning = status.is_scanning;
+                    updateStateDisplay();
+                }
+            });
+            
+            // Écouter les setups détectés
+            socket.on('setup_detected', function(data) {
+                var symbol = data.symbol;
+                var analysis = data.analysis;
+                
+                debugLog('🎯 Setup détecté', symbol + ' - ' + analysis.direction);
+                
+                // Ouvrir position automatiquement si setup valide
+                if (analysis && analysis.direction) {
+                    var setup = {
+                        symbol: symbol,
+                        direction: analysis.direction,
+                        entry: analysis.entry || 0,
+                        sl: analysis.sl || 0,
+                        tp: analysis.tp || 0,
+                        score: analysis.totalScore || 0,
+                        atr: analysis.atr || 0,
+                        atr5m: analysis.atr5m || 0,
+                        confirmed_by: analysis.confirmed_by || ''
+                    };
+                    
+                    openPosition(setup);
+                }
+            });
+            
+            // Écouter les updates de position
+            socket.on('position_update', function(update) {
+                if (activePosition && activePosition.symbol === update.symbol) {
+                    activePosition.currentPrice = update.current_price;
+                    activePosition.pnl = update.pnl;
+                    updatePositionDisplay();
+                }
+            });
+            
+            // Écouter les fermetures de position
+            socket.on('position_closed', function(result) {
+                if (result && result.symbol) {
+                    debugLog('✅ Position fermée', result.symbol + ' - PnL: ' + result.pnl_usdt + ' USDT');
+                    // Fermer la position localement
+                    if (activePosition && activePosition.symbol === result.symbol) {
+                        var reason = result.close_reason || 'SERVER';
+                        closePosition(reason);
+                    }
+                }
+            });
+            
+            // Écouter les updates de top pairs
+            socket.on('top_pairs_update', function(data) {
+                if (data.pairs && Array.isArray(data.pairs)) {
+                    allPairs = data.pairs;
+                    displayTop20ScalablePairs();
+                    debugLog('📊 Top pairs mis à jour', data.pairs.length + ' paires');
+                    
+                    // Marquer le scan comme terminé (pour initScanner)
+                    if (typeof scanCompleted !== 'undefined') {
+                        scanCompleted = true;
+                    }
+                }
+            });
+            
+            // 🔥 FIX: Écouter les mises à jour de stats volume depuis le scanner automatique
+            socket.on('volume_stats_update', function(data) {
+                // Mettre à jour le compteur avec les stats reçues
+                if (data && typeof data.total !== 'undefined') {
+                    // Incrémenter les stats existantes (pas remplacer)
+                    for (var i = 0; i < data.total; i++) {
+                        updateVolumeStatsUI(i < data.validated); // true si validé, false sinon
+                    }
+                }
+            });
+            
+            // Écouter la completion du scan
+            socket.on('scan_completed', function(data) {
+                debugLog('✅ Scan terminé', data.pairs_count + ' paires scalables trouvées');
+            });
+            
+            // Écouter les erreurs de scan
+            socket.on('scan_error', function(data) {
+                debugLog('❌ Erreur scan', data.error);
+            });
+        }
         
         // 🔥 NOUVEAU v5.1: Paires 0% fees MEXC (liste statique à maintenir manuellement depuis https://www.mexc.com/fr/zero-fee)
         var ZERO_FEE_PAIRS = [
@@ -1029,7 +1148,7 @@
             }
         }
         
-        function openPosition(setup) {
+        async function openPosition(setup) {
             tradingState = 'IN_POSITION';
             activePosition = setup;
             positionStartTime = Date.now();
@@ -1105,6 +1224,35 @@
                 activePosition.scalability_data = setup.scalability_data;
             }
             
+            // 🔥 v7.0: Envoyer position au serveur FastAPI
+            try {
+                var positionData = {
+                    symbol: setup.symbol,
+                    direction: setup.direction,
+                    entry: parseFloat(setup.entry),
+                    size: activePosition.size,
+                    atr: setup.atr,
+                    atr5m: setup.atr5m,
+                    confirmed_by: setup.confirmed_by || '',
+                    scalability_data: setup.scalability_data
+                };
+                
+                var response = await fetch(API_BASE_URL + '/api/position/open', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(positionData)
+                });
+                
+                if (response.ok) {
+                    var result = await response.json();
+                    debugLog('✅ Position ouverte (FastAPI)', setup.symbol + ' - ' + setup.direction);
+                } else {
+                    debugLog('⚠️ Erreur ouverture position API', 'Position ouverte localement uniquement');
+                }
+            } catch(error) {
+                debugLog('⚠️ Erreur API position/open', error.message);
+            }
+            
             document.getElementById('positionPanel').style.display = 'block';
             document.getElementById('posSymbol').textContent = setup.symbol;
             document.getElementById('posDirection').textContent = setup.direction;
@@ -1147,7 +1295,43 @@
             try {
                 debugLog('🔄 Check Position', activePosition.symbol + ' - ' + activePosition.direction);
                 
-                // 🔥 NOUVEAU v2.3: Essayer endpoint individuel, sinon fallback sur liste
+                // 🔥 v7.0: Utiliser l'endpoint FastAPI
+                var response = await fetch(API_BASE_URL + '/api/position/check', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    debugLog('⚠️ Erreur check position', 'HTTP ' + response.status);
+                    return;
+                }
+                
+                var result = await response.json();
+                
+                if (result.status === 'no_position') {
+                    debugLog('ℹ️ Aucune position', 'Position déjà fermée');
+                    return;
+                }
+                
+                if (result.status === 'position_active') {
+                    var currentPrice = result.current_price;
+                    var pnl = result.pnl || 0;
+                    
+                    // Mettre à jour l'affichage
+                    activePosition.currentPrice = currentPrice;
+                    activePosition.pnl = pnl;
+                    updatePositionDisplay();
+                    
+                    // Si close_reason existe, fermer la position
+                    if (result.close_reason) {
+                        debugLog('🔔 Fermeture position', result.close_reason);
+                        closePosition(result.close_reason);
+                    }
+                    
+                    return;
+                }
+                
+                // Fallback: ancien code si FastAPI non disponible
                 var response = null;
                 
                 // Tentative 1: Endpoint individuel /ticker/{symbol}
@@ -1551,10 +1735,25 @@
             return parseFloat(slippagePct.toFixed(4));
         }
         
-        function closePosition(reason) {
+        async function closePosition(reason) {
             if (!activePosition) return;
             
             clearInterval(positionCheckInterval);
+            
+            // 🔥 v7.0: Envoyer fermeture au serveur FastAPI
+            try {
+                var response = await fetch(API_BASE_URL + '/api/position/close', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    var result = await response.json();
+                    debugLog('✅ Position fermée (FastAPI)', activePosition.symbol + ' - ' + reason);
+                }
+            } catch(error) {
+                debugLog('⚠️ Erreur API position/close', error.message);
+            }
             
             var duration = Math.floor((Date.now() - positionStartTime) / 1000);
             var mins = Math.floor(duration / 60);
@@ -1994,6 +2193,48 @@
             
             statsEl.innerHTML = '📊 Validées: ' + volumeStats.validated + '/' + volumeStats.total + ' (' + volumeStats.ratio.toFixed(1) + '%)<br>' +
                                '<span style="color: ' + statusColor + '">' + status + '</span>';
+            
+            // 🔥 FIX: Mettre à jour TRADING_CONFIG automatiquement avec le volume_multiplier calculé
+            // Calculer volume_multiplier basé sur le ratio de validation
+            var calculatedMultiplier = volumeStats.total > 0 ? (volumeStats.validated / volumeStats.total) : 1.0;
+            calculatedMultiplier = Math.max(0.1, Math.min(2.0, calculatedMultiplier)); // Clamp 0.1-2.0
+            
+            // Mettre à jour seulement si le compteur a assez de données (au moins 10 échantillons)
+            if (volumeStats.total >= 10) {
+                updateVolumeMultiplierConfig(calculatedMultiplier, true); // true = auto (depuis compteur)
+            }
+        }
+        
+        // 🔥 NOUVEAU: Fonction pour mettre à jour volume_multiplier dans TRADING_CONFIG
+        async function updateVolumeMultiplierConfig(value, isAuto) {
+            try {
+                var response = await fetch(API_BASE_URL + '/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        volume_multiplier: value
+                    })
+                });
+                
+                if (response.ok) {
+                    var data = await response.json();
+                    if (data.status === 'updated') {
+                        if (!isAuto) {
+                            debugLog('✅ Config mise à jour', 'Volume multiplier: ' + value.toFixed(2) + ' (scanner auto activé)');
+                        }
+                    }
+                } else {
+                    if (!isAuto) {
+                        debugLog('⚠️ Erreur config', 'Impossible de mettre à jour volume_multiplier');
+                    }
+                }
+            } catch (error) {
+                if (!isAuto) {
+                    debugLog('⚠️ Erreur config', 'Erreur réseau: ' + error.message);
+                }
+            }
         }
         
         // 🔥 NOUVELLE FONCTION: Fetch optimisé pour checkPosition
@@ -2883,127 +3124,42 @@
             }
         }
 
-        async function getAllScalpingPairsScalability() {
-            if (isScanningScalability) {
-                console.log('⏸️ Scanner scalabilité déjà en cours');
-                return [];
-            }
+        // 🔥 v7.0: FONCTION DÉSACTIVÉE - Utilise maintenant FastAPI (/api/scanner/start)
+        // Cette fonction utilisait les proxies CORS instables, maintenant remplacée par l'API FastAPI
+        async function getAllScalapingPairsScalability() {
+            // 🔥 v7.0: Rediriger vers FastAPI
+            debugLog('⚠️ DEPRECATED', 'getAllScalapingPairsScalability() - Utiliser /api/scanner/start');
             
-            isScanningScalability = true;
-            
+            // Fallback: Utiliser l'API FastAPI
             try {
-                debugLog('📡 Scanner Scalabilité', 'Récupération détails futures...');
-                var data = await fetchWithFallback(MEXC_FUTURES_URL + '/api/v1/contract/detail');
-                var futuresPairs = [];
-                
-                if (data && data.data) {
-                    for (var i = 0; i < data.data.length; i++) {
-                        var f = data.data[i];
-                        var maker = parseFloat(f.makerFeeRate || f.makerFee || 0);
-                        var taker = parseFloat(f.takerFeeRate || f.takerFee || 0);
-                        if (maker === 0 && taker === 0 && f.symbol.endsWith('USDT')) {
-                            futuresPairs.push({symbol: f.symbol, maker: maker, taker: taker});
-                        }
-                    }
-                }
-                
-                debugLog('✅ Scanner Scalabilité', futuresPairs.length + ' paires 0% fees récupérées');
-                
-                var BATCH_SIZE = 5;
-                var startTime = Date.now();
-                
-                for (var i = 0; i < futuresPairs.length; i += BATCH_SIZE) {
-                    var batch = futuresPairs.slice(i, i + BATCH_SIZE);
-                    var progress = (i + 1) + '-' + Math.min(i + BATCH_SIZE, futuresPairs.length);
-                    var batchNumber = Math.ceil((i + 1) / BATCH_SIZE);
-                    var totalBatches = Math.ceil(futuresPairs.length / BATCH_SIZE);
-                    
-                    debugLog('📊 Batch ' + batchNumber + '/' + totalBatches, '(' + progress + '/' + futuresPairs.length + ' paires)');
-                    
-                    var batchResults = await Promise.all(batch.map(async function(p) {
-                        try {
-                            var klineData = await fetchWithFallback(MEXC_FUTURES_URL + '/api/v1/contract/kline/' + p.symbol + '?interval=Min1&limit=60');
-                            var spreadData = await fetchSpreadDataScalability(p.symbol);
-                            var parsed = parseKlinesScalability(klineData);
-                            var vol5 = calculateVolatilityScalability(parsed.volumes, parsed.closes, 5);
-                            var vol15 = calculateVolatilityScalability(parsed.volumes, parsed.closes, 15);
-                            
-                            p.recentVolume = vol5.recentVolume;
-                            p.vol5 = vol5.volatility;
-                            p.vol15 = vol15.volatility;
-                            p.spread = spreadData.spread;
-                            p.bookDepth = spreadData.bookDepth;
-                            p.balanceScore = spreadData.balanceScore;
-                            // Ajouter prix actuel depuis closes
-                            p.price = parsed.closes.length > 0 ? parsed.closes[parsed.closes.length - 1] : 0;
-                            
-                            return p;
-            } catch(e) {
-                            console.log('Erreur batch', p.symbol, e.message);
-                return null;
-            }
-                    }));
-                    
-                    batchResults.forEach(function(res, idx) {
-                        if (res) {
-                            Object.assign(futuresPairs[i + idx], res);
-                        } else {
-                            if (futuresPairs[i + idx]) {
-                                futuresPairs[i + idx].recentVolume = 0;
-                                futuresPairs[i + idx].vol5 = 0;
-                                futuresPairs[i + idx].vol15 = 0;
-                                futuresPairs[i + idx].spread = NaN;
-                                futuresPairs[i + idx].bookDepth = 0;
-                                futuresPairs[i + idx].balanceScore = 0;
-                                futuresPairs[i + idx].price = 0;
-                            }
-                        }
-                    });
-                    
-                    if (i + BATCH_SIZE < futuresPairs.length) {
-                        await new Promise(function(r) { setTimeout(r, 50); });
-                    }
-                }
-                
-                var elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                debugLog('⚡ Traitement terminé', elapsed + 's (batch ' + BATCH_SIZE + ')');
-                
-                // Normalisation
-                var maxVolume = futuresPairs.length > 0 
-                    ? Math.max.apply(null, futuresPairs.map(function(p) { return p.recentVolume || 0; }).filter(function(v) { return v > 0; }), 1) 
-                    : 1;
-                var maxDepth = futuresPairs.length > 0 
-                    ? Math.max.apply(null, futuresPairs.map(function(p) { return p.bookDepth || 0; }).filter(function(v) { return v > 0; }), 1) 
-                    : 1;
-                
-                // Score de scalabilité
-                futuresPairs.forEach(function(p) {
-                    if (p.spread > 0.05 || p.recentVolume < 100000 || (p.balanceScore || 0) < 0.7) {
-                        p.score = 0;
-                    } else {
-                        var volSpreadRatio = (p.spread > 0 && !isNaN(p.spread) && !isNaN(p.vol5)) 
-                            ? (p.vol5 / p.spread) 
-                            : 0;
-                        var normFactor = 0.5 * (p.recentVolume / maxVolume) + 0.5 * (p.bookDepth / maxDepth);
-                        var balanceBonus = p.balanceScore || 1.0;
-                        var rawScore = volSpreadRatio * Math.log10(p.recentVolume + 1) * normFactor * balanceBonus;
-                        p.score = (isFinite(rawScore) && rawScore >= 0) 
-                            ? parseFloat(rawScore.toFixed(2)) 
-                            : 0;
-                    }
+                var response = await fetch(API_BASE_URL + '/api/scanner/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ top_n: 20 })
                 });
                 
-                futuresPairs = futuresPairs.filter(function(p) { return p.score > 0; }).sort(function(a, b) { return b.score - a.score; }).slice(0, 50);
+                if (!response.ok) {
+                    debugLog('❌ Erreur API', 'HTTP ' + response.status);
+                    return [];
+                }
                 
-                debugLog('✅ Scanner Scalabilité', futuresPairs.length + ' paires scalables classées');
-                
-                return futuresPairs;
-                
-            } catch(e) {
-                console.error('Erreur getAllScalpingPairsScalability:', e);
+                // Attendre l'événement SocketIO top_pairs_update
+                return new Promise(function(resolve) {
+                    var timeout = setTimeout(function() {
+                        debugLog('⚠️ Timeout', 'Attente SocketIO timeout');
+                        resolve([]);
+                    }, 60000);
+                    
+                    socket.once('top_pairs_update', function(data) {
+                        clearTimeout(timeout);
+                        var pairs = data.pairs || [];
+                        debugLog('✅ Paires reçues', pairs.length + ' paires via FastAPI');
+                        resolve(pairs);
+                    });
+                });
+            } catch(error) {
+                debugLog('❌ Erreur', error.message);
                 return [];
-            } finally {
-                isScanningScalability = false;
             }
         }
         
@@ -3012,48 +3168,37 @@
             document.getElementById('pairSelection').style.display = 'block';
         }
         
-        // 🔥 NOUVEAU v5.1: Rafraîchir scanner scalabilité toutes les 90s
+        // 🔥 v7.0: Rafraîchir scanner scalabilité via FastAPI (plus de proxies CORS)
         var refreshScalabilityScannerInterval = null;
         function startAutoRefreshScalabilityScanner() {
             if (refreshScalabilityScannerInterval) clearInterval(refreshScalabilityScannerInterval);
             refreshScalabilityScannerInterval = setInterval(async function() {
                 if (tradingState === 'SCANNING' && !isScanningScalability && !activePosition) {
-                    debugLog('🔄 Scanner Scalabilité', 'Rafraîchissement toutes les 90s...');
+                    debugLog('🔄 Scanner Scalabilité', 'Rafraîchissement via FastAPI...');
                     try {
-                        allPairs = await getAllScalpingPairsScalability();
+                        // 🔥 v7.0: Utiliser l'API FastAPI au lieu des proxies CORS
+                        var response = await fetch(API_BASE_URL + '/api/scanner/start', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ top_n: 20 })
+                        });
                         
-                        if (!allPairs || allPairs.length === 0) {
-                            debugLog('⚠️ Scanner', 'Aucune paire trouvée');
+                        if (!response.ok) {
+                            debugLog('⚠️ Scanner Scalabilité', 'Erreur API: ' + response.status);
                             return;
                         }
                         
-                        // Ajouter ticker pour compatibilité
-                        for (var i = 0; i < allPairs.length; i++) {
-                            var p = allPairs[i];
-                            var estimatedVol24h = p.recentVolume * 24;
-                            p.ticker = {
-                                symbol: p.symbol,
-                                lastPrice: p.price || 0,
-                                volume24: estimatedVol24h
-                            };
-                            
-                            // 🔥 NOUVEAU v6.3: Ajouter flag pour indiquer que scalability_data est disponible
-                            p.scalability_data = true;
-                        }
+                        // Attendre l'événement SocketIO top_pairs_update (déjà géré par initSocketIO)
+                        debugLog('⏳ Scanner Scalabilité', 'Attente mise à jour via SocketIO...');
                         
-                        // Mettre à jour multiPairList
-                        multiPairList = allPairs;
-                        
-                        // Rafraîchir affichage Top 20
-                        displayTop20ScalablePairs();
-                        
-                        debugLog('✅ Scanner Scalabilité', allPairs.length + ' paires rafraîchies');
+                        // Le refresh est maintenant géré automatiquement par le serveur (90s)
+                        // Les pairs seront mises à jour via l'événement SocketIO 'top_pairs_update'
                         
                     } catch(error) {
                         debugLog('❌ Scanner Scalabilité', 'Erreur: ' + error.message);
                     }
                 }
-            }, 90000); // 🔥 NOUVEAU v5.1: Toutes les 90s
+            }, 90000); // 🔥 Toutes les 90s (synchronisé avec serveur)
         }
         
         // 🔥 Affichage Top 20 Paires Scalables
@@ -3091,11 +3236,11 @@
         }
         
         // 🔥 NOUVEAU: Logique de scan d'une paire (extraite)
+        // 🔥 JOUR 4: Utilise maintenant l'endpoint FastAPI /api/analyze/<symbol>
         async function scanPairLogic(pair) {
-            var ticker = pair.ticker;
+            var symbol = pair.symbol;
             
             // 🔥 NOUVEAU v4.2: Vérifier protection anti-pertes consécutives
-            var symbol = pair.symbol;
             if (pairLosses[symbol] && pairLosses[symbol].consecutiveLosses >= 2) {
                 var timeSinceLastLoss = Date.now() - pairLosses[symbol].lastLossTime;
                 var minutesToWait = 15 - Math.floor(timeSinceLastLoss / 60000);
@@ -3108,73 +3253,135 @@
                 pairLosses[symbol].consecutiveLosses = 0;
             }
             
-            // Analyse tendance
-            var trendData = await getTrendData(pair.symbol, trendTimeframe);
+            try {
+                // 🔥 JOUR 4: Utiliser l'endpoint FastAPI pour l'analyse
+                var useConfluenceParam = useConfluence ? 'true' : 'false';
+                var volumeMultiplier = volumeStats.total > 0 ? (volumeStats.validated / volumeStats.total) : 1.0;
+                volumeMultiplier = Math.max(0.1, Math.min(2.0, volumeMultiplier)); // Clamp 0.1-2.0
                 
-                if (trendData) {
-                    debugLog('✓ Trend ' + trendTimeframe, trendData.trend + ' (' + trendData.strength + ') → Bonus: ' + (trendData.bonus > 0 ? '+' : '') + trendData.bonus);
-                } else {
-                    debugLog('✗ Trend ' + trendTimeframe, 'Données insuffisantes');
+                var analyzeUrl = API_BASE_URL + '/api/analyze/' + symbol + 
+                    '?use_confluence=' + useConfluenceParam + 
+                    '&volume_multiplier=' + volumeMultiplier.toFixed(2);
+                
+                debugLog('📡 Analyse FastAPI', symbol + ' (confluence: ' + useConfluenceParam + ')');
+                
+                var response = await fetch(analyzeUrl);
+                
+                if (!response.ok) {
+                    debugLog('⚠️ Erreur analyse API', symbol + ' - HTTP ' + response.status);
+                    // Fallback sur ancienne méthode
+                    return await scanPairLogicFallback(pair);
                 }
                 
-            // Analyse 1m
-            var analysis1m = await analyzeSymbol(pair.symbol, ticker, '1m', trendData);
+                var result = await response.json();
                 
+                // Afficher source du prix
+                if (result.price_source) {
+                    debugLog('📊 Prix source', symbol + ' - ' + result.price_source);
+                }
+                
+                // Extraire les analyses
+                var analysis1m = result['1m'] || null;
+                var analysis5m = result['5m'] || null;
+                var best = result.best || null;
+                
+                // Logs pour debug
                 if (analysis1m) {
-                    debugLog('✓ 1m VALIDE', analysis1m.direction + ' - ' + analysis1m.signals.length + '/6 conditions');
-                    debugLog('  📊 Détails 1m', 'RSI:' + analysis1m.rsi + ' | Vol:' + analysis1m.volumeSpike + 'x');
-                    debugLog('  🎯 Niveaux 1m', 'Entry:' + analysis1m.entry + ' | TP:' + analysis1m.tp + ' | SL:' + analysis1m.sl);
-                    if (analysis1m.signals && analysis1m.signals.length > 0) {
-                        debugLog('  💡 Signaux 1m', analysis1m.signals.join(', '));
-                    }
+                    debugLog('✓ 1m VALIDE', analysis1m.direction + ' - ' + (analysis1m.signals ? analysis1m.signals.length : 0) + ' conditions');
                 } else {
                     debugLog('✗ 1m REJETÉ', 'Conditions insuffisantes');
                 }
                 
-            // Analyse 5m
-            var analysis5m = await analyzeSymbol(pair.symbol, ticker, '5m', trendData);
-                
                 if (analysis5m) {
-                    debugLog('✓ 5m VALIDE', analysis5m.direction + ' - ' + analysis5m.signals.length + '/6 conditions');
-                    debugLog('  📊 Détails 5m', 'RSI:' + analysis5m.rsi + ' | Vol:' + analysis5m.volumeSpike + 'x');
-                    debugLog('  🎯 Niveaux 5m', 'Entry:' + analysis5m.entry + ' | TP:' + analysis5m.tp + ' | SL:' + analysis5m.sl);
-                    if (analysis5m.signals && analysis5m.signals.length > 0) {
-                        debugLog('  💡 Signaux 5m', analysis5m.signals.join(', '));
-                    }
+                    debugLog('✓ 5m VALIDE', analysis5m.direction + ' - ' + (analysis5m.signals ? analysis5m.signals.length : 0) + ' conditions');
                 } else {
                     debugLog('✗ 5m REJETÉ', 'Conditions insuffisantes');
                 }
                 
-            // 🔥 NOUVEAU v4.3.1 Phase 2: Confluence optionnelle
-            // 🔥 v6.5.2: Fix bug confluence - vérifier useConfluence d'abord
+                // Si best trouvé, l'utiliser
+                if (best) {
+                    // Ajouter scalability_data pour slippage
+                    if (pair.scalability_data) {
+                        best.scalability_data = {
+                            spread: pair.spread,
+                            bookDepth: pair.bookDepth,
+                            balanceScore: pair.balanceScore,
+                            bidVol: pair.bidVol,
+                            askVol: pair.askVol
+                        };
+                    }
+                    
+                    debugLog('✅ Setup trouvé', symbol + ' - ' + best.direction + ' (' + best.confirmedBy + ')');
+                    return best;
+                }
+                
+                return null;
+                
+            } catch(error) {
+                debugLog('⚠️ Erreur analyse FastAPI', symbol + ': ' + error.message);
+                // Fallback sur ancienne méthode
+                return await scanPairLogicFallback(pair);
+            }
+        }
+        
+        // 🔥 JOUR 4: Fallback vers ancienne méthode si FastAPI échoue
+        async function scanPairLogicFallback(pair) {
+            var ticker = pair.ticker;
+            var symbol = pair.symbol;
+            
+            debugLog('🔄 Fallback', symbol + ' - Utilisation méthode locale');
+            
+            // Analyse tendance
+            var trendData = await getTrendData(pair.symbol, trendTimeframe);
+            
+            if (trendData) {
+                debugLog('✓ Trend ' + trendTimeframe, trendData.trend + ' (' + trendData.strength + ') → Bonus: ' + (trendData.bonus > 0 ? '+' : '') + trendData.bonus);
+            } else {
+                debugLog('✗ Trend ' + trendTimeframe, 'Données insuffisantes');
+            }
+            
+            // Analyse 1m
+            var analysis1m = await analyzeSymbol(pair.symbol, ticker, '1m', trendData);
+            
+            if (analysis1m) {
+                debugLog('✓ 1m VALIDE', analysis1m.direction + ' - ' + analysis1m.signals.length + '/6 conditions');
+            } else {
+                debugLog('✗ 1m REJETÉ', 'Conditions insuffisantes');
+            }
+            
+            // Analyse 5m
+            var analysis5m = await analyzeSymbol(pair.symbol, ticker, '5m', trendData);
+            
+            if (analysis5m) {
+                debugLog('✓ 5m VALIDE', analysis5m.direction + ' - ' + analysis5m.signals.length + '/6 conditions');
+            } else {
+                debugLog('✗ 5m REJETÉ', 'Conditions insuffisantes');
+            }
+            
+            // Logique confluence (identique à avant)
             if (useConfluence) {
-                // MODE CONFLUENCE STRICTE (1m ET 5m OBLIGATOIRES)
                 if (!analysis1m || !analysis5m) {
-                    debugLog('❌ Confluence', symbol + ' - 1m ET 5m requis (1 seul valide: 1m=' + (analysis1m ? 'OK' : 'NULL') + ', 5m=' + (analysis5m ? 'OK' : 'NULL') + ')');
+                    debugLog('❌ Confluence', symbol + ' - 1m ET 5m requis');
                     return null;
                 }
                 
-                // Vérifier directions identiques
                 if (analysis1m.direction !== analysis5m.direction) {
-                    debugLog('❌ Confluence', symbol + ' - Directions opposées (1m: ' + analysis1m.direction + ', 5m: ' + analysis5m.direction + ')');
+                    debugLog('❌ Confluence', symbol + ' - Directions opposées');
                     return null;
                 }
                 
-                // Vérifier force 5m ≥ 80% 1m
                 var strength1m = analysis1m.signals ? analysis1m.signals.length : 0;
                 var strength5m = analysis5m.signals ? analysis5m.signals.length : 0;
                 
                 if (strength5m < strength1m * 0.8) {
-                    debugLog('⚠️ Confluence', symbol + ' - 5m trop faible (1m: ' + strength1m + ', 5m: ' + strength5m + ')');
+                    debugLog('⚠️ Confluence', symbol + ' - 5m trop faible');
                     return null;
                 }
                 
-                // Les deux valides et alignés → retourner le meilleur
                 var best = strength1m >= strength5m ? analysis1m : analysis5m;
                 best.confirmedBy = '1m + 5m confluence';
-                best.atr5m = analysis5m.atr; // Ajouter ATR 5m pour multi-TF
+                best.atr5m = analysis5m.atr;
                 
-                // 🔥 NOUVEAU v6.3: Ajouter scalability_data pour slippage
                 if (pair.scalability_data) {
                     best.scalability_data = {
                         spread: pair.spread,
@@ -3187,7 +3394,6 @@
                 
                 return best;
             } else {
-                // 🔥 NOUVEAU v5.2 Phase 2: MODE PERMISSIF (1m OU 5m suffit)
                 var strength1m = analysis1m ? (analysis1m.signals ? analysis1m.signals.length : 0) : 0;
                 var strength5m = analysis5m ? (analysis5m.signals ? analysis5m.signals.length : 0) : 0;
                 
@@ -3198,7 +3404,6 @@
                         best.atr5m = analysis5m.atr;
                     }
                     
-                    // 🔥 NOUVEAU v6.3: Ajouter scalability_data pour slippage
                     if (pair.scalability_data) {
                         best.scalability_data = {
                             spread: pair.spread,
@@ -3364,35 +3569,71 @@
             return true;
         }
         
-        function startScanning() {
-            // Mode parallèle: scanner toutes les paires allPairs
-                if (!selectMultiPairs()) return;
+        async function startScanning() {
+            // 🔥 v7.0: Utiliser l'API FastAPI
+            initSocketIO(); // Initialiser SocketIO si pas déjà fait
             
-            isScanning = true;
-            tradingState = 'SCANNING';
-            updateStateDisplay();
-            
-            document.getElementById('stopBtn').style.display = 'inline-block';
-            document.querySelector('.btn-primary').style.display = 'none';
-            
-            scan();
-            scanInterval = setInterval(scan, 45000); // 🔥 NOUVEAU v5.1: Rafraîchir toutes les 45s
-            
-            countdownValue = 45;
-            countdownInterval = setInterval(function() {
-                if (tradingState === 'SCANNING') {
-                    countdownValue--;
-                    if (countdownValue < 0) countdownValue = 45;
-                    document.getElementById('countdown').textContent = countdownValue;
-                } else {
-                    document.getElementById('countdown').textContent = '--';
+            try {
+                var response = await fetch(API_BASE_URL + '/api/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    var error = await response.json();
+                    throw new Error(error.error || 'Erreur démarrage');
                 }
-            }, 1000);
-            
-            showSuccess('Scanner démarré en mode parallèle');
+                
+                var result = await response.json();
+                
+                // Mode parallèle: scanner toutes les paires allPairs
+                if (!selectMultiPairs()) return;
+                
+                isScanning = true;
+                tradingState = 'SCANNING';
+                updateStateDisplay();
+                
+                document.getElementById('stopBtn').style.display = 'inline-block';
+                document.querySelector('.btn-primary').style.display = 'none';
+                
+                // Le scanner tourne maintenant côté serveur via scheduler
+                // On garde le countdown pour l'UI
+                countdownValue = 45;
+                countdownInterval = setInterval(function() {
+                    if (tradingState === 'SCANNING') {
+                        countdownValue--;
+                        if (countdownValue < 0) countdownValue = 45;
+                        document.getElementById('countdown').textContent = countdownValue;
+                    } else {
+                        document.getElementById('countdown').textContent = '--';
+                    }
+                }, 1000);
+                
+                showSuccess('Scanner démarré (mode FastAPI)');
+                debugLog('✅ Scanner démarré', 'Boucles automatiques activées côté serveur');
+                
+            } catch(error) {
+                debugLog('❌ Erreur démarrage', error.message);
+                showError('Erreur démarrage: ' + error.message);
+            }
         }
         
-        function stopScanning() {
+        async function stopScanning() {
+            // 🔥 v7.0: Utiliser l'API FastAPI
+            try {
+                var response = await fetch(API_BASE_URL + '/api/stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    var error = await response.json();
+                    throw new Error(error.error || 'Erreur arrêt');
+                }
+            } catch(error) {
+                debugLog('⚠️ Erreur arrêt API', error.message);
+            }
+            
             isScanning = false;
             tradingState = 'PAUSED';
             updateStateDisplay();
@@ -3410,6 +3651,7 @@
             if (activePosition) closePosition('MANUAL');
             
             showInfo('Scanner arrêté');
+            debugLog('🛑 Scanner arrêté', 'Boucles automatiques désactivées');
         }
         
         async function initScanner() {
@@ -3420,9 +3662,11 @@
             }
             
             document.getElementById('loading').style.display = 'block';
-            document.getElementById('loadingText').textContent = 'Connexion à MEXC...';
+            document.getElementById('loadingText').textContent = 'Connexion à FastAPI...';
             
-            debugLog('🚀 INIT', 'Démarrage du scanner scalabilité');
+            initSocketIO(); // Initialiser SocketIO
+            
+            debugLog('🚀 INIT', 'Démarrage du scanner scalabilité (FastAPI)');
             debugLog('⚙️ Config', 'Mode: ' + (MOCK_MODE ? 'TEST' : 'LIVE'));
             
             // 🔥 NOUVEAU v3.7: Reset volume stats
@@ -3433,12 +3677,100 @@
             }
             
             try {
-                // 🔥 NOUVEAU: Scanner scalabilité intégré
-                debugLog('📡 Scanner Scalabilité', 'Récupération paires 0% fees...');
+                // 🔥 v7.0: Utiliser l'endpoint FastAPI pour scanner
+                debugLog('📡 Scanner Scalabilité', 'Récupération paires via FastAPI...');
                 document.getElementById('loadingText').textContent = 'Scanner scalabilité...';
                 
-                allPairs = await getAllScalpingPairsScalability();
+                var response = await fetch(API_BASE_URL + '/api/scanner/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ top_n: 20 })
+                });
                 
+                if (!response.ok) {
+                    var error = await response.json();
+                    throw new Error(error.error || 'Erreur scanner');
+                }
+                
+                // 🔥 v7.0: Attendre l'événement SocketIO 'top_pairs_update' au lieu d'un timeout fixe
+                // Le scan peut prendre 30-60 secondes, on attend le signal du serveur
+                debugLog('⏳ Attente', 'Scan en cours... (attente événement SocketIO)');
+                document.getElementById('loadingText').textContent = 'Scan en cours... (attente ~50s)';
+                
+                // Variable pour signaler que le scan est terminé
+                var scanCompleted = false;
+                var scanResolve = null;
+                
+                // Créer une promesse qui se résout quand top_pairs_update est reçu
+                var scanPromise = new Promise(function(resolve) {
+                    scanResolve = resolve;
+                    
+                    // Listener temporaire pour top_pairs_update
+                    var tempHandler = function(data) {
+                        if (data.pairs && Array.isArray(data.pairs) && data.pairs.length > 0) {
+                            scanCompleted = true;
+                            clearTimeout(scanTimeout);
+                            socket.off('top_pairs_update', tempHandler);
+                            resolve();
+                        }
+                    };
+                    
+                    socket.on('top_pairs_update', tempHandler);
+                    
+                    // Timeout de secours après 60 secondes
+                    var scanTimeout = setTimeout(function() {
+                        if (!scanCompleted) {
+                            debugLog('⚠️ Timeout', 'Scan prend trop de temps, récupération des pairs disponibles');
+                            socket.off('top_pairs_update', tempHandler);
+                            resolve();
+                        }
+                    }, 60000);
+                });
+                
+                // Attendre que le scan soit terminé
+                await scanPromise;
+                
+                // Fonction pour récupérer les pairs
+                function fetchTopPairs() {
+                    return fetch(API_BASE_URL + '/api/scanner/top-pairs')
+                        .then(function(pairsResponse) {
+                            if (pairsResponse.ok) {
+                                return pairsResponse.json();
+                            }
+                            throw new Error('Erreur récupération pairs');
+                        })
+                        .then(function(pairsData) {
+                            if (pairsData.pairs && pairsData.pairs.length > 0) {
+                                return pairsData.pairs;
+                            }
+                            return null;
+                        });
+                }
+                
+                // Si les pairs ne sont pas déjà reçues via SocketIO, les récupérer
+                if (!allPairs || allPairs.length === 0) {
+                    var pairsData = await fetchTopPairs();
+                    if (pairsData) {
+                        allPairs = pairsData;
+                    }
+                }
+                
+                // 🔥 v7.0: Fallback vers API REST directe (plus de proxies CORS)
+                if (!allPairs || allPairs.length === 0) {
+                    debugLog('⚠️ Fallback', 'Utilisation API REST directe...');
+                    try {
+                        var response = await fetch(API_BASE_URL + '/api/scanner/top-pairs');
+                        if (response.ok) {
+                            var data = await response.json();
+                            allPairs = data.pairs || [];
+                            debugLog('✅ Paires récupérées', allPairs.length + ' paires via REST');
+                        }
+                    } catch(error) {
+                        debugLog('❌ Erreur fallback', error.message);
+                    }
+                }
+                
+                // Traiter les pairs maintenant qu'on les a
                 if (!allPairs || allPairs.length === 0) {
                     throw new Error('Aucune paire scalable trouvée');
                 }
@@ -3447,7 +3779,7 @@
                 for (var i = 0; i < allPairs.length; i++) {
                     var p = allPairs[i];
                     // Estimer volume24h depuis recentVolume (approximation 1h)
-                    var estimatedVol24h = p.recentVolume * 24;
+                    var estimatedVol24h = (p.recentVolume || 0) * 24;
                     p.ticker = {
                         symbol: p.symbol,
                         lastPrice: p.price || 0,
@@ -3465,15 +3797,39 @@
                 startAutoRefreshScalabilityScanner();
                 
                 debugLog('✅ Scanner Scalabilité', allPairs.length + ' paires scalables trouvées');
-                debugLog('🏆 Meilleure paire', allPairs[0].symbol + ' - Score: ' + allPairs[0].score.toFixed(2));
-                debugLog('📋 Top 5', allPairs.slice(0, 5).map(function(p, i) { return (i+1) + '. ' + p.symbol + ' (' + p.score.toFixed(2) + ')'; }).join(' | '));
+                debugLog('🏆 Meilleure paire', allPairs[0].symbol + ' - Score: ' + (allPairs[0].score || 0).toFixed(2));
+                debugLog('📋 Top 5', allPairs.slice(0, 5).map(function(p, i) { return (i+1) + '. ' + p.symbol + ' (' + (p.score || 0).toFixed(2) + ')'; }).join(' | '));
                 
                 debugLog('✅ SUCCÈS', 'Scanner prêt! ' + allPairs.length + ' paires scalables');
                 showSuccess('Scanner prêt! ' + allPairs.length + ' paires scalables trouvées');
                 
+                document.getElementById('loading').style.display = 'none';
+                
                 if (btn) {
                     btn.style.display = 'none';
                 }
+                
+                // Écouter l'événement SocketIO pour les pairs mises à jour
+                var pairsUpdateHandler = function(data) {
+                    if (data.pairs && data.pairs.length > 0) {
+                        debugLog('✅ Scan terminé', 'Pairs reçues via SocketIO');
+                        fetchTopPairs();
+                        // Ne plus écouter après la première réception
+                        socket.off('top_pairs_update', pairsUpdateHandler);
+                    }
+                };
+                
+                // S'abonner à l'événement
+                socket.on('top_pairs_update', pairsUpdateHandler);
+                
+                // Fallback: essayer de récupérer après 5 secondes (au cas où SocketIO ne fonctionne pas)
+                setTimeout(function() {
+                    if (!allPairs || allPairs.length === 0) {
+                        fetchTopPairs();
+                    }
+                }, 5000);
+                
+                // Ne plus vérifier immédiatement - on attend l'événement SocketIO ou le timeout
                 
             } catch(error) {
                 debugLog('❌ ERREUR FATALE', error.message);
@@ -3484,9 +3840,10 @@
                     btn.disabled = false;
                     btn.textContent = '🔍 RÉESSAYER';
                 }
-            } finally {
+                
                 document.getElementById('loading').style.display = 'none';
             }
+            // Note: Le loading est masqué par processPairs() quand les pairs sont reçues
         }
         
         // Tous les boutons obsolètes ont été supprimés
@@ -3494,6 +3851,9 @@
         // 🔥 NOUVEAU v5.2: Ne plus restaurer d'état au chargement (reset à chaque fois)
         window.addEventListener('load', function() {
             debugLog('🚀 APP LOADED', 'Scanner prêt à démarrer');
+            
+            // 🔥 v7.0: Initialiser SocketIO au chargement
+            initSocketIO();
             
             // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre
             localStorage.removeItem('mexcScannerState');

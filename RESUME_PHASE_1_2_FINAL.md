@@ -171,3 +171,5 @@ Si winrate **diminue** ou trop peu de trades:
 **Status**: ✅ Implémenté et testé syntaxiquement  
 **Tests réels**: ⏳ À faire par utilisateur
 
+
+

@@ -631,3 +631,5 @@ Les filtres critiques sont ajustables via sliders pour s’adapter au marché.
 **Auteur**: Trade Cursor Bot  
 **Complexité**: ⭐⭐⭐⭐⭐ (Système robuste)
 
+
+

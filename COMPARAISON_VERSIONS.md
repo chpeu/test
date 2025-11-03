@@ -354,3 +354,5 @@ def test_indicators():
 
 **L'interface reste exactement la même, mais le moteur sous le capot est largement amélioré!** 🚀
 
+
+

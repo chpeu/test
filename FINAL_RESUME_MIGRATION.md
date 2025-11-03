@@ -236,3 +236,5 @@ Le backend Python servira cette interface de manière identique.
 
 **Tu veux que je finalise l'intégration complète ou tu préfères garder les deux versions (HTML + Python) en parallèle?**
 
+
+

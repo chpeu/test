@@ -170,3 +170,5 @@ Le bot peut maintenant recevoir des prix en temps réel via WebSocket MEXC avec 
 
 **Trade Cursor v6.6.1 Phase 2A** est **production-ready**! 🚀
 
+
+

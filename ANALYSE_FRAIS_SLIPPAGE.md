@@ -473,3 +473,5 @@ Inconvénients: Complexe, peut être trop conservateur
 **Version**: v6.2  
 **Document**: Analyse frais/slippage
 
+
+

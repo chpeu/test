@@ -466,3 +466,5 @@ class PositionConfig:
 **Status**: ✅ **DOCUMENTATION COMPLÈTE**  
 **Git**: `bb9ed70` (v6.4.3)
 
+
+

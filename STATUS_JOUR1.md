@@ -160,3 +160,5 @@ async def api_get_price(symbol):
 
 **Prêt pour Jour 2** ✅
 
+
+

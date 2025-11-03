@@ -57,3 +57,5 @@ git reset --hard HEAD~1  # Retour en arrière
 
 **Tu veux que j'implémente ces solutions maintenant?**
 
+
+

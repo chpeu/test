@@ -209,3 +209,5 @@ SHORT: ENGULFING_BEARISH, SHOOTING_STAR, DOJI_GRAVESTONE, MARUBOZU_BEARISH, EVEN
 **Version**: v6.2  
 **Status**: ✅ Implémenté et testé syntaxiquement
 
+
+

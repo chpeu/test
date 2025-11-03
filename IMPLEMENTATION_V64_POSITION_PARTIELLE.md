@@ -237,3 +237,5 @@ Slippage = Entry + Exit Partiel + Exit Final
 **Status**: ✅ **IMPLEMENTED**  
 **Next**: Tests en conditions réelles
 
+
+

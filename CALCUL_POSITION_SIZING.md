@@ -111,3 +111,5 @@ Total: 0.03 + 0.06 = 0.09 USDT
 
 **Status**: ⚠️ **BUG IDENTIFIÉ - À CORRIGER**
 
+
+

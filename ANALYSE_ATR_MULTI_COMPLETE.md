@@ -406,3 +406,5 @@ var atrTrailingActive = false;       // Flag trailing
 **Complexité**: **⭐ Moyenne**  
 **Prochaine étape**: Validation utilisateur avant implémentation
 
+
+

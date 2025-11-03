@@ -231,3 +231,5 @@ Tous les filtres loguent en mode `DEBUG_ENABLED=True`:
 **Version**: v6.1  
 **Status**: ✅ Implémenté et commité
 
+
+

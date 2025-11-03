@@ -204,3 +204,5 @@ if (snr < snrThreshold) {  // Utilise variable slider
 **Version**: v6.1  
 **Status**: ✅ UI implémentée, 🔄 Liaison backend pendante
 
+
+

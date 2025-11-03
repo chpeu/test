@@ -286,3 +286,5 @@ async def get_latest_price(symbol):
 
 **Recommandation**: **À IMPLÉMENTER** pour maximiser les profits 🚀
 
+
+

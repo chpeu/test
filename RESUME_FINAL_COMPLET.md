@@ -345,3 +345,5 @@ python test_price_provider.py
 
 **Trade Cursor v6.6.1** est **prêt pour tests** 🚀
 
+
+

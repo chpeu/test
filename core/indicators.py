@@ -232,20 +232,33 @@ class Indicators:
         return {'adx': dx, 'diPlus': di_plus, 'diMinus': di_minus}
     
     @staticmethod
-    def detect_pattern(candle: Dict) -> str:
+    def detect_pattern(candle) -> str:
         """
         Détecte les patterns chandeliers
         
         Args:
-            candle: Dict avec open, high, low, close
+            candle: Liste OHLCV [timestamp, open, high, low, close, volume] OU Dict avec open, high, low, close
             
         Returns:
             Nom du pattern (ENGULFING_BULLISH, HAMMER, etc.)
         """
-        open_price = candle.get('open', candle.get('o', 0))
-        high = candle.get('high', candle.get('h', 0))
-        low = candle.get('low', candle.get('l', 0))
-        close = candle.get('close', candle.get('c', 0))
+        # 🔥 FIX: Accepter liste OHLCV (format ccxt) ou dict
+        if isinstance(candle, list):
+            # Format OHLCV: [timestamp, open, high, low, close, volume]
+            if len(candle) < 5:
+                return 'NONE'
+            open_price = float(candle[1])  # open
+            high = float(candle[2])  # high
+            low = float(candle[3])  # low
+            close = float(candle[4])  # close
+        elif isinstance(candle, dict):
+            # Format dict: {'open': ..., 'high': ..., etc.}
+            open_price = candle.get('open', candle.get('o', 0))
+            high = candle.get('high', candle.get('h', 0))
+            low = candle.get('low', candle.get('l', 0))
+            close = candle.get('close', candle.get('c', 0))
+        else:
+            return 'NONE'
         
         body = abs(close - open_price)
         upper_shadow = high - max(open_price, close)
@@ -274,12 +287,13 @@ class Indicators:
         return 'NONE'
     
     @staticmethod
-    def detect_pattern_multi(candles: List[Dict], prev_candles: List[Dict] = None) -> str:
+    def detect_pattern_multi(candles, prev_candles = None) -> str:
         """
         Détecte les patterns multi-bougies (Doji, Marubozu, Morning/Evening Star)
         
         Args:
             candles: Liste des dernières bougies [current, prev, prev-1, ...]
+                   Format: Liste de listes OHLCV [[timestamp, o, h, l, c, v], ...] OU Liste de dicts
             prev_candles: Bougies précédentes (optionnel)
             
         Returns:
@@ -291,10 +305,46 @@ class Indicators:
         current = candles[-1]
         prev = candles[-2] if len(candles) >= 2 else None
         
-        open_price = current.get('open', current.get('o', 0))
-        high = current.get('high', current.get('h', 0))
-        low = current.get('low', current.get('l', 0))
-        close = current.get('close', current.get('c', 0))
+        # 🔥 FIX: Accepter liste OHLCV (format ccxt) ou dict
+        if isinstance(current, list):
+            # Format OHLCV: [timestamp, open, high, low, close, volume]
+            if len(current) < 5:
+                return 'NONE'
+            open_price = float(current[1])  # open
+            high = float(current[2])  # high
+            low = float(current[3])  # low
+            close = float(current[4])  # close
+        elif isinstance(current, dict):
+            # Format dict: {'open': ..., 'high': ..., etc.}
+            open_price = current.get('open', current.get('o', 0))
+            high = current.get('high', current.get('h', 0))
+            low = current.get('low', current.get('l', 0))
+            close = current.get('close', current.get('c', 0))
+        else:
+            return 'NONE'
+        
+        # 🔥 FIX: Extraire valeurs de prev aussi si c'est une liste
+        prev_open = 0
+        prev_close = 0
+        prev_high = 0
+        prev_low = 0
+        
+        if prev:
+            if isinstance(prev, list):
+                if len(prev) >= 5:
+                    prev_open = float(prev[1])
+                    prev_high = float(prev[2])
+                    prev_low = float(prev[3])
+                    prev_close = float(prev[4])
+                else:
+                    return 'NONE'
+            elif isinstance(prev, dict):
+                prev_open = prev.get('open', prev.get('o', 0))
+                prev_high = prev.get('high', prev.get('h', 0))
+                prev_low = prev.get('low', prev.get('l', 0))
+                prev_close = prev.get('close', prev.get('c', 0))
+            else:
+                return 'NONE'
         
         body = abs(close - open_price)
         upper_shadow = high - max(open_price, close)
@@ -325,21 +375,29 @@ class Indicators:
         # 3. MORNING/EVENING STAR (3 bougies)
         if len(candles) >= 3:
             prev2 = candles[-3]
-            prev_open = prev.get('open', prev.get('o', 0))
-            prev_close = prev.get('close', prev.get('c', 0))
-            prev2_close = prev2.get('close', prev2.get('c', 0))
+            # 🔥 FIX: Extraire prev2 aussi (liste ou dict)
+            if isinstance(prev2, list):
+                if len(prev2) < 5:
+                    return 'NONE'
+                prev2_open = float(prev2[1])
+                prev2_close = float(prev2[4])
+            elif isinstance(prev2, dict):
+                prev2_open = prev2.get('open', prev2.get('o', 0))
+                prev2_close = prev2.get('close', prev2.get('c', 0))
+            else:
+                return 'NONE'
             
             # Morning Star (reversal haussier)
             # Bougie 1: rouge, Bougie 2: petite (doji), Bougie 3: verte forte
-            if (prev2_close < prev2.get('open', prev2.get('o', 0)) and  # Rouge
-                abs(prev_close - prev_open) < prev.get('high', prev.get('h', 0)) - prev.get('low', prev.get('l', 0)) * 0.3 and  # Petite
+            if (prev2_close < prev2_open and  # Rouge
+                abs(prev_close - prev_open) < (prev_high - prev_low) * 0.3 and  # Petite
                 close > open_price):  # Verte
                 return 'MORNING_STAR'
             
             # Evening Star (reversal baissier)
             # Bougie 1: verte, Bougie 2: petite (doji), Bougie 3: rouge forte
-            if (prev2_close > prev2.get('open', prev2.get('o', 0)) and  # Verte
-                abs(prev_close - prev_open) < prev.get('high', prev.get('h', 0)) - prev.get('low', prev.get('l', 0)) * 0.3 and  # Petite
+            if (prev2_close > prev2_open and  # Verte
+                abs(prev_close - prev_open) < (prev_high - prev_low) * 0.3 and  # Petite
                 close < open_price):  # Rouge
                 return 'EVENING_STAR'
         

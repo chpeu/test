@@ -420,3 +420,5 @@ class HybridPriceProvider:
 
 **ROI**: Exceptionnel (**×46 latence, ÷5 slippage**)
 
+
+

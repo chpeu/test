@@ -296,3 +296,5 @@ python main.py  # Lance le bot complet
 
 **Prêt à continuer jour 3 quand tu le veux!** 🚀
 
+
+

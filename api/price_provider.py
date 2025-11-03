@@ -43,6 +43,8 @@ class HybridPriceProvider:
         Format attendu:
         - {"channel": "push.ticker", "symbol": "...", "data": {...}}
         - {"channel": "pong"}
+        
+        Note: Callback synchrone, utilise asyncio.create_task() pour les opérations async
         """
         # Heartbeat response
         if data.get("channel") == "pong":
@@ -52,17 +54,27 @@ class HybridPriceProvider:
         
         # Ticker update
         if data.get("channel") == "push.ticker":
-            symbol = data.get("symbol")
+            mexc_symbol = data.get("symbol")  # Format MEXC: "WLD_USDT"
             ticker_data = data.get("data", {})
             
-            if symbol and ticker_data:
+            if mexc_symbol and ticker_data:
+                # 🔥 FIX: Convertir format MEXC vers format ccxt pour cohérence
+                # "WLD_USDT" -> "WLD/USDT:USDT"
+                ccxt_symbol = mexc_symbol
+                if '_' in mexc_symbol:
+                    parts = mexc_symbol.split('_')
+                    if len(parts) == 2:
+                        base = parts[0]
+                        quote = parts[1]
+                        ccxt_symbol = f"{base}/{quote}:{quote}"  # Format ccxt standard
+                
                 # Extraire prix
                 price = float(ticker_data.get("lastPrice", 0))
                 volume24 = float(ticker_data.get("volume24", 0))
                 
-                # Mettre en cache
+                # Mettre en cache avec format ccxt
                 ticker_info = {
-                    "symbol": symbol,
+                    "symbol": ccxt_symbol,  # Format ccxt pour cohérence
                     "lastPrice": price,
                     "volume24": volume24,
                     "high24": float(ticker_data.get("high24", 0)),
@@ -70,11 +82,15 @@ class HybridPriceProvider:
                     "timestamp": time.time()
                 }
                 
-                # Thread-safe update
-                asyncio.create_task(self._update_cache(symbol, ticker_info))
+                # 🔥 FIX: Mise à jour directe du cache (thread-safe)
+                # Le cache dict est thread-safe pour les opérations simples en Python
+                # On évite le lock async car on est dans un callback synchrone
+                self.price_cache[ccxt_symbol] = ticker_info
+                if len(self.message_buffer) < self.message_buffer.maxlen:
+                    self.message_buffer.append(ticker_info)
                 
                 if DEBUG_ENABLED:
-                    logger.debug(f"📊 Prix MEXC WS: {symbol} = {price}")
+                    logger.debug(f"📊 Prix MEXC WS: {mexc_symbol} -> {ccxt_symbol} = {price}")
     
     async def _update_cache(self, symbol: str, data: dict):
         """Mise à jour thread-safe du cache"""
@@ -110,10 +126,28 @@ class HybridPriceProvider:
             
             logger.info(f"✅ WebSocket démarré pour {len(symbols)} symboles")
             
+            # 🔥 JOUR 5: Métriques
+            try:
+                from core.metrics import get_metrics_collector
+                metrics = get_metrics_collector()
+                if metrics:
+                    metrics.ws_connected = True
+            except:
+                pass
+            
         except Exception as e:
             logger.error(f"❌ Erreur démarrage WebSocket: {e}")
             self.use_websocket = False
             self.ws_manager = None
+            
+            # 🔥 JOUR 5: Métriques
+            try:
+                from core.metrics import get_metrics_collector
+                metrics = get_metrics_collector()
+                if metrics:
+                    metrics.ws_connected = False
+            except:
+                pass
     
     async def stop_websocket(self):
         """Arrêter WebSocket"""
@@ -136,25 +170,44 @@ class HybridPriceProvider:
         Returns:
             Dictionnaire avec prix et métadonnées, ou None si erreur
         """
+        # 🔥 JOUR 5: Métriques
+        try:
+            from core.metrics import get_metrics_collector
+            metrics = get_metrics_collector()
+        except:
+            metrics = None
+        
         # Stratégie WebSocket (prioritaire)
         if self.use_websocket and self.ws_manager and self.ws_manager.connected:
             async with self.cache_lock:
                 if symbol in self.price_cache:
+                    if metrics:
+                        metrics.ws_price_count += 1
                     return self.price_cache[symbol]
             
             # Pas en cache mais WS connecté → attendre un peu
             await asyncio.sleep(0.05)
             async with self.cache_lock:
                 if symbol in self.price_cache:
+                    if metrics:
+                        metrics.ws_price_count += 1
                     return self.price_cache[symbol]
         
         # Fallback REST
         if DEBUG_ENABLED:
             logger.debug(f"⚠️ WS down ou pas de cache, fallback REST pour {symbol}")
         
+        if metrics:
+            metrics.ws_rest_fallback_count += 1
+        
         try:
             ticker = await self.rest_client.fetch_ticker(symbol)
             if ticker:
+                # 🔥 FIX: Vérifier que ticker est un dict, pas une liste
+                if not isinstance(ticker, dict):
+                    logger.error(f"❌ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol}")
+                    return None
+                
                 return {
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),
@@ -164,6 +217,8 @@ class HybridPriceProvider:
         except Exception as e:
             if DEBUG_ENABLED:
                 logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
         
         return None
     
@@ -182,4 +237,6 @@ def get_price_provider() -> HybridPriceProvider:
     if _price_provider is None:
         _price_provider = HybridPriceProvider()
     return _price_provider
+
+
 

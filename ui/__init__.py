@@ -5,3 +5,5 @@ from .gui import TradeCursorGUI
 
 __all__ = ['TradeCursorGUI']
 
+
+

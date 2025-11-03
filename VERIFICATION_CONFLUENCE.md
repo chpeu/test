@@ -291,3 +291,5 @@ if (useConfluence) {
 **Status**: ⚠️ **BUG CONFIRMÉ**  
 **Action**: Attente validation utilisateur avant correction
 
+
+

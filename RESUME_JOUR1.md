@@ -144,3 +144,5 @@ async def api_get_price(symbol: str):
 
 **Jour 1: 80% complété, bloqué sur choix framework** ⏸️
 
+
+

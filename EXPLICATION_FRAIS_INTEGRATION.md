@@ -436,3 +436,5 @@ Simplification: ≈ 2 × taker_fee × 100 ≈ 0.08%
 **Version**: v6.2  
 **Document**: Intégration complète des frais
 
+
+

@@ -402,3 +402,5 @@ Position 50% fermée tôt, 50% protégée
 **Recommandation**: **Option B (ATR Multi Léger)**  
 **Prochaine étape**: Validation utilisateur
 
+
+

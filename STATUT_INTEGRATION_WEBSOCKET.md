@@ -201,3 +201,5 @@ Frontend JS → Flask SocketIO → Python WebSocket → MEXC
 
 **Ou**: Garder infrastructure prête et implémenter plus tard? 🤔
 
+
+

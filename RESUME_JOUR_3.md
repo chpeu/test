@@ -180,3 +180,5 @@ if pnl >= 1.0 * atr_percent:
 
 **Le Position Manager est prêt à être intégré dans l'app Flask!**
 
+
+

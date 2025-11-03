@@ -57,6 +57,10 @@ TRADING_CONFIG = {
     
     # Confluence
     "use_confluence": False,  # False = 1m OU 5m, True = 1m ET 5m
+    
+    # Position sizing (pour ouverture automatique)
+    "account_size": 1000.0,  # Capital total en USDT
+    "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
 }
 
 # Risk management
