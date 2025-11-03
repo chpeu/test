@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """
-Trade Cursor v7.0 - Application Quart (async Flask)
+Trade Cursor v7.0 - Application FastAPI (async natif)
 Interface HTML identique à v5.1 avec backend Python
 """
 
 import sys
 import asyncio
 import logging
-from quart import Quart, render_template, jsonify, request
-from quart_socketio import SocketIO, emit
-import json
-from datetime import datetime
-from pathlib import Path
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import socketio
 
 # 🔥 v7.0: Imports complets
-from api.price_provider import get_price_provider
-from core.scanner import ScalabilityScanner
-from core.analyzer import TechnicalAnalyzer
-from core.position_manager import PositionManager, PositionConfig
+try:
+    from api.price_provider import get_price_provider
+    from core.scanner import ScalabilityScanner
+    from core.analyzer import TechnicalAnalyzer
+    from core.position_manager import PositionManager, PositionConfig
+except ImportError as e:
+    logging.error(f"Import error: {e}")
+    # Fallback pour les dépendances manquantes
+    get_price_provider = None
+    ScalabilityScanner = None
+    TechnicalAnalyzer = None
+    PositionManager = None
+    PositionConfig = None
 
 # Configuration logging
 logging.basicConfig(
@@ -26,17 +35,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 🔥 v7.0: Instances globales
-scanner = ScalabilityScanner()
-analyzer = TechnicalAnalyzer()
-position_config = PositionConfig()
-position_manager = PositionManager(position_config)
-price_provider = get_price_provider()
+# Initialisation FastAPI
+app = FastAPI(title="Trade Cursor v7.0")
+templates = Jinja2Templates(directory="templates")
 
-# Initialisation Quart + SocketIO
-app = Quart(__name__)
-app.config['SECRET_KEY'] = 'trade-cursor-secret-key-2024'
-socketio = SocketIO(app, cors_allowed_origins="*")
+# SocketIO
+sio = socketio.AsyncServer(cors_allowed_origins="*")
+socketio_app = socketio.ASGIApp(sio, app)
 
 # Global state
 app_state = {
@@ -52,108 +57,141 @@ app_state = {
     'logs': []
 }
 
-# Routes Quart
+# 🔥 v7.0: Instances globales (lazy init)
+scanner = None
+analyzer = None
+position_config = None
+position_manager = None
+price_provider = None
 
-@app.route('/')
-async def index():
+
+def init_instances():
+    """Initialiser les instances (après import)"""
+    global scanner, analyzer, position_config, position_manager, price_provider
+    if not scanner and ScalabilityScanner:
+        scanner = ScalabilityScanner()
+    if not analyzer and TechnicalAnalyzer:
+        analyzer = TechnicalAnalyzer()
+    if not position_config and PositionConfig:
+        position_config = PositionConfig()
+    if not position_manager and PositionManager and position_config:
+        position_manager = PositionManager(position_config)
+    if not price_provider and get_price_provider:
+        price_provider = get_price_provider()
+
+
+# Routes FastAPI
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
     """Page principale - HTML copié de v5.1"""
-    return await render_template('index.html')
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.route('/api/status')
+@app.get("/api/status")
 async def api_status():
     """État global de l'application"""
-    return jsonify(app_state)
+    return JSONResponse(app_state)
 
 
-@app.route('/api/start', methods=['POST'])
+@app.post("/api/start")
 async def api_start():
     """Démarrer le scanner"""
     if app_state['is_scanning']:
-        return jsonify({'error': 'Déjà en cours'}), 400
+        return JSONResponse({'error': 'Déjà en cours'}, status_code=400)
     
     app_state['is_scanning'] = True
     logger.info("Scanner démarré")
-    await socketio.emit('status', {'is_scanning': True})
+    await sio.emit('status', {'is_scanning': True})
     
-    # TODO: Lancer le scanner asynchrone
-    # asyncio.create_task(start_scanner())
-    
-    return jsonify({'status': 'started'})
+    return JSONResponse({'status': 'started'})
 
 
-@app.route('/api/stop', methods=['POST'])
+@app.post("/api/stop")
 async def api_stop():
     """Arrêter le scanner"""
     app_state['is_scanning'] = False
     logger.info("Scanner arrêté")
-    await socketio.emit('status', {'is_scanning': False})
-    return jsonify({'status': 'stopped'})
+    await sio.emit('status', {'is_scanning': False})
+    return JSONResponse({'status': 'stopped'})
 
 
 # 🔥 v7.0: Jour 1 - Nouveaux endpoints
 
-@app.route('/api/scanner/top-pairs', methods=['GET'])
+@app.get("/api/scanner/top-pairs")
 async def api_get_top_pairs():
     """Récupérer les top pairs"""
-    return jsonify({'pairs': app_state['top_pairs']})
+    return JSONResponse({'pairs': app_state['top_pairs']})
 
 
-@app.route('/api/scanner/start', methods=['POST'])
-async def api_scanner_start():
+@app.post("/api/scanner/start")
+async def api_scanner_start(request: Request):
     """Démarrer scanner scalability"""
     if app_state['is_scanning']:
-        return jsonify({'error': 'Déjà en cours'}), 400
+        return JSONResponse({'error': 'Déjà en cours'}, status_code=400)
     
-    data = await request.get_json() or {}
-    top_n = data.get('top_n', 20)
+    init_instances()
+    data = await request.json() if hasattr(request, 'json') else {}
+    top_n = data.get('top_n', 20) if isinstance(data, dict) else 20
     
     app_state['is_scanning'] = True
     await add_log('INFO', 'Scanner démarré', f'Top {top_n} paires')
     
     # Lancer scan asynchrone
-    asyncio.create_task(scan_top_pairs_task(top_n))
+    if scanner:
+        asyncio.create_task(scan_top_pairs_task(top_n))
     
-    return jsonify({'status': 'started'})
+    return JSONResponse({'status': 'started'})
 
 
-@app.route('/api/price/<symbol>', methods=['GET'])
-async def api_get_price(symbol):
+@app.get("/api/price/{symbol}")
+async def api_get_price(symbol: str):
     """Récupérer prix depuis WebSocket ou REST"""
+    init_instances()
+    if not price_provider:
+        return JSONResponse({'error': 'Price provider not available'}, status_code=503)
+    
     try:
         price_data = await price_provider.get_price(symbol)
         if price_data:
-            return jsonify(price_data)
-        return jsonify({'error': 'Price not available'}), 404
+            return JSONResponse(price_data)
+        return JSONResponse({'error': 'Price not available'}, status_code=404)
     except Exception as e:
         logger.error(f"Erreur prix {symbol}: {e}")
-        return jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.route('/api/analyze/<symbol>', methods=['GET'])
-async def api_analyze_symbol(symbol):
+@app.get("/api/analyze/{symbol}")
+async def api_analyze_symbol(symbol: str, tf: str = '1m'):
     """Analyser un symbole"""
+    init_instances()
+    if not analyzer:
+        return JSONResponse({'error': 'Analyzer not available'}, status_code=503)
+    
     try:
-        timeframe = request.args.get('tf', '1m')
-        analysis = await analyzer.analyze_symbol(symbol, timeframe)
-        
+        analysis = await analyzer.analyze_symbol(symbol, tf)
         if analysis:
-            return jsonify({'analysis': analysis})
-        return jsonify({'analysis': None})
+            return JSONResponse({'analysis': analysis})
+        return JSONResponse({'analysis': None})
     except Exception as e:
         logger.error(f"Erreur analyse {symbol}: {e}")
-        return jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.route('/api/position/open', methods=['POST'])
-async def api_open_position():
+@app.post("/api/position/open")
+async def api_open_position(request: Request):
     """Ouvrir position"""
+    init_instances()
+    if not position_manager:
+        return JSONResponse({'error': 'Position manager not available'}, status_code=503)
+    
     try:
-        data = await request.get_json()
+        data = await request.json() if hasattr(request, 'json') else {}
+        data = data if isinstance(data, dict) else {}
         
         # Vérifier données minimales
         if not data or 'symbol' not in data:
-            return jsonify({'error': 'Missing symbol'}), 400
+            return JSONResponse({'error': 'Missing symbol'}, status_code=400)
         
         # Extraire paramètres avec valeurs par défaut
         position = position_manager.open_position(
@@ -169,20 +207,24 @@ async def api_open_position():
         
         app_state['active_position'] = position
         
-        await add_log('INFO', 'Position ouverte', f"{data['direction']} {data['symbol']}")
-        await socketio.emit('position_opened', position.to_dict())
+        await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
+        await sio.emit('position_opened', position.to_dict())
         
-        return jsonify({'status': 'opened', 'position': position.to_dict()})
+        return JSONResponse({'status': 'opened', 'position': position.to_dict()})
     except Exception as e:
         logger.error(f"Erreur ouverture position: {e}")
-        return jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.route('/api/position/check', methods=['GET'])
+@app.get("/api/position/check")
 async def api_check_position():
     """Check position actuelle"""
-    if not position_manager.active_position:
-        return jsonify({'status': 'no_position'})
+    init_instances()
+    if not position_manager or not position_manager.active_position:
+        return JSONResponse({'status': 'no_position'})
+    
+    if not price_provider:
+        return JSONResponse({'error': 'Price provider not available'}, status_code=503)
     
     try:
         # Récupérer prix actuel
@@ -190,7 +232,7 @@ async def api_check_position():
         current_price = price_data.get('lastPrice') if price_data else None
         
         if not current_price:
-            return jsonify({'error': 'Price not available'}), 500
+            return JSONResponse({'error': 'Price not available'}, status_code=500)
         
         # Check position (renvoie None ou raison de fermeture)
         result = await position_manager.check_position(current_price)
@@ -207,18 +249,22 @@ async def api_check_position():
             # Position à fermer
             response['close_reason'] = result
         
-        await socketio.emit('position_update', response)
-        return jsonify(response)
+        await sio.emit('position_update', response)
+        return JSONResponse(response)
     except Exception as e:
         logger.error(f"Erreur check position: {e}")
-        return jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.route('/api/position/close', methods=['POST'])
+@app.post("/api/position/close")
 async def api_close_position():
     """Clôturer position manuellement"""
-    if not position_manager.active_position:
-        return jsonify({'error': 'No active position'}), 400
+    init_instances()
+    if not position_manager or not position_manager.active_position:
+        return JSONResponse({'error': 'No active position'}, status_code=400)
+    
+    if not price_provider:
+        return JSONResponse({'error': 'Price provider not available'}, status_code=503)
     
     try:
         # Récupérer prix actuel
@@ -230,18 +276,21 @@ async def api_close_position():
         app_state['active_position'] = None
         
         await add_log('INFO', 'Position clôturée', 'Manuel')
-        await socketio.emit('position_closed', result)
+        await sio.emit('position_closed', result)
         
-        return jsonify(result)
+        return JSONResponse(result)
     except Exception as e:
         logger.error(f"Erreur clôture position: {e}")
-        return jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
 # Helper async tasks
 
 async def scan_top_pairs_task(n):
     """Tâche asynchrone pour scanner top pairs"""
+    if not scanner:
+        return
+    
     try:
         await add_log('INFO', 'Scan scalability', 'Démarrage...')
         
@@ -249,7 +298,7 @@ async def scan_top_pairs_task(n):
         app_state['top_pairs'] = top_pairs
         
         await add_log('INFO', 'Scan terminé', f'{len(top_pairs)} paires scalables')
-        await socketio.emit('top_pairs_update', {'pairs': top_pairs})
+        await sio.emit('top_pairs_update', {'pairs': top_pairs})
         
     except Exception as e:
         logger.error(f"Erreur scan: {e}")
@@ -258,34 +307,36 @@ async def scan_top_pairs_task(n):
         app_state['is_scanning'] = False
 
 
-# WebSocket Handlers
+# SocketIO Handlers
 
-@socketio.on('connect')
-async def handle_connect():
+@sio.on('connect')
+async def handle_connect(sid, environ):
     """Connexion WebSocket"""
     logger.info("Client connecté")
-    await emit('status', app_state)
+    await sio.emit('status', app_state, room=sid)
     # Envoyer les derniers logs
     for log_entry in app_state['logs'][-50:]:
-        await emit('log', log_entry)
+        await sio.emit('log', log_entry, room=sid)
 
 
-@socketio.on('disconnect')
-async def handle_disconnect():
+@sio.on('disconnect')
+async def handle_disconnect(sid):
     """Déconnexion WebSocket"""
     logger.info("Client déconnecté")
 
 
-@socketio.on('request_logs')
-async def handle_logs_request():
+@sio.on('request_logs')
+async def handle_logs_request(sid):
     """Demander les logs"""
-    await emit('logs', app_state['logs'][-100:])
+    await sio.emit('logs', app_state['logs'][-100:], room=sid)
 
 
 # Helper functions
 
 async def add_log(level, message, detail=''):
     """Ajouter un log et envoyer via SocketIO"""
+    from datetime import datetime
+    
     entry = {
         'timestamp': datetime.now().strftime('%H:%M:%S'),
         'level': level,
@@ -299,20 +350,21 @@ async def add_log(level, message, detail=''):
         app_state['logs'] = app_state['logs'][-1000:]
     
     # Envoyer via WebSocket
-    await socketio.emit('log', entry)
+    await sio.emit('log', entry)
     logger.info(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}")
 
 
 # Main entry point
 
 if __name__ == '__main__':
+    import uvicorn
+    
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     
     logger.info("🚀 Trade Cursor v7.0 démarré")
-    logger.info("📊 Quart (async Flask) + WebSocket")
+    logger.info("📊 FastAPI (async natif) + WebSocket")
     logger.info(f"🌐 Ouvez http://localhost:{port} dans votre navigateur")
     
-    # Lancer Quart + SocketIO
-    app.run(host='0.0.0.0', port=port, debug=True)
-
+    # Lancer FastAPI avec SocketIO
+    uvicorn.run(socketio_app, host='0.0.0.0', port=port, log_level="info")
