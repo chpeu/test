@@ -1036,11 +1036,11 @@
             breakEvenSet = false;  // 🔥 Reset flag break-even
             partialTPSold = false; // 🔥 Reset flag TP partiel
             
-            // 🔥 NOUVEAU v4.2: Calculer SL/TP selon mode (FIXE ou ATR)
+            // 🔥 NOUVEAU v4.2: Calculer SL/TP selon mode (FIXE, ATR ou ATR_MULTI)
             var entryPrice = parseFloat(setup.entry);
             
-            if (useATR && setup.atr) {
-                // Mode ATR
+            if ((useATR || useATRMulti) && setup.atr) {
+                // 🔥 v6.5: ATR Simple ou ATR Multi
                 // 🔥 NOUVEAU v4.3: ATR Multi-Timeframe (70% 1m + 30% 5m si disponible)
                 var atr1m = setup.atr;
                 var atr5m = setup.atr5m || setup.atr;
@@ -1077,7 +1077,8 @@
                 }
                 
                 // 🔥 OPTIMISATION v4.2.1: Log enrichi pour debug visuel
-                debugLog('📊 Mode ATR', 'ATR=' + setup.atr.toFixed(6) + ' (' + atrPercent.toFixed(3) + '%) | SL=' + activePosition.sl + ' | TP=' + activePosition.tp);
+                var modeLabel = useATRMulti ? 'ATR MULTI' : 'ATR';
+                debugLog('📊 Mode ' + modeLabel, 'ATR=' + setup.atr.toFixed(6) + ' (' + atrPercent.toFixed(3) + '%) | SL=' + activePosition.sl + ' | TP=' + activePosition.tp);
             } else {
                 // Mode FIXE
                 if (setup.direction === 'LONG') {
@@ -1109,8 +1110,15 @@
             document.getElementById('posDirection').textContent = setup.direction;
             document.getElementById('posDirection').style.color = setup.direction === 'LONG' ? '#00ff88' : '#ff4444';
             document.getElementById('posEntry').textContent = setup.entry;
-            document.getElementById('posTP').textContent = useATR ? 'TP: ' + activePosition.tp : 'TP partiel: +0.3%';
-            document.getElementById('posSL').textContent = useATR ? 'SL: ' + activePosition.sl : activePosition.sl + ' (-0.25%)';
+            // 🔥 v6.5: Affichage TP selon mode
+            if (useATRMulti) {
+                document.getElementById('posTP').textContent = 'TP: ' + activePosition.tp + ' (partiel 1× ATR)';
+            } else if (useATR) {
+                document.getElementById('posTP').textContent = 'TP: ' + activePosition.tp;
+            } else {
+                document.getElementById('posTP').textContent = 'TP partiel: +0.3%';
+            }
+            document.getElementById('posSL').textContent = (useATR || useATRMulti) ? 'SL: ' + activePosition.sl : activePosition.sl + ' (-0.25%)';
             document.getElementById('posConfirm').textContent = setup.confirmedBy || 'N/A';
             
             updateStateDisplay();
