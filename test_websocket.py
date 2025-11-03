@@ -14,7 +14,7 @@ def handle_ticker_update(data):
 
 async def test_websocket():
     """Test connexion WebSocket MEXC"""
-    print("🧪 Test WebSocket MEXC...")
+    print("🧪 Test WebSocket MEXC Phase 2A...")
     print(f"URL: {WEBSOCKET_CONFIG['url']}")
     
     # Créer manager WebSocket
@@ -28,12 +28,13 @@ async def test_websocket():
         print("\n🔌 Connexion WebSocket...")
         await manager.start()
         
-        # S'abonner à BTC_USDT
-        print("\n📡 Abonnement BTC_USDT ticker...")
-        await manager.subscribe("BTC_USDT")
+        # 🔥 v6.6.1 Phase 2A: Utiliser subscribe_ticker MEXC
+        print("\n📡 Abonnement BTC_USDT ticker (MEXC)...")
+        await manager.subscribe_ticker("BTC_USDT")
         
         # Attendre messages
         print("\n⏳ Attente messages (60s)...")
+        print("💡 Cherchez 'push.ticker' messages avec lastPrice")
         await asyncio.sleep(60)
         
         print("\n✅ Test terminé")

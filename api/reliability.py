@@ -111,6 +111,11 @@ class WebSocketManager:
         self._running = False
         self._reconnect_task = None
         
+        # 🔥 v6.6.1 Phase 2A: Watchdog pour déconnexion silencieuse
+        self._watchdog_task = None
+        self.last_message_time = 0
+        self._connected = False
+        
     async def connect(self):
         """Se connecter au WebSocket"""
         try:
@@ -124,10 +129,14 @@ class WebSocketManager:
                 ping_interval=WEBSOCKET_CONFIG['ping_interval']
             )
             
+            self._connected = True
+            self.last_message_time = time.time()
+            
             if DEBUG_ENABLED:
                 logger.info("✅ WebSocket connecté")
                 
         except Exception as e:
+            self._connected = False
             if DEBUG_ENABLED:
                 logger.error(f"❌ Erreur connexion WebSocket: {e}")
             raise
@@ -135,9 +144,13 @@ class WebSocketManager:
     async def disconnect(self):
         """Déconnecter WebSocket"""
         self._running = False
+        self._connected = False
         
         if self._reconnect_task:
             self._reconnect_task.cancel()
+            
+        if self._watchdog_task:
+            self._watchdog_task.cancel()
             
         if self._ws:
             await self._ws.close()
@@ -153,16 +166,19 @@ class WebSocketManager:
                     timeout=WEBSOCKET_CONFIG['timeout']
                 )
                 
+                # 🔥 v6.6.1 Phase 2A: Mettre à jour last_message_time
+                self.last_message_time = time.time()
+                
                 # Parser et appeler callback
                 import json
                 data = json.loads(message)
                 await asyncio.to_thread(self.callback, data)
                 
             except asyncio.TimeoutError:
-                # Timeout = envoyer ping
+                # Timeout = envoyer ping MEXC
                 if DEBUG_ENABLED:
-                    logger.debug("📡 WebSocket: Ping timeout, envoi heartbeat...")
-                await self._ws.ping()
+                    logger.debug("📡 WebSocket: Ping timeout, envoi heartbeat MEXC...")
+                await self.send_ping()  # Utiliser méthode MEXC ping
                 
             except Exception as e:
                 if self._running:
@@ -203,11 +219,26 @@ class WebSocketManager:
                     logger.error(f"❌ Reconnexion échouée: {e}, nouvelle tentative dans {WEBSOCKET_CONFIG['reconnect_delay']}s")
                 await asyncio.sleep(WEBSOCKET_CONFIG['reconnect_delay'])
     
+    # 🔥 v6.6.1 Phase 2A: Watchdog pour déconnexion silencieuse
+    async def _watchdog(self):
+        """Vérifie si on reçoit des messages (déconnexion silencieuse)"""
+        while self._running:
+            await asyncio.sleep(10)  # Check toutes les 10s
+            
+            if self._running and self._connected:
+                elapsed = time.time() - self.last_message_time
+                if elapsed > 60:  # Pas de message depuis 60s
+                    if DEBUG_ENABLED:
+                        logger.warning(f"⚠️ Pas de message depuis 60s, reconnexion...")
+                    await self._reconnect()
+    
     async def start(self):
         """Démarrer WebSocket"""
         self._running = True
         await self.connect()
         asyncio.create_task(self._receive_loop())
+        # 🔥 v6.6.1 Phase 2A: Démarrer watchdog
+        self._watchdog_task = asyncio.create_task(self._watchdog())
     
     async def send(self, message: dict):
         """Envoyer message"""
@@ -216,7 +247,7 @@ class WebSocketManager:
             await self._ws.send(json.dumps(message))
     
     async def subscribe(self, topic: str):
-        """S'abonner à un topic"""
+        """S'abonner à un topic générique (legacy)"""
         message = {
             "method": "sub.depth",
             "param": {
@@ -225,6 +256,46 @@ class WebSocketManager:
             }
         }
         await self.send(message)
+    
+    # 🔥 v6.6.1 Phase 2A: Méthodes MEXC spécifiques
+    async def subscribe_ticker(self, symbol: str):
+        """Subscribe to real-time ticker for a MEXC symbol"""
+        if not self._ws:
+            raise Exception("WebSocket not connected")
+        
+        message = {
+            "method": "sub.ticker",
+            "param": {"symbol": symbol}
+        }
+        
+        await self.send(message)
+        if DEBUG_ENABLED:
+            logger.info(f"📡 Subscribed to ticker: {symbol}")
+    
+    async def subscribe_multiple_tickers(self, symbols: list):
+        """Subscribe to multiple tickers (max 30 per connection)"""
+        if not self._ws:
+            raise Exception("WebSocket not connected")
+        
+        if len(symbols) > 30:
+            logger.warning(f"⚠️ Plus de 30 symboles ({len(symbols)}), utiliser pool de connexions")
+        
+        for symbol in symbols:
+            await self.subscribe_ticker(symbol)
+            await asyncio.sleep(0.1)  # Petit délai entre subscriptions
+        
+        if DEBUG_ENABLED:
+            logger.info(f"✅ Subscribed to {len(symbols)} tickers")
+    
+    async def send_ping(self):
+        """Envoyer ping pour heartbeat MEXC"""
+        if self._ws:
+            await self.send({"method": "ping"})
+    
+    @property
+    def connected(self):
+        """Vérifier si WebSocket est connecté"""
+        return self._connected
 
 
 # Exemple d'utilisation combinée
