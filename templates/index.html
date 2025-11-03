@@ -3146,13 +3146,21 @@
                 }
                 
             // 🔥 NOUVEAU v4.3.1 Phase 2: Confluence optionnelle
-            if (useConfluence && analysis1m && analysis5m) {
-                // MODE CONFLUENCE STRICTE
+            // 🔥 v6.5.2: Fix bug confluence - vérifier useConfluence d'abord
+            if (useConfluence) {
+                // MODE CONFLUENCE STRICTE (1m ET 5m OBLIGATOIRES)
+                if (!analysis1m || !analysis5m) {
+                    debugLog('❌ Confluence', symbol + ' - 1m ET 5m requis (1 seul valide: 1m=' + (analysis1m ? 'OK' : 'NULL') + ', 5m=' + (analysis5m ? 'OK' : 'NULL') + ')');
+                    return null;
+                }
+                
+                // Vérifier directions identiques
                 if (analysis1m.direction !== analysis5m.direction) {
                     debugLog('❌ Confluence', symbol + ' - Directions opposées (1m: ' + analysis1m.direction + ', 5m: ' + analysis5m.direction + ')');
                     return null;
                 }
                 
+                // Vérifier force 5m ≥ 80% 1m
                 var strength1m = analysis1m.signals ? analysis1m.signals.length : 0;
                 var strength5m = analysis5m.signals ? analysis5m.signals.length : 0;
                 
@@ -3164,9 +3172,7 @@
                 // Les deux valides et alignés → retourner le meilleur
                 var best = strength1m >= strength5m ? analysis1m : analysis5m;
                 best.confirmedBy = '1m + 5m confluence';
-                if (analysis1m && analysis5m) {
-                    best.atr5m = analysis5m.atr; // Ajouter ATR 5m pour multi-TF
-                }
+                best.atr5m = analysis5m.atr; // Ajouter ATR 5m pour multi-TF
                 
                 // 🔥 NOUVEAU v6.3: Ajouter scalability_data pour slippage
                 if (pair.scalability_data) {
@@ -3181,7 +3187,7 @@
                 
                 return best;
             } else {
-                // 🔥 NOUVEAU v5.2 Phase 2: MODE PERMISSIF avec priorité par force
+                // 🔥 NOUVEAU v5.2 Phase 2: MODE PERMISSIF (1m OU 5m suffit)
                 var strength1m = analysis1m ? (analysis1m.signals ? analysis1m.signals.length : 0) : 0;
                 var strength5m = analysis5m ? (analysis5m.signals ? analysis5m.signals.length : 0) : 0;
                 
