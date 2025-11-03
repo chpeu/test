@@ -6,14 +6,25 @@ import asyncio
 import ccxt.async_support as ccxt
 from typing import Dict, List, Optional, Any
 import time
+import aiohttp
 
 from config import MEXC_FUTURES_URL, DEBUG_ENABLED
+from api.reliability import fetch_with_all_protections, WebSocketManager
 
 
 class MEXCClient:
     """Client API MEXC avec gestion des erreurs et retry"""
     
     def __init__(self):
+        # 🔥 v6.6: Connection pooling avec aiohttp
+        self.session = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(
+                limit=100,
+                ttl_dns_cache=300,
+                keepalive_timeout=30
+            )
+        )
+        
         self.exchange = ccxt.mexc({
             'options': {
                 'defaultType': 'swap',  # Futures
@@ -22,12 +33,15 @@ class MEXCClient:
             'timeout': 30000,
         })
         self.cache = {}  # Cache pour éviter appels répétés
+        self.ws_manager = None  # WebSocket manager
         
     async def fetch_ticker(self, symbol: str) -> Optional[Dict]:
-        """Récupère le ticker d'une paire"""
+        """Récupère le ticker d'une paire avec retry + circuit breaker"""
+        async def _fetch():
+            return await self.exchange.fetch_ticker(symbol)
+        
         try:
-            ticker = await self.exchange.fetch_ticker(symbol)
-            return ticker
+            return await fetch_with_all_protections(_fetch)
         except Exception as e:
             if DEBUG_ENABLED:
                 print(f"❌ Erreur fetch_ticker {symbol}: {e}")
@@ -87,6 +101,9 @@ class MEXCClient:
     
     async def close(self):
         """Ferme les connexions"""
+        if self.ws_manager:
+            await self.ws_manager.disconnect()
+        await self.session.close()
         await self.exchange.close()
     
     def __del__(self):
@@ -94,6 +111,11 @@ class MEXCClient:
         if hasattr(self, 'exchange'):
             try:
                 asyncio.create_task(self.exchange.close())
+            except:
+                pass
+        if hasattr(self, 'session'):
+            try:
+                asyncio.create_task(self.session.close())
             except:
                 pass
 

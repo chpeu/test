@@ -72,6 +72,28 @@ RISK_CONFIG = {
     "min_risk": 0.005,  # 0.5%
 }
 
+# 🔥 v6.6: Retry & Circuit Breaker settings
+RETRY_CONFIG = {
+    "max_attempts": 5,
+    "wait_multiplier": 1,
+    "wait_min": 1,
+    "wait_max": 10,
+}
+
+CIRCUIT_BREAKER_CONFIG = {
+    "fail_max": 5,
+    "timeout_duration": 60,  # 60 seconds
+    "expected_exception": Exception,
+}
+
+# 🔥 v6.6: WebSocket settings
+WEBSOCKET_CONFIG = {
+    "url": "wss://contract.mexc.com/ws",  # WebSocket URL MEXC
+    "ping_interval": 30,  # Heartbeat toutes les 30s
+    "reconnect_delay": 5,  # Délai reconnexion en s
+    "timeout": 10,  # Timeout connexion
+}
+
 # Debug
 DEBUG_ENABLED = os.getenv("DEBUG", "False").lower() == "true"
 
