@@ -82,8 +82,7 @@ RETRY_CONFIG = {
 
 CIRCUIT_BREAKER_CONFIG = {
     "fail_max": 5,
-    "timeout_duration": 60,  # 60 seconds
-    "expected_exception": Exception,
+    "reset_timeout": 60,  # 60 seconds (délai avant retry)
 }
 
 # 🔥 v6.6: WebSocket settings

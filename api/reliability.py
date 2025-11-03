@@ -23,8 +23,7 @@ logger = logging.getLogger(__name__)
 # Circuit Breaker global
 _api_circuit_breaker = CircuitBreaker(
     fail_max=CIRCUIT_BREAKER_CONFIG['fail_max'],
-    timeout_duration=CIRCUIT_BREAKER_CONFIG['timeout_duration'],
-    expected_exception=CIRCUIT_BREAKER_CONFIG['expected_exception']
+    reset_timeout=CIRCUIT_BREAKER_CONFIG['reset_timeout']
 )
 
 

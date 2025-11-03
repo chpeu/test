@@ -9,12 +9,12 @@ from config import WEBSOCKET_CONFIG, DEBUG_ENABLED
 
 def handle_ticker_update(data):
     """Callback appelé pour chaque update ticker"""
-    print(f"📊 Ticker update: {json.dumps(data, indent=2)}")
+    print(f"Ticker update: {json.dumps(data, indent=2)}")
 
 
 async def test_websocket():
     """Test connexion WebSocket MEXC"""
-    print("🧪 Test WebSocket MEXC Phase 2A...")
+    print("Test WebSocket MEXC Phase 2A...")
     print(f"URL: {WEBSOCKET_CONFIG['url']}")
     
     # Créer manager WebSocket
@@ -25,22 +25,22 @@ async def test_websocket():
     
     try:
         # Démarrer connexion
-        print("\n🔌 Connexion WebSocket...")
+        print("\nConnexion WebSocket...")
         await manager.start()
         
         # 🔥 v6.6.1 Phase 2A: Utiliser subscribe_ticker MEXC
-        print("\n📡 Abonnement BTC_USDT ticker (MEXC)...")
+        print("\nAbonnement BTC_USDT ticker (MEXC)...")
         await manager.subscribe_ticker("BTC_USDT")
         
         # Attendre messages
-        print("\n⏳ Attente messages (60s)...")
-        print("💡 Cherchez 'push.ticker' messages avec lastPrice")
+        print("\nAttente messages (60s)...")
+        print("Cherchez 'push.ticker' messages avec lastPrice")
         await asyncio.sleep(60)
         
-        print("\n✅ Test terminé")
+        print("\nTest termine")
         
     except Exception as e:
-        print(f"\n❌ Erreur: {e}")
+        print(f"\nERREUR: {e}")
         import traceback
         traceback.print_exc()
     finally:
