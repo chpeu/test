@@ -13,6 +13,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+# 🔥 v6.6.1 Phase 2A: Import HybridPriceProvider
+from api.price_provider import get_price_provider
+
 # Configuration logging
 logging.basicConfig(
     level=logging.INFO,
