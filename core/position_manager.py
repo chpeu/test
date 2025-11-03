@@ -41,6 +41,27 @@ class Position:
     size_remaining: Optional[float] = None  # Taille restante après TP partiel
     partial_profit_usdt: float = 0.0  # Profit du TP partiel en USDT
     capital: Optional[float] = None  # Capital total en USDT
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertir position en dictionnaire JSON"""
+        return {
+            'symbol': self.symbol,
+            'direction': self.direction,
+            'entry': self.entry,
+            'size': self.size,
+            'sl': self.sl,
+            'tp': self.tp,
+            'atr': self.atr,
+            'atr5m': self.atr5m,
+            'confirmed_by': self.confirmed_by,
+            'timestamp': self.timestamp,
+            'break_even_set': self.break_even_set,
+            'partial_tp_sold': self.partial_tp_sold,
+            'dynamic_sl': self.dynamic_sl,
+            'size_remaining': self.size_remaining,
+            'partial_profit_usdt': self.partial_profit_usdt,
+            'capital': self.capital
+        }
 
 
 @dataclass

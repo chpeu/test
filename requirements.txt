@@ -4,8 +4,8 @@ numpy==1.26.0
 # ta-lib==0.4.28  # Optionnel: nécessite C library TA-Lib
 aiohttp==3.9.1
 python-dateutil==2.8.2
-flask==3.0.0
-flask-socketio==5.3.5
+quart==0.19.4
+quart-socketio==0.10.1
 eventlet==0.36.1
 tenacity==8.2.3
 pybreaker==1.0.1
