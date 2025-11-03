@@ -48,10 +48,12 @@ class MEXCClient:
             return None
     
     async def fetch_tickers(self) -> Dict[str, Any]:
-        """Récupère tous les tickers"""
+        """Récupère tous les tickers avec retry + circuit breaker"""
+        async def _fetch():
+            return await self.exchange.fetch_tickers()
+        
         try:
-            tickers = await self.exchange.fetch_tickers()
-            return tickers
+            return await fetch_with_all_protections(_fetch)
         except Exception as e:
             if DEBUG_ENABLED:
                 print(f"❌ Erreur fetch_tickers: {e}")
@@ -59,7 +61,7 @@ class MEXCClient:
     
     async def fetch_ohlcv(self, symbol: str, timeframe: str = '1m', limit: int = 100) -> List[List]:
         """
-        Récupère les chandeliers OHLCV
+        Récupère les chandeliers OHLCV avec retry + circuit breaker
         
         Args:
             symbol: Symbole de la paire (ex: BTC_USDT)
@@ -69,19 +71,23 @@ class MEXCClient:
         Returns:
             Liste de [timestamp, open, high, low, close, volume]
         """
+        async def _fetch():
+            return await self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        
         try:
-            ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            return ohlcv
+            return await fetch_with_all_protections(_fetch)
         except Exception as e:
             if DEBUG_ENABLED:
                 print(f"❌ Erreur fetch_ohlcv {symbol} {timeframe}: {e}")
             return []
     
     async def fetch_order_book(self, symbol: str, limit: int = 20) -> Optional[Dict]:
-        """Récupère le carnet d'ordres"""
+        """Récupère le carnet d'ordres avec retry + circuit breaker"""
+        async def _fetch():
+            return await self.exchange.fetch_order_book(symbol, limit=limit)
+        
         try:
-            orderbook = await self.exchange.fetch_order_book(symbol, limit=limit)
-            return orderbook
+            return await fetch_with_all_protections(_fetch)
         except Exception as e:
             if DEBUG_ENABLED:
                 print(f"❌ Erreur fetch_order_book {symbol}: {e}")
