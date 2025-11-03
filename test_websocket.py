@@ -1,10 +1,10 @@
 """
 Test WebSocket MEXC pour Phase 2
+Teste plusieurs URLs possibles pour trouver la bonne
 """
 import asyncio
 import json
 from api.reliability import WebSocketManager
-from config import WEBSOCKET_CONFIG, DEBUG_ENABLED
 
 
 def handle_ticker_update(data):
@@ -12,41 +12,65 @@ def handle_ticker_update(data):
     print(f"Ticker update: {json.dumps(data, indent=2)}")
 
 
-async def test_websocket():
-    """Test connexion WebSocket MEXC"""
-    print("Test WebSocket MEXC Phase 2A...")
-    print(f"URL: {WEBSOCKET_CONFIG['url']}")
+async def test_url(url):
+    """Tester une URL WebSocket spécifique"""
+    print(f"\n{'='*60}")
+    print(f"Test URL: {url}")
+    print('='*60)
     
-    # Créer manager WebSocket
     manager = WebSocketManager(
-        url=WEBSOCKET_CONFIG['url'],
+        url=url,
         callback=handle_ticker_update
     )
     
     try:
-        # Démarrer connexion
-        print("\nConnexion WebSocket...")
         await manager.start()
+        print("Connexion OK!")
         
-        # 🔥 v6.6.1 Phase 2A: Utiliser subscribe_ticker MEXC
-        print("\nAbonnement BTC_USDT ticker (MEXC)...")
+        print("\nAbonnement BTC_USDT...")
         await manager.subscribe_ticker("BTC_USDT")
         
-        # Attendre messages
-        print("\nAttente messages (60s)...")
-        print("Cherchez 'push.ticker' messages avec lastPrice")
-        await asyncio.sleep(60)
+        print("\nAttente 10s pour messages...")
+        await asyncio.sleep(10)
         
-        print("\nTest termine")
+        print("URL VALIDE!")
+        return True
         
     except Exception as e:
-        print(f"\nERREUR: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"ERREUR: {str(e)[:100]}")
+        return False
     finally:
         await manager.disconnect()
 
 
+async def test_all_urls():
+    """Tester toutes les URLs possibles"""
+    urls_a_tester = [
+        "wss://contract.mexc.com/ws",           # Le plus probable
+        "wss://futures.mexc.com/ws",            # Alternative
+        "wss://api.mexc.com/ws",                # Spot (probablement pas)
+        "wss://contract.mexc.com/edge",         # Variante
+        "wss://contract.mexc.com/api/ws",       # Avec /api/
+    ]
+    
+    print("Test de plusieurs URLs WebSocket MEXC Futures...")
+    
+    valid_url = None
+    for url in urls_a_tester:
+        if await test_url(url):
+            valid_url = url
+            break
+    
+    if valid_url:
+        print(f"\n\n{'#'*60}")
+        print(f"URL VALIDE TROUVEE: {valid_url}")
+        print('#'*60)
+    else:
+        print("\n\nAucune URL valide trouvee")
+    
+    return valid_url
+
+
 if __name__ == "__main__":
-    asyncio.run(test_websocket())
+    asyncio.run(test_all_urls())
 

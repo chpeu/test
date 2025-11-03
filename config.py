@@ -87,7 +87,7 @@ CIRCUIT_BREAKER_CONFIG = {
 
 # 🔥 v6.6: WebSocket settings
 WEBSOCKET_CONFIG = {
-    "url": "wss://contract.mexc.com/ws",  # WebSocket URL MEXC
+    "url": "wss://contract.mexc.com/edge",  # ✅ URL VALIDE TROUVEE pour Futures
     "ping_interval": 30,  # Heartbeat toutes les 30s
     "reconnect_delay": 5,  # Délai reconnexion en s
     "timeout": 10,  # Timeout connexion
