@@ -24,6 +24,75 @@ class TechnicalAnalyzer:
         self.indicators = Indicators()
         self.price_provider = get_price_provider()  # 🔥 JOUR 2: Prix WebSocket
     
+    async def calculate_trend_data(self, symbol: str, timeframe: str = '15m') -> Optional[Dict]:
+        """
+        Calculer les données de tendance pour un timeframe donné
+        
+        Args:
+            symbol: Symbole de la paire
+            timeframe: Timeframe (5m, 15m, 30m, 1h)
+            
+        Returns:
+            Dict avec trend (BULLISH/BEARISH/NEUTRAL), strength, bonus
+        """
+        try:
+            # Mapper le timeframe vers le format ccxt
+            timeframe_map = {
+                '5m': '5m',
+                '15m': '15m',
+                '30m': '30m',
+                '1h': '1h'
+            }
+            ccxt_tf = timeframe_map.get(timeframe, '15m')
+            
+            # Récupérer OHLCV pour le timeframe
+            ohlcv = await self.client.fetch_ohlcv(symbol, ccxt_tf, limit=100)
+            
+            if not ohlcv or len(ohlcv) < 100:
+                return None
+            
+            # Extraire closes
+            closes = [candle[4] for candle in ohlcv]  # Close price
+            
+            # Calculer EMAs
+            ema20 = self.indicators.calculate_ema(closes, 20)
+            ema50 = self.indicators.calculate_ema(closes, 50)
+            ema100 = self.indicators.calculate_ema(closes, 100)
+            
+            # Prix actuel
+            price = closes[-1]
+            
+            # Déterminer la tendance
+            trend = 'NEUTRAL'
+            strength = 'NONE'
+            bonus = 0
+            
+            if ema20 > ema50 and ema50 > ema100 and price > ema20:
+                trend = 'BULLISH'
+                strength = 'STRONG'
+                bonus = 25
+            elif ema20 > ema50 and price > ema20:
+                trend = 'BULLISH'
+                strength = 'MODERATE'
+                bonus = 15
+            elif ema20 < ema50 and ema50 < ema100 and price < ema20:
+                trend = 'BEARISH'
+                strength = 'STRONG'
+                bonus = 25
+            elif ema20 < ema50 and price < ema20:
+                trend = 'BEARISH'
+                strength = 'MODERATE'
+                bonus = 15
+            
+            return {
+                'trend': trend,
+                'strength': strength,
+                'bonus': bonus
+            }
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur calcul trend_data pour {symbol} ({timeframe}): {e}")
+            return None
+    
     def check_volume_quality(self, vol_spike: float, atr: float, price: float, volume24h: float) -> Dict:
         """
         Vérifie la qualité du volume
@@ -215,23 +284,26 @@ class TechnicalAnalyzer:
             atr_percent = (atr / price) * 100 if price > 0 else 0
             
             # Min volume ratio adaptatif
-            if atr_percent > 1.0:
-                min_vol_ratio = 1.0
-            elif atr_percent < 0.3:
-                min_vol_ratio = 0.6
-            else:
-                min_vol_ratio = 0.8
-            
-            min_vol_ratio = min_vol_ratio * volume_multiplier
+            base_min_vol = 1.0 if atr_percent > 1.0 else (0.6 if atr_percent < 0.3 else 0.8)
+            min_vol_ratio = base_min_vol * volume_multiplier
             min_vol_ratio = max(0.4, min(1.5, min_vol_ratio))
+            
+            # 🔥 FIX: Log détaillé pour comprendre le calcul du volume
+            logger.debug(
+                f"📊 {symbol} {timeframe}: Volume | "
+                f"ATR%: {atr_percent:.3f} | "
+                f"Base min_vol: {base_min_vol:.2f}x | "
+                f"Volume multiplier: {volume_multiplier:.2f} | "
+                f"Min requis: {min_vol_ratio:.2f}x | "
+                f"Vol actuel: {vol_spike:.2f}x"
+            )
             
             # Filtrer volume
             if vol_spike < min_vol_ratio:
-                reason = f"Volume insuffisant: {vol_spike:.2f}x < {min_vol_ratio:.2f}x requis"
+                reason = f"Volume insuffisant: {vol_spike:.2f}x < {min_vol_ratio:.2f}x requis (base: {base_min_vol:.2f}x × mult: {volume_multiplier:.2f})"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-                if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
             
             # Filtrer micro-range
@@ -269,12 +341,19 @@ class TechnicalAnalyzer:
             # 1. SNR Filter (Signal-to-Noise Ratio)
             snr = abs(price - ema21) / atr if atr > 0 else 0
             snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
+            
+            # 🔥 FIX: Log détaillé pour comprendre le calcul du SNR
+            logger.debug(
+                f"📊 {symbol} {timeframe}: SNR | "
+                f"Price: {price:.6f} | EMA21: {ema21:.6f} | Diff: {abs(price - ema21):.6f} | "
+                f"ATR: {atr:.6f} | SNR: {snr:.3f} | Seuil: {snr_threshold}"
+            )
+            
             if snr < snr_threshold:
                 reason = f"SNR trop faible: {snr:.3f} < {snr_threshold} (signal plat)"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-                if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
             
             # 2. Breakout Filter
@@ -528,6 +607,18 @@ class TechnicalAnalyzer:
                 sl = entry * 1.0025  # +0.25%
                 tp = entry * 0.9975  # -0.25%
             
+            # 🔥 LOG DÉTAILLÉ: Setup trouvé avec tous les détails
+            logger.info(
+                f"✅ {symbol} {timeframe}: SETUP TROUVÉ - {direction} | "
+                f"Conditions: {len(conditions)}/{min_conditions} | "
+                f"RSI: {rsi:.1f} | Vol: {vol_spike:.2f}x | ATR: {atr_percent:.3f}% | "
+                f"Entry: {entry:.6f} | SL: {sl:.6f} | TP: {tp:.6f} | "
+                f"EMA9/21: {ema9:.6f}/{ema21:.6f} | MACD: {macd['histogram']:.6f} | "
+                f"ADX: {adx['adx']:.1f} (DI+:{adx['diPlus']:.1f}/DI-:{adx['diMinus']:.1f}) | "
+                f"Pattern: {pattern} | "
+                f"Signals: {', '.join(conditions[:5])}" + (f" (+{len(conditions)-5} autres)" if len(conditions) > 5 else "")
+            )
+            
             return {
                 'symbol': symbol,
                 'direction': direction,
@@ -580,18 +671,29 @@ class TechnicalAnalyzer:
             analysis_1m = await self.analyze_timeframe(symbol, '1m', trend_data, volume_multiplier, return_reason=return_reason)
             analysis_5m = await self.analyze_timeframe(symbol, '5m', trend_data, volume_multiplier, return_reason=return_reason)
             
-            # 🔥 FIX: Si return_reason=True et analyse retourne une raison, on la retourne
-            if return_reason:
-                if isinstance(analysis_1m, dict) and 'reason' in analysis_1m:
-                    return analysis_1m  # Retourner la raison du 1m
-                if isinstance(analysis_5m, dict) and 'reason' in analysis_5m:
-                    return analysis_5m  # Retourner la raison du 5m
+            # 🔥 FIX: Ne pas retourner immédiatement une raison si l'autre timeframe est valide
+            # En mode permissif, on peut utiliser un timeframe même si l'autre est rejeté
             
-            if DEBUG_ENABLED:
-                if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
-                    logger.info(f"1m VALIDE: {analysis_1m['direction']} - {len(analysis_1m['signals'])} conditions")
-                if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
-                    logger.info(f"5m VALIDE: {analysis_5m['direction']} - {len(analysis_5m['signals'])} conditions")
+            # 🔥 LOG DÉTAILLÉ: Résumé des analyses 1m et 5m
+            if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                logger.info(
+                    f"📊 {symbol} 1m: VALIDE - {analysis_1m['direction']} | "
+                    f"Conditions: {len(analysis_1m['signals'])} | "
+                    f"RSI: {analysis_1m.get('rsi', 0):.1f} | Vol: {analysis_1m.get('volumeSpike', 0):.2f}x | "
+                    f"ATR: {(analysis_1m.get('atr', 0) / analysis_1m.get('price', 1) * 100):.3f}%"
+                )
+            elif analysis_1m and isinstance(analysis_1m, dict) and 'reason' in analysis_1m:
+                logger.info(f"❌ {symbol} 1m: REJETÉ - {analysis_1m.get('reason', 'Raison inconnue')}")
+            
+            if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                logger.info(
+                    f"📊 {symbol} 5m: VALIDE - {analysis_5m['direction']} | "
+                    f"Conditions: {len(analysis_5m['signals'])} | "
+                    f"RSI: {analysis_5m.get('rsi', 0):.1f} | Vol: {analysis_5m.get('volumeSpike', 0):.2f}x | "
+                    f"ATR: {(analysis_5m.get('atr', 0) / analysis_5m.get('price', 1) * 100):.3f}%"
+                )
+            elif analysis_5m and isinstance(analysis_5m, dict) and 'reason' in analysis_5m:
+                logger.info(f"❌ {symbol} 5m: REJETÉ - {analysis_5m.get('reason', 'Raison inconnue')}")
             
             # Confluence ou mode permissif
             if use_confluence and analysis_1m and analysis_5m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
@@ -618,8 +720,18 @@ class TechnicalAnalyzer:
                 # Retourner le meilleur
                 best = analysis_1m if strength_1m >= strength_5m else analysis_5m
                 best['confirmedBy'] = '1m + 5m confluence'
+                best['symbol'] = symbol  # 🔥 FIX: Ajouter symbol au setup
                 if analysis_1m and analysis_5m:
                     best['atr5m'] = analysis_5m['atr']
+                
+                # 🔥 LOG DÉTAILLÉ: Confluence réussie
+                logger.info(
+                    f"✅ {symbol}: CONFLUENCE RÉUSSIE - {best['direction']} | "
+                    f"1m: {strength_1m} conditions | 5m: {strength_5m} conditions | "
+                    f"Meilleur: {best['timeframe']} | "
+                    f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
+                )
+                
                 return best
             else:
                 # MODE PERMISSIF avec priorité par force
@@ -633,37 +745,33 @@ class TechnicalAnalyzer:
                 if strength_1m > 0 or strength_5m > 0:
                     best = analysis_1m if strength_1m > strength_5m else analysis_5m
                     best['confirmedBy'] = f"{best['timeframe']} only ({len(best['signals'])} conds)"
+                    best['symbol'] = symbol  # 🔥 FIX: Ajouter symbol au setup
                     if analysis_1m and analysis_5m and valid_1m and valid_5m:
                         best['atr5m'] = analysis_5m['atr']
+                    
+                    # 🔥 LOG DÉTAILLÉ: Mode permissif - setup trouvé
+                    logger.info(
+                        f"✅ {symbol}: SETUP (Mode permissif) - {best['direction']} | "
+                        f"Timeframe: {best['timeframe']} | Conditions: {len(best['signals'])} | "
+                        f"1m: {strength_1m} | 5m: {strength_5m} | "
+                        f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
+                    )
+                    
                     return best
             
             # Aucun timeframe valide
             reasons = []
             if analysis_1m and isinstance(analysis_1m, dict) and 'reason' in analysis_1m:
                 reasons.append(f"1m: {analysis_1m['reason']}")
+            elif not analysis_1m:
+                reasons.append("1m: None (pas de setup)")
+                
             if analysis_5m and isinstance(analysis_5m, dict) and 'reason' in analysis_5m:
                 reasons.append(f"5m: {analysis_5m['reason']}")
+            elif not analysis_5m:
+                reasons.append("5m: None (pas de setup)")
             
-            # 🔥 FIX: Si aucune raison n'a été collectée, analyser les deux timeframes sans return_reason
-            # pour comprendre pourquoi ils retournent None
-            if return_reason and not reasons:
-                # Analyser à nouveau sans return_reason pour obtenir les vraies raisons
-                # Mais en fait, on devrait déjà avoir les raisons si return_reason=True
-                # Le problème est peut-être que les timeframes retournent None sans raison
-                # Vérifier si les timeframes ont vraiment été appelés avec return_reason
-                logger.warning(f"⚠️ {symbol}: Aucune raison collectée mais return_reason=True - Les timeframes retournent None")
-                # Essayer d'obtenir plus d'infos
-                if not analysis_1m and not analysis_5m:
-                    reason = "Les deux timeframes (1m et 5m) retournent None - Impossible de déterminer la raison exacte"
-                elif not analysis_1m:
-                    reason = f"1m retourne None, 5m: {analysis_5m.get('reason', 'inconnu') if isinstance(analysis_5m, dict) else 'None'}"
-                elif not analysis_5m:
-                    reason = f"5m retourne None, 1m: {analysis_1m.get('reason', 'inconnu') if isinstance(analysis_1m, dict) else 'None'}"
-                else:
-                    reason = "Aucune raison spécifique - Les deux timeframes ont été analysés mais aucune raison n'a été retournée"
-                
-                return {'reason': reason, 'symbol': symbol, 'timeframe': '1m+5m', 'analysis_1m': analysis_1m is not None, 'analysis_5m': analysis_5m is not None}
-            
+            # 🔥 FIX: Si return_reason=True, retourner une raison combinée
             if return_reason:
                 reason = f"Aucun timeframe valide. " + " | ".join(reasons) if reasons else "Aucune raison spécifique"
                 return {'reason': reason, 'symbol': symbol, 'timeframe': '1m+5m'}

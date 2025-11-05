@@ -299,3 +299,4 @@ if metrics.requests_by_endpoint['/api/scanner/start'] > 60:
 
 **Recommandation** : ✅ **PROCÉDER**
 
+

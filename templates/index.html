@@ -323,7 +323,7 @@
                     <div class="config-label">💰 CAPITAL TOTAL</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="number" id="accountSizeInput" value="1000" min="100" max="100000" 
-                               onchange="accountSize = parseFloat(this.value);" 
+                               onchange="accountSize = parseFloat(this.value); updateConfigThreshold('account_size', accountSize);" 
                                style="width: 120px; padding: 10px; background: #0a0e27; color: #00ff88; border: 2px solid #00ff88; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace;">
                         <span style="color: #888; font-size: 11px;">USDT</span>
                     </div>
@@ -333,7 +333,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="riskPerTradeSlider" min="0.5" max="5.0" step="0.1" value="2.0" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="riskPerTrade = parseFloat(this.value); document.getElementById('riskPerTradeValue').textContent = riskPerTrade.toFixed(1) + '%';">
+                               oninput="riskPerTrade = parseFloat(this.value); document.getElementById('riskPerTradeValue').textContent = riskPerTrade.toFixed(1) + '%'; updateConfigThreshold('risk_per_trade', riskPerTrade);">
                         <span id="riskPerTradeValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">2.0%</span>
                     </div>
                 </div>
@@ -341,7 +341,7 @@
                     <div class="config-label">🎯 CONFLUENCE</div>
                     <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="checkbox" id="confluenceToggle" onchange="useConfluence = this.checked; document.getElementById('confluenceStatus').textContent = this.checked ? 'STRICTE' : 'PERMISSIVE'; document.getElementById('confluenceStatus').style.color = this.checked ? '#00ff88' : '#888';" style="width: 25px; height: 25px;">
+                            <input type="checkbox" id="confluenceToggle" onchange="useConfluence = this.checked; document.getElementById('confluenceStatus').textContent = this.checked ? 'STRICTE' : 'PERMISSIVE'; document.getElementById('confluenceStatus').style.color = this.checked ? '#00ff88' : '#888'; updateConfigThreshold('use_confluence', useConfluence);" style="width: 25px; height: 25px;">
                             <span style="color: #00ff88; font-weight: bold; font-size: 15px;">Confluence</span>
                         </label>
                         <span id="confluenceStatus" style="color: #888; font-weight: bold;">PERMISSIVE</span>
@@ -362,7 +362,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="snrSlider" min="0.1" max="1.0" step="0.05" value="0.3" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="snrThreshold = parseFloat(this.value); document.getElementById('snrValue').textContent = snrThreshold.toFixed(2);">
+                               oninput="snrThreshold = parseFloat(this.value); document.getElementById('snrValue').textContent = snrThreshold.toFixed(2); updateConfigThreshold('snr_threshold', snrThreshold);">
                         <span id="snrValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.30</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Signal/Bruit</span>
@@ -373,7 +373,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="breakoutSlider" min="0.1" max="1.0" step="0.05" value="0.3" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="breakoutThreshold = parseFloat(this.value); document.getElementById('breakoutValue').textContent = breakoutThreshold.toFixed(2);">
+                               oninput="breakoutThreshold = parseFloat(this.value); document.getElementById('breakoutValue').textContent = breakoutThreshold.toFixed(2); updateConfigThreshold('breakout_threshold', breakoutThreshold);">
                         <span id="breakoutValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.30</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">× ATR</span>
@@ -384,7 +384,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="wickSlider" min="1.5" max="5.0" step="0.1" value="2.5" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="wickRatioMax = parseFloat(this.value); document.getElementById('wickValue').textContent = wickRatioMax.toFixed(1);">
+                               oninput="wickRatioMax = parseFloat(this.value); document.getElementById('wickValue').textContent = wickRatioMax.toFixed(1); updateConfigThreshold('wick_ratio_max', wickRatioMax);">
                         <span id="wickValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">2.5</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Max</span>
@@ -395,14 +395,26 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="diGapSlider" min="3" max="10" step="0.5" value="5.0" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="diGapMin = parseFloat(this.value); document.getElementById('diGapValue').textContent = diGapMin.toFixed(1);">
+                               oninput="diGapMin = parseFloat(this.value); document.getElementById('diGapValue').textContent = diGapMin.toFixed(1); updateConfigThreshold('di_gap_min', diGapMin);">
                         <span id="diGapValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">5.0</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Min</span>
                 </div>
+                
+                <div class="config-group">
+                    <div class="config-label">📈 ATR Optimal Min</div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                        <input type="range" id="atrOptimalSlider" min="0.05" max="1.0" step="0.01" value="0.10" 
+                               style="width: 150px; height: 20px; cursor: pointer;" 
+                               oninput="optimalAtrMin1m = parseFloat(this.value); document.getElementById('atrOptimalValue').textContent = optimalAtrMin1m.toFixed(2) + '%'; updateConfigThreshold('optimal_atr_min_1m', optimalAtrMin1m);">
+                        <span id="atrOptimalValue" style="color: #00ff88; font-weight: bold; min-width: 50px; font-size: 12px;">0.10%</span>
+                    </div>
+                    <span style="color: #888; font-size: 10px;">Seuil min 1m (0.05-1.0%)</span>
+                </div>
             </div>
             <div class="config-row" style="margin-top: 20px;">
-                <button class="btn btn-primary" onclick="initScanner()" id="scanPairsBtn">🔍 SCANNER LES PAIRES</button>
+                <button class="btn btn-primary" onclick="startFullScanner()" id="scanPairsBtn">🚀 DÉMARRER SCANNER</button>
+                <button class="btn btn-danger" onclick="stopScanning()" style="display:none; margin-left: 10px;" id="stopBtn">⏹ ARRÊTER</button>
             </div>
         </div>
         
@@ -412,16 +424,9 @@
                 <div class="config-group" style="width: 100%;">
                     <div class="config-label" style="text-align: center; font-size: 16px; margin-bottom: 15px;">🏆 TOP 20 PAIRES SCALABLES</div>
                     <div id="top20ScalablePairs" style="min-height: 300px; max-height: 600px; overflow-y: auto; background: #0a0e27; border-radius: 8px; padding: 15px; border: 2px solid #2a3a6b;">
-                        <div style="text-align: center; color: #888; padding: 50px;">Cliquez sur "SCANNER LES PAIRES" pour charger</div>
+                        <div style="text-align: center; color: #888; padding: 50px;">Cliquez sur "DÉMARRER SCANNER" pour charger</div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <div class="pair-selection" id="pairSelection">
-            <div class="pair-controls" style="display: flex; gap: 15px; justify-content: center;">
-                <button class="btn btn-primary" onclick="startScanning()">🚀 START SCANNER</button>
-                <button class="btn btn-danger" onclick="stopScanning()" style="display:none;" id="stopBtn">⏹ STOP</button>
             </div>
         </div>
 
@@ -429,7 +434,7 @@
             <div class="control-row">
                 <div class="control-group">
                     <label class="control-label">📈 TREND TIMEFRAME:</label>
-                    <select id="trendTfSelector" onchange="trendTimeframe = this.value" style="min-width: 100px;">
+                    <select id="trendTfSelector" onchange="trendTimeframe = this.value; updateConfigThreshold('trend_timeframe', trendTimeframe);" style="min-width: 100px;">
                         <option value="5m">5m</option>
                         <option value="15m" selected>15m</option>
                         <option value="30m">30m</option>
@@ -624,21 +629,30 @@
             socket = io(API_BASE_URL);
             
             socket.on('connect', function() {
-                debugLog('✅ SocketIO', 'Connecté au serveur FastAPI');
+                // Connexion SocketIO - log déjà visible dans les logs Python
             });
             
             socket.on('disconnect', function() {
-                debugLog('⚠️ SocketIO', 'Déconnecté du serveur');
+                // Déconnexion SocketIO - log déjà visible dans les logs Python
             });
             
-            // Écouter les logs du serveur
+            // Écouter les logs du serveur - UNIQUEMENT pour les logs de décision de trade et suivi
             socket.on('log', function(logEntry) {
                 var level = logEntry.level || 'INFO';
                 var message = logEntry.message || '';
                 var detail = logEntry.detail || '';
                 var timestamp = logEntry.timestamp || '';
                 
-                debugLog('📡 ' + level, message + (detail ? ' - ' + detail : ''));
+                // Filtrer uniquement les logs de décision de trade et suivi
+                var tradeKeywords = ['Setup trouvé', 'Position ouverte', 'Position fermée', 'Position clôturée', 
+                                     'SL TOUCHÉ', 'TP ATTEINT', 'WIN', 'LOSS', 'BREAK-EVEN'];
+                var isTradeLog = tradeKeywords.some(function(keyword) {
+                    return message.indexOf(keyword) !== -1 || detail.indexOf(keyword) !== -1;
+                });
+                
+                if (isTradeLog) {
+                    debugLog('📡 ' + level, message + (detail ? ' - ' + detail : ''));
+                }
             });
             
             // Écouter les updates de status
@@ -679,18 +693,196 @@
                 if (activePosition && activePosition.symbol === update.symbol) {
                     activePosition.currentPrice = update.current_price;
                     activePosition.pnl = update.pnl;
+                    activePosition.pnl_usdt = update.pnl_usdt || 0;
                     updatePositionDisplay();
+                }
+            });
+            
+            // 🔥 FIX: Écouter les ouvertures de position automatiques
+            socket.on('position_opened', function(position) {
+                if (position && position.symbol) {
+                    debugLog('🟢 Position ouverte (auto)', position.symbol + ' - ' + position.direction);
+                    
+                    // 🔥 FIX: Ne PAS appeler openPosition() qui fait un POST /api/position/open
+                    // La position est déjà ouverte côté backend, on met juste à jour l'affichage
+                    tradingState = 'IN_POSITION';
+                    activePosition = {
+                        symbol: position.symbol,
+                        direction: position.direction,
+                        entry: position.entry,
+                        sl: position.sl,
+                        tp: position.tp,
+                        atr: position.atr || 0,
+                        atr5m: position.atr5m || 0,
+                        confirmedBy: position.confirmed_by || 'Scanner auto',
+                        size: position.size || 0,
+                        currentPrice: position.entry, // Initialiser avec entry
+                        pnl: 0,
+                        pnl_usdt: 0,
+                        timestamp: position.timestamp || Date.now()
+                    };
+                    positionStartTime = Date.now();
+                    
+                    // Afficher le panel
+                    var panel = document.getElementById('positionPanel');
+                    if (panel) panel.style.display = 'block';
+                    updatePositionDisplay();
+                    updateStateDisplay();
+                    
+                    // 🔥 FIX: Demander immédiatement le prix actuel
+                    setTimeout(function() {
+                        if (activePosition && activePosition.symbol) {
+                            checkPosition(); // Cela va mettre à jour le prix via /api/position/check
+                        }
+                    }, 300);
                 }
             });
             
             // Écouter les fermetures de position
             socket.on('position_closed', function(result) {
                 if (result && result.symbol) {
-                    debugLog('✅ Position fermée', result.symbol + ' - PnL: ' + result.pnl_usdt + ' USDT');
-                    // Fermer la position localement
+                    debugLog('✅ Position fermée', result.symbol + ' - PnL: ' + (result.net_pnl_usdt || result.pnl_usdt) + ' USDT');
+                    
+                    // 🔥 FIX: Vérifier si cette position n'a pas déjà été comptée
+                    // Utiliser closure_id si disponible, sinon timestamp + symbol
+                    var alreadyCounted = false;
+                    var resultTimestamp = result.timestamp || Date.now();
+                    var closureId = result.closure_id || null;
+                    
+                    // Vérifier par closure_id (le plus fiable)
+                    if (closureId) {
+                        if (stats.tradeHistory && stats.tradeHistory.length > 0) {
+                            for (var i = 0; i < stats.tradeHistory.length; i++) {
+                                if (stats.tradeHistory[i].closureId === closureId) {
+                                    alreadyCounted = true;
+                                    debugLog('⚠️ Trade déjà compté (closure_id)', result.symbol + ' - ID: ' + closureId);
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // Fallback: vérifier par timestamp + symbol
+                        if (stats.tradeHistory && stats.tradeHistory.length > 0) {
+                            for (var i = 0; i < Math.min(stats.tradeHistory.length, 5); i++) {
+                                var trade = stats.tradeHistory[i];
+                                if (trade && trade.symbol === result.symbol && 
+                                    Math.abs(trade.timestamp - resultTimestamp) < 2000) {
+                                    alreadyCounted = true;
+                                    debugLog('⚠️ Trade déjà compté (timestamp)', result.symbol + ' (timestamp: ' + resultTimestamp + ' vs ' + trade.timestamp + ')');
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 🔥 FIX: Mettre à jour les stats UNIQUEMENT si pas déjà compté
+                    if (!alreadyCounted) {
+                        // Utiliser net_pnl_usdt pour déterminer win/loss
+                        var net_pnl_usdt = result.net_pnl_usdt || result.pnl_usdt || 0;
+                        if (net_pnl_usdt > 0) {
+                            stats.wins++;
+                        } else {
+                            stats.losses++;
+                        }
+                        stats.totalTrades++;
+                    }
+                    
+                    // 🔥 FIX: Éviter double comptage - ne mettre à jour que si pas déjà fait
+                    if (!alreadyCounted) {
+                        // 🔥 FIX: Mettre à jour PnL avec toutes les valeurs
+                        var gross_pnl = result.gross_pnl || result.gross_pnl_pct || result.pnl || 0;
+                        var net_pnl = result.net_pnl || 0;
+                        var gross_pnl_usdt = result.gross_pnl_usdt || result.pnl_usdt || 0;
+                        var net_pnl_usdt = result.net_pnl_usdt || 0;
+                        var total_costs = result.total_costs || 0;
+                        var slippage = result.slippage || 0;
+                        var fees = result.fees || 0;
+                        var size_closed = result.size_closed || result.size || 0;
+                        var total_costs_usdt = result.total_costs_usdt || ((total_costs / 100) * size_closed);
+                        
+                        stats.totalPnl += net_pnl;
+                        stats.totalPnlUSDT += net_pnl_usdt;
+                        stats.totalCosts += total_costs;
+                        stats.totalCostsUSDT += total_costs_usdt;
+                        
+                        // 🔥 FIX: Ajouter à l'historique avec toutes les données
+                        var tradeRecord = {
+                            timestamp: result.timestamp || Date.now(),
+                            closureId: closureId || null,  // 🔥 FIX: ID unique pour éviter double comptage
+                            date: new Date().toLocaleDateString('fr-FR'),
+                            time: new Date().toLocaleTimeString('fr-FR'),
+                            symbol: result.symbol,
+                            direction: result.direction,
+                            entry: result.entry || 0,
+                            exit: result.exit || 0,
+                            grossPnlPct: gross_pnl.toFixed(2),
+                            grossPnlUSDT: gross_pnl_usdt.toFixed(4),
+                            fees: fees.toFixed(2),
+                            slippage: slippage.toFixed(2),
+                            totalCosts: total_costs.toFixed(2),
+                            netPnl: net_pnl.toFixed(2),
+                            netPnlUSDT: net_pnl_usdt.toFixed(4),
+                            duration: result.duration || 0,
+                            reason: result.reason || result.close_reason || 'UNKNOWN',
+                            hasPartialTP: result.has_partial_tp || false,
+                            sizeClosed: size_closed.toFixed(4)
+                        };
+                        
+                        stats.tradeHistory.unshift(tradeRecord);
+                        if (stats.tradeHistory.length > 20) {
+                            stats.tradeHistory.pop();
+                        }
+                        
+                        // 🔥 FIX: Ajouter à l'historique avec durée
+                        if (net_pnl_usdt > 0) {
+                            stats.winPnls.push(net_pnl);
+                            if (result.duration) {
+                                stats.winDurations.push(result.duration);
+                            }
+                        } else {
+                            stats.lossPnls.push(net_pnl);
+                            if (result.duration) {
+                                stats.lossDurations.push(result.duration);
+                            }
+                        }
+                        
+                        // 🔥 FIX: Mettre à jour meilleur/pire trade
+                        if (net_pnl > 0 && net_pnl > (stats.bestTrade.pnl || 0)) {
+                            stats.bestTrade = {
+                                pnl: net_pnl,
+                                symbol: result.symbol,
+                                duration: result.duration || 0
+                            };
+                        }
+                        if (net_pnl < 0 && net_pnl < (stats.worstTrade.pnl || 0)) {
+                            stats.worstTrade = {
+                                pnl: net_pnl,
+                                symbol: result.symbol,
+                                duration: result.duration || 0
+                            };
+                        }
+                        
+                        updateTradeHistory();
+                    }
+                    
+                    // Mettre à jour l'affichage
+                    updateStats();
+                    
+                    // 🔥 FIX: Ne PAS appeler closePosition() ici car ça va causer un double comptage
+                    // La position est déjà fermée côté serveur, on nettoie juste l'état local
                     if (activePosition && activePosition.symbol === result.symbol) {
-                        var reason = result.close_reason || 'SERVER';
-                        closePosition(reason);
+                        activePosition = null;
+                        positionStartTime = null;
+                        if (positionCheckInterval) {
+                            clearInterval(positionCheckInterval);
+                            positionCheckInterval = null;
+                        }
+                        // 🔥 FIX: Cacher le panel de position active
+                        var panel = document.getElementById('positionPanel');
+                        if (panel) panel.style.display = 'none';
+                        tradingState = 'PAUSED';
+                        updateStateDisplay();
+                        debugLog('🧹 Position nettoyée localement', result.symbol);
                     }
                 }
             });
@@ -700,7 +892,7 @@
                 if (data.pairs && Array.isArray(data.pairs)) {
                     allPairs = data.pairs;
                     displayTop20ScalablePairs();
-                    debugLog('📊 Top pairs mis à jour', data.pairs.length + ' paires');
+                    // Top pairs mis à jour - log déjà visible dans les logs Python
                     
                     // Marquer le scan comme terminé (pour initScanner)
                     if (typeof scanCompleted !== 'undefined') {
@@ -709,25 +901,28 @@
                 }
             });
             
-            // 🔥 FIX: Écouter les mises à jour de stats volume depuis le scanner automatique
-            socket.on('volume_stats_update', function(data) {
-                // Mettre à jour le compteur avec les stats reçues
-                if (data && typeof data.total !== 'undefined') {
-                    // Incrémenter les stats existantes (pas remplacer)
-                    for (var i = 0; i < data.total; i++) {
-                        updateVolumeStatsUI(i < data.validated); // true si validé, false sinon
-                    }
+            // 🔥 FIX: Écouter les mises à jour de validation volume depuis le scanner automatique
+            // Événement envoyé pour CHAQUE paire analysée (pas seulement le résumé)
+            socket.on('volume_validation_update', function(data) {
+                // Mettre à jour le compteur avec chaque résultat
+                if (data && typeof data.valid !== 'undefined') {
+                    updateVolumeStatsUI(data.valid); // true si setup trouvé, false sinon
                 }
+            });
+            
+            // Événement pour résumé (optionnel, pour info)
+            socket.on('volume_stats_update', function(data) {
+                // Stats volume - log déjà visible dans les logs Python
             });
             
             // Écouter la completion du scan
             socket.on('scan_completed', function(data) {
-                debugLog('✅ Scan terminé', data.pairs_count + ' paires scalables trouvées');
+                // Scan terminé - log déjà visible dans les logs Python
             });
             
             // Écouter les erreurs de scan
             socket.on('scan_error', function(data) {
-                debugLog('❌ Erreur scan', data.error);
+                // Erreur scan - log déjà visible dans les logs Python
             });
         }
         
@@ -810,6 +1005,7 @@
         var breakoutThreshold = 0.3;    // Breakout multiplier (× ATR)
         var wickRatioMax = 2.5;         // Wick Ratio max
         var diGapMin = 5.0;             // DI Gap minimum
+        var optimalAtrMin1m = 0.10;     // ATR Optimal minimum 1m (en %)
         
         // 🔥 NOUVEAU v3.7: Stats volume en temps réel
         var volumeStats = {
@@ -855,9 +1051,9 @@
             
             try {
                 localStorage.setItem('mexcScannerState', JSON.stringify(state));
-                debugLog('💾 État sauvegardé', 'Position: ' + activePosition.symbol);
+                // État sauvegardé - log déjà visible dans les logs Python
             } catch(e) {
-                debugLog('⚠️ Sauvegarde échouée', e.message);
+                // Sauvegarde échouée - log déjà visible dans les logs Python
             }
         }
         
@@ -872,7 +1068,7 @@
                 // Expire après 30 minutes
                 if (age > 30 * 60 * 1000) {
                     localStorage.removeItem('mexcScannerState');
-                    debugLog('⏱️ État expiré', 'Supprimé (> 30min)');
+                    // État expiré - log déjà visible dans les logs Python
                     return false;
                 }
                 
@@ -883,13 +1079,19 @@
                 stats = state.stats;
                 selectedPair = state.selectedPair;
                 
-                debugLog('♻️ État restauré', 'Position: ' + (activePosition ? activePosition.symbol : 'Aucune'));
+                // État restauré - log déjà visible dans les logs Python
                 
                 if (activePosition) {
                     // Réafficher le panneau position
                     displayRestoredPosition();
                     // Relancer le monitoring
-                    positionCheckInterval = setInterval(checkPosition, 2000);
+                    // 🔥 FIX: Intervalle pour mettre à jour la position (prix, PnL, durée)
+                    positionCheckInterval = setInterval(function() {
+                        checkPosition(); // Met à jour prix et PnL
+                        if (activePosition && positionStartTime) {
+                            updatePositionDisplay(); // Met à jour aussi la durée
+                        }
+                    }, 1000); // 🔥 FIX: Réduire à 1 seconde pour mise à jour plus fréquente
                     
                     // Réactiver le timeout
                     const elapsed = Date.now() - positionStartTime;
@@ -898,7 +1100,7 @@
                     if (remaining > 0) {
                         setTimeout(function() {
                             if (tradingState === 'IN_POSITION' && activePosition) {
-                                debugLog('⏱️ TIMEOUT', '5 minutes atteintes (après restauration)');
+                                // TIMEOUT - log déjà visible dans les logs Python
                                 closePosition('TIMEOUT');
                             }
                         }, remaining);
@@ -913,25 +1115,43 @@
                 
                 return true;
             } catch(e) {
-                debugLog('❌ Restauration échouée', e.message);
+                // Restauration échouée - log déjà visible dans les logs Python
                 localStorage.removeItem('mexcScannerState');
-                return false;
+                return false
             }
         }
         
         function displayRestoredPosition() {
             if (!activePosition) return;
             
-            document.getElementById('positionPanel').style.display = 'block';
-            document.getElementById('posSymbol').textContent = activePosition.symbol;
-            document.getElementById('posDirection').textContent = activePosition.direction;
-            document.getElementById('posDirection').style.color = activePosition.direction === 'LONG' ? '#00ff88' : '#ff4444';
-            document.getElementById('posEntry').textContent = activePosition.entry;
-            document.getElementById('posTP').textContent = activePosition.tp;
-            document.getElementById('posSL').textContent = activePosition.sl;
-            document.getElementById('posConfirm').textContent = activePosition.confirmedBy || 'N/A';
+            var panel = document.getElementById('positionPanel');
+            if (panel) panel.style.display = 'block';
             
-            showInfo('✅ Position restaurée: ' + activePosition.symbol);
+            var symbolEl = document.getElementById('posSymbol');
+            if (symbolEl) symbolEl.textContent = activePosition.symbol;
+            
+            var directionEl = document.getElementById('posDirection');
+            if (directionEl) {
+                directionEl.textContent = activePosition.direction;
+                directionEl.style.color = activePosition.direction === 'LONG' ? '#00ff88' : '#ff4444';
+            }
+            
+            var entryEl = document.getElementById('posEntry');
+            if (entryEl) entryEl.textContent = activePosition.entry;
+            
+            var tpEl = document.getElementById('posTP');
+            if (tpEl) tpEl.textContent = activePosition.tp;
+            
+            var slEl = document.getElementById('posSL');
+            if (slEl) slEl.textContent = activePosition.sl;
+            
+            var confirmEl = document.getElementById('posConfirm');
+            if (confirmEl) confirmEl.textContent = activePosition.confirmedBy || 'N/A';
+            
+            // 🔥 FIX: Vérifier que tous les éléments existent avant d'afficher le message
+            if (panel && symbolEl) {
+                showInfo('✅ Position restaurée: ' + activePosition.symbol);
+            }
         }
         
         // 🔥 v6.5: Changer le mode TP/SL
@@ -939,20 +1159,28 @@
             useATR = false;
             useATRMulti = false;
             
+            var atrModeEl = document.getElementById('atrModeStatus');
             if (mode === 'ATR') {
                 useATR = true;
-                document.getElementById('atrModeStatus').textContent = 'ATR SIMPLE';
-                document.getElementById('atrModeStatus').style.color = '#00ff88';
+                if (atrModeEl) {
+                    atrModeEl.textContent = 'ATR SIMPLE';
+                    atrModeEl.style.color = '#00ff88';
+                }
             } else if (mode === 'ATR_MULTI') {
                 useATRMulti = true;
-                document.getElementById('atrModeStatus').textContent = 'ATR MULTI';
-                document.getElementById('atrModeStatus').style.color = '#00aaff';
+                if (atrModeEl) {
+                    atrModeEl.textContent = 'ATR MULTI';
+                    atrModeEl.style.color = '#00aaff';
+                }
             } else {  // FIXE
-                document.getElementById('atrModeStatus').textContent = 'FIXE';
-                document.getElementById('atrModeStatus').style.color = '#888';
+                if (atrModeEl) {
+                    atrModeEl.textContent = 'FIXE';
+                    atrModeEl.style.color = '#888';
+                }
             }
             
-            debugLog('📊 Mode TP/SL', mode);
+            // 🔥 FIX: Synchroniser avec le backend
+            updateConfigThreshold('tp_sl_mode', mode);
         }
         
         // 🔥 NOUVEAU: Gestion de la visibilité (veille/changement d'onglet)
@@ -1002,10 +1230,11 @@
                 document.getElementById('statAvgLoss').textContent = avgLoss.toFixed(2) + '%';
             }
             
-            if (document.getElementById('statTotalPnl')) {
+            var statTotalPnlEl = document.getElementById('statTotalPnl');
+            if (statTotalPnlEl) {
                 var color = stats.totalPnl >= 0 ? '#00ff88' : '#ff4444';
-                document.getElementById('statTotalPnl').textContent = (stats.totalPnl >= 0 ? '+' : '') + stats.totalPnl.toFixed(2) + '%';
-                document.getElementById('statTotalPnl').style.color = color;
+                statTotalPnlEl.textContent = (stats.totalPnl >= 0 ? '+' : '') + stats.totalPnl.toFixed(2) + '%';
+                statTotalPnlEl.style.color = color;
             }
             
             // 🔥 v6.4.1: Afficher P&L USDT cumulé
@@ -1113,7 +1342,9 @@
                     reasonColor = '#00aaff';
                 }
                 
-                var grossPnlColor = parseFloat(trade.grossPnlPct || trade.netPnl) >= 0 ? '#00ff88' : '#ff4444';
+                // 🔥 FIX: Utiliser grossPnlPct depuis le backend
+                var grossPnl = parseFloat(trade.grossPnlPct || trade.grossPnl || trade.netPnl || 0);
+                var grossPnlColor = grossPnl >= 0 ? '#00ff88' : '#ff4444';
                 
                 html += '<tr style="border-bottom:1px solid #1e2749;">';
                 html += '<td style="padding:6px;color:#888;">' + (index + 1) + '</td>';
@@ -1121,8 +1352,10 @@
                 html += '<td style="padding:6px;font-weight:bold;">' + trade.symbol + '</td>';
                 html += '<td style="padding:6px;text-align:center;color:' + dirColor + ';font-weight:bold;">' + trade.direction + '</td>';
                 html += '<td style="padding:6px;text-align:center;color:' + reasonColor + ';font-weight:bold;">' + reasonText + '</td>';
-                html += '<td style="padding:6px;text-align:right;color:' + grossPnlColor + '">' + (parseFloat(trade.grossPnlPct || trade.netPnl) >= 0 ? '+' : '') + (trade.grossPnlPct || trade.netPnl) + '%</td>';
-                html += '<td style="padding:6px;text-align:right;color:#ff8800;">-' + (trade.slippage || '0.00') + '%</td>';
+                // 🔥 FIX: Afficher PnL brut et slippage correctement
+                var slippage = parseFloat(trade.slippage || 0);
+                html += '<td style="padding:6px;text-align:right;color:' + grossPnlColor + '">' + (grossPnl >= 0 ? '+' : '') + grossPnl.toFixed(2) + '%</td>';
+                html += '<td style="padding:6px;text-align:right;color:#ff8800;">' + (slippage > 0 ? '-' : '') + slippage.toFixed(2) + '%</td>';
                 html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnl) >= 0 ? '+' : '') + trade.netPnl + '%</td>';
                 html += '<td style="padding:6px;text-align:right;font-weight:bold;color:' + pnlColor + '">' + (parseFloat(trade.netPnlUSDT || 0) >= 0 ? '+' : '') + (trade.netPnlUSDT || '0.0000') + ' USDT</td>';
                 html += '</tr>';
@@ -1164,14 +1397,14 @@
                 var atr1m = setup.atr;
                 var atr5m = setup.atr5m || setup.atr;
                 var atrPercent = ((atr1m * 0.7) + (atr5m * 0.3)) / entryPrice * 100;
-                debugLog('📊 ATR Multi-TF', 'ATR1m=' + atr1m.toFixed(6) + ' | ATR5m=' + atr5m.toFixed(6) + ' → ATR%=' + atrPercent.toFixed(3));
+                // ATR Multi-TF - log déjà visible dans les logs Python
                 
                 // 🔥 OPTIMISATION v5.1: Clamp ATR aligné avec filtres (0.15% - 1.5%)
                 var minATR = 0.15;  // Aligné avec filtres
                 var maxATR = 1.5;   // Aligné avec filtres
                 if (atrPercent < minATR) atrPercent = minATR;
                 if (atrPercent > maxATR) atrPercent = maxATR;
-                debugLog('🧩 Clamp ATR', 'ATR ajusté à ' + atrPercent.toFixed(2) + '% (plage ' + minATR + '–' + maxATR + '%)');
+                // Clamp ATR - log déjà visible dans les logs Python
                 
                 // 🔥 OPTIMISATION v5.0: Ajustement selon série win/loss
                 var atrMultSL = 1.5;
@@ -1180,11 +1413,11 @@
                 if (winStreak >= 3) {
                     atrMultTP = 4.0;
                     atrMultSL = 1.2;
-                    debugLog('⚖️ Gestion dynamique', 'Wins=' + winStreak + ' | TPx=' + atrMultTP + ' | SLx=' + atrMultSL + ' (agressif)');
+                    // Gestion dynamique - log déjà visible dans les logs Python
                 } else if (lossStreak >= 2) {
                     atrMultTP = 1.5;
                     atrMultSL = 1.2;
-                    debugLog('⚖️ Gestion dynamique', 'Losses=' + lossStreak + ' | TPx=' + atrMultTP + ' | SLx=' + atrMultSL + ' (prudent)');
+                    // Gestion dynamique - log déjà visible dans les logs Python
                 }
                 
                 if (setup.direction === 'LONG') {
@@ -1197,7 +1430,7 @@
                 
                 // 🔥 OPTIMISATION v4.2.1: Log enrichi pour debug visuel
                 var modeLabel = useATRMulti ? 'ATR MULTI' : 'ATR';
-                debugLog('📊 Mode ' + modeLabel, 'ATR=' + setup.atr.toFixed(6) + ' (' + atrPercent.toFixed(3) + '%) | SL=' + activePosition.sl + ' | TP=' + activePosition.tp);
+                // Mode ATR - log déjà visible dans les logs Python
             } else {
                 // Mode FIXE
                 if (setup.direction === 'LONG') {
@@ -1208,7 +1441,7 @@
                     activePosition.sl = (entryPrice * 1.0025).toFixed(6);
                     activePosition.tp = (entryPrice * 0.99).toFixed(6); // TP très bas
                 }
-                debugLog('📊 Mode FIXE', 'SL: ' + activePosition.sl + ' (-0.25%) | TP partiel: +0.3% (+ trailing)');
+                // Mode FIXE - log déjà visible dans les logs Python
             }
             setup.sl = activePosition.sl;
             setup.tp = activePosition.tp;
@@ -1245,29 +1478,45 @@
                 
                 if (response.ok) {
                     var result = await response.json();
-                    debugLog('✅ Position ouverte (FastAPI)', setup.symbol + ' - ' + setup.direction);
+                    // Position ouverte (FastAPI) - log déjà visible dans les logs Python
                 } else {
-                    debugLog('⚠️ Erreur ouverture position API', 'Position ouverte localement uniquement');
+                    // Erreur ouverture position API - log déjà visible dans les logs Python
                 }
             } catch(error) {
-                debugLog('⚠️ Erreur API position/open', error.message);
+                // Erreur API position/open - log déjà visible dans les logs Python
             }
             
-            document.getElementById('positionPanel').style.display = 'block';
-            document.getElementById('posSymbol').textContent = setup.symbol;
-            document.getElementById('posDirection').textContent = setup.direction;
-            document.getElementById('posDirection').style.color = setup.direction === 'LONG' ? '#00ff88' : '#ff4444';
-            document.getElementById('posEntry').textContent = setup.entry;
-            // 🔥 v6.5: Affichage TP selon mode
-            if (useATRMulti) {
-                document.getElementById('posTP').textContent = 'TP: ' + activePosition.tp + ' (partiel 1× ATR)';
-            } else if (useATR) {
-                document.getElementById('posTP').textContent = 'TP: ' + activePosition.tp;
-            } else {
-                document.getElementById('posTP').textContent = 'TP partiel: +0.3%';
+            var panel = document.getElementById('positionPanel');
+            if (panel) panel.style.display = 'block';
+            
+            var symbolEl = document.getElementById('posSymbol');
+            if (symbolEl) symbolEl.textContent = setup.symbol;
+            
+            var directionEl = document.getElementById('posDirection');
+            if (directionEl) {
+                directionEl.textContent = setup.direction;
+                directionEl.style.color = setup.direction === 'LONG' ? '#00ff88' : '#ff4444';
             }
-            document.getElementById('posSL').textContent = (useATR || useATRMulti) ? 'SL: ' + activePosition.sl : activePosition.sl + ' (-0.25%)';
-            document.getElementById('posConfirm').textContent = setup.confirmedBy || 'N/A';
+            var entryEl = document.getElementById('posEntry');
+            if (entryEl) entryEl.textContent = setup.entry;
+            
+            // 🔥 v6.5: Affichage TP selon mode
+            var tpEl = document.getElementById('posTP');
+            if (tpEl) {
+                if (useATRMulti) {
+                    tpEl.textContent = 'TP: ' + activePosition.tp + ' (partiel 1× ATR)';
+                } else if (useATR) {
+                    tpEl.textContent = 'TP: ' + activePosition.tp;
+                } else {
+                    tpEl.textContent = 'TP partiel: +0.3%';
+                }
+            }
+            
+            var slEl = document.getElementById('posSL');
+            if (slEl) slEl.textContent = (useATR || useATRMulti) ? 'SL: ' + activePosition.sl : activePosition.sl + ' (-0.25%)';
+            
+            var confirmEl = document.getElementById('posConfirm');
+            if (confirmEl) confirmEl.textContent = setup.confirmedBy || 'N/A';
             
             updateStateDisplay();
             saveState(); // 🔥 Sauvegarder immédiatement
@@ -1281,7 +1530,22 @@
             debugLog('💰 Position Size', 'Size: ' + positionInfo.size.toFixed(2) + ' USDT | Risk: ' + positionInfo.risk + ' (' + positionInfo.reason + ')');
             showSuccess('Position ouverte: ' + setup.direction + ' ' + setup.symbol);
             
-            positionCheckInterval = setInterval(checkPosition, 2000);
+            // 🔥 FIX: Initialiser currentPrice avec le prix d'entrée pour affichage immédiat
+            activePosition.currentPrice = parseFloat(setup.entry);
+            updatePositionDisplay(); // Mettre à jour immédiatement avec le prix d'entrée
+            
+            // 🔥 FIX: Intervalle pour mettre à jour la position (prix, PnL, durée)
+            positionCheckInterval = setInterval(function() {
+                checkPosition(); // Met à jour prix et PnL
+                if (activePosition && positionStartTime) {
+                    updatePositionDisplay(); // Met à jour aussi la durée
+                }
+            }, 1000); // 🔥 FIX: Réduire à 1 seconde pour mise à jour plus fréquente
+            
+            // 🔥 FIX: Appeler checkPosition immédiatement pour avoir le prix actuel
+            setTimeout(function() {
+                checkPosition();
+            }, 300); // Attendre 300ms pour que la position soit bien créée dans le backend
             
             // 🔥 NOUVEAU v3.4: Timeout retiré - position se ferme uniquement par SL/TP
         }
@@ -1293,7 +1557,7 @@
             }
             
             try {
-                debugLog('🔄 Check Position', activePosition.symbol + ' - ' + activePosition.direction);
+                // Check Position - log déjà visible dans les logs Python
                 
                 // 🔥 v7.0: Utiliser l'endpoint FastAPI
                 var response = await fetch(API_BASE_URL + '/api/position/check', {
@@ -1302,14 +1566,14 @@
                 });
                 
                 if (!response.ok) {
-                    debugLog('⚠️ Erreur check position', 'HTTP ' + response.status);
+                    // Erreur check position - log déjà visible dans les logs Python
                     return;
                 }
                 
                 var result = await response.json();
                 
                 if (result.status === 'no_position') {
-                    debugLog('ℹ️ Aucune position', 'Position déjà fermée');
+                    // Aucune position - log déjà visible dans les logs Python
                     return;
                 }
                 
@@ -1317,10 +1581,13 @@
                     var currentPrice = result.current_price;
                     var pnl = result.pnl || 0;
                     
-                    // Mettre à jour l'affichage
-                    activePosition.currentPrice = currentPrice;
-                    activePosition.pnl = pnl;
-                    updatePositionDisplay();
+                    // 🔥 FIX: Mettre à jour l'affichage avec prix et PnL
+                    if (activePosition) {
+                        activePosition.currentPrice = currentPrice;
+                        activePosition.pnl = pnl;
+                        activePosition.pnl_usdt = result.pnl_usdt || 0;
+                        updatePositionDisplay();
+                    }
                     
                     // Si close_reason existe, fermer la position
                     if (result.close_reason) {
@@ -1340,7 +1607,7 @@
                 
                 // Si 404, essayer l'endpoint de liste
                 if (response && response.success === false && response.code === 404) {
-                    debugLog('⚠️ Endpoint individuel 404', 'Fallback sur liste des tickers...');
+                    // Endpoint individuel 404 - log déjà visible dans les logs Python
                     
                     // Tentative 2: Endpoint liste /ticker (tous les symboles)
                     // 🔥 Ajouter timestamp pour éviter le cache
@@ -1351,32 +1618,28 @@
                         // Filtrer pour trouver notre symbole
                         var ticker = listResponse.data.find(t => t.symbol === activePosition.symbol);
                         if (ticker) {
-                            // 🔥 DEBUG: Afficher la structure du ticker
-                            debugLog('✅ Symbole trouvé', 'lastPrice: ' + (ticker.lastPrice || ticker.last || 'N/A'));
-                            if (debugEnabled) {
-                                debugLog('🔍 Structure ticker', JSON.stringify(ticker).substring(0, 200));
-                            }
+                            // Symbole trouvé - log déjà visible dans les logs Python
                             response = { success: true, data: ticker };
                         } else {
-                            debugLog('❌ Symbole introuvable', activePosition.symbol + ' pas dans la liste');
+                            // Symbole introuvable - log déjà visible dans les logs Python
                             response = null;
                         }
                     } else {
-                        debugLog('❌ Liste vide', 'Impossible de récupérer les tickers');
+                        // Liste vide - log déjà visible dans les logs Python
                         response = null;
                     }
                 }
                 
                 if (!response) {
-                    debugLog('⚠️ Response null', 'Utilisation prix caché...');
+                    // Response null - log déjà visible dans les logs Python
                     // 🔥 Utiliser le prix caché si disponible
                     if (priceCache[activePosition.symbol]) {
                         var cacheAge = Date.now() - priceCache[activePosition.symbol].timestamp;
                         var cacheAgeSeconds = Math.floor(cacheAge / 1000);
-                        debugLog('💾 Prix caché', 'Utilisation du dernier prix connu (obsolète depuis ' + cacheAgeSeconds + 's)');
+                        // Prix caché - log déjà visible dans les logs Python
                         response = priceCache[activePosition.symbol];
                     } else {
-                        debugLog('❌ Aucun prix', 'Skip ce check');
+                        // Aucun prix - log déjà visible dans les logs Python
                         return;
                     }
                 }
@@ -1410,11 +1673,11 @@
                 }
                 
                 if (!currentPrice || isNaN(currentPrice)) {
-                    debugLog('❌ Prix invalide', 'Structure: ' + JSON.stringify(response).substring(0, 300));
+                    // Prix invalide - log déjà visible dans les logs Python
                     // 🔥 Essayer d'utiliser le prix caché
                     if (priceCache[activePosition.symbol] && priceCache[activePosition.symbol].price) {
                         currentPrice = priceCache[activePosition.symbol].price;
-                        debugLog('💾 Fallback cache', 'Prix: ' + currentPrice);
+                        // Fallback cache - log déjà visible dans les logs Python
                     } else {
                         return;
                     }
@@ -1438,7 +1701,7 @@
                 var priceDisplay = currentPrice.toFixed(decimals);
                 document.getElementById('posCurrent').textContent = priceDisplay;
                 
-                debugLog('💲 Prix actuel', currentPrice.toFixed(8));
+                // Prix actuel - log déjà visible dans les logs Python
                 
                 // 🔥 NOUVEAU v5.1: Surveillance API (prix figé OU cache obsolète)
                 var now = Date.now();
@@ -1452,7 +1715,8 @@
                     lastPrice = currentPrice;
                     apiAlertShown = false;
                     document.getElementById('priceStatus').textContent = '● LIVE';
-                    document.getElementById('priceStatus').style.color = '#00ff88';
+                    var priceStatusEl = document.getElementById('priceStatus');
+                    if (priceStatusEl) priceStatusEl.style.color = '#00ff88';
                 } else {
                     // Prix identique OU cache obsolète → Vérifier depuis combien de temps
                     var timeSinceUpdate = now - lastPriceUpdate;
@@ -1464,7 +1728,7 @@
                         var secondsStuck = priceChanged ? Math.floor(cacheAge / 1000) : Math.floor(timeSinceUpdate / 1000);
                         var reason = cacheObsolete ? 'Cache obsolète' : 'Prix figé';
                         
-                        debugLog('⚠️ ALERTE API', reason + ' depuis ' + secondsStuck + 's !');
+                        // ALERTE API - log déjà visible dans les logs Python
                         
                         // Afficher une alerte critique
                         showApiAlert(currentPrice, secondsStuck, reason);
@@ -1487,8 +1751,11 @@
                     var pnlEffective = (0.5 * atrPercent) + (0.5 * pnl);
                     pnlDisplay = (pnlEffective >= 0 ? '+' : '') + pnlEffective.toFixed(2) + '% (eff.)';
                 }
-                document.getElementById('posPnL').textContent = pnlDisplay;
-                document.getElementById('posPnL').style.color = pnl >= 0 ? '#00ff88' : '#ff4444';
+                var posPnLEl = document.getElementById('posPnL');
+                if (posPnLEl) {
+                    posPnLEl.textContent = pnlDisplay;
+                    posPnLEl.style.color = pnl >= 0 ? '#00ff88' : '#ff4444';
+                }
                 
                 // 🔥 v6.4.1: Calculer et afficher P&L USDT
                 var pnlUSDT = 0;
@@ -1505,15 +1772,17 @@
                 
                 // 🔥 v6.4.1: Afficher position restante si TP partiel
                 if (partialTPSold) {
-                    document.getElementById('positionRemaining').style.display = 'block';
+                    var positionRemainingEl = document.getElementById('positionRemaining');
+                    if (positionRemainingEl) positionRemainingEl.style.display = 'block';
                     var sizeRemaining = activePosition.size_remaining || 0;
                     var percentRemaining = (sizeRemaining / activePosition.size * 100).toFixed(0);
                     document.getElementById('posRemainingValue').textContent = percentRemaining + '%';
                 } else {
-                    document.getElementById('positionRemaining').style.display = 'none';
+                    var positionRemainingEl = document.getElementById('positionRemaining');
+                    if (positionRemainingEl) positionRemainingEl.style.display = 'none';
                 }
                 
-                debugLog('📊 P&L', pnlDisplay + ' (' + pnlUSDTDisplay + ')');
+                // P&L - log déjà visible dans les logs Python
                 
                 // Distance au TP et SL
                 var distTP, distSL;
@@ -1569,7 +1838,7 @@
                                 (entry * 0.9985);   // -0.15%
                             activePosition.tp = tpTotal.toFixed(6);
                             document.getElementById('posTP').textContent = activePosition.tp;
-                            debugLog('⏱️ TP TOTAL 5MIN', 'TP modifié à +0.15% (durée: ' + mins + 'm' + secs + 's)');
+                            // TP TOTAL 5MIN - log déjà visible dans les logs Python
                         } else {
                             // Trailing stop 0.15% si < 5min
                             var newSL;
@@ -1578,7 +1847,7 @@
                                 if (newSL > sl) {
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
-                                    debugLog('📈 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
+                                    // TRAILING STOP - log déjà visible dans les logs Python
                                     document.getElementById('posSL').textContent = activePosition.sl;
                                 }
                             } else {
@@ -1586,7 +1855,7 @@
                                 if (newSL < sl) {
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
-                                    debugLog('📉 TRAILING STOP', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistance + '%)');
+                                    // TRAILING STOP - log déjà visible dans les logs Python
                                     document.getElementById('posSL').textContent = activePosition.sl;
                                 }
                             }
@@ -1607,7 +1876,7 @@
                             activePosition.sl = newSL.toFixed(6);
                             sl = parseFloat(newSL.toFixed(6));
                             breakEvenSet = true;
-                            debugLog('🛡️ BE Progressif', '50% locked: PnL=' + pnl.toFixed(2) + '% → SL=' + newSL.toFixed(6));
+                            // BE Progressif - log déjà visible dans les logs Python
                             document.getElementById('posSL').textContent = activePosition.sl;
                         }
                         
@@ -1615,7 +1884,7 @@
                             // Phase 2: BE total
                             activePosition.sl = entry;
                             sl = parseFloat(entry);
-                            debugLog('🛡️ BE Total', '100% locked: PnL=' + pnl.toFixed(2) + '% → SL=' + entry);
+                            // BE Total - log déjà visible dans les logs Python
                             document.getElementById('posSL').textContent = activePosition.sl;
                         }
                     }
@@ -1645,7 +1914,7 @@
                             // SL → Entry (break-even immédiat)
                             activePosition.sl = entry;
                             sl = entry;
-                            debugLog('🔒 BREAK-EVEN IMMÉDIAT', 'SL au prix d\'entrée pour 50% restants');
+                            // BREAK-EVEN IMMÉDIAT - log déjà visible dans les logs Python
                             document.getElementById('posSL').textContent = activePosition.sl + ' (BE)';
                         }
                         
@@ -1657,7 +1926,7 @@
                                 if (newSL > sl) {
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
-                                    debugLog('📈 TRAILING ATR', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistanceATR.toFixed(3) + '%)');
+                                    // TRAILING ATR - log déjà visible dans les logs Python
                                     document.getElementById('posSL').textContent = activePosition.sl;
                                 }
                             } else {
@@ -1665,7 +1934,7 @@
                                 if (newSL < sl) {
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
-                                    debugLog('📉 TRAILING ATR', 'Nouveau SL: ' + newSL.toFixed(6) + ' (distance ' + trailingDistanceATR.toFixed(3) + '%)');
+                                    // TRAILING ATR - log déjà visible dans les logs Python
                                     document.getElementById('posSL').textContent = activePosition.sl;
                                 }
                             }
@@ -1704,7 +1973,7 @@
                 saveState();
                 
             } catch(e) {
-                debugLog('❌ Erreur check', e.message);
+                // Erreur check - log déjà visible dans les logs Python
                 console.error('Error in checkPosition:', e);
             }
         }
@@ -1749,10 +2018,10 @@
                 
                 if (response.ok) {
                     var result = await response.json();
-                    debugLog('✅ Position fermée (FastAPI)', activePosition.symbol + ' - ' + reason);
+                    // Position fermée (FastAPI) - log déjà visible dans les logs Python
                 }
             } catch(error) {
-                debugLog('⚠️ Erreur API position/close', error.message);
+                // Erreur API position/close - log déjà visible dans les logs Python
             }
             
             var duration = Math.floor((Date.now() - positionStartTime) / 1000);
@@ -1778,14 +2047,36 @@
                 exitPrice = lastKnownPrice;
                 pnl = ((exitPrice - entry) / entry) * 100;
                 if (activePosition.direction === 'SHORT') pnl = -pnl;
-                debugLog('💾 API_STUCK Close', 'Utilisation dernier prix: ' + exitPrice.toFixed(8) + ' (PnL: ' + pnl.toFixed(2) + '%)');
+                // API_STUCK Close - log déjà visible dans les logs Python
+            } else if (reason === 'MANUAL') {
+                // 🔥 FIX: Pour fermeture MANUAL, ne PAS calculer localement - attendre position_closed SocketIO
+                // Le backend calcule avec le prix réel du marché et envoie position_closed avec les bonnes valeurs
+                debugLog('⏳ Fermeture MANUELLE', 'Attente des valeurs du backend via SocketIO position_closed...');
+                // Sortir de la fonction - position_closed SocketIO gérera tout (stats, historique, etc.)
+                return;
             } else {
                 // TIMEOUT ou autre: utiliser le prix d'entrée (pas de display)
                 exitPrice = entry;
                 pnl = 0;
             }
             
-            stats.totalTrades++;
+            // 🔥 FIX: Vérifier si ce trade a déjà été compté via SocketIO position_closed
+            // Éviter le double comptage si position_closed SocketIO a déjà été reçu
+            var alreadyCountedInClosePosition = false;
+            var currentTimestamp = Date.now();
+            if (stats.tradeHistory && stats.tradeHistory.length > 0) {
+                // Vérifier tous les trades récents (pas seulement le premier)
+                for (var i = 0; i < Math.min(stats.tradeHistory.length, 5); i++) {
+                    var trade = stats.tradeHistory[i];
+                    if (trade && trade.symbol === activePosition.symbol && 
+                        Math.abs(trade.timestamp - currentTimestamp) < 2000) {
+                        alreadyCountedInClosePosition = true;
+                        debugLog('⚠️ Double comptage évité dans closePosition', 
+                            'Trade déjà compté via SocketIO (timestamp: ' + currentTimestamp + ' vs ' + trade.timestamp + ')');
+                        break;
+                    }
+                }
+            }
             
             // 🔥 v6.4: Gérer position partielle
             var hasPartialTP = partialTPSold;
@@ -1858,14 +2149,99 @@
             var netPnlPct = grossPnlPct - totalCosts;
             var netPnlUSDT = grossPnLUSDT - (totalCosts / 100 * activePosition.size);
             
-            stats.totalPnl += netPnlPct;
-            stats.totalPnlUSDT += netPnlUSDT;  // 🔥 v6.4.1: Cumul USDT
-            stats.totalCosts += totalCosts;     // 🔥 v6.4.2: Cumul frais en %
-            stats.totalCostsUSDT += (totalCosts / 100 * activePosition.size);  // 🔥 v6.4.2: Cumul frais USDT
+            // 🔥 FIX: Ne mettre à jour les stats que si pas déjà compté via SocketIO
+            if (!alreadyCountedInClosePosition) {
+                stats.totalPnl += netPnlPct;
+                stats.totalPnlUSDT += netPnlUSDT;  // 🔥 v6.4.1: Cumul USDT
+                stats.totalCosts += totalCosts;     // 🔥 v6.4.2: Cumul frais en %
+                stats.totalCostsUSDT += (totalCosts / 100 * activePosition.size);  // 🔥 v6.4.2: Cumul frais USDT
+                stats.totalTrades++;  // 🔥 FIX: Incrémenter totalTrades
+                
+                // 🔥 FIX v2.7.1: Logique basée sur le PnL réel, pas sur le reason
+                // WIN = profit positif (même si SL touché via trailing)
+                // LOSS = perte négative
+                // BREAK-EVEN = proche de 0%
+                
+                // 🔥 NOUVEAU v4.3: Mise à jour win/loss streak
+                if (pnl > 0) {
+                    winStreak++;
+                    lossStreak = 0;
+                } else if (pnl < 0) {
+                    lossStreak++;
+                    winStreak = 0;
+                }
+                
+                if (Math.abs(pnl) < 0.05) {
+                    // BREAK-EVEN (entre -0.05% et +0.05%)
+                    stats.breakevens++;
+                    
+                    var reasonText = reason === 'TP' ? 'TP' : (reason === 'SL' ? 'SL' : 'Timeout');
+                    debugLog('⚖️ BREAK-EVEN', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: ' + pnl.toFixed(2) + '%');
+                    showInfo('⚖️ BREAK-EVEN! ' + activePosition.symbol + ' ' + pnl.toFixed(2) + '% en ' + mins + 'm' + secs + 's');
+                    
+                } else if (pnl > 0) {
+                    // WIN (profit positif)
+                    stats.wins++;
+                    stats.winPnls.push(pnl);
+                    stats.winDurations.push(duration);
+                    
+                    // Meilleur trade
+                    if (pnl > stats.bestTrade.pnl) {
+                        stats.bestTrade = { pnl: pnl, symbol: activePosition.symbol, duration: duration };
+                    }
+                    
+                    var reasonText = reason === 'TP' ? 'TP atteint' : (reason === 'SL' ? 'SL (trailing)' : 'Timeout');
+                    debugLog('✅ WIN', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: +' + pnl.toFixed(2) + '%');
+                    showSuccess('✅ WIN! ' + activePosition.symbol + ' +' + pnl.toFixed(2) + '% en ' + mins + 'm' + secs + 's');
+                    
+                } else {
+                    // LOSS (perte négative) - seulement si pas déjà compté
+                    stats.losses++;
+                    stats.lossPnls.push(pnl);
+                    stats.lossDurations.push(duration);
+                    
+                    if (reason === 'TIMEOUT' || reason === 'API_STUCK') {
+                        stats.timeouts++;
+                        if (reason === 'API_STUCK') {
+                            stats.apiStuck++;  // 🔥 v6.4.1: Compteur API bloquée
+                        }
+                    }
+                    
+                    // Pire trade
+                    if (pnl < stats.worstTrade.pnl) {
+                        stats.worstTrade = { pnl: pnl, symbol: activePosition.symbol, duration: duration };
+                    }
+                    
+                    var reasonText = reason === 'TP' ? 'TP' : (reason === 'SL' ? 'SL touché' : (reason === 'TIMEOUT' ? 'Timeout' : 'API bloquée'));
+                    debugLog('❌ LOSS', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: ' + pnl.toFixed(2) + '%');
+                    showError('❌ LOSS! ' + activePosition.symbol + ' ' + pnl.toFixed(2) + '% après ' + mins + 'm' + secs + 's');
+                }
+                
+                // 🔥 NOUVEAU v4.2: Enregistrer pertes pour protection anti-consécutifs
+                if (pnl < 0) {
+                    var symbol = activePosition.symbol;
+                    if (!pairLosses[symbol]) {
+                        pairLosses[symbol] = { lastLossTime: 0, consecutiveLosses: 0 };
+                    }
+                    pairLosses[symbol].lastLossTime = Date.now();
+                    pairLosses[symbol].consecutiveLosses++;
+                    // Protection - log déjà visible dans les logs Python
+                } else {
+                    // Réinitialiser compteur si win ou break-even
+                    var symbol = activePosition.symbol;
+                    if (pairLosses[symbol]) {
+                        pairLosses[symbol].consecutiveLosses = 0;
+                    }
+                }
+            }
             
-            // 🔥 v6.4: Enregistrer dans l'historique avec USDT
+            // 🔥 v6.4: Enregistrer dans l'historique avec USDT (seulement si pas déjà dans l'historique)
+            // Générer un closure_id unique pour cette fermeture locale
+            var localClosureId = activePosition.symbol + '_' + (activePosition.timestamp || Date.now()) + '_' + Date.now();
+            
             var tradeRecord = {
                 timestamp: Date.now(),
+                closureId: localClosureId,  // 🔥 FIX: ID unique pour éviter double comptage
                 date: new Date().toLocaleDateString('fr-FR'),
                 time: new Date().toLocaleTimeString('fr-FR'),
                 symbol: activePosition.symbol,
@@ -1885,93 +2261,40 @@
                 sizeClosed: sizeToClose.toFixed(4)  // 🔥 v6.4
             };
             
-            stats.tradeHistory.unshift(tradeRecord); // Ajouter au début
-            if (stats.tradeHistory.length > 20) {
-                stats.tradeHistory.pop(); // Garder seulement les 20 derniers
-            }
-            
-            updateTradeHistory();
-            
-            // 🔥 NOUVEAU v4.2: Enregistrer pertes pour protection anti-consécutifs
-            if (pnl < 0) {
-                var symbol = activePosition.symbol;
-                if (!pairLosses[symbol]) {
-                    pairLosses[symbol] = { lastLossTime: 0, consecutiveLosses: 0 };
-                }
-                pairLosses[symbol].lastLossTime = Date.now();
-                pairLosses[symbol].consecutiveLosses++;
-                debugLog('🔒 Protection', symbol + ': ' + pairLosses[symbol].consecutiveLosses + ' perte(s) consécutive(s) - Blocage 15min si >= 2');
-            } else {
-                // Réinitialiser compteur si win ou break-even
-                var symbol = activePosition.symbol;
-                if (pairLosses[symbol]) {
-                    pairLosses[symbol].consecutiveLosses = 0;
-                }
-            }
-            
-            // 🔥 FIX v2.7.1: Logique basée sur le PnL réel, pas sur le reason
-            // WIN = profit positif (même si SL touché via trailing)
-            // LOSS = perte négative
-            // BREAK-EVEN = proche de 0%
-            
-            // 🔥 NOUVEAU v4.3: Mise à jour win/loss streak
-            if (pnl > 0) {
-                winStreak++;
-                lossStreak = 0;
-            } else if (pnl < 0) {
-                lossStreak++;
-                winStreak = 0;
-            }
-            
-            if (Math.abs(pnl) < 0.05) {
-                // BREAK-EVEN (entre -0.05% et +0.05%)
-                stats.breakevens++;
-                
-                var reasonText = reason === 'TP' ? 'TP' : (reason === 'SL' ? 'SL' : 'Timeout');
-                debugLog('⚖️ BREAK-EVEN', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: ' + pnl.toFixed(2) + '%');
-                showInfo('⚖️ BREAK-EVEN! ' + activePosition.symbol + ' ' + pnl.toFixed(2) + '% en ' + mins + 'm' + secs + 's');
-                
-            } else if (pnl > 0) {
-                // WIN (profit positif)
-                stats.wins++;
-                stats.winPnls.push(pnl);
-                stats.winDurations.push(duration);
-                
-                // Meilleur trade
-                if (pnl > stats.bestTrade.pnl) {
-                    stats.bestTrade = { pnl: pnl, symbol: activePosition.symbol, duration: duration };
-                }
-                
-                var reasonText = reason === 'TP' ? 'TP atteint' : (reason === 'SL' ? 'SL (trailing)' : 'Timeout');
-                debugLog('✅ WIN', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: +' + pnl.toFixed(2) + '%');
-                showSuccess('✅ WIN! ' + activePosition.symbol + ' +' + pnl.toFixed(2) + '% en ' + mins + 'm' + secs + 's');
-                
-            } else {
-                // LOSS (perte négative)
-                stats.losses++;
-                stats.lossPnls.push(pnl);
-                stats.lossDurations.push(duration);
-                
-                if (reason === 'TIMEOUT' || reason === 'API_STUCK') {
-                    stats.timeouts++;
-                    if (reason === 'API_STUCK') {
-                        stats.apiStuck++;  // 🔥 v6.4.1: Compteur API bloquée
+            // Vérifier si ce trade n'est pas déjà dans l'historique (par closure_id ou timestamp)
+            var alreadyInHistory = false;
+            if (stats.tradeHistory && stats.tradeHistory.length > 0) {
+                for (var i = 0; i < Math.min(stats.tradeHistory.length, 5); i++) {
+                    var trade = stats.tradeHistory[i];
+                    if (trade && trade.symbol === tradeRecord.symbol) {
+                        // Vérifier par closure_id si disponible
+                        if (trade.closureId && tradeRecord.closureId && trade.closureId === tradeRecord.closureId) {
+                            alreadyInHistory = true;
+                            break;
+                        }
+                        // Sinon vérifier par timestamp
+                        if (Math.abs(trade.timestamp - tradeRecord.timestamp) < 2000) {
+                            alreadyInHistory = true;
+                            break;
+                        }
                     }
                 }
-                
-                // Pire trade
-                if (pnl < stats.worstTrade.pnl) {
-                    stats.worstTrade = { pnl: pnl, symbol: activePosition.symbol, duration: duration };
+            }
+            
+            if (!alreadyInHistory) {
+                stats.tradeHistory.unshift(tradeRecord); // Ajouter au début
+                if (stats.tradeHistory.length > 20) {
+                    stats.tradeHistory.pop(); // Garder seulement les 20 derniers
                 }
-                
-                var reasonText = reason === 'TP' ? 'TP' : (reason === 'SL' ? 'SL touché' : (reason === 'TIMEOUT' ? 'Timeout' : 'API bloquée'));
-                debugLog('❌ LOSS', activePosition.symbol + ' ' + reasonText + ' (' + mins + 'm' + secs + 's) | PnL: ' + pnl.toFixed(2) + '%');
-                showError('❌ LOSS! ' + activePosition.symbol + ' ' + pnl.toFixed(2) + '% après ' + mins + 'm' + secs + 's');
+                updateTradeHistory();
+            } else {
+                debugLog('⚠️ Trade déjà dans l\'historique', activePosition.symbol + ' (évité double ajout)');
             }
             
             updateStats();
             
-            document.getElementById('positionPanel').style.display = 'none';
+            var panel = document.getElementById('positionPanel');
+            if (panel) panel.style.display = 'none';
             activePosition = null;
             positionStartTime = null;
             tradingState = 'PAUSED';
@@ -1980,11 +2303,11 @@
             // 🔥 Nettoyer le localStorage
             localStorage.removeItem('mexcScannerState');
             
-            debugLog('⏸️ PAUSE', 'Reprise dans 5s...');
+            // PAUSE - log déjà visible dans les logs Python
             resumeScanTimeout = setTimeout(function() {
                 tradingState = 'SCANNING';
                 updateStateDisplay();
-                debugLog('▶️ REPRISE', 'Scan actif');
+                // REPRISE - log déjà visible dans les logs Python
             }, 5000);
         }
         
@@ -2025,6 +2348,158 @@
             if (confirm('⚠️ Voulez-vous vraiment clôturer cette position manuellement ?')) {
                 debugLog('⚠️ Fermeture manuelle', activePosition.symbol + ' ' + activePosition.direction);
                 closePosition('MANUAL');
+            }
+        }
+        
+        // 🔥 FIX: Fonction pour mettre à jour l'affichage de la position (prix actuel, PnL, etc.)
+        function updatePositionDisplay() {
+            if (!activePosition) return;
+            
+            // 🔥 FIX: Mettre à jour les informations de base (paire, direction, entry, etc.)
+            var symbolElement = document.getElementById('posSymbol');
+            if (symbolElement) {
+                symbolElement.textContent = activePosition.symbol || '---';
+            }
+            
+            var directionElement = document.getElementById('posDirection');
+            if (directionElement) {
+                directionElement.textContent = activePosition.direction || '---';
+                directionElement.style.color = activePosition.direction === 'LONG' ? '#00ff88' : '#ff4444';
+            }
+            
+            var entryElement = document.getElementById('posEntry');
+            if (entryElement && activePosition.entry) {
+                var entry = parseFloat(activePosition.entry);
+                // Calculer nombre de décimales selon le prix
+                var entryDecimals = 6;
+                if (activePosition.symbol && (activePosition.symbol.includes('BTC') || activePosition.symbol.includes('SHIB') || activePosition.symbol.includes('DOGE'))) {
+                    entryDecimals = 8; // Plus de décimales pour très petites valeurs
+                } else if (entry >= 100) entryDecimals = 2;
+                else if (entry >= 10) entryDecimals = 4;
+                else if (entry >= 1) entryDecimals = 4;
+                else if (entry >= 0.1) entryDecimals = 5;
+                else entryDecimals = 8;
+                entryElement.textContent = entry.toFixed(entryDecimals);
+            }
+            
+            var confirmElement = document.getElementById('posConfirm');
+            if (confirmElement) {
+                confirmElement.textContent = activePosition.confirmedBy || 'N/A';
+            }
+            
+            // 🔥 FIX: Mettre à jour TP et SL (prix)
+            var tpElement = document.getElementById('posTP');
+            if (tpElement && activePosition.tp) {
+                var tp = parseFloat(activePosition.tp);
+                var tpDecimals = 6;
+                if (activePosition.symbol && (activePosition.symbol.includes('BTC') || activePosition.symbol.includes('SHIB') || activePosition.symbol.includes('DOGE'))) {
+                    tpDecimals = 8;
+                } else if (tp >= 100) tpDecimals = 2;
+                else if (tp >= 10) tpDecimals = 4;
+                else if (tp >= 1) tpDecimals = 4;
+                else if (tp >= 0.1) tpDecimals = 5;
+                else tpDecimals = 8;
+                tpElement.textContent = tp.toFixed(tpDecimals);
+            }
+            
+            var slElement = document.getElementById('posSL');
+            if (slElement && activePosition.sl) {
+                var sl = parseFloat(activePosition.sl);
+                var slDecimals = 6;
+                if (activePosition.symbol && (activePosition.symbol.includes('BTC') || activePosition.symbol.includes('SHIB') || activePosition.symbol.includes('DOGE'))) {
+                    slDecimals = 8;
+                } else if (sl >= 100) slDecimals = 2;
+                else if (sl >= 10) slDecimals = 4;
+                else if (sl >= 1) slDecimals = 4;
+                else if (sl >= 0.1) slDecimals = 5;
+                else slDecimals = 8;
+                slElement.textContent = sl.toFixed(slDecimals);
+            }
+            
+            // 🔥 FIX: Mettre à jour la durée
+            var durationElement = document.getElementById('positionDuration');
+            if (durationElement && positionStartTime) {
+                var duration = Math.floor((Date.now() - positionStartTime) / 1000);
+                var mins = Math.floor(duration / 60);
+                var secs = duration % 60;
+                durationElement.textContent = 'Durée: ' + mins + 'm ' + secs + 's';
+            }
+            
+            // Mettre à jour le prix actuel
+            if (activePosition.currentPrice) {
+                var currentPrice = parseFloat(activePosition.currentPrice);
+                
+                // Calculer nombre de décimales selon le prix
+                var decimals = 6;
+                if (activePosition.symbol && (activePosition.symbol.includes('BTC') || activePosition.symbol.includes('SHIB') || activePosition.symbol.includes('DOGE'))) {
+                    decimals = 8; // 🔥 FIX: Plus de décimales pour très petites valeurs (SHIB, DOGE, etc.)
+                } else if (currentPrice >= 100) decimals = 2;
+                else if (currentPrice >= 10) decimals = 4;
+                else if (currentPrice >= 1) decimals = 4;
+                else if (currentPrice >= 0.1) decimals = 5;
+                else decimals = 8;
+                
+                var priceDisplay = currentPrice.toFixed(decimals);
+                var priceElement = document.getElementById('posCurrent');
+                if (priceElement) {
+                    priceElement.textContent = priceDisplay;
+                }
+                
+                // Mettre à jour le PnL
+                var pnl = activePosition.pnl || 0;
+                var pnl_usdt = activePosition.pnl_usdt || 0;
+                
+                var pnlElement = document.getElementById('posPnL');
+                if (pnlElement) {
+                    pnlElement.textContent = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+                    pnlElement.style.color = pnl >= 0 ? '#00ff88' : '#ff4444';
+                }
+                
+                var pnlUsdtElement = document.getElementById('posPnLUSDT');
+                if (pnlUsdtElement) {
+                    pnlUsdtElement.textContent = (pnl_usdt >= 0 ? '+' : '') + pnl_usdt.toFixed(4) + ' USDT';
+                    pnlUsdtElement.style.color = pnl_usdt >= 0 ? '#00ff88' : '#ff4444';
+                }
+                
+                // Mettre à jour les distances TP/SL
+                var entry = parseFloat(activePosition.entry);
+                var tp = parseFloat(activePosition.tp);
+                var sl = parseFloat(activePosition.sl);
+                
+                if (activePosition.direction === 'LONG') {
+                    var distTP = ((tp - currentPrice) / currentPrice) * 100;
+                    var distSL = ((currentPrice - sl) / sl) * 100;
+                    
+                    var tpDistElement = document.getElementById('posTPDist');
+                    if (tpDistElement) {
+                        tpDistElement.textContent = '+' + distTP.toFixed(2) + '%';
+                    }
+                    
+                    var slDistElement = document.getElementById('posSLDist');
+                    if (slDistElement) {
+                        slDistElement.textContent = '-' + distSL.toFixed(2) + '%';
+                    }
+                } else {
+                    var distTP = ((currentPrice - tp) / tp) * 100;
+                    var distSL = ((sl - currentPrice) / currentPrice) * 100;
+                    
+                    var tpDistElement = document.getElementById('posTPDist');
+                    if (tpDistElement) {
+                        tpDistElement.textContent = '+' + distTP.toFixed(2) + '%';
+                    }
+                    
+                    var slDistElement = document.getElementById('posSLDist');
+                    if (slDistElement) {
+                        slDistElement.textContent = '-' + distSL.toFixed(2) + '%';
+                    }
+                }
+                
+                // Mettre à jour le statut du prix (LIVE)
+                var priceStatusElement = document.getElementById('priceStatus');
+                if (priceStatusElement) {
+                    priceStatusElement.textContent = '● LIVE';
+                    priceStatusElement.style.color = '#00ff88';
+                }
             }
         }
         
@@ -2194,18 +2669,50 @@
             statsEl.innerHTML = '📊 Validées: ' + volumeStats.validated + '/' + volumeStats.total + ' (' + volumeStats.ratio.toFixed(1) + '%)<br>' +
                                '<span style="color: ' + statusColor + '">' + status + '</span>';
             
-            // 🔥 FIX: Mettre à jour TRADING_CONFIG automatiquement avec le volume_multiplier calculé
-            // Calculer volume_multiplier basé sur le ratio de validation
+            // 🔥 FIX: Ne PAS mettre à jour automatiquement si l'utilisateur a réglé manuellement le slider
+            // Le calcul automatique est désactivé pour éviter d'écraser la valeur du slider
+            // Si vous voulez réactiver le calcul automatique, décommentez le code ci-dessous :
+            /*
             var calculatedMultiplier = volumeStats.total > 0 ? (volumeStats.validated / volumeStats.total) : 1.0;
             calculatedMultiplier = Math.max(0.1, Math.min(2.0, calculatedMultiplier)); // Clamp 0.1-2.0
             
             // Mettre à jour seulement si le compteur a assez de données (au moins 10 échantillons)
             if (volumeStats.total >= 10) {
                 updateVolumeMultiplierConfig(calculatedMultiplier, true); // true = auto (depuis compteur)
+                // Mettre à jour aussi le slider visuellement
+                volumeMultiplier = calculatedMultiplier;
+                document.getElementById('volumeMultiplierSlider').value = calculatedMultiplier.toFixed(2);
+                document.getElementById('volumeMultiplierValue').textContent = calculatedMultiplier.toFixed(2);
             }
+            */
         }
         
         // 🔥 NOUVEAU: Fonction pour mettre à jour volume_multiplier dans TRADING_CONFIG
+        async function updateConfigThreshold(key, value) {
+            try {
+                var response = await fetch(API_BASE_URL + '/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        [key]: value
+                    })
+                });
+                
+                if (response.ok) {
+                    var data = await response.json();
+                    if (data.status === 'updated') {
+                        // Config mise à jour - log déjà visible dans les logs Python
+                    }
+                } else {
+                    // Erreur config - log déjà visible dans les logs Python
+                }
+            } catch (error) {
+                // Erreur config - log déjà visible dans les logs Python
+            }
+        }
+        
         async function updateVolumeMultiplierConfig(value, isAuto) {
             try {
                 var response = await fetch(API_BASE_URL + '/api/config', {
@@ -2222,7 +2729,7 @@
                     var data = await response.json();
                     if (data.status === 'updated') {
                         if (!isAuto) {
-                            debugLog('✅ Config mise à jour', 'Volume multiplier: ' + value.toFixed(2) + ' (scanner auto activé)');
+                            // Config mise à jour - log déjà visible dans les logs Python
                         }
                     }
                 } else {
@@ -2280,7 +2787,7 @@
                     
                     // 🔥 Succès! Mémoriser ce proxy
                     lastWorkingProxyIndex = idx;
-                    if (idx !== 0) debugLog('✅ ' + proxy.name, 'Proxy fonctionnel mémorisé');
+                    // Proxy fonctionnel - log déjà visible dans les logs Python
                     
                     return data;
                     
@@ -2298,7 +2805,7 @@
         async function fetchWithFallback(url, retries = 2) {
             // MODE TEST avec données mockées
             if (MOCK_MODE) {
-                debugLog('🧪 MOCK MODE', 'Données de test utilisées');
+                // MOCK MODE - log déjà visible dans les logs Python
                 await new Promise(r => setTimeout(r, 500));
                 
                 if (url.includes('/api/v1/contract/ticker/') && !url.includes('ticker/ticker')) {
@@ -2637,7 +3144,7 @@
                 
                 return {trend, strength, bonus};
             } catch(e) {
-                debugLog('⚠️ Erreur trend', e.message);
+                // Erreur trend - log déjà visible dans les logs Python
                 return null;
             }
         }
@@ -2690,7 +3197,7 @@
                 return analyzeTimeframe(symbol, ohlcv, ticker, tf, trendData);
                 
             } catch(e) {
-                debugLog('⚠️ Erreur analyzeSymbol', symbol + ' ' + tf + ': ' + e.message);
+                // Erreur analyzeSymbol - log déjà visible dans les logs Python
                 return null;
             }
         }
@@ -3139,7 +3646,7 @@
                 });
                 
                 if (!response.ok) {
-                    debugLog('❌ Erreur API', 'HTTP ' + response.status);
+                    // Erreur API - log déjà visible dans les logs Python
                     return [];
                 }
                 
@@ -3184,7 +3691,7 @@
                         });
                         
                         if (!response.ok) {
-                            debugLog('⚠️ Scanner Scalabilité', 'Erreur API: ' + response.status);
+                            // Scanner Scalabilité - log déjà visible dans les logs Python
                             return;
                         }
                         
@@ -3256,8 +3763,10 @@
             try {
                 // 🔥 JOUR 4: Utiliser l'endpoint FastAPI pour l'analyse
                 var useConfluenceParam = useConfluence ? 'true' : 'false';
-                var volumeMultiplier = volumeStats.total > 0 ? (volumeStats.validated / volumeStats.total) : 1.0;
-                volumeMultiplier = Math.max(0.1, Math.min(2.0, volumeMultiplier)); // Clamp 0.1-2.0
+                // 🔥 FIX: Utiliser la valeur du slider (volumeMultiplier) au lieu de recalculer
+                // var volumeMultiplier = volumeStats.total > 0 ? (volumeStats.validated / volumeStats.total) : 1.0;
+                // volumeMultiplier = Math.max(0.1, Math.min(2.0, volumeMultiplier)); // Clamp 0.1-2.0
+                // La variable volumeMultiplier est déjà définie globalement avec la valeur du slider
                 
                 var analyzeUrl = API_BASE_URL + '/api/analyze/' + symbol + 
                     '?use_confluence=' + useConfluenceParam + 
@@ -3450,7 +3959,7 @@
                                     }
                                     return null;
                                 }).catch(function(error) {
-                                    debugLog('❌ Erreur scan', currentPair.symbol + ': ' + error.message);
+                                    // Erreur scan - log déjà visible dans les logs Python
                                     return null;
                                 })
                             );
@@ -3569,6 +4078,92 @@
             return true;
         }
         
+        // 🔥 NOUVEAU: Fonction unifiée qui lance scalabilité puis setup
+        async function startFullScanner() {
+            var btn = document.getElementById('scanPairsBtn');
+            var stopBtn = document.getElementById('stopBtn');
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳ SCAN SCALABILITÉ...';
+            }
+            
+            try {
+                // Étape 1: Scanner de scalabilité
+                debugLog('🚀 DÉMARRAGE', 'Étape 1/2: Scan de scalabilité...');
+                await initScanner();
+                
+                // Vérifier que les paires sont disponibles
+                if (!allPairs || allPairs.length === 0) {
+                    throw new Error('Aucune paire scalable trouvée');
+                }
+                
+                // Étape 2: Démarrer le scan de setup automatiquement
+                debugLog('🚀 DÉMARRAGE', 'Étape 2/2: Démarrage scan de setup...');
+                
+                // Utiliser l'API FastAPI pour démarrer le scanner
+                initSocketIO(); // Initialiser SocketIO si pas déjà fait
+                
+                var response = await fetch(API_BASE_URL + '/api/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    var error = await response.json();
+                    throw new Error(error.error || 'Erreur démarrage scan setup');
+                }
+                
+                var result = await response.json();
+                
+                // Mode parallèle: scanner toutes les paires allPairs
+                if (!selectMultiPairs()) {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '🚀 DÉMARRER SCANNER';
+                    }
+                    return;
+                }
+                
+                isScanning = true;
+                tradingState = 'SCANNING';
+                updateStateDisplay();
+                
+                // Afficher bouton STOP et masquer bouton DÉMARRER
+                if (stopBtn) {
+                    stopBtn.style.display = 'inline-block';
+                }
+                if (btn) {
+                    btn.style.display = 'none';
+                }
+                
+                // Le scanner tourne maintenant côté serveur via scheduler
+                // On garde le countdown pour l'UI
+                countdownValue = 45;
+                countdownInterval = setInterval(function() {
+                    if (tradingState === 'SCANNING') {
+                        countdownValue--;
+                        if (countdownValue < 0) countdownValue = 45;
+                        document.getElementById('countdown').textContent = countdownValue;
+                    } else {
+                        document.getElementById('countdown').textContent = '--';
+                    }
+                }, 1000);
+                
+                showSuccess('Scanner complet démarré: scalabilité + setup');
+                debugLog('✅ Scanner complet démarré', 'Scalabilité + boucles automatiques activées');
+                
+            } catch(error) {
+                debugLog('❌ Erreur démarrage complet', error.message);
+                showError('Erreur: ' + error.message);
+                
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🚀 DÉMARRER SCANNER';
+                }
+            }
+        }
+        
         async function startScanning() {
             // 🔥 v7.0: Utiliser l'API FastAPI
             initSocketIO(); // Initialiser SocketIO si pas déjà fait
@@ -3644,8 +4239,17 @@
             clearInterval(refreshScalabilityScannerInterval);
             clearTimeout(resumeScanTimeout);
             
-            document.getElementById('stopBtn').style.display = 'none';
-            document.querySelector('.btn-primary').style.display = 'inline-block';
+            var btn = document.getElementById('scanPairsBtn');
+            var stopBtn = document.getElementById('stopBtn');
+            
+            if (stopBtn) {
+                stopBtn.style.display = 'none';
+            }
+            if (btn) {
+                btn.style.display = 'inline-block';
+                btn.disabled = false;
+                btn.textContent = '🚀 DÉMARRER SCANNER';
+            }
             document.getElementById('countdown').textContent = '--';
             
             if (activePosition) closePosition('MANUAL');
@@ -3667,7 +4271,7 @@
             initSocketIO(); // Initialiser SocketIO
             
             debugLog('🚀 INIT', 'Démarrage du scanner scalabilité (FastAPI)');
-            debugLog('⚙️ Config', 'Mode: ' + (MOCK_MODE ? 'TEST' : 'LIVE'));
+            // Config Mode - log déjà visible dans les logs Python
             
             // 🔥 NOUVEAU v3.7: Reset volume stats
             volumeStats = {total: 0, validated: 0, ratio: 0};
@@ -3805,8 +4409,11 @@
                 
                 document.getElementById('loading').style.display = 'none';
                 
+                // 🔥 FIX: Ne pas masquer le bouton ici, il sera géré par startFullScanner
+                // Le bouton sera désactivé mais visible pendant le scan de scalabilité
                 if (btn) {
-                    btn.style.display = 'none';
+                    btn.disabled = false;
+                    btn.textContent = '🚀 DÉMARRER SCANNER';
                 }
                 
                 // Écouter l'événement SocketIO pour les pairs mises à jour

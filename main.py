@@ -70,6 +70,12 @@ position_manager = None
 price_provider = None
 scheduler = None
 
+# 🔥 FIX: Lock pour éviter les ouvertures multiples de positions
+position_lock = asyncio.Lock()
+
+# 🔥 FIX: Lock pour éviter les scans multiples en parallèle
+scanner_lock = asyncio.Lock()
+
 
 # 🔥 JOUR 3: Callbacks pour le scheduler (doivent être définis avant init_instances)
 
@@ -79,201 +85,353 @@ async def scanner_loop_callback():
     
     init_instances()
     
-    # Ne pas scanner si on a déjà une position active
-    if app_state['active_position'] or (position_manager and position_manager.active_position):
-        return
-    
-    # 🔥 JOUR 3: Si on n'a pas de top_pairs, on les scanne d'abord
-    if not app_state['top_pairs']:
-        await add_log('INFO', 'Scanner loop', 'Scan initial des top pairs...')
-        if scanner:
-            top_pairs = await scanner.scan_top_pairs(20)
-            app_state['top_pairs'] = top_pairs
-            
-            # 🔥 OPTIMISATION: Invalider cache quand top_pairs change
-            if hasattr(app, '_top_pairs_cache'):
-                app._top_pairs_cache.pop('top_pairs', None)
-            
-            await sio.emit('top_pairs_update', {'pairs': top_pairs})
-            
-            # 🔥 JOUR 3: Démarrer WebSocket pour les top pairs
-            if price_provider and top_pairs:
-                symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
-                if symbols:
-                    try:
-                        await price_provider.start_websocket(symbols)
-                        await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
-                    except Exception as e:
-                        logger.warning(f"Erreur démarrage WebSocket: {e}")
-    
-    # 🔥 JOUR 3: Scanner plusieurs paires en parallèle (top 20)
-    if app_state['top_pairs']:
-        # 🔥 FIX: Scanner top 20 au lieu de top 5 pour plus d'opportunités
-        from config import TRADING_CONFIG
-        max_pairs = TRADING_CONFIG.get('top_pairs_limit', 20)
-        total_available = len(app_state['top_pairs'])
-        top_n = min(max_pairs, total_available)  # Scanner top 20
-        pairs_to_scan = app_state['top_pairs'][:top_n]
+    # 🔥 FIX: Lock global pour éviter les scans multiples en parallèle
+    async with scanner_lock:
+        # Ne pas scanner si on a déjà une position active (vérification atomique dans le lock)
+        # Cette vérification est faite AVANT de commencer le scan pour éviter de gaspiller des ressources
+        if app_state['active_position'] or (position_manager and position_manager.active_position):
+            logger.debug("⏸️ Scanner ignoré : position active")
+            return
         
-        # 🔥 DEBUG: Log détaillé pour comprendre
-        symbols_list = [p.get('symbol', '') for p in pairs_to_scan if p.get('symbol')]
-        await add_log('INFO', 'Scanner loop', 
-            f'Analyse {top_n}/{total_available} paires disponibles: {", ".join(symbols_list[:10])}' + 
-            (f'... (+{len(symbols_list)-10} autres)' if len(symbols_list) > 10 else ''))
-        
-        # 🔥 WARNING si moins de paires que prévu
-        if total_available < max_pairs:
-            await add_log('WARNING', 'Paires limitées', 
-                f'Seulement {total_available} paires disponibles (attendu: {max_pairs})')
-        
-        # Scanner toutes les paires en parallèle
-        scan_tasks = []
-        for pair in pairs_to_scan:
-            symbol = pair.get('symbol', '')
-            if symbol:
-                scan_tasks.append(scan_pair_for_setup(symbol))
-        
-        if scan_tasks:
-            # Exécuter toutes les analyses en parallèle
-            results = await asyncio.gather(*scan_tasks, return_exceptions=True)
-            
-            # Compter les résultats
-            valid_setups = 0
-            no_setup = 0
-            errors = 0
-            
-            for result in results:
-                if isinstance(result, Exception):
-                    errors += 1
-                elif result:
-                    valid_setups += 1
-                else:
-                    no_setup += 1
-            
-            # 🔥 FIX: Envoyer stats volume au frontend pour mettre à jour le compteur
-            total_analyzed = len(results)
-            validated_count = valid_setups
-            # Émettre événement SocketIO pour mettre à jour les stats côté frontend
-            await sio.emit('volume_stats_update', {
-                'total': total_analyzed,
-                'validated': validated_count,
-                'ratio': (validated_count / total_analyzed * 100) if total_analyzed > 0 else 0
-            })
-            
-            # Log résumé
-            await add_log('INFO', 'Résumé scan', 
-                f'{valid_setups} setups valides, {no_setup} sans setup, {errors} erreurs')
-            
-            # Si on a trouvé un setup valide, ouvrir la position
-            if valid_setups > 0:
-                for result in results:
-                    if result and not isinstance(result, Exception):
-                        # 🔥 FIX: Ouvrir position automatiquement
-                        setup = result
-                        symbol = setup.get('symbol', '')
-                        direction = setup.get('direction', 'LONG')
-                        
-                        await add_log('INFO', 'Setup trouvé', 
-                            f"{symbol} - {direction} - {len(setup.get('signals', []))} conditions")
-                        
-                        # Vérifier qu'on n'a pas déjà une position
-                        if app_state['active_position'] or (position_manager and position_manager.active_position):
-                            await add_log('WARNING', 'Position déjà active', 
-                                'Un setup a été trouvé mais une position est déjà ouverte')
-                            break
-                        
+        # 🔥 JOUR 3: Si on n'a pas de top_pairs, on les scanne d'abord
+        if not app_state['top_pairs']:
+            await add_log('INFO', 'Scanner loop', 'Scan initial des top pairs...')
+            if scanner:
+                top_pairs = await scanner.scan_top_pairs(20)
+                app_state['top_pairs'] = top_pairs
+                
+                # 🔥 OPTIMISATION: Invalider cache quand top_pairs change
+                if hasattr(app, '_top_pairs_cache'):
+                    app._top_pairs_cache.pop('top_pairs', None)
+                
+                await sio.emit('top_pairs_update', {'pairs': top_pairs})
+                
+                # 🔥 JOUR 3: Démarrer WebSocket pour les top pairs
+                if price_provider and top_pairs:
+                    symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                    if symbols:
                         try:
-                            # Récupérer prix d'entrée
-                            if not price_provider:
-                                price_provider = get_price_provider()
-                            
-                            price_data = await price_provider.get_price(symbol)
-                            if not price_data:
-                                await add_log('ERROR', 'Prix non disponible', symbol)
-                                continue
-                            
-                            entry_price = price_data.get('lastPrice', setup.get('price', 0))
-                            if not entry_price or entry_price == 0:
-                                await add_log('ERROR', 'Prix invalide', f"{symbol}: {entry_price}")
-                                continue
-                            
-                            # Calculer taille de position (position sizing)
-                            from config import TRADING_CONFIG, RISK_CONFIG
-                            
-                            # Capital par défaut (peut être modifié via config)
-                            account_size = TRADING_CONFIG.get('account_size', 1000.0)
-                            risk_per_trade = TRADING_CONFIG.get('risk_per_trade', 2.0) / 100  # 2% par défaut
-                            
-                            # Récupérer ATR pour calculer SL%
-                            atr = setup.get('atr', 0)
-                            atr5m = setup.get('atr5m')
-                            
-                            # Calculer SL% selon le mode
-                            tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                            if tp_sl_mode == 'ATR' and atr and entry_price:
-                                sl_percent = (atr / entry_price) * 100
-                                # Clamp selon config
-                                atr_min = TRADING_CONFIG.get('atr_min', 0.15)
-                                atr_max = TRADING_CONFIG.get('atr_max', 1.5)
-                                sl_percent = max(atr_min, min(atr_max, sl_percent))
-                            else:
-                                sl_percent = TRADING_CONFIG.get('sl_percent', 0.25)
-                            
-                            # Position size = Capital × Risk% / SL%
-                            if sl_percent > 0:
-                                position_size = (account_size * risk_per_trade) / (sl_percent / 100)
-                            else:
-                                position_size = account_size * risk_per_trade  # Fallback
-                            
-                            # Récupérer scalability_data pour slippage
-                            scalability_data = None
-                            if app_state['top_pairs']:
-                                for pair in app_state['top_pairs']:
-                                    if pair.get('symbol') == symbol:
-                                        scalability_data = pair
-                                        break
-                            
-                            # Ouvrir la position
-                            position = position_manager.open_position(
-                                symbol=symbol,
-                                direction=direction,
-                                entry=entry_price,
-                                size=position_size,
-                                atr=atr,
-                                atr5m=atr5m,
-                                confirmed_by=setup.get('confirmedBy', 'Scanner auto'),
-                                scalability_data=scalability_data
-                            )
-                            
-                            # Stocker capital
-                            position.capital = account_size
-                            
-                            # Mettre à jour app_state
-                            app_state['active_position'] = position
-                            
-                            # Logger et notifier
-                            await add_log('INFO', 'Position ouverte automatiquement', 
-                                f"{direction} {symbol} @ {entry_price:.6f} | Size: {position_size:.2f} USDT")
-                            await sio.emit('position_opened', position.to_dict())
-                            
-                            logger.info(
-                                f"🟢 POSITION OUVERTE (Auto): {direction} {symbol} | "
-                                f"Entry: {entry_price:.6f} | Size: {position_size:.2f} USDT | "
-                                f"SL: {position.sl:.6f} | TP: {position.tp:.6f}"
-                            )
-                            
-                            # Ne prendre que le premier setup valide
-                            break
-                            
+                            await price_provider.start_websocket(symbols)
+                            await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
                         except Exception as e:
-                            logger.error(f"❌ Erreur ouverture position auto pour {symbol}: {e}")
-                            import traceback
-                            logger.error(f"Traceback: {traceback.format_exc()}")
-                            await add_log('ERROR', 'Erreur ouverture position', f"{symbol}: {str(e)}")
-                            continue
-            else:
-                await add_log('INFO', 'Aucun setup', 
-                    'Aucun setup valide trouvé sur les paires analysées')
+                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+        
+        # 🔥 JOUR 3: Scanner plusieurs paires en parallèle (top 20)
+        if app_state['top_pairs']:
+            # 🔥 FIX: Scanner top 20 au lieu de top 5 pour plus d'opportunités
+            from config import TRADING_CONFIG
+            max_pairs = TRADING_CONFIG.get('top_pairs_limit', 20)
+            total_available = len(app_state['top_pairs'])
+            top_n = min(max_pairs, total_available)  # Scanner top 20
+            pairs_to_scan = app_state['top_pairs'][:top_n]
+            
+            # 🔥 DEBUG: Log détaillé pour comprendre
+            symbols_list = [p.get('symbol', '') for p in pairs_to_scan if p.get('symbol')]
+            await add_log('INFO', 'Scanner loop', 
+                f'Analyse {top_n}/{total_available} paires disponibles: {", ".join(symbols_list[:10])}' + 
+                (f'... (+{len(symbols_list)-10} autres)' if len(symbols_list) > 10 else ''))
+            
+            # 🔥 WARNING si moins de paires que prévu
+            if total_available < max_pairs:
+                await add_log('WARNING', 'Paires limitées', 
+                    f'Seulement {total_available} paires disponibles (attendu: {max_pairs})')
+            
+            # Scanner toutes les paires en parallèle
+            scan_tasks = []
+            for pair in pairs_to_scan:
+                symbol = pair.get('symbol', '')
+                if symbol:
+                    scan_tasks.append(scan_pair_for_setup(symbol))
+            
+            if scan_tasks:
+                # Exécuter toutes les analyses en parallèle
+                results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+                
+                # Compter les résultats avec détails
+                valid_setups = 0
+                no_setup = 0
+                errors = 0
+                rejection_reasons = {}  # Dict pour compter les raisons de rejet
+                
+                # 🔥 FIX: Analyser chaque résultat en détail
+                for i, result in enumerate(results):
+                    symbol_analyzed = pairs_to_scan[i].get('symbol', 'UNKNOWN') if i < len(pairs_to_scan) else 'UNKNOWN'
+                    
+                    if isinstance(result, Exception):
+                        errors += 1
+                        logger.warning(f"❌ Erreur analyse {symbol_analyzed}: {result}")
+                    elif result and isinstance(result, dict):
+                        # Vérifier si c'est une raison de rejet ou un setup valide
+                        if 'reason' in result:
+                            # C'est une raison de rejet
+                            no_setup += 1
+                            reason = result.get('reason', 'Raison inconnue')
+                            # Extraire la raison principale (avant le | ou le premier mot)
+                            main_reason = reason.split('|')[0].strip() if '|' in reason else reason.split(':')[0].strip() if ':' in reason else reason[:50]
+                            rejection_reasons[main_reason] = rejection_reasons.get(main_reason, 0) + 1
+                            
+                            # 🔥 FIX: Log détaillé pour chaque rejet
+                            logger.debug(f"🔍 {symbol_analyzed}: {reason}")
+                        elif 'symbol' in result and 'direction' in result:
+                            # C'est un setup valide
+                            valid_setups += 1
+                            logger.info(
+                                f"✅ Setup trouvé: {result.get('symbol')} - {result.get('direction')} | "
+                                f"Timeframe: {result.get('confirmedBy', 'N/A')} | "
+                                f"Conditions: {len(result.get('signals', []))} | "
+                                f"Entry: {result.get('price', 'N/A')} | "
+                                f"ATR: {result.get('atr', 0):.6f} ({result.get('atr', 0) / result.get('price', 1) * 100 if result.get('price') else 0:.3f}%)"
+                            )
+                        else:
+                            # Résultat inattendu
+                            no_setup += 1
+                            logger.warning(f"⚠️ Résultat inattendu pour {symbol_analyzed}: {result}")
+                    else:
+                        # None ou résultat vide
+                        no_setup += 1
+                        logger.debug(f"🔍 {symbol_analyzed}: Pas de setup (None)")
+                
+                # 🔥 FIX: Envoyer stats volume au frontend pour mettre à jour le compteur
+                total_analyzed = len(results)
+                validated_count = valid_setups
+                # Émettre événement SocketIO pour mettre à jour les stats côté frontend
+                await sio.emit('volume_stats_update', {
+                    'total': total_analyzed,
+                    'validated': validated_count,
+                    'ratio': (validated_count / total_analyzed * 100) if total_analyzed > 0 else 0
+                })
+                
+                # 🔥 FIX: Log résumé détaillé avec raisons principales
+                summary_parts = [f'{valid_setups} setups valides', f'{no_setup} sans setup']
+                if errors > 0:
+                    summary_parts.append(f'{errors} erreurs')
+                
+                summary = ', '.join(summary_parts)
+                
+                # Ajouter les raisons principales de rejet si aucune setup n'a été trouvé
+                if valid_setups == 0 and rejection_reasons:
+                    # Trier par fréquence (plus fréquent en premier)
+                    sorted_reasons = sorted(rejection_reasons.items(), key=lambda x: x[1], reverse=True)
+                    top_reasons = sorted_reasons[:5]  # Top 5 raisons
+                    reasons_text = ' | '.join([f"{reason} ({count}x)" for reason, count in top_reasons])
+                    summary += f" | Principales raisons: {reasons_text}"
+                
+                await add_log('INFO', 'Résumé scan', summary)
+                
+                # 🔥 FIX: Log détaillé dans le logger Python aussi
+                logger.info(f"📊 Résumé scan: {summary}")
+                
+                # Si on a trouvé un setup valide, ouvrir la position
+                if valid_setups > 0:
+                    logger.info(f"🎯 {valid_setups} setup(s) valide(s) trouvé(s), tentative d'ouverture de position...")
+                    for result in results:
+                        # 🔥 FIX: Vérifier que result est un setup valide (dict avec 'symbol' et 'direction', pas une raison)
+                        if result and not isinstance(result, Exception) and isinstance(result, dict):
+                            # Vérifier que ce n'est PAS une raison de rejet
+                            if 'reason' in result:
+                                continue  # C'est une raison, pas un setup
+                            
+                            # Vérifier que c'est un setup valide (avec symbol et direction)
+                            if 'symbol' not in result or 'direction' not in result:
+                                continue  # Ce n'est pas un setup complet
+                            
+                            # 🔥 FIX: Log détaillé avant tentative d'ouverture
+                            symbol = result.get('symbol', 'UNKNOWN')
+                            direction = result.get('direction', 'UNKNOWN')
+                            logger.info(
+                                f"🚀 Tentative d'ouverture position: {symbol} - {direction} | "
+                                f"Entry (setup): {result.get('price', 'N/A')} | "
+                                f"SL: {result.get('sl', 'N/A')} | TP: {result.get('tp', 'N/A')} | "
+                                f"ATR: {result.get('atr', 0):.6f} | "
+                                f"Conditions: {len(result.get('signals', []))} | "
+                                f"Confirmed by: {result.get('confirmedBy', 'N/A')}"
+                            )
+                            
+                            # 🔥 FIX: Lock pour éviter les ouvertures multiples
+                            async with position_lock:
+                                # Vérifier à nouveau qu'on n'a pas déjà une position (double-check après lock)
+                                if app_state['active_position'] or (position_manager and position_manager.active_position):
+                                    logger.warning(
+                                        f"🚫 Position déjà active - Scanner ignoré. "
+                                        f"app_state['active_position']={app_state['active_position'] is not None}, "
+                                        f"position_manager.active_position={position_manager.active_position if position_manager else None}"
+                                    )
+                                    await add_log('WARNING', 'Position déjà active', 
+                                        'Un setup a été trouvé mais une position est déjà ouverte')
+                                    break
+                                
+                                # 🔥 FIX: Log avant ouverture pour debug
+                                logger.info(f"🔓 Lock acquis - Ouverture position pour {symbol}")
+                                
+                                # 🔥 FIX: Ouvrir position automatiquement
+                                setup = result
+                                # symbol et direction déjà définis avant le lock
+                                # symbol = setup.get('symbol', '')
+                                # direction = setup.get('direction', 'LONG')
+                                
+                                await add_log('INFO', 'Setup trouvé', 
+                                    f"{symbol} - {direction} - {len(setup.get('signals', []))} conditions")
+                                
+                                try:
+                                    # Récupérer prix d'entrée
+                                    if not price_provider:
+                                        price_provider = get_price_provider()
+                                    
+                                    price_data = await price_provider.get_price(symbol)
+                                    if not price_data:
+                                        await add_log('ERROR', 'Prix non disponible', symbol)
+                                        continue
+                                    
+                                    entry_price = price_data.get('lastPrice', setup.get('price', 0))
+                                    if not entry_price or entry_price == 0:
+                                        await add_log('ERROR', 'Prix invalide', f"{symbol}: {entry_price}")
+                                        continue
+                                    
+                                    # 🔥 FIX: Log pour debug - vérifier le prix récupéré
+                                    logger.info(
+                                        f"💰 Prix récupéré pour {symbol}: lastPrice={price_data.get('lastPrice')}, "
+                                        f"setup.get('price')={setup.get('price')}, entry_price={entry_price}"
+                                    )
+                                    
+                                    # Calculer taille de position (position sizing)
+                                    from config import TRADING_CONFIG, RISK_CONFIG
+                                    
+                                    # Capital par défaut (peut être modifié via config)
+                                    account_size = TRADING_CONFIG.get('account_size', 1000.0)
+                                    risk_per_trade = TRADING_CONFIG.get('risk_per_trade', 2.0) / 100  # 2% par défaut
+                                    
+                                    # Récupérer ATR pour calculer SL%
+                                    atr = setup.get('atr', 0)
+                                    atr5m = setup.get('atr5m')
+                                    
+                                    # Calculer SL% selon le mode
+                                    tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                                    # 🔥 FIX: ATR_MULTI utilise aussi le calcul ATR
+                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'ATR_MULTI') and atr and entry_price:
+                                        sl_percent = (atr / entry_price) * 100
+                                        # Clamp selon config
+                                        atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                                        atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+                                        sl_percent = max(atr_min, min(atr_max, sl_percent))
+                                    else:
+                                        sl_percent = TRADING_CONFIG.get('sl_percent', 0.25)
+                                    
+                                    # Position size = Capital × Risk% / SL%
+                                    if sl_percent > 0:
+                                        position_size = (account_size * risk_per_trade) / (sl_percent / 100)
+                                    else:
+                                        position_size = account_size * risk_per_trade  # Fallback
+                                    
+                                    # 🔥 FIX: Log détaillé du calcul de taille pour debug
+                                    logger.info(
+                                        f"💰 Calcul taille position: {symbol} | "
+                                        f"Capital: {account_size:.2f} USDT | "
+                                        f"Risk%: {risk_per_trade*100:.2f}% | "
+                                        f"SL%: {sl_percent:.4f}% | "
+                                        f"Taille calculée: {position_size:.2f} USDT"
+                                    )
+                                    
+                                    # Récupérer scalability_data pour slippage
+                                    scalability_data = None
+                                    if app_state['top_pairs']:
+                                        for pair in app_state['top_pairs']:
+                                            if pair.get('symbol') == symbol:
+                                                scalability_data = pair
+                                                break
+                                    
+                                    # Ouvrir la position
+                                    position = position_manager.open_position(
+                                        symbol=symbol,
+                                        direction=direction,
+                                        entry=entry_price,
+                                        size=position_size,
+                                        atr=atr,
+                                        atr5m=atr5m,
+                                        confirmed_by=setup.get('confirmedBy', 'Scanner auto'),
+                                        scalability_data=scalability_data
+                                    )
+                                    
+                                    # Stocker capital
+                                    position.capital = account_size
+                                    
+                                    # Mettre à jour app_state AVANT d'émettre l'événement
+                                    app_state['active_position'] = position
+                                    
+                                    # 🔥 FIX: Vérification finale avant de continuer
+                                    if app_state['active_position'] != position:
+                                        logger.error(f"❌ ERREUR: app_state['active_position'] a été modifié pendant l'ouverture !")
+                                        break
+                                    
+                                    # 🔥 FIX: S'abonner au WebSocket pour prix en temps réel
+                                    if price_provider and price_provider.ws_manager and price_provider.ws_manager.connected:
+                                        try:
+                                            await price_provider.ws_manager.subscribe_ticker(symbol)
+                                            logger.debug(f"📡 WebSocket: Abonné à {symbol} pour prix temps réel")
+                                            
+                                            # 🔥 FIX: Configurer callback pour suivre position active
+                                            # Le WebSocket met à jour le cache en temps réel
+                                            # La boucle de check à 0.5s récupère le prix du cache et émet position_update
+                                            price_provider.set_socketio_callback(None, symbol)
+                                            logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
+                                        except Exception as e:
+                                            logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
+                                    
+                                    # Logger et notifier (UNE SEULE FOIS)
+                                    await add_log('INFO', 'Position ouverte automatiquement', 
+                                        f"{direction} {symbol} @ {entry_price:.6f} | Size: {position_size:.2f} USDT")
+                                    
+                                    # 🔥 FIX: Émettre l'événement UNE SEULE FOIS
+                                    await sio.emit('position_opened', position.to_dict())
+                                    
+                                    # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend
+                                    try:
+                                        current_price_data = await price_provider.get_price(symbol)
+                                        if current_price_data:
+                                            current_price = current_price_data.get('lastPrice', entry_price) if isinstance(current_price_data, dict) else entry_price
+                                            pnl = position_manager._calculate_pnl(current_price)
+                                            pnl_pct = pnl / 100
+                                            pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
+                                            
+                                            await sio.emit('position_update', {
+                                                'symbol': position.symbol,
+                                                'direction': position.direction,
+                                                'entry': position.entry,
+                                                'current_price': current_price,
+                                                'sl': position.sl,
+                                                'tp': position.tp,
+                                                'pnl': pnl,
+                                                'pnl_usdt': pnl_usdt,
+                                                'size': position.size,
+                                                'break_even_set': position.break_even_set,
+                                                'partial_tp_sold': position.partial_tp_sold
+                                            })
+                                            logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ Erreur émission prix initial: {e}")
+                                    
+                                    logger.info(
+                                        f"🟢 POSITION OUVERTE (Auto): {direction} {symbol} | "
+                                        f"Entry: {entry_price:.6f} | Size: {position_size:.2f} USDT (position.size={position.size:.2f}) | "
+                                        f"SL: {position.sl:.6f} | TP: {position.tp:.6f} | "
+                                        f"Lock maintenu jusqu'à la fin"
+                                    )
+                                    
+                                    # Ne prendre que le premier setup valide - sortir immédiatement
+                                    break
+                                    
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur ouverture position auto pour {symbol}: {e}")
+                                    import traceback
+                                    logger.error(f"Traceback: {traceback.format_exc()}")
+                                    await add_log('ERROR', 'Erreur ouverture position', f"{symbol}: {str(e)}")
+                                    continue
+                else:
+                    # 🔥 FIX: Log détaillé quand aucun setup n'est trouvé
+                    # Note: rejection_reasons est défini dans le bloc if scan_tasks ci-dessus
+                    await add_log('INFO', 'Aucun setup', 
+                        'Aucun setup valide trouvé sur les paires analysées')
+    
+    # 🔥 FIX: Le lock scanner_lock est automatiquement libéré ici (fin du bloc async with)
 
 
 async def scan_pair_for_setup(symbol: str):
@@ -292,34 +450,59 @@ async def scan_pair_for_setup(symbol: str):
         from config import TRADING_CONFIG
         use_confluence = TRADING_CONFIG.get('use_confluence', False)
         volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
+        trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
+        
+        # 🔥 FIX: Calculer trend_data avec le timeframe configuré
+        trend_data = await analyzer.calculate_trend_data(symbol, trend_timeframe)
+        if trend_data:
+            logger.debug(f"📊 {symbol}: Trend {trend_timeframe} = {trend_data['trend']} ({trend_data['strength']}, bonus={trend_data['bonus']})")
         
         # 🔥 FIX: Analyser avec retour de raison si pas de setup + paramètres configurables
         analysis = await analyzer.analyze_pair(
             symbol, 
-            trend_data=None,
+            trend_data=trend_data,  # 🔥 Utiliser trend_data calculé
             volume_multiplier=volume_multiplier,
             use_confluence=use_confluence,
             return_reason=True
         )
         
+        # 🔥 FIX: Envoyer événement SocketIO pour mettre à jour le compteur de validation
+        # Un setup valide = validé (true), pas de setup = non validé (false)
+        is_valid = False
         if analysis:
             if isinstance(analysis, dict) and 'reason' in analysis:
                 # C'est une raison de rejet, pas un setup
                 reason = analysis.get('reason', 'Inconnu')
                 logger.info(f"❌ {symbol}: Pas de setup - {reason}")
-                return None
+                is_valid = False
             else:
                 # C'est un vrai setup
                 logger.info(f"✅ {symbol}: Setup trouvé - {analysis.get('direction', 'N/A')} - {len(analysis.get('signals', []))} conditions")
-                return analysis
+                is_valid = True
         else:
             # Si analysis est None, c'est que les deux timeframes ont retourné None
             logger.warning(f"⚠️ {symbol}: Analyse retournée None - Vérifier les erreurs dans analyze_timeframe")
-            return None
+            is_valid = False
+        
+        # Envoyer événement pour mettre à jour le compteur
+        await sio.emit('volume_validation_update', {
+            'symbol': symbol,
+            'valid': is_valid
+        })
+        
+        if analysis and not (isinstance(analysis, dict) and 'reason' in analysis):
+            return analysis
+        return None
+        
     except Exception as e:
         logger.error(f"❌ Erreur scan {symbol}: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
+        # Envoyer événement pour erreur (non validé)
+        await sio.emit('volume_validation_update', {
+            'symbol': symbol,
+            'valid': False
+        })
         return None
 
 
@@ -345,23 +528,91 @@ async def position_check_loop_callback():
         # Check position (renvoie None ou raison de fermeture)
         close_reason = await position_manager.check_position(current_price)
         
+        # 🔥 FIX: Émettre position_update même si pas de fermeture (pour affichage frontend)
+        if not close_reason:
+            # Calculer PnL pour affichage
+            position = position_manager.active_position
+            if position:
+                pnl = position_manager._calculate_pnl(current_price)
+                # 🔥 FIX: Calculer PnL USDT correctement selon direction (incluant TP partiel)
+                pnl_pct = pnl / 100  # Convertir % en décimal
+                
+                # Taille de position à considérer (50% si TP partiel vendu)
+                size_to_consider = position.size
+                partial_profit_usdt = 0.0
+                if hasattr(position, 'partial_tp_sold') and position.partial_tp_sold:
+                    size_to_consider = getattr(position, 'size_remaining', position.size * 0.5)
+                    partial_profit_usdt = getattr(position, 'partial_profit_usdt', 0.0)
+                
+                # 🔥 FIX: Calculer PnL USDT correctement (comme dans position_manager)
+                if position.direction == 'LONG':
+                    # LONG: profit quand prix monte
+                    price_diff = current_price - position.entry
+                    pnl_usdt = size_to_consider * (price_diff / position.entry)
+                else:  # SHORT
+                    # SHORT: profit quand prix baisse
+                    price_diff = position.entry - current_price
+                    pnl_usdt = size_to_consider * (price_diff / position.entry)
+                
+                # Ajouter le profit du TP partiel si vendu
+                pnl_usdt += partial_profit_usdt
+                
+                # 🔥 FIX: Log détaillé pour debug
+                logger.debug(
+                    f"📊 Position check: {position.symbol} {position.direction} | "
+                    f"Entry={position.entry:.6f} | Prix={current_price:.6f} | "
+                    f"PnL={pnl:.2f}% | PnL USDT={pnl_usdt:.4f} | "
+                    f"SL={position.sl:.6f} | TP={position.tp:.6f}"
+                )
+                
+                # Émettre update pour le frontend
+                update_data = {
+                    'symbol': position.symbol,
+                    'direction': position.direction,
+                    'entry': position.entry,
+                    'current_price': current_price,
+                    'sl': position.sl,
+                    'tp': position.tp,
+                    'pnl': pnl,
+                    'pnl_usdt': pnl_usdt,
+                    'size': position.size,
+                    'break_even_set': position.break_even_set,
+                    'partial_tp_sold': position.partial_tp_sold
+                }
+                await sio.emit('position_update', update_data)
+                
+                # 🔥 FIX: Log pour vérifier que le prix est bien émis
+                logger.debug(
+                    f"📡 position_update émis: {position.symbol} | "
+                    f"Prix actuel: {current_price:.6f} | "
+                    f"Size: {position.size:.2f} USDT | "
+                    f"PnL: {pnl:.2f}% ({pnl_usdt:.2f} USDT)"
+                )
+        
         if close_reason:
             # Position fermée
-            result = position_manager.close_position(close_reason, exit_price=current_price)
-            app_state['active_position'] = None
+            # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
+            async with position_lock:
+                result = position_manager.close_position(close_reason, exit_price=current_price)
+                app_state['active_position'] = None
+                
+                # 🔥 FIX: Désactiver callback WebSocket si position fermée
+                if price_provider:
+                    price_provider.set_socketio_callback(None, None)
+                
+                # 🔥 FIX: Log pour debug
+                logger.info(
+                    f"🔒 Position fermée avec lock: {close_reason} | "
+                    f"app_state['active_position']=None, "
+                    f"position_manager.active_position={position_manager.active_position}"
+                )
             
             await add_log('INFO', 'Position fermée', f"{close_reason} - PnL: {result.get('pnl_usdt', 0):.2f} USDT")
             await sio.emit('position_closed', result)
             
-            # Mettre à jour stats
-            if result.get('pnl_usdt', 0) > 0:
-                app_state['stats']['wins'] += 1
-            else:
-                app_state['stats']['losses'] += 1
-            app_state['stats']['total_trades'] += 1
-            total = app_state['stats']['total_trades']
-            if total > 0:
-                app_state['stats']['winrate'] = (app_state['stats']['wins'] / total) * 100
+            # 🔥 FIX: Ne PAS mettre à jour les stats ici - elles sont gérées dans le frontend
+            # pour éviter le double comptage. Le frontend reçoit position_closed et incrémente les stats.
+            # Les stats backend (app_state['stats']) sont utilisées pour autre chose si nécessaire.
             
             # 🔥 JOUR 5: Métriques
             if get_metrics_collector:
@@ -439,7 +690,8 @@ def init_instances():
         
         # Configurer TP/SL mode depuis TRADING_CONFIG
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-        position_config.use_atr = (tp_sl_mode == 'ATR')
+        # 🔥 FIX: ATR_MULTI utilise aussi le mode ATR (avec atr5m pour distinguer)
+        position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'ATR_MULTI')
         
         # Configurer valeurs FIXE depuis TRADING_CONFIG
         position_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.25)
@@ -692,7 +944,8 @@ async def api_analyze_symbol(
     symbol: str, 
     tf: str = Query('1m', description="Timeframe (pour compatibilité)"),
     use_confluence: bool = Query(None, description="True = 1m ET 5m, False = 1m OU 5m"),
-    volume_multiplier: float = Query(None, description="Multiplicateur de volume 0.1-2.0")
+    volume_multiplier: float = Query(None, description="Multiplicateur de volume 0.1-2.0"),
+    trend_timeframe: str = Query(None, description="Timeframe pour trend_data (5m, 15m, 30m, 1h)")
 ):
     """
     Analyser un symbole avec paramètres configurables
@@ -702,6 +955,7 @@ async def api_analyze_symbol(
         tf: Timeframe (1m ou 5m) - pour compatibilité, mais utilise analyze_pair maintenant
         use_confluence: True = 1m ET 5m, False = 1m OU 5m (défaut: depuis TRADING_CONFIG)
         volume_multiplier: Multiplicateur de volume 0.1-2.0 (défaut: depuis TRADING_CONFIG)
+        trend_timeframe: Timeframe pour calculer trend_data (défaut: depuis TRADING_CONFIG)
     """
     init_instances()
     if not analyzer:
@@ -714,11 +968,16 @@ async def api_analyze_symbol(
             use_confluence = TRADING_CONFIG.get('use_confluence', False)
         if volume_multiplier is None:
             volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
+        if trend_timeframe is None:
+            trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
+        
+        # 🔥 FIX: Calculer trend_data avec le timeframe fourni ou configuré
+        trend_data = await analyzer.calculate_trend_data(symbol, trend_timeframe)
         
         # 🔥 FIX: Utiliser analyze_pair au lieu de analyze_symbol pour supporter confluence et volume_multiplier
         analysis = await analyzer.analyze_pair(
             symbol, 
-            trend_data=None,
+            trend_data=trend_data,  # 🔥 Utiliser trend_data calculé
             volume_multiplier=volume_multiplier,
             use_confluence=use_confluence,
             return_reason=False
@@ -732,6 +991,8 @@ async def api_analyze_symbol(
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
+
+
 @app.post("/api/position/open")
 async def api_open_position(request: Request):
     """Ouvrir position"""
@@ -739,39 +1000,56 @@ async def api_open_position(request: Request):
     if not position_manager:
         return JSONResponse({'error': 'Position manager not available'}, status_code=503)
     
-    try:
-        data = await request.json() if hasattr(request, 'json') else {}
-        data = data if isinstance(data, dict) else {}
+    # 🔥 FIX: Utiliser le même lock que le scanner pour éviter les ouvertures multiples
+    async with position_lock:
+        # Vérifier qu'on n'a pas déjà une position active
+        if app_state['active_position'] or (position_manager and position_manager.active_position):
+            return JSONResponse({'error': 'Une position est déjà active'}, status_code=400)
         
-        # Vérifier données minimales
-        if not data or 'symbol' not in data:
-            return JSONResponse({'error': 'Missing symbol'}, status_code=400)
-        
-        # Extraire paramètres avec valeurs par défaut
-        position = position_manager.open_position(
-            symbol=data['symbol'],
-            direction=data.get('direction', 'LONG'),
-            entry=data.get('entry', 0.0),
-            size=data.get('size', 100.0),
-            atr=data.get('atr'),
-            atr5m=data.get('atr5m'),
-            confirmed_by=data.get('confirmed_by', ''),
-            scalability_data=data.get('scalability_data')
-        )
-        
-        # 🔥 FIX: Stocker capital si fourni dans data
-        if 'capital' in data:
-            position.capital = data.get('capital')
-        
-        app_state['active_position'] = position
-        
-        await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
-        await sio.emit('position_opened', position.to_dict())
-        
-        return JSONResponse({'status': 'opened', 'position': position.to_dict()})
-    except Exception as e:
-        logger.error(f"Erreur ouverture position: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        try:
+            data = await request.json() if hasattr(request, 'json') else {}
+            data = data if isinstance(data, dict) else {}
+            
+            # Vérifier données minimales
+            if not data or 'symbol' not in data:
+                return JSONResponse({'error': 'Missing symbol'}, status_code=400)
+            
+            # Double-check après avoir acquis le lock
+            if app_state['active_position'] or (position_manager and position_manager.active_position):
+                return JSONResponse({'error': 'Une position est déjà active (double-check)'}, status_code=400)
+            
+            # 🔥 FIX: Vérifier que entry est fourni et valide
+            entry = data.get('entry')
+            if not entry or entry <= 0:
+                return JSONResponse({
+                    'error': f'Entry invalide ou manquant: {entry}. Entry doit être > 0.'
+                }, status_code=400)
+            
+            # Extraire paramètres avec valeurs par défaut
+            position = position_manager.open_position(
+                symbol=data['symbol'],
+                direction=data.get('direction', 'LONG'),
+                entry=float(entry),  # 🔥 FIX: S'assurer que c'est un float
+                size=data.get('size', 100.0),
+                atr=data.get('atr'),
+                atr5m=data.get('atr5m'),
+                confirmed_by=data.get('confirmed_by', ''),
+                scalability_data=data.get('scalability_data')
+            )
+            
+            # 🔥 FIX: Stocker capital si fourni dans data
+            if 'capital' in data:
+                position.capital = data.get('capital')
+            
+            app_state['active_position'] = position
+            
+            await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
+            await sio.emit('position_opened', position.to_dict())
+            
+            return JSONResponse({'status': 'opened', 'position': position.to_dict()})
+        except Exception as e:
+            logger.error(f"Erreur ouverture position: {e}")
+            return JSONResponse({'error': str(e)}, status_code=500)
 
 
 @app.get("/api/position/check")
@@ -796,11 +1074,21 @@ async def api_check_position():
         result = await position_manager.check_position(current_price)
         
         # Construire réponse
+        position = position_manager.active_position
+        pnl = position_manager._calculate_pnl(current_price)
+        pnl_pct = pnl / 100
+        pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
+        
         response = {
             'status': 'position_active',
-            'symbol': position_manager.active_position.symbol,
+            'symbol': position.symbol,
             'current_price': current_price,
-            'pnl': position_manager._calculate_pnl(current_price)
+            'pnl': pnl,
+            'pnl_usdt': pnl_usdt,
+            'entry': position.entry,
+            'sl': position.sl,
+            'tp': position.tp,
+            'size': position.size
         }
         
         if result:
@@ -818,28 +1106,50 @@ async def api_check_position():
 async def api_close_position():
     """Clôturer position manuellement"""
     init_instances()
-    if not position_manager or not position_manager.active_position:
-        return JSONResponse({'error': 'No active position'}, status_code=400)
     
-    if not price_provider:
-        return JSONResponse({'error': 'Price provider not available'}, status_code=503)
-    
-    try:
-        # Récupérer prix actuel
-        price_data = await price_provider.get_price(position_manager.active_position.symbol)
-        exit_price = price_data.get('lastPrice') if price_data else None
+    # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
+    async with position_lock:
+        # Double-check que la position existe AVANT et APRÈS avoir acquis le lock
+        if not position_manager or not position_manager.active_position:
+            # Vérifier aussi dans app_state
+            if not app_state.get('active_position'):
+                logger.warning("⚠️ Tentative de fermeture sans position active (position_manager)")
+                return JSONResponse({'error': 'No active position'}, status_code=400)
+            else:
+                # Position dans app_state mais pas dans position_manager - nettoyer app_state
+                logger.warning("⚠️ Position dans app_state mais pas dans position_manager - nettoyage")
+                app_state['active_position'] = None
+                return JSONResponse({'error': 'Position state inconsistent'}, status_code=400)
         
-        result = position_manager.close_position('MANUAL', exit_price=exit_price)
+        if not price_provider:
+            return JSONResponse({'error': 'Price provider not available'}, status_code=503)
         
-        app_state['active_position'] = None
-        
-        await add_log('INFO', 'Position clôturée', 'Manuel')
-        await sio.emit('position_closed', result)
-        
-        return JSONResponse(result)
-    except Exception as e:
-        logger.error(f"Erreur clôture position: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        try:
+            # Récupérer prix actuel
+            price_data = await price_provider.get_price(position_manager.active_position.symbol)
+            exit_price = price_data.get('lastPrice') if price_data else None
+            
+            result = position_manager.close_position('MANUAL', exit_price=exit_price)
+            
+            app_state['active_position'] = None
+            
+            # 🔥 FIX: Désactiver callback WebSocket si position fermée
+            if price_provider:
+                price_provider.set_socketio_callback(None, None)
+            
+            logger.info(
+                f"🔒 Position fermée manuellement avec lock: "
+                f"app_state['active_position']=None, "
+                f"position_manager.active_position={position_manager.active_position}"
+            )
+            
+            await add_log('INFO', 'Position clôturée', 'Manuel')
+            await sio.emit('position_closed', result)
+            
+            return JSONResponse(result)
+        except Exception as e:
+            logger.error(f"Erreur clôture position: {e}")
+            return JSONResponse({'error': str(e)}, status_code=500)
 
 
 # Helper async tasks
@@ -920,7 +1230,16 @@ async def api_get_config():
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.3),
         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.5),
         'di_gap_min': TRADING_CONFIG.get('di_gap_min', 5),
-        'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25)
+        'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
+        # 🔥 Seuils ATR optimal
+        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.10),
+        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.8),
+        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.20),
+        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.5),
+        # 🔥 Trend timeframe
+        'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+        'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+        'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
     })
 
 
@@ -949,13 +1268,14 @@ async def api_update_config(request: Request):
         
         # 🔥 TP/SL Mode
         if 'tp_sl_mode' in data:
-            mode = data['tp_sl_mode']
-            if mode in ['FIXE', 'ATR']:
+            mode = str(data['tp_sl_mode']).upper()
+            if mode in ['FIXE', 'ATR', 'ATR_MULTI']:
                 TRADING_CONFIG['tp_sl_mode'] = mode
                 # Mettre à jour PositionConfig si position_manager existe
                 init_instances()
                 if position_config:
-                    position_config.use_atr = (mode == 'ATR')
+                    # 🔥 FIX: ATR_MULTI utilise aussi le mode ATR (avec atr5m pour distinguer)
+                    position_config.use_atr = (mode == 'ATR' or mode == 'ATR_MULTI')
                 updated['tp_sl_mode'] = mode
         
         if 'tp_percent' in data:
@@ -1002,6 +1322,54 @@ async def api_update_config(request: Request):
             val = max(0.0, min(100.0, val))  # Clamp 0.0-100.0
             TRADING_CONFIG['di_gap_adx_threshold'] = val
             updated['di_gap_adx_threshold'] = val
+        
+        # 🔥 FIX: Permettre modification des seuils ATR optimal
+        if 'optimal_atr_min_1m' in data:
+            val = float(data['optimal_atr_min_1m'])
+            val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
+            TRADING_CONFIG['optimal_atr_min_1m'] = val
+            updated['optimal_atr_min_1m'] = val
+        
+        if 'optimal_atr_max_1m' in data:
+            val = float(data['optimal_atr_max_1m'])
+            val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0%
+            TRADING_CONFIG['optimal_atr_max_1m'] = val
+            updated['optimal_atr_max_1m'] = val
+        
+        if 'optimal_atr_min_5m' in data:
+            val = float(data['optimal_atr_min_5m'])
+            val = max(0.01, min(2.0, val))  # Clamp 0.01-2.0%
+            TRADING_CONFIG['optimal_atr_min_5m'] = val
+            updated['optimal_atr_min_5m'] = val
+        
+        if 'optimal_atr_max_5m' in data:
+            val = float(data['optimal_atr_max_5m'])
+            val = max(0.5, min(10.0, val))  # Clamp 0.5-10.0%
+            TRADING_CONFIG['optimal_atr_max_5m'] = val
+            updated['optimal_atr_max_5m'] = val
+        
+        # 🔥 FIX: Permettre modification du trend timeframe
+        if 'trend_timeframe' in data:
+            val = str(data['trend_timeframe']).lower()
+            valid_timeframes = ['5m', '15m', '30m', '1h']
+            if val in valid_timeframes:
+                TRADING_CONFIG['trend_timeframe'] = val
+                updated['trend_timeframe'] = val
+            else:
+                return JSONResponse({'error': f'Timeframe invalide: {val}. Valeurs acceptées: {valid_timeframes}'}, status_code=400)
+        
+        # 🔥 FIX: Ajouter support pour account_size et risk_per_trade
+        if 'account_size' in data:
+            val = float(data['account_size'])
+            val = max(100.0, min(100000.0, val))  # Clamp 100-100000
+            TRADING_CONFIG['account_size'] = val
+            updated['account_size'] = val
+        
+        if 'risk_per_trade' in data:
+            val = float(data['risk_per_trade'])
+            val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
+            TRADING_CONFIG['risk_per_trade'] = val
+            updated['risk_per_trade'] = val
         
         if updated:
             logger.info(f"✅ Configuration mise à jour: {updated}")

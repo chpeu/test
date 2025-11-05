@@ -95,3 +95,4 @@
 
 **WebSocket Pool** : Complexité inutile pour le moment, `top_pairs_limit = 20` suffit largement avec limite de 30 symboles.
 
+

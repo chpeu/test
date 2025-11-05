@@ -141,3 +141,4 @@ ticker = await fetch('/api/price/' + symbol);
 
 
 
+

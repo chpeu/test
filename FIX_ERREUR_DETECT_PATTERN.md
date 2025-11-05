@@ -119,3 +119,4 @@ if prev:
 
 **Le code est maintenant compatible avec le format OHLCV de ccxt !**
 
+

@@ -154,3 +154,4 @@ scanner_loop_callback() (toutes les 45s)
 - **Validation** : Seuls les setups valides comptent comme "validated"
 - **Ratio** : Le ratio est calculé automatiquement et mis à jour dans `TRADING_CONFIG`
 
+

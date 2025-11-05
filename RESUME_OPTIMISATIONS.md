@@ -109,3 +109,4 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 **Système optimisé avec top 20, rate limiting, cache et compression** 🚀
 
+

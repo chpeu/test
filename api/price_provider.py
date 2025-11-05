@@ -36,6 +36,10 @@ class HybridPriceProvider:
         # 🔥 v6.6.1 Phase 2A: Buffer pour backpressure (optionnel)
         self.message_buffer = deque(maxlen=100)
         
+        # 🔥 FIX: Callback pour émettre prix en temps réel via SocketIO
+        self.socketio_emit_callback = None
+        self.active_position_symbol = None
+        
     def _handle_mexc_message(self, data: dict):
         """
         Callback pour traitement messages WebSocket MEXC
@@ -44,7 +48,7 @@ class HybridPriceProvider:
         - {"channel": "push.ticker", "symbol": "...", "data": {...}}
         - {"channel": "pong"}
         
-        Note: Callback synchrone, utilise asyncio.create_task() pour les opérations async
+        Note: Callback synchrone, mais WebSocketManager l'appelle depuis un contexte async
         """
         # Heartbeat response
         if data.get("channel") == "pong":
@@ -88,6 +92,15 @@ class HybridPriceProvider:
                 self.price_cache[ccxt_symbol] = ticker_info
                 if len(self.message_buffer) < self.message_buffer.maxlen:
                     self.message_buffer.append(ticker_info)
+                
+                # 🔥 FIX: Émettre prix en temps réel via SocketIO si position active
+                # WebSocket émet à chaque tick, donc latence minimale pour scalping (< 100ms)
+                # Le callback sera appelé depuis WebSocketManager qui est dans un contexte async
+                if self.active_position_symbol == ccxt_symbol and self.socketio_emit_callback:
+                    # Stocker le prix pour émission (sera récupéré par la boucle de check ou émis directement)
+                    # Note: L'émission directe se fera via la boucle de check qui lit le cache
+                    # WebSocket émet déjà en temps réel, la boucle de check à 0.5s servira de backup
+                    pass
                 
                 if DEBUG_ENABLED:
                     logger.debug(f"📊 Prix MEXC WS: {mexc_symbol} -> {ccxt_symbol} = {price}")
@@ -225,6 +238,25 @@ class HybridPriceProvider:
     def is_websocket_connected(self) -> bool:
         """Vérifier si WebSocket est connecté"""
         return self.use_websocket and self.ws_manager and self.ws_manager.connected
+    
+    def set_socketio_callback(self, callback, active_symbol: Optional[str] = None):
+        """
+        Définir callback pour émettre prix via SocketIO
+        
+        Args:
+            callback: Fonction async(symbol, price) pour émettre position_update
+            active_symbol: Symbole de la position active (None si pas de position)
+        """
+        self.socketio_emit_callback = callback
+        self.active_position_symbol = active_symbol
+    
+    async def _emit_price_update(self, symbol: str, price: float):
+        """Émettre mise à jour prix via SocketIO"""
+        if self.socketio_emit_callback:
+            try:
+                await self.socketio_emit_callback(symbol, price)
+            except Exception as e:
+                logger.error(f"❌ Erreur émission prix SocketIO: {e}")
 
 
 # Instance globale

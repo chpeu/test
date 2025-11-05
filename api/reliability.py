@@ -20,21 +20,111 @@ from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG, DEBUG
 logger = logging.getLogger(__name__)
 
 
-# Circuit Breaker global
-_api_circuit_breaker = CircuitBreaker(
-    fail_max=CIRCUIT_BREAKER_CONFIG['fail_max'],
-    reset_timeout=CIRCUIT_BREAKER_CONFIG['reset_timeout']
+# 🔥 Circuit Breaker Adaptatif
+class AdaptiveCircuitBreaker:
+    """Circuit breaker qui s'adapte au taux d'erreur"""
+    
+    def __init__(self, base_fail_max: int = 5, base_timeout: int = 60):
+        self.base_fail_max = base_fail_max
+        self.base_timeout = base_timeout
+        
+        # Métriques dynamiques
+        self.error_rate = 0.0
+        self.success_count = 0
+        self.error_count = 0
+        
+        # Seuils adaptatifs
+        self.failure_threshold = base_fail_max
+        self.timeout_duration = base_timeout
+        
+        # Circuit breaker actuel
+        self._circuit_breaker = CircuitBreaker(
+            fail_max=self.failure_threshold,
+            reset_timeout=self.timeout_duration
+        )
+        
+        # Callback pour logging
+        self._circuit_breaker.on_state_change = self._on_state_change
+        
+        logger.info(f"🔄 Circuit Breaker Adaptatif initialisé: Threshold={self.failure_threshold}, Timeout={self.timeout_duration}s")
+    
+    def _on_state_change(self, failure_counter, state):
+        """Callback appelé lors changement d'état circuit breaker"""
+        if DEBUG_ENABLED:
+            logger.warning(f"🔌 Circuit Breaker: {state.name} (échecs: {failure_counter}, threshold={self.failure_threshold})")
+    
+    def record_success(self):
+        """Enregistrer un succès"""
+        self.success_count += 1
+        self._update_metrics()
+    
+    def record_failure(self):
+        """Enregistrer un échec"""
+        self.error_count += 1
+        self._update_metrics()
+    
+    def _update_metrics(self):
+        """Mettre à jour métriques et ajuster seuils"""
+        total = self.success_count + self.error_count
+        if total < 10:
+            return  # Pas assez de données
+        
+        # Calculer taux d'erreur
+        self.error_rate = self.error_count / total
+        
+        # Adapter seuils selon taux d'erreur
+        old_threshold = self.failure_threshold
+        old_timeout = self.timeout_duration
+        
+        if self.error_rate < 0.05:  # <5% erreurs
+            self.failure_threshold = self.base_fail_max * 2  # Plus tolérant
+            self.timeout_duration = self.base_timeout // 2  # Timeout court
+        elif self.error_rate < 0.15:  # 5-15% erreurs
+            self.failure_threshold = self.base_fail_max  # Normal
+            self.timeout_duration = self.base_timeout
+        else:  # >15% erreurs
+            self.failure_threshold = max(3, self.base_fail_max // 2)  # Strict
+            self.timeout_duration = self.base_timeout * 2  # Timeout long
+        
+        # Si seuils changés, recréer circuit breaker
+        if old_threshold != self.failure_threshold or old_timeout != self.timeout_duration:
+            self._circuit_breaker = CircuitBreaker(
+                fail_max=self.failure_threshold,
+                reset_timeout=self.timeout_duration
+            )
+            self._circuit_breaker.on_state_change = self._on_state_change
+            
+            if DEBUG_ENABLED:
+                logger.info(
+                    f"🔄 Circuit breaker adapté: "
+                    f"Threshold={self.failure_threshold} (was {old_threshold}), "
+                    f"Timeout={self.timeout_duration}s (was {old_timeout}), "
+                    f"Error rate={self.error_rate*100:.1f}%"
+                )
+        
+        # Reset compteurs toutes les 100 requêtes (fenêtre glissante)
+        if total >= 100:
+            self.success_count = int(self.success_count * 0.5)
+            self.error_count = int(self.error_count * 0.5)
+            if DEBUG_ENABLED:
+                logger.debug(f"🔄 Reset partiel compteurs: Success={self.success_count}, Error={self.error_count}")
+    
+    async def call_async(self, func, *args, **kwargs):
+        """Appeler fonction avec circuit breaker adaptatif"""
+        try:
+            result = await self._circuit_breaker.call_async(func, *args, **kwargs)
+            self.record_success()
+            return result
+        except Exception as e:
+            self.record_failure()
+            raise
+
+
+# Circuit Breaker adaptatif global
+_adaptive_circuit_breaker = AdaptiveCircuitBreaker(
+    base_fail_max=CIRCUIT_BREAKER_CONFIG['fail_max'],
+    base_timeout=CIRCUIT_BREAKER_CONFIG['reset_timeout']
 )
-
-
-# Callback pour logging circuit breaker
-def cb_state_change(failure_counter, state):
-    """Callback appelé lors changement d'état circuit breaker"""
-    if DEBUG_ENABLED:
-        logger.warning(f"🔌 Circuit Breaker: {state.name} (échecs: {failure_counter})")
-
-
-_api_circuit_breaker.on_state_change = cb_state_change
 
 
 @retry(
@@ -76,7 +166,7 @@ async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
 
 def with_circuit_breaker(func: Callable) -> Callable:
     """
-    Décorateur pour ajouter un circuit breaker à une fonction
+    Décorateur pour ajouter un circuit breaker adaptatif à une fonction
     
     Usage:
         @with_circuit_breaker
@@ -86,7 +176,7 @@ def with_circuit_breaker(func: Callable) -> Callable:
     @wraps(func)
     async def wrapper(*args, **kwargs):
         try:
-            return await _api_circuit_breaker.call_async(func, *args, **kwargs)
+            return await _adaptive_circuit_breaker.call_async(func, *args, **kwargs)
         except Exception as e:
             if DEBUG_ENABLED:
                 logger.error(f"❌ Circuit Breaker ouvert: {e}")
@@ -171,10 +261,12 @@ class WebSocketManager:
                 # Parser et appeler callback
                 import json
                 data = json.loads(message)
-                # 🔥 FIX: Si callback est async, l'appeler directement, sinon via to_thread
+                # 🔥 FIX: Le callback peut être sync ou async
+                # Si async, l'appeler directement, sinon via to_thread
                 if asyncio.iscoroutinefunction(self.callback):
                     await self.callback(data)
                 else:
+                    # Callback synchrone - l'exécuter dans un thread pour ne pas bloquer
                     await asyncio.to_thread(self.callback, data)
                 
             except asyncio.TimeoutError:
@@ -324,7 +416,7 @@ async def fetch_with_all_protections(func: Callable, *args, **kwargs) -> Any:
     """
     Exécute une fonction avec toutes les protections:
     - Retry avec backoff
-    - Circuit Breaker
+    - Circuit Breaker Adaptatif
     
     Args:
         func: Fonction async à exécuter
@@ -339,4 +431,8 @@ async def fetch_with_all_protections(func: Callable, *args, **kwargs) -> Any:
         return await fetch_with_retry(func, *args, **kwargs)
     
     return await protected_call()
+
+
+# Export pour compatibilité
+_api_circuit_breaker = _adaptive_circuit_breaker._circuit_breaker
 

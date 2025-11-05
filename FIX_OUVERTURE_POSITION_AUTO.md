@@ -155,3 +155,4 @@ Position Size = (Capital × Risk%) / SL%
 3. **Filtre qualité** : Ne prendre que les setups avec score élevé
 4. **Cool-down** : Attendre X secondes entre deux positions
 
+

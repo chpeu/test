@@ -150,3 +150,4 @@ if return_reason and not reasons:
 - [x] Amélioration du message "Aucune raison spécifique"
 - [ ] Tests avec DEBUG_ENABLED pour voir les vraies raisons
 
+

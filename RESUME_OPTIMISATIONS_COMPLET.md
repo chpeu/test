@@ -198,3 +198,4 @@ GET /api/scanner/top-pairs
 
 **Système optimisé avec top 20, rate limiting, cache et compression** 🚀
 
+

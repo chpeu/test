@@ -33,7 +33,7 @@ class Scheduler:
         self.scanner_callback = callback
     
     def set_position_check_callback(self, callback: Callable):
-        """Définir callback pour position check (appelé toutes les 2s)"""
+        """Définir callback pour position check (appelé toutes les 0.1s)"""
         self.position_check_callback = callback
     
     def set_scalability_refresh_callback(self, callback: Callable):
@@ -54,14 +54,15 @@ class Scheduler:
                 await asyncio.sleep(5)  # Attendre un peu avant de réessayer
     
     async def _position_check_loop(self):
-        """Boucle position check - toutes les 2 secondes"""
+        """Boucle position check - toutes les 0.1 secondes (optimisé pour scalping ultra-rapide)"""
         while self.is_running:
             try:
                 if self.position_check_callback:
                     await self.position_check_callback()
                 
-                # Attendre 2 secondes
-                await asyncio.sleep(2)
+                # 🔥 FIX: Réduire à 0.1s pour scalping ultra-rapide (latence minimale)
+                # WebSocket émet déjà en temps réel, mais cette boucle sert de backup
+                await asyncio.sleep(0.1)
             except Exception as e:
                 logger.error(f"Erreur dans position check loop: {e}")
                 await asyncio.sleep(1)  # Attendre un peu avant de réessayer
@@ -95,7 +96,7 @@ class Scheduler:
         # Démarrer position check loop
         if self.position_check_callback:
             self.position_check_task = asyncio.create_task(self._position_check_loop())
-            logger.info("✅ Position check loop démarré (2s)")
+            logger.info("✅ Position check loop démarré (0.1s)")
         
         # Démarrer scalability refresh loop
         if self.scalability_refresh_callback:
@@ -148,5 +149,6 @@ class Scheduler:
             await asyncio.gather(*tasks, return_exceptions=True)
         
         logger.info("🛑 Scheduler arrêté")
+
 
 

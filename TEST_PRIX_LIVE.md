@@ -146,3 +146,4 @@ fetch('/api/price/SOL/USDT:USDT')
 - Si WebSocket déconnecté, fallback automatique sur REST
 - Format des symboles : `SOL/USDT:USDT` (format ccxt standardisé)
 
+

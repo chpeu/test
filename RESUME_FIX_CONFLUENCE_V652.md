@@ -91,3 +91,4 @@ Cela permet d'identifier clairement pourquoi un trade est rejeté en mode conflu
 
 
 
+

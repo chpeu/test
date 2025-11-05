@@ -100,3 +100,4 @@
 
 **Le scan attend maintenant correctement la fin du scan via SocketIO** 🎯
 
+

@@ -528,3 +528,4 @@ async def analyze_timeframe(symbol: str, timeframe: str):
 
 **Le nouveau système est supérieur à tous les niveaux** 🚀
 
+

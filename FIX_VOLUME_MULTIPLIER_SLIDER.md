@@ -185,3 +185,4 @@ GET /api/config
 - **Logs** : Le slider log, le compteur ne log pas (éviter spam)
 - **API** : Utilise POST `/api/config` (déjà implémenté)
 
+

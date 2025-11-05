@@ -74,3 +74,4 @@ Avec cette correction, si une exception se produit dans `analyze_timeframe()`, o
 - [x] Exception dans `analyze_pair()` retourne déjà une raison (déjà corrigée précédemment)
 - [ ] Tester avec le serveur redémarré pour voir les vraies erreurs
 
+

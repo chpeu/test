@@ -255,3 +255,4 @@ git commit -m "Ajout smart_tp_sl - fonctionne!"
 
 
 
+

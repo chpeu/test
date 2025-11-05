@@ -236,3 +236,4 @@ GET /api/config
 - **Validation** : Les valeurs invalides sont clampées (pas d'erreur)
 - **Logs** : Toutes les modifications sont loggées pour traçabilité
 
+

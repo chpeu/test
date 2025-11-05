@@ -228,3 +228,4 @@ if 'capital' in data:
 - Un redémarrage du serveur réinitialise les valeurs
 - Pour persistance, il faudrait sauvegarder dans un fichier JSON
 
+

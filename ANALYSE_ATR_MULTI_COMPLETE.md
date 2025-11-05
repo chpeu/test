@@ -408,3 +408,4 @@ var atrTrailingActive = false;       // Flag trailing
 
 
 
+

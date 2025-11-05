@@ -142,3 +142,4 @@ INFO: POST /api/scanner/start HTTP/1.1" 400 Bad Request
 
 **Logs améliorés pour diagnostic clair** 🔍
 
+

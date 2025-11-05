@@ -149,3 +149,4 @@ python main.py
 - Les logs détaillés montrent exactement pourquoi chaque paire est rejetée
 - Si un setup est trouvé, une position est ouverte automatiquement
 
+

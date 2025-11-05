@@ -155,3 +155,4 @@ Fix: clearInterval avant chaque nouveau setInterval
 
 
 
+

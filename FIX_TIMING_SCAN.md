@@ -123,3 +123,4 @@
 
 **Le scan attend maintenant correctement la fin du scan avant de continuer** 🎯
 
+

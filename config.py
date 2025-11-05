@@ -10,7 +10,7 @@ MEXC_FUTURES_URL = "https://contract.mexc.com"
 TRADING_CONFIG = {
     "fee_per_trade": 0.0004,  # 0.04% par trade
     "position_timeout": 300,  # 5 minutes
-    "check_interval": 2,  # 2 secondes
+    "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
     "scan_interval": 45,  # 45 secondes pour position scan
     "scalability_interval": 90,  # 90 secondes pour scalability scan
     
@@ -22,10 +22,10 @@ TRADING_CONFIG = {
     "tp_sl_mode": "FIXE",  # FIXE ou ATR
     
     # FIXE mode
-    "tp_percent": 0.25,  # +0.25%
+    "tp_percent": 0.6,  # +0.6% (TP final pour les 50% restants après TP partiel)
     "sl_percent": 0.25,  # -0.25%
     "break_even_trigger": 0.3,  # +0.3%
-    "trailing_distance": 0.1,  # 0.1%
+    "trailing_distance": 0.15,  # 0.15%
     
     # ATR mode
     "atr_mult_tp": 1.5,
@@ -33,11 +33,14 @@ TRADING_CONFIG = {
     "atr_min": 0.15,  # %
     "atr_max": 1.5,  # %
     
-    # Optimal ATR filter
-    "optimal_atr_min_1m": 0.15,
+    # Optimal ATR filter (configurables via /api/config)
+    "optimal_atr_min_1m": 0.10,  # 🔥 Ajusté: Plus permissif (était 0.15)
     "optimal_atr_max_1m": 0.8,
-    "optimal_atr_min_5m": 0.3,
+    "optimal_atr_min_5m": 0.20,  # 🔥 Ajusté: Plus permissif (était 0.3)
     "optimal_atr_max_5m": 1.5,
+    
+    # Trend timeframe pour calculer trend_data (bonus)
+    "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
     
     # Position entry conditions
     "min_conditions": 6,
