@@ -104,3 +104,4 @@ TRADING_CONFIG = {
 **Scanner analyse maintenant top 20 paires en parallèle** 🎯
 
 
+

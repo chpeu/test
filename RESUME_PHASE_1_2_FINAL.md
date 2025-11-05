@@ -174,3 +174,4 @@ Si winrate **diminue** ou trop peu de trades:
 
 
 
+

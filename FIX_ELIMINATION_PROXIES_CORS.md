@@ -225,3 +225,4 @@ Si SocketIO échoue → /api/scanner/top-pairs (REST)
 **Status**: ✅ **ÉLIMINATION PROXIES CORS TERMINÉE**
 
 
+

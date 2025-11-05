@@ -156,3 +156,4 @@ Position Size = (Capital × Risk%) / SL%
 4. **Cool-down** : Attendre X secondes entre deux positions
 
 
+

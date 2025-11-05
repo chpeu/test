@@ -157,3 +157,4 @@ scanner_loop_callback() toutes les 45s
 - **Auto-synchronisation** : Le volume_multiplier est recalculé automatiquement
 
 
+

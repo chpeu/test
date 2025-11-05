@@ -185,3 +185,4 @@ for result in results:
 - Vérifier les logs d'erreur dans `scanner_loop_callback`
 
 
+

@@ -282,3 +282,4 @@ Entry: 0.000009 | SL: 0.0000089775 (-0.25%) | TP: 0.0000090225 (+0.25%)
 - Si ATR est toujours 0, vérifier le calcul dans `analyze_timeframe()`
 
 
+

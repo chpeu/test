@@ -316,15 +316,16 @@ async def scanner_loop_callback():
                                     else:
                                         sl_percent = TRADING_CONFIG.get('sl_percent', 0.25)
                                     
-                                    # Position size = Capital × Risk% / SL%
-                                    if sl_percent > 0:
-                                        position_size = (account_size * risk_per_trade) / (sl_percent / 100)
-                                    else:
-                                        position_size = account_size * risk_per_trade  # Fallback
+                                    # 🔥 PHASE 2: Position sizing adaptatif
+                                    position_size = position_manager.calculate_adaptive_position_size(
+                                        setup=setup,
+                                        capital=account_size,
+                                        sl_percent=sl_percent
+                                    )
                                     
                                     # 🔥 FIX: Log détaillé du calcul de taille pour debug
                                     logger.info(
-                                        f"💰 Calcul taille position: {symbol} | "
+                                        f"💰 Calcul taille position adaptative: {symbol} | "
                                         f"Capital: {account_size:.2f} USDT | "
                                         f"Risk%: {risk_per_trade*100:.2f}% | "
                                         f"SL%: {sl_percent:.4f}% | "
@@ -340,6 +341,7 @@ async def scanner_loop_callback():
                                                 break
                                     
                                     # Ouvrir la position
+                                    condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
                                     position = position_manager.open_position(
                                         symbol=symbol,
                                         direction=direction,
@@ -348,7 +350,8 @@ async def scanner_loop_callback():
                                         atr=atr,
                                         atr5m=atr5m,
                                         confirmed_by=setup.get('confirmedBy', 'Scanner auto'),
-                                        scalability_data=scalability_data
+                                        scalability_data=scalability_data,
+                                        condition_types=condition_types  # 🔥 PHASE 5: Types de conditions
                                     )
                                     
                                     # Stocker capital
@@ -637,8 +640,9 @@ async def scalability_refresh_loop_callback():
     # 🔥 FIX: Initialiser avant de vérifier position_manager
     init_instances()
     
-    # Ne pas rafraîchir si on a une position active
+    # 🔥 FIX: Ne pas rafraîchir si on a une position active (pour éviter interruption du TP partiel)
     if app_state['active_position'] or (position_manager and position_manager.active_position):
+        logger.info("⏸️ Scalability refresh ignoré - Position active en cours")
         return
     
     if not scanner:
@@ -1026,6 +1030,7 @@ async def api_open_position(request: Request):
                 }, status_code=400)
             
             # Extraire paramètres avec valeurs par défaut
+            condition_types = data.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
             position = position_manager.open_position(
                 symbol=data['symbol'],
                 direction=data.get('direction', 'LONG'),
@@ -1034,7 +1039,8 @@ async def api_open_position(request: Request):
                 atr=data.get('atr'),
                 atr5m=data.get('atr5m'),
                 confirmed_by=data.get('confirmed_by', ''),
-                scalability_data=data.get('scalability_data')
+                scalability_data=data.get('scalability_data'),
+                condition_types=condition_types  # 🔥 PHASE 5: Types de conditions
             )
             
             # 🔥 FIX: Stocker capital si fourni dans data
@@ -1242,6 +1248,14 @@ async def api_get_config():
         'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
     })
 
+
+@app.get("/api/metrics/conditions")
+async def get_condition_metrics():
+    """Métriques par condition"""
+    from core.metrics import condition_metrics
+    
+    stats = condition_metrics.get_stats_summary()
+    return JSONResponse(stats)
 
 @app.post("/api/config")
 async def api_update_config(request: Request):

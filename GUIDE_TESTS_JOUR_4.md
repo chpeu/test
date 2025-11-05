@@ -206,3 +206,4 @@ Vérifier que le frontend utilise correctement les endpoints FastAPI et que tout
 **Tests à effectuer manuellement** 🧪
 
 
+

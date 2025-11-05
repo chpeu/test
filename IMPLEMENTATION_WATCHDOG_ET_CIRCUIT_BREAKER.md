@@ -162,3 +162,4 @@ _adaptive_circuit_breaker = AdaptiveCircuitBreaker(...)
 - Monitorer les logs pour voir l'adaptation en action
 
 
+

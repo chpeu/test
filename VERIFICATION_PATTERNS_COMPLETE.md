@@ -120,3 +120,4 @@ Le code est maintenant **100% compatible** avec le format OHLCV de ccxt (liste) 
 **Tous les patterns et conditions ont été vérifiés et corrigés !**
 
 
+

@@ -147,3 +147,4 @@ fetch('/api/price/SOL/USDT:USDT')
 - Format des symboles : `SOL/USDT:USDT` (format ccxt standardisé)
 
 
+

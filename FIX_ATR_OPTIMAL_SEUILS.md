@@ -146,3 +146,4 @@ POST /api/config
 - **Validation** : Clamp automatique pour éviter valeurs invalides
 
 
+

@@ -6,8 +6,9 @@ Gestion des positions: TP/SL, Break-even, Trailing Stop
 
 import asyncio
 import logging
+import time
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class Position:
     atr5m: Optional[float] = None
     confirmed_by: str = ""
     timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
+    start_time: float = field(default_factory=lambda: datetime.now().timestamp())  # 🔥 PHASE 1: Temps d'ouverture pour invalidation précoce
     
     # Scalability data for slippage calculation
     scalability_data: Optional[Dict] = None
@@ -41,6 +43,9 @@ class Position:
     size_remaining: Optional[float] = None  # Taille restante après TP partiel
     partial_profit_usdt: float = 0.0  # Profit du TP partiel en USDT
     capital: Optional[float] = None  # Capital total en USDT
+    
+    # 🔥 PHASE 5: Métriques conditions
+    condition_types: List[str] = field(default_factory=list)  # Types de conditions détectées
     
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
@@ -86,7 +91,7 @@ class PositionConfig:
     use_trailing_stop: bool = True
     trailing_distance: float = 0.15  # % 🔥 v6.4: 0.15% au lieu de 0.1%
     use_partial_tp: bool = True
-    partial_tp_trigger: float = 0.3  # % TP partiel 50% à +0.3% (doit être < TP final 0.6%)
+    partial_tp_trigger: float = 0.25  # % TP partiel 50% à +0.25% (doit être < TP final 0.6%)
     
     # Break-even progressif (ATR mode)
     be_atr_factor: float = 1.5
@@ -123,7 +128,8 @@ class PositionManager:
         atr: Optional[float] = None,
         atr5m: Optional[float] = None,
         confirmed_by: str = "",
-        scalability_data: Optional[Dict] = None
+        scalability_data: Optional[Dict] = None,
+        condition_types: Optional[List[str]] = None  # 🔥 PHASE 5: Types de conditions
     ) -> Position:
         """Ouvrir une nouvelle position"""
         
@@ -221,7 +227,8 @@ class PositionManager:
             atr=atr,
             atr5m=atr5m,
             confirmed_by=confirmed_by,
-            scalability_data=scalability_data
+            scalability_data=scalability_data,
+            condition_types=condition_types or []  # 🔥 PHASE 5: Types de conditions
         )
         
         logger.info(
@@ -230,6 +237,78 @@ class PositionManager:
         )
         
         return self.active_position
+    
+    def calculate_adaptive_position_size(
+        self,
+        setup: Dict,
+        capital: float,
+        sl_percent: float
+    ) -> float:
+        """
+        Calculer taille position adaptative selon qualité du setup
+        
+        Args:
+            setup: Dictionnaire avec les données du setup
+            capital: Capital total disponible
+            sl_percent: Pourcentage de stop loss
+            
+        Returns:
+            Taille de position en USDT
+        """
+        from config import TRADING_CONFIG
+        
+        sizing_config = TRADING_CONFIG.get('position_sizing', {})
+        base_risk = sizing_config.get('base_risk', 0.02)  # 2% par défaut
+        min_risk = sizing_config.get('min_risk', 0.005)  # 0.5% minimum
+        max_risk = sizing_config.get('max_risk', 0.03)  # 3% maximum
+        
+        # 1. Risk de base selon capital et SL%
+        if sl_percent > 0:
+            base_size = (capital * base_risk) / (sl_percent / 100)
+        else:
+            base_size = capital * base_risk
+        
+        # 2. Ajuster selon score setup
+        score = setup.get('totalScore', 8)
+        quality_multipliers = sizing_config.get('quality_multipliers', {})
+        
+        if score >= 12:
+            multiplier = quality_multipliers.get('excellent', 1.4)  # +40%
+        elif score >= 10:
+            multiplier = quality_multipliers.get('good', 1.2)  # +20%
+        elif score >= 8:
+            multiplier = quality_multipliers.get('acceptable', 1.0)  # Normal
+        else:
+            multiplier = quality_multipliers.get('weak', 0.8)  # -20%
+        
+        # 3. Ajuster selon streak
+        streak_multipliers = sizing_config.get('streak_multipliers', {})
+        win_streak = self.config.win_streak
+        loss_streak = self.config.loss_streak
+        
+        if win_streak >= 3:
+            streak_mult = streak_multipliers.get('win_streak_3+', 1.1)  # +10%
+        elif loss_streak >= 2:
+            streak_mult = streak_multipliers.get('loss_streak_2+', 0.85)  # -15%
+        else:
+            streak_mult = 1.0
+        
+        # 4. Calculer taille finale
+        final_size = base_size * multiplier * streak_mult
+        
+        # 5. Bornes : 0.5% - 3% du capital
+        min_size = capital * min_risk
+        max_size = capital * max_risk
+        final_size = max(min_size, min(max_size, final_size))
+        
+        logger.debug(
+            f"📊 Position sizing adaptatif: {setup.get('symbol', 'N/A')} | "
+            f"Score={score:.1f} | Base={base_size:.0f} | "
+            f"Multiplier={multiplier:.2f} | Streak={streak_mult:.2f} | "
+            f"Final={final_size:.2f} USDT"
+        )
+        
+        return round(final_size, 2)
     
     def _estimate_slippage(
         self,
@@ -437,7 +516,7 @@ class PositionManager:
         
         Returns:
             None si position continue
-            'TP', 'SL', etc. si fermeture nécessaire
+            'TP', 'SL', 'EARLY_INVALIDATION', etc. si fermeture nécessaire
         """
         if not self.active_position:
             return None
@@ -446,6 +525,13 @@ class PositionManager:
         if not current_price or current_price <= 0:
             logger.warning(f"⚠️ Prix invalide dans check_position: {current_price}")
             return None
+        
+        # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
+        elapsed = time.time() - self.active_position.start_time
+        if elapsed <= 30:  # 30 premières secondes critiques
+            early_invalidation = await self._check_early_invalidation(current_price, elapsed)
+            if early_invalidation:
+                return early_invalidation  # Position fermée
         
         # Calculer P&L
         pnl = self._calculate_pnl(current_price)
@@ -465,6 +551,11 @@ class PositionManager:
         else:
             self._update_atr_mode_sl(current_price, pnl)
         
+        # 🔥 PHASE 2: Trailing stop adaptatif ATR (tous modes) - déclenchement à +0.25%
+        # Appelé après _update_*_mode_sl pour compléter/compléter le trailing existant
+        if pnl > 0.25:  # Seuil de déclenchement à +0.25%
+            await self._update_trailing_stop_adaptive(current_price)
+        
         # Vérifier TP/SL
         reason = self._check_levels(current_price)
         
@@ -473,6 +564,118 @@ class PositionManager:
             return reason
         
         return None
+    
+    async def _check_early_invalidation(self, current_price: float, elapsed: float) -> Optional[str]:
+        """
+        Vérifier si setup ne réagit pas comme prévu (30 premières secondes)
+        
+        Returns:
+            'EARLY_INVALIDATION' si position doit être fermée, None sinon
+        """
+        from config import TRADING_CONFIG
+        
+        # Attendre au moins 10s (laisser le temps au marché)
+        if elapsed < 10:
+            return None
+        
+        pnl = self._calculate_pnl(current_price)
+        
+        # Seuils d'invalidation selon temps écoulé (plus conservateurs)
+        early_config = TRADING_CONFIG.get('early_invalidation', {})
+        enabled = early_config.get('enabled', True)
+        
+        if not enabled:
+            return None
+        
+        if elapsed <= 15:  # 10-15s
+            invalidation_threshold = early_config.get('threshold_15s', -0.12)  # -0.12% (conservateur)
+        elif elapsed <= 30:  # 15-30s
+            invalidation_threshold = early_config.get('threshold_30s', -0.08)  # -0.08%
+        else:
+            return None  # Pas d'invalidation après 30s
+        
+        # Vérifier mouvement attendu
+        if self.active_position.direction == 'LONG':
+            # LONG devrait monter, si descend trop → invalider
+            if pnl < invalidation_threshold:
+                logger.warning(
+                    f"⚠️ Invalidation précoce LONG {self.active_position.symbol}: "
+                    f"P&L {pnl:.2f}% après {elapsed:.0f}s (seuil {invalidation_threshold}%)"
+                )
+                return 'EARLY_INVALIDATION'
+        
+        else:  # SHORT
+            if pnl < invalidation_threshold:
+                logger.warning(
+                    f"⚠️ Invalidation précoce SHORT {self.active_position.symbol}: "
+                    f"P&L {pnl:.2f}% après {elapsed:.0f}s (seuil {invalidation_threshold}%)"
+                )
+                return 'EARLY_INVALIDATION'
+        
+        # Setup réagit correctement
+        return None
+    
+    async def _update_trailing_stop_adaptive(self, current_price: float):
+        """
+        Mettre à jour trailing stop adaptatif selon volatilité (ATR)
+        Déclenchement à +0.25% pour tous les modes
+        """
+        from config import TRADING_CONFIG
+        
+        position = self.active_position
+        if not position:
+            return
+        
+        # Récupérer configuration
+        trailing_config = TRADING_CONFIG.get('trailing_stop', {})
+        enabled = trailing_config.get('enabled', True)
+        if not enabled:
+            return
+        
+        # Calculer ATR en pourcentage
+        if position.atr and position.entry > 0:
+            atr_percent = (position.atr / position.entry) * 100
+        else:
+            # Fallback si ATR non disponible
+            atr_percent = 0.5  # Valeur par défaut
+        
+        # Calculer distance trailing selon ATR
+        atr_multiplier = trailing_config.get('atr_multiplier', 0.4)
+        trailing_distance = atr_percent * atr_multiplier
+        
+        # Bornes : minimum 0.08%, maximum 0.25%
+        min_distance = trailing_config.get('min_distance', 0.08)
+        max_distance = trailing_config.get('max_distance', 0.25)
+        trailing_distance = max(min_distance, min(max_distance, trailing_distance))
+        
+        # Calculer nouveau SL
+        if position.direction == 'LONG':
+            new_sl = current_price * (1 - trailing_distance / 100)
+            
+            # Monter SL uniquement (jamais descendre)
+            if new_sl > position.sl:
+                old_sl = position.sl
+                position.sl = round(new_sl, 6)
+                
+                logger.info(
+                    f"🔄 Trailing SL LONG {position.symbol}: "
+                    f"{old_sl:.6f} → {new_sl:.6f} (-{trailing_distance:.2f}%) "
+                    f"[ATR: {atr_percent:.2f}%]"
+                )
+        
+        else:  # SHORT
+            new_sl = current_price * (1 + trailing_distance / 100)
+            
+            # Descendre SL uniquement (jamais monter)
+            if new_sl < position.sl:
+                old_sl = position.sl
+                position.sl = round(new_sl, 6)
+                
+                logger.info(
+                    f"🔄 Trailing SL SHORT {position.symbol}: "
+                    f"{old_sl:.6f} → {new_sl:.6f} (+{trailing_distance:.2f}%) "
+                    f"[ATR: {atr_percent:.2f}%]"
+                )
     
     def _calculate_pnl(self, current_price: float) -> float:
         """Calculer le P&L non réalisé"""
@@ -514,9 +717,9 @@ class PositionManager:
     
     def _update_fixed_mode_sl(self, current_price: float, pnl: float):
         """Mettre à jour SL en mode FIXE avec gestion de position partielle"""
-        # 🔥 v6.4: TP partiel PHYSIQUE 50% à +0.3%
+        # 🔥 v6.4: TP partiel PHYSIQUE 50% à +0.25%
         if self.config.use_partial_tp and not self.active_position.partial_tp_sold:
-            if pnl >= self.config.partial_tp_trigger:  # +0.3%
+            if pnl >= self.config.partial_tp_trigger:  # +0.25%
                 self.active_position.partial_tp_sold = True
                 
                 # Calculer profit du TP partiel en USDT
@@ -544,8 +747,18 @@ class PositionManager:
                 # Réduire le SL initial des 50% restants pour protection immédiate
                 self.active_position.sl = self.active_position.entry  # Break-even immédiat pour LONG et SHORT
         
-        # 🔥 v6.4: Trailing stop à 0.15% à partir du TP partiel
-        if self.config.use_trailing_stop and self.active_position.partial_tp_sold:
+        # 🔥 PHASE 2: Après TP partiel, utiliser uniquement trailing adaptatif (pas de TP final fixe)
+        # Si TP partiel vendu, on désactive le TP final et on laisse le trailing adaptatif gérer
+        # Cela permet de capturer des gains au-delà de 0.6% si le prix "explose"
+        # Le trailing fixe (0.15%) n'est plus utilisé, remplacé par le trailing adaptatif ATR
+        from config import TRADING_CONFIG
+        trailing_config = TRADING_CONFIG.get('trailing_stop', {})
+        use_adaptive_trailing = trailing_config.get('enabled', True)
+        
+        # 🔥 MODIFICATION: Après TP partiel, on n'utilise plus le trailing fixe
+        # Le trailing adaptatif (géré dans check_position) prend le relais
+        # Donc on ne fait rien ici si TP partiel vendu
+        if False and not use_adaptive_trailing and self.config.use_trailing_stop and self.active_position.partial_tp_sold:
             new_sl = None
             entry = self.active_position.entry
             
@@ -691,8 +904,8 @@ class PositionManager:
         if self.config.use_partial_tp and not self.active_position.partial_tp_sold:
             # Calculer le seuil TP partiel selon le mode
             if not self.config.use_atr:
-                # Mode FIXE: TP partiel à 0.3%
-                tp_partial_threshold_pct = self.config.partial_tp_trigger  # 0.3%
+                # Mode FIXE: TP partiel à 0.25%
+                tp_partial_threshold_pct = self.config.partial_tp_trigger  # 0.25%
                 tp_final_threshold_pct = self.config.fixed_tp_pct  # 0.6%
             else:
                 # Mode ATR MULTI: TP partiel à 1× ATR
@@ -726,32 +939,60 @@ class PositionManager:
                         f"Prix devrait déclencher TP partiel dans _update_*_mode_sl()"
                     )
         
+        # 🔥 MODIFICATION: En mode FIXE, si TP partiel vendu, ignorer TP final et utiliser uniquement trailing stop
+        # Cela permet de capturer des gains au-delà de 0.6% si le prix "explose"
+        if not self.config.use_atr and self.config.use_partial_tp and self.active_position.partial_tp_sold:
+            # Mode FIXE avec TP partiel vendu : ignorer le TP final, seul le trailing stop compte
+            # Le trailing stop adaptatif (géré dans check_position) fermera la position si nécessaire
+            logger.debug(
+                f"🔍 Mode FIXE après TP partiel: Ignorer TP final ({tp:.6f}), "
+                f"utiliser uniquement trailing stop (SL={sl:.6f})"
+            )
+            # Vérifier seulement le SL (qui est le trailing stop adaptatif)
+            # 🔥 FIX: Retourner 'TS' (Trailing Stop) au lieu de 'SL' pour distinguer
+            if direction == 'LONG':
+                if current_price <= sl:
+                    logger.info(f"🚨 Trailing stop touché (LONG): {current_price:.6f} <= {sl:.6f}")
+                    return 'TS'
+            else:  # SHORT
+                if current_price >= sl:
+                    logger.info(f"🚨 Trailing stop touché (SHORT): {current_price:.6f} >= {sl:.6f}")
+                    return 'TS'
+            return None  # Position continue, trailing stop protège les gains
+        
+        # Vérification TP/SL standard (si pas de TP partiel ou TP partiel non vendu, ou mode ATR)
         if direction == 'LONG':
             if current_price <= sl:
                 logger.info(f"🛑 SL TOUCHÉ (LONG): Prix {current_price:.6f} <= SL {sl:.6f}")
                 return 'SL'
-            # 🔥 FIX: Si TP partiel vendu, vérifier TP final seulement pour les 50% restants
+            # Vérifier TP final seulement si TP partiel pas vendu (ou mode ATR)
             if current_price >= tp:
                 if self.config.use_partial_tp and self.active_position.partial_tp_sold:
-                    # TP partiel déjà vendu, fermer les 50% restants au TP final
-                    logger.info(f"🎯 TP FINAL ATTEINT (LONG, après TP partiel): Prix {current_price:.6f} >= TP {tp:.6f}")
-                    return 'TP'
+                    # Mode ATR : TP final peut être atteint après TP partiel
+                    if self.config.use_atr:
+                        logger.info(f"🎯 TP FINAL ATTEINT (LONG, après TP partiel): Prix {current_price:.6f} >= TP {tp:.6f}")
+                        return 'TP'
+                    # Mode FIXE : ne devrait pas arriver ici (géré ci-dessus)
+                    logger.debug(f"🔍 Mode FIXE: TP final atteint mais ignoré (trailing stop actif)")
+                    return None
                 else:
                     # TP partiel pas encore vendu, mais prix a atteint TP final
-                    # Cela ne devrait pas arriver si le TP partiel est < TP final
-                    # Mais si ça arrive, on ferme quand même (fallback)
                     logger.warning(f"⚠️ TP FINAL ATTEINT AVANT TP PARTIEL (LONG): Prix {current_price:.6f} >= TP {tp:.6f}")
                     return 'TP'
         else:  # SHORT
             if current_price >= sl:
                 logger.info(f"🛑 SL TOUCHÉ (SHORT): Prix {current_price:.6f} >= SL {sl:.6f}")
                 return 'SL'
-            # 🔥 FIX: Si TP partiel vendu, vérifier TP final seulement pour les 50% restants
+            # Vérifier TP final seulement si TP partiel pas vendu (ou mode ATR)
             if current_price <= tp:
                 if self.config.use_partial_tp and self.active_position.partial_tp_sold:
-                    # TP partiel déjà vendu, fermer les 50% restants au TP final
-                    logger.info(f"🎯 TP FINAL ATTEINT (SHORT, après TP partiel): Prix {current_price:.6f} <= TP {tp:.6f}")
-                    return 'TP'
+                    # Mode ATR : TP final peut être atteint après TP partiel
+                    if self.config.use_atr:
+                        logger.info(f"🎯 TP FINAL ATTEINT (SHORT, après TP partiel): Prix {current_price:.6f} <= TP {tp:.6f}")
+                        return 'TP'
+                    # Mode FIXE : ne devrait pas arriver ici (géré ci-dessus)
+                    logger.debug(f"🔍 Mode FIXE: TP final atteint mais ignoré (trailing stop actif)")
+                    return None
                 else:
                     # TP partiel pas encore vendu, mais prix a atteint TP final
                     logger.warning(f"⚠️ TP FINAL ATTEINT AVANT TP PARTIEL (SHORT): Prix {current_price:.6f} <= TP {tp:.6f}")
@@ -769,8 +1010,20 @@ class PositionManager:
         # Déterminer le prix de sortie
         if reason == 'TP':
             exit_price = self.active_position.tp
-        elif reason == 'SL':
+        elif reason == 'SL' or reason == 'TS':
+            # 🔥 FIX: TS (Trailing Stop) utilise aussi le SL actuel
             exit_price = self.active_position.sl
+        elif reason == 'EARLY_INVALIDATION':
+            # 🔥 FIX: Pour invalidation précoce, utiliser le prix fourni (prix actuel du marché)
+            # Si exit_price n'est pas fourni, utiliser le dernier prix connu
+            if exit_price is None:
+                if self.active_position.symbol in self.price_cache:
+                    exit_price = self.price_cache[self.active_position.symbol]['price']
+                else:
+                    exit_price = entry
+                    logger.warning(f"⚠️ Fermeture EARLY_INVALIDATION: pas de prix disponible, utilisation entry: {entry}")
+            else:
+                logger.info(f"🔧 Fermeture EARLY_INVALIDATION: prix de sortie={exit_price:.6f} (fourni)")
         elif reason == 'MANUAL':
             # 🔥 FIX: Pour fermeture manuelle, utiliser le prix fourni (prix actuel du marché)
             # Si exit_price n'est pas fourni, utiliser le dernier prix connu
@@ -800,7 +1053,8 @@ class PositionManager:
             # On ferme les 50% restants
             size_to_close = self.active_position.size_remaining or (self.active_position.size * 0.5)
         
-        # Calculer P&L brut pour la partie fermée
+        # 🔥 FIX: Calculer P&L brut pour la partie fermée (utilise exit_price correct pour toutes les raisons)
+        # Pour EARLY_INVALIDATION, exit_price est maintenant le prix actuel du marché (fourni)
         pnl_pct = ((exit_price - entry) / entry) * 100
         if self.active_position.direction == 'SHORT':
             pnl_pct = -pnl_pct
@@ -877,6 +1131,13 @@ class PositionManager:
         # 🔥 v6.4: Net P&L en % et USDT
         net_pnl_pct = pnl_total_pct - total_costs
         net_pnl_usdt = pnl_final_usdt - total_costs_usdt  # 🔥 FIX: Utiliser total_costs_usdt calculé
+        
+        # 🔥 PHASE 5: Enregistrer métriques par condition
+        from core.metrics import condition_metrics
+        won = pnl_total_pct > 0
+        conditions = self.active_position.condition_types or []
+        if conditions:
+            condition_metrics.record_trade(conditions, won)
         
         # Durée
         duration = int(

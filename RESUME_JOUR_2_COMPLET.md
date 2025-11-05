@@ -186,3 +186,4 @@ analysis = await analyzer.analyze_pair(symbol)
 **Analyzer utilise maintenant prix WebSocket pour une performance maximale** 🎯
 
 
+

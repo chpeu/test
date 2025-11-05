@@ -200,10 +200,12 @@ class WebSocketManager:
         self._running = False
         self._reconnect_task = None
         
-        # 🔥 v6.6.1 Phase 2A: Watchdog pour déconnexion silencieuse
+        # 🔥 PHASE 2: Watchdog WebSocket amélioré
         self._watchdog_task = None
         self.last_message_time = 0
         self._connected = False
+        self._reconnecting = False  # Flag pour éviter reconnexions multiples
+        self.watchdog_timeout = WEBSOCKET_CONFIG.get('watchdog_timeout', 30)  # 30s pour scalping
         
     async def connect(self):
         """Se connecter au WebSocket"""
@@ -255,7 +257,7 @@ class WebSocketManager:
                     timeout=WEBSOCKET_CONFIG['timeout']
                 )
                 
-                # 🔥 v6.6.1 Phase 2A: Mettre à jour last_message_time
+                # 🔥 PHASE 2: Mettre à jour timestamp (critique pour watchdog)
                 self.last_message_time = time.time()
                 
                 # Parser et appeler callback
@@ -291,49 +293,85 @@ class WebSocketManager:
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
     
     async def _reconnect_loop(self):
-        """Boucle de reconnexion"""
+        """Boucle de reconnexion avec backoff exponentiel"""
         if DEBUG_ENABLED:
             logger.warning("🔄 WebSocket: Tentative reconnexion...")
         
-        await asyncio.sleep(WEBSOCKET_CONFIG['reconnect_delay'])
+        reconnect_delay = WEBSOCKET_CONFIG['reconnect_delay']
+        max_delay = 30  # Maximum 30 secondes
+        attempt = 0
         
         while self._running:
             try:
                 await self.disconnect()
+                await asyncio.sleep(reconnect_delay)
                 await self.connect()
                 
                 # Relancer réception
                 asyncio.create_task(self._receive_loop())
+                
+                # Relancer watchdog
+                if self._watchdog_task:
+                    self._watchdog_task.cancel()
+                self._watchdog_task = asyncio.create_task(self._watchdog_loop())
                 
                 if DEBUG_ENABLED:
                     logger.info("✅ WebSocket reconnecté")
                 break
                 
             except Exception as e:
+                attempt += 1
+                # Backoff exponentiel
+                reconnect_delay = min(reconnect_delay * 1.5, max_delay)
                 if DEBUG_ENABLED:
-                    logger.error(f"❌ Reconnexion échouée: {e}, nouvelle tentative dans {WEBSOCKET_CONFIG['reconnect_delay']}s")
-                await asyncio.sleep(WEBSOCKET_CONFIG['reconnect_delay'])
+                    logger.error(f"❌ Reconnexion échouée (tentative {attempt}): {e}, nouvelle tentative dans {reconnect_delay:.1f}s")
+                await asyncio.sleep(reconnect_delay)
     
-    # 🔥 v6.6.1 Phase 2A: Watchdog pour déconnexion silencieuse
-    async def _watchdog(self):
-        """Vérifie si on reçoit des messages (déconnexion silencieuse)"""
+    # 🔥 PHASE 2: Watchdog WebSocket amélioré
+    async def _watchdog_loop(self):
+        """Surveiller activité WebSocket avec détection précoce"""
         while self._running:
-            await asyncio.sleep(10)  # Check toutes les 10s
+            try:
+                await asyncio.sleep(15)  # Check toutes les 15s
+                
+                if not self._running or not self._connected:
+                    continue
+                
+                time_since_last = time.time() - self.last_message_time
+                
+                if time_since_last > self.watchdog_timeout:
+                    logger.error(
+                        f"🐕 Watchdog: WebSocket silencieux depuis {time_since_last:.0f}s "
+                        f"(timeout: {self.watchdog_timeout}s)"
+                    )
+                    
+                    # Reconnexion automatique (si pas déjà en cours)
+                    if not self._reconnecting:
+                        logger.warning("🔄 Reconnexion forcée par watchdog...")
+                        self._reconnecting = True
+                        await self._reconnect()
+                        self._reconnecting = False
+                
+                elif time_since_last > 20:  # Avertissement précoce
+                    logger.warning(
+                        f"🐕 Watchdog: WebSocket lent ({time_since_last:.0f}s depuis dernier message)"
+                    )
             
-            if self._running and self._connected:
-                elapsed = time.time() - self.last_message_time
-                if elapsed > 60:  # Pas de message depuis 60s
-                    if DEBUG_ENABLED:
-                        logger.warning(f"⚠️ Pas de message depuis 60s, reconnexion...")
-                    await self._reconnect()
+            except asyncio.CancelledError:
+                logger.info("🐕 Watchdog arrêté")
+                break
+            except Exception as e:
+                logger.error(f"❌ Erreur watchdog: {e}")
+                await asyncio.sleep(5)
     
     async def start(self):
         """Démarrer WebSocket"""
         self._running = True
         await self.connect()
         asyncio.create_task(self._receive_loop())
-        # 🔥 v6.6.1 Phase 2A: Démarrer watchdog
-        self._watchdog_task = asyncio.create_task(self._watchdog())
+        # 🔥 PHASE 2: Démarrer watchdog amélioré
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        logger.info(f"🐕 Watchdog WebSocket démarré (timeout: {self.watchdog_timeout}s)")
     
     async def send(self, message: dict):
         """Envoyer message"""

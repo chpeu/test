@@ -3,13 +3,14 @@ Analyseur technique pour détecter les setups de trading
 Analyse multi-timeframe (1m, 5m) avec indicateurs avancés
 """
 import asyncio
+import time
 from typing import List, Dict, Optional
 import math
 
 from api.mexc import get_mexc_client
 from api.price_provider import get_price_provider
 from core.indicators import Indicators
-from config import TRADING_CONFIG, DEBUG_ENABLED
+from config import TRADING_CONFIG, DEBUG_ENABLED, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
 from utils.logger import get_logger
 
 
@@ -23,6 +24,10 @@ class TechnicalAnalyzer:
         self.client = get_mexc_client()
         self.indicators = Indicators()
         self.price_provider = get_price_provider()  # 🔥 JOUR 2: Prix WebSocket
+        # 🔥 PHASE 3: Cache spread (5 secondes)
+        self._spread_cache: Dict[str, Dict] = {}
+        # 🔥 PHASE 2: Cache orderbook (2 secondes)
+        self._orderbook_cache: Dict[str, Dict] = {}
     
     async def calculate_trend_data(self, symbol: str, timeframe: str = '15m') -> Optional[Dict]:
         """
@@ -381,13 +386,15 @@ class TechnicalAnalyzer:
                     logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
             
-            # Conditions LONG
+            # 🔥 PHASE 3: Conditions LONG avec tracking des types pour score pondéré
             long_conditions = []
+            long_condition_types = []  # Types de conditions pour calculer le score pondéré
             
             # 1. EMAs
             ema_diff_percent = ((ema9 - ema21) / ema21) * 100
             if ema9 > ema21 and ema_diff_percent > 0.05:
                 long_conditions.append(f"EMAs Up ({ema_diff_percent:.3f}%)")
+                long_condition_types.append('EMAs')
             
             # 2. RSI
             rsi_rebound = rsi >= 30 and rsi <= 40 and adx['adx'] < 20 and rsi > rsi_prev
@@ -395,14 +402,17 @@ class TechnicalAnalyzer:
             
             if rsi_rebound:
                 long_conditions.append(f"RSI Rebound↑ (ADX<{adx['adx']:.1f})")
+                long_condition_types.append('RSI')
             elif rsi_pullback:
                 long_conditions.append(f"RSI Pullback↑ (ADX>{adx['adx']:.1f})")
+                long_condition_types.append('RSI')
             
             # 3. Volume
             if vol_spike > 1.5:
                 long_conditions.append(f"Vol >>{vol_spike:.1f}x")
             else:
                 long_conditions.append(f"Vol >{min_vol_ratio:.1f}x")
+            long_condition_types.append('Volume')  # Volume toujours présent
             
             # 4. MACD
             macd_bullish = macd['macd'] > macd['signal'] or macd['histogram'] > 0
@@ -410,14 +420,17 @@ class TechnicalAnalyzer:
             
             if macd_bullish and macd_momentum:
                 long_conditions.append("MACD+↑ (momentum)")
+                long_condition_types.append('MACD')
             elif macd_bullish:
                 long_conditions.append("MACD+")
+                long_condition_types.append('MACD')
             
             # 5. Bollinger
             dist_to_lower = ((price - bb['lower']) / bb['lower']) * 100 if bb['upper'] > 0 else 999
             bb_threshold = max(0.3, atr_percent * 0.5)
             if dist_to_lower < bb_threshold:
                 long_conditions.append("BB Lower")
+                long_condition_types.append('Bollinger')
             
             # 6. ADX + DI Gap (remplace ADX >30 seul)
             di_gap = adx['diPlus'] - adx['diMinus']
@@ -425,8 +438,10 @@ class TechnicalAnalyzer:
             di_gap_adx_threshold = TRADING_CONFIG.get('di_gap_adx_threshold', 25)
             if adx['adx'] > di_gap_adx_threshold and adx['diPlus'] > adx['diMinus'] and abs(di_gap) > di_gap_min:
                 long_conditions.append("ADX+ + DI Gap>" + str(abs(di_gap)))
+                long_condition_types.append('ADX_DI')
             elif adx['adx'] > 30 and adx['diPlus'] > adx['diMinus']:
                 long_conditions.append("ADX+ (>30)")
+                long_condition_types.append('ADX_DI')
             
             # 7. Pattern
             long_patterns = [
@@ -436,14 +451,17 @@ class TechnicalAnalyzer:
             ]
             if pattern in long_patterns:
                 long_conditions.append(f"Pattern: {pattern}")
+                long_condition_types.append('Pattern')
             
-            # Conditions SHORT
+            # 🔥 PHASE 3: Conditions SHORT avec tracking des types pour score pondéré
             short_conditions = []
+            short_condition_types = []  # Types de conditions pour calculer le score pondéré
             
             # 1. EMAs
             ema_diff_percent_short = ((ema21 - ema9) / ema21) * 100
             if ema9 < ema21 and ema_diff_percent_short > 0.05:
                 short_conditions.append(f"EMAs Down ({ema_diff_percent_short:.3f}%)")
+                short_condition_types.append('EMAs')
             
             # 2. RSI
             rsi_overbought = rsi >= 60 and rsi <= 70 and adx['adx'] < 20 and rsi < rsi_prev
@@ -451,14 +469,17 @@ class TechnicalAnalyzer:
             
             if rsi_overbought:
                 short_conditions.append(f"RSI Overbought↓ (ADX<{adx['adx']:.1f})")
+                short_condition_types.append('RSI')
             elif rsi_rejection:
                 short_conditions.append(f"RSI Rejection↓ (ADX>{adx['adx']:.1f})")
+                short_condition_types.append('RSI')
             
             # 3. Volume
             if vol_spike > 1.5:
                 short_conditions.append(f"Vol >>{vol_spike:.1f}x")
             else:
                 short_conditions.append(f"Vol >{min_vol_ratio:.1f}x")
+            short_condition_types.append('Volume')  # Volume toujours présent
             
             # 4. MACD
             macd_bearish = macd['macd'] < macd['signal'] or macd['histogram'] < 0
@@ -466,20 +487,25 @@ class TechnicalAnalyzer:
             
             if macd_bearish and macd_momentum_down:
                 short_conditions.append("MACD-↓ (momentum)")
+                short_condition_types.append('MACD')
             elif macd_bearish:
                 short_conditions.append("MACD-")
+                short_condition_types.append('MACD')
             
             # 5. Bollinger
             dist_to_upper = ((bb['upper'] - price) / price) * 100 if bb['upper'] > 0 else 999
             if dist_to_upper < bb_threshold:
                 short_conditions.append("BB Upper")
+                short_condition_types.append('Bollinger')
             
             # 6. ADX + DI Gap (remplace ADX >30 seul)
             di_gap_short = adx['diMinus'] - adx['diPlus']
             if adx['adx'] > di_gap_adx_threshold and adx['diMinus'] > adx['diPlus'] and abs(di_gap_short) > di_gap_min:
                 short_conditions.append("ADX- + DI Gap>" + str(abs(di_gap_short)))
+                short_condition_types.append('ADX_DI')
             elif adx['adx'] > 30 and adx['diMinus'] > adx['diPlus']:
                 short_conditions.append("ADX- (>30)")
+                short_condition_types.append('ADX_DI')
             
             # 7. Pattern
             short_patterns = [
@@ -489,30 +515,61 @@ class TechnicalAnalyzer:
             ]
             if pattern in short_patterns:
                 short_conditions.append(f"Pattern: {pattern}")
+                short_condition_types.append('Pattern')
             
-            # Tolérance dynamique ADX
-            min_conditions = 6
-            if adx['adx'] > 30:
-                min_conditions = 5
-            elif adx['adx'] >= 25:
-                min_conditions = 5.5
+            # 🔥 PHASE 3: Calculer scores pondérés
+            use_weighted = TRADING_CONFIG.get('use_weighted_scoring', True)
             
-            # Direction temporaire
+            def calculate_weighted_score(condition_types: List[str]) -> float:
+                """Calcule le score pondéré basé sur les types de conditions"""
+                score = 0.0
+                for cond_type in condition_types:
+                    score += CONDITION_WEIGHTS.get(cond_type, 1.0)  # Par défaut 1.0 si type inconnu
+                return score
+            
+            # Calculer scores LONG et SHORT
+            long_score = calculate_weighted_score(long_condition_types) if use_weighted else len(long_conditions)
+            short_score = calculate_weighted_score(short_condition_types) if use_weighted else len(short_conditions)
+            
+            # Tolérance dynamique ADX (scores minimums)
+            min_conditions = 6  # Par défaut pour compatibilité
+            if use_weighted:
+                min_score_required = TRADING_CONFIG.get('min_score_required', 7.5)
+                if adx['adx'] > 30:
+                    min_score_required = TRADING_CONFIG.get('min_score_adx_high', 7.0)
+                elif adx['adx'] < 25:
+                    min_score_required = TRADING_CONFIG.get('min_score_adx_low', 8.0)
+            else:
+                # Système ancien (comptage simple)
+                if adx['adx'] > 30:
+                    min_conditions = 5
+                elif adx['adx'] >= 25:
+                    min_conditions = 5.5
+                min_score_required = min_conditions  # Pour compatibilité
+            
+            # Direction temporaire (basée sur score ou comptage)
             temp_direction = 'NEUTRAL'
-            if len(long_conditions) >= min_conditions:
-                temp_direction = 'LONG'
-            elif len(short_conditions) >= min_conditions:
-                temp_direction = 'SHORT'
+            if use_weighted:
+                if long_score >= min_score_required:
+                    temp_direction = 'LONG'
+                elif short_score >= min_score_required:
+                    temp_direction = 'SHORT'
+            else:
+                if len(long_conditions) >= min_conditions:
+                    temp_direction = 'LONG'
+                elif len(short_conditions) >= min_conditions:
+                    temp_direction = 'SHORT'
             
-            # Trend bonus
-            trend_bonus = 0
+            # 🔥 PHASE 2: Trend bonus (corrigé)
+            trend_score_bonus = 0.0
             if trend_data and temp_direction != 'NEUTRAL':
-                # 🔥 FIX: Vérifier que trend_data est un dict
                 if isinstance(trend_data, dict):
+                    bonus_value = trend_data.get('bonus', 0)
+                    divisor = TREND_BONUS_CONFIG.get('bonus_divisor', 5)
                     if temp_direction == 'LONG' and trend_data.get('trend') == 'BULLISH':
-                        trend_bonus = math.floor(trend_data.get('bonus', 0) / 10)
+                        trend_score_bonus = bonus_value / divisor  # 25 → 5.0 au lieu de 2.5
                     elif temp_direction == 'SHORT' and trend_data.get('trend') == 'BEARISH':
-                        trend_bonus = math.floor(trend_data.get('bonus', 0) / 10)
+                        trend_score_bonus = bonus_value / divisor
                 else:
                     logger.warning(f"⚠️ trend_data invalide (attendu dict, reçu {type(trend_data).__name__}) pour {symbol}")
             
@@ -522,24 +579,61 @@ class TechnicalAnalyzer:
                 if rsi < rsi_prev and macd['histogram'] > macd_prev['histogram']:
                     divergence_bonus = 1
                     long_conditions.append("Divergence+ ↑")
+                    long_condition_types.append('Divergence')
             elif temp_direction == 'SHORT':
                 if rsi > rsi_prev and macd['histogram'] < macd_prev['histogram']:
                     divergence_bonus = 1
                     short_conditions.append("Divergence- ↓")
+                    short_condition_types.append('Divergence')
             
-            # Vérifier avec bonus
-            long_with_bonus = len(long_conditions) + (trend_bonus if temp_direction == 'LONG' else 0)
-            short_with_bonus = len(short_conditions) + (trend_bonus if temp_direction == 'SHORT' else 0)
-            
-            direction = 'NEUTRAL'
-            if long_with_bonus >= min_conditions:
-                direction = 'LONG'
-            elif short_with_bonus >= min_conditions:
-                direction = 'SHORT'
+            # 🔥 PHASE 2: Ajouter trend_bonus au score (si use_direct_score)
+            if use_weighted and TREND_BONUS_CONFIG.get('use_direct_score', True):
+                long_score += trend_score_bonus if temp_direction == 'LONG' else 0
+                short_score += trend_score_bonus if temp_direction == 'SHORT' else 0
+                # Recalculer si divergence ajoutée
+                if divergence_bonus > 0:
+                    if temp_direction == 'LONG':
+                        long_score = calculate_weighted_score(long_condition_types) + trend_score_bonus
+                    else:
+                        short_score = calculate_weighted_score(short_condition_types) + trend_score_bonus
             else:
-                reason = f"Conditions insuffisantes: Long={len(long_conditions)}+{trend_bonus} Short={len(short_conditions)} (min={min_conditions} requis)"
+                # Système ancien (bonus conditionnel)
+                trend_bonus = int(trend_score_bonus)  # Arrondir pour compatibilité
+                long_with_bonus = len(long_conditions) + (trend_bonus if temp_direction == 'LONG' else 0)
+                short_with_bonus = len(short_conditions) + (trend_bonus if temp_direction == 'SHORT' else 0)
+            
+            # Vérifier avec score pondéré ou comptage
+            direction = 'NEUTRAL'
+            if use_weighted:
+                if long_score >= min_score_required:
+                    direction = 'LONG'
+                elif short_score >= min_score_required:
+                    direction = 'SHORT'
+            else:
+                if long_with_bonus >= min_conditions:
+                    direction = 'LONG'
+                elif short_with_bonus >= min_conditions:
+                    direction = 'SHORT'
+            
+            # 🔥 PHASE 1: Logs détaillés avec scores
+            if direction == 'NEUTRAL':
+                if use_weighted:
+                    reason = (
+                        f"Score insuffisant: Long={len(long_conditions)}+{trend_score_bonus:.1f} "
+                        f"[{', '.join(long_condition_types[:5])}] → Score: {long_score:.1f}/{min_score_required:.1f} ❌ | "
+                        f"Short={len(short_conditions)} [{', '.join(short_condition_types[:5])}] → Score: {short_score:.1f}/{min_score_required:.1f} ❌"
+                    )
+                else:
+                    reason = f"Conditions insuffisantes: Long={len(long_conditions)}+{trend_bonus} Short={len(short_conditions)} (min={min_conditions} requis)"
+                
                 if return_reason:
-                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe, 'long_conditions': len(long_conditions), 'short_conditions': len(short_conditions), 'min_required': min_conditions}
+                    return {
+                        'reason': reason, 'symbol': symbol, 'timeframe': timeframe,
+                        'long_conditions': len(long_conditions), 'short_conditions': len(short_conditions),
+                        'min_required': min_score_required if use_weighted else min_conditions,
+                        'long_score': long_score if use_weighted else None,
+                        'short_score': short_score if use_weighted else None
+                    }
                 if DEBUG_ENABLED:
                     logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
@@ -607,10 +701,17 @@ class TechnicalAnalyzer:
                 sl = entry * 1.0025  # +0.25%
                 tp = entry * 0.9975  # -0.25%
             
-            # 🔥 LOG DÉTAILLÉ: Setup trouvé avec tous les détails
+            # 🔥 PHASE 1: LOG DÉTAILLÉ avec score pondéré
+            if use_weighted:
+                condition_types = long_condition_types if direction == 'LONG' else short_condition_types
+                final_score = long_score if direction == 'LONG' else short_score
+                score_info = f"Score: {final_score:.1f}/{min_score_required:.1f} | Conditions: {len(conditions)}"
+            else:
+                score_info = f"Conditions: {len(conditions)}/{min_conditions}"
+            
             logger.info(
                 f"✅ {symbol} {timeframe}: SETUP TROUVÉ - {direction} | "
-                f"Conditions: {len(conditions)}/{min_conditions} | "
+                f"{score_info} | "
                 f"RSI: {rsi:.1f} | Vol: {vol_spike:.2f}x | ATR: {atr_percent:.3f}% | "
                 f"Entry: {entry:.6f} | SL: {sl:.6f} | TP: {tp:.6f} | "
                 f"EMA9/21: {ema9:.6f}/{ema21:.6f} | MACD: {macd['histogram']:.6f} | "
@@ -618,6 +719,16 @@ class TechnicalAnalyzer:
                 f"Pattern: {pattern} | "
                 f"Signals: {', '.join(conditions[:5])}" + (f" (+{len(conditions)-5} autres)" if len(conditions) > 5 else "")
             )
+            
+            # 🔥 PHASE 5: Ajouter condition_types pour métriques
+            condition_types = long_condition_types if direction == 'LONG' else short_condition_types
+            
+            # 🔥 PHASE 2: Calculer score total pour position sizing
+            use_weighted = TRADING_CONFIG.get('use_weighted_scoring', True)
+            if use_weighted:
+                final_score = long_score if direction == 'LONG' else short_score
+            else:
+                final_score = len(conditions) + (trend_score_bonus if trend_score_bonus else 0)
             
             return {
                 'symbol': symbol,
@@ -628,10 +739,14 @@ class TechnicalAnalyzer:
                 'rsi': round(rsi, 1),
                 'volumeSpike': round(vol_spike, 1),
                 'signals': conditions,
+                'condition_types': condition_types,  # 🔥 PHASE 5: Types de conditions pour métriques
+                'totalScore': final_score,  # 🔥 PHASE 2: Score total pour position sizing
                 'timeframe': timeframe,
                 'volatility': atr / price if price > 0 else 0,
                 'atr': atr,
-                'price': price
+                'atr_percent': (atr / price * 100) if price > 0 else 0,  # 🔥 PHASE 2: ATR % pour position sizing
+                'price': price,
+                'ohlcv': ohlcv  # 🔥 PHASE 2: OHLCV pour détection pump & dump
             }
             
         except Exception as e:
@@ -667,6 +782,13 @@ class TechnicalAnalyzer:
             Meilleur setup ou None
         """
         try:
+            # 🔥 PHASE 2: Toujours calculer trend_data (au lieu d'optionnel)
+            if trend_data is None:
+                trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
+                trend_data = await self.calculate_trend_data(symbol, trend_timeframe)
+                if trend_data:
+                    logger.debug(f"📊 {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
+            
             # Analyser 1m
             analysis_1m = await self.analyze_timeframe(symbol, '1m', trend_data, volume_multiplier, return_reason=return_reason)
             analysis_5m = await self.analyze_timeframe(symbol, '5m', trend_data, volume_multiplier, return_reason=return_reason)
@@ -695,7 +817,88 @@ class TechnicalAnalyzer:
             elif analysis_5m and isinstance(analysis_5m, dict) and 'reason' in analysis_5m:
                 logger.info(f"❌ {symbol} 5m: REJETÉ - {analysis_5m.get('reason', 'Raison inconnue')}")
             
-            # Confluence ou mode permissif
+            # 🔥 PHASE 3: Vérifier spread avant validation finale
+            best_setup = None
+            if use_confluence and analysis_1m and analysis_5m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                # Confluence: 1m ET 5m valides
+                # Prendre le meilleur (score le plus élevé ou conditions les plus nombreuses)
+                best_setup = analysis_1m if len(analysis_1m.get('signals', [])) >= len(analysis_5m.get('signals', [])) else analysis_5m
+            elif not use_confluence:
+                # Mode permissif: 1m OU 5m
+                if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                    best_setup = analysis_1m
+                elif analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                    best_setup = analysis_5m
+            
+            if best_setup:
+                # 🔥 PHASE 3: Vérifier spread avant validation finale
+                spread_check = await self._check_spread(symbol)
+                
+                if not spread_check['valid']:
+                    logger.warning(
+                        f"⚠️ {symbol} - Setup rejeté : Spread trop élevé "
+                        f"({spread_check['spread_pct']:.3f}% > {spread_check['max_allowed']:.3f}%)"
+                    )
+                    return None
+                
+                # Ajouter info spread au setup
+                best_setup['spread_pct'] = spread_check['spread_pct']
+                best_setup['spread_quality'] = spread_check['quality']
+                
+                # 🔥 PHASE 2: Vérifier orderbook imbalance avant validation finale
+                orderbook_check = await self._check_orderbook_imbalance(
+                    symbol=symbol,
+                    direction=best_setup['direction']
+                )
+                
+                if not orderbook_check['valid']:
+                    logger.warning(
+                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
+                        f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, "
+                        f"required={'≥1.1' if best_setup['direction']=='LONG' else '≤0.9'})"
+                    )
+                    return None
+                
+                # Bonus si orderbook très favorable
+                if orderbook_check['quality'] == 'EXCELLENT':
+                    # Ajouter au score total si disponible
+                    if 'totalScore' in best_setup:
+                        best_setup['totalScore'] += 1.0
+                
+                best_setup['orderbook_ratio'] = orderbook_check['ratio']
+                best_setup['orderbook_quality'] = orderbook_check['quality']
+                
+                # 🔥 PHASE 2: Vérifier manipulation pump & dump
+                # Récupérer OHLCV depuis l'analyse si disponible
+                ohlcv_data = None
+                if best_setup.get('timeframe') == '1m' and analysis_1m:
+                    ohlcv_data = analysis_1m.get('ohlcv')
+                elif best_setup.get('timeframe') == '5m' and analysis_5m:
+                    ohlcv_data = analysis_5m.get('ohlcv')
+                # Fallback : utiliser celui qui est disponible
+                if not ohlcv_data and analysis_1m:
+                    ohlcv_data = analysis_1m.get('ohlcv')
+                elif not ohlcv_data and analysis_5m:
+                    ohlcv_data = analysis_5m.get('ohlcv')
+                
+                manipulation_check = self._detect_manipulation(
+                    symbol=symbol,
+                    timeframe=best_setup.get('timeframe', '1m'),
+                    ohlcv=ohlcv_data,
+                    volume=best_setup.get('volumeSpike', 0),
+                    vol_spike=best_setup.get('volumeSpike', 0)
+                )
+                
+                if manipulation_check['suspicious']:
+                    logger.warning(
+                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
+                        f"Manipulation suspectée ({manipulation_check['reason']})"
+                    )
+                    return None
+                
+                return best_setup
+            
+            # Confluence ou mode permissif (ancien code pour compatibilité)
             if use_confluence and analysis_1m and analysis_5m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
                 # MODE CONFLUENCE STRICTE
                 if analysis_1m['direction'] != analysis_5m['direction']:
@@ -782,6 +985,402 @@ class TechnicalAnalyzer:
             if DEBUG_ENABLED:
                 logger.error(f"Erreur analyse pair {symbol}: {e}")
             return None
+    
+    async def _check_spread(self, symbol: str) -> Dict:
+        """
+        Vérifier spread en temps réel avec cache
+        
+        Returns:
+            Dict avec valid, spread_pct, max_allowed, quality
+        """
+        # 🔥 PHASE 3: Utiliser cache (5 secondes)
+        cache_key = symbol
+        if cache_key in self._spread_cache:
+            cached = self._spread_cache[cache_key]
+            if time.time() - cached['timestamp'] < 5:  # Cache valide 5 secondes
+                return cached['data']
+        
+        try:
+            # Récupérer orderbook
+            orderbook = await self.client.fetch_order_book(symbol, limit=5)
+            
+            best_bid = orderbook['bids'][0][0] if orderbook['bids'] else 0
+            best_ask = orderbook['asks'][0][0] if orderbook['asks'] else 0
+            
+            if best_bid == 0 or best_ask == 0:
+                return {'valid': False, 'spread_pct': 999, 'max_allowed': 0.03, 'quality': 'UNKNOWN'}
+            
+            mid_price = (best_bid + best_ask) / 2
+            spread_pct = ((best_ask - best_bid) / mid_price) * 100
+            
+            # Seuil dynamique selon mode TP/SL
+            tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+            
+            if tp_sl_mode == 'FIXE':
+                max_spread = 0.03  # 0.03% pour TP +0.25% (plus réaliste que 0.02%)
+            else:
+                max_spread = 0.06  # 0.06% pour TP ATR (plus large)
+            
+            valid = spread_pct <= max_spread
+            
+            # Quality scoring
+            if spread_pct < 0.01:
+                quality = 'EXCELLENT'
+            elif spread_pct < 0.015:
+                quality = 'GOOD'
+            elif spread_pct < max_spread:
+                quality = 'ACCEPTABLE'
+            else:
+                quality = 'POOR'
+            
+            result = {
+                'valid': valid,
+                'spread_pct': spread_pct,
+                'max_allowed': max_spread,
+                'quality': quality
+            }
+            
+            # Mettre en cache
+            self._spread_cache[cache_key] = {
+                'timestamp': time.time(),
+                'data': result
+            }
+            
+            return result
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur check spread {symbol}: {e}")
+            return {'valid': False, 'spread_pct': 999, 'max_allowed': 0.03, 'quality': 'ERROR'}
+    
+    def _check_price_action_coherence(
+        self,
+        direction: str,
+        current_candle: list,
+        previous_candle: Optional[list],
+        ema9: float,
+        ema21: float
+    ) -> Dict:
+        """
+        Vérifier cohérence price action avec direction
+        
+        Returns:
+            Dict avec coherent, reason, quality
+        """
+        if not previous_candle:
+            return {'coherent': True, 'reason': 'Pas de bougie précédente', 'quality': 'UNKNOWN'}
+        
+        open_price, high, low, close = current_candle[1:5]
+        prev_open, prev_high, prev_low, prev_close = previous_candle[1:5]
+        
+        body = abs(close - open_price)
+        candle_range = high - low
+        
+        if candle_range == 0:
+            return {'coherent': False, 'reason': 'Range nul', 'quality': 'POOR'}
+        
+        body_ratio = body / candle_range if candle_range > 0 else 0
+        
+        if direction == 'LONG':
+            # LONG : Vérifier que bougie actuelle est haussière
+            is_bullish = close > open_price
+            
+            # Vérifier momentum
+            momentum_ok = close > prev_close
+            
+            # Vérifier position vs EMAs
+            above_ema9 = close > ema9
+            
+            # Vérifier wicks
+            upper_wick = high - max(open_price, close)
+            lower_wick = min(open_price, close) - low
+            wick_imbalance = upper_wick > lower_wick * 2 if lower_wick > 0 else False  # Upper wick trop grand
+            
+            # Plus tolérant pour doji/indécision
+            if body_ratio < 0.2:  # Doji (très petit corps)
+                # Ne pas rejeter automatiquement, mais qualité réduite
+                quality = 'ACCEPTABLE'
+                return {'coherent': True, 'reason': 'Doji/indécision', 'quality': quality}
+            
+            # Si bougie actuelle bearish MAIS précédente très bullish
+            if not is_bullish and prev_close > prev_open and (prev_close - prev_open) > body * 2:
+                # Momentum précédent fort → accepter
+                quality = 'ACCEPTABLE'
+                return {'coherent': True, 'reason': 'Momentum précédent fort', 'quality': quality}
+            
+            # Validation stricte seulement si contradiction majeure
+            if not is_bullish and body_ratio > 0.5:  # Bearish avec corps significatif
+                return {
+                    'coherent': False,
+                    'reason': 'Bougie baissière (close < open)',
+                    'quality': 'POOR'
+                }
+            
+            if wick_imbalance and body_ratio < 0.5:  # Upper wick suspect
+                return {
+                    'coherent': False,
+                    'reason': 'Upper wick suspect (rejection)',
+                    'quality': 'POOR'
+                }
+            
+            # Quality scoring
+            if is_bullish and momentum_ok and above_ema9 and body_ratio > 0.6:
+                quality = 'EXCELLENT'
+            elif is_bullish and momentum_ok:
+                quality = 'GOOD'
+            else:
+                quality = 'ACCEPTABLE'
+            
+            return {'coherent': True, 'reason': 'Cohérente', 'quality': quality}
+        
+        else:  # SHORT
+            is_bearish = close < open_price
+            momentum_ok = close < prev_close
+            below_ema9 = close < ema9
+            
+            upper_wick = high - max(open_price, close)
+            lower_wick = min(open_price, close) - low
+            wick_imbalance = lower_wick > upper_wick * 2 if upper_wick > 0 else False
+            
+            # Plus tolérant pour doji/indécision
+            if body_ratio < 0.2:
+                quality = 'ACCEPTABLE'
+                return {'coherent': True, 'reason': 'Doji/indécision', 'quality': quality}
+            
+            # Si bougie actuelle bullish MAIS précédente très bearish
+            if not is_bearish and prev_close < prev_open and (prev_open - prev_close) > body * 2:
+                quality = 'ACCEPTABLE'
+                return {'coherent': True, 'reason': 'Momentum précédent fort', 'quality': quality}
+            
+            # Validation stricte seulement si contradiction majeure
+            if not is_bearish and body_ratio > 0.5:
+                return {
+                    'coherent': False,
+                    'reason': 'Bougie haussière (close > open)',
+                    'quality': 'POOR'
+                }
+            
+            if wick_imbalance and body_ratio < 0.5:
+                return {
+                    'coherent': False,
+                    'reason': 'Lower wick suspect (rejection)',
+                    'quality': 'POOR'
+                }
+            
+            if is_bearish and momentum_ok and below_ema9 and body_ratio > 0.6:
+                quality = 'EXCELLENT'
+            elif is_bearish and momentum_ok:
+                quality = 'GOOD'
+            else:
+                quality = 'ACCEPTABLE'
+            
+            return {'coherent': True, 'reason': 'Cohérente', 'quality': quality}
+    
+    async def _check_orderbook_imbalance(self, symbol: str, direction: str) -> Dict:
+        """
+        Vérifier imbalance orderbook (bid/ask ratio)
+        
+        Returns:
+            Dict avec valid, ratio, quality, bid_value, ask_value
+        """
+        # 🔥 PHASE 2: Utiliser cache (2 secondes)
+        cache_key = f"{symbol}_{direction}"
+        if cache_key in self._orderbook_cache:
+            cached = self._orderbook_cache[cache_key]
+            if time.time() - cached['timestamp'] < 2:  # Cache valide 2 secondes
+                return cached['data']
+        
+        try:
+            # Récupérer orderbook (top 10)
+            orderbook = await self.client.fetch_order_book(symbol, limit=10)
+            
+            bids = orderbook.get('bids', [])[:10] if orderbook.get('bids') else []
+            asks = orderbook.get('asks', [])[:10] if orderbook.get('asks') else []
+            
+            if not bids or not asks:
+                return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}
+            
+            # 🔥 FIX: ccxt retourne des listes [price, size] ou tuples (price, size)
+            # Normaliser en listes pour garantir le format
+            def normalize_order(order):
+                """Normaliser un ordre en [price, size]"""
+                if isinstance(order, (list, tuple)) and len(order) >= 2:
+                    return [float(order[0]), float(order[1])]
+                elif isinstance(order, dict):
+                    return [float(order.get('price', 0)), float(order.get('size', 0))]
+                else:
+                    return [0.0, 0.0]
+            
+            bids_normalized = [normalize_order(bid) for bid in bids]
+            asks_normalized = [normalize_order(ask) for ask in asks]
+            
+            # Calculer valeur totale (price × size)
+            bid_value = sum([price * size for price, size in bids_normalized])
+            ask_value = sum([price * size for price, size in asks_normalized])
+            
+            if bid_value == 0 or ask_value == 0:
+                return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': bid_value, 'ask_value': ask_value}
+            
+            # Ratio bid/ask
+            ratio = bid_value / ask_value
+            
+            # Validation selon direction (seuils plus permissifs)
+            if direction == 'LONG':
+                # LONG : besoin de pression acheteuse (ratio ≥ 1.1)
+                required_ratio = 1.1  # Plus permissif que 1.2
+                valid = ratio >= required_ratio
+                
+                # Quality scoring
+                if ratio >= 1.5:
+                    quality = 'EXCELLENT'
+                elif ratio >= 1.3:
+                    quality = 'GOOD'
+                elif ratio >= required_ratio:
+                    quality = 'ACCEPTABLE'
+                else:
+                    quality = 'POOR'
+            
+            else:  # SHORT
+                # SHORT : besoin de pression vendeuse (ratio ≤ 0.9)
+                required_ratio = 0.9  # Plus permissif que 0.8
+                valid = ratio <= required_ratio
+                
+                if ratio <= 0.6:
+                    quality = 'EXCELLENT'
+                elif ratio <= 0.7:
+                    quality = 'GOOD'
+                elif ratio <= required_ratio:
+                    quality = 'ACCEPTABLE'
+                else:
+                    quality = 'POOR'
+            
+            logger.debug(
+                f"📊 {symbol} Orderbook: Ratio={ratio:.2f} "
+                f"({'✅' if valid else '❌'} for {direction}), Quality={quality}"
+            )
+            
+            result = {
+                'valid': valid,
+                'ratio': ratio,
+                'quality': quality,
+                'bid_value': bid_value,
+                'ask_value': ask_value
+            }
+            
+            # Mettre en cache
+            self._orderbook_cache[cache_key] = {
+                'timestamp': time.time(),
+                'data': result
+            }
+            
+            return result
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur check orderbook {symbol}: {e}")
+            # En cas d'erreur, accepter (éviter rejets systématiques)
+            return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}
+    
+    def _detect_manipulation(
+        self,
+        symbol: str,
+        timeframe: str,
+        ohlcv: Optional[List],
+        volume: float,
+        vol_spike: float
+    ) -> Dict:
+        """
+        Détecter pump & dump / manipulation (version permissive)
+        
+        Returns:
+            Dict avec suspicious, reason, severity
+        """
+        # Si pas de données OHLCV, on ne peut pas détecter
+        if not ohlcv or len(ohlcv) < 3:
+            return {'suspicious': False, 'reason': 'Pas de données OHLCV', 'severity': 'NONE'}
+        
+        suspicion_score = 0
+        
+        # 1. Volume spike extrême (>8x) sans news (plus permissif que 5x)
+        if vol_spike > 8.0:
+            suspicion_score += 2
+        
+        # 2. Wicks extrêmes (manipulation visible)
+        current_candle = ohlcv[-1]
+        if len(current_candle) >= 5:
+            open_price, high, low, close = current_candle[1:5]
+            
+            body = abs(close - open_price)
+            upper_wick = high - max(open_price, close)
+            lower_wick = min(open_price, close) - low
+            candle_range = high - low
+            
+            if candle_range > 0:
+                wick_ratio = (upper_wick + lower_wick) / candle_range
+                
+                # Wicks > 90% du range = manipulation (plus permissif que 80%)
+                if wick_ratio > 0.9:
+                    suspicion_score += 1
+        
+        # 3. Prix en dehors de 4 écarts-types (plus permissif que 3)
+        try:
+            closes = [c[4] for c in ohlcv[-20:] if len(c) >= 5]
+            if len(closes) >= 10:
+                mean_price = sum(closes) / len(closes)
+                variance = sum((c - mean_price) ** 2 for c in closes) / len(closes)
+                std_price = variance ** 0.5 if variance > 0 else 0
+                
+                if std_price > 0 and len(current_candle) >= 5:
+                    z_score = abs(current_candle[4] - mean_price) / std_price
+                    
+                    if z_score > 4:  # Plus permissif que 3
+                        suspicion_score += 2
+        except:
+            pass
+        
+        # 4. Mouvement > 5% en 1 minute (trop rapide)
+        if timeframe == '1m' and len(current_candle) >= 5:
+            open_price = current_candle[1]
+            close = current_candle[4]
+            price_change = abs(close - open_price) / open_price * 100 if open_price > 0 else 0
+            
+            if price_change > 5:
+                suspicion_score += 2
+        
+        # 5. Pattern pump & dump classique
+        if len(ohlcv) >= 3:
+            candle_1 = ohlcv[-3]
+            candle_2 = ohlcv[-2]
+            candle_3 = ohlcv[-1]
+            
+            if len(candle_1) >= 5 and len(candle_2) >= 5 and len(candle_3) >= 5:
+                close_1 = candle_1[4]
+                close_2 = candle_2[4]
+                close_3 = candle_3[4]
+                
+                # Pump : +3% en 1 bougie
+                pump = (close_2 - close_1) / close_1 * 100 if close_1 > 0 else 0
+                # Dump : -2% en 1 bougie après pump
+                dump = (close_3 - close_2) / close_2 * 100 if close_2 > 0 else 0
+                
+                if pump > 3 and dump < -2:
+                    suspicion_score += 3
+        
+        # Rejeter seulement si score élevé (≥4)
+        if suspicion_score >= 4:
+            reasons = []
+            if vol_spike > 8.0:
+                reasons.append(f'Volume spike extrême ({vol_spike:.1f}x)')
+            if suspicion_score >= 3:
+                reasons.append('Pattern pump & dump')
+            reason = ' | '.join(reasons) if reasons else 'Manipulation suspectée'
+            
+            return {
+                'suspicious': True,
+                'reason': reason,
+                'severity': 'HIGH' if suspicion_score >= 5 else 'MEDIUM'
+            }
+        
+        # Pas de manipulation détectée
+        return {'suspicious': False, 'reason': 'Clean', 'severity': 'NONE'}
     
     async def close(self):
         """Ferme les connexions"""

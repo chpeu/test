@@ -75,3 +75,4 @@ Avec cette correction, si une exception se produit dans `analyze_timeframe()`, o
 - [ ] Tester avec le serveur redémarré pour voir les vraies erreurs
 
 
+

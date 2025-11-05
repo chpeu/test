@@ -248,3 +248,4 @@ if trend_data and temp_direction != 'NEUTRAL':
 - `1h` : Long terme (tendance très stable)
 
 
+

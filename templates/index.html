@@ -295,7 +295,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="volumeMultiplierSlider" min="0.10" max="2.00" step="0.05" value="1.00" 
                                style="width: 200px; height: 20px; cursor: pointer;" 
-                               oninput="volumeMultiplier = parseFloat(this.value); document.getElementById('volumeMultiplierValue').textContent = volumeMultiplier.toFixed(2); updateVolumeMultiplierConfig(volumeMultiplier, false);">
+                               oninput="volumeMultiplier = parseFloat(this.value); var el = document.getElementById('volumeMultiplierValue'); if (el) el.textContent = volumeMultiplier.toFixed(2); updateVolumeMultiplierConfig(volumeMultiplier, false);">
                         <span id="volumeMultiplierValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">1.00</span>
                         <span style="color: #888; font-size: 11px;">&lt;1 permissif | &gt;1 strict</span>
                     </div>
@@ -333,7 +333,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="riskPerTradeSlider" min="0.5" max="5.0" step="0.1" value="2.0" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="riskPerTrade = parseFloat(this.value); document.getElementById('riskPerTradeValue').textContent = riskPerTrade.toFixed(1) + '%'; updateConfigThreshold('risk_per_trade', riskPerTrade);">
+                               oninput="riskPerTrade = parseFloat(this.value); var el = document.getElementById('riskPerTradeValue'); if (el) el.textContent = riskPerTrade.toFixed(1) + '%'; updateConfigThreshold('risk_per_trade', riskPerTrade);">
                         <span id="riskPerTradeValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">2.0%</span>
                     </div>
                 </div>
@@ -341,7 +341,7 @@
                     <div class="config-label">🎯 CONFLUENCE</div>
                     <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="checkbox" id="confluenceToggle" onchange="useConfluence = this.checked; document.getElementById('confluenceStatus').textContent = this.checked ? 'STRICTE' : 'PERMISSIVE'; document.getElementById('confluenceStatus').style.color = this.checked ? '#00ff88' : '#888'; updateConfigThreshold('use_confluence', useConfluence);" style="width: 25px; height: 25px;">
+                            <input type="checkbox" id="confluenceToggle" onchange="useConfluence = this.checked; var statusEl = document.getElementById('confluenceStatus'); if (statusEl) { statusEl.textContent = this.checked ? 'STRICTE' : 'PERMISSIVE'; statusEl.style.color = this.checked ? '#00ff88' : '#888'; } updateConfigThreshold('use_confluence', useConfluence);" style="width: 25px; height: 25px;">
                             <span style="color: #00ff88; font-weight: bold; font-size: 15px;">Confluence</span>
                         </label>
                         <span id="confluenceStatus" style="color: #888; font-weight: bold;">PERMISSIVE</span>
@@ -362,7 +362,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="snrSlider" min="0.1" max="1.0" step="0.05" value="0.3" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="snrThreshold = parseFloat(this.value); document.getElementById('snrValue').textContent = snrThreshold.toFixed(2); updateConfigThreshold('snr_threshold', snrThreshold);">
+                               oninput="snrThreshold = parseFloat(this.value); var el = document.getElementById('snrValue'); if (el) el.textContent = snrThreshold.toFixed(2); updateConfigThreshold('snr_threshold', snrThreshold);">
                         <span id="snrValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.30</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Signal/Bruit</span>
@@ -373,7 +373,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="breakoutSlider" min="0.1" max="1.0" step="0.05" value="0.3" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="breakoutThreshold = parseFloat(this.value); document.getElementById('breakoutValue').textContent = breakoutThreshold.toFixed(2); updateConfigThreshold('breakout_threshold', breakoutThreshold);">
+                               oninput="breakoutThreshold = parseFloat(this.value); var el = document.getElementById('breakoutValue'); if (el) el.textContent = breakoutThreshold.toFixed(2); updateConfigThreshold('breakout_threshold', breakoutThreshold);">
                         <span id="breakoutValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.30</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">× ATR</span>
@@ -384,7 +384,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="wickSlider" min="1.5" max="5.0" step="0.1" value="2.5" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="wickRatioMax = parseFloat(this.value); document.getElementById('wickValue').textContent = wickRatioMax.toFixed(1); updateConfigThreshold('wick_ratio_max', wickRatioMax);">
+                               oninput="wickRatioMax = parseFloat(this.value); var el = document.getElementById('wickValue'); if (el) el.textContent = wickRatioMax.toFixed(1); updateConfigThreshold('wick_ratio_max', wickRatioMax);">
                         <span id="wickValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">2.5</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Max</span>
@@ -395,7 +395,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="diGapSlider" min="3" max="10" step="0.5" value="5.0" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="diGapMin = parseFloat(this.value); document.getElementById('diGapValue').textContent = diGapMin.toFixed(1); updateConfigThreshold('di_gap_min', diGapMin);">
+                               oninput="diGapMin = parseFloat(this.value); var el = document.getElementById('diGapValue'); if (el) el.textContent = diGapMin.toFixed(1); updateConfigThreshold('di_gap_min', diGapMin);">
                         <span id="diGapValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">5.0</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Min</span>
@@ -406,7 +406,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
                         <input type="range" id="atrOptimalSlider" min="0.05" max="1.0" step="0.01" value="0.10" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
-                               oninput="optimalAtrMin1m = parseFloat(this.value); document.getElementById('atrOptimalValue').textContent = optimalAtrMin1m.toFixed(2) + '%'; updateConfigThreshold('optimal_atr_min_1m', optimalAtrMin1m);">
+                               oninput="optimalAtrMin1m = parseFloat(this.value); var el = document.getElementById('atrOptimalValue'); if (el) el.textContent = optimalAtrMin1m.toFixed(2) + '%'; updateConfigThreshold('optimal_atr_min_1m', optimalAtrMin1m);">
                         <span id="atrOptimalValue" style="color: #00ff88; font-weight: bold; min-width: 50px; font-size: 12px;">0.10%</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Seuil min 1m (0.05-1.0%)</span>
@@ -1207,27 +1207,37 @@
         }, 5000);
         
         function updateStats() {
-            document.getElementById('statTrades').textContent = stats.totalTrades;
-            document.getElementById('statWins').textContent = stats.wins;
-            document.getElementById('statLosses').textContent = stats.losses;
+            var statTradesEl = document.getElementById('statTrades');
+            if (statTradesEl) statTradesEl.textContent = stats.totalTrades;
+            
+            var statWinsEl = document.getElementById('statWins');
+            if (statWinsEl) statWinsEl.textContent = stats.wins;
+            
+            var statLossesEl = document.getElementById('statLosses');
+            if (statLossesEl) statLossesEl.textContent = stats.losses;
+            
             var winrate = stats.totalTrades > 0 ? ((stats.wins / stats.totalTrades) * 100).toFixed(1) : 0;
-            document.getElementById('statWinrate').textContent = winrate + '%';
+            var statWinrateEl = document.getElementById('statWinrate');
+            if (statWinrateEl) statWinrateEl.textContent = winrate + '%';
             
             // 🔥 v6.4.1: Stats API bloquée au lieu de breakevens
-            if (document.getElementById('statApiStuck')) {
-                document.getElementById('statApiStuck').textContent = stats.apiStuck;
+            var statApiStuckEl = document.getElementById('statApiStuck');
+            if (statApiStuckEl) {
+                statApiStuckEl.textContent = stats.apiStuck;
             }
             
-            if (document.getElementById('statAvgWin')) {
+            var statAvgWinEl = document.getElementById('statAvgWin');
+            if (statAvgWinEl) {
                 var avgWin = stats.winPnls.length > 0 ? 
                     stats.winPnls.reduce((a,b) => a+b, 0) / stats.winPnls.length : 0;
-                document.getElementById('statAvgWin').textContent = '+' + avgWin.toFixed(2) + '%';
+                statAvgWinEl.textContent = '+' + avgWin.toFixed(2) + '%';
             }
             
-            if (document.getElementById('statAvgLoss')) {
+            var statAvgLossEl = document.getElementById('statAvgLoss');
+            if (statAvgLossEl) {
                 var avgLoss = stats.lossPnls.length > 0 ? 
                     stats.lossPnls.reduce((a,b) => a+b, 0) / stats.lossPnls.length : 0;
-                document.getElementById('statAvgLoss').textContent = avgLoss.toFixed(2) + '%';
+                statAvgLossEl.textContent = avgLoss.toFixed(2) + '%';
             }
             
             var statTotalPnlEl = document.getElementById('statTotalPnl');
@@ -1238,59 +1248,67 @@
             }
             
             // 🔥 v6.4.1: Afficher P&L USDT cumulé
-            if (document.getElementById('statTotalPnlUSDT')) {
-                document.getElementById('statTotalPnlUSDT').textContent = (stats.totalPnlUSDT >= 0 ? '+' : '') + stats.totalPnlUSDT.toFixed(2) + ' USDT';
+            var statTotalPnlUSDTEl = document.getElementById('statTotalPnlUSDT');
+            if (statTotalPnlUSDTEl) {
+                statTotalPnlUSDTEl.textContent = (stats.totalPnlUSDT >= 0 ? '+' : '') + stats.totalPnlUSDT.toFixed(2) + ' USDT';
             }
             
             // 🔥 v6.4.2: Afficher frais cumulés
-            if (document.getElementById('statTotalCosts')) {
-                document.getElementById('statTotalCosts').textContent = stats.totalCosts.toFixed(2) + '%';
+            var statTotalCostsEl = document.getElementById('statTotalCosts');
+            if (statTotalCostsEl) {
+                statTotalCostsEl.textContent = stats.totalCosts.toFixed(2) + '%';
             }
-            if (document.getElementById('statTotalCostsUSDT')) {
-                document.getElementById('statTotalCostsUSDT').textContent = stats.totalCostsUSDT.toFixed(2) + ' USDT';
+            var statTotalCostsUSDTEl = document.getElementById('statTotalCostsUSDT');
+            if (statTotalCostsUSDTEl) {
+                statTotalCostsUSDTEl.textContent = stats.totalCostsUSDT.toFixed(2) + ' USDT';
             }
             
             // 🔥 v6.4.3: Afficher moyenne frais par trade
-            if (document.getElementById('statAvgCosts') && stats.totalTrades > 0) {
+            var statAvgCostsEl = document.getElementById('statAvgCosts');
+            if (statAvgCostsEl && stats.totalTrades > 0) {
                 var avgCosts = stats.totalCosts / stats.totalTrades;
-                document.getElementById('statAvgCosts').textContent = avgCosts.toFixed(2) + '%';
+                statAvgCostsEl.textContent = avgCosts.toFixed(2) + '%';
             }
-            if (document.getElementById('statAvgCostsUSDT') && stats.totalTrades > 0) {
+            var statAvgCostsUSDTEl = document.getElementById('statAvgCostsUSDT');
+            if (statAvgCostsUSDTEl && stats.totalTrades > 0) {
                 var avgCostsUSDT = stats.totalCostsUSDT / stats.totalTrades;
-                document.getElementById('statAvgCostsUSDT').textContent = avgCostsUSDT.toFixed(2) + ' USDT';
+                statAvgCostsUSDTEl.textContent = avgCostsUSDT.toFixed(2) + ' USDT';
             }
             
-            if (document.getElementById('statBestTrade')) {
+            var statBestTradeEl = document.getElementById('statBestTrade');
+            if (statBestTradeEl) {
                 if (stats.bestTrade.pnl > 0) {
                     var mins = Math.floor(stats.bestTrade.duration / 60);
                     var secs = stats.bestTrade.duration % 60;
-                    document.getElementById('statBestTrade').textContent = 
+                    statBestTradeEl.textContent = 
                         '+' + stats.bestTrade.pnl.toFixed(2) + '% (' + stats.bestTrade.symbol + ' - ' + mins + 'm' + secs + 's)';
                 } else {
-                    document.getElementById('statBestTrade').textContent = 'N/A';
+                    statBestTradeEl.textContent = 'N/A';
                 }
             }
             
-            if (document.getElementById('statWorstTrade')) {
+            var statWorstTradeEl = document.getElementById('statWorstTrade');
+            if (statWorstTradeEl) {
                 if (stats.worstTrade.pnl < 0) {
                     var mins = Math.floor(stats.worstTrade.duration / 60);
                     var secs = stats.worstTrade.duration % 60;
-                    document.getElementById('statWorstTrade').textContent = 
+                    statWorstTradeEl.textContent = 
                         stats.worstTrade.pnl.toFixed(2) + '% (' + stats.worstTrade.symbol + ' - ' + mins + 'm' + secs + 's)';
                 } else {
-                    document.getElementById('statWorstTrade').textContent = 'N/A';
+                    statWorstTradeEl.textContent = 'N/A';
                 }
             }
             
-            if (document.getElementById('statAvgDuration')) {
+            var statAvgDurationEl = document.getElementById('statAvgDuration');
+            if (statAvgDurationEl) {
                 var allDurations = stats.winDurations.concat(stats.lossDurations);
                 if (allDurations.length > 0) {
                     var avgDur = allDurations.reduce((a,b) => a+b, 0) / allDurations.length;
                     var mins = Math.floor(avgDur / 60);
                     var secs = Math.floor(avgDur % 60);
-                    document.getElementById('statAvgDuration').textContent = mins + 'm ' + secs + 's';
+                    statAvgDurationEl.textContent = mins + 'm ' + secs + 's';
                 } else {
-                    document.getElementById('statAvgDuration').textContent = 'N/A';
+                    statAvgDurationEl.textContent = 'N/A';
                 }
             }
         }
@@ -1328,9 +1346,17 @@
                 if (trade.reason === 'TP') {
                     reasonText = '🎯 TP';
                     reasonColor = '#00ff88';
+                } else if (trade.reason === 'TS') {
+                    // 🔥 FIX: Trailing Stop (vert au lieu de rouge)
+                    reasonText = '📈 TS';
+                    reasonColor = '#00ff88';
                 } else if (trade.reason === 'SL') {
                     reasonText = '🛑 SL';
                     reasonColor = '#ff4444';
+                } else if (trade.reason === 'EARLY_INVALIDATION' || trade.reason === 'INVALID') {
+                    // 🔥 FIX: Invalidation précoce (orange)
+                    reasonText = '⚠️ INVALID';
+                    reasonColor = '#ff8800';
                 } else if (trade.reason === 'TIMEOUT') {
                     reasonText = '⏱️ Timeout';
                     reasonColor = '#ff8800';
@@ -1500,7 +1526,7 @@
             var entryEl = document.getElementById('posEntry');
             if (entryEl) entryEl.textContent = setup.entry;
             
-            // 🔥 v6.5: Affichage TP selon mode
+            // 🔥 FIX: Affichage TP selon mode avec niveau clair
             var tpEl = document.getElementById('posTP');
             if (tpEl) {
                 if (useATRMulti) {
@@ -1508,7 +1534,10 @@
                 } else if (useATR) {
                     tpEl.textContent = 'TP: ' + activePosition.tp;
                 } else {
-                    tpEl.textContent = 'TP partiel: +0.3%';
+                    // Mode FIXE: Afficher TP partiel + TP final
+                    var tpPartial = entry * (activePosition.direction === 'LONG' ? 1.0025 : 0.9975); // +0.25%
+                    var tpFinal = parseFloat(activePosition.tp);
+                    tpEl.textContent = 'TP partiel: ' + tpPartial.toFixed(6) + ' | TP final: ' + tpFinal.toFixed(6);
                 }
             }
             
@@ -1699,7 +1728,8 @@
                 else decimals = 8;  // Pour les prix < 0.1, 8 décimales
                                
                 var priceDisplay = currentPrice.toFixed(decimals);
-                document.getElementById('posCurrent').textContent = priceDisplay;
+                var posCurrentEl = document.getElementById('posCurrent');
+                if (posCurrentEl) posCurrentEl.textContent = priceDisplay;
                 
                 // Prix actuel - log déjà visible dans les logs Python
                 
@@ -1714,9 +1744,11 @@
                     lastPriceUpdate = now;
                     lastPrice = currentPrice;
                     apiAlertShown = false;
-                    document.getElementById('priceStatus').textContent = '● LIVE';
                     var priceStatusEl = document.getElementById('priceStatus');
-                    if (priceStatusEl) priceStatusEl.style.color = '#00ff88';
+                    if (priceStatusEl) {
+                        priceStatusEl.textContent = '● LIVE';
+                        priceStatusEl.style.color = '#00ff88';
+                    }
                 } else {
                     // Prix identique OU cache obsolète → Vérifier depuis combien de temps
                     var timeSinceUpdate = now - lastPriceUpdate;
@@ -1768,7 +1800,8 @@
                     pnlUSDT = (pnl / 100) * activePosition.size;
                 }
                 var pnlUSDTDisplay = (pnlUSDT >= 0 ? '+' : '') + pnlUSDT.toFixed(2) + ' USDT';
-                document.getElementById('posPnLUSDT').textContent = pnlUSDTDisplay;
+                var posPnLUSDTEl = document.getElementById('posPnLUSDT');
+                if (posPnLUSDTEl) posPnLUSDTEl.textContent = pnlUSDTDisplay;
                 
                 // 🔥 v6.4.1: Afficher position restante si TP partiel
                 if (partialTPSold) {
@@ -1776,7 +1809,8 @@
                     if (positionRemainingEl) positionRemainingEl.style.display = 'block';
                     var sizeRemaining = activePosition.size_remaining || 0;
                     var percentRemaining = (sizeRemaining / activePosition.size * 100).toFixed(0);
-                    document.getElementById('posRemainingValue').textContent = percentRemaining + '%';
+                    var posRemainingValueEl = document.getElementById('posRemainingValue');
+                    if (posRemainingValueEl) posRemainingValueEl.textContent = percentRemaining + '%';
                 } else {
                     var positionRemainingEl = document.getElementById('positionRemaining');
                     if (positionRemainingEl) positionRemainingEl.style.display = 'none';
@@ -1794,24 +1828,41 @@
                     distSL = ((sl - currentPrice) / currentPrice) * 100;
                 }
                 
-                document.getElementById('posTPDist').textContent = '🎯 ' + distTP.toFixed(2) + '% restant';
-                document.getElementById('posSLDist').textContent = '⚠️ ' + (distSL >= 0 ? '+' : '') + distSL.toFixed(2) + '%';
+                // 🔥 FIX: Affichage TP avec niveau clair
+                var posTPDistEl = document.getElementById('posTPDist');
+                var posTPEl = document.getElementById('posTP');
+                if (posTPDistEl) {
+                    if (usePartialTP && partialTPSold) {
+                        // Après TP partiel, afficher que TP final est désactivé
+                        posTPDistEl.textContent = '🎯 Trailing adaptatif actif (TP final désactivé)';
+                        if (posTPEl) {
+                            posTPEl.textContent = 'TP partiel: ✅ | TP final: Désactivé (trailing adaptatif)';
+                        }
+                    } else {
+                        posTPDistEl.textContent = '🎯 ' + distTP.toFixed(2) + '% restant';
+                    }
+                }
+                var posSLDistEl = document.getElementById('posSLDist');
+                if (posSLDistEl) posSLDistEl.textContent = '⚠️ ' + (distSL >= 0 ? '+' : '') + distSL.toFixed(2) + '%';
                 
                 // Durée
                 var duration = Math.floor((Date.now() - positionStartTime) / 1000);
                 var mins = Math.floor(duration / 60);
                 var secs = duration % 60;
-                document.getElementById('positionDuration').textContent = 'Durée: ' + mins + 'm ' + secs + 's';
+                var positionDurationEl = document.getElementById('positionDuration');
+                if (positionDurationEl) positionDurationEl.textContent = 'Durée: ' + mins + 'm ' + secs + 's';
                 
                 // 🔥 v6.4: TP/SL selon mode avec position partielle PHYSIQUE
                 if (!useATR && !useATRMulti) {
-                    // MODE FIXE: TP partiel physique 50% + Trailing 0.15%
+                    // MODE FIXE: TP partiel physique 50% + Trailing adaptatif
                     if (usePartialTP && !partialTPSold && pnl >= partialTPTrigger) {
                         partialTPSold = true;
                         
                         // Calculer profit du TP partiel en USDT
                         var sizePartial = activePosition.size * 0.5;
-                        var priceDiff = Math.abs(currentPrice - entry);
+                        var priceDiff = activePosition.direction === 'LONG' ? 
+                            (currentPrice - entry) :  // LONG: profit quand prix monte
+                            (entry - currentPrice);   // SHORT: profit quand prix baisse
                         activePosition.partial_profit_usdt = sizePartial * (priceDiff / entry);
                         activePosition.size_remaining = activePosition.size * 0.5;
                         
@@ -1826,7 +1877,14 @@
                         activePosition.sl = entry;
                         sl = entry;
                         debugLog('🔒 BREAK-EVEN IMMÉDIAT', 'SL au prix d\'entrée pour 50% restants');
-                        document.getElementById('posSL').textContent = activePosition.sl + ' (BE)';
+                        var posSLEl = document.getElementById('posSL');
+                        if (posSLEl) posSLEl.textContent = activePosition.sl + ' (BE)';
+                        
+                        // 🔥 FIX: Mettre à jour l'affichage du TP pour indiquer que TP final est désactivé
+                        var posTPEl = document.getElementById('posTP');
+                        if (posTPEl) {
+                            posTPEl.textContent = 'TP partiel: ✅ | TP final: Désactivé (trailing adaptatif)';
+                        }
                     }
                     
                     // 🔥 v6.4.3: TP total 0.15% si trade > 5min, sinon trailing stop 0.15%
@@ -1837,18 +1895,20 @@
                                 (entry * 1.0015) :  // +0.15%
                                 (entry * 0.9985);   // -0.15%
                             activePosition.tp = tpTotal.toFixed(6);
-                            document.getElementById('posTP').textContent = activePosition.tp;
+                            var posTPEl = document.getElementById('posTP');
+                            if (posTPEl) posTPEl.textContent = activePosition.tp;
                             // TP TOTAL 5MIN - log déjà visible dans les logs Python
                         } else {
                             // Trailing stop 0.15% si < 5min
                             var newSL;
+                            var posSLEl = document.getElementById('posSL');
                             if (activePosition.direction === 'LONG') {
                                 newSL = currentPrice * (1 - trailingDistance/100);
                                 if (newSL > sl) {
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
                                     // TRAILING STOP - log déjà visible dans les logs Python
-                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                    if (posSLEl) posSLEl.textContent = activePosition.sl;
                                 }
                             } else {
                                 newSL = currentPrice * (1 + trailingDistance/100);
@@ -1856,7 +1916,7 @@
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
                                     // TRAILING STOP - log déjà visible dans les logs Python
-                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                    if (posSLEl) posSLEl.textContent = activePosition.sl;
                                 }
                             }
                         }
@@ -1877,7 +1937,8 @@
                             sl = parseFloat(newSL.toFixed(6));
                             breakEvenSet = true;
                             // BE Progressif - log déjà visible dans les logs Python
-                            document.getElementById('posSL').textContent = activePosition.sl;
+                            var posSLEl = document.getElementById('posSL');
+                            if (posSLEl) posSLEl.textContent = activePosition.sl;
                         }
                         
                         if (pnl >= pnl100pct && breakEvenSet) {
@@ -1885,7 +1946,8 @@
                             activePosition.sl = entry;
                             sl = parseFloat(entry);
                             // BE Total - log déjà visible dans les logs Python
-                            document.getElementById('posSL').textContent = activePosition.sl;
+                            var posSLEl = document.getElementById('posSL');
+                            if (posSLEl) posSLEl.textContent = activePosition.sl;
                         }
                     }
                 } else if (useATRMulti) {
@@ -1915,19 +1977,21 @@
                             activePosition.sl = entry;
                             sl = entry;
                             // BREAK-EVEN IMMÉDIAT - log déjà visible dans les logs Python
-                            document.getElementById('posSL').textContent = activePosition.sl + ' (BE)';
+                            var posSLEl = document.getElementById('posSL');
+                            if (posSLEl) posSLEl.textContent = activePosition.sl + ' (BE)';
                         }
                         
                         // TRAILING STOP ADAPTATIF (seulement après TP partiel)
                         if (partialTPSold && useTrailingStop) {
                             var newSL;
+                            var posSLEl = document.getElementById('posSL');
                             if (activePosition.direction === 'LONG') {
                                 newSL = currentPrice * (1 - trailingDistanceATR/100);
                                 if (newSL > sl) {
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
                                     // TRAILING ATR - log déjà visible dans les logs Python
-                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                    if (posSLEl) posSLEl.textContent = activePosition.sl;
                                 }
                             } else {
                                 newSL = currentPrice * (1 + trailingDistanceATR/100);
@@ -1935,7 +1999,7 @@
                                     activePosition.sl = newSL.toFixed(6);
                                     sl = newSL;
                                     // TRAILING ATR - log déjà visible dans les logs Python
-                                    document.getElementById('posSL').textContent = activePosition.sl;
+                                    if (posSLEl) posSLEl.textContent = activePosition.sl;
                                 }
                             }
                         }
@@ -3672,7 +3736,8 @@
         
         function selectPair(pair) {
             selectedPair = pair;
-            document.getElementById('pairSelection').style.display = 'block';
+            var pairSelectionEl = document.getElementById('pairSelection');
+            if (pairSelectionEl) pairSelectionEl.style.display = 'block';
         }
         
         // 🔥 v7.0: Rafraîchir scanner scalabilité via FastAPI (plus de proxies CORS)
@@ -3935,12 +4000,14 @@
             if (tradingState !== 'SCANNING') return;
             
             scanCount++;
-            document.getElementById('loading').style.display = 'block';
+            var loadingEl = document.getElementById('loading');
+            if (loadingEl) loadingEl.style.display = 'block';
             
             try {
                     // MODE PARALLÈLE - Scans simultanés
                     var maxPairs = Math.min(multiPairList.length, 20);
-                    document.getElementById('loadingText').textContent = '⚡ Scan parallèle ' + maxPairs + ' paires...';
+                    var loadingTextEl = document.getElementById('loadingText');
+                    if (loadingTextEl) loadingTextEl.textContent = '⚡ Scan parallèle ' + maxPairs + ' paires...';
                     debugLog('🔍 === SCAN #' + scanCount + ' ===', 'Multi-paires (TOP ' + maxPairs + ') en PARALLÈLE');
                 debugLog('⚙️ Mode', 'Parallèle Ultra-Rapide');
                     
@@ -3991,7 +4058,8 @@
                 debugLog('❌ SCAN ERROR', error.message);
                 showError('Erreur: ' + error.message);
             } finally {
-                document.getElementById('loading').style.display = 'none';
+                var loadingEl = document.getElementById('loading');
+                if (loadingEl) loadingEl.style.display = 'none';
             }
         }
         
@@ -4265,8 +4333,10 @@
                 btn.textContent = '⏳ SCAN EN COURS...';
             }
             
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('loadingText').textContent = 'Connexion à FastAPI...';
+            var loadingEl = document.getElementById('loading');
+            if (loadingEl) loadingEl.style.display = 'block';
+            var loadingTextEl = document.getElementById('loadingText');
+            if (loadingTextEl) loadingTextEl.textContent = 'Connexion à FastAPI...';
             
             initSocketIO(); // Initialiser SocketIO
             
@@ -4283,7 +4353,8 @@
             try {
                 // 🔥 v7.0: Utiliser l'endpoint FastAPI pour scanner
                 debugLog('📡 Scanner Scalabilité', 'Récupération paires via FastAPI...');
-                document.getElementById('loadingText').textContent = 'Scanner scalabilité...';
+                var loadingTextEl = document.getElementById('loadingText');
+                if (loadingTextEl) loadingTextEl.textContent = 'Scanner scalabilité...';
                 
                 var response = await fetch(API_BASE_URL + '/api/scanner/start', {
                     method: 'POST',
@@ -4299,7 +4370,8 @@
                 // 🔥 v7.0: Attendre l'événement SocketIO 'top_pairs_update' au lieu d'un timeout fixe
                 // Le scan peut prendre 30-60 secondes, on attend le signal du serveur
                 debugLog('⏳ Attente', 'Scan en cours... (attente événement SocketIO)');
-                document.getElementById('loadingText').textContent = 'Scan en cours... (attente ~50s)';
+                var loadingTextEl = document.getElementById('loadingText');
+                if (loadingTextEl) loadingTextEl.textContent = 'Scan en cours... (attente ~50s)';
                 
                 // Variable pour signaler que le scan est terminé
                 var scanCompleted = false;
@@ -4407,7 +4479,8 @@
                 debugLog('✅ SUCCÈS', 'Scanner prêt! ' + allPairs.length + ' paires scalables');
                 showSuccess('Scanner prêt! ' + allPairs.length + ' paires scalables trouvées');
                 
-                document.getElementById('loading').style.display = 'none';
+                var loadingEl = document.getElementById('loading');
+                if (loadingEl) loadingEl.style.display = 'none';
                 
                 // 🔥 FIX: Ne pas masquer le bouton ici, il sera géré par startFullScanner
                 // Le bouton sera désactivé mais visible pendant le scan de scalabilité
@@ -4448,7 +4521,8 @@
                     btn.textContent = '🔍 RÉESSAYER';
                 }
                 
-                document.getElementById('loading').style.display = 'none';
+                var loadingEl = document.getElementById('loading');
+                if (loadingEl) loadingEl.style.display = 'none';
             }
             // Note: Le loading est masqué par processPairs() quand les pairs sont reçues
         }

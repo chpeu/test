@@ -229,3 +229,4 @@ if 'capital' in data:
 - Pour persistance, il faudrait sauvegarder dans un fichier JSON
 
 
+

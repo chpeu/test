@@ -140,3 +140,4 @@ if (result.best) {
 **Frontend utilise maintenant FastAPI avec fallback robuste** 🎯
 
 
+

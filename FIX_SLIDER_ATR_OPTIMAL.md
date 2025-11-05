@@ -161,3 +161,4 @@ async function updateConfigThreshold(key, value) {
 - Slider à 0.15 → Backend reçoit `0.15` → Affiche "0.15%"
 
 
+

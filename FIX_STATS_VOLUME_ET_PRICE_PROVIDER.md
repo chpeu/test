@@ -155,3 +155,4 @@ scanner_loop_callback() (toutes les 45s)
 - **Ratio** : Le ratio est calculé automatiquement et mis à jour dans `TRADING_CONFIG`
 
 
+

@@ -47,6 +47,12 @@ TRADING_CONFIG = {
     "dynamic_tolerance_adx_high": 30,  # ADX > 30 → 5 conditions
     "dynamic_tolerance_adx_low": 25,  # ADX < 25 → 6 conditions
     
+    # 🔥 PHASE 3: Pondération des conditions (système de score)
+    "use_weighted_scoring": True,  # Activer le système de score pondéré
+    "min_score_required": 7.5,  # Score minimum requis (au lieu de min_conditions)
+    "min_score_adx_high": 7.0,  # Score minimum si ADX > 30
+    "min_score_adx_low": 8.0,  # Score minimum si ADX < 25
+    
     # Phase 1+2: New filters (configurable)
     "snr_threshold": 0.3,  # Signal-to-Noise Ratio minimum
     "breakout_threshold": 0.3,  # Breakout multiplier (ATR * threshold)
@@ -64,6 +70,40 @@ TRADING_CONFIG = {
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
+    
+    # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
+    "early_invalidation": {
+        "enabled": True,
+        "delay": 10,  # Attendre 10s minimum avant de vérifier
+        "threshold_15s": -0.12,  # -0.12% avant 15s (conservateur)
+        "threshold_30s": -0.08,  # -0.08% avant 30s
+    },
+    
+    # 🔥 PHASE 2: Trailing stop adaptatif ATR
+    "trailing_stop": {
+        "enabled": True,
+        "trigger_pnl": 0.25,      # Déclencher à +0.25%
+        "atr_multiplier": 0.4,   # Distance = ATR × 0.4
+        "min_distance": 0.08,    # Minimum 0.08%
+        "max_distance": 0.25,    # Maximum 0.25%
+    },
+    
+    # 🔥 PHASE 2: Position sizing adaptatif
+    "position_sizing": {
+        "base_risk": 0.02,  # 2% du capital
+        "min_risk": 0.005,  # 0.5% minimum
+        "max_risk": 0.03,   # 3% maximum (conservateur)
+        "quality_multipliers": {
+            "excellent": 1.4,   # Score ≥ 12
+            "good": 1.2,        # Score ≥ 10
+            "acceptable": 1.0,  # Score ≥ 8
+            "weak": 0.8         # Score < 8
+        },
+        "streak_multipliers": {
+            "win_streak_3+": 1.1,   # Win streak ≥ 3
+            "loss_streak_2+": 0.85  # Loss streak ≥ 2
+        }
+    },
 }
 
 # Risk management
@@ -77,6 +117,29 @@ RISK_CONFIG = {
     "vol_multiplier_low": 1.3,  # ATR < 0.5%
     "max_risk": 0.05,  # 5%
     "min_risk": 0.005,  # 0.5%
+}
+
+# 🔥 PHASE 3: Poids des conditions pour système de score pondéré
+CONDITION_WEIGHTS = {
+    # Conditions critiques (forte corrélation avec winrate)
+    'EMAs': 2.5,           # Tendance = critique (augmenté de 2.0)
+    'ADX_DI': 2.5,         # Force = critique (augmenté de 2.0)
+    'MACD': 2.0,           # Momentum = fort
+    
+    # Conditions importantes (bonne corrélation)
+    'RSI': 1.5,            # Momentum = important
+    'Volume': 1.5,         # Confirmation = important
+    
+    # Conditions utiles (moins fiables)
+    'Bollinger': 0.8,      # Niveau = moins fiable (réduit de 1.0)
+    'Pattern': 0.8,        # Structure = moins fiable (réduit de 1.0)
+    'Divergence': 1.0,     # Divergence RSI/MACD = bonus
+}
+
+# 🔥 PHASE 2: Paramètres trend_bonus
+TREND_BONUS_CONFIG = {
+    "use_direct_score": True,  # True = ajouter directement au score, False = bonus conditionnel
+    "bonus_divisor": 5,  # Diviser bonus par 5 au lieu de 10 (plus impactant)
 }
 
 # 🔥 v6.6: Retry & Circuit Breaker settings
@@ -98,6 +161,7 @@ WEBSOCKET_CONFIG = {
     "ping_interval": 30,  # Heartbeat toutes les 30s
     "reconnect_delay": 5,  # Délai reconnexion en s
     "timeout": 10,  # Timeout connexion
+    "watchdog_timeout": 30,  # 🔥 PHASE 2: Timeout watchdog (30s pour scalping)
 }
 
 # Debug
