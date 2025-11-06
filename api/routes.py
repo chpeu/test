@@ -223,23 +223,24 @@ async def get_trades(
     - offset: Pagination offset
     """
     try:
-        # Construire filtres
-        filters = {}
-        if symbol:
-            filters['symbol'] = symbol
-        if direction:
-            filters['direction'] = direction
-        if exit_reason:
-            filters['exit_reason'] = exit_reason
-        if trading_mode:
-            filters['trading_mode'] = trading_mode
-        if start_date:
-            filters['start_date'] = start_date
-        if end_date:
-            filters['end_date'] = end_date
+        # Récupérer trades avec paramètres individuels
+        trades = db.get_trades(
+            trading_mode=trading_mode,
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
         
-        # Récupérer trades
-        trades = db.get_trades(filters=filters, limit=limit, offset=offset)
+        # Filtrer par direction et exit_reason (non supportés par DB directement)
+        if direction:
+            trades = [t for t in trades if t.get('direction') == direction]
+        if exit_reason:
+            trades = [t for t in trades if t.get('exit_reason') == exit_reason]
+        
+        # Appliquer offset (pagination)
+        if offset > 0:
+            trades = trades[offset:]
         
         return {
             'success': True,
@@ -272,17 +273,57 @@ async def get_stats(
     - end_date: Date fin
     """
     try:
-        filters = {}
-        if symbol:
-            filters['symbol'] = symbol
-        if trading_mode:
-            filters['trading_mode'] = trading_mode
-        if start_date:
-            filters['start_date'] = start_date
-        if end_date:
-            filters['end_date'] = end_date
+        # Récupérer trades avec filtres
+        trades = db.get_trades(
+            trading_mode=trading_mode,
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            limit=10000  # Max pour stats
+        )
         
-        stats = db.get_stats(filters=filters)
+        # Calculer stats depuis trades
+        total_trades = len(trades)
+        wins = sum(1 for t in trades if t.get('net_pnl_pct', 0) > 0)
+        losses = sum(1 for t in trades if t.get('net_pnl_pct', 0) < 0)
+        winrate = (wins / total_trades * 100) if total_trades > 0 else 0
+        
+        total_pnl_usdt = sum(t.get('net_pnl_usdt', 0) for t in trades)
+        total_pnl_pct = sum(t.get('net_pnl_pct', 0) for t in trades)
+        
+        # Profit factor
+        gross_profit = sum(t.get('net_pnl_usdt', 0) for t in trades if t.get('net_pnl_usdt', 0) > 0)
+        gross_loss = abs(sum(t.get('net_pnl_usdt', 0) for t in trades if t.get('net_pnl_usdt', 0) < 0))
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else 0
+        
+        # Max drawdown (simplifié)
+        equity_curve = []
+        running_equity = 1000.0  # Capital initial
+        for trade in trades:
+            running_equity += trade.get('net_pnl_usdt', 0)
+            equity_curve.append(running_equity)
+        
+        max_drawdown = 0
+        if equity_curve:
+            peak = equity_curve[0]
+            for equity in equity_curve:
+                if equity > peak:
+                    peak = equity
+                drawdown = ((peak - equity) / peak) * 100 if peak > 0 else 0
+                if drawdown > max_drawdown:
+                    max_drawdown = drawdown
+        
+        stats = {
+            'total_trades': total_trades,
+            'wins': wins,
+            'losses': losses,
+            'winrate': round(winrate, 2),
+            'profit_factor': round(profit_factor, 2),
+            'pnl_total': round(total_pnl_usdt, 2),
+            'pnl_total_pct': round(total_pnl_pct, 2),
+            'max_drawdown': round(max_drawdown, 2),
+            'capital': round(equity_curve[-1] if equity_curve else 1000.0, 2)
+        }
         
         return {
             'success': True,
@@ -451,17 +492,21 @@ async def get_rejected_setups(
 ):
     """Récupérer setups rejetés"""
     try:
-        filters = {}
-        if symbol:
-            filters['symbol'] = symbol
-        if direction:
-            filters['direction'] = direction
-        if start_date:
-            filters['start_date'] = start_date
-        if end_date:
-            filters['end_date'] = end_date
+        # Récupérer setups avec paramètres individuels
+        setups = db.get_rejected_setups(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
         
-        setups = db.get_rejected_setups(filters=filters, limit=limit, offset=offset)
+        # Filtrer par direction (non supporté par DB directement)
+        if direction:
+            setups = [s for s in setups if s.get('direction') == direction]
+        
+        # Appliquer offset (pagination)
+        if offset > 0:
+            setups = setups[offset:]
         
         return {
             'success': True,
@@ -486,17 +531,34 @@ async def get_validated_setups(
 ):
     """Récupérer setups validés"""
     try:
-        filters = {}
-        if symbol:
-            filters['symbol'] = symbol
-        if direction:
-            filters['direction'] = direction
-        if start_date:
-            filters['start_date'] = start_date
-        if end_date:
-            filters['end_date'] = end_date
+        # Utiliser requête SQL directe (méthode pas encore implémentée dans DB)
+        cursor = db.conn.cursor()
         
-        setups = db.get_validated_setups(filters=filters, limit=limit, offset=offset)
+        query = "SELECT * FROM setups_validated WHERE 1=1"
+        params = []
+        
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if direction:
+            query += " AND direction = ?"
+            params.append(direction)
+        if start_date:
+            query += " AND date(timestamp) >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND date(timestamp) <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        setups = [dict(row) for row in cursor.fetchall()]
+        
+        # Appliquer offset (pagination)
+        if offset > 0:
+            setups = setups[offset:]
         
         return {
             'success': True,
@@ -529,21 +591,39 @@ async def export_data(
     - end_date: Date fin
     """
     try:
-        # Récupérer données
-        filters = {}
-        if symbol:
-            filters['symbol'] = symbol
-        if start_date:
-            filters['start_date'] = start_date
-        if end_date:
-            filters['end_date'] = end_date
-        
+        # Récupérer données avec paramètres individuels
         if data_type == 'trades':
-            data = db.get_trades(filters=filters, limit=10000)
+            data = db.get_trades(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                limit=10000
+            )
         elif data_type == 'setups_rejected':
-            data = db.get_rejected_setups(filters=filters, limit=10000)
+            data = db.get_rejected_setups(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                limit=10000
+            )
         elif data_type == 'setups_validated':
-            data = db.get_validated_setups(filters=filters, limit=10000)
+            # Requête SQL directe (méthode pas encore implémentée dans DB)
+            cursor = db.conn.cursor()
+            query = "SELECT * FROM setups_validated WHERE 1=1"
+            params = []
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            if start_date:
+                query += " AND date(timestamp) >= ?"
+                params.append(start_date)
+            if end_date:
+                query += " AND date(timestamp) <= ?"
+                params.append(end_date)
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(10000)
+            cursor.execute(query, params)
+            data = [dict(row) for row in cursor.fetchall()]
         else:
             raise HTTPException(status_code=400, detail="Invalid data_type")
         
