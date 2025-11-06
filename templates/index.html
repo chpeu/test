@@ -4743,16 +4743,17 @@
                 
                 // Traiter stats
                 if (statsRes && statsRes.ok) {
-                try {
-                    const statsData = await statsRes.json();
-                    if (statsData.success && statsData.stats) {
-                        const apiStats = statsData.stats;
-                        stats.totalTrades = apiStats.total_trades || 0;
-                        stats.wins = apiStats.wins || 0;
-                        stats.losses = apiStats.losses || 0;
-                        stats.winrate = apiStats.winrate || 0;
-                        updateStats();
-                    }
+                    try {
+                        const statsData = await statsRes.json();
+                        if (statsData.success && statsData.stats) {
+                            const apiStats = statsData.stats;
+                            stats.totalTrades = apiStats.total_trades || 0;
+                            stats.wins = apiStats.wins || 0;
+                            stats.losses = apiStats.losses || 0;
+                            stats.winrate = apiStats.winrate || 0;
+                            updateStats();
+                            debugLog('✅ Stats restaurées', `Trades: ${stats.totalTrades}, Winrate: ${stats.winrate.toFixed(1)}%`);
+                        }
                     } catch (e) {
                         console.error('Erreur stats:', e);
                     }
@@ -4760,12 +4761,13 @@
                 
                 // Traiter historique
                 if (tradesRes && tradesRes.ok) {
-                try {
-                    const tradesData = await tradesRes.json();
-                    if (tradesData.success && tradesData.trades) {
-                        stats.tradeHistory = tradesData.trades.slice(0, 50);
-                        updateTradeHistory();
-                    }
+                    try {
+                        const tradesData = await tradesRes.json();
+                        if (tradesData.success && tradesData.trades) {
+                            stats.tradeHistory = tradesData.trades.slice(0, 50);
+                            updateTradeHistory();
+                            debugLog('✅ Historique restauré', `${tradesData.trades.length} trades`);
+                        }
                     } catch (e) {
                         console.error('Erreur historique:', e);
                     }
@@ -4773,23 +4775,23 @@
                 
                 // Traiter position (avec délai de grâce SocketIO)
                 if (positionRes && positionRes.ok) {
-                try {
-                    const positionData = await positionRes.json();
-                    if (positionData.success && positionData.active && positionData.position) {
-                        // 🔥 MITIGATION: Délai de grâce de 2 secondes pour éviter race condition SocketIO
-                        restoreTimeout = setTimeout(() => {
-                            // Vérifier à nouveau si position fermée récemment
-                            const recentClose = socketioEvents.find(e => 
-                                e.type === 'closed' && (Date.now() - e.time) < 2000
-                            );
-                            
-                            if (!recentClose) {
-                                restoreActivePositionFromData(positionData.position);
-                            } else {
-                                console.log('⚠️ Position fermée pendant délai de grâce, restauration annulée');
-                            }
-                        }, 2000);  // 2 secondes de délai
-                    }
+                    try {
+                        const positionData = await positionRes.json();
+                        if (positionData.success && positionData.active && positionData.position) {
+                            // 🔥 MITIGATION: Délai de grâce de 2 secondes pour éviter race condition SocketIO
+                            restoreTimeout = setTimeout(() => {
+                                // Vérifier à nouveau si position fermée récemment
+                                const recentClose = socketioEvents.find(e => 
+                                    e.type === 'closed' && (Date.now() - e.time) < 2000
+                                );
+                                
+                                if (!recentClose) {
+                                    restoreActivePositionFromData(positionData.position);
+                                } else {
+                                    console.log('⚠️ Position fermée pendant délai de grâce, restauration annulée');
+                                }
+                            }, 2000);  // 2 secondes de délai
+                        }
                     } catch (e) {
                         console.error('Erreur position:', e);
                     }
