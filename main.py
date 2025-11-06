@@ -67,9 +67,24 @@ def get_trade_history_file():
 
 TRADE_HISTORY_FILE = None  # Sera initialisé au démarrage
 
+# 🔥 PHASE 8: Instance globale TradeDatabase
+trade_db = None
+
+def init_trade_database():
+    """Initialiser base de données SQLite"""
+    global trade_db
+    if TradeDatabase and not trade_db:
+        try:
+            trade_db = TradeDatabase()
+            logger.info("✅ Base de données SQLite initialisée")
+        except Exception as e:
+            logger.error(f"❌ Erreur initialisation DB: {e}")
+            trade_db = None
+
 def save_trade_history():
-    """Sauvegarder l'historique des trades dans un fichier JSON"""
-    global TRADE_HISTORY_FILE
+    """Sauvegarder l'historique des trades dans un fichier JSON et SQLite"""
+    global TRADE_HISTORY_FILE, trade_db
+    
     if TRADE_HISTORY_FILE is None:
         TRADE_HISTORY_FILE = get_trade_history_file()
     
@@ -85,7 +100,7 @@ def save_trade_history():
             os.rename(temp_file, TRADE_HISTORY_FILE)
         logger.debug(f"✅ Historique sauvegardé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
     except Exception as e:
-        logger.error(f"❌ Erreur sauvegarde historique: {e}")
+        logger.error(f"❌ Erreur sauvegarde historique JSON: {e}")
         # Nettoyer fichier temporaire en cas d'erreur
         temp_file = TRADE_HISTORY_FILE + ".tmp"
         if os.path.exists(temp_file):
@@ -93,6 +108,24 @@ def save_trade_history():
                 os.remove(temp_file)
             except:
                 pass
+    
+    # 🔥 PHASE 8: Sauvegarder aussi en SQLite (si activé)
+    if trade_db and app_state['trade_history']:
+        try:
+            # Sauvegarder uniquement le dernier trade (éviter doublons)
+            last_trade = app_state['trade_history'][0] if app_state['trade_history'] else None
+            if last_trade:
+                # Vérifier si déjà en DB (par timestamp)
+                existing = trade_db.get_trades_by_date_range(
+                    last_trade.get('date', ''),
+                    last_trade.get('date', '')
+                )
+                # Si pas déjà présent, insérer
+                if not any(t.get('timestamp') == last_trade.get('timestamp') for t in existing):
+                    trade_db.insert_trade(last_trade)
+                    logger.debug(f"✅ Trade sauvegardé en DB: {last_trade.get('symbol')}")
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde DB: {e}")
 
 def load_trade_history():
     """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""

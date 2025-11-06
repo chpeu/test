@@ -28,6 +28,16 @@ class TechnicalAnalyzer:
         self._spread_cache: Dict[str, Dict] = {}
         # 🔥 PHASE 2: Cache orderbook (2 secondes)
         self._orderbook_cache: Dict[str, Dict] = {}
+        # 🔥 PHASE 8: Corrélation dynamique
+        from core.correlation_dynamic import DynamicCorrelationFilter
+        dynamic_corr_config = TRADING_CONFIG.get('dynamic_correlation', {})
+        if dynamic_corr_config.get('enabled', False):
+            self.correlation_filter = DynamicCorrelationFilter(
+                period=dynamic_corr_config.get('period', 50),
+                threshold=dynamic_corr_config.get('threshold', 0.7)
+            )
+        else:
+            self.correlation_filter = None
     
     async def calculate_trend_data(self, symbol: str, timeframe: str = '15m') -> Optional[Dict]:
         """
