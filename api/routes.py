@@ -294,6 +294,31 @@ async def get_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/backtest")
+async def backtest_info():
+    """
+    Info endpoint backtest (GET)
+    
+    Cet endpoint nécessite POST. Utilisez POST avec body JSON.
+    """
+    return {
+        'error': 'Method Not Allowed',
+        'message': 'Cet endpoint nécessite POST. Utilisez POST /api/backtest avec body JSON.',
+        'example': {
+            'method': 'POST',
+            'url': '/api/backtest',
+            'body': {
+                'symbols': ['BTC/USDT:USDT'],
+                'start_date': '2025-01-01',
+                'end_date': '2025-02-01',
+                'initial_capital': 1000.0,
+                'config': {}
+            }
+        },
+        'documentation': 'Voir URLS_DISPONIBLES.md pour plus de détails'
+    }
+
+
 @router.post("/backtest")
 @rate_limit
 async def run_backtest(
@@ -339,6 +364,31 @@ async def run_backtest(
     except Exception as e:
         logger.error(f"❌ Erreur POST /api/backtest: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/optimize")
+async def optimize_info():
+    """
+    Info endpoint optimize (GET)
+    
+    Cet endpoint nécessite POST. Utilisez POST avec body JSON.
+    """
+    return {
+        'error': 'Method Not Allowed',
+        'message': 'Cet endpoint nécessite POST. Utilisez POST /api/optimize avec body JSON.',
+        'example': {
+            'method': 'POST',
+            'url': '/api/optimize',
+            'body': {
+                'symbols': ['BTC/USDT:USDT'],
+                'start_date': '2025-01-01',
+                'end_date': '2025-02-01',
+                'n_trials': 100,
+                'initial_capital': 1000.0
+            }
+        },
+        'documentation': 'Voir URLS_DISPONIBLES.md pour plus de détails'
+    }
 
 
 @router.post("/optimize")

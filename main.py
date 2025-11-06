@@ -964,6 +964,15 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    """Favicon (évite 404)"""
+    from fastapi.responses import Response
+    # Retourner un favicon vide (1x1 pixel transparent)
+    # En production, tu peux ajouter un vrai favicon.ico dans static/
+    return Response(content=b'', media_type='image/x-icon')
+
+
 @app.get("/dashboard/charts", response_class=HTMLResponse)
 async def dashboard_charts(request: Request):
     """🔥 ARCHITECTURE V2: Dashboard graphiques avec Chart.js"""
