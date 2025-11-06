@@ -1392,6 +1392,11 @@ class TechnicalAnalyzer:
             # Récupérer orderbook (top 10)
             orderbook = await self.client.fetch_order_book(symbol, limit=10)
             
+            # 🔥 FIX: Vérifier que orderbook n'est pas None
+            if orderbook is None:
+                logger.warning(f"⚠️ Orderbook None pour {symbol}, retour valeur par défaut")
+                return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}
+            
             bids = orderbook.get('bids', [])[:10] if orderbook.get('bids') else []
             asks = orderbook.get('asks', [])[:10] if orderbook.get('asks') else []
             
