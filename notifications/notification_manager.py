@@ -12,7 +12,7 @@ Fonctionnalités :
 
 import asyncio
 import logging
-from typing import Optional, Dict, List, Callable
+from typing import Optional, Dict, List, Callable, Union
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 import time
@@ -275,7 +275,7 @@ class NotificationManager:
 
 def create_notification_manager(
     telegram_bot_token: Optional[str] = None,
-    telegram_chat_id: Optional[str] = None,
+    telegram_chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
     socketio_callback: Optional[Callable] = None,
     enable_batching: bool = True
 ) -> NotificationManager:

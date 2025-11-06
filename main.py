@@ -1030,6 +1030,90 @@ async def api_status():
     return JSONResponse(app_state)
 
 
+@app.get("/api/state")
+async def api_get_complete_state():
+    """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
+    init_instances()
+    from config import TRADING_CONFIG
+    
+    # Récupérer position active
+    import time
+    active_position_dict = None
+    if position_manager and position_manager.active_position:
+        active_position = position_manager.active_position
+        active_position_dict = active_position.to_dict()
+        active_position_dict['timestamp'] = time.time()
+    
+    # Récupérer stats depuis Analytics DB
+    stats_dict = {
+        'total_trades': 0,
+        'wins': 0,
+        'losses': 0,
+        'winrate': 0.0
+    }
+    if analytics_db:
+        try:
+            trades = analytics_db.get_trades(limit=10000)
+            if trades:
+                total = len(trades)
+                wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                losses = total - wins
+                winrate = (wins / total * 100) if total > 0 else 0.0
+                stats_dict = {
+                    'total_trades': total,
+                    'wins': wins,
+                    'losses': losses,
+                    'winrate': winrate
+                }
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération stats: {e}")
+    
+    # Récupérer historique trades
+    trades_history = []
+    if analytics_db:
+        try:
+            trades_history = analytics_db.get_trades(limit=50)
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération historique: {e}")
+    
+    return JSONResponse({
+        'success': True,
+        'config': {
+            # Seuils configurables
+            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+            'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+            'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+            'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+            # Trend timeframe
+            'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+            # Capital
+            'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+            'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+            # Confluence
+            'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+            # TP/SL Mode
+            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+            'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+            'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+            # Volume multiplier
+            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+            # Min score
+            'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+        },
+        'scanner': {
+            'is_scanning': app_state.get('is_scanning', False),
+            'top_pairs': app_state.get('top_pairs', [])
+        },
+        'position': {
+            'active': active_position_dict is not None,
+            'data': active_position_dict
+        },
+        'stats': stats_dict,
+        'trades': trades_history,
+        'timestamp': time.time()
+    })
+
+
 @app.post("/api/start")
 async def api_start():
     """Démarrer le scanner et le scheduler"""
