@@ -1,0 +1,101 @@
+[
+  {
+    "timestamp": "2025-11-06T00:35:24.708588",
+    "date": "2025-11-06",
+    "time": "00:35:24",
+    "symbol": "TRUMPOFFICIAL/USDT:USDT",
+    "direction": "LONG",
+    "entry": 8.066,
+    "exit": 8.072,
+    "gross_pnl_pct": 0.07,
+    "gross_pnl_usdt": 0.0223,
+    "net_pnl_pct": 0.07,
+    "net_pnl_usdt": 0.0223,
+    "fees": 0,
+    "slippage": 0.02,
+    "total_costs": 0.02,
+    "reason": "MANUAL",
+    "duration": 49,
+    "condition_types": [
+      "EMAs",
+      "Volume",
+      "MACD",
+      "ADX_DI"
+    ]
+  },
+  {
+    "timestamp": "2025-11-06T00:34:12.166678",
+    "date": "2025-11-06",
+    "time": "00:34:12",
+    "symbol": "TRUMPOFFICIAL/USDT:USDT",
+    "direction": "LONG",
+    "entry": 8.101,
+    "exit": 8.080747,
+    "gross_pnl_pct": -0.25,
+    "gross_pnl_usdt": -0.075,
+    "net_pnl_pct": -0.25,
+    "net_pnl_usdt": -0.075,
+    "fees": 0,
+    "slippage": 0.02,
+    "total_costs": 0.02,
+    "reason": "SL",
+    "duration": 116,
+    "condition_types": [
+      "EMAs",
+      "Volume",
+      "MACD",
+      "ADX_DI",
+      "Pattern"
+    ]
+  },
+  {
+    "timestamp": "2025-11-06T00:31:35.113571",
+    "date": "2025-11-06",
+    "time": "00:31:35",
+    "symbol": "ADA/USDT:USDT",
+    "direction": "LONG",
+    "entry": 0.5465,
+    "exit": 0.547455,
+    "gross_pnl_pct": 0.23,
+    "gross_pnl_usdt": 0.0701,
+    "net_pnl_pct": 0.23,
+    "net_pnl_usdt": 0.0701,
+    "fees": 0,
+    "slippage": 0.04,
+    "total_costs": 0.04,
+    "reason": "TS",
+    "duration": 1494,
+    "condition_types": [
+      "EMAs",
+      "Volume",
+      "ADX_DI",
+      "Pattern"
+    ]
+  },
+  {
+    "timestamp": "2025-11-06T00:03:27.168853",
+    "date": "2025-11-06",
+    "time": "00:03:27",
+    "symbol": "SOL/USDT:USDT",
+    "direction": "LONG",
+    "entry": 162.71,
+    "exit": 162.303225,
+    "gross_pnl_pct": -0.25,
+    "gross_pnl_usdt": -0.075,
+    "net_pnl_pct": -0.25,
+    "net_pnl_usdt": -0.075,
+    "fees": 0,
+    "slippage": 0.01,
+    "total_costs": 0.01,
+    "reason": "SL",
+    "duration": 358,
+    "condition_types": [
+      "EMAs",
+      "Volume",
+      "MACD",
+      "ADX_DI",
+      "Pattern",
+      "Divergence"
+    ]
+  }
+]

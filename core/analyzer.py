@@ -741,6 +741,7 @@ class TechnicalAnalyzer:
                 'signals': conditions,
                 'condition_types': condition_types,  # 🔥 PHASE 5: Types de conditions pour métriques
                 'totalScore': final_score,  # 🔥 PHASE 2: Score total pour position sizing
+                'min_score_required': min_score_required,  # 🔥 PHASE 6: Score minimum requis (pour Recovery Mode)
                 'timeframe': timeframe,
                 'volatility': atr / price if price > 0 else 0,
                 'atr': atr,
@@ -767,7 +768,9 @@ class TechnicalAnalyzer:
         trend_data: Optional[Dict] = None,
         volume_multiplier: float = 1.0,
         use_confluence: bool = False,
-        return_reason: bool = False
+        return_reason: bool = False,
+        active_positions: Optional[List[str]] = None,
+        position_manager = None
     ) -> Optional[Dict]:
         """
         Analyse une paire sur 1m et 5m
@@ -895,6 +898,68 @@ class TechnicalAnalyzer:
                         f"Manipulation suspectée ({manipulation_check['reason']})"
                     )
                     return None
+                
+                # 🔥 PHASE 6: Vérifier corrélation avec positions actives
+                if active_positions:
+                    correlation_check = await self._check_correlation(symbol, active_positions)
+                    
+                    if not correlation_check['valid']:
+                        # HARD mode: Rejeter
+                        logger.warning(f"⚠️ {symbol} - Setup rejeté: {correlation_check['reason']}")
+                        if return_reason:
+                            return {'reason': correlation_check['reason'], 'symbol': symbol}
+                        return None
+                    elif correlation_check.get('penalty', 0) != 0:
+                        # SOFT mode: Appliquer pénalité au score
+                        penalty = correlation_check['penalty']
+                        if 'totalScore' in best_setup:
+                            best_setup['totalScore'] += penalty
+                            logger.info(f"⚠️ {symbol} - Corrélation (SOFT): Score {best_setup['totalScore']:.1f} après pénalité {penalty}")
+                
+                # 🔥 PHASE 6: Recovery Mode - Ajuster score minimum et confluence
+                recovery_config = TRADING_CONFIG.get('recovery_mode', {})
+                min_score_required = best_setup.get('min_score_required', TRADING_CONFIG.get('min_score_required', 7.5))
+                
+                if recovery_config.get('enabled', False) and position_manager:
+                    recovery_mode_active = position_manager.config.recovery_mode_active if hasattr(position_manager, 'config') else False
+                    
+                    if recovery_mode_active:
+                        recovery_boost = recovery_config.get('min_score_boost', 1.5)
+                        adjusted_min_score = min_score_required + recovery_boost
+                        
+                        # Forcer confluence si configuré
+                        if recovery_config.get('confluence_forced', False):
+                            use_confluence = True
+                            # Vérifier que confluence est respectée
+                            if not (analysis_1m and analysis_5m and 
+                                    not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) and 
+                                    not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m)):
+                                logger.warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode): Confluence requise")
+                                if return_reason:
+                                    return {'reason': 'Recovery Mode: Confluence requise', 'symbol': symbol}
+                                return None
+                        
+                        # Vérifier score avec boost
+                        setup_score = best_setup.get('totalScore', 0)
+                        if setup_score < adjusted_min_score:
+                            logger.warning(
+                                f"⚠️ {symbol} - Setup rejeté (Recovery Mode): "
+                                f"Score {setup_score:.1f} < {adjusted_min_score:.1f} (min: {min_score_required:.1f} + boost: {recovery_boost:.1f})"
+                            )
+                            if return_reason:
+                                return {
+                                    'reason': f'Recovery Mode: Score insuffisant ({setup_score:.1f} < {adjusted_min_score:.1f})',
+                                    'symbol': symbol
+                                }
+                            return None
+                        
+                        logger.info(
+                            f"✅ {symbol} - Setup validé (Recovery Mode): "
+                            f"Score {setup_score:.1f} >= {adjusted_min_score:.1f}"
+                        )
+                
+                # Mettre à jour min_score_required dans le setup
+                best_setup['min_score_required'] = min_score_required
                 
                 return best_setup
             
@@ -1175,6 +1240,92 @@ class TechnicalAnalyzer:
             
             return {'coherent': True, 'reason': 'Cohérente', 'quality': quality}
     
+    async def _check_correlation(self, symbol: str, active_positions: Optional[List[str]]) -> Dict:
+        """
+        🔥 PHASE 6: Vérifier si le symbole est corrélé avec des positions actives
+        
+        Args:
+            symbol: Symbole de la paire (ex: BTC/USDT:USDT)
+            active_positions: Liste des symboles de positions actives
+            
+        Returns:
+            Dict avec valid (bool), reason (str si rejeté), group (str si trouvé), penalty (float si SOFT)
+        """
+        from config import TRADING_CONFIG
+        
+        correlation_config = TRADING_CONFIG.get('correlation_filter', {})
+        if not correlation_config.get('enabled', False):
+            return {'valid': True, 'reason': None, 'group': None, 'penalty': 0.0}
+        
+        if not active_positions:
+            return {'valid': True, 'reason': None, 'group': None, 'penalty': 0.0}
+        
+        # Extraire le symbole de base (ex: BTC/USDT:USDT → BTC)
+        base_symbol = symbol.split('/')[0].split(':')[0].upper()
+        
+        # Identifier le groupe de corrélation
+        groups = correlation_config.get('groups', {})
+        symbol_group = None
+        
+        for group_name, group_symbols in groups.items():
+            for group_symbol in group_symbols:
+                if group_symbol.upper() in base_symbol or base_symbol in group_symbol.upper():
+                    symbol_group = group_name
+                    break
+            if symbol_group:
+                break
+        
+        if not symbol_group:
+            # Pas de groupe = OK
+            return {'valid': True, 'reason': None, 'group': None, 'penalty': 0.0}
+        
+        # Compter les positions actives dans le même groupe
+        count_in_group = 0
+        correlated_symbols = []
+        
+        for active_symbol in active_positions:
+            active_base = active_symbol.split('/')[0].split(':')[0].upper()
+            group_symbols = groups.get(symbol_group, [])
+            
+            for group_symbol in group_symbols:
+                if group_symbol.upper() in active_base or active_base in group_symbol.upper():
+                    count_in_group += 1
+                    correlated_symbols.append(active_symbol)
+                    break
+        
+        max_positions = correlation_config.get('max_positions_per_group', 1)
+        mode = correlation_config.get('mode', 'HARD')
+        
+        if mode == 'SOFT':
+            # SOFT mode: Appliquer pénalité au score
+            if count_in_group >= max_positions:
+                penalty = correlation_config.get('penalty_score', -1.5)
+                reason = f"Corrélation avec {', '.join(correlated_symbols[:2])} (groupe: {symbol_group})"
+                logger.warning(f"⚠️ {symbol} - Corrélation détectée (SOFT mode): {reason} - Pénalité: {penalty}")
+                return {
+                    'valid': True,  # Toujours valide en SOFT mode
+                    'reason': reason,
+                    'group': symbol_group,
+                    'penalty': penalty,
+                    'correlated_count': count_in_group
+                }
+            else:
+                return {'valid': True, 'reason': None, 'group': symbol_group, 'penalty': 0.0}
+        else:
+            # HARD mode: Rejeter si max atteint
+            if count_in_group >= max_positions:
+                reason = f"Corrélation avec {', '.join(correlated_symbols[:2])} (groupe: {symbol_group}, max: {max_positions})"
+                logger.warning(f"⚠️ {symbol} - Setup rejeté (HARD mode): {reason}")
+                return {
+                    'valid': False,
+                    'reason': reason,
+                    'group': symbol_group,
+                    'penalty': 0.0,
+                    'correlated_count': count_in_group
+                }
+            else:
+                return {'valid': True, 'reason': None, 'group': symbol_group, 'penalty': 0.0}
+    
     async def _check_orderbook_imbalance(self, symbol: str, direction: str) -> Dict:
         """
         Vérifier imbalance orderbook (bid/ask ratio)
@@ -1385,4 +1536,5 @@ class TechnicalAnalyzer:
     async def close(self):
         """Ferme les connexions"""
         await self.client.close()
+
 

@@ -33,12 +33,6 @@ TRADING_CONFIG = {
     "atr_min": 0.15,  # %
     "atr_max": 1.5,  # %
     
-    # Optimal ATR filter (configurables via /api/config)
-    "optimal_atr_min_1m": 0.10,  # 🔥 Ajusté: Plus permissif (était 0.15)
-    "optimal_atr_max_1m": 0.8,
-    "optimal_atr_min_5m": 0.20,  # 🔥 Ajusté: Plus permissif (était 0.3)
-    "optimal_atr_max_5m": 1.5,
-    
     # Trend timeframe pour calculer trend_data (bonus)
     "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
     
@@ -49,16 +43,23 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 3: Pondération des conditions (système de score)
     "use_weighted_scoring": True,  # Activer le système de score pondéré
-    "min_score_required": 7.5,  # Score minimum requis (au lieu de min_conditions)
+    "min_score_required": 7.5,  # Score minimum requis (au lieu de min_conditions) - 🔥 Valeur mise à jour
     "min_score_adx_high": 7.0,  # Score minimum si ADX > 30
     "min_score_adx_low": 8.0,  # Score minimum si ADX < 25
     
-    # Phase 1+2: New filters (configurable)
-    "snr_threshold": 0.3,  # Signal-to-Noise Ratio minimum
-    "breakout_threshold": 0.3,  # Breakout multiplier (ATR * threshold)
-    "wick_ratio_max": 2.5,  # Max wick ratio before rejection
-    "di_gap_min": 5,  # Minimum DI+ - DI- gap
+    # Phase 1+2: New filters (configurable) - 🔥 Valeurs mises à jour
+    "snr_threshold": 0.25,  # Signal-to-Noise Ratio minimum (était 0.3)
+    "breakout_threshold": 0.35,  # Breakout multiplier (ATR * threshold) (était 0.3)
+    "wick_ratio_max": 2.8,  # Max wick ratio before rejection (était 2.5)
+    "di_gap_min": 4.0,  # Minimum DI+ - DI- gap (était 5)
     "di_gap_adx_threshold": 25,  # ADX threshold for DI gap
+    
+    # Optimal ATR filter (configurables via /api/config) - 🔥 Valeurs mises à jour
+    "optimal_atr_min_1m": 0.12,  # 🔥 Ajusté (était 0.10)
+    "optimal_atr_max_1m": 0.75,  # 🔥 Ajusté (était 0.8)
+    "optimal_atr_min_5m": 0.22,  # 🔥 Ajusté (était 0.20)
+    "optimal_atr_max_5m": 1.4,  # 🔥 Ajusté (était 1.5)
+    "volume_multiplier": 0.95,  # 🔥 Ajusté (était 1.0)
     
     # Scalability scanner
     "top_pairs_limit": 20,
@@ -102,6 +103,72 @@ TRADING_CONFIG = {
         "streak_multipliers": {
             "win_streak_3+": 1.1,   # Win streak ≥ 3
             "loss_streak_2+": 0.85  # Loss streak ≥ 2
+        }
+    },
+    
+    # 🔥 PHASE 6: Correlation Filter
+    "correlation_filter": {
+        "enabled": True,
+        "mode": "SOFT",  # SOFT ou HARD
+        "max_positions_per_group": 2,  # Maximum 2 positions par groupe (SOFT mode)
+        "penalty_score": -1.5,  # Pénalité si corrélé (SOFT mode)
+        "groups": {
+            "BTC_GROUP": ["BTC", "ETH", "BNB", "SOL"],
+            "MEME_GROUP": ["DOGE", "SHIB", "PEPE", "FLOKI", "BONK"],
+            "LAYER1_GROUP": ["ADA", "DOT", "AVAX", "NEAR", "ATOM", "ALGO"],
+            "DEFI_GROUP": ["UNI", "AAVE", "SUSHI", "LINK", "MKR", "CRV"],
+            "L2_GROUP": ["MATIC", "ARB", "OP", "STRK", "IMX"],
+            "EXCHANGE_GROUP": ["BNB", "FTT", "HT", "OKB"],
+            "STABLECOIN_GROUP": ["USDC", "USDT", "DAI", "BUSD"],
+        }
+    },
+    
+    # 🔥 PHASE 6: Recovery Mode
+    "recovery_mode": {
+        "enabled": True,
+        "trigger_loss_streak": 3,     # Activer après 3 losses
+        "min_score_boost": 1.5,       # Score requis +1.5 points (réduit de 2.5)
+        "position_size_reduction": 0.7,  # Taille -30% (au lieu de -50%)
+        "confluence_forced": False,    # Ne pas forcer confluence (garder opportunités)
+        "duration_trades": 5,         # Dure 5 trades
+    },
+    
+    # 🔥 PHASE 7: TP Escalier (Multi-Level TP)
+    "tp_escalier": {
+        "enabled": False,  # Activé uniquement si tp_sl_mode = "TP_MULTI"
+        "levels": [
+            {"pnl": 0.20, "size_pct": 0.25, "move_sl": "entry"},      # 25% à +0.20%
+            {"pnl": 0.35, "size_pct": 0.25, "move_sl": "breakeven"},  # 25% à +0.35%
+            {"pnl": 0.50, "size_pct": 0.25, "move_sl": "trailing"},  # 25% à +0.50%
+            {"pnl": 0.80, "size_pct": 0.25, "move_sl": "trailing"},  # 25% à +0.80%
+        ]
+    },
+    
+    # 🔥 PHASE 8: Advanced Invalidation
+    "advanced_invalidation": {
+        "enabled": True,
+        "stagnation_mode": {
+            "enabled": True,
+            "min_elapsed": 60,
+            "stagnation_time": 45,
+            "stagnation_threshold": 0.02,
+            "only_if_not_profitable": True,
+            "min_pnl_for_stagnation": -0.05,
+        },
+        "momentum_mode": {
+            "enabled": True,
+            "min_elapsed": 30,
+            "lookback_periods": 5,
+            "momentum_threshold": -0.01,
+            "only_if_not_profitable": True,
+            "min_pnl_for_momentum": -0.03,
+        },
+        "adaptive_thresholds": {
+            "enabled": True,
+            "atr_multiplier": 0.5,
+            "min_threshold": -0.10,
+            "max_threshold": -0.20,
+            "min_elapsed": 30,
         }
     },
 }

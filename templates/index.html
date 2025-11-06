@@ -293,10 +293,10 @@
                 <div class="config-group">
                     <div class="config-label">🎚️ VOLUME MULTIPLIER</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                        <input type="range" id="volumeMultiplierSlider" min="0.10" max="2.00" step="0.05" value="1.00" 
+                        <input type="range" id="volumeMultiplierSlider" min="0.10" max="2.00" step="0.05" value="0.95" 
                                style="width: 200px; height: 20px; cursor: pointer;" 
                                oninput="volumeMultiplier = parseFloat(this.value); var el = document.getElementById('volumeMultiplierValue'); if (el) el.textContent = volumeMultiplier.toFixed(2); updateVolumeMultiplierConfig(volumeMultiplier, false);">
-                        <span id="volumeMultiplierValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">1.00</span>
+                        <span id="volumeMultiplierValue" style="color: #00ff88; font-weight: bold; min-width: 50px;">0.95</span>
                         <span style="color: #888; font-size: 11px;">&lt;1 permissif | &gt;1 strict</span>
                     </div>
                     <div id="volumeStats" style="margin-top: 8px; padding: 8px; background: #0a0e27; border-radius: 5px; border: 1px solid #2a3a6b; font-size: 11px; color: #888; text-align: center;">
@@ -311,7 +311,7 @@
                         <select id="tpSlModeSelect" onchange="changeTPslMode(this.value);" style="width: 200px;">
                             <option value="FIXE" selected>FIXE</option>
                             <option value="ATR">ATR Simple</option>
-                            <option value="ATR_MULTI">ATR Multi</option>
+                            <option value="TP_MULTI">TP Multi (Escalier)</option>
                         </select>
                         <span id="atrModeStatus" style="color: #888; font-weight: bold;">FIXE</span>
                         <span style="color: #888; font-size: 10px;">(TP/SL adaptatif vs fixe vs multi)</span>
@@ -360,10 +360,10 @@
                 <div class="config-group">
                     <div class="config-label">🔊 SNR</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                        <input type="range" id="snrSlider" min="0.1" max="1.0" step="0.05" value="0.3" 
+                        <input type="range" id="snrSlider" min="0.1" max="1.0" step="0.05" value="0.25" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
                                oninput="snrThreshold = parseFloat(this.value); var el = document.getElementById('snrValue'); if (el) el.textContent = snrThreshold.toFixed(2); updateConfigThreshold('snr_threshold', snrThreshold);">
-                        <span id="snrValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.30</span>
+                        <span id="snrValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.25</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Signal/Bruit</span>
                 </div>
@@ -371,10 +371,10 @@
                 <div class="config-group">
                     <div class="config-label">🚀 Breakout</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                        <input type="range" id="breakoutSlider" min="0.1" max="1.0" step="0.05" value="0.3" 
+                        <input type="range" id="breakoutSlider" min="0.1" max="1.0" step="0.05" value="0.35" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
                                oninput="breakoutThreshold = parseFloat(this.value); var el = document.getElementById('breakoutValue'); if (el) el.textContent = breakoutThreshold.toFixed(2); updateConfigThreshold('breakout_threshold', breakoutThreshold);">
-                        <span id="breakoutValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.30</span>
+                        <span id="breakoutValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">0.35</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">× ATR</span>
                 </div>
@@ -382,10 +382,10 @@
                 <div class="config-group">
                     <div class="config-label">🕯️ Wick Ratio</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                        <input type="range" id="wickSlider" min="1.5" max="5.0" step="0.1" value="2.5" 
+                        <input type="range" id="wickSlider" min="1.5" max="5.0" step="0.1" value="2.8" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
                                oninput="wickRatioMax = parseFloat(this.value); var el = document.getElementById('wickValue'); if (el) el.textContent = wickRatioMax.toFixed(1); updateConfigThreshold('wick_ratio_max', wickRatioMax);">
-                        <span id="wickValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">2.5</span>
+                        <span id="wickValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">2.8</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Max</span>
                 </div>
@@ -393,10 +393,10 @@
                 <div class="config-group">
                     <div class="config-label">📊 DI Gap</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                        <input type="range" id="diGapSlider" min="3" max="10" step="0.5" value="5.0" 
+                        <input type="range" id="diGapSlider" min="3" max="10" step="0.5" value="4.0" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
                                oninput="diGapMin = parseFloat(this.value); var el = document.getElementById('diGapValue'); if (el) el.textContent = diGapMin.toFixed(1); updateConfigThreshold('di_gap_min', diGapMin);">
-                        <span id="diGapValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">5.0</span>
+                        <span id="diGapValue" style="color: #00ff88; font-weight: bold; min-width: 40px; font-size: 12px;">4.0</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Min</span>
                 </div>
@@ -404,10 +404,10 @@
                 <div class="config-group">
                     <div class="config-label">📈 ATR Optimal Min</div>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                        <input type="range" id="atrOptimalSlider" min="0.05" max="1.0" step="0.01" value="0.10" 
+                        <input type="range" id="atrOptimalSlider" min="0.05" max="1.0" step="0.01" value="0.12" 
                                style="width: 150px; height: 20px; cursor: pointer;" 
                                oninput="optimalAtrMin1m = parseFloat(this.value); var el = document.getElementById('atrOptimalValue'); if (el) el.textContent = optimalAtrMin1m.toFixed(2) + '%'; updateConfigThreshold('optimal_atr_min_1m', optimalAtrMin1m);">
-                        <span id="atrOptimalValue" style="color: #00ff88; font-weight: bold; min-width: 50px; font-size: 12px;">0.10%</span>
+                        <span id="atrOptimalValue" style="color: #00ff88; font-weight: bold; min-width: 50px; font-size: 12px;">0.12%</span>
                     </div>
                     <span style="color: #888; font-size: 10px;">Seuil min 1m (0.05-1.0%)</span>
                 </div>
@@ -998,14 +998,14 @@
         var useSlippageCalculation = true;  // Slippage dynamique activé
         
         // 🔥 NOUVEAU v3.7: Multiplicateur volume à la volée
-        var volumeMultiplier = 1.0;  // 1.0 = ATR pur, <1 = plus permissif, >1 = plus strict
+        var volumeMultiplier = 0.95;  // 🔥 Valeur mise à jour: 0.95 (était 1.0)
         
-        // 🔥 Phase 1+2: Seuils configurables
-        var snrThreshold = 0.3;         // SNR Filter (Signal-to-Noise Ratio)
-        var breakoutThreshold = 0.3;    // Breakout multiplier (× ATR)
-        var wickRatioMax = 2.5;         // Wick Ratio max
-        var diGapMin = 5.0;             // DI Gap minimum
-        var optimalAtrMin1m = 0.10;     // ATR Optimal minimum 1m (en %)
+        // 🔥 Phase 1+2: Seuils configurables - Valeurs synchronisées avec config.py
+        var snrThreshold = 0.25;         // SNR Filter (Signal-to-Noise Ratio) - 🔥 Mis à jour: 0.25 (était 0.3)
+        var breakoutThreshold = 0.35;    // Breakout multiplier (× ATR) - 🔥 Mis à jour: 0.35 (était 0.3)
+        var wickRatioMax = 2.8;         // Wick Ratio max - 🔥 Mis à jour: 2.8 (était 2.5)
+        var diGapMin = 4.0;             // DI Gap minimum - 🔥 Mis à jour: 4.0 (était 5.0)
+        var optimalAtrMin1m = 0.12;     // ATR Optimal minimum 1m (en %) - 🔥 Mis à jour: 0.12 (était 0.10)
         
         // 🔥 NOUVEAU v3.7: Stats volume en temps réel
         var volumeStats = {
@@ -1166,10 +1166,10 @@
                     atrModeEl.textContent = 'ATR SIMPLE';
                     atrModeEl.style.color = '#00ff88';
                 }
-            } else if (mode === 'ATR_MULTI') {
-                useATRMulti = true;
+            } else if (mode === 'TP_MULTI') {
+                useATRMulti = true;  // Legacy variable name, keep for compatibility
                 if (atrModeEl) {
-                    atrModeEl.textContent = 'ATR MULTI';
+                    atrModeEl.textContent = 'TP MULTI (ESCALIER)';
                     atrModeEl.style.color = '#00aaff';
                 }
             } else {  // FIXE
@@ -1414,7 +1414,7 @@
             breakEvenSet = false;  // 🔥 Reset flag break-even
             partialTPSold = false; // 🔥 Reset flag TP partiel
             
-            // 🔥 NOUVEAU v4.2: Calculer SL/TP selon mode (FIXE, ATR ou ATR_MULTI)
+            // 🔥 PHASE 7: Calculer SL/TP selon mode (FIXE, ATR ou TP_MULTI)
             var entryPrice = parseFloat(setup.entry);
             
             if ((useATR || useATRMulti) && setup.atr) {
@@ -4529,9 +4529,58 @@
         
         // Tous les boutons obsolètes ont été supprimés
         
+        // 🔥 PHASE 6: Fonction pour charger la configuration depuis le serveur
+        async function loadConfigFromServer() {
+            try {
+                const response = await fetch('/api/config');
+                if (!response.ok) return;
+                
+                const config = await response.json();
+                
+                // Synchroniser les variables JavaScript
+                if (config.snr_threshold !== undefined) {
+                    snrThreshold = config.snr_threshold;
+                    document.getElementById('snrSlider').value = snrThreshold;
+                    document.getElementById('snrValue').textContent = snrThreshold.toFixed(2);
+                }
+                if (config.breakout_threshold !== undefined) {
+                    breakoutThreshold = config.breakout_threshold;
+                    document.getElementById('breakoutSlider').value = breakoutThreshold;
+                    document.getElementById('breakoutValue').textContent = breakoutThreshold.toFixed(2);
+                }
+                if (config.wick_ratio_max !== undefined) {
+                    wickRatioMax = config.wick_ratio_max;
+                    document.getElementById('wickSlider').value = wickRatioMax;
+                    document.getElementById('wickValue').textContent = wickRatioMax.toFixed(1);
+                }
+                if (config.di_gap_min !== undefined) {
+                    diGapMin = config.di_gap_min;
+                    document.getElementById('diGapSlider').value = diGapMin;
+                    document.getElementById('diGapValue').textContent = diGapMin.toFixed(1);
+                }
+                if (config.optimal_atr_min_1m !== undefined) {
+                    optimalAtrMin1m = config.optimal_atr_min_1m;
+                    document.getElementById('atrOptimalSlider').value = optimalAtrMin1m;
+                    document.getElementById('atrOptimalValue').textContent = optimalAtrMin1m.toFixed(2) + '%';
+                }
+                if (config.volume_multiplier !== undefined) {
+                    volumeMultiplier = config.volume_multiplier;
+                    document.getElementById('volumeMultiplierSlider').value = volumeMultiplier;
+                    document.getElementById('volumeMultiplierValue').textContent = volumeMultiplier.toFixed(2);
+                }
+                
+                debugLog('✅ Config chargée', 'Valeurs synchronisées depuis le serveur');
+            } catch (error) {
+                console.error('Erreur chargement config:', error);
+            }
+        }
+        
         // 🔥 NOUVEAU v5.2: Ne plus restaurer d'état au chargement (reset à chaque fois)
         window.addEventListener('load', function() {
             debugLog('🚀 APP LOADED', 'Scanner prêt à démarrer');
+            
+            // 🔥 PHASE 6: Charger config depuis serveur au démarrage
+            loadConfigFromServer();
             
             // 🔥 v7.0: Initialiser SocketIO au chargement
             initSocketIO();

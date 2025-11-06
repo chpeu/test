@@ -47,6 +47,16 @@ class Position:
     # 🔥 PHASE 5: Métriques conditions
     condition_types: List[str] = field(default_factory=list)  # Types de conditions détectées
     
+    # 🔥 PHASE 7: TP Escalier (Multi-Level TP)
+    tp_escalier_enabled: bool = False
+    tp_escalier_levels: List[Dict] = field(default_factory=list)  # Liste des niveaux configurés
+    tp_escalier_current_level: int = 0  # Niveau actuel (0 = aucun niveau passé)
+    tp_escalier_size_remaining: float = 1.0  # Taille restante (1.0 = 100%)
+    tp_escalier_profits: List[Dict] = field(default_factory=list)  # Historique des TP vendus
+    
+    # 🔥 PHASE 8: Advanced Invalidation - Tracking PnL
+    pnl_history: List[Dict] = field(default_factory=list)  # Historique PnL avec timestamp
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
         return {
@@ -65,7 +75,12 @@ class Position:
             'dynamic_sl': self.dynamic_sl,
             'size_remaining': self.size_remaining,
             'partial_profit_usdt': self.partial_profit_usdt,
-            'capital': self.capital
+            'capital': self.capital,
+            # 🔥 PHASE 7: TP Escalier
+            'tp_escalier_enabled': self.tp_escalier_enabled,
+            'tp_escalier_current_level': self.tp_escalier_current_level,
+            'tp_escalier_size_remaining': self.tp_escalier_size_remaining,
+            'tp_escalier_profits': self.tp_escalier_profits
         }
 
 
@@ -98,6 +113,10 @@ class PositionConfig:
     
     # Fees
     taker_fee: float = 0.0  # 0% pour paires scalables
+    
+    # 🔥 PHASE 6: Recovery Mode
+    recovery_mode_active: bool = False
+    recovery_mode_remaining_trades: int = 0
     use_fee_calculation: bool = True
     
     # Slippage estimation
@@ -216,6 +235,18 @@ class PositionManager:
                         f"sl_diff={final_sl_diff:.10f}, tp_diff={final_tp_diff:.10f}, tolerance={tolerance:.10f}"
                     )
         
+        # 🔥 PHASE 7: Initialiser TP Escalier si mode TP_MULTI
+        from config import TRADING_CONFIG
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        tp_escalier_config = TRADING_CONFIG.get('tp_escalier', {})
+        tp_escalier_enabled = False
+        tp_escalier_levels = []
+        
+        if tp_sl_mode == 'TP_MULTI' and tp_escalier_config.get('enabled', False):
+            tp_escalier_enabled = True
+            tp_escalier_levels = tp_escalier_config.get('levels', [])
+            logger.info(f"📈 TP Escalier activé: {len(tp_escalier_levels)} niveaux")
+        
         # Créer la position
         self.active_position = Position(
             symbol=symbol,
@@ -228,12 +259,18 @@ class PositionManager:
             atr5m=atr5m,
             confirmed_by=confirmed_by,
             scalability_data=scalability_data,
-            condition_types=condition_types or []  # 🔥 PHASE 5: Types de conditions
+            condition_types=condition_types or [],  # 🔥 PHASE 5: Types de conditions
+            tp_escalier_enabled=tp_escalier_enabled,  # 🔥 PHASE 7: TP Escalier
+            tp_escalier_levels=tp_escalier_levels,
+            tp_escalier_current_level=0,
+            tp_escalier_size_remaining=1.0,
+            tp_escalier_profits=[]
         )
         
         logger.info(
             f"🟢 POSITION OUVERTE: {direction} {symbol} | "
             f"Entry: {entry} | SL: {sl} | TP: {tp}"
+            + (f" | TP Escalier: {len(tp_escalier_levels)} niveaux" if tp_escalier_enabled else "")
         )
         
         return self.active_position
@@ -292,6 +329,27 @@ class PositionManager:
             streak_mult = streak_multipliers.get('loss_streak_2+', 0.85)  # -15%
         else:
             streak_mult = 1.0
+        
+        # 🔥 PHASE 6: Recovery Mode - Activation et réduction de taille
+        recovery_config = TRADING_CONFIG.get('recovery_mode', {})
+        if recovery_config.get('enabled', False):
+            # Activer Recovery Mode si loss streak atteint
+            if loss_streak >= recovery_config.get('trigger_loss_streak', 3):
+                if not self.config.recovery_mode_active:
+                    self.config.recovery_mode_active = True
+                    self.config.recovery_mode_remaining_trades = recovery_config.get('duration_trades', 5)
+                    logger.warning(
+                        f"🔄 RECOVERY MODE ACTIVÉ après {loss_streak} losses "
+                        f"(durée: {self.config.recovery_mode_remaining_trades} trades)"
+                    )
+            
+            # Appliquer réduction de taille si Recovery Mode actif
+            if self.config.recovery_mode_active:
+                recovery_mult = recovery_config.get('position_size_reduction', 0.7)
+                # Combiner avec streak_mult: recovery_mult × streak_mult
+                # Exemple: 0.7 × 0.85 = 0.595 (réduction totale de 40.5%)
+                streak_mult = streak_mult * recovery_mult
+                logger.debug(f"🔄 Recovery Mode: Taille réduite (mult: {recovery_mult:.2f}, final streak: {streak_mult:.2f})")
         
         # 4. Calculer taille finale
         final_size = base_size * multiplier * streak_mult
@@ -549,12 +607,21 @@ class PositionManager:
         if not self.config.use_atr:
             self._update_fixed_mode_sl(current_price, pnl)
         else:
-            self._update_atr_mode_sl(current_price, pnl)
+            await self._update_atr_mode_sl(current_price, pnl)
         
         # 🔥 PHASE 2: Trailing stop adaptatif ATR (tous modes) - déclenchement à +0.25%
         # Appelé après _update_*_mode_sl pour compléter/compléter le trailing existant
         if pnl > 0.25:  # Seuil de déclenchement à +0.25%
             await self._update_trailing_stop_adaptive(current_price)
+        
+        # 🔥 PHASE 8: Advanced Invalidation - Après 30 secondes
+        if elapsed > 30:
+            advanced_invalidation = await self._check_advanced_invalidation(current_price, pnl, elapsed)
+            if advanced_invalidation:
+                return advanced_invalidation
+        
+        # Mettre à jour historique PnL pour Advanced Invalidation
+        self._update_pnl_history(pnl, elapsed)
         
         # Vérifier TP/SL
         reason = self._check_levels(current_price)
@@ -613,6 +680,228 @@ class PositionManager:
                 return 'EARLY_INVALIDATION'
         
         # Setup réagit correctement
+        return None
+    
+    async def _check_tp_escalier_levels(self, current_price: float, pnl: float):
+        """
+        🔥 PHASE 7: Vérifier et exécuter les niveaux TP Escalier
+        """
+        position = self.active_position
+        if not position.tp_escalier_enabled or position.tp_escalier_current_level >= len(position.tp_escalier_levels):
+            return
+        
+        levels = position.tp_escalier_levels
+        current_level_idx = position.tp_escalier_current_level
+        level = levels[current_level_idx]
+        
+        # Vérifier si le niveau actuel est atteint
+        if pnl >= level['pnl']:
+            # TP niveau atteint
+            size_to_close_pct = level['size_pct']
+            size_to_close_usdt = position.size * position.tp_escalier_size_remaining * size_to_close_pct
+            
+            # Calculer profit pour ce niveau
+            if position.direction == 'LONG':
+                price_diff = current_price - position.entry
+            else:
+                price_diff = position.entry - current_price
+            
+            profit_usdt = size_to_close_usdt * (price_diff / position.entry)
+            
+            # Mettre à jour position
+            position.tp_escalier_size_remaining -= size_to_close_pct
+            position.tp_escalier_profits.append({
+                'level': current_level_idx + 1,
+                'pnl': level['pnl'],
+                'size_pct': size_to_close_pct,
+                'profit_usdt': profit_usdt
+            })
+            position.tp_escalier_current_level += 1
+            
+            logger.info(
+                f"🎯 TP Escalier Niveau {current_level_idx + 1}/{len(levels)}: "
+                f"+{level['pnl']}% - Fermeture {size_to_close_pct*100:.0f}% "
+                f"(Profit: {profit_usdt:.4f} USDT, Restant: {position.tp_escalier_size_remaining*100:.0f}%)"
+            )
+            
+            # Ajuster SL selon configuration
+            await self._apply_tp_escalier_sl(level, current_price)
+    
+    async def _apply_tp_escalier_sl(self, level: Dict, current_price: float):
+        """Ajuster SL après un niveau TP Escalier"""
+        position = self.active_position
+        move_sl = level.get('move_sl', 'entry')
+        
+        if move_sl == 'entry':
+            position.sl = position.entry
+            logger.info(f"🛡️ TP Escalier: SL → Entry ({position.entry:.6f})")
+        elif move_sl == 'breakeven':
+            position.sl = position.entry
+            logger.info(f"🛡️ TP Escalier: SL → Breakeven ({position.entry:.6f})")
+        elif move_sl == 'trailing':
+            # Activer trailing stop (géré par _update_trailing_stop_adaptive)
+            logger.info(f"📈 TP Escalier: Trailing stop activé")
+    
+    def _update_pnl_history(self, pnl: float, elapsed: float):
+        """🔥 PHASE 8: Mettre à jour l'historique PnL pour Advanced Invalidation"""
+        if not self.active_position:
+            return
+        
+        self.active_position.pnl_history.append({
+            'pnl': pnl,
+            'elapsed': elapsed,
+            'timestamp': time.time()
+        })
+        
+        # Garder seulement les 50 dernières entrées (pour performance)
+        if len(self.active_position.pnl_history) > 50:
+            self.active_position.pnl_history = self.active_position.pnl_history[-50:]
+    
+    async def _check_advanced_invalidation(self, current_price: float, pnl: float, elapsed: float) -> Optional[str]:
+        """
+        🔥 PHASE 8: Invalidation dynamique avancée (après 30 secondes)
+        
+        Returns:
+            Raison d'invalidation si position doit être fermée, None sinon
+        """
+        from config import TRADING_CONFIG
+        
+        advanced_config = TRADING_CONFIG.get('advanced_invalidation', {})
+        if not advanced_config.get('enabled', False):
+            return None
+        
+        position = self.active_position
+        if not position:
+            return None
+        
+        # Vérifier chaque mode
+        # Mode 1: Stagnation
+        stagnation_mode = advanced_config.get('stagnation_mode', {})
+        if stagnation_mode.get('enabled', False):
+            invalidation = self._check_stagnation_invalidation(pnl, elapsed, position.pnl_history, stagnation_mode)
+            if invalidation:
+                return invalidation
+        
+        # Mode 2: Momentum
+        momentum_mode = advanced_config.get('momentum_mode', {})
+        if momentum_mode.get('enabled', False):
+            invalidation = self._check_momentum_invalidation(pnl, elapsed, position.pnl_history, momentum_mode)
+            if invalidation:
+                return invalidation
+        
+        # Mode 3: Adaptive Thresholds
+        adaptive_config = advanced_config.get('adaptive_thresholds', {})
+        if adaptive_config.get('enabled', False):
+            invalidation = self._check_adaptive_thresholds_invalidation(pnl, elapsed, adaptive_config)
+            if invalidation:
+                return invalidation
+        
+        return None
+    
+    def _check_stagnation_invalidation(self, pnl: float, elapsed: float, pnl_history: List[Dict], config: Dict) -> Optional[str]:
+        """Vérifier stagnation du PnL"""
+        min_elapsed = config.get('min_elapsed', 60)
+        stagnation_time = config.get('stagnation_time', 45)
+        threshold = config.get('stagnation_threshold', 0.02)
+        only_if_not_profitable = config.get('only_if_not_profitable', True)
+        min_pnl = config.get('min_pnl_for_stagnation', -0.05)
+        
+        if elapsed < min_elapsed:
+            return None
+        
+        if only_if_not_profitable and pnl >= 0:
+            return None
+        
+        if pnl > min_pnl:
+            return None
+        
+        # Vérifier si PnL stagne (variation < threshold pendant stagnation_time)
+        if len(pnl_history) < 2:
+            return None
+        
+        # Filtrer les entrées dans la fenêtre de stagnation
+        recent_history = [h for h in pnl_history if elapsed - h['elapsed'] <= stagnation_time]
+        if len(recent_history) < 2:
+            return None
+        
+        pnl_values = [h['pnl'] for h in recent_history]
+        pnl_min = min(pnl_values)
+        pnl_max = max(pnl_values)
+        pnl_range = pnl_max - pnl_min
+        
+        if pnl_range < threshold:
+            logger.warning(
+                f"⚠️ Advanced Invalidation (Stagnation): {self.active_position.symbol} | "
+                f"PnL stagne {pnl_range:.3f}% < {threshold}% pendant {stagnation_time}s"
+            )
+            return 'ADVANCED_INVALIDATION_STAGNATION'
+        
+        return None
+    
+    def _check_momentum_invalidation(self, pnl: float, elapsed: float, pnl_history: List[Dict], config: Dict) -> Optional[str]:
+        """Vérifier perte de momentum"""
+        min_elapsed = config.get('min_elapsed', 30)
+        lookback_periods = config.get('lookback_periods', 5)
+        momentum_threshold = config.get('momentum_threshold', -0.01)
+        only_if_not_profitable = config.get('only_if_not_profitable', True)
+        min_pnl = config.get('min_pnl_for_momentum', -0.03)
+        
+        if elapsed < min_elapsed:
+            return None
+        
+        if only_if_not_profitable and pnl >= 0:
+            return None
+        
+        if pnl > min_pnl:
+            return None
+        
+        # Vérifier momentum dans les dernières périodes
+        if len(pnl_history) < lookback_periods:
+            return None
+        
+        recent_pnl = [h['pnl'] for h in pnl_history[-lookback_periods:]]
+        
+        # Calculer momentum moyen (différence entre dernière et première)
+        if len(recent_pnl) >= 2:
+            momentum = (recent_pnl[-1] - recent_pnl[0]) / len(recent_pnl)
+            
+            if momentum < momentum_threshold:
+                logger.warning(
+                    f"⚠️ Advanced Invalidation (Momentum): {self.active_position.symbol} | "
+                    f"Momentum perdu {momentum:.3f}% < {momentum_threshold}%"
+                )
+                return 'ADVANCED_INVALIDATION_MOMENTUM'
+        
+        return None
+    
+    def _check_adaptive_thresholds_invalidation(self, pnl: float, elapsed: float, config: Dict) -> Optional[str]:
+        """Vérifier seuils adaptatifs basés sur ATR"""
+        min_elapsed = config.get('min_elapsed', 30)
+        atr_multiplier = config.get('atr_multiplier', 0.5)
+        min_threshold = config.get('min_threshold', -0.10)
+        max_threshold = config.get('max_threshold', -0.20)
+        
+        if elapsed < min_elapsed:
+            return None
+        
+        position = self.active_position
+        if not position.atr or not position.entry:
+            return None
+        
+        # Calculer seuil adaptatif basé sur ATR
+        atr_percent = (position.atr / position.entry) * 100
+        adaptive_threshold = -atr_percent * atr_multiplier
+        
+        # Clamper entre min et max
+        adaptive_threshold = max(min_threshold, min(max_threshold, adaptive_threshold))
+        
+        if pnl < adaptive_threshold:
+            logger.warning(
+                f"⚠️ Advanced Invalidation (Adaptive): {self.active_position.symbol} | "
+                f"PnL {pnl:.2f}% < seuil adaptatif {adaptive_threshold:.2f}% (ATR: {atr_percent:.3f}%)"
+            )
+            return 'ADVANCED_INVALIDATION_ADAPTIVE'
+        
         return None
     
     async def _update_trailing_stop_adaptive(self, current_price: float):
@@ -783,10 +1072,15 @@ class PositionManager:
                     self.active_position.sl = round(new_sl, 6)
                     logger.info(f"📉 TRAILING STOP: Nouveau SL={new_sl:.6f} (distance={self.config.trailing_distance}%) | Prix={current_price:.6f} | Entry={entry:.6f}")
     
-    def _update_atr_mode_sl(self, current_price: float, pnl: float):
-        """Mettre à jour SL en mode ATR (break-even progressif ou ATR MULTI avec TP partiel)"""
+    async def _update_atr_mode_sl(self, current_price: float, pnl: float):
+        """Mettre à jour SL en mode ATR (break-even progressif, TP Escalier, ou ATR MULTI avec TP partiel)"""
         if not self.active_position.atr:
             return
+        
+        # 🔥 PHASE 7: TP Escalier - Vérifier niveaux si activé
+        if self.active_position.tp_escalier_enabled:
+            await self._check_tp_escalier_levels(current_price, pnl)
+            return  # TP Escalier gère tout, pas besoin de break-even progressif
         
         entry = self.active_position.entry
         
@@ -892,6 +1186,29 @@ class PositionManager:
         direction = self.active_position.direction
         sl = self.active_position.sl
         tp = self.active_position.tp
+        
+        # 🔥 PHASE 7: TP Escalier - Gestion spéciale
+        if self.active_position.tp_escalier_enabled:
+            # Si tous les niveaux sont passés, vérifier seulement SL (trailing stop gère)
+            if self.active_position.tp_escalier_current_level >= len(self.active_position.tp_escalier_levels):
+                # Tous niveaux passés, vérifier seulement SL
+                if direction == 'LONG':
+                    if current_price <= sl:
+                        return 'SL'
+                else:  # SHORT
+                    if current_price >= sl:
+                        return 'SL'
+                return None
+            else:
+                # Niveaux restants, ne pas vérifier TP final (géré par _check_tp_escalier_levels)
+                # Vérifier seulement SL
+                if direction == 'LONG':
+                    if current_price <= sl:
+                        return 'SL'
+                else:  # SHORT
+                    if current_price >= sl:
+                        return 'SL'
+                return None
         
         # 🔥 FIX: Log détaillé pour debug
         logger.debug(
@@ -1044,9 +1361,18 @@ class PositionManager:
         else:
             exit_price = entry
         
-        # 🔥 v6.4: Gérer la position partielle
-        has_partial_tp = self.active_position.partial_tp_sold
-        size_to_close = self.active_position.size
+        # 🔥 PHASE 7: Gérer TP Escalier
+        has_tp_escalier = self.active_position.tp_escalier_enabled and len(self.active_position.tp_escalier_profits) > 0
+        tp_escalier_profits_usdt = sum([p['profit_usdt'] for p in self.active_position.tp_escalier_profits])
+        
+        # Calculer taille restante après TP Escalier
+        if has_tp_escalier:
+            size_to_close = self.active_position.size * self.active_position.tp_escalier_size_remaining
+        else:
+            size_to_close = self.active_position.size
+        
+        # 🔥 v6.4: Gérer la position partielle (mode FIXE/ATR)
+        has_partial_tp = self.active_position.partial_tp_sold and not has_tp_escalier
         partial_profit_usdt = self.active_position.partial_profit_usdt
         
         if has_partial_tp:
@@ -1059,8 +1385,18 @@ class PositionManager:
         if self.active_position.direction == 'SHORT':
             pnl_pct = -pnl_pct
         
-        # 🔥 v6.4: Calculer P&L en USDT
-        if has_partial_tp:
+        # 🔥 PHASE 7: Calculer P&L en USDT (TP Escalier, TP partiel, ou position complète)
+        if has_tp_escalier:
+            # TP Escalier: Profits des niveaux + fermeture finale
+            if self.active_position.direction == 'LONG':
+                price_diff_final = exit_price - entry
+            else:  # SHORT
+                price_diff_final = entry - exit_price
+            
+            final_profit_usdt = size_to_close * (price_diff_final / entry)
+            pnl_final_usdt = tp_escalier_profits_usdt + final_profit_usdt
+            pnl_total_pct = (pnl_final_usdt / self.active_position.size) * 100
+        elif has_partial_tp:
             # 🔥 FIX: P&L final = TP partiel + fermeture finale (calcul correct)
             # Calculer PnL USDT pour la partie fermée maintenant
             if self.active_position.direction == 'LONG':
@@ -1185,6 +1521,17 @@ class PositionManager:
         else:
             self.config.win_streak = 0
             self.config.loss_streak += 1
+        
+        # 🔥 PHASE 6: Recovery Mode - Décrémenter compteur
+        from config import TRADING_CONFIG
+        recovery_config = TRADING_CONFIG.get('recovery_mode', {})
+        if recovery_config.get('enabled', False) and self.config.recovery_mode_active:
+            self.config.recovery_mode_remaining_trades -= 1
+            if self.config.recovery_mode_remaining_trades <= 0:
+                self.config.recovery_mode_active = False
+                logger.info("✅ Recovery Mode terminé - Retour normal")
+            else:
+                logger.info(f"🔄 Recovery Mode: {self.config.recovery_mode_remaining_trades} trades restants")
         
         # Réinitialiser
         self.active_position = None

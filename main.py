@@ -7,6 +7,9 @@ Interface HTML identique à v5.1 avec backend Python
 import sys
 import asyncio
 import logging
+import json
+import os
+from datetime import datetime
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -48,6 +51,32 @@ templates = Jinja2Templates(directory="templates")
 sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode='asgi')
 socketio_app = socketio.ASGIApp(sio, app)
 
+# 🔥 PHASE 4: Fichier de persistance pour trade history
+TRADE_HISTORY_FILE = "trade_history.json"
+
+def save_trade_history():
+    """Sauvegarder l'historique des trades dans un fichier JSON"""
+    try:
+        with open(TRADE_HISTORY_FILE, 'w') as f:
+            json.dump(app_state['trade_history'], f, indent=2)
+        logger.debug(f"✅ Historique sauvegardé: {len(app_state['trade_history'])} trades")
+    except Exception as e:
+        logger.error(f"❌ Erreur sauvegarde historique: {e}")
+
+def load_trade_history():
+    """Charger l'historique des trades depuis un fichier JSON"""
+    try:
+        if os.path.exists(TRADE_HISTORY_FILE):
+            with open(TRADE_HISTORY_FILE, 'r') as f:
+                app_state['trade_history'] = json.load(f)
+            logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades")
+        else:
+            app_state['trade_history'] = []
+            logger.info("📝 Nouveau fichier historique créé")
+    except Exception as e:
+        logger.error(f"❌ Erreur chargement historique: {e}")
+        app_state['trade_history'] = []
+
 # Global state
 app_state = {
     'is_scanning': False,
@@ -59,7 +88,8 @@ app_state = {
         'winrate': 0.0
     },
     'top_pairs': [],
-    'logs': []
+    'logs': [],
+    'trade_history': []  # 🔥 PHASE 4: Historique des trades
 }
 
 # 🔥 v7.0: Instances globales (lazy init)
@@ -306,8 +336,8 @@ async def scanner_loop_callback():
                                     
                                     # Calculer SL% selon le mode
                                     tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                                    # 🔥 FIX: ATR_MULTI utilise aussi le calcul ATR
-                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'ATR_MULTI') and atr and entry_price:
+                                    # 🔥 PHASE 7: TP_MULTI utilise aussi le calcul ATR
+                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI') and atr and entry_price:
                                         sl_percent = (atr / entry_price) * 100
                                         # Clamp selon config
                                         atr_min = TRADING_CONFIG.get('atr_min', 0.15)
@@ -460,13 +490,20 @@ async def scan_pair_for_setup(symbol: str):
         if trend_data:
             logger.debug(f"📊 {symbol}: Trend {trend_timeframe} = {trend_data['trend']} ({trend_data['strength']}, bonus={trend_data['bonus']})")
         
+        # 🔥 PHASE 6: Récupérer positions actives pour Correlation Filter
+        active_positions = []
+        if position_manager and position_manager.active_position:
+            active_positions = [position_manager.active_position.symbol]
+        
         # 🔥 FIX: Analyser avec retour de raison si pas de setup + paramètres configurables
         analysis = await analyzer.analyze_pair(
             symbol, 
             trend_data=trend_data,  # 🔥 Utiliser trend_data calculé
             volume_multiplier=volume_multiplier,
             use_confluence=use_confluence,
-            return_reason=True
+            return_reason=True,
+            active_positions=active_positions,  # 🔥 PHASE 6: Correlation Filter
+            position_manager=position_manager  # 🔥 PHASE 6: Recovery Mode
         )
         
         # 🔥 FIX: Envoyer événement SocketIO pour mettre à jour le compteur de validation
@@ -599,6 +636,14 @@ async def position_check_loop_callback():
                 result = position_manager.close_position(close_reason, exit_price=current_price)
                 app_state['active_position'] = None
                 
+                # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
+                if result:
+                    result['timestamp'] = datetime.now().isoformat()
+                    app_state['trade_history'].append(result)
+                    if len(app_state['trade_history']) > 1000:
+                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    save_trade_history()
+                
                 # 🔥 FIX: Désactiver callback WebSocket si position fermée
                 if price_provider:
                     price_provider.set_socketio_callback(None, None)
@@ -694,8 +739,8 @@ def init_instances():
         
         # Configurer TP/SL mode depuis TRADING_CONFIG
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-        # 🔥 FIX: ATR_MULTI utilise aussi le mode ATR (avec atr5m pour distinguer)
-        position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'ATR_MULTI')
+        # 🔥 PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
+        position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI')
         
         # Configurer valeurs FIXE depuis TRADING_CONFIG
         position_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.25)
@@ -978,13 +1023,20 @@ async def api_analyze_symbol(
         # 🔥 FIX: Calculer trend_data avec le timeframe fourni ou configuré
         trend_data = await analyzer.calculate_trend_data(symbol, trend_timeframe)
         
+        # 🔥 PHASE 6: Récupérer positions actives pour Correlation Filter
+        active_positions = []
+        if position_manager and position_manager.active_position:
+            active_positions = [position_manager.active_position.symbol]
+        
         # 🔥 FIX: Utiliser analyze_pair au lieu de analyze_symbol pour supporter confluence et volume_multiplier
         analysis = await analyzer.analyze_pair(
             symbol, 
             trend_data=trend_data,  # 🔥 Utiliser trend_data calculé
             volume_multiplier=volume_multiplier,
             use_confluence=use_confluence,
-            return_reason=False
+            return_reason=False,
+            active_positions=active_positions,  # 🔥 PHASE 6: Correlation Filter
+            position_manager=position_manager  # 🔥 PHASE 6: Recovery Mode
         )
         
         if analysis:
@@ -1139,6 +1191,14 @@ async def api_close_position():
             
             app_state['active_position'] = None
             
+            # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
+            if result:
+                result['timestamp'] = datetime.now().isoformat()
+                app_state['trade_history'].append(result)
+                if len(app_state['trade_history']) > 1000:
+                    app_state['trade_history'] = app_state['trade_history'][-1000:]
+                save_trade_history()
+            
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
             if price_provider:
                 price_provider.set_socketio_callback(None, None)
@@ -1226,22 +1286,23 @@ async def api_get_config():
     """Récupérer la configuration actuelle (tous les paramètres)"""
     from config import TRADING_CONFIG
     return JSONResponse({
-        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 1.0),
+        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # 🔥 Valeur mise à jour
+        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # 🔥 PHASE 6: Score minimum
         'use_confluence': TRADING_CONFIG.get('use_confluence', False),
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-        # 🔥 4 seuils configurables
-        'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.3),
-        'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.3),
-        'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.5),
-        'di_gap_min': TRADING_CONFIG.get('di_gap_min', 5),
+        # 🔥 4 seuils configurables - Valeurs mises à jour
+        'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+        'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+        'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+        'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
         'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-        # 🔥 Seuils ATR optimal
-        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.10),
-        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.8),
-        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.20),
-        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.5),
+        # 🔥 Seuils ATR optimal - Valeurs mises à jour
+        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
         # 🔥 Trend timeframe
         'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
         'account_size': TRADING_CONFIG.get('account_size', 1000.0),
@@ -1283,13 +1344,13 @@ async def api_update_config(request: Request):
         # 🔥 TP/SL Mode
         if 'tp_sl_mode' in data:
             mode = str(data['tp_sl_mode']).upper()
-            if mode in ['FIXE', 'ATR', 'ATR_MULTI']:
+            if mode in ['FIXE', 'ATR', 'TP_MULTI']:  # 🔥 PHASE 7: TP_MULTI remplace ATR_MULTI
                 TRADING_CONFIG['tp_sl_mode'] = mode
                 # Mettre à jour PositionConfig si position_manager existe
                 init_instances()
                 if position_config:
-                    # 🔥 FIX: ATR_MULTI utilise aussi le mode ATR (avec atr5m pour distinguer)
-                    position_config.use_atr = (mode == 'ATR' or mode == 'ATR_MULTI')
+                    # 🔥 PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
+                    position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
                 updated['tp_sl_mode'] = mode
         
         if 'tp_percent' in data:
@@ -1422,8 +1483,95 @@ async def add_log(level, message, detail=''):
 
 # Main entry point
 
+# 🔥 PHASE 4: Endpoints Dashboard
+@app.get("/api/dashboard/summary")
+async def get_dashboard_summary():
+    """Résumé des statistiques de trading"""
+    init_instances()
+    
+    trades = app_state['trade_history']
+    
+    # Calculer statistiques
+    total_trades = len(trades)
+    wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0)
+    losses = total_trades - wins
+    winrate = (wins / total_trades * 100) if total_trades > 0 else 0.0
+    
+    # Profit total et aujourd'hui
+    profit_total = sum(t.get('net_pnl_usdt', 0) for t in trades)
+    today = datetime.now().date().isoformat()
+    profit_today = sum(
+        t.get('net_pnl_usdt', 0) 
+        for t in trades 
+        if t.get('timestamp', '').startswith(today)
+    )
+    
+    # Drawdown
+    equity_curve = []
+    running_equity = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    
+    for trade in trades:
+        running_equity += trade.get('net_pnl_usdt', 0)
+        equity_curve.append(running_equity)
+        if running_equity > peak:
+            peak = running_equity
+        drawdown = peak - running_equity
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+    
+    # Win/Loss streaks
+    win_streak = 0
+    loss_streak = 0
+    current_win_streak = 0
+    current_loss_streak = 0
+    
+    for trade in reversed(trades):
+        pnl = trade.get('net_pnl_usdt', 0)
+        if pnl > 0:
+            current_win_streak += 1
+            current_loss_streak = 0
+            if current_win_streak > win_streak:
+                win_streak = current_win_streak
+        else:
+            current_loss_streak += 1
+            current_win_streak = 0
+            if current_loss_streak > loss_streak:
+                loss_streak = current_loss_streak
+    
+    # Recovery Mode
+    recovery_mode_active = False
+    if position_manager and position_manager.config:
+        recovery_mode_active = position_manager.config.recovery_mode_active
+    
+    return JSONResponse({
+        'total_trades': total_trades,
+        'wins': wins,
+        'losses': losses,
+        'winrate': round(winrate, 2),
+        'profit_total': round(profit_total, 4),
+        'profit_today': round(profit_today, 4),
+        'drawdown': round(max_drawdown, 4),
+        'win_streak': win_streak,
+        'loss_streak': loss_streak,
+        'recovery_mode_active': recovery_mode_active,
+        'equity_curve': equity_curve[-100:]  # Derniers 100 points
+    })
+
+@app.get("/api/dashboard/trades-history")
+async def get_trades_history(limit: int = 50):
+    """Historique des trades récents"""
+    trades = app_state['trade_history']
+    # Retourner les plus récents en premier
+    recent_trades = list(reversed(trades[-limit:]))
+    return JSONResponse(recent_trades)
+
 if __name__ == '__main__':
     import uvicorn
+    
+    # 🔥 PHASE 4: Charger l'historique au démarrage
+    load_trade_history()
     
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
