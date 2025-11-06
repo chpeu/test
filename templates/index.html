@@ -4581,7 +4581,34 @@
             }
         }
         
+        // 🔥 FIX: Charger stats depuis API au démarrage (pour éviter perte de données au refresh)
+        async function loadStatsFromAPI() {
+            try {
+                const response = await fetch('/api/stats');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                if (data.success && data.stats) {
+                    const apiStats = data.stats;
+                    
+                    // Restaurer stats depuis API
+                    stats.totalTrades = apiStats.total_trades || 0;
+                    stats.wins = apiStats.wins || 0;
+                    stats.losses = apiStats.losses || 0;
+                    stats.winrate = apiStats.winrate || 0;
+                    
+                    // Mettre à jour l'affichage
+                    updateStats();
+                    
+                    debugLog('✅ Stats restaurées', `Trades: ${stats.totalTrades}, Winrate: ${stats.winrate.toFixed(1)}%`);
+                }
+            } catch (error) {
+                console.error('Erreur chargement stats API:', error);
+            }
+        }
+        
         // 🔥 NOUVEAU v5.2: Ne plus restaurer d'état au chargement (reset à chaque fois)
+        // MAIS restaurer les stats depuis l'API pour éviter perte de données
         window.addEventListener('load', function() {
             debugLog('🚀 APP LOADED', 'Scanner prêt à démarrer');
             
@@ -4591,9 +4618,12 @@
             // 🔥 v7.0: Initialiser SocketIO au chargement
             initSocketIO();
             
-            // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre
+            // 🔥 FIX: Charger stats depuis API avant de supprimer localStorage
+            loadStatsFromAPI();
+            
+            // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre (mais stats déjà restaurées)
             localStorage.removeItem('mexcScannerState');
-            debugLog('🔄 Reset Clean', 'Aucun état restauré - Session neuve');
+            debugLog('🔄 Reset Clean', 'Session neuve - Stats restaurées depuis API');
         });
     </script>
 </body>
