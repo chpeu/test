@@ -91,8 +91,16 @@ class TelegramNotifier:
             
             url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
             
+            # 🔥 FIX: Parser chat_id en nombre (Telegram API exige un nombre, pas une string)
+            # Gérer aussi les groupes/channels (nombres négatifs)
+            try:
+                chat_id_num = int(self.chat_id) if self.chat_id else None
+            except (ValueError, TypeError):
+                # Si conversion échoue, utiliser tel quel (peut être un username pour channels)
+                chat_id_num = self.chat_id
+            
             payload = {
-                'chat_id': self.chat_id,
+                'chat_id': chat_id_num,  # ✅ Nombre au lieu de string
                 'text': message,
                 'parse_mode': parse_mode,
                 'disable_web_page_preview': True
