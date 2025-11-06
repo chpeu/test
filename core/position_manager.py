@@ -771,66 +771,6 @@ class PositionManager:
         # Setup réagit correctement
         return None
     
-    async def _check_tp_escalier_levels(self, current_price: float, pnl: float):
-        """
-        🔥 PHASE 7: Vérifier et exécuter les niveaux TP Escalier
-        """
-        position = self.active_position
-        if not position.tp_escalier_enabled or position.tp_escalier_current_level >= len(position.tp_escalier_levels):
-            return
-        
-        levels = position.tp_escalier_levels
-        current_level_idx = position.tp_escalier_current_level
-        level = levels[current_level_idx]
-        
-        # Vérifier si le niveau actuel est atteint
-        if pnl >= level['pnl']:
-            # TP niveau atteint
-            size_to_close_pct = level['size_pct']
-            size_to_close_usdt = position.size * position.tp_escalier_size_remaining * size_to_close_pct
-            
-            # Calculer profit pour ce niveau
-            if position.direction == 'LONG':
-                price_diff = current_price - position.entry
-            else:
-                price_diff = position.entry - current_price
-            
-            profit_usdt = size_to_close_usdt * (price_diff / position.entry)
-            
-            # Mettre à jour position
-            position.tp_escalier_size_remaining -= size_to_close_pct
-            position.tp_escalier_profits.append({
-                'level': current_level_idx + 1,
-                'pnl': level['pnl'],
-                'size_pct': size_to_close_pct,
-                'profit_usdt': profit_usdt
-            })
-            position.tp_escalier_current_level += 1
-            
-            logger.info(
-                f"🎯 TP Escalier Niveau {current_level_idx + 1}/{len(levels)}: "
-                f"+{level['pnl']}% - Fermeture {size_to_close_pct*100:.0f}% "
-                f"(Profit: {profit_usdt:.4f} USDT, Restant: {position.tp_escalier_size_remaining*100:.0f}%)"
-            )
-            
-            # Ajuster SL selon configuration
-            await self._apply_tp_escalier_sl(level, current_price)
-    
-    async def _apply_tp_escalier_sl(self, level: Dict, current_price: float):
-        """Ajuster SL après un niveau TP Escalier"""
-        position = self.active_position
-        move_sl = level.get('move_sl', 'entry')
-        
-        if move_sl == 'entry':
-            position.sl = position.entry
-            logger.info(f"🛡️ TP Escalier: SL → Entry ({position.entry:.6f})")
-        elif move_sl == 'breakeven':
-            position.sl = position.entry
-            logger.info(f"🛡️ TP Escalier: SL → Breakeven ({position.entry:.6f})")
-        elif move_sl == 'trailing':
-            # Activer trailing stop (géré par _update_trailing_stop_adaptive)
-            logger.info(f"📈 TP Escalier: Trailing stop activé")
-    
     async def _update_trailing_stop_adaptive(self, current_price: float):
         """
         Mettre à jour trailing stop adaptatif selon volatilité (ATR)
@@ -1006,7 +946,7 @@ class PositionManager:
         
         # 🔥 PHASE 7: TP Escalier - Vérifier niveaux si activé
         if self.active_position.tp_escalier_enabled:
-            await self._check_tp_escalier_levels(current_price, pnl)
+            await self._check_tp_escalier_levels(current_price)
             return  # TP Escalier gère tout, pas besoin de break-even progressif
         
         entry = self.active_position.entry
