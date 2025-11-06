@@ -864,12 +864,13 @@ def init_instances():
         # Créer dossier data/ si nécessaire
         os.makedirs(os.path.dirname(ANALYTICS_DB_PATH) if os.path.dirname(ANALYTICS_DB_PATH) else "data", exist_ok=True)
         
-        analytics_db = AnalyticsDatabase(db_path=ANALYTICS_DB_PATH)
-        # Initialiser DB (asyncio.run car init_instances n'est pas async)
+        # 🔥 ARCHITECTURE V2: AnalyticsDatabase s'initialise automatiquement dans __init__
         try:
-            import asyncio
-            asyncio.create_task(analytics_db.initialize())
-            logger.info(f"✅ Analytics DB initialisée: {ANALYTICS_DB_PATH}")
+            # Récupérer port instance pour multi-instances
+            port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+            analytics_db = AnalyticsDatabase(db_path=ANALYTICS_DB_PATH, instance_port=port)
+            # La DB est déjà initialisée dans __init__ (via _init_database())
+            logger.info(f"✅ Analytics DB prête: {ANALYTICS_DB_PATH}")
         except Exception as e:
             logger.error(f"❌ Erreur init Analytics DB: {e}")
             analytics_db = None
