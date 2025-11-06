@@ -261,7 +261,14 @@ ANALYTICS_DB_PATH = "data/analytics.db"
 
 # Telegram Notifications (optionnel)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", None)  # "123456:ABC-DEF..."
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", None)  # "123456789"
+TELEGRAM_CHAT_ID_RAW = os.getenv("TELEGRAM_CHAT_ID", None)  # "123456789" ou "-123456789" pour groupes
+# 🔥 FIX: Parser Chat ID en nombre si possible (pour compatibilité API Telegram)
+# Les groupes/channels ont des IDs négatifs, donc on garde la conversion flexible
+try:
+    TELEGRAM_CHAT_ID = int(TELEGRAM_CHAT_ID_RAW) if TELEGRAM_CHAT_ID_RAW else None
+except (ValueError, TypeError):
+    # Si conversion échoue (username de channel), garder tel quel
+    TELEGRAM_CHAT_ID = TELEGRAM_CHAT_ID_RAW
 TELEGRAM_ENABLED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
 
 # Paper Trading Mode (optionnel)
