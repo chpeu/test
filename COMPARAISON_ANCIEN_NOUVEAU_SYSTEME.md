@@ -530,3 +530,4 @@ async def analyze_timeframe(symbol: str, timeframe: str):
 
 
 
+

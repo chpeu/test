@@ -249,3 +249,4 @@ if trend_data and temp_direction != 'NEUTRAL':
 
 
 
+

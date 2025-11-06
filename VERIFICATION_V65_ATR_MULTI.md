@@ -343,3 +343,4 @@ if (useATRMulti && partialTPSold && activePosition.atr) {
 
 
 
+

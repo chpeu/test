@@ -157,3 +157,4 @@ Position Size = (Capital × Risk%) / SL%
 
 
 
+

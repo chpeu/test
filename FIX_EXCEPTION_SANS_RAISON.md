@@ -76,3 +76,4 @@ Avec cette correction, si une exception se produit dans `analyze_timeframe()`, o
 
 
 
+

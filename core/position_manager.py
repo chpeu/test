@@ -658,6 +658,9 @@ class PositionManager:
         if pnl > 0.25:  # Seuil de déclenchement à +0.25%
             await self._update_trailing_stop_adaptive(current_price)
         
+        # 🔥 PHASE 7: Vérifier TP Escalier (Multi-Level TP)
+        if self.active_position.tp_escalier_enabled and self.active_position.tp_escalier_levels:
+            await self._check_tp_escalier_levels(current_price)
         
         # Vérifier TP/SL
         reason = self._check_levels(current_price)
@@ -1104,6 +1107,121 @@ class PositionManager:
         if pnl >= pnl_100pct and self.active_position.break_even_set:
             self.active_position.sl = entry
             logger.info(f"🛡️ BE Total 100%: PnL={pnl:.2f}% → SL={entry}")
+    
+    async def _check_tp_escalier_levels(self, current_price: float):
+        """
+        🔥 PHASE 7: Vérifier les niveaux TP Escalier et exécuter TPs partiels
+        
+        Args:
+            current_price: Prix actuel du marché
+        """
+        position = self.active_position
+        if not position or not position.tp_escalier_enabled or not position.tp_escalier_levels:
+            return
+        
+        direction = position.direction
+        entry = position.entry
+        current_level = position.tp_escalier_current_level
+        
+        # Vérifier si le niveau actuel est atteint
+        if current_level >= len(position.tp_escalier_levels):
+            # Tous les niveaux ont été atteints
+            return
+        
+        # Récupérer config du niveau actuel
+        level_config = position.tp_escalier_levels[current_level]
+        pnl_target = level_config['pnl']  # % (ex: 0.20 = +0.20%)
+        size_pct = level_config['size_pct']  # % de la position (ex: 0.25 = 25%)
+        move_sl = level_config['move_sl']  # 'entry', 'breakeven', 'trailing'
+        
+        # Calculer prix TP pour ce niveau
+        if direction == 'LONG':
+            tp_price = entry * (1 + pnl_target / 100)
+        else:  # SHORT
+            tp_price = entry * (1 - pnl_target / 100)
+        
+        # Vérifier si niveau atteint
+        tp_hit = False
+        if direction == 'LONG':
+            tp_hit = current_price >= tp_price
+        else:  # SHORT
+            tp_hit = current_price <= tp_price
+        
+        if tp_hit:
+            # ✅ Niveau TP Escalier atteint !
+            position.tp_escalier_current_level += 1
+            
+            # Calculer taille vendue et restante
+            size_sold_pct = size_pct
+            size_sold_usdt = position.size * size_pct
+            position.tp_escalier_size_remaining -= size_pct
+            
+            # Calculer profit de ce niveau
+            if direction == 'LONG':
+                profit_pct = ((tp_price - entry) / entry) * 100
+                profit_usdt = size_sold_usdt * profit_pct / 100
+            else:  # SHORT
+                profit_pct = ((entry - tp_price) / entry) * 100
+                profit_usdt = size_sold_usdt * profit_pct / 100
+            
+            # Enregistrer le profit de ce niveau
+            profit_record = {
+                'level': current_level + 1,
+                'price': tp_price,
+                'size_pct': size_pct,
+                'size_usdt': size_sold_usdt,
+                'profit_pct': profit_pct,
+                'profit_usdt': profit_usdt,
+                'timestamp': time.time()
+            }
+            position.tp_escalier_profits.append(profit_record)
+            
+            # Cumuler profit partiel
+            position.partial_profit_usdt += profit_usdt
+            
+            logger.info(
+                f"🎯 TP Escalier Niveau {current_level + 1}/{len(position.tp_escalier_levels)} atteint ! "
+                f"Prix: {tp_price:.6f} | Vendu: {size_sold_usdt:.2f} USDT ({size_pct*100:.0f}%) | "
+                f"Profit: +{profit_usdt:.2f} USDT (+{profit_pct:.2f}%) | "
+                f"Restant: {position.tp_escalier_size_remaining*100:.0f}%"
+            )
+            
+            # Déplacer SL selon config niveau
+            if move_sl == 'entry':
+                # Déplacer SL à entry (protéger capital)
+                position.sl = entry
+                logger.info(f"🛡️ TP Escalier Niveau {current_level + 1}: SL → Entry ({entry:.6f})")
+            
+            elif move_sl == 'breakeven':
+                # Déplacer SL à breakeven (entry)
+                position.sl = entry
+                position.break_even_set = True
+                logger.info(f"🛡️ TP Escalier Niveau {current_level + 1}: SL → Breakeven ({entry:.6f})")
+            
+            elif move_sl == 'trailing':
+                # Activer trailing stop adaptatif
+                await self._update_trailing_stop_adaptive(current_price)
+                logger.info(f"📈 TP Escalier Niveau {current_level + 1}: Trailing stop activé")
+            
+            # Émettre événement SocketIO si callback défini
+            if hasattr(self, 'socketio_callback') and self.socketio_callback:
+                await self.socketio_callback('tp_escalier_level', {
+                    'symbol': position.symbol,
+                    'level': current_level + 1,
+                    'total_levels': len(position.tp_escalier_levels),
+                    'price': tp_price,
+                    'profit_usdt': profit_usdt,
+                    'profit_pct': profit_pct,
+                    'size_remaining_pct': position.tp_escalier_size_remaining * 100
+                })
+            
+            # Si dernier niveau atteint, logger info
+            if position.tp_escalier_current_level >= len(position.tp_escalier_levels):
+                total_profit = sum(p['profit_usdt'] for p in position.tp_escalier_profits)
+                logger.info(
+                    f"🎉 TP Escalier: Tous les {len(position.tp_escalier_levels)} niveaux atteints ! "
+                    f"Profit total cumulé: +{total_profit:.2f} USDT"
+                )
     
     def _check_levels(self, current_price: float) -> Optional[str]:
         """Vérifier si TP ou SL est touché"""

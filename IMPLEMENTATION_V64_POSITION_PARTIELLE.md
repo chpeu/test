@@ -241,3 +241,4 @@ Slippage = Entry + Exit Partiel + Exit Final
 
 
 
+
