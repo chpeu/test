@@ -9,9 +9,12 @@ import asyncio
 import logging
 import json
 import os
+import csv
+import io
 from datetime import datetime
+from typing import Optional
 from fastapi import FastAPI, Request, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import socketio
@@ -24,10 +27,12 @@ try:
     from core.position_manager import PositionManager, PositionConfig
     from core.scheduler import Scheduler
     from core.metrics import get_metrics_collector
+    from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite
 except ImportError as e:
     logging.error(f"Import error: {e}")
     # Fallback pour les dépendances manquantes
     get_price_provider = None
+    TradeDatabase = None
     ScalabilityScanner = None
     TechnicalAnalyzer = None
     PositionManager = None
@@ -90,16 +95,46 @@ def save_trade_history():
                 pass
 
 def load_trade_history():
-    """Charger l'historique des trades depuis un fichier JSON"""
-    global TRADE_HISTORY_FILE
+    """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
+    global TRADE_HISTORY_FILE, trade_db
+    
     if TRADE_HISTORY_FILE is None:
         TRADE_HISTORY_FILE = get_trade_history_file()
     
+    # 🔥 PHASE 8: Charger depuis SQLite si disponible (priorité)
+    if trade_db:
+        try:
+            db_trades = trade_db.get_all_trades()
+            if db_trades:
+                app_state['trade_history'] = db_trades
+                logger.info(f"✅ Historique chargé depuis DB: {len(db_trades)} trades")
+                # Sauvegarder aussi en JSON (backup)
+                save_trade_history()
+                return
+        except Exception as e:
+            logger.error(f"❌ Erreur chargement DB: {e}")
+    
+    # Fallback: Charger depuis JSON
     try:
         if os.path.exists(TRADE_HISTORY_FILE):
             with open(TRADE_HISTORY_FILE, 'r', encoding='utf-8') as f:
                 app_state['trade_history'] = json.load(f)
             logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
+            
+            # 🔥 PHASE 8: Migrer JSON → SQLite si DB disponible
+            if trade_db and app_state['trade_history']:
+                try:
+                    for trade in app_state['trade_history']:
+                        # Vérifier si déjà en DB
+                        existing = trade_db.get_trades_by_date_range(
+                            trade.get('date', ''),
+                            trade.get('date', '')
+                        )
+                        if not any(t.get('timestamp') == trade.get('timestamp') for t in existing):
+                            trade_db.insert_trade(trade)
+                    logger.info(f"✅ Migration JSON → SQLite: {len(app_state['trade_history'])} trades")
+                except Exception as e:
+                    logger.error(f"❌ Erreur migration DB: {e}")
         else:
             app_state['trade_history'] = []
             logger.info(f"📝 Nouveau fichier historique créé: {TRADE_HISTORY_FILE}")
@@ -1518,6 +1553,57 @@ async def add_log(level, message, detail=''):
 # Main entry point
 
 # 🔥 PHASE 4: Endpoints Dashboard
+def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:
+    """
+    🔥 PHASE 8: Calculer drawdown maximum historique (peak to trough)
+    
+    Returns:
+        Dict avec max_dd, max_dd_date, current_dd
+    """
+    if not trade_history:
+        return {'max_dd': 0, 'max_dd_date': None, 'current_dd': 0, 'current_peak': 0}
+    
+    # Calculer equity curve
+    equity_curve = []
+    cumulative = 0
+    dates = []
+    
+    for trade in trade_history:
+        cumulative += trade.get('gross_pnl_pct', 0)
+        equity_curve.append(cumulative)
+        dates.append(trade.get('timestamp', ''))
+    
+    # Trouver drawdown maximum
+    peak = equity_curve[0] if equity_curve else 0
+    peak_idx = 0
+    max_dd = 0
+    max_dd_idx = 0
+    
+    for i, equity in enumerate(equity_curve):
+        if equity > peak:
+            peak = equity
+            peak_idx = i
+        
+        dd = ((equity - peak) / peak * 100) if peak > 0 else 0
+        
+        if dd < max_dd:
+            max_dd = dd
+            max_dd_idx = i
+    
+    # Drawdown actuel
+    current_peak = max(equity_curve) if equity_curve else 0
+    current_equity = equity_curve[-1] if equity_curve else 0
+    current_dd = ((current_equity - current_peak) / current_peak * 100) if current_peak > 0 else 0
+    
+    return {
+        'max_dd': round(max_dd, 2),
+        'max_dd_date': dates[max_dd_idx] if max_dd_idx < len(dates) else None,
+        'max_dd_from_peak': dates[peak_idx] if peak_idx < len(dates) else None,
+        'current_dd': round(current_dd, 2),
+        'current_peak': round(current_peak, 2)
+    }
+
+
 @app.get("/api/dashboard/summary")
 async def get_dashboard_summary():
     """Résumé des statistiques de trading"""
@@ -1540,20 +1626,15 @@ async def get_dashboard_summary():
         if t.get('timestamp', '').startswith(today)
     )
     
-    # Drawdown
+    # 🔥 PHASE 8: Max Drawdown Tracking (calcul précis)
+    max_dd_info = calculate_max_drawdown(trades)
+    
+    # Equity curve pour graphique (basée sur PnL USDT)
     equity_curve = []
     running_equity = 0.0
-    peak = 0.0
-    max_drawdown = 0.0
-    
     for trade in trades:
         running_equity += trade.get('net_pnl_usdt', 0)
         equity_curve.append(running_equity)
-        if running_equity > peak:
-            peak = running_equity
-        drawdown = peak - running_equity
-        if drawdown > max_drawdown:
-            max_drawdown = drawdown
     
     # Win/Loss streaks
     win_streak = 0
@@ -1586,7 +1667,10 @@ async def get_dashboard_summary():
         'winrate': round(winrate, 2),
         'profit_total': round(profit_total, 4),
         'profit_today': round(profit_today, 4),
-        'drawdown': round(max_drawdown, 4),
+        'drawdown': round(max_dd_info.get('current_dd', 0), 2),  # Drawdown actuel (%)
+        'drawdown_max': max_dd_info.get('max_dd', 0),  # Drawdown max historique (%)
+        'drawdown_max_date': max_dd_info.get('max_dd_date'),  # Date du max drawdown
+        'current_peak': max_dd_info.get('current_peak', 0),  # Pic actuel (%)
         'win_streak': win_streak,
         'loss_streak': loss_streak,
         'recovery_mode_active': recovery_mode_active,
@@ -1600,6 +1684,75 @@ async def get_trades_history(limit: int = 50):
     # Retourner les plus récents en premier
     recent_trades = list(reversed(trades[-limit:]))
     return JSONResponse(recent_trades)
+
+
+@app.get("/api/export/trades")
+async def export_trades_csv(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    format: str = "csv"
+):
+    """
+    🔥 PHASE 8: Exporter trades en CSV ou JSON
+    
+    Args:
+        start_date: Date début (YYYY-MM-DD)
+        end_date: Date fin (YYYY-MM-DD)
+        format: csv ou json (défaut: csv)
+    """
+    trades = app_state['trade_history']
+    
+    # Filtrer par date si fourni
+    if start_date and end_date:
+        filtered_trades = [
+            t for t in trades
+            if start_date <= t.get('date', '') <= end_date
+        ]
+    else:
+        filtered_trades = trades
+    
+    if format == "json":
+        return JSONResponse(filtered_trades)
+    
+    # Format CSV
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=[
+        'timestamp', 'date', 'time', 'symbol', 'direction',
+        'entry', 'exit', 'gross_pnl_pct', 'gross_pnl_usdt',
+        'net_pnl_pct', 'net_pnl_usdt', 'fees', 'slippage',
+        'total_costs', 'reason', 'duration'
+    ])
+    
+    writer.writeheader()
+    for trade in filtered_trades:
+        writer.writerow({
+            'timestamp': trade.get('timestamp', ''),
+            'date': trade.get('date', ''),
+            'time': trade.get('time', ''),
+            'symbol': trade.get('symbol', ''),
+            'direction': trade.get('direction', ''),
+            'entry': trade.get('entry', 0),
+            'exit': trade.get('exit', 0),
+            'gross_pnl_pct': trade.get('gross_pnl_pct', 0),
+            'gross_pnl_usdt': trade.get('gross_pnl_usdt', 0),
+            'net_pnl_pct': trade.get('net_pnl_pct', 0),
+            'net_pnl_usdt': trade.get('net_pnl_usdt', 0),
+            'fees': trade.get('fees', 0),
+            'slippage': trade.get('slippage', 0),
+            'total_costs': trade.get('total_costs', 0),
+            'reason': trade.get('reason', ''),
+            'duration': trade.get('duration', 0)
+        })
+    
+    output.seek(0)
+    
+    filename = f"trades_{start_date}_{end_date}.csv" if (start_date and end_date) else "trades_all.csv"
+    
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8')),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 if __name__ == '__main__':
     import uvicorn

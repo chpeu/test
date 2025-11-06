@@ -329,26 +329,28 @@ class PositionManager:
         else:
             streak_mult = 1.0
         
-        # 🔥 PHASE 6: Recovery Mode - Activation et réduction de taille
-        recovery_config = TRADING_CONFIG.get('recovery_mode', {})
-        if recovery_config.get('enabled', False):
-            # Activer Recovery Mode si loss streak atteint
-            if loss_streak >= recovery_config.get('trigger_loss_streak', 3):
-                if not self.config.recovery_mode_active:
-                    self.config.recovery_mode_active = True
-                    self.config.recovery_mode_remaining_trades = recovery_config.get('duration_trades', 5)
-                    logger.warning(
-                        f"🔄 RECOVERY MODE ACTIVÉ après {loss_streak} losses "
-                        f"(durée: {self.config.recovery_mode_remaining_trades} trades)"
-                    )
+        # 🔥 PHASE 6: Recovery Mode Progressif - Activation et réduction de taille
+        recovery_level = self.get_recovery_level(loss_streak)
+        if recovery_level:
+            level_num = recovery_level.get('level', 1)
+            reduction = recovery_level.get('position_size_reduction', 0.7)
             
-            # Appliquer réduction de taille si Recovery Mode actif
-            if self.config.recovery_mode_active:
-                recovery_mult = recovery_config.get('position_size_reduction', 0.7)
-                # Combiner avec streak_mult: recovery_mult × streak_mult
-                # Exemple: 0.7 × 0.85 = 0.595 (réduction totale de 40.5%)
-                streak_mult = streak_mult * recovery_mult
-                logger.debug(f"🔄 Recovery Mode: Taille réduite (mult: {recovery_mult:.2f}, final streak: {streak_mult:.2f})")
+            # Activer Recovery Mode si pas déjà actif
+            if not self.config.recovery_mode_active:
+                self.config.recovery_mode_active = True
+                self.config.recovery_mode_remaining_trades = recovery_level.get('duration_trades', 5)
+                logger.warning(
+                    f"🔄 RECOVERY MODE Niveau {level_num} ACTIVÉ après {loss_streak} losses "
+                    f"(durée: {self.config.recovery_mode_remaining_trades} trades, "
+                    f"boost: +{recovery_level.get('min_score_boost', 0):.1f}, "
+                    f"réduction: {((1-reduction)*100):.0f}%)"
+                )
+            
+            # Appliquer réduction de taille
+            # Combiner avec streak_mult: recovery_mult × streak_mult
+            # Exemple: 0.7 × 0.85 = 0.595 (réduction totale de 40.5%)
+            streak_mult = streak_mult * reduction
+            logger.debug(f"🔄 Recovery Mode Niveau {level_num}: Taille réduite (mult: {reduction:.2f}, final streak: {streak_mult:.2f})")
         
         # 4. Calculer taille finale
         final_size = base_size * multiplier * streak_mult
@@ -366,6 +368,49 @@ class PositionManager:
         )
         
         return round(final_size, 2)
+    
+    def get_recovery_level(self, loss_streak: int) -> Optional[Dict]:
+        """
+        🔥 PHASE 6: Obtenir niveau recovery selon loss streak (mode PROGRESSIVE)
+        
+        Args:
+            loss_streak: Nombre de pertes consécutives
+            
+        Returns:
+            Dict avec niveau recovery ou None
+        """
+        from config import TRADING_CONFIG
+        
+        recovery_config = TRADING_CONFIG.get('recovery_mode', {})
+        
+        if not recovery_config.get('enabled', False):
+            return None
+        
+        mode = recovery_config.get('mode', 'SIMPLE')
+        
+        if mode == 'SIMPLE':
+            # Mode simple existant (fallback)
+            trigger = recovery_config.get('trigger_loss_streak', 3)
+            if loss_streak >= trigger:
+                return {
+                    'level': 1,
+                    'min_score_boost': recovery_config.get('min_score_boost', 1.5),
+                    'position_size_reduction': recovery_config.get('position_size_reduction', 0.7),
+                    'confluence_forced': recovery_config.get('confluence_forced', False),
+                    'duration_trades': recovery_config.get('duration_trades', 5)
+                }
+            return None
+        
+        # Mode PROGRESSIVE
+        levels = recovery_config.get('levels', [])
+        
+        # Trouver niveau le plus élevé applicable
+        applicable_level = None
+        for i, level in enumerate(levels):
+            if loss_streak >= level['trigger_loss_streak']:
+                applicable_level = {**level, 'level': i + 1}
+        
+        return applicable_level
     
     def _estimate_slippage(
         self,
@@ -623,9 +668,66 @@ class PositionManager:
         
         return None
     
+    def get_adaptive_early_threshold(self, elapsed: float) -> float:
+        """
+        🔥 PHASE 8: Calculer seuil Early Invalidation adaptatif selon ATR
+        
+        Args:
+            elapsed: Temps écoulé en secondes
+        
+        Returns:
+            Seuil PnL adaptatif (négatif)
+        """
+        from config import TRADING_CONFIG
+        
+        # Seuil de base selon temps écoulé (utiliser config actuelle)
+        early_config = TRADING_CONFIG.get('early_invalidation', {})
+        
+        if elapsed <= 15:
+            base_threshold = early_config.get('threshold_15s', -0.12)  # -0.12% pour 10-15s
+        else:
+            base_threshold = early_config.get('threshold_30s', -0.08)  # -0.08% pour 15-30s
+        
+        # Vérifier si seuils adaptatifs activés
+        adaptive_config = TRADING_CONFIG.get('adaptive_thresholds', {})
+        if not adaptive_config.get('enabled', True):
+            return base_threshold
+        
+        # Calculer ATR en pourcentage (à la volée car atr_percent n'existe pas)
+        position = self.active_position
+        if position and position.atr and position.entry:
+            atr_percent = (position.atr / position.entry) * 100
+        else:
+            atr_percent = 0.5  # Valeur par défaut
+        
+        # Ajuster selon ATR
+        early_inv_config = adaptive_config.get('early_invalidation', {})
+        
+        if atr_percent < 0.3:  # Faible volatilité
+            # Moins strict (ATR faible = mouvements plus petits)
+            multiplier = early_inv_config.get('low_vol_multiplier', 0.7)
+        elif atr_percent > 0.8:  # Haute volatilité
+            # Plus strict (ATR élevé = mouvements plus grands)
+            multiplier = early_inv_config.get('high_vol_multiplier', 1.3)
+        else:  # Volatilité normale
+            multiplier = 1.0
+        
+        adaptive_threshold = base_threshold * multiplier
+        
+        # Bornes de sécurité
+        adaptive_threshold = max(-0.15, min(-0.05, adaptive_threshold))
+        
+        logger.debug(
+            f"🎯 Seuil Early adaptatif: {adaptive_threshold:.3f}% "
+            f"(base: {base_threshold:.2f}%, ATR: {atr_percent:.2f}%, mult: {multiplier:.2f})"
+        )
+        
+        return adaptive_threshold
+    
     async def _check_early_invalidation(self, current_price: float, elapsed: float) -> Optional[str]:
         """
         Vérifier si setup ne réagit pas comme prévu (30 premières secondes)
+        Avec seuils adaptatifs ATR
         
         Returns:
             'EARLY_INVALIDATION' si position doit être fermée, None sinon
@@ -636,39 +738,32 @@ class PositionManager:
         if elapsed < 10:
             return None
         
+        if elapsed > 30:
+            return None  # Fenêtre fermée
+        
         pnl = self._calculate_pnl(current_price)
         
-        # Seuils d'invalidation selon temps écoulé (plus conservateurs)
+        # Seuils d'invalidation selon temps écoulé
         early_config = TRADING_CONFIG.get('early_invalidation', {})
         enabled = early_config.get('enabled', True)
         
         if not enabled:
             return None
         
-        if elapsed <= 15:  # 10-15s
-            invalidation_threshold = early_config.get('threshold_15s', -0.12)  # -0.12% (conservateur)
-        elif elapsed <= 30:  # 15-30s
-            invalidation_threshold = early_config.get('threshold_30s', -0.08)  # -0.08%
-        else:
-            return None  # Pas d'invalidation après 30s
+        # ⚡ Seuil adaptatif selon ATR
+        invalidation_threshold = self.get_adaptive_early_threshold(elapsed)
         
         # Vérifier mouvement attendu
-        if self.active_position.direction == 'LONG':
-            # LONG devrait monter, si descend trop → invalider
-            if pnl < invalidation_threshold:
-                logger.warning(
-                    f"⚠️ Invalidation précoce LONG {self.active_position.symbol}: "
-                    f"P&L {pnl:.2f}% après {elapsed:.0f}s (seuil {invalidation_threshold}%)"
-                )
-                return 'EARLY_INVALIDATION'
-        
-        else:  # SHORT
-            if pnl < invalidation_threshold:
-                logger.warning(
-                    f"⚠️ Invalidation précoce SHORT {self.active_position.symbol}: "
-                    f"P&L {pnl:.2f}% après {elapsed:.0f}s (seuil {invalidation_threshold}%)"
-                )
-                return 'EARLY_INVALIDATION'
+        if pnl <= invalidation_threshold:
+            atr_percent = (self.active_position.atr / self.active_position.entry * 100) if (self.active_position.atr and self.active_position.entry) else 0.0
+            logger.warning(
+                f"⚠️ Invalidation précoce {self.active_position.direction} "
+                f"{self.active_position.symbol}: "
+                f"P&L {pnl:.2f}% après {elapsed:.0f}s "
+                f"(seuil adaptatif: {invalidation_threshold:.2f}%, "
+                f"ATR: {atr_percent:.2f}%)"
+            )
+            return 'EARLY_INVALIDATION'
         
         # Setup réagit correctement
         return None

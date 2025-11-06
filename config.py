@@ -89,6 +89,27 @@ TRADING_CONFIG = {
         "max_distance": 0.25,    # Maximum 0.25%
     },
     
+    # 🔥 PHASE 8: Seuils adaptatifs ATR pour invalidation
+    "adaptive_thresholds": {
+        "enabled": True,
+        "early_invalidation": {
+            "low_vol_multiplier": 0.7,   # ATR < 0.3%
+            "high_vol_multiplier": 1.3,  # ATR > 0.8%
+        },
+        "stagnation": {
+            "low_vol_threshold": 0.015,  # ATR < 0.3%
+            "high_vol_threshold": 0.04,  # ATR > 0.8%
+        }
+    },
+    
+    # 🔥 PHASE 8: Corrélation dynamique (basée sur prix réels)
+    "dynamic_correlation": {
+        "enabled": False,  # Désactivé par défaut (besoin historique)
+        "period": 50,      # 50 bougies pour calcul
+        "threshold": 0.7,  # Corrélation > 0.7 = pénalité
+        "max_penalty": -3.0  # Pénalité max
+    },
+    
     # 🔥 PHASE 2: Position sizing adaptatif
     "position_sizing": {
         "base_risk": 0.02,  # 2% du capital
@@ -126,11 +147,37 @@ TRADING_CONFIG = {
     # 🔥 PHASE 6: Recovery Mode
     "recovery_mode": {
         "enabled": True,
+        "mode": "PROGRESSIVE",  # "SIMPLE" ou "PROGRESSIVE"
+        # Mode SIMPLE (fallback si mode PROGRESSIVE désactivé)
         "trigger_loss_streak": 3,     # Activer après 3 losses
         "min_score_boost": 1.5,       # Score requis +1.5 points (réduit de 2.5)
         "position_size_reduction": 0.7,  # Taille -30% (au lieu de -50%)
         "confluence_forced": False,    # Ne pas forcer confluence (garder opportunités)
         "duration_trades": 5,         # Dure 5 trades
+        # Mode PROGRESSIVE : Niveaux selon loss streak
+        "levels": [
+            {
+                "trigger_loss_streak": 2,
+                "min_score_boost": 0.5,
+                "position_size_reduction": 0.85,  # -15%
+                "confluence_forced": False,
+                "duration_trades": 3
+            },
+            {
+                "trigger_loss_streak": 3,
+                "min_score_boost": 1.5,
+                "position_size_reduction": 0.7,  # -30%
+                "confluence_forced": False,
+                "duration_trades": 5
+            },
+            {
+                "trigger_loss_streak": 5,
+                "min_score_boost": 2.5,
+                "position_size_reduction": 0.5,  # -50%
+                "confluence_forced": True,
+                "duration_trades": 7
+            }
+        ]
     },
     
     # 🔥 PHASE 7: TP Escalier (Multi-Level TP)

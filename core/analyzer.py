@@ -900,7 +900,7 @@ class TechnicalAnalyzer:
                     )
                     return None
                 
-                # 🔥 PHASE 6: Vérifier corrélation avec positions actives
+                # 🔥 PHASE 6: Vérifier corrélation avec positions actives (filtre statique)
                 if active_positions:
                     correlation_check = await self._check_correlation(symbol, active_positions)
                     
@@ -917,7 +917,31 @@ class TechnicalAnalyzer:
                             best_setup['totalScore'] += penalty
                             logger.info(f"⚠️ {symbol} - Corrélation (SOFT): Score {best_setup['totalScore']:.1f} après pénalité {penalty}")
                 
-                # 🔥 PHASE 6: Recovery Mode - Ajuster score minimum et confluence
+                # 🔥 PHASE 8: Vérifier corrélation dynamique (basée sur prix réels)
+                dynamic_corr_config = TRADING_CONFIG.get('dynamic_correlation', {})
+                if dynamic_corr_config.get('enabled', False) and self.correlation_filter and active_positions:
+                    # Mettre à jour prix actuel pour corrélation
+                    current_price = best_setup.get('price', 0)
+                    if current_price > 0:
+                        self.correlation_filter.update_price(symbol, current_price)
+                    
+                    # Vérifier corrélation dynamique
+                    corr_check = self.correlation_filter.check_correlation(symbol, active_positions)
+                    
+                    if corr_check['penalty'] < 0:
+                        penalty = corr_check['penalty']
+                        max_penalty = dynamic_corr_config.get('max_penalty', -3.0)
+                        penalty = max(max_penalty, penalty)  # Limiter pénalité max
+                        
+                        if 'totalScore' in best_setup:
+                            best_setup['totalScore'] += penalty
+                            logger.warning(
+                                f"⚠️ {symbol} corrélé dynamiquement avec {corr_check['correlated_with']} "
+                                f"(corrélation: {corr_check['correlation']:.2f}) - "
+                                f"Pénalité: {penalty:.2f}, Score: {best_setup['totalScore']:.1f}"
+                            )
+                
+                # 🔥 PHASE 6: Recovery Mode Progressif - Ajuster score minimum et confluence
                 recovery_config = TRADING_CONFIG.get('recovery_mode', {})
                 min_score_required = best_setup.get('min_score_required', TRADING_CONFIG.get('min_score_required', 7.5))
                 
@@ -925,26 +949,39 @@ class TechnicalAnalyzer:
                     recovery_mode_active = position_manager.config.recovery_mode_active if hasattr(position_manager, 'config') else False
                     
                     if recovery_mode_active:
-                        recovery_boost = recovery_config.get('min_score_boost', 1.5)
+                        # Utiliser get_recovery_level() pour obtenir le niveau progressif
+                        loss_streak = position_manager.config.loss_streak if hasattr(position_manager, 'config') else 0
+                        recovery_level = position_manager.get_recovery_level(loss_streak) if hasattr(position_manager, 'get_recovery_level') else None
+                        
+                        if recovery_level:
+                            recovery_boost = recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
+                            level_num = recovery_level.get('level', 1)
+                        else:
+                            # Fallback sur config simple
+                            recovery_boost = recovery_config.get('min_score_boost', 1.5)
+                            level_num = 1
+                        
                         adjusted_min_score = min_score_required + recovery_boost
                         
-                        # Forcer confluence si configuré
-                        if recovery_config.get('confluence_forced', False):
+                        # Forcer confluence si configuré dans le niveau
+                        confluence_forced = recovery_level.get('confluence_forced', False) if recovery_level else recovery_config.get('confluence_forced', False)
+                        
+                        if confluence_forced:
                             use_confluence = True
                             # Vérifier que confluence est respectée
                             if not (analysis_1m and analysis_5m and 
                                     not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) and 
                                     not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m)):
-                                logger.warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode): Confluence requise")
+                                logger.warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): Confluence requise")
                                 if return_reason:
-                                    return {'reason': 'Recovery Mode: Confluence requise', 'symbol': symbol}
+                                    return {'reason': f'Recovery Mode Niveau {level_num}: Confluence requise', 'symbol': symbol}
                                 return None
                         
                         # Vérifier score avec boost
                         setup_score = best_setup.get('totalScore', 0)
                         if setup_score < adjusted_min_score:
                             logger.warning(
-                                f"⚠️ {symbol} - Setup rejeté (Recovery Mode): "
+                                f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): "
                                 f"Score {setup_score:.1f} < {adjusted_min_score:.1f} (min: {min_score_required:.1f} + boost: {recovery_boost:.1f})"
                             )
                             if return_reason:
