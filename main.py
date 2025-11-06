@@ -27,7 +27,7 @@ try:
     from core.position_manager import PositionManager, PositionConfig
     from core.scheduler import Scheduler
     from core.metrics import get_metrics_collector
-    from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite
+    from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
 except ImportError as e:
     logging.error(f"Import error: {e}")
     # Fallback pour les dépendances manquantes
@@ -40,6 +40,18 @@ except ImportError as e:
     Scheduler = None
     get_metrics_collector = None
 
+# 🔥 ARCHITECTURE V2: Nouveaux imports
+try:
+    from core.analytics_database import AnalyticsDatabase
+    from notifications import create_notification_manager
+    from api.routes import router as api_router, set_analytics_db
+except ImportError as e:
+    logging.warning(f"Architecture V2 imports (optionnels): {e}")
+    AnalyticsDatabase = None
+    create_notification_manager = None
+    api_router = None
+    set_analytics_db = None
+
 # Configuration logging
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +62,17 @@ logger = logging.getLogger(__name__)
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
 templates = Jinja2Templates(directory="templates")
+
+# 🔥 ARCHITECTURE V2: Monter fichiers statiques et inclure routes API
+try:
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+    logger.info("✅ Fichiers statiques montés: /static")
+except Exception as e:
+    logger.warning(f"⚠️ Fichiers statiques non montés: {e}")
+
+if api_router:
+    app.include_router(api_router)
+    logger.info("✅ API REST routes incluses: /api/*")
 
 # SocketIO
 # 🔥 FIX: Utiliser async_mode='asgi' pour compatibilité avec Uvicorn
@@ -197,6 +220,11 @@ position_config = None
 position_manager = None
 price_provider = None
 scheduler = None
+
+# 🔥 ARCHITECTURE V2: Nouvelles instances
+analytics_db = None
+notification_manager = None
+session_id = None  # ID unique de cette session
 
 # 🔥 FIX: Lock pour éviter les ouvertures multiples de positions
 position_lock = asyncio.Lock()
@@ -826,6 +854,56 @@ async def scalability_refresh_loop_callback():
 def init_instances():
     """Initialiser les instances (après import)"""
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
+    global analytics_db, notification_manager, session_id
+    
+    # 🔥 ARCHITECTURE V2: Initialiser Analytics DB
+    if not analytics_db and AnalyticsDatabase:
+        from config import ANALYTICS_DB_PATH
+        import time
+        
+        # Créer dossier data/ si nécessaire
+        os.makedirs(os.path.dirname(ANALYTICS_DB_PATH) if os.path.dirname(ANALYTICS_DB_PATH) else "data", exist_ok=True)
+        
+        analytics_db = AnalyticsDatabase(db_path=ANALYTICS_DB_PATH)
+        # Initialiser DB (asyncio.run car init_instances n'est pas async)
+        try:
+            import asyncio
+            asyncio.create_task(analytics_db.initialize())
+            logger.info(f"✅ Analytics DB initialisée: {ANALYTICS_DB_PATH}")
+        except Exception as e:
+            logger.error(f"❌ Erreur init Analytics DB: {e}")
+            analytics_db = None
+        
+        # Générer session ID unique
+        if not session_id:
+            session_id = f"live_{int(time.time())}"
+            logger.info(f"📝 Session ID: {session_id}")
+        
+        # Injecter Analytics DB dans API routes
+        if set_analytics_db and analytics_db:
+            set_analytics_db(analytics_db)
+    
+    # 🔥 ARCHITECTURE V2: Initialiser Notification Manager
+    if not notification_manager and create_notification_manager:
+        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
+        from config import NOTIFICATION_BATCHING_ENABLED, NOTIFICATION_THROTTLE_SECONDS
+        
+        async def socketio_callback(event_type, data):
+            """Callback pour envoyer via SocketIO"""
+            await sio.emit(event_type, data)
+        
+        notification_manager = create_notification_manager(
+            telegram_bot_token=TELEGRAM_BOT_TOKEN,
+            telegram_chat_id=TELEGRAM_CHAT_ID,
+            socketio_callback=socketio_callback,
+            enable_batching=NOTIFICATION_BATCHING_ENABLED
+        )
+        
+        if TELEGRAM_ENABLED:
+            logger.info(f"📱 Notification Manager initialisé (Telegram activé)")
+        else:
+            logger.info(f"📱 Notification Manager initialisé (Telegram désactivé)")
+    
     if not scanner and ScalabilityScanner:
         scanner = ScalabilityScanner()
     if not analyzer and TechnicalAnalyzer:
@@ -854,6 +932,11 @@ def init_instances():
     
     if not position_manager and PositionManager and position_config:
         position_manager = PositionManager(position_config)
+        
+        # 🔥 ARCHITECTURE V2: Injecter notification_manager dans position_manager
+        if notification_manager:
+            position_manager.notification_manager = notification_manager
+            logger.info("📢 Notification Manager injecté dans Position Manager")
     if not price_provider and get_price_provider:
         price_provider = get_price_provider()
     # 🔥 JOUR 3: Initialiser scheduler et configurer les callbacks
@@ -871,6 +954,16 @@ def init_instances():
 async def index(request: Request):
     """Page principale - HTML copié de v5.1"""
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/dashboard/charts", response_class=HTMLResponse)
+async def dashboard_charts(request: Request):
+    """🔥 ARCHITECTURE V2: Dashboard graphiques avec Chart.js"""
+    try:
+        return templates.TemplateResponse("dashboard_charts.html", {"request": request})
+    except Exception as e:
+        logger.error(f"❌ Erreur dashboard: {e}")
+        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/api/status")

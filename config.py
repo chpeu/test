@@ -254,3 +254,29 @@ WEBSOCKET_CONFIG = {
 # Debug
 DEBUG_ENABLED = os.getenv("DEBUG", "False").lower() == "true"
 
+# ==================== ARCHITECTURE V2 - NOUVEAUX PARAMÈTRES ====================
+
+# Analytics Database (Single Source of Truth)
+ANALYTICS_DB_PATH = "data/analytics.db"
+
+# Telegram Notifications (optionnel)
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", None)  # "123456:ABC-DEF..."
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", None)  # "123456789"
+TELEGRAM_ENABLED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+
+# Paper Trading Mode (optionnel)
+PAPER_TRADING_MODE = os.getenv("PAPER_TRADING_MODE", "False").lower() == "true"
+PAPER_TRADING_INITIAL_CAPITAL = float(os.getenv("PAPER_TRADING_INITIAL_CAPITAL", "1000.0"))
+
+# Backtesting
+BACKTEST_DATA_PATH = "historical_data"
+
+# API REST
+API_RATE_LIMIT_REQUESTS = 100
+API_RATE_LIMIT_WINDOW = 60  # secondes
+
+# Notifications
+NOTIFICATION_BATCHING_ENABLED = True
+NOTIFICATION_BATCH_INTERVAL = 5  # secondes
+NOTIFICATION_THROTTLE_SECONDS = 2  # délai min entre messages Telegram
+
