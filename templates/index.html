@@ -4816,37 +4816,44 @@
                         }
                     }
                     
-                    // TP/SL Mode (détermine useATR/useATRMulti)
+                    // TP/SL Mode (détermine useATR/useATRMulti) - 🔥 FIX: Restaurer sélection dropdown
                     if (config.tp_sl_mode !== undefined) {
-                        if (config.tp_sl_mode === 'ATR') {
-                            useATR = true;
-                            useATRMulti = false;
-                        } else if (config.tp_sl_mode === 'TP_MULTI') {
-                            useATR = false;
-                            useATRMulti = true;
-                        } else {
-                            useATR = false;
-                            useATRMulti = false;
+                        const tpSlModeSelect = document.getElementById('tpSlModeSelect');
+                        if (tpSlModeSelect) {
+                            tpSlModeSelect.value = config.tp_sl_mode;
+                            // Appeler changeTPslMode pour mettre à jour les variables et l'affichage
+                            changeTPslMode(config.tp_sl_mode);
                         }
+                    }
+                    
+                    // Risk per trade (slider) - 🔥 FIX: Restaurer slider risk
+                    if (config.risk_per_trade !== undefined) {
+                        riskPerTrade = config.risk_per_trade;
+                        const riskPerTradeSlider = document.getElementById('riskPerTradeSlider');
+                        const riskPerTradeValue = document.getElementById('riskPerTradeValue');
+                        if (riskPerTradeSlider) riskPerTradeSlider.value = riskPerTrade;
+                        if (riskPerTradeValue) riskPerTradeValue.textContent = riskPerTrade.toFixed(1) + '%';
                     }
                     
                     debugLog('✅ Config restaurée', 'Tous les paramètres UI restaurés');
                 }
                 
-                // 2. RESTAURER STATS
+                // 2. RESTAURER STATS (compteurs trades/wins/losses/winrates)
                 if (stateData.stats) {
                     const apiStats = stateData.stats;
                     stats.totalTrades = apiStats.total_trades || 0;
                     stats.wins = apiStats.wins || 0;
                     stats.losses = apiStats.losses || 0;
                     stats.winrate = apiStats.winrate || 0;
+                    // 🔥 FIX: Forcer mise à jour de tous les compteurs
                     updateStats();
-                    debugLog('✅ Stats restaurées', `Trades: ${stats.totalTrades}, Winrate: ${stats.winrate.toFixed(1)}%`);
+                    debugLog('✅ Stats restaurées', `Trades: ${stats.totalTrades}, Wins: ${stats.wins}, Losses: ${stats.losses}, Winrate: ${stats.winrate.toFixed(1)}%`);
                 }
                 
-                // 3. RESTAURER HISTORIQUE
+                // 3. RESTAURER HISTORIQUE (affichage historique des trades)
                 if (stateData.trades && Array.isArray(stateData.trades)) {
                     stats.tradeHistory = stateData.trades.slice(0, 50);
+                    // 🔥 FIX: Forcer mise à jour de l'affichage historique
                     updateTradeHistory();
                     debugLog('✅ Historique restauré', `${stateData.trades.length} trades`);
                 }
@@ -4868,22 +4875,36 @@
                 
                 // 5. RESTAURER SCANNER STATE
                 if (stateData.scanner) {
-                    // Restaurer état scanner (is_scanning)
+                    // Restaurer état scanner (is_scanning) - 🔥 FIX: Bouton démarrage
                     if (stateData.scanner.is_scanning !== undefined) {
-                        // Mettre à jour le bouton démarrage si nécessaire
+                        // Mettre à jour le bouton démarrage
                         const startBtn = document.querySelector('.btn-start');
-                        if (startBtn && stateData.scanner.is_scanning) {
-                            startBtn.textContent = '⏸️ ARRÊTER';
-                            startBtn.classList.add('active');
+                        if (startBtn) {
+                            if (stateData.scanner.is_scanning) {
+                                startBtn.textContent = '⏸️ ARRÊTER';
+                                startBtn.classList.add('active');
+                                // Mettre à jour variable globale si elle existe
+                                if (typeof tradingState !== 'undefined') {
+                                    tradingState = 'SCANNING';
+                                }
+                            } else {
+                                startBtn.textContent = '▶️ DÉMARRER';
+                                startBtn.classList.remove('active');
+                                if (typeof tradingState !== 'undefined') {
+                                    tradingState = 'IDLE';
+                                }
+                            }
                         }
                     }
                     
-                    // Restaurer top pairs (paires scalables identifiées)
+                    // Restaurer top pairs (paires scalables identifiées) - 🔥 FIX: Liste des paires
                     if (stateData.scanner.top_pairs && Array.isArray(stateData.scanner.top_pairs)) {
                         // Émettre événement SocketIO pour mettre à jour l'affichage
                         if (socket && socket.connected) {
                             socket.emit('top_pairs_update', { pairs: stateData.scanner.top_pairs });
                         }
+                        // 🔥 FIX: Également mettre à jour directement si handler existe
+                        // Le handler SocketIO 'top_pairs_update' devrait mettre à jour l'affichage
                         debugLog('✅ Top pairs restaurés', `${stateData.scanner.top_pairs.length} paires`);
                     }
                 }

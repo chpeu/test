@@ -1577,6 +1577,9 @@ class PositionManager:
             else:
                 logger.info(f"🔄 Recovery Mode: {self.config.recovery_mode_remaining_trades} trades restants")
         
+        # 🔥 FIX CRITIQUE: Sauvegarder position AVANT de la réinitialiser
+        position = self.active_position
+        
         # Réinitialiser
         self.active_position = None
         
