@@ -933,7 +933,15 @@ def init_instances():
     if not position_manager and PositionManager and position_config:
         position_manager = PositionManager(position_config)
         
-        # 🔥 ARCHITECTURE V2: Injecter notification_manager dans position_manager
+        # 🔥 ARCHITECTURE V2: Injecter analytics_db, notification_manager, session_id
+        if analytics_db:
+            position_manager.analytics_db = analytics_db
+            logger.info("💾 Analytics DB injecté dans Position Manager")
+        
+        if session_id:
+            position_manager.session_id = session_id
+            logger.info(f"📝 Session ID injecté dans Position Manager: {session_id}")
+        
         if notification_manager:
             position_manager.notification_manager = notification_manager
             logger.info("📢 Notification Manager injecté dans Position Manager")

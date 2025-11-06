@@ -272,6 +272,25 @@ class PositionManager:
             + (f" | TP Escalier: {len(tp_escalier_levels)} niveaux" if tp_escalier_enabled else "")
         )
         
+        # 🔥 ARCHITECTURE V2: Notification position ouverte
+        if hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                asyncio.create_task(self.notification_manager.notify(
+                    'position_opened',
+                    {
+                        'symbol': symbol,
+                        'direction': direction,
+                        'entry': entry,
+                        'size': size,
+                        'tp': tp,
+                        'sl': sl,
+                        'condition_types': condition_types or []
+                    }
+                ))
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur notification: {e}")
+        
         return self.active_position
     
     def calculate_adaptive_position_size(
@@ -1155,6 +1174,21 @@ class PositionManager:
                     'size_remaining_pct': position.tp_escalier_size_remaining * 100
                 })
             
+            # 🔥 ARCHITECTURE V2: Notification TP Escalier niveau
+            if hasattr(self, 'notification_manager') and self.notification_manager:
+                await self.notification_manager.notify(
+                    'tp_escalier_level',
+                    {
+                        'symbol': position.symbol,
+                        'level': current_level + 1,
+                        'total_levels': len(position.tp_escalier_levels),
+                        'price': tp_price,
+                        'profit_usdt': profit_usdt,
+                        'profit_pct': profit_pct,
+                        'size_remaining_pct': position.tp_escalier_size_remaining * 100
+                    }
+                )
+            
             # Si dernier niveau atteint, logger info
             if position.tp_escalier_current_level >= len(position.tp_escalier_levels):
                 total_profit = sum(p['profit_usdt'] for p in position.tp_escalier_profits)
@@ -1550,6 +1584,76 @@ class PositionManager:
             f"🔴 POSITION FERMÉE: {result['symbol']} | "
             f"Raison: {reason} | PnL net: {net_pnl_pct:.2f}% ({net_pnl_usdt:.4f} USDT)"
         )
+        
+        # 🔥 ARCHITECTURE V2: Logger trade dans Analytics DB
+        if hasattr(self, 'analytics_db') and self.analytics_db:
+            try:
+                import json
+                import asyncio
+                
+                # Déterminer trading mode
+                try:
+                    from config import PAPER_TRADING_MODE
+                    is_paper = PAPER_TRADING_MODE
+                except:
+                    is_paper = False
+                
+                trade_data = {
+                    'symbol': position.symbol,
+                    'direction': position.direction,
+                    'entry': position.entry,
+                    'exit': exit_price,
+                    'size': position.size,
+                    'pnl_pct': net_pnl_pct,
+                    'pnl_usdt': net_pnl_usdt,
+                    'exit_reason': reason,
+                    'start_time': position.start_time,
+                    'end_time': time.time(),
+                    'duration_seconds': time.time() - position.start_time,
+                    'tp': position.tp,
+                    'sl': position.sl,
+                    'tp_sl_mode': position.tp_sl_mode,
+                    'condition_types': json.dumps(position.condition_types) if position.condition_types else '[]',
+                    'atr': position.atr,
+                    'atr5m': position.atr5m,
+                    
+                    # Nouveaux champs V2
+                    'trading_mode': 'PAPER' if is_paper else 'LIVE',
+                    'is_paper': is_paper,
+                    'is_backtest': False,
+                    'session_id': getattr(self, 'session_id', 'unknown'),
+                    'max_favorable_excursion_pct': getattr(position, 'max_favorable_excursion_pct', 0),
+                    'max_adverse_excursion_pct': getattr(position, 'max_adverse_excursion_pct', 0),
+                    'breakeven_triggered': position.break_even_set,
+                    'trailing_activated': getattr(position, 'trailing_activated', False),
+                    'tp_escalier_levels_hit': position.tp_escalier_current_level if position.tp_escalier_enabled else 0
+                }
+                
+                # Logger en async (non-bloquant)
+                asyncio.create_task(self.analytics_db.insert_trade(trade_data))
+                logger.debug(f"✅ Trade loggé dans Analytics DB: {position.symbol}")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur logging Analytics DB: {e}")
+        
+        # 🔥 ARCHITECTURE V2: Notification position fermée
+        if hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                asyncio.create_task(self.notification_manager.notify(
+                    'position_closed',
+                    {
+                        'symbol': position.symbol,
+                        'direction': position.direction,
+                        'result': {
+                            'exit_reason': reason,
+                            'pnl_pct': net_pnl_pct,
+                            'pnl_usdt': net_pnl_usdt,
+                            'duration_seconds': time.time() - position.start_time
+                        }
+                    }
+                ))
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur notification: {e}")
         
         return result
     
