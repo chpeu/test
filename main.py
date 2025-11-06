@@ -52,27 +52,57 @@ sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode='asgi')
 socketio_app = socketio.ASGIApp(sio, app)
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
-TRADE_HISTORY_FILE = "trade_history.json"
+# 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
+# Utiliser le port comme identifiant d'instance (défaut: 5000)
+def get_trade_history_file():
+    """Retourner le nom du fichier historique selon le port de l'instance"""
+    import sys
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    return f"trade_history_instance_{port}.json"
+
+TRADE_HISTORY_FILE = None  # Sera initialisé au démarrage
 
 def save_trade_history():
     """Sauvegarder l'historique des trades dans un fichier JSON"""
+    global TRADE_HISTORY_FILE
+    if TRADE_HISTORY_FILE is None:
+        TRADE_HISTORY_FILE = get_trade_history_file()
+    
     try:
-        with open(TRADE_HISTORY_FILE, 'w') as f:
-            json.dump(app_state['trade_history'], f, indent=2)
-        logger.debug(f"✅ Historique sauvegardé: {len(app_state['trade_history'])} trades")
+        # 🔥 FIX: Écriture atomique avec fichier temporaire puis rename
+        temp_file = TRADE_HISTORY_FILE + ".tmp"
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump(app_state['trade_history'], f, indent=2, ensure_ascii=False)
+        # Renommer atomiquement (Windows supporte cette opération)
+        if os.path.exists(TRADE_HISTORY_FILE):
+            os.replace(temp_file, TRADE_HISTORY_FILE)
+        else:
+            os.rename(temp_file, TRADE_HISTORY_FILE)
+        logger.debug(f"✅ Historique sauvegardé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
     except Exception as e:
         logger.error(f"❌ Erreur sauvegarde historique: {e}")
+        # Nettoyer fichier temporaire en cas d'erreur
+        temp_file = TRADE_HISTORY_FILE + ".tmp"
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except:
+                pass
 
 def load_trade_history():
     """Charger l'historique des trades depuis un fichier JSON"""
+    global TRADE_HISTORY_FILE
+    if TRADE_HISTORY_FILE is None:
+        TRADE_HISTORY_FILE = get_trade_history_file()
+    
     try:
         if os.path.exists(TRADE_HISTORY_FILE):
-            with open(TRADE_HISTORY_FILE, 'r') as f:
+            with open(TRADE_HISTORY_FILE, 'r', encoding='utf-8') as f:
                 app_state['trade_history'] = json.load(f)
-            logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades")
+            logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
         else:
             app_state['trade_history'] = []
-            logger.info("📝 Nouveau fichier historique créé")
+            logger.info(f"📝 Nouveau fichier historique créé: {TRADE_HISTORY_FILE}")
     except Exception as e:
         logger.error(f"❌ Erreur chargement historique: {e}")
         app_state['trade_history'] = []
@@ -1261,7 +1291,11 @@ async def scan_top_pairs_task(n):
 async def handle_connect(sid, environ):
     """Connexion WebSocket"""
     logger.info("Client connecté")
-    await sio.emit('status', app_state, room=sid)
+    # 🔥 FIX: Convertir active_position en dict pour sérialisation JSON
+    status_data = app_state.copy()
+    if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
+        status_data['active_position'] = status_data['active_position'].to_dict()
+    await sio.emit('status', status_data, room=sid)
     # Envoyer les derniers logs
     for log_entry in app_state['logs'][-50:]:
         await sio.emit('log', log_entry, room=sid)

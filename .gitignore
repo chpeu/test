@@ -41,6 +41,10 @@ Thumbs.db
 *.log
 logs/
 
+# Trade history files (multi-instance)
+trade_history_instance_*.json
+trade_history_instance_*.json.tmp
+
 # Flask
 instance/
 .webassets-cache

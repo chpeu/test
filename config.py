@@ -135,7 +135,7 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 7: TP Escalier (Multi-Level TP)
     "tp_escalier": {
-        "enabled": False,  # Activé uniquement si tp_sl_mode = "TP_MULTI"
+        "enabled": True,  # Activé automatiquement si tp_sl_mode = "TP_MULTI"
         "levels": [
             {"pnl": 0.20, "size_pct": 0.25, "move_sl": "entry"},      # 25% à +0.20%
             {"pnl": 0.35, "size_pct": 0.25, "move_sl": "breakeven"},  # 25% à +0.35%
@@ -144,33 +144,6 @@ TRADING_CONFIG = {
         ]
     },
     
-    # 🔥 PHASE 8: Advanced Invalidation
-    "advanced_invalidation": {
-        "enabled": True,
-        "stagnation_mode": {
-            "enabled": True,
-            "min_elapsed": 60,
-            "stagnation_time": 45,
-            "stagnation_threshold": 0.02,
-            "only_if_not_profitable": True,
-            "min_pnl_for_stagnation": -0.05,
-        },
-        "momentum_mode": {
-            "enabled": True,
-            "min_elapsed": 30,
-            "lookback_periods": 5,
-            "momentum_threshold": -0.01,
-            "only_if_not_profitable": True,
-            "min_pnl_for_momentum": -0.03,
-        },
-        "adaptive_thresholds": {
-            "enabled": True,
-            "atr_multiplier": 0.5,
-            "min_threshold": -0.10,
-            "max_threshold": -0.20,
-            "min_elapsed": 30,
-        }
-    },
 }
 
 # Risk management

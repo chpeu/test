@@ -855,10 +855,11 @@ class TechnicalAnalyzer:
                 )
                 
                 if not orderbook_check['valid']:
+                    # 🔥 Afficher le seuil correct selon la direction
+                    required_str = '≥1.1' if best_setup['direction'] == 'LONG' else '≤0.95'
                     logger.warning(
                         f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
-                        f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, "
-                        f"required={'≥1.1' if best_setup['direction']=='LONG' else '≤0.9'})"
+                        f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})"
                     )
                     return None
                 
@@ -1391,8 +1392,8 @@ class TechnicalAnalyzer:
                     quality = 'POOR'
             
             else:  # SHORT
-                # SHORT : besoin de pression vendeuse (ratio ≤ 0.9)
-                required_ratio = 0.9  # Plus permissif que 0.8
+                # SHORT : besoin de pression vendeuse (ratio ≤ 0.95) - 🔥 Ajusté de 0.9 à 0.95
+                required_ratio = 0.95  # Plus strict que 0.9 pour meilleure qualité
                 valid = ratio <= required_ratio
                 
                 if ratio <= 0.6:
@@ -1536,5 +1537,6 @@ class TechnicalAnalyzer:
     async def close(self):
         """Ferme les connexions"""
         await self.client.close()
+
 
 

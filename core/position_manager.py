@@ -54,8 +54,7 @@ class Position:
     tp_escalier_size_remaining: float = 1.0  # Taille restante (1.0 = 100%)
     tp_escalier_profits: List[Dict] = field(default_factory=list)  # Historique des TP vendus
     
-    # 🔥 PHASE 8: Advanced Invalidation - Tracking PnL
-    pnl_history: List[Dict] = field(default_factory=list)  # Historique PnL avec timestamp
+    pnl_history: List[Dict] = field(default_factory=list)  # Historique PnL avec timestamp (conservé pour usage futur)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
@@ -614,14 +613,6 @@ class PositionManager:
         if pnl > 0.25:  # Seuil de déclenchement à +0.25%
             await self._update_trailing_stop_adaptive(current_price)
         
-        # 🔥 PHASE 8: Advanced Invalidation - Après 30 secondes
-        if elapsed > 30:
-            advanced_invalidation = await self._check_advanced_invalidation(current_price, pnl, elapsed)
-            if advanced_invalidation:
-                return advanced_invalidation
-        
-        # Mettre à jour historique PnL pour Advanced Invalidation
-        self._update_pnl_history(pnl, elapsed)
         
         # Vérifier TP/SL
         reason = self._check_levels(current_price)
@@ -741,168 +732,6 @@ class PositionManager:
         elif move_sl == 'trailing':
             # Activer trailing stop (géré par _update_trailing_stop_adaptive)
             logger.info(f"📈 TP Escalier: Trailing stop activé")
-    
-    def _update_pnl_history(self, pnl: float, elapsed: float):
-        """🔥 PHASE 8: Mettre à jour l'historique PnL pour Advanced Invalidation"""
-        if not self.active_position:
-            return
-        
-        self.active_position.pnl_history.append({
-            'pnl': pnl,
-            'elapsed': elapsed,
-            'timestamp': time.time()
-        })
-        
-        # Garder seulement les 50 dernières entrées (pour performance)
-        if len(self.active_position.pnl_history) > 50:
-            self.active_position.pnl_history = self.active_position.pnl_history[-50:]
-    
-    async def _check_advanced_invalidation(self, current_price: float, pnl: float, elapsed: float) -> Optional[str]:
-        """
-        🔥 PHASE 8: Invalidation dynamique avancée (après 30 secondes)
-        
-        Returns:
-            Raison d'invalidation si position doit être fermée, None sinon
-        """
-        from config import TRADING_CONFIG
-        
-        advanced_config = TRADING_CONFIG.get('advanced_invalidation', {})
-        if not advanced_config.get('enabled', False):
-            return None
-        
-        position = self.active_position
-        if not position:
-            return None
-        
-        # Vérifier chaque mode
-        # Mode 1: Stagnation
-        stagnation_mode = advanced_config.get('stagnation_mode', {})
-        if stagnation_mode.get('enabled', False):
-            invalidation = self._check_stagnation_invalidation(pnl, elapsed, position.pnl_history, stagnation_mode)
-            if invalidation:
-                return invalidation
-        
-        # Mode 2: Momentum
-        momentum_mode = advanced_config.get('momentum_mode', {})
-        if momentum_mode.get('enabled', False):
-            invalidation = self._check_momentum_invalidation(pnl, elapsed, position.pnl_history, momentum_mode)
-            if invalidation:
-                return invalidation
-        
-        # Mode 3: Adaptive Thresholds
-        adaptive_config = advanced_config.get('adaptive_thresholds', {})
-        if adaptive_config.get('enabled', False):
-            invalidation = self._check_adaptive_thresholds_invalidation(pnl, elapsed, adaptive_config)
-            if invalidation:
-                return invalidation
-        
-        return None
-    
-    def _check_stagnation_invalidation(self, pnl: float, elapsed: float, pnl_history: List[Dict], config: Dict) -> Optional[str]:
-        """Vérifier stagnation du PnL"""
-        min_elapsed = config.get('min_elapsed', 60)
-        stagnation_time = config.get('stagnation_time', 45)
-        threshold = config.get('stagnation_threshold', 0.02)
-        only_if_not_profitable = config.get('only_if_not_profitable', True)
-        min_pnl = config.get('min_pnl_for_stagnation', -0.05)
-        
-        if elapsed < min_elapsed:
-            return None
-        
-        if only_if_not_profitable and pnl >= 0:
-            return None
-        
-        if pnl > min_pnl:
-            return None
-        
-        # Vérifier si PnL stagne (variation < threshold pendant stagnation_time)
-        if len(pnl_history) < 2:
-            return None
-        
-        # Filtrer les entrées dans la fenêtre de stagnation
-        recent_history = [h for h in pnl_history if elapsed - h['elapsed'] <= stagnation_time]
-        if len(recent_history) < 2:
-            return None
-        
-        pnl_values = [h['pnl'] for h in recent_history]
-        pnl_min = min(pnl_values)
-        pnl_max = max(pnl_values)
-        pnl_range = pnl_max - pnl_min
-        
-        if pnl_range < threshold:
-            logger.warning(
-                f"⚠️ Advanced Invalidation (Stagnation): {self.active_position.symbol} | "
-                f"PnL stagne {pnl_range:.3f}% < {threshold}% pendant {stagnation_time}s"
-            )
-            return 'ADVANCED_INVALIDATION_STAGNATION'
-        
-        return None
-    
-    def _check_momentum_invalidation(self, pnl: float, elapsed: float, pnl_history: List[Dict], config: Dict) -> Optional[str]:
-        """Vérifier perte de momentum"""
-        min_elapsed = config.get('min_elapsed', 30)
-        lookback_periods = config.get('lookback_periods', 5)
-        momentum_threshold = config.get('momentum_threshold', -0.01)
-        only_if_not_profitable = config.get('only_if_not_profitable', True)
-        min_pnl = config.get('min_pnl_for_momentum', -0.03)
-        
-        if elapsed < min_elapsed:
-            return None
-        
-        if only_if_not_profitable and pnl >= 0:
-            return None
-        
-        if pnl > min_pnl:
-            return None
-        
-        # Vérifier momentum dans les dernières périodes
-        if len(pnl_history) < lookback_periods:
-            return None
-        
-        recent_pnl = [h['pnl'] for h in pnl_history[-lookback_periods:]]
-        
-        # Calculer momentum moyen (différence entre dernière et première)
-        if len(recent_pnl) >= 2:
-            momentum = (recent_pnl[-1] - recent_pnl[0]) / len(recent_pnl)
-            
-            if momentum < momentum_threshold:
-                logger.warning(
-                    f"⚠️ Advanced Invalidation (Momentum): {self.active_position.symbol} | "
-                    f"Momentum perdu {momentum:.3f}% < {momentum_threshold}%"
-                )
-                return 'ADVANCED_INVALIDATION_MOMENTUM'
-        
-        return None
-    
-    def _check_adaptive_thresholds_invalidation(self, pnl: float, elapsed: float, config: Dict) -> Optional[str]:
-        """Vérifier seuils adaptatifs basés sur ATR"""
-        min_elapsed = config.get('min_elapsed', 30)
-        atr_multiplier = config.get('atr_multiplier', 0.5)
-        min_threshold = config.get('min_threshold', -0.10)
-        max_threshold = config.get('max_threshold', -0.20)
-        
-        if elapsed < min_elapsed:
-            return None
-        
-        position = self.active_position
-        if not position.atr or not position.entry:
-            return None
-        
-        # Calculer seuil adaptatif basé sur ATR
-        atr_percent = (position.atr / position.entry) * 100
-        adaptive_threshold = -atr_percent * atr_multiplier
-        
-        # Clamper entre min et max
-        adaptive_threshold = max(min_threshold, min(max_threshold, adaptive_threshold))
-        
-        if pnl < adaptive_threshold:
-            logger.warning(
-                f"⚠️ Advanced Invalidation (Adaptive): {self.active_position.symbol} | "
-                f"PnL {pnl:.2f}% < seuil adaptatif {adaptive_threshold:.2f}% (ATR: {atr_percent:.3f}%)"
-            )
-            return 'ADVANCED_INVALIDATION_ADAPTIVE'
-        
-        return None
     
     async def _update_trailing_stop_adaptive(self, current_price: float):
         """
@@ -1187,27 +1016,43 @@ class PositionManager:
         sl = self.active_position.sl
         tp = self.active_position.tp
         
+        # Calculer PnL pour déterminer si c'est un trailing stop ou SL classique
+        pnl = self._calculate_pnl(current_price)
+        
         # 🔥 PHASE 7: TP Escalier - Gestion spéciale
         if self.active_position.tp_escalier_enabled:
             # Si tous les niveaux sont passés, vérifier seulement SL (trailing stop gère)
             if self.active_position.tp_escalier_current_level >= len(self.active_position.tp_escalier_levels):
-                # Tous niveaux passés, vérifier seulement SL
+                # Tous niveaux passés, vérifier seulement SL (trailing stop)
                 if direction == 'LONG':
                     if current_price <= sl:
-                        return 'SL'
+                        # Après TP Escalier, c'est toujours un trailing stop
+                        return 'TS'
                 else:  # SHORT
                     if current_price >= sl:
-                        return 'SL'
+                        # Après TP Escalier, c'est toujours un trailing stop
+                        return 'TS'
                 return None
             else:
                 # Niveaux restants, ne pas vérifier TP final (géré par _check_tp_escalier_levels)
                 # Vérifier seulement SL
+                # Si au moins un niveau TP Escalier a été atteint, c'est probablement un trailing stop
+                # (car les niveaux TP Escalier ajustent le SL vers entry/breakeven/trailing)
+                has_tp_escalier_profits = len(self.active_position.tp_escalier_profits) > 0
                 if direction == 'LONG':
                     if current_price <= sl:
-                        return 'SL'
+                        # Si au moins un palier atteint OU PnL positif, c'est un trailing stop
+                        if has_tp_escalier_profits or pnl >= 0:
+                            return 'TS'
+                        else:
+                            return 'SL'
                 else:  # SHORT
                     if current_price >= sl:
-                        return 'SL'
+                        # Si au moins un palier atteint OU PnL positif, c'est un trailing stop
+                        if has_tp_escalier_profits or pnl >= 0:
+                            return 'TS'
+                        else:
+                            return 'SL'
                 return None
         
         # 🔥 FIX: Log détaillé pour debug
@@ -1241,9 +1086,11 @@ class PositionManager:
                 else:
                     # Mode ATR SIMPLE: pas de TP partiel
                     tp_partial_threshold_pct = 999  # Désactiver la vérification
+                    tp_final_threshold_pct = 999  # Désactiver la vérification
             
             # Vérifier si TP partiel < TP final (doit toujours être vrai)
-            if tp_partial_threshold_pct < tp_final_threshold_pct:
+            # Ne pas vérifier si on est en mode ATR SIMPLE (les deux sont à 999)
+            if tp_partial_threshold_pct < tp_final_threshold_pct and tp_final_threshold_pct < 999:
                 # Calculer PnL actuel
                 current_pnl = self._calculate_pnl(current_price)
                 
@@ -1280,8 +1127,13 @@ class PositionManager:
         # Vérification TP/SL standard (si pas de TP partiel ou TP partiel non vendu, ou mode ATR)
         if direction == 'LONG':
             if current_price <= sl:
-                logger.info(f"🛑 SL TOUCHÉ (LONG): Prix {current_price:.6f} <= SL {sl:.6f}")
-                return 'SL'
+                # Si PnL positif, c'est un trailing stop, sinon SL classique
+                if pnl >= 0:
+                    logger.info(f"📈 Trailing Stop touché (LONG): Prix {current_price:.6f} <= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    return 'TS'
+                else:
+                    logger.info(f"🛑 SL TOUCHÉ (LONG): Prix {current_price:.6f} <= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    return 'SL'
             # Vérifier TP final seulement si TP partiel pas vendu (ou mode ATR)
             if current_price >= tp:
                 if self.config.use_partial_tp and self.active_position.partial_tp_sold:
@@ -1298,8 +1150,13 @@ class PositionManager:
                     return 'TP'
         else:  # SHORT
             if current_price >= sl:
-                logger.info(f"🛑 SL TOUCHÉ (SHORT): Prix {current_price:.6f} >= SL {sl:.6f}")
-                return 'SL'
+                # Si PnL positif, c'est un trailing stop, sinon SL classique
+                if pnl >= 0:
+                    logger.info(f"📈 Trailing Stop touché (SHORT): Prix {current_price:.6f} >= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    return 'TS'
+                else:
+                    logger.info(f"🛑 SL TOUCHÉ (SHORT): Prix {current_price:.6f} >= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    return 'SL'
             # Vérifier TP final seulement si TP partiel pas vendu (ou mode ATR)
             if current_price <= tp:
                 if self.config.use_partial_tp and self.active_position.partial_tp_sold:
