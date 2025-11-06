@@ -4731,15 +4731,18 @@
         
         // 🔥 FIX: Restaurer tout l'état (stats + position + historique) en parallèle
         async function restoreAllState() {
-            // Paralléliser toutes les requêtes pour performance
-            const [statsRes, positionRes, tradesRes] = await Promise.all([
-                fetch('/api/stats').catch(() => null),
-                fetch('/api/position/active').catch(() => null),
-                fetch('/api/trades?limit=50').catch(() => null)
-            ]);
+            console.log('🔄 Début restauration état...');
             
-            // Traiter stats
-            if (statsRes && statsRes.ok) {
+            try {
+                // Paralléliser toutes les requêtes pour performance
+                const [statsRes, positionRes, tradesRes] = await Promise.all([
+                    fetch('/api/stats').catch((e) => { console.error('Erreur stats:', e); return null; }),
+                    fetch('/api/position/active').catch((e) => { console.error('Erreur position:', e); return null; }),
+                    fetch('/api/trades?limit=50').catch((e) => { console.error('Erreur trades:', e); return null; })
+                ]);
+                
+                // Traiter stats
+                if (statsRes && statsRes.ok) {
                 try {
                     const statsData = await statsRes.json();
                     if (statsData.success && statsData.stats) {
@@ -4750,26 +4753,26 @@
                         stats.winrate = apiStats.winrate || 0;
                         updateStats();
                     }
-                } catch (e) {
-                    console.error('Erreur stats:', e);
+                    } catch (e) {
+                        console.error('Erreur stats:', e);
+                    }
                 }
-            }
-            
-            // Traiter historique
-            if (tradesRes && tradesRes.ok) {
+                
+                // Traiter historique
+                if (tradesRes && tradesRes.ok) {
                 try {
                     const tradesData = await tradesRes.json();
                     if (tradesData.success && tradesData.trades) {
                         stats.tradeHistory = tradesData.trades.slice(0, 50);
                         updateTradeHistory();
                     }
-                } catch (e) {
-                    console.error('Erreur historique:', e);
+                    } catch (e) {
+                        console.error('Erreur historique:', e);
+                    }
                 }
-            }
-            
-            // Traiter position (avec délai de grâce SocketIO)
-            if (positionRes && positionRes.ok) {
+                
+                // Traiter position (avec délai de grâce SocketIO)
+                if (positionRes && positionRes.ok) {
                 try {
                     const positionData = await positionRes.json();
                     if (positionData.success && positionData.active && positionData.position) {
@@ -4787,9 +4790,14 @@
                             }
                         }, 2000);  // 2 secondes de délai
                     }
-                } catch (e) {
-                    console.error('Erreur position:', e);
+                    } catch (e) {
+                        console.error('Erreur position:', e);
+                    }
                 }
+                
+                console.log('✅ Restauration état terminée');
+            } catch (error) {
+                console.error('❌ Erreur globale restauration:', error);
             }
         }
         
@@ -4861,7 +4869,15 @@
             // 🔥 FIX: Restaurer tout l'état (stats + position + historique) en parallèle
             // Attendre que SocketIO soit connecté avant de restaurer
             setTimeout(() => {
-                restoreAllState();
+                try {
+                    if (typeof restoreAllState === 'function') {
+                        restoreAllState();
+                    } else {
+                        console.error('❌ restoreAllState n\'est pas définie');
+                    }
+                } catch (error) {
+                    console.error('❌ Erreur restauration état:', error);
+                }
             }, 1000);  // Délai pour laisser SocketIO se connecter
             
             // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre

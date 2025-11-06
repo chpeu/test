@@ -295,9 +295,10 @@ def create_notification_manager(
     telegram_notifier = None
     if telegram_bot_token and telegram_chat_id:
         from notifications.telegram_notifier import create_telegram_notifier
+        # 🔥 FIX: TelegramNotifier accepte maintenant str ou int directement
         telegram_notifier = create_telegram_notifier(
             bot_token=telegram_bot_token,
-            chat_id=telegram_chat_id,
+            chat_id=telegram_chat_id,  # Peut être str ou int, TelegramNotifier gère les deux
             enabled=True
         )
     

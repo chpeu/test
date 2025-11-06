@@ -12,7 +12,7 @@ Fonctionnalités :
 
 import asyncio
 import logging
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 from datetime import datetime, timedelta
 import time
 from collections import deque
@@ -30,7 +30,7 @@ class TelegramNotifier:
     def __init__(
         self,
         bot_token: Optional[str] = None,
-        chat_id: Optional[str] = None,
+        chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
         enabled: bool = True,
         throttle_seconds: int = 2
     ):
@@ -39,12 +39,13 @@ class TelegramNotifier:
         
         Args:
             bot_token: Token bot Telegram (ex: '123456:ABC-DEF...')
-            chat_id: ID chat/channel Telegram
+            chat_id: ID chat/channel Telegram (str ou int)
             enabled: Activer notifications
             throttle_seconds: Délai min entre messages (anti-spam)
         """
         self.bot_token = bot_token
-        self.chat_id = chat_id
+        # 🔥 FIX: Accepter chat_id comme str ou int (config.py peut passer int)
+        self.chat_id = str(chat_id) if chat_id is not None and isinstance(chat_id, int) else chat_id
         self.enabled = enabled and bot_token and chat_id
         self.throttle_seconds = throttle_seconds
         
@@ -93,11 +94,17 @@ class TelegramNotifier:
             
             # 🔥 FIX: Parser chat_id en nombre (Telegram API exige un nombre, pas une string)
             # Gérer aussi les groupes/channels (nombres négatifs)
-            try:
-                chat_id_num = int(self.chat_id) if self.chat_id else None
-            except (ValueError, TypeError):
-                # Si conversion échoue, utiliser tel quel (peut être un username pour channels)
-                chat_id_num = self.chat_id
+            # chat_id peut être int (depuis config.py) ou string (depuis paramètres)
+            if self.chat_id is None:
+                chat_id_num = None
+            elif isinstance(self.chat_id, int):
+                chat_id_num = self.chat_id  # Déjà un nombre
+            else:
+                try:
+                    chat_id_num = int(self.chat_id)  # Convertir string en int
+                except (ValueError, TypeError):
+                    # Si conversion échoue, utiliser tel quel (peut être un username pour channels)
+                    chat_id_num = self.chat_id
             
             payload = {
                 'chat_id': chat_id_num,  # ✅ Nombre au lieu de string
@@ -382,7 +389,7 @@ class TelegramNotifier:
 
 def create_telegram_notifier(
     bot_token: Optional[str] = None,
-    chat_id: Optional[str] = None,
+    chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
     enabled: bool = True
 ) -> TelegramNotifier:
     """
@@ -390,7 +397,7 @@ def create_telegram_notifier(
     
     Args:
         bot_token: Token bot
-        chat_id: ID chat
+        chat_id: ID chat (str ou int)
         enabled: Activer
     
     Returns:
@@ -398,7 +405,7 @@ def create_telegram_notifier(
     """
     return TelegramNotifier(
         bot_token=bot_token,
-        chat_id=chat_id,
+        chat_id=chat_id,  # Peut être str ou int, TelegramNotifier gère les deux
         enabled=enabled
     )
 
