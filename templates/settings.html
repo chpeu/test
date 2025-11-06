@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚙️ Paramètres - Trading Bot</title>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #434343 0%, #000000 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .settings-section {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .settings-section h2 {
+            margin-bottom: 20px;
+            color: #00ff88;
+            font-size: 1.5rem;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: #e0e0e0;
+        }
+        
+        input, select, textarea {
+            padding: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1rem;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        .btn {
+            padding: 14px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        
+        .info-box {
+            background: rgba(0, 170, 255, 0.1);
+            border: 2px solid #00aaff;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+        
+        .warning-box {
+            background: rgba(255, 193, 7, 0.1);
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+        
+        .success-message {
+            display: none;
+            background: rgba(0, 255, 136, 0.2);
+            border: 2px solid #00ff88;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #00ff88;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navbar" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 15px 25px; margin-bottom: 30px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+            <a href="/" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🏠 Accueil</a>
+            <a href="/dashboard/charts" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">📊 Dashboard</a>
+            <a href="/analytics" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">📈 Analytics</a>
+            <a href="/backtest" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🔄 Backtest</a>
+            <a href="/optimize" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🤖 ML Optimize</a>
+            <a href="/settings" style="padding: 10px 20px; background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%); border-radius: 8px; text-decoration: none; color: #000; font-weight: bold;">⚙️ Paramètres</a>
+        </div>
+        
+        <h1>⚙️ Paramètres & Configuration</h1>
+        
+        <!-- Telegram Settings -->
+        <div class="settings-section">
+            <h2>📱 Telegram Notifications</h2>
+            
+            <div class="info-box">
+                <strong>ℹ️ Guide Complet:</strong> Consulte <code>GUIDE_TELEGRAM.md</code> pour créer un bot Telegram et obtenir ton token.
+            </div>
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Bot Token</label>
+                    <input type="password" id="telegramToken" placeholder="123456789:ABC-DEF...">
+                    <small style="margin-top: 5px; opacity: 0.7;">Token obtenu via @BotFather</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Chat ID</label>
+                    <input type="text" id="telegramChatId" placeholder="123456789">
+                    <small style="margin-top: 5px; opacity: 0.7;">ID obtenu via @userinfobot</small>
+                </div>
+            </div>
+            
+            <div class="checkbox-group" style="margin-top: 15px;">
+                <input type="checkbox" id="telegramEnabled">
+                <label for="telegramEnabled">Activer Telegram Notifications</label>
+            </div>
+            
+            <div class="warning-box" style="margin-top: 15px;">
+                <strong>⚠️ Sécurité:</strong> Ne jamais commit le token dans Git. Utilise les variables d'environnement ou un fichier .env (non commité).
+            </div>
+        </div>
+        
+        <!-- Paper Trading Settings -->
+        <div class="settings-section">
+            <h2>📄 Paper Trading Mode</h2>
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Capital Initial (USDT)</label>
+                    <input type="number" id="paperCapital" value="1000" step="100" min="100">
+                </div>
+            </div>
+            
+            <div class="checkbox-group" style="margin-top: 15px;">
+                <input type="checkbox" id="paperTradingEnabled">
+                <label for="paperTradingEnabled">Activer Paper Trading Mode</label>
+            </div>
+            
+            <div class="info-box" style="margin-top: 15px;">
+                <strong>ℹ️ Paper Trading:</strong> Mode simulation avec argent virtuel. Parfait pour tester stratégies sans risque.
+            </div>
+        </div>
+        
+        <!-- Notification Settings -->
+        <div class="settings-section">
+            <h2>🔔 Paramètres Notifications</h2>
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Throttle (secondes entre messages)</label>
+                    <input type="number" id="notificationThrottle" value="2" min="1" max="60">
+                </div>
+                
+                <div class="form-group">
+                    <label>Intervalle Batching (secondes)</label>
+                    <input type="number" id="batchInterval" value="5" min="1" max="60">
+                </div>
+            </div>
+            
+            <div class="checkbox-group" style="margin-top: 15px;">
+                <input type="checkbox" id="batchingEnabled" checked>
+                <label for="batchingEnabled">Activer Batching (grouper messages similaires)</label>
+            </div>
+        </div>
+        
+        <!-- API Settings -->
+        <div class="settings-section">
+            <h2>🌐 API REST Settings</h2>
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Rate Limit (requêtes/minute)</label>
+                    <input type="number" id="rateLimit" value="100" min="10" max="1000">
+                </div>
+                
+                <div class="form-group">
+                    <label>Rate Limit Window (secondes)</label>
+                    <input type="number" id="rateWindow" value="60" min="10" max="300">
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 15px; margin-top: 30px;">
+            <button class="btn btn-primary" onclick="saveSettings()">💾 Sauvegarder</button>
+            <button class="btn btn-secondary" onclick="loadSettings()">🔄 Charger</button>
+            <button class="btn btn-secondary" onclick="testTelegram()">📱 Tester Telegram</button>
+        </div>
+        
+        <div class="success-message" id="successMessage"></div>
+    </div>
+    
+    <script>
+        async function loadSettings() {
+            // Charger depuis API ou localStorage
+            const saved = localStorage.getItem('botSettings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                document.getElementById('telegramToken').value = settings.telegramToken || '';
+                document.getElementById('telegramChatId').value = settings.telegramChatId || '';
+                document.getElementById('telegramEnabled').checked = settings.telegramEnabled || false;
+                document.getElementById('paperCapital').value = settings.paperCapital || 1000;
+                document.getElementById('paperTradingEnabled').checked = settings.paperTradingEnabled || false;
+                document.getElementById('notificationThrottle').value = settings.notificationThrottle || 2;
+                document.getElementById('batchInterval').value = settings.batchInterval || 5;
+                document.getElementById('batchingEnabled').checked = settings.batchingEnabled !== false;
+                document.getElementById('rateLimit').value = settings.rateLimit || 100;
+                document.getElementById('rateWindow').value = settings.rateWindow || 60;
+            }
+        }
+        
+        function saveSettings() {
+            const settings = {
+                telegramToken: document.getElementById('telegramToken').value,
+                telegramChatId: document.getElementById('telegramChatId').value,
+                telegramEnabled: document.getElementById('telegramEnabled').checked,
+                paperCapital: parseFloat(document.getElementById('paperCapital').value),
+                paperTradingEnabled: document.getElementById('paperTradingEnabled').checked,
+                notificationThrottle: parseInt(document.getElementById('notificationThrottle').value),
+                batchInterval: parseInt(document.getElementById('batchInterval').value),
+                batchingEnabled: document.getElementById('batchingEnabled').checked,
+                rateLimit: parseInt(document.getElementById('rateLimit').value),
+                rateWindow: parseInt(document.getElementById('rateWindow').value)
+            };
+            
+            localStorage.setItem('botSettings', JSON.stringify(settings));
+            
+            showSuccess('Paramètres sauvegardés localement. Redémarre le bot pour appliquer les changements.');
+        }
+        
+        async function testTelegram() {
+            const token = document.getElementById('telegramToken').value;
+            const chatId = document.getElementById('telegramChatId').value;
+            
+            if (!token || !chatId) {
+                alert('Veuillez remplir le token et le Chat ID');
+                return;
+            }
+            
+            try {
+                // Test via API Telegram
+                const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: '✅ Test de notification Telegram depuis Trading Bot !'
+                    })
+                });
+                
+                if (response.ok) {
+                    showSuccess('Message de test envoyé avec succès ! Vérifie Telegram.');
+                } else {
+                    const error = await response.json();
+                    alert('Erreur: ' + (error.description || 'Token ou Chat ID invalide'));
+                }
+            } catch (error) {
+                alert('Erreur: ' + error.message);
+            }
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+            setTimeout(() => {
+                successDiv.classList.remove('show');
+            }, 5000);
+        }
+        
+        // Charger au démarrage
+        loadSettings();
+    </script>
+</body>
+</html>
+

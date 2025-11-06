@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Backtesting - Trading Bot</title>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .backtest-form {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: #e0e0e0;
+        }
+        
+        input, select, textarea {
+            padding: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #00ff88;
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .btn {
+            padding: 14px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .results-panel {
+            display: none;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .results-panel.show {
+            display: block;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 10px;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .positive { color: #00ff88; }
+        .negative { color: #ff4757; }
+        .neutral { color: #ffd93d; }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #00ff88;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            display: none;
+            background: rgba(255, 71, 87, 0.2);
+            border: 2px solid #ff4757;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #ff4757;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .success-message {
+            display: none;
+            background: rgba(0, 255, 136, 0.2);
+            border: 2px solid #00ff88;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #00ff88;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navbar" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 15px 25px; margin-bottom: 30px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+            <a href="/" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🏠 Accueil</a>
+            <a href="/dashboard/charts" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">📊 Dashboard</a>
+            <a href="/analytics" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">📈 Analytics</a>
+            <a href="/backtest" style="padding: 10px 20px; background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%); border-radius: 8px; text-decoration: none; color: #000; font-weight: bold;">🔄 Backtest</a>
+            <a href="/optimize" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🤖 ML Optimize</a>
+            <a href="/settings" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">⚙️ Paramètres</a>
+        </div>
+        
+        <h1>📊 Backtesting Engine</h1>
+        
+        <div class="backtest-form">
+            <h2 style="margin-bottom: 20px;">Configuration Backtest</h2>
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Symboles (séparés par virgule)</label>
+                    <input type="text" id="symbols" placeholder="BTC/USDT:USDT, ETH/USDT:USDT" value="BTC/USDT:USDT">
+                </div>
+                
+                <div class="form-group">
+                    <label>Date Début (YYYY-MM-DD)</label>
+                    <input type="date" id="startDate" value="2025-01-01">
+                </div>
+                
+                <div class="form-group">
+                    <label>Date Fin (YYYY-MM-DD)</label>
+                    <input type="date" id="endDate" value="2025-02-01">
+                </div>
+                
+                <div class="form-group">
+                    <label>Capital Initial (USDT)</label>
+                    <input type="number" id="initialCapital" value="1000" step="100" min="100">
+                </div>
+                
+                <div class="form-group">
+                    <label>Timeframe</label>
+                    <select id="timeframe">
+                        <option value="1m">1 minute</option>
+                        <option value="5m">5 minutes</option>
+                        <option value="15m">15 minutes</option>
+                        <option value="1h">1 heure</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Configuration Avancée (JSON optionnel)</label>
+                <textarea id="advancedConfig" rows="4" placeholder='{"tp_pct_fixed": 0.6, "sl_pct_fixed": 0.25}'></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 15px; margin-top: 25px;">
+                <button class="btn btn-primary" onclick="runBacktest()">🚀 Lancer Backtest</button>
+                <button class="btn btn-secondary" onclick="resetForm()">🔄 Réinitialiser</button>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Backtest en cours... Cela peut prendre plusieurs minutes.</p>
+        </div>
+        
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage"></div>
+        
+        <div class="results-panel" id="resultsPanel">
+            <h2 style="margin-bottom: 20px;">📊 Résultats Backtest</h2>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Trades</div>
+                    <div class="stat-value" id="statTrades">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Winrate</div>
+                    <div class="stat-value positive" id="statWinrate">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Profit Factor</div>
+                    <div class="stat-value positive" id="statProfitFactor">0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Sharpe Ratio</div>
+                    <div class="stat-value positive" id="statSharpe">0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Drawdown</div>
+                    <div class="stat-value negative" id="statMaxDD">0.0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Capital Final</div>
+                    <div class="stat-value positive" id="statCapital">$0.00</div>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="equityChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let equityChart = null;
+        
+        async function runBacktest() {
+            const symbols = document.getElementById('symbols').value.split(',').map(s => s.trim());
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const initialCapital = parseFloat(document.getElementById('initialCapital').value);
+            const advancedConfig = document.getElementById('advancedConfig').value;
+            
+            // Validation
+            if (!symbols.length || !startDate || !endDate) {
+                showError('Veuillez remplir tous les champs obligatoires');
+                return;
+            }
+            
+            // Afficher loading
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('resultsPanel').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+            document.getElementById('successMessage').classList.remove('show');
+            
+            try {
+                // Parser config avancée
+                let config = null;
+                if (advancedConfig.trim()) {
+                    try {
+                        config = JSON.parse(advancedConfig);
+                    } catch (e) {
+                        showError('Configuration JSON invalide: ' + e.message);
+                        return;
+                    }
+                }
+                
+                // Appel API
+                const response = await fetch('/api/backtest', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        symbols: symbols,
+                        start_date: startDate,
+                        end_date: endDate,
+                        initial_capital: initialCapital,
+                        config: config
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Erreur lors du backtest');
+                }
+                
+                if (data.success && data.results) {
+                    displayResults(data.results);
+                    showSuccess('Backtest terminé avec succès !');
+                } else {
+                    throw new Error('Réponse invalide du serveur');
+                }
+                
+            } catch (error) {
+                showError('Erreur: ' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        }
+        
+        function displayResults(results) {
+            // Stats
+            document.getElementById('statTrades').textContent = results.total_trades || 0;
+            document.getElementById('statWinrate').textContent = (results.winrate || 0).toFixed(1) + '%';
+            document.getElementById('statProfitFactor').textContent = (results.profit_factor || 0).toFixed(2);
+            document.getElementById('statSharpe').textContent = (results.sharpe_ratio || 0).toFixed(2);
+            document.getElementById('statMaxDD').textContent = (results.max_drawdown || 0).toFixed(1) + '%';
+            document.getElementById('statCapital').textContent = '$' + (results.final_capital || 0).toFixed(2);
+            
+            // Equity Curve
+            const equityData = results.equity_curve || [];
+            if (equityData.length > 0) {
+                updateEquityChart(equityData);
+            }
+            
+            // Afficher panel
+            document.getElementById('resultsPanel').classList.add('show');
+        }
+        
+        function updateEquityChart(equityData) {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            
+            if (equityChart) {
+                equityChart.destroy();
+            }
+            
+            const labels = equityData.map((_, i) => `T${i + 1}`);
+            
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Capital',
+                        data: equityData,
+                        borderColor: '#00ff88',
+                        backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#fff' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        y: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function resetForm() {
+            document.getElementById('symbols').value = 'BTC/USDT:USDT';
+            document.getElementById('startDate').value = '2025-01-01';
+            document.getElementById('endDate').value = '2025-02-01';
+            document.getElementById('initialCapital').value = '1000';
+            document.getElementById('advancedConfig').value = '';
+            document.getElementById('resultsPanel').classList.remove('show');
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+            setTimeout(() => {
+                successDiv.classList.remove('show');
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+

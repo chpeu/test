@@ -984,6 +984,46 @@ async def dashboard_charts(request: Request):
         return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
+@app.get("/backtest", response_class=HTMLResponse)
+async def backtest_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface Backtesting"""
+    try:
+        return templates.TemplateResponse("backtest.html", {"request": request})
+    except Exception as e:
+        logger.error(f"❌ Erreur backtest page: {e}")
+        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
+
+
+@app.get("/optimize", response_class=HTMLResponse)
+async def optimize_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface ML Optimization"""
+    try:
+        return templates.TemplateResponse("optimize.html", {"request": request})
+    except Exception as e:
+        logger.error(f"❌ Erreur optimize page: {e}")
+        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
+
+
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface Analytics"""
+    try:
+        return templates.TemplateResponse("analytics.html", {"request": request})
+    except Exception as e:
+        logger.error(f"❌ Erreur analytics page: {e}")
+        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface Paramètres"""
+    try:
+        return templates.TemplateResponse("settings.html", {"request": request})
+    except Exception as e:
+        logger.error(f"❌ Erreur settings page: {e}")
+        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
+
+
 @app.get("/api/status")
 async def api_status():
     """État global de l'application"""
@@ -1915,6 +1955,10 @@ if __name__ == '__main__':
     logger.info("=" * 70)
     logger.info(f"🏠 Interface principale      → http://localhost:{port}/")
     logger.info(f"📊 Dashboard graphiques      → http://localhost:{port}/dashboard/charts")
+    logger.info(f"📈 Analytics & Stats         → http://localhost:{port}/analytics")
+    logger.info(f"🔄 Backtesting               → http://localhost:{port}/backtest")
+    logger.info(f"🤖 ML Optimization           → http://localhost:{port}/optimize")
+    logger.info(f"⚙️ Paramètres               → http://localhost:{port}/settings")
     logger.info(f"💚 API Health check          → http://localhost:{port}/api/health")
     logger.info(f"📈 API Stats                 → http://localhost:{port}/api/stats")
     logger.info(f"📋 API Trades (filtres)      → http://localhost:{port}/api/trades?limit=10")

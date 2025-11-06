@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Analytics - Trading Bot</title>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .filters-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: #e0e0e0;
+        }
+        
+        input, select {
+            padding: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 10px;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .positive { color: #00ff88; }
+        .negative { color: #ff4757; }
+        .neutral { color: #ffd93d; }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 25px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            color: #000;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+        }
+        
+        .trades-table {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        th {
+            background: rgba(255, 255, 255, 0.15);
+            font-weight: bold;
+        }
+        
+        tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .badge-win {
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+        }
+        
+        .badge-loss {
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+        }
+        
+        .badge-long {
+            background: rgba(0, 170, 255, 0.2);
+            color: #00aaff;
+        }
+        
+        .badge-short {
+            background: rgba(255, 68, 68, 0.2);
+            color: #ff4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navbar" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 15px 25px; margin-bottom: 30px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+            <a href="/" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🏠 Accueil</a>
+            <a href="/dashboard/charts" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">📊 Dashboard</a>
+            <a href="/analytics" style="padding: 10px 20px; background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%); border-radius: 8px; text-decoration: none; color: #000; font-weight: bold;">📈 Analytics</a>
+            <a href="/backtest" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🔄 Backtest</a>
+            <a href="/optimize" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">🤖 ML Optimize</a>
+            <a href="/settings" style="padding: 10px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; text-decoration: none; color: #fff; font-weight: bold;">⚙️ Paramètres</a>
+        </div>
+        
+        <h1>📊 Analytics & Statistiques</h1>
+        
+        <div class="filters-panel">
+            <h2 style="margin-bottom: 15px;">Filtres</h2>
+            <div class="filters-grid">
+                <div class="form-group">
+                    <label>Symbole</label>
+                    <input type="text" id="filterSymbol" placeholder="BTC/USDT:USDT">
+                </div>
+                <div class="form-group">
+                    <label>Direction</label>
+                    <select id="filterDirection">
+                        <option value="">Tous</option>
+                        <option value="LONG">LONG</option>
+                        <option value="SHORT">SHORT</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mode Trading</label>
+                    <select id="filterMode">
+                        <option value="">Tous</option>
+                        <option value="LIVE">LIVE</option>
+                        <option value="PAPER">PAPER</option>
+                        <option value="BACKTEST">BACKTEST</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date Début</label>
+                    <input type="date" id="filterStartDate">
+                </div>
+                <div class="form-group">
+                    <label>Date Fin</label>
+                    <input type="date" id="filterEndDate">
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="loadData()">🔍 Appliquer Filtres</button>
+                <button class="btn btn-secondary" onclick="resetFilters()">🔄 Réinitialiser</button>
+                <button class="btn btn-secondary" onclick="exportData()">📥 Exporter CSV</button>
+            </div>
+        </div>
+        
+        <div class="stats-grid" id="statsGrid">
+            <!-- Rempli dynamiquement -->
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('trades')">📋 Trades</button>
+            <button class="tab" onclick="switchTab('setups')">✅ Setups Validés</button>
+            <button class="tab" onclick="switchTab('rejected')">❌ Setups Rejetés</button>
+            <button class="tab" onclick="switchTab('charts')">📊 Graphiques</button>
+        </div>
+        
+        <div id="tradesTab" class="tab-content active">
+            <div class="chart-container">
+                <canvas id="tradesChart"></canvas>
+            </div>
+            <div class="trades-table">
+                <table id="tradesTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Symbole</th>
+                            <th>Direction</th>
+                            <th>Entry</th>
+                            <th>Exit</th>
+                            <th>PnL %</th>
+                            <th>PnL USDT</th>
+                            <th>Raison</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesTableBody">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="setupsTab" class="tab-content">
+            <div class="trades-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Symbole</th>
+                            <th>Direction</th>
+                            <th>Entry</th>
+                            <th>TP</th>
+                            <th>SL</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="setupsTableBody">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="rejectedTab" class="tab-content">
+            <div class="trades-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Symbole</th>
+                            <th>Direction</th>
+                            <th>Raison Rejet</th>
+                            <th>Catégorie</th>
+                            <th>Prix</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rejectedTableBody">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="chartsTab" class="tab-content">
+            <div class="chart-container">
+                <canvas id="winLossChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="pnlDistributionChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let tradesChart = null;
+        let winLossChart = null;
+        let pnlDistributionChart = null;
+        
+        async function loadData() {
+            // Construire URL avec filtres
+            const params = new URLSearchParams();
+            const symbol = document.getElementById('filterSymbol').value;
+            const direction = document.getElementById('filterDirection').value;
+            const mode = document.getElementById('filterMode').value;
+            const startDate = document.getElementById('filterStartDate').value;
+            const endDate = document.getElementById('filterEndDate').value;
+            
+            if (symbol) params.append('symbol', symbol);
+            if (direction) params.append('direction', direction);
+            if (mode) params.append('trading_mode', mode);
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
+            params.append('limit', '500');
+            
+            try {
+                // Charger stats
+                const statsResponse = await fetch(`/api/stats?${params}`);
+                const statsData = await statsResponse.json();
+                if (statsData.success) {
+                    displayStats(statsData.stats);
+                }
+                
+                // Charger trades
+                const tradesResponse = await fetch(`/api/trades?${params}`);
+                const tradesData = await tradesResponse.json();
+                if (tradesData.success) {
+                    displayTrades(tradesData.trades);
+                }
+                
+                // Charger setups validés
+                const validatedResponse = await fetch(`/api/setups/validated?${params}`);
+                const validatedData = await validatedResponse.json();
+                if (validatedData.success) {
+                    displayValidatedSetups(validatedData.setups);
+                }
+                
+                // Charger setups rejetés
+                const rejectedResponse = await fetch(`/api/setups/rejected?${params}`);
+                const rejectedData = await rejectedResponse.json();
+                if (rejectedData.success) {
+                    displayRejectedSetups(rejectedData.setups);
+                }
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur lors du chargement des données');
+            }
+        }
+        
+        function displayStats(stats) {
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-label">Trades</div>
+                    <div class="stat-value">${stats.total_trades || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Winrate</div>
+                    <div class="stat-value positive">${(stats.winrate || 0).toFixed(1)}%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Profit Factor</div>
+                    <div class="stat-value positive">${(stats.profit_factor || 0).toFixed(2)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">PnL Total</div>
+                    <div class="stat-value ${(stats.pnl_total || 0) >= 0 ? 'positive' : 'negative'}">${(stats.pnl_total || 0).toFixed(2)} USDT</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Drawdown</div>
+                    <div class="stat-value negative">${(stats.max_drawdown || 0).toFixed(1)}%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Capital</div>
+                    <div class="stat-value positive">$${(stats.capital || 0).toFixed(2)}</div>
+                </div>
+            `;
+        }
+        
+        function displayTrades(trades) {
+            const tbody = document.getElementById('tradesTableBody');
+            tbody.innerHTML = '';
+            
+            trades.forEach(trade => {
+                const row = document.createElement('tr');
+                const date = new Date(trade.start_time * 1000).toLocaleString('fr-FR');
+                const pnlPct = trade.pnl_pct || 0;
+                const pnlUsdt = trade.pnl_usdt || 0;
+                
+                row.innerHTML = `
+                    <td>${date}</td>
+                    <td>${trade.symbol || 'N/A'}</td>
+                    <td><span class="badge badge-${trade.direction?.toLowerCase() || 'long'}">${trade.direction || 'N/A'}</span></td>
+                    <td>${(trade.entry || 0).toFixed(6)}</td>
+                    <td>${(trade.exit || 0).toFixed(6)}</td>
+                    <td class="${pnlPct >= 0 ? 'positive' : 'negative'}">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%</td>
+                    <td class="${pnlUsdt >= 0 ? 'positive' : 'negative'}">${pnlUsdt >= 0 ? '+' : ''}${pnlUsdt.toFixed(2)}</td>
+                    <td>${trade.exit_reason || 'N/A'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Mettre à jour graphique
+            updateTradesChart(trades);
+        }
+        
+        function displayValidatedSetups(setups) {
+            const tbody = document.getElementById('setupsTableBody');
+            tbody.innerHTML = '';
+            
+            setups.forEach(setup => {
+                const row = document.createElement('tr');
+                const date = new Date(setup.timestamp * 1000).toLocaleString('fr-FR');
+                
+                row.innerHTML = `
+                    <td>${date}</td>
+                    <td>${setup.symbol || 'N/A'}</td>
+                    <td><span class="badge badge-${setup.direction?.toLowerCase() || 'long'}">${setup.direction || 'N/A'}</span></td>
+                    <td>${(setup.entry || 0).toFixed(6)}</td>
+                    <td>${(setup.tp || 0).toFixed(6)}</td>
+                    <td>${(setup.sl || 0).toFixed(6)}</td>
+                    <td>${(setup.total_score || 0).toFixed(1)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        function displayRejectedSetups(setups) {
+            const tbody = document.getElementById('rejectedTableBody');
+            tbody.innerHTML = '';
+            
+            setups.forEach(setup => {
+                const row = document.createElement('tr');
+                const date = new Date(setup.timestamp * 1000).toLocaleString('fr-FR');
+                
+                row.innerHTML = `
+                    <td>${date}</td>
+                    <td>${setup.symbol || 'N/A'}</td>
+                    <td><span class="badge badge-${setup.direction?.toLowerCase() || 'long'}">${setup.direction || 'N/A'}</span></td>
+                    <td>${setup.rejection_reason || 'N/A'}</td>
+                    <td>${setup.rejection_category || 'N/A'}</td>
+                    <td>${(setup.price || 0).toFixed(6)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        function updateTradesChart(trades) {
+            const ctx = document.getElementById('tradesChart').getContext('2d');
+            
+            if (tradesChart) {
+                tradesChart.destroy();
+            }
+            
+            const pnls = trades.map(t => t.pnl_pct || 0).slice(-20);
+            const labels = pnls.map((_, i) => `T${trades.length - 20 + i + 1}`);
+            
+            tradesChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'PnL (%)',
+                        data: pnls,
+                        backgroundColor: pnls.map(p => p >= 0 ? 'rgba(0, 255, 136, 0.6)' : 'rgba(255, 71, 87, 0.6)'),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        y: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function switchTab(tabName) {
+            // Désactiver tous les tabs
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Activer le tab sélectionné
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+        }
+        
+        function resetFilters() {
+            document.getElementById('filterSymbol').value = '';
+            document.getElementById('filterDirection').value = '';
+            document.getElementById('filterMode').value = '';
+            document.getElementById('filterStartDate').value = '';
+            document.getElementById('filterEndDate').value = '';
+            loadData();
+        }
+        
+        function exportData() {
+            const params = new URLSearchParams();
+            const symbol = document.getElementById('filterSymbol').value;
+            if (symbol) params.append('symbol', symbol);
+            
+            window.open(`/api/export?format=csv&data_type=trades&${params}`, '_blank');
+        }
+        
+        // Charger données au démarrage
+        loadData();
+    </script>
+</body>
+</html>
+
