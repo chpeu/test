@@ -744,8 +744,24 @@
                 }
             });
             
-            // Écouter les fermetures de position
+            // 🔥 FIX: Tracker événements SocketIO pour éviter race conditions
             socket.on('position_closed', function(result) {
+                // Enregistrer événement pour mitigation restauration
+                socketioEvents.push({
+                    type: 'closed',
+                    time: Date.now(),
+                    symbol: result.symbol
+                });
+                
+                // Nettoyer événements anciens (> 10 secondes)
+                socketioEvents = socketioEvents.filter(e => (Date.now() - e.time) < 10000);
+                
+                // Annuler restauration en cours si position fermée
+                if (restoreTimeout) {
+                    clearTimeout(restoreTimeout);
+                    restoreTimeout = null;
+                }
+                
                 if (result && result.symbol) {
                     debugLog('✅ Position fermée', result.symbol + ' - PnL: ' + (result.net_pnl_usdt || result.pnl_usdt) + ' USDT');
                     
@@ -4607,6 +4623,230 @@
             }
         }
         
+        // 🔥 FIX: Restaurer position active depuis API (avec toutes les mitigations)
+        let socketioEvents = [];  // Tracker événements SocketIO récents
+        let restoreTimeout = null;  // Timeout pour délai de grâce
+        
+        async function restoreActivePosition() {
+            try {
+                const response = await fetch('/api/position/active');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                if (!data.success || !data.active || !data.position) {
+                    return;  // Pas de position active
+                }
+                
+                const position = data.position;
+                
+                // 🔥 MITIGATION 1: Vérifier timestamp (position pas trop ancienne)
+                if (position.timestamp) {
+                    const age = Date.now() - (position.timestamp * 1000);
+                    if (age > 5 * 60 * 1000) {  // 5 minutes max
+                        console.warn('⚠️ Position trop ancienne, ne pas restaurer');
+                        return;
+                    }
+                }
+                
+                // 🔥 MITIGATION 2: Vérifier si position fermée récemment via SocketIO
+                const recentClose = socketioEvents.find(e => 
+                    e.type === 'closed' && (Date.now() - e.time) < 2000
+                );
+                if (recentClose) {
+                    console.log('⚠️ Position fermée récemment, ne pas restaurer');
+                    return;
+                }
+                
+                // ✅ Restaurer position
+                tradingState = 'IN_POSITION';
+                activePosition = {
+                    symbol: position.symbol,
+                    direction: position.direction,
+                    entry: position.entry,
+                    sl: position.sl,
+                    tp: position.tp,
+                    atr: position.atr || 0,
+                    atr5m: position.atr5m || 0,
+                    confirmedBy: position.confirmed_by || 'Restaurée',
+                    size: position.size || 0,
+                    currentPrice: position.entry,  // Sera mis à jour par checkPosition
+                    pnl: 0,
+                    pnl_usdt: 0,
+                    timestamp: position.timestamp || Date.now()
+                };
+                
+                // Estimer positionStartTime (approximatif)
+                positionStartTime = Date.now() - (position.timestamp ? (Date.now() - position.timestamp * 1000) : 0);
+                
+                // Afficher le panel
+                var panel = document.getElementById('positionPanel');
+                if (panel) panel.style.display = 'block';
+                updatePositionDisplay();
+                updateStateDisplay();
+                
+                // 🔥 MITIGATION 3: Recharger prix actuel immédiatement
+                setTimeout(function() {
+                    if (activePosition && activePosition.symbol) {
+                        checkPosition();  // Met à jour prix et PnL depuis backend
+                    }
+                }, 300);
+                
+                // Relancer le monitoring
+                if (positionCheckInterval) {
+                    clearInterval(positionCheckInterval);
+                }
+                positionCheckInterval = setInterval(function() {
+                    checkPosition();
+                    if (activePosition && positionStartTime) {
+                        updatePositionDisplay();
+                    }
+                }, 1000);
+                
+                debugLog('✅ Position restaurée', `${position.symbol} ${position.direction} @ ${position.entry}`);
+            } catch (error) {
+                console.error('Erreur restauration position:', error);
+            }
+        }
+        
+        // 🔥 FIX: Restaurer historique depuis API
+        async function restoreTradeHistory() {
+            try {
+                const response = await fetch('/api/trades?limit=50');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                if (data.success && data.trades && data.trades.length > 0) {
+                    // Restaurer historique local (pour affichage)
+                    stats.tradeHistory = data.trades.slice(0, 50);  // Limiter à 50
+                    
+                    // Mettre à jour l'affichage
+                    updateTradeHistory();
+                    
+                    debugLog('✅ Historique restauré', `${data.trades.length} trades`);
+                }
+            } catch (error) {
+                console.error('Erreur restauration historique:', error);
+            }
+        }
+        
+        // 🔥 FIX: Restaurer tout l'état (stats + position + historique) en parallèle
+        async function restoreAllState() {
+            // Paralléliser toutes les requêtes pour performance
+            const [statsRes, positionRes, tradesRes] = await Promise.all([
+                fetch('/api/stats').catch(() => null),
+                fetch('/api/position/active').catch(() => null),
+                fetch('/api/trades?limit=50').catch(() => null)
+            ]);
+            
+            // Traiter stats
+            if (statsRes && statsRes.ok) {
+                try {
+                    const statsData = await statsRes.json();
+                    if (statsData.success && statsData.stats) {
+                        const apiStats = statsData.stats;
+                        stats.totalTrades = apiStats.total_trades || 0;
+                        stats.wins = apiStats.wins || 0;
+                        stats.losses = apiStats.losses || 0;
+                        stats.winrate = apiStats.winrate || 0;
+                        updateStats();
+                    }
+                } catch (e) {
+                    console.error('Erreur stats:', e);
+                }
+            }
+            
+            // Traiter historique
+            if (tradesRes && tradesRes.ok) {
+                try {
+                    const tradesData = await tradesRes.json();
+                    if (tradesData.success && tradesData.trades) {
+                        stats.tradeHistory = tradesData.trades.slice(0, 50);
+                        updateTradeHistory();
+                    }
+                } catch (e) {
+                    console.error('Erreur historique:', e);
+                }
+            }
+            
+            // Traiter position (avec délai de grâce SocketIO)
+            if (positionRes && positionRes.ok) {
+                try {
+                    const positionData = await positionRes.json();
+                    if (positionData.success && positionData.active && positionData.position) {
+                        // 🔥 MITIGATION: Délai de grâce de 2 secondes pour éviter race condition SocketIO
+                        restoreTimeout = setTimeout(() => {
+                            // Vérifier à nouveau si position fermée récemment
+                            const recentClose = socketioEvents.find(e => 
+                                e.type === 'closed' && (Date.now() - e.time) < 2000
+                            );
+                            
+                            if (!recentClose) {
+                                restoreActivePositionFromData(positionData.position);
+                            } else {
+                                console.log('⚠️ Position fermée pendant délai de grâce, restauration annulée');
+                            }
+                        }, 2000);  // 2 secondes de délai
+                    }
+                } catch (e) {
+                    console.error('Erreur position:', e);
+                }
+            }
+        }
+        
+        // Helper pour restaurer position depuis données
+        function restoreActivePositionFromData(position) {
+            // Vérifier timestamp
+            if (position.timestamp) {
+                const age = Date.now() - (position.timestamp * 1000);
+                if (age > 5 * 60 * 1000) {
+                    console.warn('⚠️ Position trop ancienne');
+                    return;
+                }
+            }
+            
+            tradingState = 'IN_POSITION';
+            activePosition = {
+                symbol: position.symbol,
+                direction: position.direction,
+                entry: position.entry,
+                sl: position.sl,
+                tp: position.tp,
+                atr: position.atr || 0,
+                atr5m: position.atr5m || 0,
+                confirmedBy: position.confirmed_by || 'Restaurée',
+                size: position.size || 0,
+                currentPrice: position.entry,
+                pnl: 0,
+                pnl_usdt: 0,
+                timestamp: position.timestamp || Date.now()
+            };
+            
+            positionStartTime = Date.now() - (position.timestamp ? (Date.now() - position.timestamp * 1000) : 0);
+            
+            var panel = document.getElementById('positionPanel');
+            if (panel) panel.style.display = 'block';
+            updatePositionDisplay();
+            updateStateDisplay();
+            
+            setTimeout(function() {
+                if (activePosition && activePosition.symbol) {
+                    checkPosition();
+                }
+            }, 300);
+            
+            if (positionCheckInterval) {
+                clearInterval(positionCheckInterval);
+            }
+            positionCheckInterval = setInterval(function() {
+                checkPosition();
+                if (activePosition && positionStartTime) {
+                    updatePositionDisplay();
+                }
+            }, 1000);
+            
+            debugLog('✅ Position restaurée', `${position.symbol} ${position.direction}`);
+        }
+        
         // 🔥 NOUVEAU v5.2: Ne plus restaurer d'état au chargement (reset à chaque fois)
         // MAIS restaurer les stats depuis l'API pour éviter perte de données
         window.addEventListener('load', function() {
@@ -4618,12 +4858,15 @@
             // 🔥 v7.0: Initialiser SocketIO au chargement
             initSocketIO();
             
-            // 🔥 FIX: Charger stats depuis API avant de supprimer localStorage
-            loadStatsFromAPI();
+            // 🔥 FIX: Restaurer tout l'état (stats + position + historique) en parallèle
+            // Attendre que SocketIO soit connecté avant de restaurer
+            setTimeout(() => {
+                restoreAllState();
+            }, 1000);  // Délai pour laisser SocketIO se connecter
             
-            // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre (mais stats déjà restaurées)
+            // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre
             localStorage.removeItem('mexcScannerState');
-            debugLog('🔄 Reset Clean', 'Session neuve - Stats restaurées depuis API');
+            debugLog('🔄 Reset Clean', 'Session neuve - Restauration depuis API en cours...');
         });
     </script>
 </body>

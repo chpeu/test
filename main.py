@@ -1359,6 +1359,31 @@ async def api_open_position(request: Request):
             return JSONResponse({'error': str(e)}, status_code=500)
 
 
+@app.get("/api/position/active")
+async def api_get_active_position():
+    """🔥 FIX: Récupérer position active pour restauration au refresh"""
+    init_instances()
+    if not position_manager or not position_manager.active_position:
+        return JSONResponse({
+            'success': True,
+            'active': False,
+            'position': None
+        })
+    
+    position = position_manager.active_position
+    position_dict = position.to_dict()
+    
+    # Ajouter timestamp pour vérifier fraîcheur
+    import time
+    position_dict['timestamp'] = time.time()
+    
+    return JSONResponse({
+        'success': True,
+        'active': True,
+        'position': position_dict
+    })
+
+
 @app.get("/api/position/check")
 async def api_check_position():
     """Check position actuelle"""
