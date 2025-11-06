@@ -584,6 +584,11 @@
         
         // Charger données au démarrage
         loadData();
+        
+        // 🔥 FIX: Polling automatique toutes les 10 secondes pour mises à jour temps réel
+        setInterval(() => {
+            loadData();
+        }, 10000);  // Rafraîchir toutes les 10 secondes
     </script>
 </body>
 </html>

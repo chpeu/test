@@ -393,10 +393,24 @@ function updateExitReasonChart(trades) {
 
 // ==================== REAL-TIME UPDATES ====================
 
+socket.on('position_opened', (data) => {
+    console.log('🟢 Position ouverte (temps réel):', data);
+    
+    // Recharger données pour mettre à jour stats et graphiques
+    loadInitialData();
+});
+
 socket.on('position_closed', (data) => {
     console.log('🔔 Position fermée (temps réel):', data);
     
-    // Recharger données
+    // Recharger données pour mettre à jour stats et graphiques
+    loadInitialData();
+});
+
+socket.on('tp_escalier_level', (data) => {
+    console.log('🎯 TP Escalier niveau atteint (temps réel):', data);
+    
+    // Recharger données pour mettre à jour stats
     loadInitialData();
 });
 

@@ -313,13 +313,16 @@
             
             try {
                 // Test via API Telegram
+                // 🔥 FIX: Parser chat_id en nombre (Telegram API exige un nombre, pas une string)
+                const chatIdNum = parseInt(chatId) || chatId;
+                
                 const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        chat_id: chatId,
+                        chat_id: chatIdNum,  // ✅ Nombre au lieu de string
                         text: '✅ Test de notification Telegram depuis Trading Bot !'
                     })
                 });
