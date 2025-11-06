@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Dashboard Graphiques - Trading Bot</title>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- CSS -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .chart-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+        }
+        
+        .chart-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .chart-card h2 {
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+            color: #fff;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .positive {
+            color: #00ff88;
+        }
+        
+        .negative {
+            color: #ff4757;
+        }
+        
+        .neutral {
+            color: #ffd93d;
+        }
+        
+        #connectionStatus {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        .connected {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .disconnected {
+            background: #ff4757;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div id="connectionStatus" class="disconnected">🔴 Déconnecté</div>
+    
+    <div class="container">
+        <h1>📊 Dashboard Graphiques Trading Bot</h1>
+        
+        <!-- Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Capital</div>
+                <div class="stat-value" id="statCapital">$1,000.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">PnL Total</div>
+                <div class="stat-value" id="statPnl">$0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Winrate</div>
+                <div class="stat-value" id="statWinrate">0.0%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Trades</div>
+                <div class="stat-value" id="statTrades">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Profit Factor</div>
+                <div class="stat-value" id="statProfitFactor">0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Max Drawdown</div>
+                <div class="stat-value" id="statMaxDD">0.0%</div>
+            </div>
+        </div>
+        
+        <!-- Charts Grid -->
+        <div class="grid">
+            <!-- Equity Curve -->
+            <div class="chart-card">
+                <h2>📈 Equity Curve</h2>
+                <div class="chart-container">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Win/Loss Ratio -->
+            <div class="chart-card">
+                <h2>🎯 Win/Loss Ratio</h2>
+                <div class="chart-container">
+                    <canvas id="winLossChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- PnL Distribution -->
+            <div class="chart-card">
+                <h2>💰 Distribution PnL</h2>
+                <div class="chart-container">
+                    <canvas id="pnlDistributionChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Trades par Symbole -->
+            <div class="chart-card">
+                <h2>📊 Trades par Symbole</h2>
+                <div class="chart-container">
+                    <canvas id="symbolChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Hourly Performance -->
+            <div class="chart-card">
+                <h2>⏰ Performance Horaire</h2>
+                <div class="chart-container">
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Exit Reasons -->
+            <div class="chart-card">
+                <h2>🚪 Raisons Fermeture</h2>
+                <div class="chart-container">
+                    <canvas id="exitReasonChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', path='/js/dashboard_charts.js') }}"></script>
+</body>
+</html>
+
