@@ -1899,7 +1899,22 @@ if __name__ == '__main__':
     
     logger.info("🚀 Trade Cursor v7.0 démarré")
     logger.info("📊 FastAPI (async natif) + WebSocket")
-    logger.info(f"🌐 Ouvez http://localhost:{port} dans votre navigateur")
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("📍 URLs DISPONIBLES (Instance Port: {})".format(port))
+    logger.info("=" * 70)
+    logger.info(f"🏠 Interface principale      → http://localhost:{port}/")
+    logger.info(f"📊 Dashboard graphiques      → http://localhost:{port}/dashboard/charts")
+    logger.info(f"💚 API Health check          → http://localhost:{port}/api/health")
+    logger.info(f"📈 API Stats                 → http://localhost:{port}/api/stats")
+    logger.info(f"📋 API Trades (filtres)      → http://localhost:{port}/api/trades?limit=10")
+    logger.info(f"❌ API Setups rejetés        → http://localhost:{port}/api/setups/rejected")
+    logger.info(f"✅ API Setups validés        → http://localhost:{port}/api/setups/validated")
+    logger.info(f"📥 API Export (CSV/JSON)     → http://localhost:{port}/api/export?format=csv")
+    logger.info(f"🔄 API Backtest              → POST http://localhost:{port}/api/backtest")
+    logger.info(f"🤖 API ML Optimize           → POST http://localhost:{port}/api/optimize")
+    logger.info("=" * 70)
+    logger.info("")
     
     # Lancer FastAPI avec SocketIO
     uvicorn.run(socketio_app, host='0.0.0.0', port=port, log_level="info")
