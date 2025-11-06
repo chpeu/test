@@ -12,7 +12,7 @@ import os
 import csv
 import io
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
