@@ -4994,8 +4994,9 @@
                 }
                 
                 // 3. RESTAURER HISTORIQUE (affichage historique des trades)
-                // 🔥 FIX: Fusionner intelligemment au lieu de remplacer pour éviter doublons
-                if (stateData.trades && Array.isArray(stateData.trades)) {
+                // 🔥 FIX: Ne restaurer l'historique QUE si c'est la même session (rafraîchissement)
+                // Si nouvelle session, l'historique a déjà été réinitialisé ci-dessus
+                if (stateData.trades && Array.isArray(stateData.trades) && backendSessionId === storedSessionId) {
                     var apiTrades = stateData.trades.slice(0, 50);
                     var existingHistory = stats.tradeHistory || [];
                     
