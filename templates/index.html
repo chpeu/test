@@ -855,13 +855,35 @@
                             netPnlUSDT: net_pnl_usdt.toFixed(4),
                             duration: result.duration || 0,
                             reason: result.reason || result.close_reason || 'UNKNOWN',
+                            exit_reason: result.reason || result.close_reason || 'UNKNOWN',  // Alias pour compatibilité
                             hasPartialTP: result.has_partial_tp || false,
                             sizeClosed: size_closed.toFixed(4)
                         };
                         
-                        stats.tradeHistory.unshift(tradeRecord);
-                        if (stats.tradeHistory.length > 20) {
-                            stats.tradeHistory.pop();
+                        // 🔥 FIX CRITIQUE: Vérification finale avant ajout (double sécurité)
+                        var shouldAddToHistory = true;
+                        if (stats.tradeHistory && stats.tradeHistory.length > 0) {
+                            for (var j = 0; j < Math.min(stats.tradeHistory.length, 5); j++) {
+                                var existingTrade = stats.tradeHistory[j];
+                                if (existingTrade && existingTrade.symbol === tradeRecord.symbol) {
+                                    var timeDiff = Math.abs((existingTrade.timestamp || 0) - tradeRecord.timestamp);
+                                    if (timeDiff < 2000) {  // 2 secondes de tolérance
+                                        shouldAddToHistory = false;
+                                        debugLog('⚠️ Trade déjà dans l\'historique (vérification finale)', 
+                                            tradeRecord.symbol + ' (timestamp: ' + tradeRecord.timestamp + ')');
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (shouldAddToHistory) {
+                            stats.tradeHistory.unshift(tradeRecord);
+                            if (stats.tradeHistory.length > 20) {
+                                stats.tradeHistory.pop();
+                            }
+                        } else {
+                            debugLog('⚠️ Trade ignoré (déjà dans l\'historique)', result.symbol);
                         }
                         
                         // 🔥 FIX: Ajouter à l'historique avec durée
