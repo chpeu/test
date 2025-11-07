@@ -311,20 +311,50 @@ class PositionManager:
         if hasattr(self, 'notification_manager') and self.notification_manager:
             try:
                 import asyncio
-                asyncio.create_task(self.notification_manager.notify(
-                    'position_opened',
-                    {
-                        'symbol': symbol,
-                        'direction': direction,
-                        'entry': entry,
-                        'size': size,
-                        'tp': tp,
-                        'sl': sl,
-                        'condition_types': condition_types or []
-                    }
-                ))
+                
+                # Créer une fonction wrapper async pour la notification
+                async def _notify_position_opened_async():
+                    try:
+                        await self.notification_manager.notify(
+                            'position_opened',
+                            {
+                                'symbol': symbol,
+                                'direction': direction,
+                                'entry': entry,
+                                'size': size,
+                                'tp': tp,
+                                'sl': sl,
+                                'condition_types': condition_types or []
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur notification position ouverte (async): {e}")
+                
+                # Créer la tâche sans attendre (fire-and-forget)
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Loop en cours, créer la tâche
+                        asyncio.create_task(_notify_position_opened_async())
+                    else:
+                        # Pas de loop en cours, exécuter dans un nouveau thread
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(_notify_position_opened_async())
+                            )
+                except RuntimeError:
+                    # Pas de loop disponible, exécuter dans un nouveau thread
+                    try:
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(_notify_position_opened_async())
+                            )
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur notification position ouverte (thread): {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur notification: {e}")
+                logger.warning(f"⚠️ Erreur notification position ouverte: {e}")
         
         return self.active_position
     
