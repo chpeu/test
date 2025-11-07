@@ -766,10 +766,11 @@
                     debugLog('✅ Position fermée', result.symbol + ' - PnL: ' + (result.net_pnl_usdt || result.pnl_usdt) + ' USDT');
                     
                     // 🔥 FIX: Vérifier si cette position n'a pas déjà été comptée
-                    // Utiliser closure_id si disponible, sinon timestamp + symbol
+                    // Utiliser closure_id si disponible, sinon timestamp + symbol + reason
                     var alreadyCounted = false;
                     var resultTimestamp = result.timestamp || Date.now();
                     var closureId = result.closure_id || null;
+                    var resultReason = result.reason || result.close_reason || result.exit_reason || 'UNKNOWN';
                     
                     // Vérifier par closure_id (le plus fiable)
                     if (closureId) {
@@ -782,16 +783,24 @@
                                 }
                             }
                         }
-                    } else {
-                        // Fallback: vérifier par timestamp + symbol
-                        if (stats.tradeHistory && stats.tradeHistory.length > 0) {
-                            for (var i = 0; i < Math.min(stats.tradeHistory.length, 5); i++) {
-                                var trade = stats.tradeHistory[i];
-                                if (trade && trade.symbol === result.symbol && 
-                                    Math.abs(trade.timestamp - resultTimestamp) < 2000) {
-                                    alreadyCounted = true;
-                                    debugLog('⚠️ Trade déjà compté (timestamp)', result.symbol + ' (timestamp: ' + resultTimestamp + ' vs ' + trade.timestamp + ')');
-                                    break;
+                    }
+                    
+                    // Fallback: vérifier par symbol + timestamp + reason (plus robuste)
+                    if (!alreadyCounted && stats.tradeHistory && stats.tradeHistory.length > 0) {
+                        for (var i = 0; i < Math.min(stats.tradeHistory.length, 10); i++) {
+                            var trade = stats.tradeHistory[i];
+                            if (trade && trade.symbol === result.symbol) {
+                                // Vérifier timestamp (tolérance 3 secondes)
+                                var timeDiff = Math.abs((trade.timestamp || 0) - resultTimestamp);
+                                if (timeDiff < 3000) {
+                                    // Vérifier aussi la raison si disponible
+                                    var tradeReason = trade.reason || trade.exit_reason || '';
+                                    if (!tradeReason || tradeReason === resultReason || timeDiff < 1000) {
+                                        alreadyCounted = true;
+                                        debugLog('⚠️ Trade déjà compté (symbol+timestamp+reason)', 
+                                            result.symbol + ' (timestamp: ' + resultTimestamp + ' vs ' + trade.timestamp + ', reason: ' + resultReason + ')');
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -4851,11 +4860,66 @@
                 }
                 
                 // 3. RESTAURER HISTORIQUE (affichage historique des trades)
+                // 🔥 FIX: Fusionner intelligemment au lieu de remplacer pour éviter doublons
                 if (stateData.trades && Array.isArray(stateData.trades)) {
-                    stats.tradeHistory = stateData.trades.slice(0, 50);
+                    var apiTrades = stateData.trades.slice(0, 50);
+                    var existingHistory = stats.tradeHistory || [];
+                    
+                    // Créer un Set des trades existants (par symbol + timestamp + reason)
+                    var existingKeys = new Set();
+                    existingHistory.forEach(function(trade) {
+                        var key = (trade.symbol || '') + '_' + (trade.timestamp || 0) + '_' + (trade.reason || trade.exit_reason || '');
+                        existingKeys.add(key);
+                    });
+                    
+                    // Ajouter seulement les trades qui ne sont pas déjà présents
+                    var newTrades = [];
+                    apiTrades.forEach(function(trade) {
+                        // Normaliser le format du trade depuis l'API
+                        var tradeTimestamp = trade.start_time ? (new Date(trade.start_time).getTime()) : (trade.timestamp || Date.now());
+                        var tradeReason = trade.exit_reason || trade.reason || 'UNKNOWN';
+                        var key = (trade.symbol || '') + '_' + tradeTimestamp + '_' + tradeReason;
+                        
+                        if (!existingKeys.has(key)) {
+                            // Convertir format API vers format frontend
+                            var tradeRecord = {
+                                timestamp: tradeTimestamp,
+                                closureId: trade.closure_id || null,
+                                date: new Date(tradeTimestamp).toLocaleDateString('fr-FR'),
+                                time: new Date(tradeTimestamp).toLocaleTimeString('fr-FR'),
+                                symbol: trade.symbol,
+                                direction: trade.direction,
+                                entry: parseFloat(trade.entry || 0).toFixed(6),
+                                exit: parseFloat(trade.exit || 0).toFixed(6),
+                                grossPnlPct: parseFloat(trade.gross_pnl_pct || trade.pnl_pct || 0).toFixed(2),
+                                grossPnlUSDT: parseFloat(trade.gross_pnl_usdt || trade.pnl_usdt || 0).toFixed(4),
+                                fees: '0.00',
+                                slippage: '0.00',
+                                totalCosts: '0.00',
+                                netPnl: parseFloat(trade.net_pnl_pct || trade.pnl_pct || 0).toFixed(2),
+                                netPnlUSDT: parseFloat(trade.net_pnl_usdt || trade.pnl_usdt || 0).toFixed(4),
+                                duration: trade.duration_seconds || 0,
+                                reason: tradeReason,
+                                exit_reason: tradeReason,  // Alias pour compatibilité
+                                hasPartialTP: trade.has_partial_tp || false,
+                                sizeClosed: parseFloat(trade.size_closed || trade.size || 0).toFixed(4)
+                            };
+                            newTrades.push(tradeRecord);
+                            existingKeys.add(key);
+                        }
+                    });
+                    
+                    // Fusionner : nouveaux trades en premier, puis existants
+                    stats.tradeHistory = newTrades.concat(existingHistory);
+                    
+                    // Limiter à 50 trades
+                    if (stats.tradeHistory.length > 50) {
+                        stats.tradeHistory = stats.tradeHistory.slice(0, 50);
+                    }
+                    
                     // 🔥 FIX: Forcer mise à jour de l'affichage historique
                     updateTradeHistory();
-                    debugLog('✅ Historique restauré', `${stateData.trades.length} trades`);
+                    debugLog('✅ Historique restauré', `${apiTrades.length} trades API, ${newTrades.length} nouveaux, ${existingHistory.length} existants`);
                 }
                 
                 // 4. RESTAURER POSITION (avec délai de grâce SocketIO)

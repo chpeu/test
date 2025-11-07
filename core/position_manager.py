@@ -1601,6 +1601,10 @@ class PositionManager:
                 except:
                     is_paper = False
                 
+                # 🔥 FIX: Récupérer tp_sl_mode depuis TRADING_CONFIG (Position n'a pas cet attribut)
+                from config import TRADING_CONFIG
+                tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                
                 trade_data = {
                     'symbol': position.symbol,
                     'direction': position.direction,
@@ -1615,7 +1619,7 @@ class PositionManager:
                     'duration_seconds': time.time() - position.start_time,
                     'tp': position.tp,
                     'sl': position.sl,
-                    'tp_sl_mode': position.tp_sl_mode,
+                    'tp_sl_mode': tp_sl_mode,  # 🔥 FIX: Utiliser valeur depuis config
                     'condition_types': json.dumps(position.condition_types) if position.condition_types else '[]',
                     'atr': position.atr,
                     'atr5m': position.atr5m,
