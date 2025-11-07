@@ -1,0 +1,204 @@
+"""
+Callbacks pour la boucle de vérification de position
+Exécuté toutes les 2 secondes pour vérifier la position active
+"""
+
+import asyncio
+import logging
+from typing import Optional
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+# Variables globales injectées par init_instances()
+_position_manager = None
+_price_provider = None
+_app_state = None
+_sio = None
+_position_lock = None
+_analytics_db = None
+
+
+def set_position_manager(position_manager):
+    """Injecter l'instance position_manager"""
+    global _position_manager
+    _position_manager = position_manager
+
+
+def set_price_provider(price_provider):
+    """Injecter l'instance price_provider"""
+    global _price_provider
+    _price_provider = price_provider
+
+
+def set_app_state(app_state):
+    """Injecter l'état de l'application"""
+    global _app_state
+    _app_state = app_state
+
+
+def set_socketio(sio):
+    """Injecter l'instance SocketIO"""
+    global _sio
+    _sio = sio
+
+
+def set_position_lock(lock):
+    """Injecter le lock de position"""
+    global _position_lock
+    _position_lock = lock
+
+
+def set_analytics_db(analytics_db):
+    """Injecter la base de données analytics"""
+    global _analytics_db
+    _analytics_db = analytics_db
+
+
+async def position_check_loop_callback():
+    """
+    Callback appelé toutes les 2 secondes pour vérifier la position
+
+    Procédure:
+    1. Vérifier qu'une position est active
+    2. Récupérer le prix actuel
+    3. Effectuer check_position (TP/SL/Break-even/etc.)
+    4. Émettre position_update pour le frontend
+    5. Si position fermée: archiver et nettoyer
+    """
+    if not _position_manager or not _price_provider or not _app_state:
+        return
+
+    try:
+        # Vérifier qu'une position est active
+        if not _position_manager.active_position:
+            return
+
+        # Récupérer la position
+        position = _position_manager.active_position
+        symbol = position.symbol
+
+        # Récupérer prix actuel
+        current_price_data = await _price_provider.get_price(symbol)
+        if not current_price_data:
+            logger.warning(f"⚠️ Prix indisponible pour {symbol}")
+            return
+
+        current_price = (
+            current_price_data.get('lastPrice', 0)
+            if isinstance(current_price_data, dict)
+            else current_price_data
+        )
+
+        # Vérifier la position (retourne None ou raison de fermeture)
+        close_reason = await _position_manager.check_position(current_price)
+
+        # Si position toujours active, émettre mise à jour
+        if not close_reason:
+            await _emit_position_update(position, current_price)
+            return
+
+        # Position fermée - Acquérir le lock
+        if _position_lock:
+            async with _position_lock:
+                result = _position_manager.close_position(close_reason, exit_price=current_price)
+
+                if _app_state:
+                    _app_state['active_position'] = None
+
+                # Archiver dans l'historique
+                if result:
+                    result['timestamp'] = datetime.now().isoformat()
+                    if 'trade_history' not in _app_state:
+                        _app_state['trade_history'] = []
+                    _app_state['trade_history'].append(result)
+
+                    # Limiter l'historique à 1000 trades
+                    if len(_app_state['trade_history']) > 1000:
+                        _app_state['trade_history'] = _app_state['trade_history'][-1000:]
+
+                # Désactiver WebSocket monitoring si price_provider
+                if _price_provider and hasattr(_price_provider, 'stop_websocket'):
+                    try:
+                        await _price_provider.stop_websocket()
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
+
+                # Émettre événement de fermeture
+                if _sio:
+                    await _sio.emit('position_closed', {
+                        'symbol': symbol,
+                        'close_reason': close_reason,
+                        'exit_price': current_price,
+                        'result': result
+                    })
+
+    except Exception as e:
+        logger.error(f"❌ Erreur position_check_loop_callback: {e}")
+
+
+async def _emit_position_update(position, current_price: float):
+    """
+    Émettre mise à jour de position au frontend
+
+    Args:
+        position: Objet position active
+        current_price: Prix actuel du marché
+    """
+    if not _position_manager or not _sio:
+        return
+
+    try:
+        # Calculer PnL
+        pnl = _position_manager._calculate_pnl(current_price)
+        pnl_pct = pnl / 100  # Convertir % en décimal
+
+        # Calculer taille à considérer (incluant TP partiel)
+        size_to_consider = position.size
+        partial_profit_usdt = 0.0
+
+        if hasattr(position, 'partial_tp_sold') and position.partial_tp_sold:
+            size_to_consider = getattr(position, 'size_remaining', position.size * 0.5)
+            partial_profit_usdt = getattr(position, 'partial_profit_usdt', 0.0)
+
+        # Calculer PnL USDT selon direction
+        if position.direction == 'LONG':
+            price_diff = current_price - position.entry
+            pnl_usdt = size_to_consider * (price_diff / position.entry)
+        else:  # SHORT
+            price_diff = position.entry - current_price
+            pnl_usdt = size_to_consider * (price_diff / position.entry)
+
+        # Ajouter profit du TP partiel
+        pnl_usdt += partial_profit_usdt
+
+        logger.debug(
+            f"📊 Position check: {position.symbol} {position.direction} | "
+            f"Entry={position.entry:.6f} | Prix={current_price:.6f} | "
+            f"PnL={pnl:.2f}% | PnL USDT={pnl_usdt:.4f}"
+        )
+
+        # Émettre mise à jour au frontend
+        update_data = {
+            'symbol': position.symbol,
+            'direction': position.direction,
+            'entry': position.entry,
+            'current_price': current_price,
+            'sl': position.sl,
+            'tp': position.tp,
+            'pnl': pnl,
+            'pnl_usdt': pnl_usdt,
+            'size': position.size,
+            'break_even_set': getattr(position, 'break_even_set', False),
+            'partial_tp_sold': getattr(position, 'partial_tp_sold', False)
+        }
+
+        await _sio.emit('position_update', update_data)
+
+        logger.debug(
+            f"📡 position_update émis: {position.symbol} | "
+            f"Prix: {current_price:.6f} | PnL: {pnl:.2f}%"
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Erreur émission position_update: {e}")
