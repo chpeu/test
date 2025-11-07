@@ -1361,14 +1361,14 @@ class PositionManager:
                 if self.config.use_partial_tp and self.active_position.partial_tp_sold:
                     # Mode ATR : TP final peut être atteint après TP partiel
                     if self.config.use_atr:
-                        logger.info(f"🎯 TP FINAL ATTEINT (LONG, après TP partiel): Prix {current_price:.6f} >= TP {tp:.6f}")
+                        logger.info(f"🎯 TP FINAL ATTEINT (LONG, après TP partiel): Prix {self._format_price(current_price)} >= TP {self._format_price(tp)}")
                         return 'TP'
                     # Mode FIXE : ne devrait pas arriver ici (géré ci-dessus)
                     logger.debug(f"🔍 Mode FIXE: TP final atteint mais ignoré (trailing stop actif)")
                     return None
                 else:
                     # TP partiel pas encore vendu, mais prix a atteint TP final
-                    logger.warning(f"⚠️ TP FINAL ATTEINT AVANT TP PARTIEL (LONG): Prix {current_price:.6f} >= TP {tp:.6f}")
+                    logger.warning(f"⚠️ TP FINAL ATTEINT AVANT TP PARTIEL (LONG): Prix {self._format_price(current_price)} >= TP {self._format_price(tp)}")
                     return 'TP'
         else:  # SHORT
             if current_price >= sl:
@@ -1384,14 +1384,14 @@ class PositionManager:
                 if self.config.use_partial_tp and self.active_position.partial_tp_sold:
                     # Mode ATR : TP final peut être atteint après TP partiel
                     if self.config.use_atr:
-                        logger.info(f"🎯 TP FINAL ATTEINT (SHORT, après TP partiel): Prix {current_price:.6f} <= TP {tp:.6f}")
+                        logger.info(f"🎯 TP FINAL ATTEINT (SHORT, après TP partiel): Prix {self._format_price(current_price)} <= TP {self._format_price(tp)}")
                         return 'TP'
                     # Mode FIXE : ne devrait pas arriver ici (géré ci-dessus)
                     logger.debug(f"🔍 Mode FIXE: TP final atteint mais ignoré (trailing stop actif)")
                     return None
                 else:
                     # TP partiel pas encore vendu, mais prix a atteint TP final
-                    logger.warning(f"⚠️ TP FINAL ATTEINT AVANT TP PARTIEL (SHORT): Prix {current_price:.6f} <= TP {tp:.6f}")
+                    logger.warning(f"⚠️ TP FINAL ATTEINT AVANT TP PARTIEL (SHORT): Prix {self._format_price(current_price)} <= TP {self._format_price(tp)}")
                     return 'TP'
         
         return None
@@ -1419,7 +1419,7 @@ class PositionManager:
                     exit_price = entry
                     logger.warning(f"⚠️ Fermeture EARLY_INVALIDATION: pas de prix disponible, utilisation entry: {entry}")
             else:
-                logger.info(f"🔧 Fermeture EARLY_INVALIDATION: prix de sortie={exit_price:.6f} (fourni)")
+                logger.info(f"🔧 Fermeture EARLY_INVALIDATION: prix de sortie={self._format_price(exit_price)} (fourni)")
         elif reason == 'MANUAL':
             # 🔥 FIX: Pour fermeture manuelle, utiliser le prix fourni (prix actuel du marché)
             # Si exit_price n'est pas fourni, utiliser le dernier prix connu
@@ -1430,7 +1430,7 @@ class PositionManager:
                     exit_price = entry
                     logger.warning(f"⚠️ Fermeture MANUAL: pas de prix disponible, utilisation entry: {entry}")
             else:
-                logger.info(f"🔧 Fermeture MANUAL: prix de sortie={exit_price:.6f} (fourni)")
+                logger.info(f"🔧 Fermeture MANUAL: prix de sortie={self._format_price(exit_price)} (fourni)")
         elif reason == 'API_STUCK':
             # Utiliser le dernier prix connu
             if self.active_position.symbol in self.price_cache:
