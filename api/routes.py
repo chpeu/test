@@ -29,6 +29,7 @@ from functools import wraps
 import io
 import csv
 import json
+import os
 
 from core.analytics_database import AnalyticsDatabase
 
@@ -677,6 +678,113 @@ async def delete_trade(
 
 
 # ==================== WEBSOCKET (pour streaming temps réel) ====================
+
+# ==================== SETTINGS API ====================
+
+@router.get("/settings")
+async def get_settings():
+    """
+    Récupérer paramètres Telegram (depuis .env ou variables d'environnement)
+    """
+    try:
+        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
+        from config import PAPER_TRADING_MODE, PAPER_TRADING_INITIAL_CAPITAL
+        from config import NOTIFICATION_BATCHING_ENABLED, NOTIFICATION_THROTTLE_SECONDS, NOTIFICATION_BATCH_INTERVAL
+        
+        return {
+            'success': True,
+            'settings': {
+                'telegram': {
+                    'bot_token': TELEGRAM_BOT_TOKEN if TELEGRAM_BOT_TOKEN else '',
+                    'chat_id': str(TELEGRAM_CHAT_ID) if TELEGRAM_CHAT_ID else '',
+                    'enabled': TELEGRAM_ENABLED
+                },
+                'paper_trading': {
+                    'enabled': PAPER_TRADING_MODE,
+                    'initial_capital': PAPER_TRADING_INITIAL_CAPITAL
+                },
+                'notifications': {
+                    'batching_enabled': NOTIFICATION_BATCHING_ENABLED,
+                    'throttle_seconds': NOTIFICATION_THROTTLE_SECONDS,
+                    'batch_interval': NOTIFICATION_BATCH_INTERVAL
+                }
+            }
+        }
+    except Exception as e:
+        logger.error(f"❌ Erreur GET /api/settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/settings")
+async def save_settings(request: Request):
+    """
+    Sauvegarder paramètres Telegram dans fichier .env
+    """
+    try:
+        data = await request.json()
+        telegram_settings = data.get('telegram', {})
+        paper_settings = data.get('paper_trading', {})
+        notification_settings = data.get('notifications', {})
+        
+        # Lire .env existant ou créer nouveau
+        env_path = ".env"
+        env_lines = []
+        
+        # Lire .env existant si disponible
+        if os.path.exists(env_path):
+            with open(env_path, 'r', encoding='utf-8') as f:
+                env_lines = f.readlines()
+        
+        # Créer dictionnaire des variables existantes
+        env_vars = {}
+        new_lines = []
+        for line in env_lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                new_lines.append(line + '\n')
+                continue
+            if '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                env_vars[key] = value.strip()
+        
+        # Mettre à jour variables Telegram
+        if telegram_settings.get('bot_token'):
+            env_vars['TELEGRAM_BOT_TOKEN'] = telegram_settings['bot_token']
+        if telegram_settings.get('chat_id'):
+            env_vars['TELEGRAM_CHAT_ID'] = telegram_settings['chat_id']
+        
+        # Mettre à jour Paper Trading
+        if 'enabled' in paper_settings:
+            env_vars['PAPER_TRADING_MODE'] = 'true' if paper_settings['enabled'] else 'false'
+        if 'initial_capital' in paper_settings:
+            env_vars['PAPER_TRADING_INITIAL_CAPITAL'] = str(paper_settings['initial_capital'])
+        
+        # Écrire nouveau .env
+        with open(env_path, 'w', encoding='utf-8') as f:
+            f.write("# Telegram Configuration\n")
+            if 'TELEGRAM_BOT_TOKEN' in env_vars:
+                f.write(f"TELEGRAM_BOT_TOKEN={env_vars['TELEGRAM_BOT_TOKEN']}\n")
+            if 'TELEGRAM_CHAT_ID' in env_vars:
+                f.write(f"TELEGRAM_CHAT_ID={env_vars['TELEGRAM_CHAT_ID']}\n")
+            f.write("\n# Paper Trading\n")
+            if 'PAPER_TRADING_MODE' in env_vars:
+                f.write(f"PAPER_TRADING_MODE={env_vars['PAPER_TRADING_MODE']}\n")
+            if 'PAPER_TRADING_INITIAL_CAPITAL' in env_vars:
+                f.write(f"PAPER_TRADING_INITIAL_CAPITAL={env_vars['PAPER_TRADING_INITIAL_CAPITAL']}\n")
+            f.write("\n# Autres variables d'environnement\n")
+            for key, value in env_vars.items():
+                if key not in ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'PAPER_TRADING_MODE', 'PAPER_TRADING_INITIAL_CAPITAL']:
+                    f.write(f"{key}={value}\n")
+        
+        return {
+            'success': True,
+            'message': 'Paramètres sauvegardés dans .env. Redémarrez le bot pour appliquer les changements.'
+        }
+    except Exception as e:
+        logger.error(f"❌ Erreur POST /api/settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Note: WebSocket endpoints déjà gérés dans main.py via SocketIO
 # Cette API REST est pour requêtes HTTP classiques

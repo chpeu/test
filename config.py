@@ -3,6 +3,14 @@ Configuration globale pour Trade Cursor
 """
 import os
 
+# 🔥 NOUVEAU: Charger variables d'environnement depuis .env si disponible
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Charge .env à la racine du projet
+except ImportError:
+    # python-dotenv non installé, continuer sans
+    pass
+
 # API MEXC
 MEXC_FUTURES_URL = "https://contract.mexc.com"
 
@@ -260,6 +268,8 @@ DEBUG_ENABLED = os.getenv("DEBUG", "False").lower() == "true"
 ANALYTICS_DB_PATH = "data/analytics.db"
 
 # Telegram Notifications (optionnel)
+# 🔥 NOUVEAU: Charger depuis .env ou variables d'environnement
+# Priorité: 1) Variables d'environnement, 2) Fichier .env, 3) None
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", None)  # "123456:ABC-DEF..."
 TELEGRAM_CHAT_ID_RAW = os.getenv("TELEGRAM_CHAT_ID", None)  # "123456789" ou "-123456789" pour groupes
 # 🔥 FIX: Parser Chat ID en nombre si possible (pour compatibilité API Telegram)

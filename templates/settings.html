@@ -266,7 +266,38 @@
     
     <script>
         async function loadSettings() {
-            // Charger depuis API ou localStorage
+            // 🔥 NOUVEAU: Charger depuis API backend (.env)
+            try {
+                const response = await fetch('/api/settings');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.settings) {
+                        const s = data.settings;
+                        // Telegram
+                        if (s.telegram) {
+                            document.getElementById('telegramToken').value = s.telegram.bot_token || '';
+                            document.getElementById('telegramChatId').value = s.telegram.chat_id || '';
+                            document.getElementById('telegramEnabled').checked = s.telegram.enabled || false;
+                        }
+                        // Paper Trading
+                        if (s.paper_trading) {
+                            document.getElementById('paperCapital').value = s.paper_trading.initial_capital || 1000;
+                            document.getElementById('paperTradingEnabled').checked = s.paper_trading.enabled || false;
+                        }
+                        // Notifications
+                        if (s.notifications) {
+                            document.getElementById('notificationThrottle').value = s.notifications.throttle_seconds || 2;
+                            document.getElementById('batchInterval').value = s.notifications.batch_interval || 5;
+                            document.getElementById('batchingEnabled').checked = s.notifications.batching_enabled !== false;
+                        }
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.warn('Erreur chargement depuis API, fallback localStorage:', error);
+            }
+            
+            // Fallback: Charger depuis localStorage (ancien système)
             const saved = localStorage.getItem('botSettings');
             if (saved) {
                 const settings = JSON.parse(saved);
@@ -283,23 +314,56 @@
             }
         }
         
-        function saveSettings() {
+        async function saveSettings() {
+            // 🔥 NOUVEAU: Sauvegarder via API backend (.env)
             const settings = {
-                telegramToken: document.getElementById('telegramToken').value,
-                telegramChatId: document.getElementById('telegramChatId').value,
-                telegramEnabled: document.getElementById('telegramEnabled').checked,
-                paperCapital: parseFloat(document.getElementById('paperCapital').value),
-                paperTradingEnabled: document.getElementById('paperTradingEnabled').checked,
-                notificationThrottle: parseInt(document.getElementById('notificationThrottle').value),
-                batchInterval: parseInt(document.getElementById('batchInterval').value),
-                batchingEnabled: document.getElementById('batchingEnabled').checked,
-                rateLimit: parseInt(document.getElementById('rateLimit').value),
-                rateWindow: parseInt(document.getElementById('rateWindow').value)
+                telegram: {
+                    bot_token: document.getElementById('telegramToken').value,
+                    chat_id: document.getElementById('telegramChatId').value,
+                    enabled: document.getElementById('telegramEnabled').checked
+                },
+                paper_trading: {
+                    initial_capital: parseFloat(document.getElementById('paperCapital').value),
+                    enabled: document.getElementById('paperTradingEnabled').checked
+                },
+                notifications: {
+                    throttle_seconds: parseInt(document.getElementById('notificationThrottle').value),
+                    batch_interval: parseInt(document.getElementById('batchInterval').value),
+                    batching_enabled: document.getElementById('batchingEnabled').checked
+                }
             };
             
-            localStorage.setItem('botSettings', JSON.stringify(settings));
-            
-            showSuccess('Paramètres sauvegardés localement. Redémarre le bot pour appliquer les changements.');
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showSuccess(data.message || 'Paramètres sauvegardés dans .env. Redémarrez le bot pour appliquer les changements.');
+                } else {
+                    const error = await response.json();
+                    alert('Erreur: ' + (error.detail || 'Impossible de sauvegarder'));
+                }
+            } catch (error) {
+                console.error('Erreur sauvegarde:', error);
+                // Fallback: Sauvegarder dans localStorage
+                localStorage.setItem('botSettings', JSON.stringify({
+                    telegramToken: settings.telegram.bot_token,
+                    telegramChatId: settings.telegram.chat_id,
+                    telegramEnabled: settings.telegram.enabled,
+                    paperCapital: settings.paper_trading.initial_capital,
+                    paperTradingEnabled: settings.paper_trading.enabled,
+                    notificationThrottle: settings.notifications.throttle_seconds,
+                    batchInterval: settings.notifications.batch_interval,
+                    batchingEnabled: settings.notifications.batching_enabled
+                }));
+                showSuccess('Paramètres sauvegardés localement (fallback). Redémarre le bot pour appliquer les changements.');
+            }
         }
         
         async function testTelegram() {
