@@ -332,19 +332,12 @@ class PositionManager:
                 
                 # Créer la tâche sans attendre (fire-and-forget)
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # Loop en cours, créer la tâche
-                        asyncio.create_task(_notify_position_opened_async())
-                    else:
-                        # Pas de loop en cours, exécuter dans un nouveau thread
-                        import concurrent.futures
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(
-                                lambda: asyncio.run(_notify_position_opened_async())
-                            )
+                    # Essayer d'obtenir le loop en cours
+                    loop = asyncio.get_running_loop()
+                    # Loop en cours, créer la tâche
+                    asyncio.create_task(_notify_position_opened_async())
                 except RuntimeError:
-                    # Pas de loop disponible, exécuter dans un nouveau thread
+                    # Pas de loop en cours, exécuter dans un nouveau thread
                     try:
                         import concurrent.futures
                         with concurrent.futures.ThreadPoolExecutor() as executor:
