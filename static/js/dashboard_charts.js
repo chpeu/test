@@ -424,14 +424,25 @@ socket.on('stats_update', (data) => {
 
 // ==================== INITIALIZATION ====================
 
-// Charger données initiales
-loadInitialData();
+// Attendre que SocketIO soit connecté avant de charger les données
+socket.on('connect', () => {
+    console.log('✅ Connected to Socket.IO - Chargement données initiales');
+    // Charger données au démarrage après connexion SocketIO
+    loadInitialData();
+});
 
-// Refresh périodique (toutes les 60s - backup si SocketIO échoue)
+// Si déjà connecté, charger immédiatement
+if (socket.connected) {
+    loadInitialData();
+}
+
+// Refresh périodique (toutes les 30s - backup si SocketIO échoue)
 // SocketIO gère les mises à jour temps réel via position_opened/closed/tp_escalier_level
 setInterval(() => {
-    loadInitialData();
-}, 60000);  // Rafraîchir toutes les 60 secondes (backup)
+    if (socket.connected) {
+        loadInitialData();
+    }
+}, 30000);  // 🔥 FIX: Rafraîchir toutes les 30 secondes (backup) au lieu de 60s
 
 console.log('📊 Dashboard Charts initialisé');
 
