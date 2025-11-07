@@ -1752,16 +1752,39 @@ class PositionManager:
                 # Créer une fonction wrapper async pour la notification
                 async def _notify_position_closed_async():
                     try:
+                        # 🔥 FIX: Envoyer toutes les données nécessaires pour éviter doublons
+                        # Inclure closure_id, timestamp, et toutes les données du trade
                         await self.notification_manager.notify(
                             'position_closed',
                             {
                                 'symbol': position.symbol,
                                 'direction': position.direction,
+                                'entry': position.entry,
+                                'exit': exit_price,
+                                'timestamp': result.get('timestamp', time.time() * 1000),  # Timestamp en millisecondes
+                                'closure_id': result.get('closure_id'),  # 🔥 FIX: Inclure closure_id
+                                'reason': reason,
+                                'close_reason': reason,
+                                'exit_reason': reason,
+                                'net_pnl_pct': net_pnl_pct,
+                                'net_pnl_usdt': net_pnl_usdt,
+                                'gross_pnl_pct': result.get('gross_pnl_pct', net_pnl_pct),
+                                'gross_pnl_usdt': result.get('gross_pnl_usdt', net_pnl_usdt),
+                                'pnl_pct': net_pnl_pct,  # Alias pour compatibilité
+                                'pnl_usdt': net_pnl_usdt,  # Alias pour compatibilité
+                                'fees': result.get('fees', 0),
+                                'slippage': result.get('slippage', 0),
+                                'total_costs': result.get('total_costs', 0),
+                                'duration': int(time.time() - position.start_time),
+                                'duration_seconds': int(time.time() - position.start_time),
+                                'has_partial_tp': result.get('has_partial_tp', False),
+                                'size_closed': result.get('size_closed', position.size),
+                                'size': position.size,
                                 'result': {
                                     'exit_reason': reason,
                                     'pnl_pct': net_pnl_pct,
                                     'pnl_usdt': net_pnl_usdt,
-                                    'duration_seconds': time.time() - position.start_time
+                                    'duration_seconds': int(time.time() - position.start_time)
                                 }
                             }
                         )
