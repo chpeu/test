@@ -1605,35 +1605,62 @@ class PositionManager:
                 from config import TRADING_CONFIG
                 tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
                 
+                # 🔥 FIX: Calculer timestamp, date, time pour la table trades
+                from datetime import datetime
+                now = datetime.now()
+                trade_timestamp = now.isoformat()
+                trade_date = now.strftime('%Y-%m-%d')
+                trade_time = now.strftime('%H:%M:%S')
+                
+                # 🔥 FIX: Calculer PnL brut et net pour la table trades
+                # PnL brut = PnL avant frais/slippage
+                gross_pnl_pct = net_pnl_pct + total_costs  # Ajouter les coûts pour obtenir le brut
+                gross_pnl_usdt = net_pnl_usdt + total_costs_usdt
+                
                 trade_data = {
+                    # Champs requis par la table trades
+                    'timestamp': trade_timestamp,
+                    'date': trade_date,
+                    'time': trade_time,
                     'symbol': position.symbol,
                     'direction': position.direction,
                     'entry': position.entry,
                     'exit': exit_price,
-                    'size': position.size,
-                    'pnl_pct': net_pnl_pct,
-                    'pnl_usdt': net_pnl_usdt,
-                    'exit_reason': reason,
+                    'gross_pnl_pct': gross_pnl_pct,
+                    'gross_pnl_usdt': gross_pnl_usdt,
+                    'net_pnl_pct': net_pnl_pct,
+                    'net_pnl_usdt': net_pnl_usdt,
+                    'fees': fees,
+                    'slippage': slippage,
+                    'total_costs': total_costs,
+                    'reason': reason,
+                    'duration': int(time.time() - position.start_time),
+                    'condition_types': json.dumps(position.condition_types) if position.condition_types else '[]',
+                    
+                    # Champs optionnels
+                    'trading_mode': 'PAPER' if is_paper else 'LIVE',
+                    'is_backtest': False,
+                    'session_id': getattr(self, 'session_id', 'unknown'),
+                    'tp_sl_mode': tp_sl_mode,
+                    'break_even_triggered': position.break_even_set,
+                    'trailing_stop_triggered': getattr(position, 'trailing_activated', False),
+                    'tp_escalier_enabled': position.tp_escalier_enabled,
+                    'tp_escalier_levels_hit': position.tp_escalier_current_level if position.tp_escalier_enabled else 0,
+                    
+                    # Champs supplémentaires (pour compatibilité)
                     'start_time': position.start_time,
                     'end_time': time.time(),
                     'duration_seconds': time.time() - position.start_time,
+                    'size': position.size,
+                    'pnl_pct': net_pnl_pct,  # Alias pour compatibilité
+                    'pnl_usdt': net_pnl_usdt,  # Alias pour compatibilité
+                    'exit_reason': reason,  # Alias pour compatibilité
                     'tp': position.tp,
                     'sl': position.sl,
-                    'tp_sl_mode': tp_sl_mode,  # 🔥 FIX: Utiliser valeur depuis config
-                    'condition_types': json.dumps(position.condition_types) if position.condition_types else '[]',
                     'atr': position.atr,
                     'atr5m': position.atr5m,
-                    
-                    # Nouveaux champs V2
-                    'trading_mode': 'PAPER' if is_paper else 'LIVE',
-                    'is_paper': is_paper,
-                    'is_backtest': False,
-                    'session_id': getattr(self, 'session_id', 'unknown'),
                     'max_favorable_excursion_pct': getattr(position, 'max_favorable_excursion_pct', 0),
-                    'max_adverse_excursion_pct': getattr(position, 'max_adverse_excursion_pct', 0),
-                    'breakeven_triggered': position.break_even_set,
-                    'trailing_activated': getattr(position, 'trailing_activated', False),
-                    'tp_escalier_levels_hit': position.tp_escalier_current_level if position.tp_escalier_enabled else 0
+                    'max_adverse_excursion_pct': getattr(position, 'max_adverse_excursion_pct', 0)
                 }
                 
                 # Logger en async (non-bloquant)
