@@ -596,6 +596,8 @@
         
         socket.on('connect', () => {
             console.log('✅ Analytics: Connecté à SocketIO');
+            // 🔥 FIX: Charger données au démarrage après connexion SocketIO
+            loadData();
         });
         
         socket.on('disconnect', () => {
@@ -623,14 +625,7 @@
         
         // ==================== INITIALIZATION ====================
         
-        // Attendre que SocketIO soit connecté avant de charger les données
-        socket.on('connect', () => {
-            console.log('✅ Analytics: Connecté à SocketIO - Chargement données initiales');
-            // Charger données au démarrage après connexion SocketIO
-            loadData();
-        });
-        
-        // Si déjà connecté, charger immédiatement
+        // Si déjà connecté, charger immédiatement (sinon attendre événement 'connect')
         if (socket.connected) {
             loadData();
         }
