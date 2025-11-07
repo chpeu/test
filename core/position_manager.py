@@ -1280,7 +1280,7 @@ class PositionManager:
         # 🔥 FIX: Log détaillé pour debug
         logger.debug(
             f"🔍 Vérification TP/SL: {direction} | "
-            f"Prix={current_price:.6f} | SL={sl:.6f} | TP={tp:.6f}"
+            f"Prix={self._format_price(current_price)} | SL={self._format_price(sl)} | TP={self._format_price(tp)}"
         )
         
         # 🔥 FIX: En mode FIXE ou ATR avec TP partiel, vérifier que TP partiel < TP final
@@ -1332,7 +1332,7 @@ class PositionManager:
             # Le trailing stop adaptatif (géré dans check_position) fermera la position si nécessaire
             logger.debug(
                 f"🔍 Mode FIXE après TP partiel: Ignorer TP final ({tp:.6f}), "
-                f"utiliser uniquement trailing stop (SL={sl:.6f})"
+                f"utiliser uniquement trailing stop (SL={self._format_price(sl)})"
             )
             # Vérifier seulement le SL (qui est le trailing stop adaptatif)
             # 🔥 FIX: Retourner 'TS' (Trailing Stop) au lieu de 'SL' pour distinguer
