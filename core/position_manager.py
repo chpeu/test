@@ -1698,9 +1698,26 @@ class PositionManager:
                     'max_adverse_excursion_pct': getattr(position, 'max_adverse_excursion_pct', 0)
                 }
                 
-                # Logger en async (non-bloquant)
-                asyncio.create_task(self.analytics_db.insert_trade(trade_data))
-                logger.debug(f"✅ Trade loggé dans Analytics DB: {position.symbol}")
+                # Logger en async (non-bloquant) - insert_trade est synchrone, utiliser run_in_executor
+                # Créer une tâche async pour exécuter insert_trade dans un thread
+                async def _log_trade_async():
+                    try:
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, self.analytics_db.insert_trade, trade_data)
+                        logger.debug(f"✅ Trade loggé dans Analytics DB: {position.symbol}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur logging Analytics DB (async): {e}")
+                
+                # Créer la tâche sans attendre (fire-and-forget)
+                try:
+                    asyncio.create_task(_log_trade_async())
+                except RuntimeError:
+                    # Si pas de loop event, exécuter directement (synchrone)
+                    try:
+                        self.analytics_db.insert_trade(trade_data)
+                        logger.debug(f"✅ Trade loggé dans Analytics DB: {position.symbol}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur logging Analytics DB (sync): {e}")
             except Exception as e:
                 logger.warning(f"⚠️ Erreur logging Analytics DB: {e}")
         

@@ -247,14 +247,18 @@ class TelegramNotifier:
         else:
             duration_str = f"{int(duration/3600)}h {int((duration%3600)/60)}m"
         
+        # 🔥 FIX: Échapper symbol et exit_reason pour éviter erreurs Markdown
+        symbol_escaped = self._escape_markdown(str(symbol))
+        exit_reason_escaped = self._escape_markdown(str(exit_reason))
+        
         message = f"""
 {emoji} **POSITION FERMÉE** {emoji}
 
-📊 **Symbole**: `{symbol}`
+📊 **Symbole**: `{symbol_escaped}`
 📈 **Direction**: {direction}
-🚪 **Raison**: **{exit_reason}**
+🚪 **Raison**: **{exit_reason_escaped}**
 
-{color} **PnL**: **{pnl_usdt:+.2f} USDT** ({pnl_pct:+.2f}%)
+{color} **PnL**: **{pnl_usdt:+.2f} USDT** \\({pnl_pct:+.2f}%\\)
 
 ⏱️ **Durée**: {duration_str}
 
