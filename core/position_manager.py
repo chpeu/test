@@ -129,6 +129,41 @@ class PositionConfig:
 class PositionManager:
     """Gestionnaire de positions"""
     
+    @staticmethod
+    def _format_price(price: float, min_decimals: int = 6, max_decimals: int = 10) -> str:
+        """
+        Formater un prix avec le bon nombre de décimales selon sa valeur
+        
+        Pour les prix très petits (< 0.01), afficher plus de décimales
+        Pour les prix normaux, utiliser min_decimals
+        
+        Args:
+            price: Prix à formater
+            min_decimals: Nombre minimum de décimales (défaut: 6)
+            max_decimals: Nombre maximum de décimales (défaut: 10)
+        
+        Returns:
+            String formatée du prix
+        """
+        if price == 0:
+            return "0.0"
+        
+        # Pour les prix très petits (< 0.01), utiliser plus de décimales
+        if price < 0.01:
+            # Compter les zéros après la virgule
+            price_str = f"{price:.{max_decimals}f}"
+            # Supprimer les zéros de fin inutiles
+            price_str = price_str.rstrip('0').rstrip('.')
+            # S'assurer d'avoir au moins min_decimals chiffres significatifs après la virgule
+            if '.' in price_str:
+                decimals = len(price_str.split('.')[1])
+                if decimals < min_decimals:
+                    return f"{price:.{min_decimals}f}".rstrip('0').rstrip('.')
+            return price_str
+        else:
+            # Pour les prix normaux, utiliser min_decimals
+            return f"{price:.{min_decimals}f}"
+    
     def __init__(self, config: PositionConfig):
         self.config = config
         self.active_position: Optional[Position] = None
@@ -661,8 +696,8 @@ class PositionManager:
         partial_tp_status = "TP partiel: OUI" if self.active_position.partial_tp_sold else "TP partiel: NON"
         logger.debug(
             f"🔍 Check position: {self.active_position.symbol} {self.active_position.direction} | "
-            f"Entry={self.active_position.entry:.6f} | Prix={current_price:.6f} | "
-            f"PnL={pnl:.2f}% | {partial_tp_status} | SL={self.active_position.sl:.6f} | TP={self.active_position.tp:.6f}"
+            f"Entry={self._format_price(self.active_position.entry)} | Prix={self._format_price(current_price)} | "
+            f"PnL={pnl:.2f}% | {partial_tp_status} | SL={self._format_price(self.active_position.sl)} | TP={self._format_price(self.active_position.tp)}"
         )
         
         # Mettre à jour le SL dynamique selon le mode (AVANT de vérifier TP/SL)
@@ -834,7 +869,7 @@ class PositionManager:
                 
                 logger.info(
                     f"🔄 Trailing SL LONG {position.symbol}: "
-                    f"{old_sl:.6f} → {new_sl:.6f} (-{trailing_distance:.2f}%) "
+                    f"{self._format_price(old_sl)} → {self._format_price(new_sl)} (-{trailing_distance:.2f}%) "
                     f"[ATR: {atr_percent:.2f}%]"
                 )
         
@@ -848,7 +883,7 @@ class PositionManager:
                 
                 logger.info(
                     f"🔄 Trailing SL SHORT {position.symbol}: "
-                    f"{old_sl:.6f} → {new_sl:.6f} (+{trailing_distance:.2f}%) "
+                    f"{self._format_price(old_sl)} → {self._format_price(new_sl)} (+{trailing_distance:.2f}%) "
                     f"[ATR: {atr_percent:.2f}%]"
                 )
     
@@ -943,7 +978,7 @@ class PositionManager:
                 # Le SL doit monter (augmenter) pour protéger les gains
                 if new_sl > self.active_position.sl:
                     self.active_position.sl = round(new_sl, 6)
-                    logger.info(f"📈 TRAILING STOP: Nouveau SL={new_sl:.6f} (distance={self.config.trailing_distance}%)")
+                    logger.info(f"📈 TRAILING STOP: Nouveau SL={self._format_price(new_sl)} (distance={self.config.trailing_distance}%)")
             else:  # SHORT
                 # SHORT: trailing stop qui descend avec le prix quand prix baisse (profit augmente)
                 # Pour SHORT, SL doit être au-dessus du prix actuel pour protéger les gains
@@ -956,7 +991,7 @@ class PositionManager:
                 # Mais aussi: on ne veut pas que SL remonte, donc new_sl doit être < SL actuel
                 if new_sl < self.active_position.sl and new_sl > current_price:
                     self.active_position.sl = round(new_sl, 6)
-                    logger.info(f"📉 TRAILING STOP: Nouveau SL={new_sl:.6f} (distance={self.config.trailing_distance}%) | Prix={current_price:.6f} | Entry={entry:.6f}")
+                    logger.info(f"📉 TRAILING STOP: Nouveau SL={self._format_price(new_sl)} (distance={self.config.trailing_distance}%) | Prix={self._format_price(current_price)} | Entry={self._format_price(entry)}")
     
     async def _update_atr_mode_sl(self, current_price: float, pnl: float):
         """Mettre à jour SL en mode ATR (break-even progressif, TP Escalier, ou ATR MULTI avec TP partiel)"""
@@ -1033,7 +1068,7 @@ class PositionManager:
                     new_sl = current_price * (1 - trailing_distance_atr / 100)
                     if new_sl > self.active_position.sl:
                         self.active_position.sl = round(new_sl, 6)
-                        logger.info(f"📈 TRAILING ATR: Nouveau SL={new_sl:.6f} (distance {trailing_distance_atr:.3f}%)")
+                        logger.info(f"📈 TRAILING ATR: Nouveau SL={self._format_price(new_sl)} (distance {trailing_distance_atr:.3f}%)")
                 else:  # SHORT
                     # 🔥 FIX: SHORT trailing stop - après TP partiel, SL = entry
                     # Quand prix baisse (profit augmente), new_sl doit descendre avec le prix
@@ -1042,7 +1077,7 @@ class PositionManager:
                     # Condition: new_sl doit être < SL actuel (pour descendre) ET > current_price (pour protéger)
                     if new_sl < self.active_position.sl and new_sl > current_price:
                         self.active_position.sl = round(new_sl, 6)
-                        logger.info(f"📉 TRAILING ATR: Nouveau SL={new_sl:.6f} (distance {trailing_distance_atr:.3f}%) | Prix={current_price:.6f} | Entry={entry:.6f}")
+                        logger.info(f"📉 TRAILING ATR: Nouveau SL={self._format_price(new_sl)} (distance {trailing_distance_atr:.3f}%) | Prix={self._format_price(current_price)} | Entry={self._format_price(entry)}")
             
             return  # ATR MULTI avec TP partiel géré, pas besoin de break-even progressif
         
@@ -1060,7 +1095,7 @@ class PositionManager:
             
             self.active_position.sl = round(new_sl, 6)
             self.active_position.break_even_set = True
-            logger.info(f"🛡️ BE Progressif 50%: PnL={pnl:.2f}% → SL={new_sl:.6f}")
+            logger.info(f"🛡️ BE Progressif 50%: PnL={pnl:.2f}% → SL={self._format_price(new_sl)}")
         
         # Phase 2: BE total
         if pnl >= pnl_100pct and self.active_position.break_even_set:
