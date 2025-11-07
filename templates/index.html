@@ -2402,21 +2402,42 @@
                 sizeClosed: sizeToClose.toFixed(4)  // 🔥 v6.4
             };
             
-            // Vérifier si ce trade n'est pas déjà dans l'historique (par closure_id ou timestamp)
+            // 🔥 FIX: Vérifier si ce trade n'est pas déjà dans l'historique (par closure_id ou timestamp)
+            // Vérifier TOUT l'historique, pas seulement les 5 premiers
             var alreadyInHistory = false;
             if (stats.tradeHistory && stats.tradeHistory.length > 0) {
-                for (var i = 0; i < Math.min(stats.tradeHistory.length, 5); i++) {
-                    var trade = stats.tradeHistory[i];
-                    if (trade && trade.symbol === tradeRecord.symbol) {
-                        // Vérifier par closure_id si disponible
-                        if (trade.closureId && tradeRecord.closureId && trade.closureId === tradeRecord.closureId) {
+                // Vérifier d'abord par closureId si disponible (le plus fiable)
+                if (tradeRecord.closureId) {
+                    for (var i = 0; i < stats.tradeHistory.length; i++) {
+                        var trade = stats.tradeHistory[i];
+                        if (trade && trade.closureId === tradeRecord.closureId) {
                             alreadyInHistory = true;
+                            debugLog('⚠️ Trade déjà dans l\'historique (closePosition - closureId)', 
+                                tradeRecord.symbol + ' - ID: ' + tradeRecord.closureId);
                             break;
                         }
-                        // Sinon vérifier par timestamp
-                        if (Math.abs(trade.timestamp - tradeRecord.timestamp) < 2000) {
-                            alreadyInHistory = true;
-                            break;
+                    }
+                }
+                
+                // Si pas de closureId ou pas trouvé, vérifier par symbol + timestamp + reason
+                if (!alreadyInHistory) {
+                    for (var i = 0; i < stats.tradeHistory.length; i++) {
+                        var trade = stats.tradeHistory[i];
+                        if (trade && trade.symbol === tradeRecord.symbol) {
+                            var timeDiff = Math.abs((trade.timestamp || 0) - (tradeRecord.timestamp || 0));
+                            // Tolérance de 5 secondes pour les trades très proches
+                            if (timeDiff < 5000) {
+                                // Vérifier aussi la raison si disponible
+                                var existingReason = trade.reason || trade.exit_reason || '';
+                                var newReason = tradeRecord.reason || tradeRecord.exit_reason || '';
+                                // Si même raison ou timestamp très proche (< 1s), c'est un doublon
+                                if (existingReason === newReason || timeDiff < 1000) {
+                                    alreadyInHistory = true;
+                                    debugLog('⚠️ Trade déjà dans l\'historique (closePosition - symbol+timestamp+reason)', 
+                                        tradeRecord.symbol + ' (timestamp: ' + tradeRecord.timestamp + ' vs ' + trade.timestamp + ', reason: ' + newReason + ')');
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
