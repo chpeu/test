@@ -1641,7 +1641,7 @@ class PositionManager:
                 tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
                 
                 # 🔥 FIX: Calculer timestamp, date, time pour la table trades
-                from datetime import datetime
+                # datetime est déjà importé en haut du fichier, ne pas réimporter ici
                 now = datetime.now()
                 trade_timestamp = now.isoformat()
                 trade_date = now.strftime('%Y-%m-%d')

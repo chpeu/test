@@ -58,6 +58,23 @@ class TelegramNotifier:
         else:
             logger.warning("⚠️ Telegram Notifier désactivé (token/chat_id manquants)")
     
+    @staticmethod
+    def _escape_markdown(text: str) -> str:
+        """
+        Échapper caractères spéciaux Markdown pour Telegram
+        
+        Args:
+            text: Texte à échapper
+        
+        Returns:
+            Texte échappé
+        """
+        # Caractères spéciaux Markdown à échapper
+        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        for char in special_chars:
+            text = text.replace(char, f'\\{char}')
+        return text
+    
     async def send_message(
         self,
         message: str,
@@ -161,18 +178,30 @@ class TelegramNotifier:
         # Formatage conditions
         conditions_str = ', '.join(condition_types) if condition_types else 'N/A'
         
+        # 🔥 FIX: Échapper symbol pour éviter erreurs Markdown (ex: ASTER/USDT:USDT)
+        symbol_escaped = self._escape_markdown(str(symbol))
+        conditions_str_escaped = self._escape_markdown(conditions_str)
+        
+        # Calculer pourcentages TP/SL
+        if direction == 'LONG':
+            tp_pct = ((tp - entry) / entry * 100) if entry > 0 else 0
+            sl_pct = ((sl - entry) / entry * 100) if entry > 0 else 0
+        else:  # SHORT
+            tp_pct = ((entry - tp) / entry * 100) if entry > 0 else 0
+            sl_pct = ((entry - sl) / entry * 100) if entry > 0 else 0
+        
         message = f"""
 {emoji} **POSITION OUVERTE** {emoji}
 
-📊 **Symbole**: `{symbol}`
+📊 **Symbole**: `{symbol_escaped}`
 📈 **Direction**: **{direction}**
 💰 **Entry**: `{entry:.6f}`
 💵 **Size**: `{size:.2f} USDT`
 
-🎯 **TP**: `{tp:.6f}` (+{((tp - entry) / entry * 100 if direction == 'LONG' else (entry - tp) / entry * 100):.2f}%)
-🛡️ **SL**: `{sl:.6f}` ({((sl - entry) / entry * 100 if direction == 'LONG' else (entry - sl) / entry * 100):.2f}%)
+🎯 **TP**: `{tp:.6f}` \\(+{tp_pct:.2f}%\\)
+🛡️ **SL**: `{sl:.6f}` \\({sl_pct:.2f}%\\)
 
-🔍 **Conditions**: {conditions_str}
+🔍 **Conditions**: {conditions_str_escaped}
 
 ⏰ {datetime.now().strftime('%H:%M:%S')}
 """
