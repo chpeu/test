@@ -2,6 +2,20 @@
 Package analyzer - Modules de refactorisation de l'analyseur technique
 """
 
+# Import TechnicalAnalyzer depuis le fichier analyzer.py (parent)
+import importlib.util
+import os
+
+# Charger TechnicalAnalyzer depuis analyzer.py (fichier, pas package)
+_analyzer_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'analyzer.py')
+if os.path.exists(_analyzer_file):
+    _spec = importlib.util.spec_from_file_location("core.analyzer_file", _analyzer_file)
+    _analyzer_module = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_analyzer_module)
+    TechnicalAnalyzer = _analyzer_module.TechnicalAnalyzer
+else:
+    TechnicalAnalyzer = None
+
 from .filters import (
     check_volume_filter,
     check_snr_filter,
@@ -48,6 +62,8 @@ from .trend_calculator import (
 )
 
 __all__ = [
+    # Main Class
+    'TechnicalAnalyzer',
     # Filters
     'check_volume_filter',
     'check_snr_filter',
