@@ -921,16 +921,33 @@ async def telegram_webhook(request: Request):
         # Gérer la commande
         response_text = await _telegram_command_handler.handle_command(text, chat_id)
         
-        # Envoyer la réponse via Telegram API
-        if _notification_manager and _notification_manager.telegram_notifier:
-            # Utiliser le TelegramNotifier pour envoyer la réponse
-            await _notification_manager.telegram_notifier.send_message(
-                response_text,
-                parse_mode='Markdown',
-                bypass_throttle=True  # Les réponses aux commandes ne doivent pas être throttlées
-            )
-        else:
-            logger.warning("⚠️ Notification Manager non disponible pour répondre à la commande Telegram")
+        # Envoyer la réponse via Telegram API directement (pour répondre au bon chat_id)
+        try:
+            from config import TELEGRAM_BOT_TOKEN
+            import aiohttp
+            
+            if TELEGRAM_BOT_TOKEN:
+                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                payload = {
+                    'chat_id': chat_id,
+                    'text': response_text,
+                    'parse_mode': 'Markdown',
+                    'disable_web_page_preview': True
+                }
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=payload) as response:
+                        if response.status == 200:
+                            logger.debug(f"✅ Réponse Telegram envoyée à chat_id {chat_id}")
+                        else:
+                            error_text = await response.text()
+                            logger.error(f"❌ Erreur Telegram API: {response.status} - {error_text}")
+            else:
+                logger.warning("⚠️ TELEGRAM_BOT_TOKEN non configuré")
+        except ImportError:
+            logger.error("❌ aiohttp non installé (requis pour Telegram webhook)")
+        except Exception as e:
+            logger.error(f"❌ Erreur envoi réponse Telegram: {e}")
         
         return {"ok": True}
     
