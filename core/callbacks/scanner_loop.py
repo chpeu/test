@@ -1,0 +1,242 @@
+"""
+Callbacks pour la boucle de scanner automatique
+Exécuté toutes les 45 secondes pour scanner les setups
+"""
+
+import asyncio
+import logging
+from typing import Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
+
+# Variables globales injectées par init_instances()
+_scanner = None
+_analyzer = None
+_position_manager = None
+_price_provider = None
+_app_state = None
+_sio = None
+_scanner_lock = None
+
+
+def set_scanner(scanner):
+    """Injecter l'instance scanner"""
+    global _scanner
+    _scanner = scanner
+
+
+def set_analyzer(analyzer):
+    """Injecter l'instance analyzer"""
+    global _analyzer
+    _analyzer = analyzer
+
+
+def set_position_manager(position_manager):
+    """Injecter l'instance position_manager"""
+    global _position_manager
+    _position_manager = position_manager
+
+
+def set_price_provider(price_provider):
+    """Injecter l'instance price_provider"""
+    global _price_provider
+    _price_provider = price_provider
+
+
+def set_app_state(app_state):
+    """Injecter l'état de l'application"""
+    global _app_state
+    _app_state = app_state
+
+
+def set_socketio(sio):
+    """Injecter l'instance SocketIO"""
+    global _sio
+    _sio = sio
+
+
+def set_scanner_lock(lock):
+    """Injecter le lock du scanner"""
+    global _scanner_lock
+    _scanner_lock = lock
+
+
+async def scanner_loop_callback():
+    """
+    Callback appelé toutes les 45 secondes pour scanner les setups
+
+    Procédure:
+    1. Vérifier qu'aucune position n'est active
+    2. Si top_pairs vide, effectuer scan initial
+    3. Scanner les top N paires en parallèle
+    4. Analyser les résultats et ouvrir position si setup trouvé
+    5. Émettre événements SocketIO de mise à jour
+    """
+    if not _scanner or not _app_state or not _scanner_lock:
+        logger.debug("⚠️ Instances non disponibles pour scanner_loop_callback")
+        return
+
+    try:
+        # Acquérir le lock pour éviter les scans multiples en parallèle
+        async with _scanner_lock:
+            # Vérifier qu'on n'a pas déjà une position active
+            if _app_state.get('active_position') or (
+                _position_manager and _position_manager.active_position
+            ):
+                logger.debug("⏸️ Scanner ignoré : position active")
+                return
+
+            # Si on n'a pas de top_pairs, les scanner d'abord
+            if not _app_state.get('top_pairs'):
+                await _scan_initial_top_pairs()
+                return
+
+            # Scanner les top pairs
+            await _scan_top_pairs()
+
+    except Exception as e:
+        logger.error(f"❌ Erreur scanner_loop_callback: {e}")
+
+
+async def _scan_initial_top_pairs():
+    """
+    Effectuer un scan initial des top pairs
+
+    Procédure:
+    1. Scanner les top 20 paires
+    2. Mettre en cache les résultats
+    3. Démarrer WebSocket pour monitoring
+    4. Émettre événement SocketIO
+    """
+    if not _scanner or not _app_state:
+        return
+
+    try:
+        logger.info("📊 Scan initial des top pairs...")
+        top_pairs = await _scanner.scan_top_pairs(20)
+
+        if top_pairs:
+            _app_state['top_pairs'] = top_pairs
+
+            # Démarrer WebSocket si price_provider disponible
+            if _price_provider:
+                symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                if symbols:
+                    try:
+                        await _price_provider.start_websocket(symbols)
+                        logger.info(f"✅ WebSocket démarré: {len(symbols)} symboles")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur démarrage WebSocket: {e}")
+
+            # Émettre mise à jour SocketIO
+            if _sio:
+                await _sio.emit('top_pairs_update', {'pairs': top_pairs})
+
+    except Exception as e:
+        logger.error(f"❌ Erreur scan initial: {e}")
+
+
+async def _scan_top_pairs():
+    """
+    Scanner les top pairs actuelles pour chercher des setups
+
+    Procédure:
+    1. Récupérer top N paires depuis app_state
+    2. Lancer analyses en parallèle avec scan_pair_for_setup()
+    3. Compter les résultats (setups valides, rejets, erreurs)
+    4. Ouvrir position si setup trouvé
+    5. Émettre événements SocketIO
+    """
+    if not _app_state or not _app_state.get('top_pairs'):
+        return
+
+    try:
+        from config import TRADING_CONFIG
+
+        pairs_to_scan = _app_state.get('top_pairs', [])[:TRADING_CONFIG.get('top_pairs_limit', 20)]
+
+        if not pairs_to_scan:
+            return
+
+        logger.info(f"🔍 Scanning {len(pairs_to_scan)} paires...")
+
+        # Lancer analyses en parallèle
+        scan_tasks = [
+            scan_pair_for_setup(pair.get('symbol', ''))
+            for pair in pairs_to_scan
+            if pair.get('symbol')
+        ]
+
+        if not scan_tasks:
+            return
+
+        results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+
+        # Compter les résultats
+        valid_setups = sum(1 for r in results if r and not isinstance(r, Exception) and 'symbol' in r)
+        errors = sum(1 for r in results if isinstance(r, Exception))
+
+        logger.info(f"📊 Résumé: {valid_setups} setups valides, {len(results) - valid_setups - errors} rejets, {errors} erreurs")
+
+        # Émettre statistiques SocketIO
+        if _sio:
+            await _sio.emit('volume_stats_update', {
+                'total': len(results),
+                'validated': valid_setups,
+                'ratio': (valid_setups / len(results) * 100) if results else 0
+            })
+
+    except Exception as e:
+        logger.error(f"❌ Erreur scan top pairs: {e}")
+
+
+async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Analyser une paire pour chercher un setup valide
+
+    Args:
+        symbol: Symbole de la paire (ex: BTCUSDT)
+
+    Returns:
+        Dict avec setup valide: {'symbol': '...', 'direction': '...', 'price': ..., ...}
+        Dict avec raison de rejet: {'reason': '...'}
+        None si erreur
+
+    Procédure:
+    1. Vérifier que le symbol est valide
+    2. Appeler analyzer.analyze_pair()
+    3. Retourner le résultat ou la raison de rejet
+    4. Logger détails en DEBUG
+    """
+    if not _analyzer or not symbol:
+        return None
+
+    try:
+        logger.debug(f"🔎 Analyse setup: {symbol}")
+
+        # Récupérer configuration
+        from config import TRADING_CONFIG
+
+        use_confluence = TRADING_CONFIG.get('use_confluence', False)
+        volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
+        trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
+
+        # Calculer trend_data
+        trend_data = await _analyzer.calculate_trend_data(symbol, trend_timeframe)
+
+        # Analyser la paire
+        analysis = await _analyzer.analyze_pair(
+            symbol,
+            trend_data=trend_data,
+            volume_multiplier=volume_multiplier,
+            use_confluence=use_confluence,
+            return_reason=True,
+            active_positions=[],
+            position_manager=_position_manager
+        )
+
+        return analysis
+
+    except Exception as e:
+        logger.error(f"❌ Erreur analyse {symbol}: {e}")
+        return None

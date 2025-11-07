@@ -1,0 +1,15 @@
+[run]
+source = core,api
+omit =
+    */test_*
+    */__pycache__/*
+    */tests/*
+    */.venv/*
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+[html]
+directory = htmlcov
