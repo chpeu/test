@@ -4995,12 +4995,70 @@
                                 sizeClosed: parseFloat(trade.size_closed || trade.size || 0).toFixed(4)
                             };
                             newTrades.push(tradeRecord);
+                            // Ajouter à la liste des clés pour éviter doublons futurs
+                            if (tradeClosureId) {
+                                existingClosureIds.add(tradeClosureId);
+                            }
                             existingKeys.add(key);
                         }
                     });
                     
-                    // Fusionner : nouveaux trades en premier, puis existants
+                    // 🔥 FIX: Fusionner : nouveaux trades en premier, puis existants
+                    // Mais ne pas ajouter de doublons
                     stats.tradeHistory = newTrades.concat(existingHistory);
+                    
+                    // 🔥 FIX CRITIQUE: Nettoyer les doublons restants après fusion
+                    var cleanedHistory = [];
+                    var seenClosureIds = new Set();
+                    var seenKeys = new Set();
+                    for (var i = 0; i < stats.tradeHistory.length; i++) {
+                        var trade = stats.tradeHistory[i];
+                        var isDuplicate = false;
+                        
+                        // Vérifier par closureId (le plus fiable)
+                        if (trade.closureId && seenClosureIds.has(trade.closureId)) {
+                            isDuplicate = true;
+                            debugLog('⚠️ Doublon détecté (closureId)', trade.symbol + ' - ID: ' + trade.closureId);
+                        } else if (trade.closureId) {
+                            seenClosureIds.add(trade.closureId);
+                        }
+                        
+                        // Vérifier par key (fallback)
+                        if (!isDuplicate) {
+                            var key = (trade.symbol || '') + '_' + (trade.timestamp || 0) + '_' + (trade.reason || trade.exit_reason || '');
+                            if (seenKeys.has(key)) {
+                                isDuplicate = true;
+                                debugLog('⚠️ Doublon détecté (key)', trade.symbol + ' - timestamp: ' + trade.timestamp);
+                            } else {
+                                seenKeys.add(key);
+                            }
+                        }
+                        
+                        // Vérifier aussi avec tolérance de 5 secondes pour timestamps proches
+                        if (!isDuplicate) {
+                            for (var j = 0; j < cleanedHistory.length; j++) {
+                                var existing = cleanedHistory[j];
+                                if (existing.symbol === trade.symbol) {
+                                    var timeDiff = Math.abs((existing.timestamp || 0) - (trade.timestamp || 0));
+                                    if (timeDiff < 5000) {  // 5 secondes de tolérance
+                                        var existingReason = existing.reason || existing.exit_reason || '';
+                                        var newReason = trade.reason || trade.exit_reason || '';
+                                        if (existingReason === newReason || timeDiff < 1000) {
+                                            isDuplicate = true;
+                                            debugLog('⚠️ Doublon détecté (tolérance)', trade.symbol + ' - timestamp: ' + trade.timestamp + ' vs ' + existing.timestamp);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (!isDuplicate) {
+                            cleanedHistory.push(trade);
+                        }
+                    }
+                    
+                    stats.tradeHistory = cleanedHistory;
                     
                     // Limiter à 50 trades
                     if (stats.tradeHistory.length > 50) {
@@ -5009,7 +5067,7 @@
                     
                     // 🔥 FIX: Forcer mise à jour de l'affichage historique
                     updateTradeHistory();
-                    debugLog('✅ Historique restauré', `${apiTrades.length} trades API, ${newTrades.length} nouveaux, ${existingHistory.length} existants`);
+                    debugLog('✅ Historique restauré', `${apiTrades.length} trades API, ${newTrades.length} nouveaux, ${existingHistory.length} existants, ${cleanedHistory.length} après nettoyage`);
                 }
                 
                 // 4. RESTAURER POSITION (avec délai de grâce SocketIO)
