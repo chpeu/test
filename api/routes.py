@@ -55,6 +55,30 @@ def get_analytics_db() -> AnalyticsDatabase:
     return _analytics_db
 
 
+# Position Manager et Notification Manager (seront injectés par main.py)
+_position_manager = None
+_notification_manager = None
+_instance_port = 5000
+
+
+def set_position_manager(position_manager):
+    """Injecter Position Manager (appelé depuis main.py)"""
+    global _position_manager
+    _position_manager = position_manager
+
+
+def set_notification_manager(notification_manager):
+    """Injecter Notification Manager (appelé depuis main.py)"""
+    global _notification_manager
+    _notification_manager = notification_manager
+
+
+def set_instance_port(port: int):
+    """Injecter instance port (appelé depuis main.py)"""
+    global _instance_port
+    _instance_port = port
+
+
 # ==================== RATE LIMITING ====================
 
 class RateLimiter:
@@ -844,6 +868,116 @@ async def save_settings(request: Request):
     except Exception as e:
         logger.error(f"❌ Erreur POST /api/settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== TELEGRAM WEBHOOK ====================
+
+@router.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """
+    Webhook Telegram pour recevoir les commandes
+    
+    Format Telegram Update:
+    {
+        "update_id": 123456789,
+        "message": {
+            "message_id": 1,
+            "from": {"id": 123456789, "is_bot": false, "first_name": "John"},
+            "chat": {"id": 123456789, "type": "private"},
+            "date": 1234567890,
+            "text": "/stats"
+        }
+    }
+    """
+    try:
+        data = await request.json()
+        
+        # Vérifier que c'est un message
+        if 'message' not in data:
+            return {"ok": True}  # Ignorer les updates non-messages
+        
+        message = data['message']
+        chat_id = message.get('chat', {}).get('id')
+        text = message.get('text', '').strip()
+        
+        if not text or not chat_id:
+            return {"ok": True}
+        
+        # Vérifier que le message commence par /
+        if not text.startswith('/'):
+            return {"ok": True}  # Ignorer les messages non-commandes
+        
+        # Initialiser command handler si nécessaire
+        global _telegram_command_handler
+        if not _telegram_command_handler:
+            from notifications.telegram_commands import create_telegram_command_handler
+            _telegram_command_handler = create_telegram_command_handler(
+                analytics_db=_analytics_db,
+                position_manager=_position_manager,
+                notification_manager=_notification_manager,
+                instance_port=_instance_port
+            )
+        
+        # Gérer la commande
+        response_text = await _telegram_command_handler.handle_command(text, chat_id)
+        
+        # Envoyer la réponse via Telegram API
+        if _notification_manager and _notification_manager.telegram_notifier:
+            # Utiliser le TelegramNotifier pour envoyer la réponse
+            await _notification_manager.telegram_notifier.send_message(
+                response_text,
+                parse_mode='Markdown',
+                bypass_throttle=True  # Les réponses aux commandes ne doivent pas être throttlées
+            )
+        else:
+            logger.warning("⚠️ Notification Manager non disponible pour répondre à la commande Telegram")
+        
+        return {"ok": True}
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur webhook Telegram: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@router.get("/telegram/webhook/info")
+async def telegram_webhook_info():
+    """
+    Informations sur le webhook Telegram
+    
+    Retourne l'URL du webhook et les instructions pour le configurer
+    """
+    from config import TELEGRAM_BOT_TOKEN
+    
+    if not TELEGRAM_BOT_TOKEN:
+        return {
+            "ok": False,
+            "error": "TELEGRAM_BOT_TOKEN non configuré"
+        }
+    
+    # Construire l'URL du webhook (nécessite que le bot soit accessible publiquement)
+    # Pour le développement local, utiliser ngrok ou un tunnel similaire
+    webhook_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook"
+    
+    return {
+        "ok": True,
+        "webhook_endpoint": "/api/telegram/webhook",
+        "set_webhook_url": webhook_url,
+        "instructions": [
+            "1. Assurez-vous que votre bot est accessible publiquement (utilisez ngrok pour le développement local)",
+            "2. Configurez le webhook avec:",
+            f"   curl -X POST '{webhook_url}?url=https://votre-domaine.com/api/telegram/webhook'",
+            "3. Vérifiez le webhook avec:",
+            f"   curl 'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getWebhookInfo'",
+            "4. Commandes disponibles: /help, /stats, /report, /status, /trades"
+        ],
+        "commands": [
+            "/help - Afficher l'aide",
+            "/stats - Statistiques de la session",
+            "/report - Rapport détaillé",
+            "/status - État actuel",
+            "/trades - Derniers 10 trades"
+        ]
+    }
 
 
 # Note: WebSocket endpoints déjà gérés dans main.py via SocketIO

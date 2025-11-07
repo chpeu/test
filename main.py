@@ -44,7 +44,7 @@ except ImportError as e:
 try:
     from core.analytics_database import AnalyticsDatabase
     from notifications import create_notification_manager
-    from api.routes import router as api_router, set_analytics_db
+    from api.routes import router as api_router, set_analytics_db, set_position_manager, set_notification_manager, set_instance_port
 except ImportError as e:
     logging.warning(f"Architecture V2 imports (optionnels): {e}")
     AnalyticsDatabase = None
@@ -883,6 +883,13 @@ def init_instances():
         # Injecter Analytics DB dans API routes
         if set_analytics_db and analytics_db:
             set_analytics_db(analytics_db)
+        
+        # 🔥 NOUVEAU: Injecter Position Manager, Notification Manager et instance port
+        # Récupérer port instance pour multi-instances
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+        
+        if set_instance_port:
+            set_instance_port(port)
     
     # 🔥 ARCHITECTURE V2: Initialiser Notification Manager
     if not notification_manager and create_notification_manager:
@@ -908,6 +915,10 @@ def init_instances():
             logger.info(f"📱 Notification Manager initialisé (Telegram activé)")
         else:
             logger.info(f"📱 Notification Manager initialisé (Telegram désactivé)")
+        
+        # 🔥 NOUVEAU: Injecter Notification Manager dans API routes (pour webhook Telegram)
+        if set_notification_manager and notification_manager:
+            set_notification_manager(notification_manager)
     
     if not scanner and ScalabilityScanner:
         scanner = ScalabilityScanner()
@@ -950,6 +961,10 @@ def init_instances():
         if notification_manager:
             position_manager.notification_manager = notification_manager
             logger.info("📢 Notification Manager injecté dans Position Manager")
+        
+        # 🔥 NOUVEAU: Injecter Position Manager dans API routes (pour webhook Telegram)
+        if set_position_manager and position_manager:
+            set_position_manager(position_manager)
     if not price_provider and get_price_provider:
         price_provider = get_price_provider()
     # 🔥 JOUR 3: Initialiser scheduler et configurer les callbacks
