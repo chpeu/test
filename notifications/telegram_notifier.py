@@ -69,11 +69,16 @@ class TelegramNotifier:
         Returns:
             Texte échappé
         """
+        if not text:
+            return text
+        
         # Caractères spéciaux Markdown à échapper
-        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        # Ordre important : échapper d'abord les backslashes pour éviter double échappement
+        special_chars = ['\\', '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        result = str(text)
         for char in special_chars:
-            text = text.replace(char, f'\\{char}')
-        return text
+            result = result.replace(char, f'\\{char}')
+        return result
     
     async def send_message(
         self,
