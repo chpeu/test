@@ -746,11 +746,26 @@
             
             // 🔥 FIX: Tracker événements SocketIO pour éviter race conditions
             socket.on('position_closed', function(result) {
+                // 🔥 FIX CRITIQUE: Vérifier si cet événement n'a pas déjà été traité récemment
+                // Éviter traitement double si événement reçu deux fois rapidement
+                var eventKey = (result.symbol || '') + '_' + (result.closure_id || result.timestamp || Date.now());
+                var recentEvent = socketioEvents.find(e => 
+                    e.type === 'closed' && 
+                    e.eventKey === eventKey && 
+                    (Date.now() - e.time) < 2000  // 2 secondes de tolérance
+                );
+                
+                if (recentEvent) {
+                    debugLog('⚠️ Événement position_closed déjà traité récemment (ignoré)', result.symbol);
+                    return;  // Ignorer cet événement
+                }
+                
                 // Enregistrer événement pour mitigation restauration
                 socketioEvents.push({
                     type: 'closed',
                     time: Date.now(),
-                    symbol: result.symbol
+                    symbol: result.symbol,
+                    eventKey: eventKey  // 🔥 NOUVEAU: Clé unique pour cet événement
                 });
                 
                 // Nettoyer événements anciens (> 10 secondes)
