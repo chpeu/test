@@ -62,6 +62,41 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# 🔥 SÉCURITÉ : Fichiers sensibles
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# 🔥 BASE DE DONNÉES : Fichiers de données
+*.db
+*.sqlite
+*.sqlite3
+data/analytics*.db
+analytics_instance_*.db
+
+# 🔥 HISTORIQUE TRADES : Fichiers de données
+trade_history_*.json
+trade_history_*.json.tmp
+
+# 🔥 BACKTEST DATA : Données historiques (peuvent être volumineuses)
+backtest_data/
+*.csv
+*.parquet
+*.h5
+*.hdf5
+
+# 🔥 LOGS : Fichiers de logs
+*.log
+logs/
+*.log.*
+
+# 🔥 TEMPORAIRES
+*.tmp
+*.temp
+.cache/
+
 
 
 
