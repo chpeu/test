@@ -1748,21 +1748,44 @@ class PositionManager:
         if hasattr(self, 'notification_manager') and self.notification_manager:
             try:
                 import asyncio
-                asyncio.create_task(self.notification_manager.notify(
-                    'position_closed',
-                    {
-                        'symbol': position.symbol,
-                        'direction': position.direction,
-                        'result': {
-                            'exit_reason': reason,
-                            'pnl_pct': net_pnl_pct,
-                            'pnl_usdt': net_pnl_usdt,
-                            'duration_seconds': time.time() - position.start_time
-                        }
-                    }
-                ))
+                
+                # Créer une fonction wrapper async pour la notification
+                async def _notify_position_closed_async():
+                    try:
+                        await self.notification_manager.notify(
+                            'position_closed',
+                            {
+                                'symbol': position.symbol,
+                                'direction': position.direction,
+                                'result': {
+                                    'exit_reason': reason,
+                                    'pnl_pct': net_pnl_pct,
+                                    'pnl_usdt': net_pnl_usdt,
+                                    'duration_seconds': time.time() - position.start_time
+                                }
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur notification position fermée (async): {e}")
+                
+                # Créer la tâche sans attendre (fire-and-forget)
+                try:
+                    # Essayer d'obtenir le loop en cours
+                    loop = asyncio.get_running_loop()
+                    # Loop en cours, créer la tâche
+                    asyncio.create_task(_notify_position_closed_async())
+                except RuntimeError:
+                    # Pas de loop en cours, exécuter dans un nouveau thread
+                    try:
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(_notify_position_closed_async())
+                            )
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur notification position fermée (thread): {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur notification: {e}")
+                logger.warning(f"⚠️ Erreur notification position fermée: {e}")
         
         return result
     
