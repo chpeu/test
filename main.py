@@ -893,11 +893,15 @@ def init_instances():
             """Callback pour envoyer via SocketIO"""
             await sio.emit(event_type, data)
         
+        # 🔥 NOUVEAU: Récupérer port instance pour multi-instances
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+        
         notification_manager = create_notification_manager(
             telegram_bot_token=TELEGRAM_BOT_TOKEN,
             telegram_chat_id=TELEGRAM_CHAT_ID,
             socketio_callback=socketio_callback,
-            enable_batching=NOTIFICATION_BATCHING_ENABLED
+            enable_batching=NOTIFICATION_BATCHING_ENABLED,
+            instance_port=port  # 🔥 NOUVEAU: Passer instance_port
         )
         
         if TELEGRAM_ENABLED:

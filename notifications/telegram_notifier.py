@@ -32,7 +32,8 @@ class TelegramNotifier:
         bot_token: Optional[str] = None,
         chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
         enabled: bool = True,
-        throttle_seconds: int = 2
+        throttle_seconds: int = 2,
+        instance_port: Optional[int] = None  # 🔥 NOUVEAU: Port instance pour multi-instances
     ):
         """
         Initialiser Telegram Notifier
@@ -42,12 +43,14 @@ class TelegramNotifier:
             chat_id: ID chat/channel Telegram (str ou int)
             enabled: Activer notifications
             throttle_seconds: Délai min entre messages (anti-spam)
+            instance_port: Port instance (5000, 5001, etc.) pour identifier l'instance
         """
         self.bot_token = bot_token
         # 🔥 FIX: Accepter chat_id comme str ou int (config.py peut passer int)
         self.chat_id = str(chat_id) if chat_id is not None and isinstance(chat_id, int) else chat_id
         self.enabled = enabled and bot_token and chat_id
         self.throttle_seconds = throttle_seconds
+        self.instance_port = instance_port or 5000  # 🔥 NOUVEAU: Port instance (défaut 5000)
         
         # Throttling
         self.last_message_time = 0
@@ -195,8 +198,11 @@ class TelegramNotifier:
             tp_pct = ((entry - tp) / entry * 100) if entry > 0 else 0
             sl_pct = ((entry - sl) / entry * 100) if entry > 0 else 0
         
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
         message = f"""
-{emoji} **POSITION OUVERTE** {emoji}
+{emoji} **POSITION OUVERTE** {instance_info} {emoji}
 
 📊 **Symbole**: `{symbol_escaped}`
 📈 **Direction**: **{direction}**
@@ -251,8 +257,11 @@ class TelegramNotifier:
         symbol_escaped = self._escape_markdown(str(symbol))
         exit_reason_escaped = self._escape_markdown(str(exit_reason))
         
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
         message = f"""
-{emoji} **POSITION FERMÉE** {emoji}
+{emoji} **POSITION FERMÉE** {instance_info} {emoji}
 
 📊 **Symbole**: `{symbol_escaped}`
 📈 **Direction**: {direction}
@@ -281,8 +290,11 @@ class TelegramNotifier:
         profit_pct = level_data.get('profit_pct', 0)
         size_remaining_pct = level_data.get('size_remaining_pct', 0)
         
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
         message = f"""
-🎯 **TP ESCALIER Niveau {level}/{total_levels}** 🎯
+🎯 **TP ESCALIER Niveau {level}/{total_levels}** {instance_info} 🎯
 
 📊 **Symbole**: `{symbol}`
 💰 **Profit Partiel**: **+{profit_usdt:.2f} USDT** (+{profit_pct:.2f}%)
@@ -304,8 +316,11 @@ class TelegramNotifier:
         direction = position_data.get('direction', '?')
         pnl_pct = position_data.get('pnl_pct', 0)
         
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
         message = f"""
-⚡ **EARLY INVALIDATION** ⚡
+⚡ **EARLY INVALIDATION** {instance_info} ⚡
 
 📊 **Symbole**: `{symbol}`
 📈 **Direction**: {direction}
@@ -326,8 +341,11 @@ class TelegramNotifier:
             error_type: Type erreur
             details: Détails
         """
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
         message = f"""
-🚨 **ERREUR SYSTÈME** 🚨
+🚨 **ERREUR SYSTÈME** {instance_info} 🚨
 
 ❌ **Type**: {error_type}
 📝 **Détails**: {details}
@@ -344,8 +362,11 @@ class TelegramNotifier:
         Args:
             service: Nom service (ex: 'WebSocket', 'MEXC API')
         """
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
         message = f"""
-🔄 **RECONNEXION** 🔄
+🔄 **RECONNEXION** {instance_info} 🔄
 
 🔌 **Service**: {service}
 ✅ **Statut**: Reconnecté avec succès
@@ -371,9 +392,11 @@ class TelegramNotifier:
         worst_trade = stats.get('worst_trade', 0)
         
         emoji = "📊"
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
         
         message = f"""
-{emoji} **RÉSUMÉ JOURNALIER** {emoji}
+{emoji} **RÉSUMÉ JOURNALIER** {instance_info} {emoji}
 
 📈 **Trades**: {total_trades} ({wins}W / {losses}L)
 🎯 **Winrate**: {winrate:.1f}%
@@ -428,7 +451,8 @@ class TelegramNotifier:
 def create_telegram_notifier(
     bot_token: Optional[str] = None,
     chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
-    enabled: bool = True
+    enabled: bool = True,
+    instance_port: Optional[int] = None  # 🔥 NOUVEAU: Port instance pour multi-instances
 ) -> TelegramNotifier:
     """
     Factory pour créer Telegram Notifier
@@ -437,6 +461,7 @@ def create_telegram_notifier(
         bot_token: Token bot
         chat_id: ID chat (str ou int)
         enabled: Activer
+        instance_port: Port instance (5000, 5001, etc.) pour identifier l'instance
     
     Returns:
         Instance TelegramNotifier
@@ -444,6 +469,7 @@ def create_telegram_notifier(
     return TelegramNotifier(
         bot_token=bot_token,
         chat_id=chat_id,  # Peut être str ou int, TelegramNotifier gère les deux
-        enabled=enabled
+        enabled=enabled,
+        instance_port=instance_port  # 🔥 NOUVEAU: Passer instance_port
     )
 

@@ -312,7 +312,8 @@ def create_notification_manager(
     telegram_chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
     socketio_callback: Optional[Callable] = None,
     enable_batching: bool = True,
-    telegram_notify_settings: Optional[Dict[str, bool]] = None
+    telegram_notify_settings: Optional[Dict[str, bool]] = None,
+    instance_port: Optional[int] = None  # 🔥 NOUVEAU: Port instance pour multi-instances
 ) -> NotificationManager:
     """
     Factory pour créer Notification Manager
@@ -334,7 +335,8 @@ def create_notification_manager(
         telegram_notifier = create_telegram_notifier(
             bot_token=telegram_bot_token,
             chat_id=telegram_chat_id,  # Peut être str ou int, TelegramNotifier gère les deux
-            enabled=True
+            enabled=True,
+            instance_port=instance_port  # 🔥 NOUVEAU: Passer instance_port
         )
     
     return NotificationManager(
