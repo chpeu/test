@@ -1175,7 +1175,7 @@ class PositionManager:
             
             logger.info(
                 f"🎯 TP Escalier Niveau {current_level + 1}/{len(position.tp_escalier_levels)} atteint ! "
-                f"Prix: {tp_price:.6f} | Vendu: {size_sold_usdt:.2f} USDT ({size_pct*100:.0f}%) | "
+                f"Prix: {self._format_price(tp_price)} | Vendu: {size_sold_usdt:.2f} USDT ({size_pct*100:.0f}%) | "
                 f"Profit: +{profit_usdt:.2f} USDT (+{profit_pct:.2f}%) | "
                 f"Restant: {position.tp_escalier_size_remaining*100:.0f}%"
             )
@@ -1184,13 +1184,13 @@ class PositionManager:
             if move_sl == 'entry':
                 # Déplacer SL à entry (protéger capital)
                 position.sl = entry
-                logger.info(f"🛡️ TP Escalier Niveau {current_level + 1}: SL → Entry ({entry:.6f})")
+                logger.info(f"🛡️ TP Escalier Niveau {current_level + 1}: SL → Entry ({self._format_price(entry)})")
             
             elif move_sl == 'breakeven':
                 # Déplacer SL à breakeven (entry)
                 position.sl = entry
                 position.break_even_set = True
-                logger.info(f"🛡️ TP Escalier Niveau {current_level + 1}: SL → Breakeven ({entry:.6f})")
+                logger.info(f"🛡️ TP Escalier Niveau {current_level + 1}: SL → Breakeven ({self._format_price(entry)})")
             
             elif move_sl == 'trailing':
                 # Activer trailing stop adaptatif
@@ -1331,18 +1331,18 @@ class PositionManager:
             # Mode FIXE avec TP partiel vendu : ignorer le TP final, seul le trailing stop compte
             # Le trailing stop adaptatif (géré dans check_position) fermera la position si nécessaire
             logger.debug(
-                f"🔍 Mode FIXE après TP partiel: Ignorer TP final ({tp:.6f}), "
+                f"🔍 Mode FIXE après TP partiel: Ignorer TP final ({self._format_price(tp)}), "
                 f"utiliser uniquement trailing stop (SL={self._format_price(sl)})"
             )
             # Vérifier seulement le SL (qui est le trailing stop adaptatif)
             # 🔥 FIX: Retourner 'TS' (Trailing Stop) au lieu de 'SL' pour distinguer
             if direction == 'LONG':
                 if current_price <= sl:
-                    logger.info(f"🚨 Trailing stop touché (LONG): {current_price:.6f} <= {sl:.6f}")
+                    logger.info(f"🚨 Trailing stop touché (LONG): {self._format_price(current_price)} <= {self._format_price(sl)}")
                     return 'TS'
             else:  # SHORT
                 if current_price >= sl:
-                    logger.info(f"🚨 Trailing stop touché (SHORT): {current_price:.6f} >= {sl:.6f}")
+                    logger.info(f"🚨 Trailing stop touché (SHORT): {self._format_price(current_price)} >= {self._format_price(sl)}")
                     return 'TS'
             return None  # Position continue, trailing stop protège les gains
         
@@ -1351,10 +1351,10 @@ class PositionManager:
             if current_price <= sl:
                 # Si PnL positif, c'est un trailing stop, sinon SL classique
                 if pnl >= 0:
-                    logger.info(f"📈 Trailing Stop touché (LONG): Prix {current_price:.6f} <= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    logger.info(f"📈 Trailing Stop touché (LONG): Prix {self._format_price(current_price)} <= SL {self._format_price(sl)} (PnL: {pnl:.2f}%)")
                     return 'TS'
                 else:
-                    logger.info(f"🛑 SL TOUCHÉ (LONG): Prix {current_price:.6f} <= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    logger.info(f"🛑 SL TOUCHÉ (LONG): Prix {self._format_price(current_price)} <= SL {self._format_price(sl)} (PnL: {pnl:.2f}%)")
                     return 'SL'
             # Vérifier TP final seulement si TP partiel pas vendu (ou mode ATR)
             if current_price >= tp:
@@ -1374,10 +1374,10 @@ class PositionManager:
             if current_price >= sl:
                 # Si PnL positif, c'est un trailing stop, sinon SL classique
                 if pnl >= 0:
-                    logger.info(f"📈 Trailing Stop touché (SHORT): Prix {current_price:.6f} >= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    logger.info(f"📈 Trailing Stop touché (SHORT): Prix {self._format_price(current_price)} >= SL {self._format_price(sl)} (PnL: {pnl:.2f}%)")
                     return 'TS'
                 else:
-                    logger.info(f"🛑 SL TOUCHÉ (SHORT): Prix {current_price:.6f} >= SL {sl:.6f} (PnL: {pnl:.2f}%)")
+                    logger.info(f"🛑 SL TOUCHÉ (SHORT): Prix {self._format_price(current_price)} >= SL {self._format_price(sl)} (PnL: {pnl:.2f}%)")
                     return 'SL'
             # Vérifier TP final seulement si TP partiel pas vendu (ou mode ATR)
             if current_price <= tp:
