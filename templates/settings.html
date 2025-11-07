@@ -190,6 +190,52 @@
                 <label for="telegramEnabled">Activer Telegram Notifications</label>
             </div>
             
+            <!-- 🔥 NOUVEAU: Types de notifications -->
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
+                <h3 style="margin-bottom: 15px; color: #00ff88; font-size: 1.2rem;">📢 Types de Notifications</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyPositionOpened" checked>
+                        <label for="notifyPositionOpened">🟢 Position Ouverte</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyPositionClosed" checked>
+                        <label for="notifyPositionClosed">🔴 Position Fermée</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyTpEscalier" checked>
+                        <label for="notifyTpEscalier">🎯 TP Escalier</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyEarlyInvalidation" checked>
+                        <label for="notifyEarlyInvalidation">⚠️ Invalidation Précoce</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyError" checked>
+                        <label for="notifyError">❌ Erreurs</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyReconnection" checked>
+                        <label for="notifyReconnection">🔄 Reconnexions</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyDailySummary">
+                        <label for="notifyDailySummary">📊 Résumé Quotidien</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifyRecoveryMode" checked>
+                        <label for="notifyRecoveryMode">🛡️ Mode Récupération</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notifySetupRejected">
+                        <label for="notifySetupRejected">🚫 Setups Rejetés</label>
+                    </div>
+                </div>
+                <div class="info-box" style="margin-top: 15px;">
+                    <strong>ℹ️ Note:</strong> Les paramètres sont sauvegardés dans le fichier <code>.env</code> et rechargés au redémarrage du bot.
+                </div>
+            </div>
+            
             <div class="warning-box" style="margin-top: 15px;">
                 <strong>⚠️ Sécurité:</strong> Ne jamais commit le token dans Git. Utilise les variables d'environnement ou un fichier .env (non commité).
             </div>
@@ -278,6 +324,20 @@
                             document.getElementById('telegramToken').value = s.telegram.bot_token || '';
                             document.getElementById('telegramChatId').value = s.telegram.chat_id || '';
                             document.getElementById('telegramEnabled').checked = s.telegram.enabled || false;
+                            
+                            // 🔥 NOUVEAU: Charger types de notifications
+                            if (s.telegram.notify_types) {
+                                const notifyTypes = s.telegram.notify_types;
+                                document.getElementById('notifyPositionOpened').checked = notifyTypes.position_opened !== false;
+                                document.getElementById('notifyPositionClosed').checked = notifyTypes.position_closed !== false;
+                                document.getElementById('notifyTpEscalier').checked = notifyTypes.tp_escalier !== false;
+                                document.getElementById('notifyEarlyInvalidation').checked = notifyTypes.early_invalidation !== false;
+                                document.getElementById('notifyError').checked = notifyTypes.error !== false;
+                                document.getElementById('notifyReconnection').checked = notifyTypes.reconnection !== false;
+                                document.getElementById('notifyDailySummary').checked = notifyTypes.daily_summary === true;
+                                document.getElementById('notifyRecoveryMode').checked = notifyTypes.recovery_mode !== false;
+                                document.getElementById('notifySetupRejected').checked = notifyTypes.setup_rejected === true;
+                            }
                         }
                         // Paper Trading
                         if (s.paper_trading) {
@@ -320,7 +380,19 @@
                 telegram: {
                     bot_token: document.getElementById('telegramToken').value,
                     chat_id: document.getElementById('telegramChatId').value,
-                    enabled: document.getElementById('telegramEnabled').checked
+                    enabled: document.getElementById('telegramEnabled').checked,
+                    // 🔥 NOUVEAU: Types de notifications
+                    notify_types: {
+                        position_opened: document.getElementById('notifyPositionOpened').checked,
+                        position_closed: document.getElementById('notifyPositionClosed').checked,
+                        tp_escalier: document.getElementById('notifyTpEscalier').checked,
+                        early_invalidation: document.getElementById('notifyEarlyInvalidation').checked,
+                        error: document.getElementById('notifyError').checked,
+                        reconnection: document.getElementById('notifyReconnection').checked,
+                        daily_summary: document.getElementById('notifyDailySummary').checked,
+                        recovery_mode: document.getElementById('notifyRecoveryMode').checked,
+                        setup_rejected: document.getElementById('notifySetupRejected').checked
+                    }
                 },
                 paper_trading: {
                     initial_capital: parseFloat(document.getElementById('paperCapital').value),

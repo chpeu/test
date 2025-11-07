@@ -690,6 +690,13 @@ async def get_settings():
         from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
         from config import PAPER_TRADING_MODE, PAPER_TRADING_INITIAL_CAPITAL
         from config import NOTIFICATION_BATCHING_ENABLED, NOTIFICATION_THROTTLE_SECONDS, NOTIFICATION_BATCH_INTERVAL
+        from config import (
+            TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+            TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+            TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+            TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+            TELEGRAM_NOTIFY_SETUP_REJECTED
+        )
         
         return {
             'success': True,
@@ -697,7 +704,18 @@ async def get_settings():
                 'telegram': {
                     'bot_token': TELEGRAM_BOT_TOKEN if TELEGRAM_BOT_TOKEN else '',
                     'chat_id': str(TELEGRAM_CHAT_ID) if TELEGRAM_CHAT_ID else '',
-                    'enabled': TELEGRAM_ENABLED
+                    'enabled': TELEGRAM_ENABLED,
+                    'notify_types': {
+                        'position_opened': TELEGRAM_NOTIFY_POSITION_OPENED,
+                        'position_closed': TELEGRAM_NOTIFY_POSITION_CLOSED,
+                        'tp_escalier': TELEGRAM_NOTIFY_TP_ESCALIER,
+                        'early_invalidation': TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                        'error': TELEGRAM_NOTIFY_ERROR,
+                        'reconnection': TELEGRAM_NOTIFY_RECONNECTION,
+                        'daily_summary': TELEGRAM_NOTIFY_DAILY_SUMMARY,
+                        'recovery_mode': TELEGRAM_NOTIFY_RECOVERY_MODE,
+                        'setup_rejected': TELEGRAM_NOTIFY_SETUP_REJECTED
+                    }
                 },
                 'paper_trading': {
                     'enabled': PAPER_TRADING_MODE,
@@ -754,11 +772,34 @@ async def save_settings(request: Request):
         if telegram_settings.get('chat_id'):
             env_vars['TELEGRAM_CHAT_ID'] = telegram_settings['chat_id']
         
+        # 🔥 NOUVEAU: Mettre à jour types de notifications Telegram
+        notify_types = telegram_settings.get('notify_types', {})
+        if notify_types:
+            env_vars['TELEGRAM_NOTIFY_POSITION_OPENED'] = 'true' if notify_types.get('position_opened', True) else 'false'
+            env_vars['TELEGRAM_NOTIFY_POSITION_CLOSED'] = 'true' if notify_types.get('position_closed', True) else 'false'
+            env_vars['TELEGRAM_NOTIFY_TP_ESCALIER'] = 'true' if notify_types.get('tp_escalier', True) else 'false'
+            env_vars['TELEGRAM_NOTIFY_EARLY_INVALIDATION'] = 'true' if notify_types.get('early_invalidation', True) else 'false'
+            env_vars['TELEGRAM_NOTIFY_ERROR'] = 'true' if notify_types.get('error', True) else 'false'
+            env_vars['TELEGRAM_NOTIFY_RECONNECTION'] = 'true' if notify_types.get('reconnection', True) else 'false'
+            env_vars['TELEGRAM_NOTIFY_DAILY_SUMMARY'] = 'true' if notify_types.get('daily_summary', False) else 'false'
+            env_vars['TELEGRAM_NOTIFY_RECOVERY_MODE'] = 'true' if notify_types.get('recovery_mode', True) else 'false'
+            env_vars['TELEGRAM_NOTIFY_SETUP_REJECTED'] = 'true' if notify_types.get('setup_rejected', False) else 'false'
+        
         # Mettre à jour Paper Trading
         if 'enabled' in paper_settings:
             env_vars['PAPER_TRADING_MODE'] = 'true' if paper_settings['enabled'] else 'false'
         if 'initial_capital' in paper_settings:
             env_vars['PAPER_TRADING_INITIAL_CAPITAL'] = str(paper_settings['initial_capital'])
+        
+        # Liste des clés Telegram à exclure de "Autres variables"
+        telegram_keys = [
+            'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID',
+            'TELEGRAM_NOTIFY_POSITION_OPENED', 'TELEGRAM_NOTIFY_POSITION_CLOSED',
+            'TELEGRAM_NOTIFY_TP_ESCALIER', 'TELEGRAM_NOTIFY_EARLY_INVALIDATION',
+            'TELEGRAM_NOTIFY_ERROR', 'TELEGRAM_NOTIFY_RECONNECTION',
+            'TELEGRAM_NOTIFY_DAILY_SUMMARY', 'TELEGRAM_NOTIFY_RECOVERY_MODE',
+            'TELEGRAM_NOTIFY_SETUP_REJECTED'
+        ]
         
         # Écrire nouveau .env
         with open(env_path, 'w', encoding='utf-8') as f:
@@ -767,6 +808,25 @@ async def save_settings(request: Request):
                 f.write(f"TELEGRAM_BOT_TOKEN={env_vars['TELEGRAM_BOT_TOKEN']}\n")
             if 'TELEGRAM_CHAT_ID' in env_vars:
                 f.write(f"TELEGRAM_CHAT_ID={env_vars['TELEGRAM_CHAT_ID']}\n")
+            f.write("\n# Telegram Notification Types (true/false)\n")
+            if 'TELEGRAM_NOTIFY_POSITION_OPENED' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_POSITION_OPENED={env_vars['TELEGRAM_NOTIFY_POSITION_OPENED']}\n")
+            if 'TELEGRAM_NOTIFY_POSITION_CLOSED' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_POSITION_CLOSED={env_vars['TELEGRAM_NOTIFY_POSITION_CLOSED']}\n")
+            if 'TELEGRAM_NOTIFY_TP_ESCALIER' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_TP_ESCALIER={env_vars['TELEGRAM_NOTIFY_TP_ESCALIER']}\n")
+            if 'TELEGRAM_NOTIFY_EARLY_INVALIDATION' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_EARLY_INVALIDATION={env_vars['TELEGRAM_NOTIFY_EARLY_INVALIDATION']}\n")
+            if 'TELEGRAM_NOTIFY_ERROR' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_ERROR={env_vars['TELEGRAM_NOTIFY_ERROR']}\n")
+            if 'TELEGRAM_NOTIFY_RECONNECTION' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_RECONNECTION={env_vars['TELEGRAM_NOTIFY_RECONNECTION']}\n")
+            if 'TELEGRAM_NOTIFY_DAILY_SUMMARY' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_DAILY_SUMMARY={env_vars['TELEGRAM_NOTIFY_DAILY_SUMMARY']}\n")
+            if 'TELEGRAM_NOTIFY_RECOVERY_MODE' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_RECOVERY_MODE={env_vars['TELEGRAM_NOTIFY_RECOVERY_MODE']}\n")
+            if 'TELEGRAM_NOTIFY_SETUP_REJECTED' in env_vars:
+                f.write(f"TELEGRAM_NOTIFY_SETUP_REJECTED={env_vars['TELEGRAM_NOTIFY_SETUP_REJECTED']}\n")
             f.write("\n# Paper Trading\n")
             if 'PAPER_TRADING_MODE' in env_vars:
                 f.write(f"PAPER_TRADING_MODE={env_vars['PAPER_TRADING_MODE']}\n")
@@ -774,7 +834,7 @@ async def save_settings(request: Request):
                 f.write(f"PAPER_TRADING_INITIAL_CAPITAL={env_vars['PAPER_TRADING_INITIAL_CAPITAL']}\n")
             f.write("\n# Autres variables d'environnement\n")
             for key, value in env_vars.items():
-                if key not in ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'PAPER_TRADING_MODE', 'PAPER_TRADING_INITIAL_CAPITAL']:
+                if key not in telegram_keys and key not in ['PAPER_TRADING_MODE', 'PAPER_TRADING_INITIAL_CAPITAL']:
                     f.write(f"{key}={value}\n")
         
         return {

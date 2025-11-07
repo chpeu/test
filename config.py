@@ -297,3 +297,15 @@ NOTIFICATION_BATCHING_ENABLED = True
 NOTIFICATION_BATCH_INTERVAL = 5  # secondes
 NOTIFICATION_THROTTLE_SECONDS = 2  # délai min entre messages Telegram
 
+# Types de notifications Telegram (activer/désactiver par type)
+# Format: "TELEGRAM_NOTIFY_<TYPE>" = True/False
+TELEGRAM_NOTIFY_POSITION_OPENED = os.getenv("TELEGRAM_NOTIFY_POSITION_OPENED", "true").lower() == "true"
+TELEGRAM_NOTIFY_POSITION_CLOSED = os.getenv("TELEGRAM_NOTIFY_POSITION_CLOSED", "true").lower() == "true"
+TELEGRAM_NOTIFY_TP_ESCALIER = os.getenv("TELEGRAM_NOTIFY_TP_ESCALIER", "true").lower() == "true"
+TELEGRAM_NOTIFY_EARLY_INVALIDATION = os.getenv("TELEGRAM_NOTIFY_EARLY_INVALIDATION", "true").lower() == "true"
+TELEGRAM_NOTIFY_ERROR = os.getenv("TELEGRAM_NOTIFY_ERROR", "true").lower() == "true"
+TELEGRAM_NOTIFY_RECONNECTION = os.getenv("TELEGRAM_NOTIFY_RECONNECTION", "true").lower() == "true"
+TELEGRAM_NOTIFY_DAILY_SUMMARY = os.getenv("TELEGRAM_NOTIFY_DAILY_SUMMARY", "false").lower() == "true"
+TELEGRAM_NOTIFY_RECOVERY_MODE = os.getenv("TELEGRAM_NOTIFY_RECOVERY_MODE", "true").lower() == "true"
+TELEGRAM_NOTIFY_SETUP_REJECTED = os.getenv("TELEGRAM_NOTIFY_SETUP_REJECTED", "false").lower() == "true"
+

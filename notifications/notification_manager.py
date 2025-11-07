@@ -34,7 +34,8 @@ class NotificationManager:
         telegram_notifier: Optional[TelegramNotifier] = None,
         socketio_callback: Optional[Callable] = None,
         enable_batching: bool = True,
-        batch_interval: int = 5
+        batch_interval: int = 5,
+        telegram_notify_settings: Optional[Dict[str, bool]] = None
     ):
         """
         Initialiser Notification Manager
@@ -44,11 +45,35 @@ class NotificationManager:
             socketio_callback: Callback SocketIO (async func)
             enable_batching: Activer batching
             batch_interval: Intervalle batch (secondes)
+            telegram_notify_settings: Dict des types de notifications activés (ex: {'position_opened': True})
         """
         self.telegram_notifier = telegram_notifier
         self.socketio_callback = socketio_callback
         self.enable_batching = enable_batching
         self.batch_interval = batch_interval
+        
+        # 🔥 NOUVEAU: Settings par type de notification Telegram
+        # Par défaut, tous activés si settings non fournis
+        if telegram_notify_settings is None:
+            from config import (
+                TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+                TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+                TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+                TELEGRAM_NOTIFY_SETUP_REJECTED
+            )
+            telegram_notify_settings = {
+                'position_opened': TELEGRAM_NOTIFY_POSITION_OPENED,
+                'position_closed': TELEGRAM_NOTIFY_POSITION_CLOSED,
+                'tp_escalier_level': TELEGRAM_NOTIFY_TP_ESCALIER,
+                'early_invalidation': TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                'error': TELEGRAM_NOTIFY_ERROR,
+                'reconnection': TELEGRAM_NOTIFY_RECONNECTION,
+                'daily_summary': TELEGRAM_NOTIFY_DAILY_SUMMARY,
+                'recovery_mode': TELEGRAM_NOTIFY_RECOVERY_MODE,
+                'setup_rejected': TELEGRAM_NOTIFY_SETUP_REJECTED
+            }
+        self.telegram_notify_settings = telegram_notify_settings
         
         # Historique
         self.notification_history: deque = deque(maxlen=1000)
@@ -125,6 +150,15 @@ class NotificationManager:
     
     async def _send_telegram(self, event_type: str, data: Dict, priority: str):
         """Envoyer vers Telegram"""
+        # 🔥 NOUVEAU: Vérifier si ce type de notification est activé
+        if event_type not in self.telegram_notify_settings:
+            logger.debug(f"📱 Type de notification '{event_type}' non configuré, notification ignorée")
+            return
+        
+        if not self.telegram_notify_settings.get(event_type, True):
+            logger.debug(f"📱 Notification Telegram '{event_type}' désactivée, ignorée")
+            return
+        
         try:
             if event_type == 'position_opened':
                 await self.telegram_notifier.notify_position_opened(data)
@@ -277,7 +311,8 @@ def create_notification_manager(
     telegram_bot_token: Optional[str] = None,
     telegram_chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
     socketio_callback: Optional[Callable] = None,
-    enable_batching: bool = True
+    enable_batching: bool = True,
+    telegram_notify_settings: Optional[Dict[str, bool]] = None
 ) -> NotificationManager:
     """
     Factory pour créer Notification Manager
@@ -305,6 +340,7 @@ def create_notification_manager(
     return NotificationManager(
         telegram_notifier=telegram_notifier,
         socketio_callback=socketio_callback,
-        enable_batching=enable_batching
+        enable_batching=enable_batching,
+        telegram_notify_settings=telegram_notify_settings
     )
 
