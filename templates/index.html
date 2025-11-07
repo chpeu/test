@@ -861,17 +861,41 @@
                         };
                         
                         // 🔥 FIX CRITIQUE: Vérification finale avant ajout (double sécurité)
+                        // Vérifier TOUT l'historique, pas seulement les 5 premiers
                         var shouldAddToHistory = true;
                         if (stats.tradeHistory && stats.tradeHistory.length > 0) {
-                            for (var j = 0; j < Math.min(stats.tradeHistory.length, 5); j++) {
-                                var existingTrade = stats.tradeHistory[j];
-                                if (existingTrade && existingTrade.symbol === tradeRecord.symbol) {
-                                    var timeDiff = Math.abs((existingTrade.timestamp || 0) - tradeRecord.timestamp);
-                                    if (timeDiff < 2000) {  // 2 secondes de tolérance
+                            // Vérifier d'abord par closureId si disponible (le plus fiable)
+                            if (closureId) {
+                                for (var j = 0; j < stats.tradeHistory.length; j++) {
+                                    var existingTrade = stats.tradeHistory[j];
+                                    if (existingTrade && existingTrade.closureId === closureId) {
                                         shouldAddToHistory = false;
-                                        debugLog('⚠️ Trade déjà dans l\'historique (vérification finale)', 
-                                            tradeRecord.symbol + ' (timestamp: ' + tradeRecord.timestamp + ')');
+                                        debugLog('⚠️ Trade déjà dans l\'historique (closureId)', 
+                                            tradeRecord.symbol + ' - ID: ' + closureId);
                                         break;
+                                    }
+                                }
+                            }
+                            
+                            // Si pas de closureId ou pas trouvé, vérifier par symbol + timestamp + reason
+                            if (shouldAddToHistory) {
+                                for (var j = 0; j < stats.tradeHistory.length; j++) {
+                                    var existingTrade = stats.tradeHistory[j];
+                                    if (existingTrade && existingTrade.symbol === tradeRecord.symbol) {
+                                        var timeDiff = Math.abs((existingTrade.timestamp || 0) - tradeRecord.timestamp);
+                                        // Tolérance de 5 secondes pour les trades très proches
+                                        if (timeDiff < 5000) {
+                                            // Vérifier aussi la raison si disponible
+                                            var existingReason = existingTrade.reason || existingTrade.exit_reason || '';
+                                            var newReason = tradeRecord.reason || tradeRecord.exit_reason || '';
+                                            // Si même raison ou timestamp très proche (< 1s), c'est un doublon
+                                            if (existingReason === newReason || timeDiff < 1000) {
+                                                shouldAddToHistory = false;
+                                                debugLog('⚠️ Trade déjà dans l\'historique (symbol+timestamp+reason)', 
+                                                    tradeRecord.symbol + ' (timestamp: ' + tradeRecord.timestamp + ' vs ' + existingTrade.timestamp + ', reason: ' + newReason + ')');
+                                                break;
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -4887,10 +4911,19 @@
                     var apiTrades = stateData.trades.slice(0, 50);
                     var existingHistory = stats.tradeHistory || [];
                     
-                    // Créer un Set des trades existants (par symbol + timestamp + reason)
+                    // 🔥 FIX CRITIQUE: Créer un Set des trades existants avec plusieurs clés
+                    // Utiliser closureId si disponible (le plus fiable), sinon symbol + timestamp + reason
                     var existingKeys = new Set();
+                    var existingClosureIds = new Set();
                     existingHistory.forEach(function(trade) {
-                        var key = (trade.symbol || '') + '_' + (trade.timestamp || 0) + '_' + (trade.reason || trade.exit_reason || '');
+                        // Clé par closureId (le plus fiable)
+                        if (trade.closureId) {
+                            existingClosureIds.add(trade.closureId);
+                        }
+                        // Clé par symbol + timestamp + reason (fallback)
+                        var timestamp = trade.timestamp || 0;
+                        var reason = trade.reason || trade.exit_reason || '';
+                        var key = (trade.symbol || '') + '_' + timestamp + '_' + reason;
                         existingKeys.add(key);
                     });
                     
@@ -4900,9 +4933,44 @@
                         // Normaliser le format du trade depuis l'API
                         var tradeTimestamp = trade.start_time ? (new Date(trade.start_time).getTime()) : (trade.timestamp || Date.now());
                         var tradeReason = trade.exit_reason || trade.reason || 'UNKNOWN';
-                        var key = (trade.symbol || '') + '_' + tradeTimestamp + '_' + tradeReason;
+                        var tradeClosureId = trade.closure_id || null;
                         
-                        if (!existingKeys.has(key)) {
+                        // 🔥 FIX: Vérifier d'abord par closureId (le plus fiable)
+                        var isDuplicate = false;
+                        if (tradeClosureId && existingClosureIds.has(tradeClosureId)) {
+                            isDuplicate = true;
+                            debugLog('⚠️ Trade déjà dans l\'historique (restoreAllState - closureId)', 
+                                trade.symbol + ' - ID: ' + tradeClosureId);
+                        }
+                        
+                        // Si pas de closureId ou pas trouvé, vérifier par symbol + timestamp + reason
+                        if (!isDuplicate) {
+                            var key = (trade.symbol || '') + '_' + tradeTimestamp + '_' + tradeReason;
+                            if (existingKeys.has(key)) {
+                                isDuplicate = true;
+                                debugLog('⚠️ Trade déjà dans l\'historique (restoreAllState - key)', 
+                                    trade.symbol + ' - timestamp: ' + tradeTimestamp);
+                            } else {
+                                // Vérifier aussi avec une tolérance de 5 secondes pour les timestamps
+                                for (var i = 0; i < existingHistory.length; i++) {
+                                    var existing = existingHistory[i];
+                                    if (existing.symbol === trade.symbol) {
+                                        var timeDiff = Math.abs((existing.timestamp || 0) - tradeTimestamp);
+                                        if (timeDiff < 5000) {  // 5 secondes de tolérance
+                                            var existingReason = existing.reason || existing.exit_reason || '';
+                                            if (existingReason === tradeReason || timeDiff < 1000) {
+                                                isDuplicate = true;
+                                                debugLog('⚠️ Trade déjà dans l\'historique (restoreAllState - tolérance)', 
+                                                    trade.symbol + ' - timestamp: ' + tradeTimestamp + ' vs ' + existing.timestamp);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (!isDuplicate) {
                             // Convertir format API vers format frontend
                             var tradeRecord = {
                                 timestamp: tradeTimestamp,
