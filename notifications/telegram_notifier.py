@@ -418,8 +418,11 @@ class TelegramNotifier:
             level: Niveau recovery (1, 2, 3)
             pause_duration: Durée pause (secondes)
         """
+        # 🔥 NOUVEAU: Ajouter instance port dans le message
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
         message = f"""
-🛡️ **RECOVERY MODE NIVEAU {level}** 🛡️
+🛡️ **RECOVERY MODE NIVEAU {level}** {instance_info} 🛡️
 
 ⏸️ **Pause**: {pause_duration // 60} minutes
 ⚠️ Trading temporairement suspendu
