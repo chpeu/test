@@ -4842,6 +4842,52 @@
                     return;
                 }
                 
+                // 🔥 NOUVEAU: Détecter si c'est une nouvelle session (redémarrage du bot)
+                const backendSessionId = stateData.session_id;
+                const storedSessionId = localStorage.getItem('bot_session_id');
+                
+                if (backendSessionId && backendSessionId !== storedSessionId) {
+                    // NOUVELLE SESSION (redémarrage du bot) → Réinitialiser l'historique et les stats
+                    console.log('🔄 Nouvelle session détectée (redémarrage bot) - Réinitialisation...');
+                    console.log(`   Ancienne session: ${storedSessionId}`);
+                    console.log(`   Nouvelle session: ${backendSessionId}`);
+                    
+                    // Réinitialiser l'historique et les stats
+                    stats.tradeHistory = [];
+                    stats.totalTrades = 0;
+                    stats.wins = 0;
+                    stats.losses = 0;
+                    stats.winrate = 0;
+                    stats.totalPnl = 0;
+                    stats.totalPnlUSDT = 0;
+                    stats.totalCosts = 0;
+                    stats.totalCostsUSDT = 0;
+                    stats.winPnls = [];
+                    stats.lossPnls = [];
+                    stats.winDurations = [];
+                    stats.lossDurations = [];
+                    stats.bestTrade = { pnl: 0, symbol: '', duration: 0 };
+                    stats.worstTrade = { pnl: 0, symbol: '', duration: 0 };
+                    
+                    // Mettre à jour l'affichage
+                    updateStats();
+                    updateTradeHistory();
+                    
+                    // Sauvegarder le nouveau session_id
+                    localStorage.setItem('bot_session_id', backendSessionId);
+                    
+                    debugLog('🔄 Session réinitialisée', 'Nouvelle session détectée - Historique et stats réinitialisés');
+                    
+                    // Continuer pour restaurer la config et la position active (mais pas l'historique)
+                } else if (backendSessionId && backendSessionId === storedSessionId) {
+                    // MÊME SESSION (rafraîchissement page) → Restaurer normalement
+                    console.log('✅ Même session détectée (rafraîchissement page) - Restauration normale...');
+                } else if (backendSessionId) {
+                    // Première fois (pas de session_id stocké) → Sauvegarder
+                    localStorage.setItem('bot_session_id', backendSessionId);
+                    console.log('📝 Première connexion - Session ID sauvegardé');
+                }
+                
                 // 1. RESTAURER CONFIG (sliders, dropdowns, checkboxes, capital)
                 if (stateData.config) {
                     const config = stateData.config;
@@ -4930,7 +4976,9 @@
                 }
                 
                 // 2. RESTAURER STATS (compteurs trades/wins/losses/winrates)
-                if (stateData.stats) {
+                // 🔥 FIX: Ne restaurer les stats QUE si c'est la même session (rafraîchissement)
+                // Si nouvelle session, les stats ont déjà été réinitialisées ci-dessus
+                if (stateData.stats && backendSessionId === storedSessionId) {
                     const apiStats = stateData.stats;
                     stats.totalTrades = apiStats.total_trades || 0;
                     stats.wins = apiStats.wins || 0;
@@ -4939,6 +4987,10 @@
                     // 🔥 FIX: Forcer mise à jour de tous les compteurs
                     updateStats();
                     debugLog('✅ Stats restaurées', `Trades: ${stats.totalTrades}, Wins: ${stats.wins}, Losses: ${stats.losses}, Winrate: ${stats.winrate.toFixed(1)}%`);
+                } else if (backendSessionId !== storedSessionId) {
+                    // Nouvelle session : stats déjà réinitialisées, juste mettre à jour l'affichage
+                    updateStats();
+                    debugLog('🔄 Stats réinitialisées', 'Nouvelle session - Stats à zéro');
                 }
                 
                 // 3. RESTAURER HISTORIQUE (affichage historique des trades)
@@ -5104,6 +5156,10 @@
                     // 🔥 FIX: Forcer mise à jour de l'affichage historique
                     updateTradeHistory();
                     debugLog('✅ Historique restauré', `${apiTrades.length} trades API, ${newTrades.length} nouveaux, ${existingHistory.length} existants, ${cleanedHistory.length} après nettoyage`);
+                } else if (backendSessionId !== storedSessionId) {
+                    // Nouvelle session : historique déjà réinitialisé, juste mettre à jour l'affichage
+                    updateTradeHistory();
+                    debugLog('🔄 Historique réinitialisé', 'Nouvelle session - Historique vide');
                 }
                 
                 // 4. RESTAURER POSITION (avec délai de grâce SocketIO)

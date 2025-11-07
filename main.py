@@ -1095,8 +1095,39 @@ async def api_get_complete_state():
         except Exception as e:
             logger.error(f"❌ Erreur récupération historique: {e}")
     
+    # 🔥 NOUVEAU: Filtrer les trades par session_id actuelle (seulement cette session)
+    current_session_trades = []
+    if analytics_db and session_id:
+        try:
+            # Récupérer seulement les trades de la session actuelle
+            all_trades = analytics_db.get_trades(limit=10000)
+            current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
+            
+            # Recalculer stats pour cette session seulement
+            if current_session_trades:
+                total = len(current_session_trades)
+                wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0)
+                losses = total - wins
+                winrate = (wins / total * 100) if total > 0 else 0.0
+                stats_dict = {
+                    'total_trades': total,
+                    'wins': wins,
+                    'losses': losses,
+                    'winrate': winrate
+                }
+            else:
+                stats_dict = {
+                    'total_trades': 0,
+                    'wins': 0,
+                    'losses': 0,
+                    'winrate': 0.0
+                }
+        except Exception as e:
+            logger.error(f"❌ Erreur filtrage trades par session: {e}")
+    
     return JSONResponse({
         'success': True,
+        'session_id': session_id,  # 🔥 NOUVEAU: Inclure session_id pour détection nouvelle session
         'config': {
             # Seuils configurables
             'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
@@ -1128,7 +1159,7 @@ async def api_get_complete_state():
             'data': active_position_dict
         },
         'stats': stats_dict,
-        'trades': trades_history,
+        'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
         'timestamp': time.time()
     })
 
