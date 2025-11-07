@@ -6,10 +6,17 @@ import os
 # 🔥 NOUVEAU: Charger variables d'environnement depuis .env si disponible
 try:
     from dotenv import load_dotenv
-    load_dotenv()  # Charge .env à la racine du projet
+    from pathlib import Path
+    # 🔥 FIX: Charger .env depuis la racine du projet (où se trouve config.py)
+    env_path = Path(__file__).parent / '.env'
+    load_dotenv(dotenv_path=env_path)  # Charge .env à la racine du projet
 except ImportError:
     # python-dotenv non installé, continuer sans
     pass
+except Exception as e:
+    # Erreur lors du chargement .env, continuer sans
+    import logging
+    logging.warning(f"⚠️ Erreur chargement .env: {e}")
 
 # API MEXC
 MEXC_FUTURES_URL = "https://contract.mexc.com"

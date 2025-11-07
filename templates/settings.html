@@ -326,16 +326,17 @@
                             document.getElementById('telegramEnabled').checked = s.telegram.enabled || false;
                             
                             // 🔥 NOUVEAU: Charger types de notifications
+                            // 🔥 FIX: Utiliser === true au lieu de !== false pour valeurs booléennes explicites
                             if (s.telegram.notify_types) {
                                 const notifyTypes = s.telegram.notify_types;
-                                document.getElementById('notifyPositionOpened').checked = notifyTypes.position_opened !== false;
-                                document.getElementById('notifyPositionClosed').checked = notifyTypes.position_closed !== false;
-                                document.getElementById('notifyTpEscalier').checked = notifyTypes.tp_escalier !== false;
-                                document.getElementById('notifyEarlyInvalidation').checked = notifyTypes.early_invalidation !== false;
-                                document.getElementById('notifyError').checked = notifyTypes.error !== false;
-                                document.getElementById('notifyReconnection').checked = notifyTypes.reconnection !== false;
+                                document.getElementById('notifyPositionOpened').checked = notifyTypes.position_opened === true;
+                                document.getElementById('notifyPositionClosed').checked = notifyTypes.position_closed === true;
+                                document.getElementById('notifyTpEscalier').checked = notifyTypes.tp_escalier === true;
+                                document.getElementById('notifyEarlyInvalidation').checked = notifyTypes.early_invalidation === true;
+                                document.getElementById('notifyError').checked = notifyTypes.error === true;
+                                document.getElementById('notifyReconnection').checked = notifyTypes.reconnection === true;
                                 document.getElementById('notifyDailySummary').checked = notifyTypes.daily_summary === true;
-                                document.getElementById('notifyRecoveryMode').checked = notifyTypes.recovery_mode !== false;
+                                document.getElementById('notifyRecoveryMode').checked = notifyTypes.recovery_mode === true;
                                 document.getElementById('notifySetupRejected').checked = notifyTypes.setup_rejected === true;
                             }
                         }

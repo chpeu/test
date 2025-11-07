@@ -395,8 +395,12 @@
                 // Charger trades
                 const tradesResponse = await fetch(`/api/trades?${params}`);
                 const tradesData = await tradesResponse.json();
-                if (tradesData.success) {
+                if (tradesData.success && tradesData.trades) {
+                    console.log(`📊 Analytics: ${tradesData.trades.length} trades chargés`);
                     displayTrades(tradesData.trades);
+                } else {
+                    console.warn('⚠️ Analytics: Aucun trade reçu ou format invalide');
+                    displayTrades([]); // Afficher tableau vide
                 }
                 
                 // Charger setups validés

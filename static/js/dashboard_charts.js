@@ -229,12 +229,15 @@ async function loadInitialData() {
         const tradesResponse = await fetch('/api/trades?limit=500');
         const tradesData = await tradesResponse.json();
         
-        if (tradesData.success) {
+        if (tradesData.success && tradesData.trades) {
+            console.log(`📊 Dashboard: ${tradesData.trades.length} trades chargés`);
             updateChartsWithTrades(tradesData.trades);
+        } else {
+            console.warn('⚠️ Dashboard: Aucun trade reçu ou format invalide');
         }
         
     } catch (error) {
-        console.error('❌ Erreur chargement données:', error);
+        console.error('❌ Erreur chargement données Dashboard:', error);
     }
 }
 
