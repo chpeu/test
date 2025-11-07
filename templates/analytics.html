@@ -623,14 +623,24 @@
         
         // ==================== INITIALIZATION ====================
         
-        // Charger données au démarrage
-        loadData();
-        
-        // 🔥 FIX: Polling automatique toutes les 30 secondes (backup si SocketIO échoue)
-        // Réduit de 10s à 30s car SocketIO gère les mises à jour temps réel
-        setInterval(() => {
+        // Attendre que SocketIO soit connecté avant de charger les données
+        socket.on('connect', () => {
+            console.log('✅ Analytics: Connecté à SocketIO - Chargement données initiales');
+            // Charger données au démarrage après connexion SocketIO
             loadData();
-        }, 30000);  // Rafraîchir toutes les 30 secondes (backup)
+        });
+        
+        // Si déjà connecté, charger immédiatement
+        if (socket.connected) {
+            loadData();
+        }
+        
+        // 🔥 FIX: Polling automatique toutes les 15 secondes (backup si SocketIO échoue)
+        setInterval(() => {
+            if (socket.connected) {
+                loadData();
+            }
+        }, 15000); // 🔥 FIX: Rafraîchir toutes les 15 secondes (backup) au lieu de 30s
     </script>
 </body>
 </html>
