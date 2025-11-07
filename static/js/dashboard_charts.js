@@ -10,6 +10,8 @@ const socket = io();
 socket.on('connect', () => {
     console.log('✅ Connected to Socket.IO');
     updateConnectionStatus(true);
+    // 🔥 FIX: Charger données au démarrage après connexion SocketIO
+    loadInitialData();
 });
 
 socket.on('disconnect', () => {
@@ -424,14 +426,7 @@ socket.on('stats_update', (data) => {
 
 // ==================== INITIALIZATION ====================
 
-// Attendre que SocketIO soit connecté avant de charger les données
-socket.on('connect', () => {
-    console.log('✅ Connected to Socket.IO - Chargement données initiales');
-    // Charger données au démarrage après connexion SocketIO
-    loadInitialData();
-});
-
-// Si déjà connecté, charger immédiatement
+// Si déjà connecté, charger immédiatement (sinon attendre événement 'connect')
 if (socket.connected) {
     loadInitialData();
 }
