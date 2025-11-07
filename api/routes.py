@@ -30,6 +30,7 @@ import io
 import csv
 import json
 import os
+import aiohttp
 
 from core.analytics_database import AnalyticsDatabase
 
