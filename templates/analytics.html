@@ -8,6 +8,9 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -582,13 +585,48 @@
             window.open(`/api/export?format=csv&data_type=trades&${params}`, '_blank');
         }
         
+        // ==================== SOCKET.IO SYNC ====================
+        
+        // 🔥 FIX: Ajouter SocketIO pour synchronisation temps réel avec session
+        const socket = io();
+        
+        socket.on('connect', () => {
+            console.log('✅ Analytics: Connecté à SocketIO');
+        });
+        
+        socket.on('disconnect', () => {
+            console.warn('❌ Analytics: Déconnecté de SocketIO');
+        });
+        
+        // 🔥 FIX: Écouter événements de trading pour mise à jour immédiate
+        socket.on('position_opened', (data) => {
+            console.log('🟢 Analytics: Position ouverte (temps réel)', data);
+            // Recharger données immédiatement
+            loadData();
+        });
+        
+        socket.on('position_closed', (data) => {
+            console.log('🔔 Analytics: Position fermée (temps réel)', data);
+            // Recharger données immédiatement
+            loadData();
+        });
+        
+        socket.on('tp_escalier_level', (data) => {
+            console.log('🎯 Analytics: TP Escalier niveau atteint (temps réel)', data);
+            // Recharger données immédiatement
+            loadData();
+        });
+        
+        // ==================== INITIALIZATION ====================
+        
         // Charger données au démarrage
         loadData();
         
-        // 🔥 FIX: Polling automatique toutes les 10 secondes pour mises à jour temps réel
+        // 🔥 FIX: Polling automatique toutes les 30 secondes (backup si SocketIO échoue)
+        // Réduit de 10s à 30s car SocketIO gère les mises à jour temps réel
         setInterval(() => {
             loadData();
-        }, 10000);  // Rafraîchir toutes les 10 secondes
+        }, 30000);  // Rafraîchir toutes les 30 secondes (backup)
     </script>
 </body>
 </html>

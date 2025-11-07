@@ -424,10 +424,11 @@ socket.on('stats_update', (data) => {
 // Charger données initiales
 loadInitialData();
 
-// Refresh périodique (toutes les 30s)
+// Refresh périodique (toutes les 60s - backup si SocketIO échoue)
+// SocketIO gère les mises à jour temps réel via position_opened/closed/tp_escalier_level
 setInterval(() => {
     loadInitialData();
-}, 30000);
+}, 60000);  // Rafraîchir toutes les 60 secondes (backup)
 
 console.log('📊 Dashboard Charts initialisé');
 
