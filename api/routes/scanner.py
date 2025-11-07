@@ -86,23 +86,51 @@ async def start_scanner(request: Request):
     try:
         # Parser les données de la requête
         data = {}
-        if hasattr(request, 'json'):
-            data = await request.json()
-        elif hasattr(request, 'body'):
-            import json
+        try:
             body = await request.body()
             if body:
+                import json
                 data = json.loads(body)
+        except Exception:
+            data = {}
 
         top_n = data.get('top_n', 20) if isinstance(data, dict) else 20
 
-        # Implémenter la logique du scanner
-        # Cette fonction sera implémentée depuis main.py
+        # Démarrer le scanner
+        logger.info(f"🔍 Démarrage du scanner pour top {top_n} paires...")
 
-        return JSONResponse({'status': 'started', 'top_n': top_n})
+        # Marquer le scanner comme actif
+        _scanner.is_scanning = True
+
+        # Lancer le scan en arrière-plan
+        pairs = await _scanner.scan_top_pairs(n=top_n)
+
+        # Mettre à jour l'état de l'application
+        if _app_state is not None:
+            _app_state['top_pairs'] = pairs
+            _app_state['scanner_running'] = True
+
+        # Émettre l'événement via SocketIO si disponible
+        if _sio:
+            await _sio.emit('scanner_started', {
+                'status': 'success',
+                'top_n': top_n,
+                'pairs_found': len(pairs)
+            })
+
+        logger.info(f"✅ Scanner démarré: {len(pairs)} paires trouvées")
+
+        return JSONResponse({
+            'status': 'started',
+            'top_n': top_n,
+            'pairs': pairs[:10] if len(pairs) > 10 else pairs,  # Retourner top 10
+            'total_found': len(pairs)
+        })
 
     except Exception as e:
-        logger.error(f"Erreur démarrage scanner: {e}")
+        logger.error(f"❌ Erreur démarrage scanner: {e}")
+        if _scanner:
+            _scanner.is_scanning = False
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
