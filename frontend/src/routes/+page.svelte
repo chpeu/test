@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
 	import ScannerPanel from '$lib/components/ScannerPanel.svelte';
@@ -18,6 +19,18 @@
 
 	let backendConnected = false;
 	let backendError = '';
+	let activeTab = 'dashboard';
+
+	const tabs = [
+		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
+		{ id: 'scanner', label: 'Scanner', icon: '🔍' },
+		{ id: 'position', label: 'Position', icon: '💰' },
+		{ id: 'stats', label: 'Stats', icon: '📈' },
+		{ id: 'charts', label: 'Graphiques', icon: '📉' },
+		{ id: 'history', label: 'Historique', icon: '📜' },
+		{ id: 'sessions', label: 'Sessions', icon: '🔄' },
+		{ id: 'settings', label: 'Paramètres', icon: '⚙️' }
+	];
 
 	// Fetch initial state on mount
 	onMount(async () => {
@@ -59,9 +72,9 @@
 	<header class="header">
 		<div class="header-content">
 			<div class="title-section">
-				<h1 class="title">🚀 Trade Cursor v7.0</h1>
-				<div class="subtitle">MEXC Smart Scalping Scanner - Powered by Svelte</div>
-				<div class="mexc-badge">MEXC Futures</div>
+				<h1>⚡ TRADE CURSOR v7.0</h1>
+				<div class="subtitle">✅ Stats temps réel • ✅ Volume à la volée • ✅ ATR auto • ✅ No timeout<br>📊 Mode FIXE/ATR • 🧩 Clamp ATR • ⚖️ Win/Loss adjust • 🛡️ BE ATR • 💰 Position Sizing • 📊 Volume Quality • 🎯 Confluence • 🔥 Scanner Scalabilité 0% fees • ⚡ SCAN PARALLÈLE • 🎯 Filtre ATR Optimal</div>
+				<span class="mexc-badge">MEXC FUTURES</span>
 			</div>
 			<div class="header-controls">
 				<ThemeToggle />
@@ -85,86 +98,85 @@
 
 	<main class="main-content">
 		<div class="container">
-			<!-- Position Section -->
-			<section class="section position-section slide-up">
-				<PositionCard />
-			</section>
-
-			<!-- Stats Section -->
-			<section class="section stats-section slide-up" style="animation-delay: 0.1s">
-				<StatsPanel />
-			</section>
-
-			<!-- Scanner Section -->
-			<section class="section scanner-section slide-up" style="animation-delay: 0.2s">
-				<ScannerPanel />
-			</section>
-
-			<!-- Notification Settings -->
-			<section class="section notifications-section slide-up" style="animation-delay: 0.3s">
-				<NotificationSettings />
-			</section>
-
-			<!-- Multi-Sessions Section -->
-			<section class="section sessions-section slide-up" style="animation-delay: 0.35s">
-				<GlobalStats />
-			</section>
-
-			<div class="two-column slide-up" style="animation-delay: 0.38s">
-				<section class="section">
-					<SessionSelector />
-				</section>
-				<section class="section">
-					<!-- Placeholder pour les stats de la session active -->
-					<div style="padding: 20px; background: var(--bg-secondary); border-radius: 12px; text-align: center; color: var(--text-secondary);">
-						<p>📊 Active Session Details</p>
-						<p style="font-size: 12px; margin-top: 8px;">Select a session to view details</p>
+			<Tabs {tabs} bind:activeTab />
+			
+			<!-- Tab Content -->
+			{#if activeTab === 'dashboard'}
+				<div class="tab-content">
+					<div class="status-panel">
+						<StatsPanel />
 					</div>
-				</section>
-			</div>
-
-			<!-- Charts Section -->
-			<div class="charts-grid slide-up" style="animation-delay: 0.4s">
-				<section class="section chart-section">
-					<PnLChart />
-				</section>
-				<section class="section chart-section">
-					<WinLossChart />
-				</section>
-				<section class="section chart-section">
-					<VolumeChart />
-				</section>
-			</div>
-
-			<!-- Settings & Export Section -->
-			<div class="two-column slide-up" style="animation-delay: 0.5s">
-				<section class="section settings-section">
-					<SettingsPanel />
-				</section>
-				<section class="section export-section">
-					<ExportPanel />
-				</section>
-			</div>
-
-			<!-- Two Column Layout -->
-			<div class="two-column slide-up" style="animation-delay: 0.6s">
-				<!-- Trade History -->
-				<section class="section history-section">
+					<div class="position-panel">
+						<PositionCard />
+					</div>
+					<div class="scanner-panel">
+						<ScannerPanel />
+					</div>
+					<div class="notifications-panel">
+						<NotificationSettings />
+					</div>
+				</div>
+			{:else if activeTab === 'scanner'}
+				<div class="tab-content">
+					<ScannerPanel />
+					<div class="logs-panel">
+						<LogViewer />
+					</div>
+				</div>
+			{:else if activeTab === 'position'}
+				<div class="tab-content">
+					<PositionCard />
+					<div class="position-details">
+						<StatsPanel />
+					</div>
+				</div>
+			{:else if activeTab === 'stats'}
+				<div class="tab-content">
+					<GlobalStats />
+					<div class="stats-grid">
+						<StatsPanel />
+					</div>
+				</div>
+			{:else if activeTab === 'charts'}
+				<div class="tab-content">
+					<div class="charts-grid">
+						<PnLChart />
+						<WinLossChart />
+						<VolumeChart />
+					</div>
+				</div>
+			{:else if activeTab === 'history'}
+				<div class="tab-content">
 					<TradeHistory />
-				</section>
-
-				<!-- Logs -->
-				<section class="section logs-section">
-					<LogViewer />
-				</section>
-			</div>
+					<div class="export-panel">
+						<ExportPanel />
+					</div>
+				</div>
+			{:else if activeTab === 'sessions'}
+				<div class="tab-content">
+					<SessionSelector />
+					<div class="sessions-stats">
+						<GlobalStats />
+					</div>
+				</div>
+			{:else if activeTab === 'settings'}
+				<div class="tab-content">
+					<SettingsPanel />
+					<div class="export-settings">
+						<ExportPanel />
+					</div>
+					<div class="notifications-settings">
+						<NotificationSettings />
+					</div>
+				</div>
+			{/if}
 		</div>
 	</main>
 
 	<footer class="footer">
 		<div class="footer-content">
 			<div class="footer-text">
-				Trade Cursor v7.0 | Python {navigator.platform} | SvelteKit Frontend
+				Trade Cursor v7.0 | Python Backend | SvelteKit Frontend
 			</div>
 			<div class="footer-links">
 				<a href="https://github.com/chpeu/trade_cursor_py" target="_blank" rel="noopener">GitHub</a>
@@ -174,47 +186,91 @@
 </div>
 
 <style>
+	/* Style port 5000 - Fond sombre, couleurs néon */
+	:global(body) {
+		font-family: 'Courier New', monospace;
+		background: #0a0e27;
+		color: #fff;
+		min-height: 100vh;
+		padding: 10px;
+		font-size: 14px;
+		line-height: 1.4;
+		margin: 0;
+	}
+
 	.app {
 		min-height: 100vh;
 		display: flex;
 		flex-direction: column;
 	}
 
+	.container {
+		max-width: 100%;
+		margin: 0 auto;
+	}
+
+	/* Header style port 5000 */
 	.header {
-		background: linear-gradient(135deg, #1e2749 0%, #2a3a6b 100%);
-		border-bottom: 2px solid var(--accent-green);
-		padding: 20px 0;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-		position: sticky;
-		top: 0;
-		z-index: 100;
-		backdrop-filter: blur(10px);
+		text-align: center;
+		padding: 15px 0;
+		border-bottom: 2px solid #1e2749;
+		margin-bottom: 15px;
+		background: #0a0e27;
 	}
 
 	.header-content {
-		max-width: 1400px;
+		max-width: 100%;
 		margin: 0 auto;
-		padding: 0 20px;
+		padding: 0 15px;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: 20px;
+		flex-wrap: wrap;
+		gap: 15px;
 	}
 
 	.title-section {
 		flex: 1;
+		text-align: center;
+	}
+
+	h1 {
+		font-size: 24px;
+		color: #00ff88;
+		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+		margin-bottom: 8px;
+		font-weight: bold;
+	}
+
+	.subtitle {
+		color: #888;
+		font-size: 12px;
+		line-height: 1.4;
+		margin-bottom: 8px;
+	}
+
+	.mexc-badge {
+		display: inline-block;
+		background: linear-gradient(135deg, #1e90ff 0%, #00bfff 100%);
+		color: white;
+		padding: 5px 14px;
+		border-radius: 20px;
+		font-size: 11px;
+		font-weight: bold;
+		margin-top: 8px;
 	}
 
 	.header-controls {
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		gap: 12px;
 	}
 
+	/* Backend error banner */
 	.backend-error-banner {
 		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
 		border-bottom: 2px solid #ff6666;
-		padding: 20px 0;
+		padding: 15px 0;
 		animation: slideDown 0.5s ease-out;
 	}
 
@@ -230,16 +286,16 @@
 	}
 
 	.error-content {
-		max-width: 1400px;
+		max-width: 100%;
 		margin: 0 auto;
-		padding: 0 20px;
+		padding: 0 15px;
 		display: flex;
 		align-items: center;
-		gap: 20px;
+		gap: 15px;
 	}
 
 	.error-icon {
-		font-size: 48px;
+		font-size: 36px;
 		animation: pulse 2s ease-in-out infinite;
 	}
 
@@ -258,108 +314,95 @@
 	}
 
 	.error-text strong {
-		font-size: 20px;
+		font-size: 18px;
 		display: block;
-		margin-bottom: 8px;
+		margin-bottom: 6px;
 	}
 
 	.error-text p {
-		margin: 4px 0;
-		font-size: 14px;
+		margin: 3px 0;
+		font-size: 13px;
 	}
 
 	.error-text code {
 		background: rgba(255, 255, 255, 0.2);
-		padding: 2px 8px;
+		padding: 2px 6px;
 		border-radius: 4px;
 		font-family: 'Courier New', monospace;
 		font-weight: bold;
 	}
 
 	.retry-text {
-		font-size: 12px !important;
+		font-size: 11px !important;
 		opacity: 0.8;
 		font-style: italic;
 	}
 
-	.title {
-		font-size: 32px;
-		color: var(--accent-green);
-		text-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
-		margin-bottom: 8px;
-		font-weight: bold;
-	}
-
-	.subtitle {
-		font-size: 14px;
-		color: var(--text-secondary);
-		margin-bottom: 8px;
-	}
-
-	.mexc-badge {
-		display: inline-block;
-		background: linear-gradient(135deg, #1e90ff 0%, #00bfff 100%);
-		color: white;
-		padding: 5px 14px;
-		border-radius: 20px;
-		font-size: 11px;
-		font-weight: bold;
-	}
-
+	/* Main content */
 	.main-content {
 		flex: 1;
-		padding: 30px 0;
+		padding: 0;
 	}
 
-	.container {
-		max-width: 1400px;
-		margin: 0 auto;
-		padding: 0 20px;
+	/* Tab content */
+	.tab-content {
+		display: flex;
+		flex-direction: column;
+		gap: 15px;
 	}
 
-	.section {
-		margin-bottom: 30px;
+	.status-panel,
+	.position-panel,
+	.scanner-panel,
+	.notifications-panel,
+	.logs-panel,
+	.position-details,
+	.stats-grid,
+	.charts-grid,
+	.export-panel,
+	.sessions-stats,
+	.export-settings,
+	.notifications-settings {
+		background: #1e2749;
+		border-radius: 10px;
+		padding: 18px;
+		border: 2px solid #2a3a6b;
 	}
 
 	.charts-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-		gap: 30px;
-		margin-bottom: 30px;
+		gap: 15px;
 	}
 
-	.two-column {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 30px;
-	}
-
+	/* Footer */
 	.footer {
-		background: var(--bg-secondary);
-		border-top: 1px solid var(--bg-tertiary);
-		padding: 20px 0;
-		margin-top: auto;
+		background: #1e2749;
+		border-top: 2px solid #2a3a6b;
+		padding: 15px 0;
+		margin-top: 15px;
 	}
 
 	.footer-content {
-		max-width: 1400px;
+		max-width: 100%;
 		margin: 0 auto;
-		padding: 0 20px;
+		padding: 0 15px;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: 20px;
+		gap: 15px;
+		flex-wrap: wrap;
 	}
 
 	.footer-text {
-		font-size: 12px;
-		color: var(--text-secondary);
+		font-size: 11px;
+		color: #888;
 	}
 
 	.footer-links a {
-		color: var(--accent-green);
+		color: #00ff88;
 		text-decoration: none;
-		font-size: 12px;
+		font-size: 11px;
 		font-weight: bold;
 		transition: color 0.3s;
 	}
@@ -370,28 +413,27 @@
 	}
 
 	/* Mobile Responsive */
-	@media (max-width: 1024px) {
-		.charts-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.two-column {
-			grid-template-columns: 1fr;
-		}
-	}
-
 	@media (max-width: 768px) {
+		:global(body) {
+			padding: 8px;
+			font-size: 13px;
+		}
+
+		h1 {
+			font-size: 20px;
+		}
+
+		.subtitle {
+			font-size: 11px;
+		}
+
 		.header-content {
 			flex-direction: column;
 			text-align: center;
 		}
 
-		.title {
-			font-size: 24px;
-		}
-
-		.subtitle {
-			font-size: 12px;
+		.charts-grid {
+			grid-template-columns: 1fr;
 		}
 
 		.footer-content {
@@ -399,28 +441,19 @@
 			text-align: center;
 		}
 
-		.section {
-			margin-bottom: 20px;
-		}
-
-		.main-content {
-			padding: 20px 0;
-		}
-	}
-
-	/* Animations */
-	.slide-up {
-		animation: slideUp 0.5s ease-out;
-	}
-
-	@keyframes slideUp {
-		from {
-			transform: translateY(30px);
-			opacity: 0;
-		}
-		to {
-			transform: translateY(0);
-			opacity: 1;
+		.status-panel,
+		.position-panel,
+		.scanner-panel,
+		.notifications-panel,
+		.logs-panel,
+		.position-details,
+		.stats-grid,
+		.charts-grid,
+		.export-panel,
+		.sessions-stats,
+		.export-settings,
+		.notifications-settings {
+			padding: 12px;
 		}
 	}
 </style>
