@@ -34,7 +34,11 @@ frontend/
 │   │   │   ├── ScannerPanel.svelte
 │   │   │   ├── LogViewer.svelte
 │   │   │   ├── TradeHistory.svelte
-│   │   │   └── ConnectionStatus.svelte
+│   │   │   ├── ConnectionStatus.svelte
+│   │   │   ├── NotificationSettings.svelte  # Gestion notifications
+│   │   │   ├── PnLChart.svelte              # Chart PnL cumulatif
+│   │   │   ├── WinLossChart.svelte          # Chart Win/Loss
+│   │   │   └── VolumeChart.svelte           # Chart tailles positions
 │   │   ├── stores/            # State management
 │   │   │   ├── position.js
 │   │   │   ├── stats.js
@@ -43,7 +47,8 @@ frontend/
 │   │   │   ├── scanner.js
 │   │   │   └── connection.js
 │   │   └── utils/
-│   │       └── socket.js      # Socket.IO wrapper
+│   │       ├── socket.js      # Socket.IO wrapper
+│   │       └── notifications.js  # Notifications push
 │   ├── routes/
 │   │   ├── +layout.svelte     # Layout racine
 │   │   └── +page.svelte       # Page principale
@@ -63,6 +68,11 @@ frontend/
 cd frontend
 npm install
 ```
+
+**Dépendances principales**:
+- `socket.io-client` - Communication temps réel avec backend
+- `chart.js` - Charts interactifs (PnL, Win/Loss, Volume)
+- `date-fns` - Formatage dates
 
 ### 2. Démarrer en mode développement
 
@@ -231,6 +241,133 @@ Indicateur de connexion Socket.IO
 - ✅ 🟢 Connected / 🔴 Disconnected / 🟡 Reconnecting
 - ✅ Pulse animation
 - ✅ Reconnexion automatique
+
+### NotificationSettings.svelte
+
+Panneau de gestion des notifications push
+
+```svelte
+<NotificationSettings />
+```
+
+**Features**:
+- ✅ Demande permission navigateur
+- ✅ Toggle activé/désactivé
+- ✅ Affichage types de notifications disponibles
+- ✅ Instructions si permission refusée
+
+**Notifications envoyées**:
+- 🟢 Position ouverte (symbol, direction, entry, size)
+- 🔴 Position fermée (PnL, raison: TP/SL/TS)
+- 🔍 Setup détecté (pair, score, conditions)
+- 🏆 Milestone winrate (≥70% avec 10+ trades)
+- ❌ Erreur critique
+
+### PnLChart.svelte
+
+Chart PnL cumulatif (Chart.js line chart)
+
+```svelte
+<PnLChart />
+```
+
+**Features**:
+- ✅ PnL cumulatif temps réel
+- ✅ Couleur dynamique (vert si positif, rouge si négatif)
+- ✅ Tooltip détaillé par trade
+- ✅ Axe temps avec labels rotatifs
+- ✅ Animation smooth sur updates
+
+### WinLossChart.svelte
+
+Chart distribution wins/losses (Chart.js doughnut chart)
+
+```svelte
+<WinLossChart />
+```
+
+**Features**:
+- ✅ Pourcentage wins vs losses
+- ✅ Color-coded (vert/rouge)
+- ✅ Centre affiche winrate
+- ✅ Tooltip avec counts
+- ✅ Hover animation
+
+### VolumeChart.svelte
+
+Chart tailles de positions (Chart.js bar chart)
+
+```svelte
+<VolumeChart />
+```
+
+**Features**:
+- ✅ Taille en USDT par trade
+- ✅ Couleur par PnL (vert si win, rouge si loss)
+- ✅ Sélecteur nombre de trades (5/10/15/20)
+- ✅ Tooltip avec PnL détaillé
+- ✅ Labels avec emojis direction
+
+---
+
+## 📊 Charts & Notifications
+
+### Utilisation des Charts
+
+Les 3 charts se mettent à jour automatiquement via les stores Svelte:
+
+```javascript
+// Dans PnLChart.svelte
+const unsubscribe = pnlChartData.subscribe((data) => {
+  chart.data.labels = data.labels;
+  chart.data.datasets[0].data = data.values;
+  chart.update('none'); // Update sans animation pour performance
+});
+```
+
+**Customisation**:
+- Modifier `maxTrades` dans VolumeChart pour afficher plus/moins de trades
+- Couleurs des charts dans chaque composant (backgroundColor, borderColor)
+- Configuration Chart.js dans `chartConfig` de chaque composant
+
+### Utilisation des Notifications
+
+**1. Activer les notifications**:
+```javascript
+import { requestNotificationPermission } from '$lib/utils/notifications';
+
+// Demander permission
+const granted = await requestNotificationPermission();
+```
+
+**2. Envoyer notification manuelle**:
+```javascript
+import { sendNotification } from '$lib/utils/notifications';
+
+sendNotification('Titre', {
+  body: 'Message de la notification',
+  icon: '/icon.png',
+  tag: 'unique-id'
+});
+```
+
+**3. Notifications automatiques**:
+
+Les notifications sont déjà intégrées dans `socket.js`:
+- Position ouverte → `notifyPositionOpened(data)`
+- Position fermée → `notifyPositionClosed(result)`
+- Winrate milestone → `notifyWinrate(winrate, totalTrades)`
+
+**Personnalisation**:
+- Modifier le seuil winrate dans `notifications.js` (actuellement 70%)
+- Ajouter/retirer types de notifications dans `socket.js`
+- Changer icônes et sons des notifications
+
+**Permissions navigateur**:
+- Chrome/Edge: Permission demandée au clic sur "Activer les notifications"
+- Firefox: Identique à Chrome
+- Safari: Nécessite interaction utilisateur (bouton/clic)
+- Mobile: iOS 16.4+ supporte les Web Push Notifications
 
 ---
 
@@ -524,10 +661,19 @@ pm2 restart trade-cursor-ui
 
 ## 🎯 Prochaines étapes
 
+### ✅ Fonctionnalités implémentées
+
+- [x] **Charts interactifs** (Chart.js integration)
+  - PnLChart: PnL cumulatif ligne
+  - WinLossChart: Distribution wins/losses doughnut
+  - VolumeChart: Tailles positions bar chart
+- [x] **Notifications push** (Web Notification API)
+  - Gestion permissions
+  - Notifications positions ouvertes/fermées
+  - Notifications setups et milestones
+
 ### Fonctionnalités à ajouter
 
-- [ ] **Charts interactifs** (Chart.js integration)
-- [ ] **Notifications push** (Web Push API)
 - [ ] **Dark/Light mode toggle**
 - [ ] **Multi-sessions** (plusieurs bots)
 - [ ] **Settings panel** (config temps réel)

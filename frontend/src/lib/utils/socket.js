@@ -22,6 +22,15 @@ import {
 	setReconnecting
 } from '$lib/stores/connection';
 
+// Notifications
+import {
+	notifyPositionOpened,
+	notifyPositionClosed,
+	notifySetupFound,
+	notifyError,
+	notifyWinrate
+} from './notifications';
+
 let socket = null;
 
 /**
@@ -102,6 +111,9 @@ export function initSocket() {
 			level: 'INFO',
 			message: `Position ouverte: ${data.symbol} ${data.direction}`
 		});
+
+		// Notification push
+		notifyPositionOpened(data);
 	});
 
 	socket.on('position_update', (data) => {
@@ -128,12 +140,20 @@ export function initSocket() {
 			level: 'INFO',
 			message: `Position fermée: ${result.symbol} | ${result.reason} | ${pnlText}`
 		});
+
+		// Notification push
+		notifyPositionClosed(result);
 	});
 
 	// === ÉVÉNEMENTS STATS ===
 
 	socket.on('stats_update', (data) => {
 		updateStats(data);
+
+		// Notification milestone winrate
+		if (data.winrate && data.total_trades) {
+			notifyWinrate(data.winrate, data.total_trades);
+		}
 	});
 
 	// === ÉVÉNEMENTS ÉTAT ===
