@@ -10,6 +10,9 @@
 	import PnLChart from '$lib/components/PnLChart.svelte';
 	import WinLossChart from '$lib/components/WinLossChart.svelte';
 	import VolumeChart from '$lib/components/VolumeChart.svelte';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
+	import ExportPanel from '$lib/components/ExportPanel.svelte';
 
 	// Fetch initial state on mount
 	onMount(async () => {
@@ -35,7 +38,10 @@
 				<div class="subtitle">MEXC Smart Scalping Scanner - Powered by Svelte</div>
 				<div class="mexc-badge">MEXC Futures</div>
 			</div>
-			<ConnectionStatus />
+			<div class="header-controls">
+				<ThemeToggle />
+				<ConnectionStatus />
+			</div>
 		</div>
 	</header>
 
@@ -74,8 +80,18 @@
 				</section>
 			</div>
 
-			<!-- Two Column Layout -->
+			<!-- Settings & Export Section -->
 			<div class="two-column slide-up" style="animation-delay: 0.5s">
+				<section class="section settings-section">
+					<SettingsPanel />
+				</section>
+				<section class="section export-section">
+					<ExportPanel />
+				</section>
+			</div>
+
+			<!-- Two Column Layout -->
+			<div class="two-column slide-up" style="animation-delay: 0.6s">
 				<!-- Trade History -->
 				<section class="section history-section">
 					<TradeHistory />
@@ -131,6 +147,12 @@
 
 	.title-section {
 		flex: 1;
+	}
+
+	.header-controls {
+		display: flex;
+		align-items: center;
+		gap: 16px;
 	}
 
 	.title {

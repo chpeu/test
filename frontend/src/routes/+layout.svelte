@@ -1,5 +1,17 @@
 <script>
 	import '$lib/utils/socket'; // Init Socket.IO
+	import { theme } from '$lib/stores/theme'; // Init theme
+	import { onMount } from 'svelte';
+
+	// Appliquer le thème au chargement
+	onMount(() => {
+		document.documentElement.setAttribute('data-theme', $theme);
+	});
+
+	// Réagir aux changements de thème
+	$: if (typeof document !== 'undefined') {
+		document.documentElement.setAttribute('data-theme', $theme);
+	}
 </script>
 
 <slot />
@@ -13,7 +25,7 @@
 	}
 
 	:root {
-		/* Colors */
+		/* Dark Theme Colors (default) */
 		--bg-primary: #0a0e27;
 		--bg-secondary: #1e2749;
 		--bg-tertiary: #2a3a6b;
@@ -23,6 +35,19 @@
 		--accent-blue: #00aaff;
 		--accent-red: #ff4444;
 		--accent-orange: #ffaa00;
+	}
+
+	/* Light Theme Colors */
+	[data-theme='light'] {
+		--bg-primary: #f5f7fa;
+		--bg-secondary: #ffffff;
+		--bg-tertiary: #e8ecf1;
+		--text-primary: #1a1a1a;
+		--text-secondary: #666666;
+		--accent-green: #00cc6a;
+		--accent-blue: #0088cc;
+		--accent-red: #dd3333;
+		--accent-orange: #dd8800;
 	}
 
 	body {
