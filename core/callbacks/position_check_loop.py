@@ -55,6 +55,40 @@ def set_analytics_db(analytics_db):
     _analytics_db = analytics_db
 
 
+def _update_session_stats(result: dict):
+    """
+    Mettre à jour les statistiques de session après fermeture d'une position
+
+    Args:
+        result: Dictionnaire retourné par position_manager.close_position()
+    """
+    if not result or not _app_state:
+        return
+
+    # Incrémenter total trades
+    _app_state['stats']['total_trades'] += 1
+
+    # Déterminer si win ou loss basé sur net_pnl_usdt
+    net_pnl = result.get('net_pnl_usdt', result.get('pnl_usdt', 0))
+
+    if net_pnl > 0:
+        _app_state['stats']['wins'] += 1
+    else:
+        _app_state['stats']['losses'] += 1
+
+    # Calculer winrate
+    total = _app_state['stats']['total_trades']
+    wins = _app_state['stats']['wins']
+    _app_state['stats']['winrate'] = round((wins / total * 100), 2) if total > 0 else 0.0
+
+    logger.info(
+        f"📊 Stats session mises à jour: "
+        f"{wins}W/{_app_state['stats']['losses']}L "
+        f"({_app_state['stats']['winrate']:.1f}% WR) "
+        f"- Total: {total}"
+    )
+
+
 async def position_check_loop_callback():
     """
     Callback appelé toutes les 2 secondes pour vérifier la position
@@ -118,6 +152,9 @@ async def position_check_loop_callback():
                     if len(_app_state['trade_history']) > 1000:
                         _app_state['trade_history'] = _app_state['trade_history'][-1000:]
 
+                    # FIX: Mettre à jour les stats de session
+                    _update_session_stats(result)
+
                 # Désactiver WebSocket monitoring si price_provider
                 if _price_provider and hasattr(_price_provider, 'stop_websocket'):
                     try:
@@ -125,14 +162,9 @@ async def position_check_loop_callback():
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
 
-                # Émettre événement de fermeture
+                # FIX: Émettre événement de fermeture avec result directement (compatible frontend)
                 if _sio:
-                    await _sio.emit('position_closed', {
-                        'symbol': symbol,
-                        'close_reason': close_reason,
-                        'exit_price': current_price,
-                        'result': result
-                    })
+                    await _sio.emit('position_closed', result)
 
     except Exception as e:
         logger.error(f"❌ Erreur position_check_loop_callback: {e}")
