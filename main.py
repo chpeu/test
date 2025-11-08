@@ -169,6 +169,13 @@ async def startup_event():
     init_instances()
     logger.info("✅ Dépendances initialisées")
 
+    # 🔥 FIX: Démarrer le scheduler pour les boucles de scan
+    global scheduler
+    if scheduler:
+        logger.info("⏰ Démarrage du scheduler (scan loop, position check, scalability refresh)...")
+        scheduler.start()
+        logger.info("✅ Scheduler démarré")
+
 # SocketIO
 # 🔥 FIX: Utiliser async_mode='asgi' pour compatibilité avec Uvicorn
 sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode='asgi')

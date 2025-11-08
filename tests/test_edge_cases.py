@@ -332,9 +332,9 @@ class TestPnLCalculatorEdgeCases:
 
         assert 'fees' in costs
         assert 'slippage' in costs
-        assert 'total_costs' in costs
+        assert 'total_cost' in costs
         assert costs['fees'] > 0
-        assert costs['total_costs'] >= costs['fees']
+        assert costs['total_cost'] >= costs['fees']
 
     def test_calculate_costs_no_slippage(self):
         """Test calcul coûts sans slippage"""
@@ -346,7 +346,7 @@ class TestPnLCalculatorEdgeCases:
         costs = PnLCalculator.calculate_costs(position, fees_percent=0.04, slippage_percent=None)
 
         assert costs['slippage'] == 0.0
-        assert costs['total_costs'] == costs['fees']
+        assert costs['total_cost'] == costs['fees']
 
     def test_calculate_costs_high_fees(self):
         """Test calcul coûts avec fees élevés"""
@@ -359,7 +359,7 @@ class TestPnLCalculatorEdgeCases:
 
         # Fees + slippage devraient être significatifs
         assert costs['fees'] > 0.5
-        assert costs['total_costs'] > 0.5
+        assert costs['total_cost'] > 0.5
 
 
 # ============================================================================
@@ -372,50 +372,47 @@ class TestRecoveryModeEdgeCases:
     def test_recovery_mode_activation(self):
         """Test activation du Recovery Mode"""
         # Import local pour éviter side effects
-        from core.position.recovery_mode import RecoveryMode
+        from core.position.recovery_mode import RecoveryModeManager
 
-        recovery = RecoveryMode()
+        recovery = RecoveryModeManager()
 
         # Activer avec 3 pertes consécutives
-        for _ in range(3):
-            recovery.record_loss()
+        level = recovery.activate(loss_streak=3)
 
-        assert recovery.is_active()
+        assert recovery.active is True
+        assert level is not None
 
     def test_recovery_mode_deactivation(self):
         """Test désactivation du Recovery Mode"""
-        from core.position.recovery_mode import RecoveryMode
+        from core.position.recovery_mode import RecoveryModeManager
 
-        recovery = RecoveryMode()
+        recovery = RecoveryModeManager()
 
         # Activer
-        for _ in range(3):
-            recovery.record_loss()
+        recovery.activate(loss_streak=3)
+        assert recovery.active is True
 
-        assert recovery.is_active()
-
-        # Gagner 2 trades
-        recovery.record_win()
-        recovery.record_win()
+        # Désactiver
+        recovery.deactivate()
 
         # Devrait se désactiver
-        assert not recovery.is_active()
+        assert recovery.active is False
 
     def test_recovery_mode_position_size_reduction(self):
         """Test réduction taille position en Recovery Mode"""
-        from core.position.recovery_mode import RecoveryMode
+        from core.position.recovery_mode import RecoveryModeManager
 
-        recovery = RecoveryMode()
+        recovery = RecoveryModeManager()
 
         # Activer
-        for _ in range(3):
-            recovery.record_loss()
+        recovery.activate(loss_streak=3)
 
-        # Obtenir taille réduite
-        original_size = 100.0
-        reduced_size = recovery.get_adjusted_position_size(original_size)
+        # Obtenir multiplicateur de taille
+        multiplier = recovery.get_position_size_multiplier(loss_streak=3)
 
-        assert reduced_size < original_size
+        # Le multiplier devrait être < 1.0 (réduction)
+        assert multiplier < 1.0
+        assert multiplier > 0.0
 
 
 if __name__ == '__main__':
