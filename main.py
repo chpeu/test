@@ -129,11 +129,56 @@ except ImportError as e:
     logging.warning(f"Scalability refresh callback import: {e}")
     scalability_refresh_loop_callback = None
 
-# Configuration logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Configuration logging avec couleurs
+try:
+    import colorama
+    from colorama import Fore, Style, init
+    init(autoreset=True)  # Auto-reset après chaque print
+    
+    # Formatter personnalisé avec couleurs
+    class ColoredFormatter(logging.Formatter):
+        COLORS = {
+            'DEBUG': Fore.CYAN,
+            'INFO': Fore.GREEN,
+            'WARNING': Fore.YELLOW,
+            'ERROR': Fore.RED,
+            'CRITICAL': Fore.RED + Style.BRIGHT
+        }
+        
+        def format(self, record):
+            log_color = self.COLORS.get(record.levelname, '')
+            original_msg = record.getMessage()
+            
+            # Colorier les emojis et messages spéciaux
+            colored_msg = original_msg
+            colored_msg = colored_msg.replace('✅', f'{Fore.GREEN}✅{Style.RESET_ALL}')
+            colored_msg = colored_msg.replace('❌', f'{Fore.RED}❌{Style.RESET_ALL}')
+            colored_msg = colored_msg.replace('⚠️', f'{Fore.YELLOW}⚠️{Style.RESET_ALL}')
+            colored_msg = colored_msg.replace('🔥', f'{Fore.MAGENTA}🔥{Style.RESET_ALL}')
+            colored_msg = colored_msg.replace('📊', f'{Fore.CYAN}📊{Style.RESET_ALL}')
+            colored_msg = colored_msg.replace('📝', f'{Fore.BLUE}📝{Style.RESET_ALL}')
+            colored_msg = colored_msg.replace('🚀', f'{Fore.CYAN}🚀{Style.RESET_ALL}')
+            
+            # Appliquer couleur au levelname
+            colored_level = f"{log_color}{record.levelname}{Style.RESET_ALL}"
+            
+            # Créer un nouveau record avec le message coloré
+            record.msg = colored_msg
+            record.levelname = colored_level
+            return super().format(record)
+    
+    handler = logging.StreamHandler()
+    handler.setFormatter(ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+    USE_COLORS = True
+except ImportError:
+    # Fallback sans couleurs si colorama pas installé
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    USE_COLORS = False
+
 logger = logging.getLogger(__name__)
 
 # Initialisation FastAPI
@@ -638,7 +683,19 @@ async def settings(request: Request):
         return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
-# Routes API - Price & WebSocket
+# Routes API - Health Check & Price & WebSocket
+
+@app.get("/api/health")
+async def api_health():
+    """Health check endpoint pour monitoring"""
+    return JSONResponse({
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "7.0.0",
+        "backend": "FastAPI",
+        "websocket": "Socket.IO"
+    })
+
 
 @app.get("/api/price/{symbol}")
 async def api_get_price(symbol: str):

@@ -12,6 +12,7 @@ tenacity==8.2.3
 pybreaker==1.0.1
 websockets==12.0
 slowapi==0.1.9
+colorama==0.4.6  # Couleurs dans les logs console
 
 # Testing dependencies
 pytest==7.4.3
