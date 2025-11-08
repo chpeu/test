@@ -13,6 +13,8 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 	import ExportPanel from '$lib/components/ExportPanel.svelte';
+	import SessionSelector from '$lib/components/SessionSelector.svelte';
+	import GlobalStats from '$lib/components/GlobalStats.svelte';
 
 	// Fetch initial state on mount
 	onMount(async () => {
@@ -66,6 +68,24 @@
 			<section class="section notifications-section slide-up" style="animation-delay: 0.3s">
 				<NotificationSettings />
 			</section>
+
+			<!-- Multi-Sessions Section -->
+			<section class="section sessions-section slide-up" style="animation-delay: 0.35s">
+				<GlobalStats />
+			</section>
+
+			<div class="two-column slide-up" style="animation-delay: 0.38s">
+				<section class="section">
+					<SessionSelector />
+				</section>
+				<section class="section">
+					<!-- Placeholder pour les stats de la session active -->
+					<div style="padding: 20px; background: var(--bg-secondary); border-radius: 12px; text-align: center; color: var(--text-secondary);">
+						<p>📊 Active Session Details</p>
+						<p style="font-size: 12px; margin-top: 8px;">Select a session to view details</p>
+					</div>
+				</section>
+			</div>
 
 			<!-- Charts Section -->
 			<div class="charts-grid slide-up" style="animation-delay: 0.4s">
