@@ -63,7 +63,7 @@ pm2 start index.js --name trade-cursor-frontend --node-args="--port 3000"
 ```markdown
 "@sveltejs/adapter-node": "^5.0.0",
 "@sveltejs/kit": "^2.8.2",
-"@sveltejs/vite-plugin-svelte": "^4.0.0",
+"@sveltejs/vite-plugin-svelte": "^3.0.1",
 ```
 
 **Et remplacer ligne 425**:
