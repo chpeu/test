@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { trades } from '$lib/stores/trades';
+import { tradeHistory } from '$lib/stores/trades';
 import { stats } from '$lib/stores/stats';
 import { format } from 'date-fns';
 
@@ -7,7 +7,7 @@ import { format } from 'date-fns';
  * Export trades to CSV format
  */
 export function exportToCSV() {
-	const allTrades = get(trades);
+	const allTrades = get(tradeHistory);
 
 	if (!allTrades || allTrades.length === 0) {
 		alert('⚠️ No trades to export');
@@ -68,7 +68,7 @@ export function exportToCSV() {
  * Export trades to JSON format
  */
 export function exportToJSON() {
-	const allTrades = get(trades);
+	const allTrades = get(tradeHistory);
 	const currentStats = get(stats);
 
 	if (!allTrades || allTrades.length === 0) {
@@ -98,7 +98,7 @@ export function exportToJSON() {
  * Export summary report (Markdown)
  */
 export function exportSummary() {
-	const allTrades = get(trades);
+	const allTrades = get(tradeHistory);
 	const currentStats = get(stats);
 
 	if (!allTrades || allTrades.length === 0) {
@@ -185,7 +185,7 @@ ${allTrades.length > 50 ? `\n*...and ${allTrades.length - 50} more trades*` : ''
  * Export performance analytics (JSON)
  */
 export function exportAnalytics() {
-	const allTrades = get(trades);
+	const allTrades = get(tradeHistory);
 
 	if (!allTrades || allTrades.length === 0) {
 		alert('⚠️ No trades to export');

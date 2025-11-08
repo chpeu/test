@@ -1,10 +1,10 @@
 <script>
 	import { exportToCSV, exportToJSON, exportSummary, exportAnalytics } from '$lib/utils/export';
-	import { trades } from '$lib/stores/trades';
+	import { tradeHistory } from '$lib/stores/trades';
 	import { stats } from '$lib/stores/stats';
 
-	$: tradesCount = $trades?.length || 0;
-	$: totalPnL = ($trades || []).reduce((sum, t) => sum + (t.net_pnl_usdt || 0), 0);
+	$: tradesCount = $tradeHistory?.length || 0;
+	$: totalPnL = ($tradeHistory || []).reduce((sum, t) => sum + (t.net_pnl_usdt || 0), 0);
 </script>
 
 <div class="export-panel">

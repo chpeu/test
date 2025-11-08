@@ -88,10 +88,12 @@ export function notifyPositionOpened(position) {
 
 export function notifyPositionClosed(result) {
 	const emoji = result.net_pnl_usdt >= 0 ? '🎉' : '😢';
-	const pnlSign = result.net_pnl_pct >= 0 ? '+' : '';
+	const pnlPct = result.net_pnl_pct || 0;
+	const pnlUsdt = result.net_pnl_usdt || 0;
+	const pnlSign = pnlPct >= 0 ? '+' : '';
 
 	sendNotification(`${emoji} Position Fermée`, {
-		body: `${result.symbol} - ${result.reason}\nPnL: ${pnlSign}${result.net_pnl_pct.toFixed(2)}% (${pnlSign}${result.net_pnl_usdt.toFixed(2)} USDT)`,
+		body: `${result.symbol} - ${result.reason}\nPnL: ${pnlSign}${pnlPct.toFixed(2)}% (${pnlSign}${pnlUsdt.toFixed(2)} USDT)`,
 		tag: 'position-closed',
 		requireInteraction: true // Reste affichée jusqu'à clic
 	});
