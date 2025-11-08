@@ -101,7 +101,8 @@ async def position_check_loop_callback():
         # Position fermée - Acquérir le lock
         if _position_lock:
             async with _position_lock:
-                result = _position_manager.close_position(close_reason, exit_price=current_price)
+                # BUG #2 FIX: Ordre correct des paramètres (exit_price, reason)
+                result = _position_manager.close_position(exit_price=current_price, reason=close_reason)
 
                 if _app_state:
                     _app_state['active_position'] = None
@@ -149,8 +150,12 @@ async def _emit_position_update(position, current_price: float):
         return
 
     try:
-        # Calculer PnL
-        pnl = _position_manager._calculate_pnl(current_price)
+        # Calculer PnL (BUG #1 FIX: utiliser pnl_calculator au lieu de _calculate_pnl)
+        pnl = _position_manager.pnl_calculator.calculate_pnl_percent(
+            entry=position.entry,
+            current=current_price,
+            direction=position.direction
+        )
         pnl_pct = pnl / 100  # Convertir % en décimal
 
         # Calculer taille à considérer (incluant TP partiel)

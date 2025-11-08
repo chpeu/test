@@ -199,52 +199,68 @@ async def _scan_top_pairs():
             best_setup = valid_setups[0]
 
             try:
-                logger.info(f"🎯 Tentative d'ouverture de position: {best_setup.get('symbol')} {best_setup.get('direction')}")
+                # BUG #7 FIX: Valider que entry est présent et valide
+                entry = best_setup.get('entry') or best_setup.get('price')
+                if not entry or entry <= 0:
+                    logger.error(f"❌ Entry invalide pour {best_setup.get('symbol')}: {entry}")
+                    return
 
+                # BUG #4 FIX: Calculer position_size correctement
+                from config import TRADING_CONFIG
+                capital = TRADING_CONFIG.get('account_size', 1000.0)
+                position_size = _position_manager.calculate_position_size(
+                    setup=best_setup,
+                    capital=capital,
+                    base_risk=0.01,  # 1%
+                    min_risk=0.005,  # 0.5%
+                    max_risk=0.03   # 3%
+                )
+
+                # BUG #5 FIX: Récupérer scalability_data depuis top_pairs
+                symbol = best_setup.get('symbol')
+                scalability_data = None
+                if _app_state and _app_state.get('top_pairs'):
+                    for pair in _app_state['top_pairs']:
+                        if pair.get('symbol') == symbol:
+                            scalability_data = {
+                                'spread_pct': pair.get('spread_pct', 0),
+                                'depth': pair.get('depth', 0),
+                                'balance': pair.get('balance', 1.0),
+                                'bid_vol': pair.get('bid_vol'),
+                                'ask_vol': pair.get('ask_vol')
+                            }
+                            break
+
+                logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
+
+                # BUG #6 FIX: Gestion correcte des erreurs avec try/except spécifiques
                 # Ouvrir la position (méthode synchrone)
-                # PositionManager calcule lui-même SL/TP basé sur entry et ATR
                 position_result = _position_manager.open_position(
-                    symbol=best_setup.get('symbol'),
+                    symbol=symbol,
                     direction=best_setup.get('direction'),
-                    entry=best_setup.get('entry', best_setup.get('price')),
-                    size=best_setup.get('position_size', best_setup.get('size', 100.0)),
+                    entry=entry,
+                    size=position_size,  # BUG #4: Size calculée correctement
                     atr=best_setup.get('atr'),
                     atr5m=best_setup.get('atr5m'),
                     confirmed_by=', '.join(best_setup.get('condition_types', [])),
-                    scalability_data=best_setup.get('scalability_data'),
+                    scalability_data=scalability_data,  # BUG #5: Données récupérées
                     condition_types=best_setup.get('condition_types', [])
                 )
 
-                if position_result:
-                    logger.info(f"✅ Position ouverte: {best_setup.get('symbol')} {best_setup.get('direction')}")
+                logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
 
-                    # Mettre à jour app_state avec la position active
-                    if _app_state is not None:
-                        _app_state['active_position'] = {
-                            'symbol': position_result.symbol,
-                            'direction': position_result.direction,
-                            'entry': position_result.entry,
-                            'sl': position_result.sl,
-                            'tp': position_result.tp,
-                            'size': position_result.size,
-                            'opened_at': position_result.opened_at
-                        }
+                # BUG #3 et #9 FIX: Utiliser to_dict() au lieu de créer manuellement
+                if _app_state is not None:
+                    _app_state['active_position'] = position_result.to_dict()
 
-                    # Émettre événement SocketIO
-                    if _sio:
-                        await _sio.emit('position_opened', {
-                            'symbol': position_result.symbol,
-                            'direction': position_result.direction,
-                            'entry': position_result.entry,
-                            'sl': position_result.sl,
-                            'tp': position_result.tp,
-                            'size': position_result.size
-                        })
-                else:
-                    logger.warning(f"⚠️ Échec ouverture position: {best_setup.get('symbol')}")
+                # Émettre événement SocketIO
+                if _sio:
+                    await _sio.emit('position_opened', position_result.to_dict())
 
+            except ValueError as e:
+                logger.error(f"❌ Erreur validation position: {e}")
             except Exception as e:
-                logger.error(f"❌ Erreur ouverture position: {e}")
+                logger.error(f"❌ Erreur ouverture position: {e}", exc_info=True)
 
         # Émettre statistiques SocketIO
         if _sio:

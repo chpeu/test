@@ -104,7 +104,11 @@ def test_break_even():
     )
     
     # Simuler BE 50%
-    pnl = manager._calculate_pnl(100.5)  # +0.5% = 50% of 1% ATR
+    pnl = manager.pnl_calculator.calculate_pnl_percent(
+        entry=pos.entry,
+        current=100.5,
+        direction=pos.direction
+    )  # +0.5% = 50% of 1% ATR
     manager._update_atr_mode_sl(100.5, pnl)
     
     print(f"PnL: {pnl:.2f}%")
