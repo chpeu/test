@@ -1,6 +1,8 @@
-# 🚀 Plan de Mise en Production - Trade Cursor v7.0
+# 🚀 Plan de Mise en Production CORRIGÉ - Trade Cursor v7.0
 
-Guide complet pour déployer en production.
+**Version**: Corrigée après analyse détaillée  
+**Date**: 2025-11-08  
+**Dépôt**: https://github.com/chpeu/trade_cursor_py
 
 ---
 
@@ -79,7 +81,7 @@ npm run preview
 
 ## 🖥️ Déploiement Production
 
-### Option 1: VM Proxmox (Recommandé pour vous)
+### Option 1: VM Proxmox (Recommandé)
 
 #### A. Prérequis VM
 
@@ -113,6 +115,8 @@ tar -czf trade-cursor-v7.tar.gz \
   --exclude='__pycache__' \
   --exclude='.git' \
   --exclude='*.pyc' \
+  --exclude='venv' \
+  --exclude='.env' \
   .
 
 # Transférer vers VM
@@ -134,6 +138,10 @@ source venv/bin/activate
 
 # Installer dépendances
 pip install -r requirements.txt
+
+# Créer fichier .env (copier depuis .env.example)
+cp .env.example .env
+nano .env  # Éditer avec vos valeurs
 
 # Valider variables d'environnement
 python scripts/validate_env.py
@@ -159,22 +167,35 @@ npm install
 # Build production
 npm run build
 
-# Démarrer avec PM2 (CORRIGÉ - utilise script npm start)
-pm2 start npm --name trade-cursor-frontend -- start
-pm2 save
+# Vérifier que build/index.js existe
+ls -la build/
 
-# Alternative si npm ne fonctionne pas:
+# Démarrer avec PM2 (CORRIGÉ)
+pm2 start npm --name trade-cursor-frontend -- start
+
+# OU alternative si npm ne fonctionne pas:
 # cd build
 # pm2 start index.js --name trade-cursor-frontend --node-args="--port 3000"
+
+pm2 save
 ```
 
-#### E. Configuration Nginx
+**Note**: Assurez-vous que `package.json` contient le script `start`:
+```json
+{
+  "scripts": {
+    "start": "node build/index.js"
+  }
+}
+```
+
+#### E. Configuration Nginx (CORRIGÉE)
 
 ```bash
 sudo nano /etc/nginx/sites-available/trade-cursor
 ```
 
-**Contenu**:
+**Contenu (CORRIGÉ)**:
 ```nginx
 # HTTP → HTTPS redirect
 server {
@@ -216,6 +237,8 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     # WebSocket Socket.IO (CORRIGÉ - port 5000)
@@ -237,6 +260,7 @@ server {
     # Gzip compression
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 1000;
 }
 ```
 
@@ -272,95 +296,95 @@ sudo ufw enable
 
 ---
 
-### Option 2: Docker (Alternative)
+## 🔒 Sécurité Production
 
-Créer `docker-compose.yml`:
+### 1. Variables d'Environnement
 
-```yaml
-version: '3.8'
-
-services:
-  backend:
-    build: .
-    container_name: trade-cursor-backend
-    ports:
-      - "5000:5000"
-    environment:
-      - PYTHONUNBUFFERED=1
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-    restart: unless-stopped
-
-  frontend:
-    build: ./frontend
-    container_name: trade-cursor-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    container_name: trade-cursor-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - backend
-      - frontend
-    restart: unless-stopped
-```
-
----
-
-## 📱 Accès Distant
-
-### 1. Depuis PC sur Réseau Local
-
-```
-http://192.168.1.X:3000  (IP de la VM Proxmox)
-```
-
-### 2. Depuis iPhone/Android
-
-#### Option A: Même réseau WiFi
-```
-http://192.168.1.X:3000
-```
-
-Ajouter à l'écran d'accueil:
-- Safari (iOS): Partager > Sur l'écran d'accueil
-- Chrome (Android): Menu > Ajouter à l'écran d'accueil
-
-#### Option B: VPN Tailscale (Recommandé)
-
+Créer `.env` (NE JAMAIS COMMIT):
 ```bash
-# Sur la VM Proxmox
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+# API Keys (ne PAS commit)
+MEXC_API_KEY=your_api_key_here
+MEXC_SECRET_KEY=your_secret_key_here
 
-# Sur iPhone/Android
-# Installer Tailscale app
-# Se connecter avec même compte
-# Accéder via: http://100.x.x.x:3000
+# Database
+DATABASE_URL=sqlite:///data/trades.db
+
+# FastAPI Secret (CORRIGÉ - était "Flask Secret")
+SECRET_KEY=random_secret_key_here_generate_with_openssl_rand_hex_32
+
+# Environment
+ENVIRONMENT=production
+DEBUG=false
 ```
 
-#### Option C: Tunnel Cloudflare (Public)
-
+**Générer SECRET_KEY**:
 ```bash
-# Sur la VM
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
-chmod +x cloudflared
-./cloudflared tunnel --url http://localhost:3000
+openssl rand -hex 32
+```
 
-# Obtenir URL publique: https://random.trycloudflare.com
+Charger dans `main.py`:
+```python
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+api_key = os.getenv('MEXC_API_KEY')
+secret_key = os.getenv('MEXC_SECRET_KEY')
+secret_key_app = os.getenv('SECRET_KEY')
+```
+
+### 2. Rate Limiting (CORRIGÉ)
+
+Installer (déjà dans requirements.txt):
+```bash
+pip install slowapi
+```
+
+Dans `main.py` (CORRIGÉ):
+```python
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi import Request
+
+# Initialisation
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Utilisation (request DOIT être le premier paramètre)
+@app.get("/api/sessions")
+@limiter.limit("10/minute")
+def get_sessions(request: Request):  # Pas async
+    # Votre code ici
+    return {"sessions": []}
+```
+
+### 3. CORS Production (CORRIGÉ)
+
+```python
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+# Configuration CORS
+allowed_origins = [
+    "https://trade-cursor.local",  # Production
+    "http://localhost:3000",        # Dev local
+]
+
+# Ajouter réseau local si dev
+if os.getenv("ENVIRONMENT") == "development":
+    allowed_origins.append("http://192.168.1.0/24")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 ```
 
 ---
@@ -387,6 +411,16 @@ pm2 monit
 
 # Web dashboard (optionnel)
 pm2 plus  # Créer compte sur pm2.io
+```
+
+### Health Check (NOUVEAU)
+
+```bash
+# Vérifier santé backend
+curl http://localhost:5000/api/health
+
+# Réponse attendue:
+# {"status":"healthy","timestamp":"2025-11-08T...","version":"7.0.0"}
 ```
 
 ### Logs Nginx
@@ -422,142 +456,18 @@ sudo nano /etc/logrotate.d/trade-cursor
 
 ---
 
-## 🔒 Sécurité Production
-
-### 1. Variables d'Environnement
-
-Créer `.env`:
-```bash
-# API Keys (ne PAS commit)
-MEXC_API_KEY=your_api_key_here
-MEXC_SECRET_KEY=your_secret_key_here
-
-# Database
-DATABASE_URL=sqlite:///data/trades.db
-
-# FastAPI Secret (CORRIGÉ - était "Flask Secret")
-SECRET_KEY=random_secret_key_here
-
-# Environment
-ENVIRONMENT=production
-DEBUG=false
-```
-
-Charger dans `main.py`:
-```python
-from dotenv import load_dotenv
-load_dotenv()
-
-api_key = os.getenv('MEXC_API_KEY')
-secret_key = os.getenv('MEXC_SECRET_KEY')
-```
-
-### 2. Rate Limiting
-
-Installer:
-```bash
-pip install slowapi
-```
-
-Dans `main.py` (CORRIGÉ):
-```python
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from fastapi import Request
-
-# Initialisation
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Utilisation (request DOIT être le premier paramètre, pas async)
-@app.get("/api/sessions")
-@limiter.limit("10/minute")
-def get_sessions(request: Request):  # Pas async pour slowapi
-    # Votre code ici
-    return {"sessions": []}
-```
-
-### 3. CORS Production (CORRIGÉ)
-
-```python
-from fastapi.middleware.cors import CORSMiddleware
-import os
-
-# Configuration CORS
-allowed_origins = [
-    "https://trade-cursor.local",  # Production
-    "http://localhost:3000",        # Dev local
-]
-
-# Ajouter réseau local si dev
-if os.getenv("ENVIRONMENT") == "development":
-    allowed_origins.append("http://192.168.1.0/24")  # Ajuster selon votre réseau
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-```
-
----
-
-## 🚀 Déploiement Automatisé (NOUVEAU)
-
-Un script de déploiement automatisé est disponible pour simplifier le processus:
-
-```bash
-# Rendre le script exécutable (première fois)
-chmod +x scripts/deploy.sh
-
-# Exécuter le déploiement
-./scripts/deploy.sh
-```
-
-Le script effectue automatiquement:
-- ✅ Backup de la base de données
-- ✅ Pull du code (si Git)
-- ✅ Installation dépendances backend/frontend
-- ✅ Validation variables d'environnement
-- ✅ Build frontend
-- ✅ Restart PM2 (backend + frontend)
-- ✅ Vérification status
-
-**Note**: Ajuster les variables `PROJECT_DIR` et `VENV_DIR` dans le script selon votre configuration.
-
----
-
-## 🔍 Health Check Endpoint
-
-Un endpoint de health check est disponible pour le monitoring:
-
-```bash
-# Vérifier santé backend
-curl http://localhost:5000/api/health
-
-# Réponse attendue:
-# {"status":"healthy","timestamp":"2025-11-08T...","version":"7.0.0"}
-```
-
-Ajouter dans votre monitoring (PM2, Nginx, etc.) pour vérifier automatiquement la santé de l'application.
-
----
-
 ## ✅ Checklist Finale
 
 ### Avant Mise en Production
 - [ ] Tous les tests passent
 - [ ] Build frontend sans erreurs
-- [ ] Variables d'environnement configurées
+- [ ] Variables d'environnement configurées et validées
 - [ ] SSL/HTTPS configuré
 - [ ] Firewall configuré
 - [ ] PM2 auto-start configuré
 - [ ] Nginx reverse proxy testé
+- [ ] WebSocket testé (wss://)
+- [ ] Health check fonctionne
 - [ ] Logs rotation configurée
 - [ ] Backup strategy définie
 - [ ] Monitoring en place
@@ -578,34 +488,63 @@ Ajouter dans votre monitoring (PM2, Nginx, etc.) pour vérifier automatiquement 
 ### WebSocket ne se connecte pas
 ```bash
 # Vérifier que backend écoute sur 0.0.0.0
-uvicorn.run(socketio_app, host='0.0.0.0', port=5000)
+# Dans main.py: uvicorn.run(socketio_app, host='0.0.0.0', port=5000)
 
 # Vérifier firewall
 sudo ufw status
 
 # Vérifier Nginx config WebSocket
 sudo nginx -t
+sudo tail -f /var/log/nginx/error.log
+
+# Tester WebSocket directement
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Host: localhost:5000" \
+  -H "Origin: http://localhost:3000" \
+  http://localhost:5000/socket.io/?EIO=4&transport=websocket
 ```
 
 ### PM2 process crash
 ```bash
 # Voir erreurs
 pm2 logs trade-cursor-backend --err
+pm2 logs trade-cursor-frontend --err
 
 # Restart
 pm2 restart trade-cursor-backend
+pm2 restart trade-cursor-frontend
 
 # Delete et recréer
 pm2 delete trade-cursor-backend
+pm2 delete trade-cursor-frontend
 pm2 start main.py --name trade-cursor-backend --interpreter python3
+cd frontend
+pm2 start npm --name trade-cursor-frontend -- start
 ```
 
 ### Build frontend échoue
 ```bash
 # Nettoyer cache
-rm -rf node_modules package-lock.json
+cd frontend
+rm -rf node_modules package-lock.json .svelte-kit build
 npm install
 npm run build
+```
+
+### Frontend ne démarre pas avec PM2
+```bash
+# Vérifier que build/index.js existe
+cd frontend
+ls -la build/
+
+# Vérifier script start dans package.json
+cat package.json | grep '"start"'
+
+# Tester manuellement
+node build/index.js
+
+# Si erreur, vérifier logs
+pm2 logs trade-cursor-frontend --lines 50
 ```
 
 ---
@@ -613,14 +552,14 @@ npm run build
 ## 📊 Performance Production
 
 ### Optimisations Backend
-- Utiliser Gunicorn avec workers multiples
-- Redis pour cache sessions
+- Utiliser Gunicorn avec workers multiples (si nécessaire)
+- Redis pour cache sessions (futur)
 - PostgreSQL au lieu de SQLite (>1000 trades/jour)
 
 ### Optimisations Frontend
-- Activer Brotli compression (déjà dans build)
-- CDN pour assets statiques
-- Service Workers pour cache offline
+- Activer Brotli compression (déjà dans build avec precompress: true)
+- CDN pour assets statiques (futur)
+- Service Workers pour cache offline (futur)
 
 ---
 
@@ -629,6 +568,7 @@ npm run build
 ### Quotidienne
 - Vérifier `pm2 list` (processus running)
 - Vérifier logs erreurs
+- Vérifier health check: `curl http://localhost:5000/api/health`
 
 ### Hebdomadaire
 - Backup database
@@ -648,11 +588,32 @@ En cas de problème:
 1. Vérifier logs PM2/Nginx
 2. Tester localhost:5000 (backend direct)
 3. Tester localhost:3000 (frontend direct)
-4. Vérifier network/firewall
+4. Vérifier health check endpoint
+5. Vérifier network/firewall
+6. Vérifier WebSocket connection
 
 ---
 
-**Temps estimé déploiement complet**: 2-4 heures (première fois)
+**Temps estimé déploiement complet**: 2-4 heures (première fois)  
 **Temps estimé déploiement update**: 15-30 minutes
 
 🎉 Après ce setup, votre Trade Cursor v7.0 sera en production et accessible depuis n'importe quel device!
+
+---
+
+## 📝 Notes de Version
+
+**Corrections apportées**:
+- ✅ Configuration PM2 frontend corrigée
+- ✅ Versions package.json alignées
+- ✅ Configuration Nginx WebSocket améliorée
+- ✅ Code rate limiting corrigé
+- ✅ Configuration CORS complétée
+- ✅ Health check endpoint ajouté
+- ✅ Validation variables d'environnement ajoutée
+
+**Architecture confirmée**:
+- Backend: FastAPI + python-socketio
+- Frontend: SvelteKit + socket.io-client
+- WebSocket: Socket.IO protocol via `/socket.io`
+
