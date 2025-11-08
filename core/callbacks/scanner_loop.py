@@ -83,7 +83,10 @@ async def scanner_loop_callback():
             if _app_state.get('active_position') or (
                 _position_manager and _position_manager.active_position
             ):
-                logger.debug("⏸️ Scanner ignoré : position active")
+                # BUG #11 FIX: Logging informatif au lieu de debug
+                active_pos = _position_manager.active_position if _position_manager else _app_state.get('active_position')
+                symbol = active_pos.symbol if hasattr(active_pos, 'symbol') else active_pos.get('symbol', 'UNKNOWN') if isinstance(active_pos, dict) else 'UNKNOWN'
+                logger.info(f"⏸️ Scanner ignoré: position active sur {symbol}")
                 return
 
             # Si on n'a pas de top_pairs, les scanner d'abord
@@ -233,6 +236,10 @@ async def _scan_top_pairs():
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 
+                # BUG #12 FIX: Fallback atr5m sur atr si absent
+                atr = best_setup.get('atr')
+                atr5m = best_setup.get('atr5m') or atr  # Fallback sur atr si atr5m absent
+
                 # BUG #6 FIX: Gestion correcte des erreurs avec try/except spécifiques
                 # Ouvrir la position (méthode synchrone)
                 position_result = _position_manager.open_position(
@@ -240,8 +247,8 @@ async def _scan_top_pairs():
                     direction=best_setup.get('direction'),
                     entry=entry,
                     size=position_size,  # BUG #4: Size calculée correctement
-                    atr=best_setup.get('atr'),
-                    atr5m=best_setup.get('atr5m'),
+                    atr=atr,
+                    atr5m=atr5m,  # BUG #12: Avec fallback
                     confirmed_by=', '.join(best_setup.get('condition_types', [])),
                     scalability_data=scalability_data,  # BUG #5: Données récupérées
                     condition_types=best_setup.get('condition_types', [])
