@@ -161,6 +161,14 @@ if dashboard_router:
     app.include_router(dashboard_router)
     logger.info("✅ Dashboard router inclus: /api/status, /api/state, /api/start, /api/stop")
 
+# 🔥 FIX: Événement de démarrage pour initialiser les dépendances
+@app.on_event("startup")
+async def startup_event():
+    """Initialiser toutes les dépendances au démarrage de l'application"""
+    logger.info("🚀 Initialisation des dépendances au démarrage...")
+    init_instances()
+    logger.info("✅ Dépendances initialisées")
+
 # SocketIO
 # 🔥 FIX: Utiliser async_mode='asgi' pour compatibilité avec Uvicorn
 sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode='asgi')
