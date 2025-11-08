@@ -757,8 +757,14 @@ async def api_start_websocket():
         })
 
     except Exception as e:
-        logger.error(f"Erreur démarrage WebSocket: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        # Code 1000 = fermeture normale WebSocket (pas une vraie erreur)
+        error_msg = str(e)
+        if "1000" in error_msg and ("OK" in error_msg or "Normal" in error_msg):
+            logger.info(f"ℹ️ WebSocket fermé normalement: {e}")
+            return JSONResponse({'status': 'closed_normally', 'message': str(e)})
+        else:
+            logger.error(f"Erreur démarrage WebSocket: {e}")
+            return JSONResponse({'error': str(e)}, status_code=500)
 
 
 # Routes API - Analyze
