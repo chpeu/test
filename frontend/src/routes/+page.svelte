@@ -16,14 +16,37 @@
 	import SessionSelector from '$lib/components/SessionSelector.svelte';
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 
+	let backendConnected = false;
+	let backendError = '';
+
 	// Fetch initial state on mount
 	onMount(async () => {
 		try {
 			const res = await fetch('/api/state');
-			const data = await res.json();
-			console.log('Initial state loaded:', data);
+			if (res.ok) {
+				const data = await res.json();
+				console.log('Initial state loaded:', data);
+				backendConnected = true;
+			} else {
+				throw new Error(`Backend returned ${res.status}`);
+			}
 		} catch (err) {
 			console.error('Error loading initial state:', err);
+			backendError = err.message || 'Backend not reachable';
+			// Réessayer toutes les 5 secondes
+			const retry = setInterval(async () => {
+				try {
+					const res = await fetch('/api/state');
+					if (res.ok) {
+						backendConnected = true;
+						backendError = '';
+						clearInterval(retry);
+						window.location.reload();
+					}
+				} catch (e) {
+					// Continue trying
+				}
+			}, 5000);
 		}
 	});
 </script>
@@ -46,6 +69,19 @@
 			</div>
 		</div>
 	</header>
+
+	{#if backendError}
+		<div class="backend-error-banner">
+			<div class="error-content">
+				<span class="error-icon">⚠️</span>
+				<div class="error-text">
+					<strong>Backend Not Connected</strong>
+					<p>Please start the backend server: <code>python main.py</code></p>
+					<p class="retry-text">Retrying connection every 5 seconds...</p>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<main class="main-content">
 		<div class="container">
@@ -173,6 +209,77 @@
 		display: flex;
 		align-items: center;
 		gap: 16px;
+	}
+
+	.backend-error-banner {
+		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		border-bottom: 2px solid #ff6666;
+		padding: 20px 0;
+		animation: slideDown 0.5s ease-out;
+	}
+
+	@keyframes slideDown {
+		from {
+			transform: translateY(-100%);
+			opacity: 0;
+		}
+		to {
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+
+	.error-content {
+		max-width: 1400px;
+		margin: 0 auto;
+		padding: 0 20px;
+		display: flex;
+		align-items: center;
+		gap: 20px;
+	}
+
+	.error-icon {
+		font-size: 48px;
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.1);
+		}
+	}
+
+	.error-text {
+		flex: 1;
+		color: white;
+	}
+
+	.error-text strong {
+		font-size: 20px;
+		display: block;
+		margin-bottom: 8px;
+	}
+
+	.error-text p {
+		margin: 4px 0;
+		font-size: 14px;
+	}
+
+	.error-text code {
+		background: rgba(255, 255, 255, 0.2);
+		padding: 2px 8px;
+		border-radius: 4px;
+		font-family: 'Courier New', monospace;
+		font-weight: bold;
+	}
+
+	.retry-text {
+		font-size: 12px !important;
+		opacity: 0.8;
+		font-style: italic;
 	}
 
 	.title {
