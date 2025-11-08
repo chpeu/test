@@ -663,6 +663,7 @@ pm2 restart trade-cursor-ui
 
 ### ✅ Fonctionnalités implémentées
 
+**Court terme (complétées)**:
 - [x] **Charts interactifs** (Chart.js integration)
   - PnLChart: PnL cumulatif ligne
   - WinLossChart: Distribution wins/losses doughnut
@@ -671,15 +672,46 @@ pm2 restart trade-cursor-ui
   - Gestion permissions
   - Notifications positions ouvertes/fermées
   - Notifications setups et milestones
+- [x] **Dark/Light mode toggle**
+  - Auto-détection préférence système
+  - Persistance localStorage
+  - Variables CSS pour les deux thèmes
+- [x] **Settings panel** (configuration temps réel)
+  - Paramètres trading (SL, TP, trailing stop)
+  - Configuration scanner
+  - Préférences UI
+  - Import/Export settings JSON
+- [x] **Export trades** (CSV, JSON, Markdown, Analytics)
+  - Export CSV pour Excel/Sheets
+  - Export JSON complet avec stats
+  - Rapport Markdown lisible
+  - Analytics avancées (per-symbol, hourly, daily)
 
-### Fonctionnalités à ajouter
+### 📚 Guides d'implémentation disponibles
 
-- [ ] **Dark/Light mode toggle**
-- [ ] **Multi-sessions** (plusieurs bots)
-- [ ] **Settings panel** (config temps réel)
-- [ ] **Export trades** (CSV, JSON)
-- [ ] **Backtesting visualizer**
-- [ ] **Voice commands** (Web Speech API)
+**Moyen terme** (guides créés, prêts à implémenter):
+- [ ] **Multi-sessions** → Voir [MULTI_SESSIONS.md](./MULTI_SESSIONS.md)
+  - Gérer plusieurs bots simultanément
+  - Backend session manager avec asyncio
+  - Frontend stores et composants
+  - ~1 semaine d'implémentation
+- [ ] **Backtesting visualizer** → Voir [BACKTESTING.md](./BACKTESTING.md)
+  - Moteur de backtesting avec métriques complètes
+  - Stratégies de base (MA crossover, etc.)
+  - Visualisation equity curve, drawdown, trades
+  - ~1-2 semaines d'implémentation
+
+**Long terme** (guides créés, prêts à implémenter):
+- [ ] **Mobile app** (iOS/Android) → Voir [MOBILE_APP.md](./MOBILE_APP.md)
+  - Capacitor pour apps natives
+  - Push notifications natives
+  - Distribution App Store / Play Store
+  - ~2-3 semaines d'implémentation
+- [ ] **Desktop app** (Windows/macOS/Linux) → Voir [DESKTOP_APP.md](./DESKTOP_APP.md)
+  - Tauri pour apps desktop ultra-légères
+  - System tray, shortcuts, auto-update
+  - Code signing et distribution
+  - ~1-2 semaines d'implémentation
 
 ### Optimisations
 
