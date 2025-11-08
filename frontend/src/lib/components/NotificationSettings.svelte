@@ -1,0 +1,313 @@
+<script>
+	import {
+		notificationsEnabled,
+		notificationPermission,
+		requestNotificationPermission,
+		toggleNotifications,
+		sendNotification
+	} from '$lib/utils/notifications';
+
+	async function handleToggle() {
+		const enabled = await toggleNotifications();
+		if (enabled) {
+			// Test notification
+			sendNotification('✅ Notifications activées!', {
+				body: 'Vous recevrez des alertes pour les positions et setups'
+			});
+		}
+	}
+
+	async function handleRequestPermission() {
+		const granted = await requestNotificationPermission();
+		if (granted) {
+			sendNotification('🎉 Permission accordée!', {
+				body: 'Vous recevrez désormais des notifications'
+			});
+		}
+	}
+</script>
+
+<div class="notification-settings">
+	<div class="settings-header">
+		<div class="title">
+			<span class="icon">🔔</span>
+			<h3>Notifications</h3>
+		</div>
+
+		{#if $notificationPermission === 'granted'}
+			<button class="toggle-btn" class:active={$notificationsEnabled} on:click={handleToggle}>
+				<span class="toggle-icon">{$notificationsEnabled ? '✅' : '⭕'}</span>
+				{$notificationsEnabled ? 'Activées' : 'Désactivées'}
+			</button>
+		{/if}
+	</div>
+
+	{#if $notificationPermission === 'default'}
+		<div class="permission-request">
+			<p class="info">
+				Les notifications vous permettent de recevoir des alertes en temps réel pour:
+			</p>
+			<ul class="features-list">
+				<li>🟢 Positions ouvertes</li>
+				<li>🔴 Positions fermées (TP/SL/TS)</li>
+				<li>🔍 Setups détectés</li>
+				<li>🏆 Milestones (winrate)</li>
+				<li>❌ Erreurs critiques</li>
+			</ul>
+			<button class="request-btn" on:click={handleRequestPermission}>
+				<span class="btn-icon">🔔</span>
+				Activer les notifications
+			</button>
+		</div>
+	{:else if $notificationPermission === 'denied'}
+		<div class="permission-denied">
+			<p class="warning">❌ Permission refusée</p>
+			<p class="help">
+				Pour activer les notifications, vous devez autoriser le site dans les paramètres de votre
+				navigateur:
+			</p>
+			<ol class="steps">
+				<li>Cliquez sur l'icône 🔒 ou ⓘ dans la barre d'adresse</li>
+				<li>Cherchez "Notifications"</li>
+				<li>Sélectionnez "Autoriser"</li>
+				<li>Rechargez la page</li>
+			</ol>
+		</div>
+	{:else}
+		<div class="notification-types">
+			<p class="description">
+				Vous recevrez des notifications pour les événements suivants:
+			</p>
+
+			<div class="types-grid">
+				<div class="type-card">
+					<div class="type-icon">🟢</div>
+					<div class="type-name">Position Ouverte</div>
+					<div class="type-desc">Nouvelle position détectée</div>
+				</div>
+
+				<div class="type-card">
+					<div class="type-icon">🔴</div>
+					<div class="type-name">Position Fermée</div>
+					<div class="type-desc">TP, SL ou TS atteint</div>
+				</div>
+
+				<div class="type-card">
+					<div class="type-icon">🔍</div>
+					<div class="type-name">Setup Détecté</div>
+					<div class="type-desc">Conditions de trading remplies</div>
+				</div>
+
+				<div class="type-card">
+					<div class="type-icon">🏆</div>
+					<div class="type-name">Milestone</div>
+					<div class="type-desc">Winrate ≥ 70%</div>
+				</div>
+			</div>
+		</div>
+	{/if}
+</div>
+
+<style>
+	.notification-settings {
+		background: #1e2749;
+		border-radius: 12px;
+		padding: 20px;
+		border: 2px solid #2a3a6b;
+	}
+
+	.settings-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 20px;
+	}
+
+	.title {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.icon {
+		font-size: 24px;
+	}
+
+	.title h3 {
+		font-size: 20px;
+		color: #00ff88;
+		font-weight: bold;
+	}
+
+	.toggle-btn {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 20px;
+		background: #0a0e27;
+		border: 2px solid #2a3a6b;
+		border-radius: 8px;
+		color: #fff;
+		font-size: 14px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.toggle-btn.active {
+		background: rgba(0, 255, 136, 0.1);
+		border-color: #00ff88;
+		color: #00ff88;
+	}
+
+	.toggle-btn:hover {
+		transform: translateY(-2px);
+	}
+
+	.toggle-icon {
+		font-size: 18px;
+	}
+
+	.permission-request {
+		text-align: center;
+		padding: 20px;
+	}
+
+	.info {
+		font-size: 14px;
+		color: #888;
+		margin-bottom: 15px;
+	}
+
+	.features-list {
+		list-style: none;
+		padding: 0;
+		margin: 20px 0;
+	}
+
+	.features-list li {
+		font-size: 14px;
+		padding: 8px;
+		margin: 5px 0;
+		background: rgba(0, 170, 255, 0.1);
+		border-radius: 6px;
+		border: 1px solid #00aaff;
+	}
+
+	.request-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 15px 30px;
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		color: #0a0e27;
+		border: none;
+		border-radius: 10px;
+		font-size: 16px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+		box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+	}
+
+	.request-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+	}
+
+	.btn-icon {
+		font-size: 20px;
+	}
+
+	.permission-denied {
+		padding: 20px;
+		background: rgba(255, 68, 68, 0.1);
+		border-radius: 8px;
+		border: 2px solid #ff4444;
+	}
+
+	.warning {
+		font-size: 16px;
+		font-weight: bold;
+		color: #ff4444;
+		margin-bottom: 15px;
+	}
+
+	.help {
+		font-size: 14px;
+		color: #888;
+		margin-bottom: 15px;
+	}
+
+	.steps {
+		text-align: left;
+		margin: 15px 0;
+		padding-left: 20px;
+	}
+
+	.steps li {
+		font-size: 13px;
+		color: #aaa;
+		margin: 8px 0;
+	}
+
+	.notification-types {
+		padding: 10px 0;
+	}
+
+	.description {
+		font-size: 14px;
+		color: #888;
+		margin-bottom: 20px;
+		text-align: center;
+	}
+
+	.types-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 15px;
+	}
+
+	.type-card {
+		background: #0a0e27;
+		padding: 20px;
+		border-radius: 10px;
+		text-align: center;
+		border: 2px solid #2a3a6b;
+		transition: all 0.3s;
+	}
+
+	.type-card:hover {
+		border-color: #00ff88;
+		transform: translateY(-2px);
+	}
+
+	.type-icon {
+		font-size: 32px;
+		margin-bottom: 10px;
+	}
+
+	.type-name {
+		font-size: 14px;
+		font-weight: bold;
+		color: #00ff88;
+		margin-bottom: 5px;
+	}
+
+	.type-desc {
+		font-size: 12px;
+		color: #888;
+	}
+
+	/* Mobile */
+	@media (max-width: 768px) {
+		.types-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.settings-header {
+			flex-direction: column;
+			gap: 15px;
+		}
+	}
+</style>

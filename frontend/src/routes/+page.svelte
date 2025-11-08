@@ -6,6 +6,10 @@
 	import LogViewer from '$lib/components/LogViewer.svelte';
 	import TradeHistory from '$lib/components/TradeHistory.svelte';
 	import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
+	import NotificationSettings from '$lib/components/NotificationSettings.svelte';
+	import PnLChart from '$lib/components/PnLChart.svelte';
+	import WinLossChart from '$lib/components/WinLossChart.svelte';
+	import VolumeChart from '$lib/components/VolumeChart.svelte';
 
 	// Fetch initial state on mount
 	onMount(async () => {
@@ -52,8 +56,26 @@
 				<ScannerPanel />
 			</section>
 
+			<!-- Notification Settings -->
+			<section class="section notifications-section slide-up" style="animation-delay: 0.3s">
+				<NotificationSettings />
+			</section>
+
+			<!-- Charts Section -->
+			<div class="charts-grid slide-up" style="animation-delay: 0.4s">
+				<section class="section chart-section">
+					<PnLChart />
+				</section>
+				<section class="section chart-section">
+					<WinLossChart />
+				</section>
+				<section class="section chart-section">
+					<VolumeChart />
+				</section>
+			</div>
+
 			<!-- Two Column Layout -->
-			<div class="two-column slide-up" style="animation-delay: 0.3s">
+			<div class="two-column slide-up" style="animation-delay: 0.5s">
 				<!-- Trade History -->
 				<section class="section history-section">
 					<TradeHistory />
@@ -150,6 +172,13 @@
 		margin-bottom: 30px;
 	}
 
+	.charts-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+		gap: 30px;
+		margin-bottom: 30px;
+	}
+
 	.two-column {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
@@ -193,6 +222,10 @@
 
 	/* Mobile Responsive */
 	@media (max-width: 1024px) {
+		.charts-grid {
+			grid-template-columns: 1fr;
+		}
+
 		.two-column {
 			grid-template-columns: 1fr;
 		}
