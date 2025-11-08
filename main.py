@@ -1537,6 +1537,144 @@ async def export_trades_csv(
     )
 
 
+# ============================================================================
+# 🔥 MULTI-SESSIONS API ENDPOINTS
+# ============================================================================
+
+try:
+    from session_manager import session_manager
+except ImportError:
+    logger.warning("session_manager not available - multi-sessions disabled")
+    session_manager = None
+
+
+@app.post("/api/sessions/create")
+async def create_session(request: Request):
+    """Créer une nouvelle session"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    try:
+        data = await request.json()
+        session = session_manager.create_session(
+            session_id=data['session_id'],
+            name=data['name'],
+            pairs=data['pairs'],
+            strategy=data.get('strategy', 'scalping'),
+            config=data.get('config', {})
+        )
+        return JSONResponse({"status": "success", "session": session.to_dict()})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.error(f"Error creating session: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/sessions/{session_id}/start")
+async def start_session(session_id: str):
+    """Démarrer une session"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    try:
+        await session_manager.start_session(session_id)
+        return JSONResponse({"status": "started", "session_id": session_id})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.error(f"Error starting session: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/sessions/{session_id}/stop")
+async def stop_session(session_id: str):
+    """Arrêter une session"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    try:
+        await session_manager.stop_session(session_id)
+        return JSONResponse({"status": "stopped", "session_id": session_id})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.error(f"Error stopping session: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/sessions/{session_id}/pause")
+async def pause_session(session_id: str):
+    """Mettre en pause une session"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    try:
+        await session_manager.pause_session(session_id)
+        return JSONResponse({"status": "paused", "session_id": session_id})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.post("/api/sessions/{session_id}/resume")
+async def resume_session(session_id: str):
+    """Reprendre une session"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    try:
+        await session_manager.resume_session(session_id)
+        return JSONResponse({"status": "resumed", "session_id": session_id})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Supprimer une session"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    try:
+        session_manager.delete_session(session_id)
+        return JSONResponse({"status": "deleted", "session_id": session_id})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.get("/api/sessions")
+async def get_sessions():
+    """Lister toutes les sessions"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    sessions = session_manager.get_all_sessions()
+    return JSONResponse({"sessions": sessions})
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Obtenir une session spécifique"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    session = session_manager.get_session(session_id)
+    if session:
+        return JSONResponse({"session": session})
+    else:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+
+@app.get("/api/sessions/stats/global")
+async def get_global_stats():
+    """Stats globales de toutes les sessions"""
+    if not session_manager:
+        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
+
+    stats = session_manager.get_global_stats()
+    return JSONResponse(stats)
+
+
 if __name__ == '__main__':
     import uvicorn
 
