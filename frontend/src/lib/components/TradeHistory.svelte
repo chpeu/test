@@ -37,7 +37,7 @@
 		</div>
 	{:else}
 		<div class="trades-list">
-			{#each displayTrades as trade (trade.id || trade.symbol + trade.closed_at)}
+			{#each displayTrades as trade (trade.id || `${trade.symbol}_${trade.closed_at || Date.now()}_${trade.entry || ''}_${trade.exit_price || ''}`)}
 				<div
 					class="trade-item"
 					class:win={trade.net_pnl_usdt >= 0}

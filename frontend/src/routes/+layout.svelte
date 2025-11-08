@@ -3,6 +3,9 @@
 	import { theme } from '$lib/stores/theme'; // Init theme
 	import { onMount } from 'svelte';
 
+	// SvelteKit props
+	export let params = {};
+
 	// Appliquer le thème au chargement
 	onMount(() => {
 		document.documentElement.setAttribute('data-theme', $theme);
