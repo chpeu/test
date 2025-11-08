@@ -24,6 +24,7 @@ MEXC_FUTURES_URL = "https://contract.mexc.com"
 # Trading parameters
 TRADING_CONFIG = {
     "fee_per_trade": 0.0004,  # 0.04% par trade
+    "use_slippage_calculation": True,  # Calculer slippage estimé basé sur spread et profondeur
     "position_timeout": 300,  # 5 minutes
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
     "scan_interval": 45,  # 45 secondes pour position scan
