@@ -23,14 +23,17 @@ export default defineConfig({
 
 	build: {
 		// Optimisation production
-		minify: 'terser',
+		minify: 'esbuild', // esbuild est plus rapide et inclus par défaut
 		sourcemap: false,
 		rollupOptions: {
 			output: {
-				manualChunks: {
-					// Séparer Socket.IO et Chart.js en chunks
-					'socket': ['socket.io-client'],
-					'charts': ['chart.js']
+				manualChunks: (id) => {
+					// Séparer Chart.js en chunk séparé
+					if (id.includes('chart.js')) {
+						return 'charts';
+					}
+					// Ne pas mettre socket.io-client dans manualChunks
+					// Il sera géré automatiquement par SvelteKit
 				}
 			}
 		}

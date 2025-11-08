@@ -3,8 +3,8 @@
 	import { theme } from '$lib/stores/theme'; // Init theme
 	import { onMount } from 'svelte';
 
-	// SvelteKit props
-	export let params = {};
+	// SvelteKit props (pour référence externe uniquement)
+	export const params = {};
 
 	// Appliquer le thème au chargement
 	onMount(() => {
