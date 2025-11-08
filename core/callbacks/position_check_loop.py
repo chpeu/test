@@ -153,7 +153,7 @@ async def _emit_position_update(position, current_price: float):
         # Calculer PnL (BUG #1 FIX: utiliser pnl_calculator au lieu de _calculate_pnl)
         pnl = _position_manager.pnl_calculator.calculate_pnl_percent(
             entry=position.entry,
-            current=current_price,
+            current_price=current_price,
             direction=position.direction
         )
         pnl_pct = pnl / 100  # Convertir % en décimal

@@ -900,7 +900,7 @@ async def api_check_position():
         # BUG #10 FIX: utiliser pnl_calculator au lieu de _calculate_pnl
         pnl = position_manager.pnl_calculator.calculate_pnl_percent(
             entry=position.entry,
-            current=current_price,
+            current_price=current_price,
             direction=position.direction
         )
         pnl_pct = pnl / 100
