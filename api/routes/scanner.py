@@ -99,10 +99,7 @@ async def start_scanner(request: Request):
         # Démarrer le scanner
         logger.info(f"🔍 Démarrage du scanner pour top {top_n} paires...")
 
-        # Marquer le scanner comme actif
-        _scanner.is_scanning = True
-
-        # Lancer le scan en arrière-plan
+        # Lancer le scan (is_scanning est géré par scan_top_pairs())
         pairs = await _scanner.scan_top_pairs(n=top_n)
 
         # Mettre à jour l'état de l'application
