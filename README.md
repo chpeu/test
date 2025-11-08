@@ -1,6 +1,11 @@
-# 🚀 Trade Cursor v6.0 - MEXC Smart Scalping Scanner
+# 🚀 Trade Cursor v7.0 - MEXC Smart Scalping Scanner
 
 **Migration Python de v5.1 HTML avec interface IDENTIQUE**
+
+[![Tests](https://github.com/chpeu/trade_cursor_py/workflows/Tests%20&%20Coverage/badge.svg)](https://github.com/chpeu/trade_cursor_py/actions)
+[![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
+[![Coverage](https://img.shields.io/badge/coverage-50.93%25-yellowgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-236%20passed-success.svg)]()
 
 ---
 

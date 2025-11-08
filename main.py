@@ -471,6 +471,7 @@ def init_instances():
         # 🔥 ARCHITECTURE V2: Injecter analytics_db, notification_manager, session_id
         if analytics_db:
             position_manager.analytics_db = analytics_db
+            position_manager.analytics_logger.analytics_db = analytics_db  # FIX: Mettre à jour analytics_logger aussi
             logger.info("💾 Analytics DB injecté dans Position Manager")
 
         if session_id:
