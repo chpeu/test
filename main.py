@@ -315,6 +315,41 @@ app_state = {
     'trade_history': []  # 🔥 PHASE 4: Historique des trades
 }
 
+
+def update_session_stats(result: dict):
+    """
+    Mettre à jour les statistiques de session après fermeture d'une position
+
+    Args:
+        result: Dictionnaire retourné par position_manager.close_position()
+    """
+    if not result:
+        return
+
+    # Incrémenter total trades
+    app_state['stats']['total_trades'] += 1
+
+    # Déterminer si win ou loss basé sur net_pnl_usdt
+    net_pnl = result.get('net_pnl_usdt', result.get('pnl_usdt', 0))
+
+    if net_pnl > 0:
+        app_state['stats']['wins'] += 1
+    else:
+        app_state['stats']['losses'] += 1
+
+    # Calculer winrate
+    total = app_state['stats']['total_trades']
+    wins = app_state['stats']['wins']
+    app_state['stats']['winrate'] = round((wins / total * 100), 2) if total > 0 else 0.0
+
+    logger.info(
+        f"📊 Stats session mises à jour: "
+        f"{wins}W/{app_state['stats']['losses']}L "
+        f"({app_state['stats']['winrate']:.1f}% WR) "
+        f"- Total: {total}"
+    )
+
+
 # 🔥 v7.0: Instances globales (lazy init)
 scanner = None
 analyzer = None
@@ -956,7 +991,8 @@ async def api_close_position():
             price_data = await price_provider.get_price(position_manager.active_position.symbol)
             exit_price = price_data.get('lastPrice') if price_data else None
 
-            result = position_manager.close_position('MANUAL', exit_price=exit_price)
+            # FIX: Ordre correct des paramètres (exit_price, reason)
+            result = position_manager.close_position(exit_price=exit_price, reason='MANUAL')
 
             app_state['active_position'] = None
 
@@ -967,6 +1003,9 @@ async def api_close_position():
                 if len(app_state['trade_history']) > 1000:
                     app_state['trade_history'] = app_state['trade_history'][-1000:]
                 save_trade_history()
+
+                # FIX: Mettre à jour les stats de session
+                update_session_stats(result)
 
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
             if price_provider:
@@ -1053,6 +1092,37 @@ async def handle_logs_request(sid):
 
 
 # Configuration endpoints
+
+@app.get("/api/state")
+async def api_get_state():
+    """
+    État complet de l'application (stats, position active, logs)
+
+    Utilisé par le frontend pour synchroniser l'affichage
+    """
+    init_instances()
+
+    # Position active (si existe)
+    active_position_dict = None
+    if position_manager and position_manager.active_position:
+        active_position_dict = position_manager.active_position.to_dict()
+    elif app_state.get('active_position'):
+        active_position_dict = app_state['active_position']
+
+    return JSONResponse({
+        'is_scanning': app_state.get('is_scanning', False),
+        'active_position': active_position_dict,
+        'stats': app_state.get('stats', {
+            'total_trades': 0,
+            'wins': 0,
+            'losses': 0,
+            'winrate': 0.0
+        }),
+        'top_pairs': app_state.get('top_pairs', []),
+        'logs': app_state.get('logs', [])[-50:],  # Derniers 50 logs
+        'trade_history': list(reversed(app_state.get('trade_history', [])[-20:]))  # Derniers 20 trades
+    })
+
 
 @app.get("/api/config")
 async def api_get_config():
