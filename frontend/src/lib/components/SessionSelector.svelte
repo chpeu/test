@@ -124,7 +124,10 @@
 				<div
 					class="session-item"
 					class:active={session.session_id === $activeSessionId}
+					role="button"
+					tabindex="0"
 					on:click={() => handleSelectSession(session.session_id)}
+					on:keydown={(e) => e.key === 'Enter' && handleSelectSession(session.session_id)}
 				>
 					<div class="session-main">
 						<div class="session-info">
@@ -134,7 +137,7 @@
 							<span class="session-name">{session.name}</span>
 						</div>
 
-						<div class="session-controls" on:click|stopPropagation>
+						<div class="session-controls" role="group" on:click|stopPropagation>
 							{#if session.status === 'stopped'}
 								<button
 									class="control-btn start"
@@ -214,13 +217,20 @@
 	</div>
 
 	{#if showCreateModal}
-		<div class="modal-overlay" on:click={() => (showCreateModal = false)}>
-			<div class="modal-content" on:click|stopPropagation>
+		<div
+			class="modal-overlay"
+			role="button"
+			tabindex="0"
+			on:click={() => (showCreateModal = false)}
+			on:keydown={(e) => e.key === 'Escape' && (showCreateModal = false)}
+		>
+			<div class="modal-content" role="dialog" on:click|stopPropagation>
 				<h3>Create New Session</h3>
 
 				<div class="form-group">
-					<label>Session Name</label>
+					<label for="session-name">Session Name</label>
 					<input
+						id="session-name"
 						type="text"
 						placeholder="e.g., BTC Scalping"
 						bind:value={newSessionName}
@@ -228,8 +238,9 @@
 				</div>
 
 				<div class="form-group">
-					<label>Trading Pairs (comma-separated)</label>
+					<label for="session-pairs">Trading Pairs (comma-separated)</label>
 					<input
+						id="session-pairs"
 						type="text"
 						placeholder="e.g., BTC/USDT, ETH/USDT, SOL/USDT"
 						bind:value={newSessionPairs}
@@ -237,8 +248,8 @@
 				</div>
 
 				<div class="form-group">
-					<label>Strategy</label>
-					<select bind:value={newSessionStrategy}>
+					<label for="session-strategy">Strategy</label>
+					<select id="session-strategy" bind:value={newSessionStrategy}>
 						<option value="scalping">Scalping</option>
 						<option value="swing">Swing Trading</option>
 						<option value="momentum">Momentum</option>

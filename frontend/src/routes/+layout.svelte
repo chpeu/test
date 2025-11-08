@@ -18,6 +18,7 @@
 
 <style global>
 	/* Global CSS Reset and Base Styles */
+	/* Note: Some selectors below are marked as "unused" by Svelte but are used globally across the app */
 	* {
 		margin: 0;
 		padding: 0;
