@@ -172,18 +172,86 @@ async def _scan_top_pairs():
 
         results = await asyncio.gather(*scan_tasks, return_exceptions=True)
 
-        # Compter les résultats
-        valid_setups = sum(1 for r in results if r and not isinstance(r, Exception) and 'symbol' in r)
-        errors = sum(1 for r in results if isinstance(r, Exception))
+        # Compter les résultats CORRECTEMENT
+        # Un setup VALIDE a les clés: 'symbol', 'direction', 'price', 'entry', etc.
+        # Un setup REJETÉ a seulement: 'reason' ou {'symbol': ..., 'reason': ...}
+        valid_setups = []
+        rejections = []
+        errors = []
 
-        logger.info(f"📊 Résumé: {valid_setups} setups valides, {len(results) - valid_setups - errors} rejets, {errors} erreurs")
+        for r in results:
+            if isinstance(r, Exception):
+                errors.append(r)
+            elif r and isinstance(r, dict):
+                # Setup valide = a 'direction' ET 'entry' (ou 'price')
+                if 'direction' in r and ('entry' in r or 'price' in r):
+                    valid_setups.append(r)
+                else:
+                    # Rejet
+                    rejections.append(r)
+            # else: None = aussi une erreur/skip
+
+        logger.info(f"📊 Résumé: {len(valid_setups)} setups valides, {len(rejections)} rejets, {len(errors)} erreurs")
+
+        # Si on a trouvé un setup valide, ouvrir une position
+        if valid_setups and _position_manager:
+            # Prendre le meilleur setup (premier dans la liste)
+            best_setup = valid_setups[0]
+
+            try:
+                logger.info(f"🎯 Tentative d'ouverture de position: {best_setup.get('symbol')} {best_setup.get('direction')}")
+
+                # Ouvrir la position (méthode synchrone)
+                # PositionManager calcule lui-même SL/TP basé sur entry et ATR
+                position_result = _position_manager.open_position(
+                    symbol=best_setup.get('symbol'),
+                    direction=best_setup.get('direction'),
+                    entry=best_setup.get('entry', best_setup.get('price')),
+                    size=best_setup.get('position_size', best_setup.get('size', 100.0)),
+                    atr=best_setup.get('atr'),
+                    atr5m=best_setup.get('atr5m'),
+                    confirmed_by=', '.join(best_setup.get('condition_types', [])),
+                    scalability_data=best_setup.get('scalability_data'),
+                    condition_types=best_setup.get('condition_types', [])
+                )
+
+                if position_result:
+                    logger.info(f"✅ Position ouverte: {best_setup.get('symbol')} {best_setup.get('direction')}")
+
+                    # Mettre à jour app_state avec la position active
+                    if _app_state is not None:
+                        _app_state['active_position'] = {
+                            'symbol': position_result.symbol,
+                            'direction': position_result.direction,
+                            'entry': position_result.entry,
+                            'sl': position_result.sl,
+                            'tp': position_result.tp,
+                            'size': position_result.size,
+                            'opened_at': position_result.opened_at
+                        }
+
+                    # Émettre événement SocketIO
+                    if _sio:
+                        await _sio.emit('position_opened', {
+                            'symbol': position_result.symbol,
+                            'direction': position_result.direction,
+                            'entry': position_result.entry,
+                            'sl': position_result.sl,
+                            'tp': position_result.tp,
+                            'size': position_result.size
+                        })
+                else:
+                    logger.warning(f"⚠️ Échec ouverture position: {best_setup.get('symbol')}")
+
+            except Exception as e:
+                logger.error(f"❌ Erreur ouverture position: {e}")
 
         # Émettre statistiques SocketIO
         if _sio:
             await _sio.emit('volume_stats_update', {
                 'total': len(results),
-                'validated': valid_setups,
-                'ratio': (valid_setups / len(results) * 100) if results else 0
+                'validated': len(valid_setups),
+                'ratio': (len(valid_setups) / len(results) * 100) if results else 0
             })
 
     except Exception as e:
