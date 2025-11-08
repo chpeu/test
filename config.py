@@ -28,11 +28,10 @@ TRADING_CONFIG = {
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
     "scan_interval": 45,  # 45 secondes pour position scan
     "scalability_interval": 90,  # 90 secondes pour scalability scan
-    
-    # Volume multiplier
-    "volume_multiplier": 1.0,
+
+    # BUG #14 FIX: Suppression doublon volume_multiplier (défini ligne 77 avec valeur ajustée 0.95)
     "volume_multiplier_range": (0.10, 2.00),
-    
+
     # TP/SL settings
     "tp_sl_mode": "FIXE",  # FIXE ou ATR
     
