@@ -1662,6 +1662,30 @@ async def api_config_update(request: Request):
                 position_config.fixed_tp_pct = validated_updates['tp_percent']
             if 'sl_percent' in validated_updates:
                 position_config.fixed_sl_pct = validated_updates['sl_percent']
+            # ✅ Mettre à jour paramètres ATR
+            if 'atr_mult_tp' in validated_updates:
+                position_config.atr_mult_tp = validated_updates['atr_mult_tp']
+            if 'atr_mult_sl' in validated_updates:
+                position_config.atr_mult_sl = validated_updates['atr_mult_sl']
+            if 'atr_min' in validated_updates:
+                position_config.atr_min = validated_updates['atr_min']
+            if 'atr_max' in validated_updates:
+                position_config.atr_max = validated_updates['atr_max']
+        
+        # ✅ Mettre à jour TrailingStopManager si nécessaire
+        if position_manager and position_manager.trailing_stop:
+            trailing_params = ['trailing_enabled', 'trailing_trigger_pnl', 'trailing_atr_multiplier', 
+                             'trailing_min_distance', 'trailing_max_distance']
+            if any(param in validated_updates for param in trailing_params):
+                from core.position.trailing_stop import TrailingStopConfig
+                position_manager.trailing_stop.config = TrailingStopConfig(
+                    enabled=TRADING_CONFIG.get('trailing_enabled', True),
+                    trigger_pnl=TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
+                    atr_multiplier=TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
+                    min_distance=TRADING_CONFIG.get('trailing_min_distance', 0.08),
+                    max_distance=TRADING_CONFIG.get('trailing_max_distance', 0.25)
+                )
+                logger.info("✅ TrailingStopManager mis à jour avec nouvelles valeurs")
 
         logger.info(f"💾 Configuration sauvegardée: {len(validated_updates)} paramètres mis à jour")
         await add_log('INFO', 'Config sauvegardée', f"{len(validated_updates)} paramètres")

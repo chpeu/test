@@ -85,6 +85,11 @@ def check_snr_filter(
     Returns:
         None si valide, Dict avec raison si rejeté
     """
+    # ✅ Vérifier si le filtre SNR est activé
+    use_snr = TRADING_CONFIG.get('use_snr', True)
+    if not use_snr:
+        return None  # Filtre désactivé, toujours valide
+    
     snr = abs(price - ema21) / atr if atr > 0 else 0
     snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
 
@@ -126,6 +131,11 @@ def check_breakout_filter(
     Returns:
         None si valide, Dict avec raison si rejeté
     """
+    # ✅ Vérifier si le filtre breakout est activé
+    use_breakout = TRADING_CONFIG.get('use_breakout', True)
+    if not use_breakout:
+        return None  # Filtre désactivé, toujours valide
+    
     breakout_mult = TRADING_CONFIG.get('breakout_threshold', 0.3)
     breakout_threshold = atr * breakout_mult
 
@@ -158,6 +168,11 @@ def check_wick_filter(
     Returns:
         None si valide, Dict avec raison si rejeté
     """
+    # ✅ Vérifier si le filtre wick est activé
+    use_wick = TRADING_CONFIG.get('use_wick', True)
+    if not use_wick:
+        return None  # Filtre désactivé, toujours valide
+    
     body = abs(current_candle[1] - current_candle[4])  # open - close
     if body == 0:
         body = 0.0001  # Éviter division par 0

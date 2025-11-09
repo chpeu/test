@@ -227,15 +227,14 @@ class PositionManager:
             )
         )
 
-        # Trailing Stop
-        trailing_config_dict = TRADING_CONFIG.get('trailing_stop', {})
+        # Trailing Stop - ✅ Lire depuis TRADING_CONFIG directement
         self.trailing_stop = TrailingStopManager(
             TrailingStopConfig(
-                enabled=trailing_config_dict.get('enabled', True),
-                trigger_pnl=trailing_config_dict.get('trigger_pnl', 0.25),
-                atr_multiplier=trailing_config_dict.get('atr_multiplier', 0.4),
-                min_distance=trailing_config_dict.get('min_distance', 0.08),
-                max_distance=trailing_config_dict.get('max_distance', 0.25)
+                enabled=TRADING_CONFIG.get('trailing_enabled', True),
+                trigger_pnl=TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
+                atr_multiplier=TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
+                min_distance=TRADING_CONFIG.get('trailing_min_distance', 0.08),
+                max_distance=TRADING_CONFIG.get('trailing_max_distance', 0.25)
             )
         )
 
@@ -306,9 +305,15 @@ class PositionManager:
                 f"fixed_tp_pct={self.config.fixed_tp_pct}%"
             )
 
-        # Mettre à jour config TP/SL avec streaks
+        # ✅ Mettre à jour config TP/SL avec valeurs depuis TRADING_CONFIG (dynamique)
+        from config import TRADING_CONFIG
         self.tpsl_config.win_streak = self.config.win_streak
         self.tpsl_config.loss_streak = self.config.loss_streak
+        # ✅ Mettre à jour paramètres ATR depuis TRADING_CONFIG
+        self.tpsl_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
+        self.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
+        self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+        self.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
 
         # Calculer TP/SL selon le mode
         if self.config.use_atr and atr:
@@ -341,11 +346,35 @@ class PositionManager:
             condition_types=condition_types or []
         )
 
+        # ✅ Initialiser TP Escalier si mode TP_MULTI
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        levels_config = None
+        if tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER':
+            # Construire config niveaux depuis TRADING_CONFIG
+            levels_config = []
+            for level in [1, 2, 3, 4]:
+                pnl = TRADING_CONFIG.get(f'escalier_level{level}_pnl', 0.2)
+                size_pct = TRADING_CONFIG.get(f'escalier_level{level}_size', 25.0) / 100.0
+                levels_config.append({
+                    'pnl': pnl,
+                    'size_pct': size_pct
+                })
+            
+            # Initialiser TP Escalier
+            self.tp_escalier.initialize_levels(
+                position=self.active_position.to_dict(),
+                levels_config=levels_config
+            )
+            # Mettre à jour position avec tp_escalier_enabled
+            self.active_position.tp_escalier_enabled = True
+            self.active_position.tp_escalier_levels = levels_config
+
         logger.info(
             f"🟢 POSITION OUVERTE: {direction} {symbol} | "
             f"Entry: {self._format_price(entry)} | "
             f"SL: {self._format_price(sl)} | TP: {self._format_price(tp)} | "
             f"Size: {size:.2f} USDT | Mode: {'ATR' if self.config.use_atr else 'FIXE'}"
+            + (f" | TP Escalier: {len(levels_config)} niveaux" if levels_config else "")
         )
 
         return self.active_position
@@ -371,6 +400,11 @@ class PositionManager:
         Returns:
             Taille position en USDT
         """
+        # ✅ Lire risk_per_trade depuis TRADING_CONFIG
+        from config import TRADING_CONFIG
+        risk_per_trade = TRADING_CONFIG.get('risk_per_trade', 2.0) / 100.0  # Convertir % en décimal
+        base_risk = risk_per_trade  # Utiliser risk_per_trade au lieu de base_risk par défaut
+        
         score = setup.get('score', 5.0)
 
         # Taille de base

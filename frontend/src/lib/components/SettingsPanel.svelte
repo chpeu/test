@@ -1,9 +1,71 @@
 <script>
 	import { settings, updateSetting, resetSettings, exportSettings, importSettings } from '$lib/stores/settings';
+	import { onMount } from 'svelte';
 
 	let fileInput;
 	let showResetConfirm = false;
 	let importError = '';
+	let backendConfig = {};
+
+	// ✅ Charger la config depuis le backend au démarrage
+	onMount(async () => {
+		await loadBackendConfig();
+	});
+
+	async function loadBackendConfig() {
+		try {
+			const res = await fetch('/api/state');
+			if (res.ok) {
+				const data = await res.json();
+				if (data.config) {
+					backendConfig = data.config;
+					// ✅ Synchroniser les paramètres qui existent dans le backend
+					if (data.config.sl_percent !== undefined) {
+						updateSetting('stopLossPercent', data.config.sl_percent);
+					}
+					if (data.config.tp_percent !== undefined) {
+						updateSetting('takeProfitPercent', data.config.tp_percent);
+					}
+					if (data.config.trailing_trigger_pnl !== undefined) {
+						updateSetting('trailingStopPercent', data.config.trailing_trigger_pnl);
+					}
+				}
+			}
+		} catch (err) {
+			console.error('Error loading backend config:', err);
+		}
+	}
+
+	// ✅ Synchroniser avec le backend lors des changements
+	async function syncWithBackend(key, value) {
+		updateSetting(key, value);
+		
+		// ✅ Mapper les clés SettingsPanel vers TRADING_CONFIG
+		const configMap = {
+			'stopLossPercent': 'sl_percent',
+			'takeProfitPercent': 'tp_percent',
+			'trailingStopPercent': 'trailing_trigger_pnl'
+		};
+
+		const backendKey = configMap[key];
+		if (backendKey) {
+			try {
+				const res = await fetch('/api/config/update', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ [backendKey]: value })
+				});
+
+				if (res.ok) {
+					console.log(`✅ ${key} synchronisé avec backend: ${backendKey} = ${value}`);
+				} else {
+					console.error(`❌ Erreur synchronisation ${key}:`, res.status);
+				}
+			} catch (err) {
+				console.error(`❌ Erreur synchronisation ${key}:`, err);
+			}
+		}
+	}
 
 	function handleImport() {
 		const file = fileInput.files[0];
@@ -13,6 +75,8 @@
 			.then(() => {
 				importError = '';
 				alert('✅ Settings imported successfully!');
+				// ✅ Synchroniser les paramètres importés avec le backend
+				loadBackendConfig();
 			})
 			.catch(err => {
 				importError = `❌ Error: ${err.message}`;
@@ -24,6 +88,8 @@
 			resetSettings();
 			showResetConfirm = false;
 			alert('✅ Settings reset to defaults!');
+			// ✅ Recharger la config backend après reset
+			loadBackendConfig();
 		} else {
 			showResetConfirm = true;
 			setTimeout(() => (showResetConfirm = false), 3000);
@@ -88,10 +154,10 @@
 						max="10"
 						step="0.1"
 						bind:value={$settings.stopLossPercent}
-						on:change={() => updateSetting('stopLossPercent', $settings.stopLossPercent)}
+						on:change={() => syncWithBackend('stopLossPercent', $settings.stopLossPercent)}
 					/>
 				</label>
-				<span class="hint">Stop loss percentage</span>
+				<span class="hint">Stop loss percentage (synchronisé avec backend: sl_percent)</span>
 			</div>
 
 			<div class="setting-item">
@@ -103,25 +169,25 @@
 						max="20"
 						step="0.1"
 						bind:value={$settings.takeProfitPercent}
-						on:change={() => updateSetting('takeProfitPercent', $settings.takeProfitPercent)}
+						on:change={() => syncWithBackend('takeProfitPercent', $settings.takeProfitPercent)}
 					/>
 				</label>
-				<span class="hint">Take profit percentage</span>
+				<span class="hint">Take profit percentage (synchronisé avec backend: tp_percent)</span>
 			</div>
 
 			<div class="setting-item">
 				<label>
-					Trailing Stop (%)
+					Trailing Stop Trigger (%)
 					<input
 						type="number"
 						min="0.1"
 						max="5"
 						step="0.1"
 						bind:value={$settings.trailingStopPercent}
-						on:change={() => updateSetting('trailingStopPercent', $settings.trailingStopPercent)}
+						on:change={() => syncWithBackend('trailingStopPercent', $settings.trailingStopPercent)}
 					/>
 				</label>
-				<span class="hint">Trailing stop percentage</span>
+				<span class="hint">Trailing stop trigger PnL (synchronisé avec backend: trailing_trigger_pnl)</span>
 			</div>
 
 			<div class="setting-item">

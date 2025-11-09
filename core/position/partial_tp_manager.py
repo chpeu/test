@@ -49,7 +49,7 @@ class PartialTPManager:
         current_price: float
     ) -> Dict[str, Any]:
         """
-        Exécuter TP partiel (vendre 50%)
+        Exécuter TP partiel (vendre selon partial_tp_percent)
 
         Args:
             position: Dict position
@@ -58,13 +58,17 @@ class PartialTPManager:
         Returns:
             Dict avec détails TP partiel
         """
+        # ✅ Lire partial_tp_percent depuis TRADING_CONFIG
+        from config import TRADING_CONFIG
+        partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0) / 100.0  # Convertir % en décimal
+        
         entry = position['entry']
         size = position['size']
         direction = position['direction']
 
-        # Vendre 50%
-        size_sold = size * 0.5
-        size_remaining = size * 0.5
+        # Vendre selon partial_tp_percent
+        size_sold = size * partial_tp_percent
+        size_remaining = size * (1 - partial_tp_percent)
 
         # Calculer profit
         if direction == 'LONG':

@@ -190,6 +190,28 @@ def check_pattern_condition(pattern: str, direction: str) -> Tuple[bool, str]:
     Returns:
         (condition_met, description)
     """
+    # ✅ Mapping patterns vers config flags
+    pattern_config_map = {
+        'ENGULFING_BULLISH': 'use_engulfing',
+        'ENGULFING_BEARISH': 'use_engulfing',
+        'HAMMER': 'use_hammer',
+        'SHOOTING_STAR': 'use_shooting_star',
+        'DOJI_DRAGONFLY': 'use_doji',
+        'DOJI_GRAVESTONE': 'use_doji',
+        'DOJI': 'use_doji',
+        'MARUBOZU_BULLISH': 'use_marubozu',
+        'MARUBOZU_BEARISH': 'use_marubozu',
+        'MORNING_STAR': 'use_morning_star',
+        'EVENING_STAR': 'use_evening_star'
+    }
+    
+    # Vérifier si le pattern est activé
+    config_key = pattern_config_map.get(pattern)
+    if config_key:
+        pattern_enabled = TRADING_CONFIG.get(config_key, True)
+        if not pattern_enabled:
+            return False, ""  # Pattern désactivé
+    
     if direction == 'LONG':
         long_patterns = [
             'ENGULFING_BULLISH', 'HAMMER',

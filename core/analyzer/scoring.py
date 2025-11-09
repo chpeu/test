@@ -40,15 +40,22 @@ def get_min_score_required(adx_value: float, use_weighted: bool = True) -> float
     """
     if use_weighted:
         # 🔥 FIX: Toujours lire depuis TRADING_CONFIG (mis à jour dynamiquement)
-        min_score_required = TRADING_CONFIG.get('min_score_required', 7.5)
-        if adx_value > 30:
-            min_score_required = TRADING_CONFIG.get('min_score_adx_high', 7.0)
-        elif adx_value < 25:
-            min_score_required = TRADING_CONFIG.get('min_score_adx_low', 8.0)
+        base_min_score = TRADING_CONFIG.get('min_score_required', 7.5)
         
-        # 🔥 DEBUG: Logger pour vérifier que la valeur est bien lue
-        if TRADING_CONFIG.get('min_score_required') != 7.5:  # Si différent de la valeur par défaut
-            logger.debug(f"📊 get_min_score_required: ADX={adx_value:.1f}, min_score={min_score_required:.1f} (depuis TRADING_CONFIG: {TRADING_CONFIG.get('min_score_required')})")
+        # 🔥 FIX: Si l'utilisateur a modifié min_score_required (≠ 7.5), utiliser directement cette valeur
+        # Sinon, appliquer les ajustements ADX selon les valeurs par défaut
+        if base_min_score != 7.5:
+            # Valeur modifiée par l'utilisateur → utiliser directement sans ajustement ADX
+            min_score_required = base_min_score
+            logger.info(f"📊 get_min_score_required: Utilisation valeur personnalisée {min_score_required:.1f} (ADX={adx_value:.1f}, ajustement ADX désactivé)")
+        else:
+            # Valeur par défaut → appliquer ajustements ADX
+            if adx_value > 30:
+                min_score_required = TRADING_CONFIG.get('min_score_adx_high', 7.0)
+            elif adx_value < 25:
+                min_score_required = TRADING_CONFIG.get('min_score_adx_low', 8.0)
+            else:
+                min_score_required = base_min_score
     else:
         # Système ancien (comptage simple)
         min_conditions = 6  # Par défaut
@@ -120,6 +127,11 @@ def apply_divergence_bonus(
     Returns:
         Bonus divergence (0 ou 1)
     """
+    # ✅ Vérifier si la divergence est activée
+    use_divergence = TRADING_CONFIG.get('use_divergence', True)
+    if not use_divergence:
+        return 0  # Divergence désactivée
+    
     divergence_bonus = 0
 
     if temp_direction == 'LONG':
