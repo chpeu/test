@@ -63,6 +63,36 @@ logger = logging.getLogger(__name__)
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
+
+# 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503"""
+    import time
+    logger.error(f"❌ Exception globale capturée dans {request.url.path}: {exc}", exc_info=True)
+    
+    # Si c'est une route /api/state, retourner réponse minimale avec 200
+    if request.url.path == "/api/state":
+        return JSONResponse({
+            'success': False,
+            'error': str(exc),
+            'session_id': session_id if 'session_id' in globals() else f"live_{int(time.time())}",
+            'config': {},
+            'scanner': {'is_scanning': False, 'top_pairs': []},
+            'position': {'active': False, 'data': None},
+            'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
+            'trades': [],
+            'timestamp': time.time()
+        }, status_code=200)
+    
+    # Pour les autres routes, retourner l'erreur normale
+    return JSONResponse({
+        'error': str(exc),
+        'path': request.url.path
+    }, status_code=500)
 templates = Jinja2Templates(directory="templates")
 
 # 🔥 ARCHITECTURE V2: Monter fichiers statiques et inclure routes API
