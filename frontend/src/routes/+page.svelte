@@ -104,7 +104,7 @@
 		await loadInitialState();
 	});
 	
-	function setupWebSocketListeners(ws: any) {
+	function setupWebSocketListeners(ws: { on: (event: string, handler: (data: any) => void) => void }) {
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
 		ws.on('status', (data: any) => {
 			// Mettre à jour l'état quand le backend envoie un update
