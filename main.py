@@ -2276,7 +2276,25 @@ async def get_condition_metrics():
     stats = condition_metrics.get_stats_summary()
     return JSONResponse(stats)
 
+@app.post("/api/log/config")
+async def api_log_config(request: Request):
+    """🔥 FIX: Endpoint pour logger les changements de config (compatibilité frontend Svelte)"""
+    try:
+        data = await request.json() if hasattr(request, 'json') else {}
+        data = data if isinstance(data, dict) else {}
+        
+        # Logger le changement de config
+        config_key = data.get('key', 'unknown')
+        config_value = data.get('value', 'unknown')
+        await add_log('INFO', f'Config modifiée: {config_key}', str(config_value))
+        
+        return JSONResponse({'status': 'logged', 'key': config_key, 'value': config_value})
+    except Exception as e:
+        logger.error(f"Erreur log config: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
 @app.post("/api/config")
+@app.post("/api/config/update")  # 🔥 FIX: Alias pour compatibilité frontend Svelte
 async def api_update_config(request: Request):
     """Modifier la configuration à la volée (tous les paramètres)"""
     from config import TRADING_CONFIG
