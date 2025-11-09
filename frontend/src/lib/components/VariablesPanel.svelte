@@ -20,12 +20,18 @@
 		partial_tp_percent: 50,
 		break_even_trigger: 0.5,
 		volume_multiplier: 0.95,
-		min_score_required: 7.5
+		min_score_required: 7.5,
+		// Patterns
+		use_breakout: true,
+		use_snr: true,
+		use_wick: true,
+		use_divergence: true
 	};
 
 	let config = { ...DEFAULTS };
 	let loading = false;
 	let saveMessage = '';
+	let activeSubTab = 'setups'; // setups, money, position, strategy
 
 	onMount(async () => {
 		await loadConfig();
@@ -96,6 +102,22 @@
 			{saveMessage}
 		</div>
 	{/if}
+
+	<!-- Sous-onglets -->
+	<div class="subtabs">
+		<button class="subtab" class:active={activeSubTab === 'setups'} on:click={() => activeSubTab = 'setups'}>
+			📊 Setups
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'money'} on:click={() => activeSubTab = 'money'}>
+			💰 Money Management
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'}>
+			🎯 TP/SL & Position
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'strategy'} on:click={() => activeSubTab = 'strategy'}>
+			⚙️ Stratégie
+		</button>
+	</div>
 
 	<div class="variables-grid">
 		<!-- Section Indicateurs -->

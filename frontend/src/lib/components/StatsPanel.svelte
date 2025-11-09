@@ -7,7 +7,7 @@
 	let botLoading = writable(false);
 
 	function formatNumber(num) {
-		if (num === null || num === undefined) return '0';
+		if (num === null || num === undefined || isNaN(num)) return '0.00';
 		return Number(num).toFixed(2);
 	}
 

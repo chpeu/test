@@ -60,6 +60,12 @@
 		const date = new Date(timestamp);
 		return date.toLocaleTimeString('en-US', { hour12: false });
 	}
+
+	function stripAnsiCodes(text) {
+		if (!text) return '';
+		// Supprimer les codes ANSI de couleur: \x1b[XXm ou [XXm
+		return text.replace(/\x1b\[\d+m/g, '').replace(/\[\d+m/g, '');
+	}
 </script>
 
 <div class="log-viewer">
@@ -78,10 +84,10 @@
 				</div>
 			{:else}
 				{#each $errorLogs as log (log.id)}
-					<div class="log-entry" style="border-left-color: {getLogColor(log.level)}">
+					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}">
 						<span class="log-time">{formatTime(log.timestamp)}</span>
-						<span class="log-level" style="color: {getLogColor(log.level)}">[{log.level}]</span>
-						<span class="log-message">{log.message}</span>
+						<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
+						<span class="log-message">{stripAnsiCodes(log.message)}</span>
 					</div>
 				{/each}
 			{/if}
@@ -111,10 +117,10 @@
 				</div>
 			{:else}
 				{#each $regularLogs as log (log.id)}
-					<div class="log-entry" style="border-left-color: {getLogColor(log.level)}">
+					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}">
 						<span class="log-time">{formatTime(log.timestamp)}</span>
-						<span class="log-level" style="color: {getLogColor(log.level)}">[{log.level}]</span>
-						<span class="log-message">{log.message}</span>
+						<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
+						<span class="log-message">{stripAnsiCodes(log.message)}</span>
 					</div>
 				{/each}
 			{/if}
