@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { initWebSocket } from '$lib/utils/websocket';
-	import type { BidirectionalWebSocket } from '$lib/utils/websocket';
+	type BidirectionalWebSocket = ReturnType<typeof initWebSocket>;
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
