@@ -1204,11 +1204,13 @@ async def api_get_complete_state():
     import time
     logger.info("🔍 /api/state appelé - Début de la fonction")
     
-    # 🔥 FIX: Retourner réponse minimale immédiatement si variables globales non initialisées
+    # 🔥 FIX: Retourner réponse minimale immédiatement avec try/except global
     try:
-        # Vérifier que app_state existe
-        if 'app_state' not in globals():
-            logger.error("❌ app_state non défini")
+        # Vérifier que app_state existe (sans utiliser globals() qui peut échouer)
+        try:
+            _ = app_state
+        except NameError:
+            logger.error("❌ app_state non défini (NameError)")
             return JSONResponse({
                 'success': False,
                 'error': 'app_state not initialized',
@@ -1221,7 +1223,7 @@ async def api_get_complete_state():
                 'timestamp': time.time()
             }, status_code=200)
     except Exception as check_error:
-        logger.error(f"❌ Erreur vérification variables globales: {check_error}")
+        logger.error(f"❌ Erreur vérification app_state: {check_error}", exc_info=True)
         return JSONResponse({
             'success': False,
             'error': f'Initialization check failed: {str(check_error)}',
