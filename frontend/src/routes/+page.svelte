@@ -38,7 +38,6 @@
 	async function changeTpSlMode() {
 		try {
 			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-			const { sendCommandViaWS } = await import('$lib/utils/websocket');
 			const ws = initWebSocket();
 			const result = await ws.sendCommand('update_config', { tp_sl_mode: tpSlMode });
 			
