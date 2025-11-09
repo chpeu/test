@@ -141,11 +141,6 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Fichiers statiques non montés: {e}")
 
-# 🔥 FIX: Injecter app_state dans le router AVANT inclusion
-if api_router and set_app_state:
-    set_app_state(app_state)
-    logger.info("✅ app_state injecté dans API routes")
-
 if api_router:
     app.include_router(api_router)
     logger.info("✅ API REST routes incluses: /api/*")
@@ -289,6 +284,11 @@ app_state = {
     'logs': [],
     'trade_history': []  # 🔥 PHASE 4: Historique des trades
 }
+
+# 🔥 FIX: Injecter app_state dans le router APRÈS définition
+if api_router and set_app_state:
+    set_app_state(app_state)
+    logger.info("✅ app_state injecté dans API routes")
 
 # 🔥 v7.0: Instances globales (lazy init)
 scanner = None
