@@ -180,37 +180,67 @@ async def start_scanner():
     2. Démarrer le scheduler pour les boucles automatiques
     3. Émettre événement SocketIO
     """
-    if not _scheduler or not _app_state:
-        return JSONResponse({'error': 'Scheduler not available'}, status_code=503)
-
+    # 🔥 FIX: Initialiser les instances si nécessaire
     try:
-        # 🔥 FIX: Démarrer le scheduler si disponible
-        if _scheduler and not _app_state.get('is_scanning', False):
-            _scheduler.start()
-            logger.info("✅ Scanner démarré via /api/start")
+        if not _scheduler or not _app_state:
+            # Essayer d'initialiser les instances
+            try:
+                from main import init_instances
+                init_instances()
+            except Exception as e:
+                logger.warning(f"Impossible d'initialiser les instances: {e}")
+        
+        # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
+        if not _scheduler or not _app_state:
+            return JSONResponse({
+                'success': False,
+                'status': 'error',
+                'error': 'Scheduler not available',
+                'is_scanning': False
+            }, status_code=200)
 
-        if _app_state:
-            _app_state['is_scanning'] = True
+        try:
+            # 🔥 FIX: Démarrer le scheduler si disponible
+            if _scheduler and not _app_state.get('is_scanning', False):
+                _scheduler.start()
+                logger.info("✅ Scanner démarré via /api/start")
 
-        # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
-        if _sio:
-            status_data = {
-                'is_scanning': True,
-                'active_position': _app_state.get('active_position'),
-                'stats': _app_state.get('stats', {}),
-                'top_pairs': _app_state.get('top_pairs', [])
-            }
-            await _sio.emit('status', status_data)
-            await _sio.emit('scan_started', {'timestamp': time.time()})
+            if _app_state:
+                _app_state['is_scanning'] = True
 
-        return JSONResponse({
-            'status': 'started',
-            'is_scanning': True
-        })
+            # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
+            if _sio:
+                status_data = {
+                    'is_scanning': True,
+                    'active_position': _app_state.get('active_position'),
+                    'stats': _app_state.get('stats', {}),
+                    'top_pairs': _app_state.get('top_pairs', [])
+                }
+                await _sio.emit('status', status_data)
+                await _sio.emit('scan_started', {'timestamp': time.time()})
 
+            return JSONResponse({
+                'success': True,
+                'status': 'started',
+                'is_scanning': True
+            })
+
+        except Exception as e:
+            logger.error(f"Erreur démarrage scanner: {e}", exc_info=True)
+            return JSONResponse({
+                'success': False,
+                'status': 'error',
+                'error': str(e),
+                'is_scanning': False
+            }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
     except Exception as e:
-        logger.error(f"Erreur démarrage scanner: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        logger.error(f"Erreur critique démarrage scanner: {e}", exc_info=True)
+        return JSONResponse({
+            'success': False,
+            'status': 'error',
+            'error': str(e),
+            'is_scanning': False
+        }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
 
 
 @router.post("/stop")
@@ -224,33 +254,63 @@ async def stop_scanner():
     2. Mise à jour de l'état is_scanning
     3. Émettre événement SocketIO
     """
-    if not _scheduler or not _app_state:
-        return JSONResponse({'error': 'Scheduler not available'}, status_code=503)
-
+    # 🔥 FIX: Initialiser les instances si nécessaire
     try:
-        # 🔥 FIX: Arrêter le scheduler si disponible
-        if _scheduler and _app_state.get('is_scanning', False):
-            _scheduler.stop()
-            logger.info("⏸️ Scanner arrêté via /api/stop")
+        if not _scheduler or not _app_state:
+            # Essayer d'initialiser les instances
+            try:
+                from main import init_instances
+                init_instances()
+            except Exception as e:
+                logger.warning(f"Impossible d'initialiser les instances: {e}")
+        
+        # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
+        if not _scheduler or not _app_state:
+            return JSONResponse({
+                'success': False,
+                'status': 'error',
+                'error': 'Scheduler not available',
+                'is_scanning': False
+            }, status_code=200)
 
-        if _app_state:
-            _app_state['is_scanning'] = False
+        try:
+            # 🔥 FIX: Arrêter le scheduler si disponible
+            if _scheduler and _app_state.get('is_scanning', False):
+                _scheduler.stop()
+                logger.info("⏸️ Scanner arrêté via /api/stop")
 
-        # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
-        if _sio:
-            status_data = {
-                'is_scanning': False,
-                'active_position': _app_state.get('active_position'),
-                'stats': _app_state.get('stats', {}),
-                'top_pairs': _app_state.get('top_pairs', [])
-            }
-            await _sio.emit('status', status_data)
+            if _app_state:
+                _app_state['is_scanning'] = False
 
-        return JSONResponse({
-            'status': 'stopped',
-            'is_scanning': False
-        })
+            # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
+            if _sio:
+                status_data = {
+                    'is_scanning': False,
+                    'active_position': _app_state.get('active_position'),
+                    'stats': _app_state.get('stats', {}),
+                    'top_pairs': _app_state.get('top_pairs', [])
+                }
+                await _sio.emit('status', status_data)
 
+            return JSONResponse({
+                'success': True,
+                'status': 'stopped',
+                'is_scanning': False
+            })
+
+        except Exception as e:
+            logger.error(f"Erreur arrêt scanner: {e}", exc_info=True)
+            return JSONResponse({
+                'success': False,
+                'status': 'error',
+                'error': str(e),
+                'is_scanning': False
+            }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
     except Exception as e:
-        logger.error(f"Erreur arrêt scanner: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        logger.error(f"Erreur critique arrêt scanner: {e}", exc_info=True)
+        return JSONResponse({
+            'success': False,
+            'status': 'error',
+            'error': str(e),
+            'is_scanning': False
+        }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
