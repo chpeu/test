@@ -15,14 +15,27 @@
 	}
 
 	function formatNumber(num, decimals = 2) {
-		if (num === null || num === undefined) return '0.00';
-		return Number(num).toFixed(decimals);
+		if (num === null || num === undefined || isNaN(num)) return '0.00';
+		const value = Number(num);
+		if (value === 0) return '0.00';
+		return value.toFixed(decimals);
 	}
 
 	function formatDuration(openedAt, closedAt) {
 		if (!openedAt || !closedAt) return 'N/A';
 		const diff = new Date(closedAt) - new Date(openedAt);
 		const seconds = Math.floor(diff / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+
+		if (hours > 0) return `${hours}h ${minutes % 60}m`;
+		if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+		return `${seconds}s`;
+	}
+
+	// 🔥 FIX: Formater la durée depuis des secondes (format backend)
+	function formatDurationFromSeconds(seconds) {
+		if (!seconds || seconds <= 0) return 'N/A';
 		const minutes = Math.floor(seconds / 60);
 		const hours = Math.floor(minutes / 60);
 
@@ -64,9 +77,9 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each $sortedTrades as trade (trade.id || `${trade.symbol}_${trade.closed_at}`)}
+					{#each $sortedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
 						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0}>
-							<td class="timestamp">{formatDate(trade.closed_at)}</td>
+							<td class="timestamp">{formatDate(trade.closed_at || trade.timestamp)}</td>
 							<td class="symbol">{trade.symbol}</td>
 							<td class="direction">
 								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'}>
@@ -74,18 +87,27 @@
 								</span>
 							</td>
 							<td class="price">{formatNumber(trade.entry, 6)}</td>
-							<td class="price">{formatNumber(trade.exit_price, 6)}</td>
-							<td class="size">{formatNumber(trade.size, 2)}</td>
-							<td class="pnl-pct" class:positive={trade.net_pnl_pct >= 0} class:negative={trade.net_pnl_pct < 0}>
-								{trade.net_pnl_pct >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_pct, 2)}%
+							<!-- 🔥 FIX: Utiliser 'exit' au lieu de 'exit_price' (mapping backend) -->
+							<td class="price">{formatNumber(trade.exit || trade.exit_price || 0, 6)}</td>
+							<td class="size">{formatNumber(trade.size || trade.size_closed || 0, 2)}</td>
+							<!-- 🔥 FIX: Utiliser 'net_pnl' au lieu de 'net_pnl_pct' (mapping backend) -->
+							<td class="pnl-pct" class:positive={(trade.net_pnl || trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl || trade.net_pnl_pct || 0) < 0}>
+								{(trade.net_pnl || trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatNumber(trade.net_pnl || trade.net_pnl_pct || 0, 2)}%
 							</td>
-							<td class="pnl-usdt" class:positive={trade.net_pnl_usdt >= 0} class:negative={trade.net_pnl_usdt < 0}>
-								{trade.net_pnl_usdt >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_usdt, 2)}
+							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
+								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_usdt || 0, 4)}
 							</td>
 							<td class="fees">{formatNumber(trade.fees || 0, 4)}</td>
 							<td class="slippage">{formatNumber(trade.slippage || 0, 4)}</td>
-							<td class="reason">{trade.reason || 'N/A'}</td>
-							<td class="duration">{formatDuration(trade.opened_at, trade.closed_at)}</td>
+							<td class="reason">{trade.reason || trade.close_reason || 'N/A'}</td>
+							<!-- 🔥 FIX: Utiliser 'duration' (en secondes) ou calculer depuis opened_at/closed_at -->
+							<td class="duration">
+								{#if trade.duration !== undefined && trade.duration !== null}
+									{formatDurationFromSeconds(trade.duration)}
+								{:else}
+									{formatDuration(trade.opened_at, trade.closed_at || trade.timestamp)}
+								{/if}
+							</td>
 							<td class="signals">{trade.confirmed_by || 'N/A'}</td>
 						</tr>
 					{/each}

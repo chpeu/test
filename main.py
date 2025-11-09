@@ -240,7 +240,7 @@ class SocketIOHandler(logging.Handler):
 
 # Créer et ajouter le handler SocketIO
 socketio_handler = SocketIOHandler()
-socketio_handler.setLevel(logging.INFO)  # Capturer INFO et plus
+socketio_handler.setLevel(logging.DEBUG)  # 🔥 FIX: Capturer DEBUG et plus (inclut ERROR, WARNING, CRITICAL)
 logging.getLogger().addHandler(socketio_handler)
 
 # 🔥 ARCHITECTURE V2: Monter fichiers statiques

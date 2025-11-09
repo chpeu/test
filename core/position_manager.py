@@ -733,29 +733,38 @@ class PositionManager:
         closure_id = str(uuid.uuid4())
 
         # Construire résultat
+        # 🔥 FIX: Ajouter opened_at et closed_at pour l'affichage frontend
+        opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
+        closed_at = datetime.now().isoformat()
+        
         result = {
             'symbol': self.active_position.symbol,
             'direction': self.active_position.direction,
             'entry': self.active_position.entry,
             'exit': exit_price,
+            'exit_price': exit_price,  # 🔥 FIX: Alias pour compatibilité frontend
             'pnl_pct': round(pnl_data['pnl_pct'], 2),
             'pnl_usdt': round(net_pnl_usdt, 4),
             'gross_pnl_pct': round(pnl_data['pnl_pct'], 2),
             'gross_pnl_usdt': round(pnl_data['pnl_usdt_gross'], 4),
-            'fees': round(pnl_data['fees'], 2),
-            'slippage': round(slippage, 2),
+            'fees': round(pnl_data['fees'], 4),  # 🔥 FIX: Plus de précision pour les fees
+            'slippage': round(slippage, 4),  # 🔥 FIX: Plus de précision pour le slippage
             'total_costs': round(total_costs, 2),
             'total_costs_usdt': round(total_costs, 4),
             'net_pnl': round(net_pnl_pct, 2),
+            'net_pnl_pct': round(net_pnl_pct, 2),  # 🔥 FIX: Alias pour compatibilité frontend
             'net_pnl_usdt': round(net_pnl_usdt, 4),
             'duration': duration,
             'reason': reason,
             'close_reason': reason,
             'timestamp': self.active_position.timestamp,
+            'opened_at': opened_at,  # 🔥 FIX: Ajouté pour l'affichage frontend
+            'closed_at': closed_at,  # 🔥 FIX: Ajouté pour l'affichage frontend
             'closure_id': closure_id,
             'has_partial_tp': self.active_position.partial_tp_sold,
             'size_closed': round(size_closed, 4),
             'size': self.active_position.size,
+            'confirmed_by': getattr(self.active_position, 'confirmed_by', ''),  # 🔥 FIX: Ajouté pour l'affichage signals
             # ✅ FIX: Tracking source du exit_price
             'exit_price_source': exit_price_source,
             'exit_price_from_fallback': exit_price_source != "api"

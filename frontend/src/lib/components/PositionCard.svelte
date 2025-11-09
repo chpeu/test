@@ -15,6 +15,36 @@
 		if (pct === null || pct === undefined) return '0.00';
 		return pct.toFixed(2);
 	}
+
+	// 🔥 FIX: Fonction pour clôturer la position manuellement
+	async function closePosition() {
+		if (!confirm('Êtes-vous sûr de vouloir clôturer cette position manuellement ?')) {
+			return;
+		}
+
+		try {
+			const res = await fetch('/api/position/close', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					reason: 'MANUAL',
+					exit_price: $activePosition.current_price
+				})
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+				console.log('Position fermée:', data);
+				alert('✅ Position fermée avec succès');
+			} else {
+				const errorData = await res.json().catch(() => ({}));
+				alert(`❌ Erreur: ${errorData.error || res.statusText}`);
+			}
+		} catch (err) {
+			console.error('Error closing position:', err);
+			alert('❌ Erreur: Impossible de clôturer la position');
+		}
+	}
 </script>
 
 {#if $activePosition}
@@ -86,6 +116,13 @@
 				<div class="signals-list">{$activePosition.confirmed_by}</div>
 			</div>
 		{/if}
+
+		<!-- 🔥 FIX: Bouton pour clôturer la position manuellement -->
+		<div class="close-position-section">
+			<button class="close-position-btn" on:click={closePosition}>
+				🚪 Clôturer la Position
+			</button>
+		</div>
 	</div>
 {:else}
 	<div class="no-position">
@@ -298,6 +335,38 @@
 	.no-position-text {
 		font-size: 16px;
 		color: #888;
+	}
+
+	/* 🔥 FIX: Styles pour le bouton de clôture */
+	.close-position-section {
+		margin-top: 20px;
+		padding-top: 20px;
+		border-top: 2px solid #2a3a6b;
+		text-align: center;
+	}
+
+	.close-position-btn {
+		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		color: white;
+		border: none;
+		padding: 12px 24px;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+	}
+
+	.close-position-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 20px rgba(255, 68, 68, 0.5);
+	}
+
+	.close-position-btn:active {
+		transform: translateY(0);
 	}
 
 	/* Mobile responsive */

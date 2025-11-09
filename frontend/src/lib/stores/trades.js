@@ -43,7 +43,12 @@ export const pnlChartData = derived(sortedTrades, $trades => {
 
 // Actions
 export function addTrade(trade) {
-	tradeHistory.update($trades => [trade, ...$trades]);
+	// 🔥 FIX: S'assurer que le trade a un ID unique
+	const tradeWithId = {
+		...trade,
+		id: trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at}_${Date.now()}_${Math.random()}`
+	};
+	tradeHistory.update($trades => [tradeWithId, ...$trades]);
 }
 
 export function updateTrade(tradeId, updates) {
@@ -57,5 +62,10 @@ export function clearHistory() {
 }
 
 export function setTradeHistory(trades) {
-	tradeHistory.set(trades);
+	// 🔥 FIX: S'assurer que chaque trade a un ID unique
+	const tradesWithIds = trades.map((trade, index) => ({
+		...trade,
+		id: trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at}_${index}_${Date.now()}`
+	}));
+	tradeHistory.set(tradesWithIds);
 }

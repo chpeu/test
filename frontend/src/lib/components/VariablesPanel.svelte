@@ -286,25 +286,6 @@
 		</button>
 	</div>
 
-	{#if saveMessage}
-		<div class="save-message" class:success={saveMessage.includes('✅')} class:error={saveMessage.includes('❌')}>
-			{saveMessage}
-		</div>
-	{/if}
-
-	<!-- Sous-onglets -->
-	<div class="subtabs">
-		<button class="subtab" class:active={activeSubTab === 'setups'} on:click={() => activeSubTab = 'setups'}>
-			📊 Setups & Validation
-		</button>
-		<button class="subtab" class:active={activeSubTab === 'money'} on:click={() => activeSubTab = 'money'}>
-			💰 Money Management
-		</button>
-		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'}>
-			🎯 TP/SL & Position
-		</button>
-	</div>
-
 	<div class="variables-grid">
 		<!-- ONGLET SETUPS -->
 		{#if activeSubTab === 'setups'}

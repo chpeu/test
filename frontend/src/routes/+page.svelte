@@ -65,9 +65,36 @@
 				console.log('Initial state loaded:', data);
 				backendConnected = true;
 				backendError = '';
-				// Charger le mode TP/SL actif
+				
+				// 🔥 FIX: Charger le mode TP/SL actif
 				if (data.config && data.config.tp_sl_mode) {
 					tpSlMode = data.config.tp_sl_mode;
+				}
+				
+				// 🔥 FIX: Mettre à jour l'état du bot dans BotControls via l'API status
+				// (BotControls écoute déjà Socket.IO, mais on force une vérification)
+				if (data.is_scanning !== undefined) {
+					// L'état sera mis à jour via Socket.IO ou le composant BotControls
+				}
+				
+				// 🔥 FIX: Nettoyer les données d'anciennes sessions si aucune position active
+				// Les données seront rechargées via Socket.IO si nécessaire
+				if (!data.active_position) {
+					// Nettoyer la position
+					const { clearPosition } = await import('$lib/stores/position');
+					clearPosition();
+				}
+				
+				// 🔥 FIX: Charger l'historique des trades depuis le backend (remplace les anciennes données)
+				if (data.trade_history && Array.isArray(data.trade_history)) {
+					const { setTradeHistory } = await import('$lib/stores/trades');
+					setTradeHistory(data.trade_history);
+				}
+				
+				// 🔥 FIX: Charger les stats depuis le backend (remplace les anciennes stats)
+				if (data.stats) {
+					const { updateStats } = await import('$lib/stores/stats');
+					updateStats(data.stats);
 				}
 			} else {
 				throw new Error(`Backend returned ${res.status}`);
@@ -97,12 +124,15 @@
 	// 🔥 FIX: Recharger les données quand on change d'onglet (évite pages vides)
 	let lastTab = activeTab;
 	$: if (activeTab && activeTab !== lastTab && backendConnected) {
-		lastTab = activeTab;
+		const currentTab = activeTab;
+		lastTab = currentTab; // Mettre à jour immédiatement pour éviter les boucles
 		// Petit délai pour laisser le DOM se mettre à jour
 		setTimeout(() => {
-			loadInitialState().catch(err => {
-				console.error('Error reloading state on tab change:', err);
-			});
+			if (activeTab === currentTab) { // Vérifier que l'onglet n'a pas changé entre-temps
+				loadInitialState().catch(err => {
+					console.error('Error reloading state on tab change:', err);
+				});
+			}
 		}, 100);
 	}
 </script>

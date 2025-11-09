@@ -5,7 +5,9 @@
 	$: currentTab = tabs.find(t => t.id === activeTab) || tabs[0];
 	
 	function selectTab(tabId) {
+		// 🔥 FIX: Toujours mettre à jour activeTab pour déclencher la réactivité Svelte
 		activeTab = tabId;
+		console.log('Tab changed to:', tabId); // Debug
 	}
 </script>
 
@@ -15,9 +17,13 @@
 			<button
 				class="tab-button"
 				class:active={activeTab === tab.id}
-				on:click={() => selectTab(tab.id)}
+				on:click|stopPropagation={(e) => {
+					e.stopPropagation();
+					selectTab(tab.id);
+				}}
 				role="tab"
 				aria-selected={activeTab === tab.id}
+				type="button"
 			>
 				<span class="tab-icon">{tab.icon || ''}</span>
 				<span class="tab-label">{tab.label}</span>
@@ -33,8 +39,10 @@
 		background: #1e2749;
 		border-radius: 10px;
 		border: 2px solid #2a3a6b;
-		overflow: hidden;
+		overflow: visible; /* 🔥 FIX: Permettre aux onglets d'être cliquables même avec overflow */
 		margin-bottom: 15px;
+		position: relative;
+		z-index: 1; /* 🔥 FIX: S'assurer que les onglets sont au-dessus du contenu */
 	}
 	
 	.tabs-header {
@@ -43,8 +51,11 @@
 		background: #0a0e27;
 		border-bottom: 2px solid #2a3a6b;
 		overflow-x: auto;
+		overflow-y: visible; /* 🔥 FIX: Permettre les clics même avec scroll */
 		scrollbar-width: thin;
 		scrollbar-color: #2a3a6b #0a0e27;
+		position: relative;
+		z-index: 1002; /* 🔥 FIX: Au-dessus de tout le reste */
 	}
 	
 	.tabs-header::-webkit-scrollbar {
