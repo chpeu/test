@@ -91,8 +91,20 @@ async def get_complete_state():
     - Stats et historique des trades
     - Timestamp de la session
     """
+    # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
     if not _app_state:
-        return JSONResponse({'error': 'App state not available'}, status_code=503)
+        import time
+        return JSONResponse({
+            'success': False,
+            'error': 'App state not available',
+            'session_id': f"live_{int(time.time())}",
+            'config': {},
+            'scanner': {'is_scanning': False, 'top_pairs': []},
+            'position': {'active': False, 'data': None},
+            'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
+            'trades': [],
+            'timestamp': time.time()
+        }, status_code=200)
 
     try:
         # Récupérer position active
