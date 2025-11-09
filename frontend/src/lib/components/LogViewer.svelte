@@ -1,12 +1,14 @@
 <script>
 	import { onMount, afterUpdate } from 'svelte';
-	import { recentLogs, errorCount } from '$lib/stores/logs';
+	import { recentLogs, errorCount, recentConfigLogs, configChangesCount } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 
 	let logContainer;
 	let errorContainer;
+	let configContainer;
 	let autoScroll = true;
 	let autoScrollErrors = true;
+	let autoScrollConfig = true;
 
 	// Séparer les erreurs/warnings des autres logs
 	const errorLogs = derived(recentLogs, $logs =>
@@ -25,15 +27,20 @@
 		if (autoScrollErrors && errorContainer) {
 			errorContainer.scrollTop = errorContainer.scrollHeight;
 		}
+		if (autoScrollConfig && configContainer) {
+			configContainer.scrollTop = configContainer.scrollHeight;
+		}
 	});
 
-	function handleScroll(container, isError = false) {
+	function handleScroll(container, type = 'regular') {
 		if (!container) return;
 		const { scrollTop, scrollHeight, clientHeight } = container;
 		// Auto-scroll if user is within 50px of bottom
 		const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
-		if (isError) {
+		if (type === 'error') {
 			autoScrollErrors = isAtBottom;
+		} else if (type === 'config') {
+			autoScrollConfig = isAtBottom;
 		} else {
 			autoScroll = isAtBottom;
 		}
@@ -76,7 +83,7 @@
 			<div class="error-badge">{$errorLogs.length} problèmes</div>
 		</div>
 
-		<div class="log-container errors" bind:this={errorContainer} on:scroll={() => handleScroll(errorContainer, true)}>
+		<div class="log-container errors" bind:this={errorContainer} on:scroll={() => handleScroll(errorContainer, 'error')}>
 			{#if $errorLogs.length === 0}
 				<div class="no-logs">
 					<div class="no-logs-icon">✅</div>
@@ -102,6 +109,40 @@
 		</div>
 	</div>
 
+	<!-- Section Config Changes -->
+	<div class="config-section">
+		<div class="log-header">
+			<h3>⚙️ Modifications Config</h3>
+			<div class="config-badge">{$configChangesCount} changements</div>
+		</div>
+
+		<div class="log-container config" bind:this={configContainer} on:scroll={() => handleScroll(configContainer, 'config')}>
+			{#if $recentConfigLogs.length === 0}
+				<div class="no-logs">
+					<div class="no-logs-icon">⚙️</div>
+					<div class="no-logs-text">Aucune modification</div>
+				</div>
+			{:else}
+				{#each $recentConfigLogs as log (log.id)}
+					<div class="config-entry">
+						<span class="config-time">{formatTime(log.timestamp)}</span>
+						<span class="config-key">{log.key}</span>
+						<span class="config-arrow">→</span>
+						<span class="config-change">{log.change}</span>
+					</div>
+				{/each}
+			{/if}
+		</div>
+
+		<div class="log-footer">
+			<label class="auto-scroll-toggle">
+				<input type="checkbox" bind:checked={autoScrollConfig} />
+				<span>Auto-scroll</span>
+			</label>
+			<div class="log-count">{$configChangesCount} modifications</div>
+		</div>
+	</div>
+
 	<!-- Section Logs Standards -->
 	<div class="logs-section">
 		<div class="log-header">
@@ -109,7 +150,7 @@
 			<div class="info-badge">{$regularLogs.length} entrées</div>
 		</div>
 
-		<div class="log-container" bind:this={logContainer} on:scroll={() => handleScroll(logContainer, false)}>
+		<div class="log-container" bind:this={logContainer} on:scroll={() => handleScroll(logContainer, 'regular')}>
 			{#if $regularLogs.length === 0}
 				<div class="no-logs">
 					<div class="no-logs-icon">📝</div>
@@ -144,6 +185,7 @@
 	}
 
 	.errors-section,
+	.config-section,
 	.logs-section {
 		background: #1e2749;
 		border-radius: 12px;
@@ -186,6 +228,16 @@
 		font-size: 12px;
 		font-weight: bold;
 		border: 1px solid #00aaff;
+	}
+
+	.config-badge {
+		background: rgba(0, 255, 136, 0.2);
+		color: #00ff88;
+		padding: 4px 12px;
+		border-radius: 12px;
+		font-size: 12px;
+		font-weight: bold;
+		border: 1px solid #00ff88;
 	}
 
 	.log-container {
@@ -248,6 +300,45 @@
 		word-break: break-word;
 	}
 
+	.config-entry {
+		padding: 8px 12px;
+		margin-bottom: 5px;
+		background: rgba(0, 255, 136, 0.05);
+		border-radius: 4px;
+		border-left: 3px solid #00ff88;
+		display: flex;
+		gap: 10px;
+		align-items: center;
+		transition: all 0.2s;
+	}
+
+	.config-entry:hover {
+		background: rgba(0, 255, 136, 0.1);
+	}
+
+	.config-time {
+		color: #888;
+		flex-shrink: 0;
+	}
+
+	.config-key {
+		color: #00aaff;
+		font-weight: bold;
+		flex-shrink: 0;
+		font-family: 'Courier New', monospace;
+	}
+
+	.config-arrow {
+		color: #00ff88;
+		font-weight: bold;
+	}
+
+	.config-change {
+		color: #fff;
+		flex: 1;
+		font-family: 'Courier New', monospace;
+	}
+
 	.no-logs {
 		text-align: center;
 		padding: 60px 20px;
@@ -293,11 +384,13 @@
 	/* Mobile */
 	@media (max-width: 768px) {
 		.errors-section,
+		.config-section,
 		.logs-section {
 			max-height: 300px;
 		}
 
-		.log-entry {
+		.log-entry,
+		.config-entry {
 			flex-direction: column;
 			gap: 5px;
 		}

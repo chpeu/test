@@ -1438,6 +1438,43 @@ async def add_log(level, message, detail=''):
     logger.info(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}")
 
 
+@app.post("/api/log/config")
+async def log_config_change(request: Request):
+    """
+    Endpoint pour logger les modifications de configuration
+    Reçoit les changements de variables depuis le frontend et les émet via WebSocket
+    """
+    try:
+        data = await request.json()
+
+        # Créer l'entrée de log de configuration
+        config_log_entry = {
+            'timestamp': datetime.now().strftime('%H:%M:%S.%f')[:-3],
+            'key': data.get('key', ''),
+            'change': data.get('change', ''),
+            'iso_timestamp': data.get('timestamp', datetime.now().isoformat())
+        }
+
+        # Émettre via WebSocket avec événement spécifique 'config_change'
+        await sio.emit('config_change', config_log_entry)
+
+        # Logger également dans les logs normaux pour traçabilité
+        logger.info(f"Config change: {config_log_entry['key']} → {config_log_entry['change']}")
+
+        return JSONResponse({
+            'status': 'success',
+            'message': 'Config change logged',
+            'data': config_log_entry
+        })
+
+    except Exception as e:
+        logger.error(f"Error logging config change: {e}")
+        return JSONResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status_code=500)
+
+
 # Dashboard endpoints
 
 def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:

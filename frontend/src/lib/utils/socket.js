@@ -8,7 +8,7 @@ import { browser } from '$app/environment';
 // Stores
 import { updatePosition, clearPosition } from '$lib/stores/position';
 import { updateStats, incrementWin, incrementLoss } from '$lib/stores/stats';
-import { addLog } from '$lib/stores/logs';
+import { addLog, addConfigLog } from '$lib/stores/logs';
 import { addTrade, setTradeHistory } from '$lib/stores/trades';
 import {
 	startScanning,
@@ -73,6 +73,10 @@ export function initSocket() {
 
 	socket.on('log', (logEntry) => {
 		addLog(logEntry);
+	});
+
+	socket.on('config_change', (configLogEntry) => {
+		addConfigLog(configLogEntry);
 	});
 
 	// === ÉVÉNEMENTS SCANNER ===
