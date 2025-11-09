@@ -152,13 +152,54 @@
 
 			if (res.ok) {
 				const result = await res.json();
-				saveMessage = `✅ Configuration sauvegardée: ${result.message || 'Succès'}`;
+				
+				// 🔥 AMÉLIORATION: Vérifier que les valeurs sont bien appliquées
+				if (result.verified) {
+					const verifiedDetails = Object.entries(result.verified)
+						.map(([key, value]) => `  ✅ ${key} = ${value}`)
+						.join('\n');
+					console.log('✅ Paramètres vérifiés dans TRADING_CONFIG:\n' + verifiedDetails);
+					
+					// Afficher un message détaillé
+					const verifiedCount = Object.keys(result.verified).length;
+					saveMessage = `✅ ${verifiedCount} paramètre(s) sauvegardé(s) et vérifié(s) dans le bot`;
+				} else {
+					saveMessage = `✅ Configuration sauvegardée: ${result.message || 'Succès'}`;
+				}
 				
 				// 🔥 FIX: Recharger la config depuis le backend pour vérifier
 				setTimeout(async () => {
 					await loadConfig();
-					saveMessage = '';
-				}, 2000);
+					
+					// 🔥 AMÉLIORATION: Vérifier via l'endpoint de vérification
+					try {
+						const verifyRes = await fetch('/api/config/verify');
+						if (verifyRes.ok) {
+							const verifyData = await verifyRes.json();
+							console.log('🔍 Vérification complète:', verifyData);
+							if (verifyData.params) {
+								// Comparer avec la config locale
+								const mismatches = [];
+								Object.keys(config).forEach(key => {
+									if (verifyData.params[key] !== undefined && 
+									    verifyData.params[key] !== config[key]) {
+										mismatches.push(`${key}: frontend=${config[key]}, bot=${verifyData.params[key]}`);
+									}
+								});
+								if (mismatches.length > 0) {
+									console.warn('⚠️ Incohérences détectées:', mismatches);
+									saveMessage = `⚠️ ${mismatches.length} incohérence(s) détectée(s). Vérifiez les logs.`;
+								} else {
+									console.log('✅ Tous les paramètres sont synchronisés');
+								}
+							}
+						}
+					} catch (err) {
+						console.error('Erreur vérification:', err);
+					}
+					
+					setTimeout(() => (saveMessage = ''), 5000);
+				}, 1000);
 				
 				// Afficher les paramètres mis à jour
 				if (result.updated) {

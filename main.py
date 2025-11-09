@@ -1393,6 +1393,88 @@ async def api_get_config():
     })
 
 
+@app.get("/api/config/verify")
+async def api_verify_config():
+    """
+    🔥 NOUVEAU: Endpoint de vérification - Retourne TOUS les paramètres avec leurs valeurs actuelles dans TRADING_CONFIG
+    Utile pour vérifier que les modifications frontend sont bien appliquées
+    """
+    from config import TRADING_CONFIG
+    from core.config_manager import get_config_manager
+    
+    config_manager = get_config_manager()
+    overrides = config_manager.get_overrides()
+    
+    # Retourner tous les paramètres configurables avec leurs valeurs actuelles
+    all_params = {
+        # Patterns Techniques
+        'use_breakout': TRADING_CONFIG.get('use_breakout', True),
+        'use_snr': TRADING_CONFIG.get('use_snr', True),
+        'use_wick': TRADING_CONFIG.get('use_wick', True),
+        'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+        # Patterns de Bougies
+        'use_engulfing': TRADING_CONFIG.get('use_engulfing', True),
+        'use_hammer': TRADING_CONFIG.get('use_hammer', True),
+        'use_shooting_star': TRADING_CONFIG.get('use_shooting_star', True),
+        'use_doji': TRADING_CONFIG.get('use_doji', True),
+        'use_marubozu': TRADING_CONFIG.get('use_marubozu', True),
+        'use_morning_star': TRADING_CONFIG.get('use_morning_star', True),
+        'use_evening_star': TRADING_CONFIG.get('use_evening_star', True),
+        # Indicateurs Techniques
+        'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+        'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+        'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+        'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+        'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
+        'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+        # Validation Setups
+        'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+        # Money Management
+        'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+        'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+        # TP/SL Mode
+        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+        # Mode FIXE
+        'tp_percent': TRADING_CONFIG.get('tp_percent', 0.6),
+        'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+        'partial_tp_percent': TRADING_CONFIG.get('partial_tp_percent', 50.0),
+        # Mode ATR
+        'atr_mult_tp': TRADING_CONFIG.get('atr_mult_tp', 1.5),
+        'atr_mult_sl': TRADING_CONFIG.get('atr_mult_sl', 1.0),
+        'atr_min': TRADING_CONFIG.get('atr_min', 0.15),
+        'atr_max': TRADING_CONFIG.get('atr_max', 1.5),
+        # Mode ESCALIER
+        'escalier_level1_pnl': TRADING_CONFIG.get('escalier_level1_pnl', 0.2),
+        'escalier_level1_size': TRADING_CONFIG.get('escalier_level1_size', 25.0),
+        'escalier_level2_pnl': TRADING_CONFIG.get('escalier_level2_pnl', 0.35),
+        'escalier_level2_size': TRADING_CONFIG.get('escalier_level2_size', 25.0),
+        'escalier_level3_pnl': TRADING_CONFIG.get('escalier_level3_pnl', 0.5),
+        'escalier_level3_size': TRADING_CONFIG.get('escalier_level3_size', 25.0),
+        'escalier_level4_pnl': TRADING_CONFIG.get('escalier_level4_pnl', 0.8),
+        'escalier_level4_size': TRADING_CONFIG.get('escalier_level4_size', 25.0),
+        # Trailing Stop
+        'trailing_enabled': TRADING_CONFIG.get('trailing_enabled', True),
+        'trailing_trigger_pnl': TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
+        'trailing_atr_multiplier': TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
+        'trailing_min_distance': TRADING_CONFIG.get('trailing_min_distance', 0.08),
+        'trailing_max_distance': TRADING_CONFIG.get('trailing_max_distance', 0.25),
+    }
+    
+    return JSONResponse({
+        'success': True,
+        'timestamp': datetime.now().isoformat(),
+        'params': all_params,
+        'overrides_count': len(overrides),
+        'message': f'✅ {len(all_params)} paramètres vérifiés depuis TRADING_CONFIG'
+    })
+
+
 @app.get("/api/metrics/conditions")
 async def get_condition_metrics():
     """Métriques par condition"""
@@ -1644,6 +1726,11 @@ async def api_config_update(request: Request):
         # ✅ Mettre à jour TRADING_CONFIG en mémoire
         TRADING_CONFIG.update(validated_updates)
         
+        # 🔥 AMÉLIORATION: Logger TOUS les paramètres modifiés avec leurs valeurs
+        logger.info(f"📝 DÉTAIL DES MODIFICATIONS ({len(validated_updates)} paramètres):")
+        for key, value in validated_updates.items():
+            logger.info(f"   ✅ {key} = {value} (vérifié: TRADING_CONFIG['{key}'] = {TRADING_CONFIG.get(key)})")
+        
         # 🔥 FIX: Logger les valeurs importantes pour debug
         if 'min_score_required' in validated_updates:
             logger.info(f"✅ min_score_required mis à jour: {validated_updates['min_score_required']} (vérification: TRADING_CONFIG['min_score_required'] = {TRADING_CONFIG.get('min_score_required')})")
@@ -1688,12 +1775,16 @@ async def api_config_update(request: Request):
                 logger.info("✅ TrailingStopManager mis à jour avec nouvelles valeurs")
 
         logger.info(f"💾 Configuration sauvegardée: {len(validated_updates)} paramètres mis à jour")
-        await add_log('INFO', 'Config sauvegardée', f"{len(validated_updates)} paramètres")
+        
+        # 🔥 AMÉLIORATION: Log détaillé pour chaque paramètre modifié
+        updated_summary = ", ".join([f"{k}={v}" for k, v in validated_updates.items()])
+        await add_log('INFO', 'Config sauvegardée', f"{len(validated_updates)} paramètres: {updated_summary}")
 
         return JSONResponse({
             'success': True,
             'message': f'{len(validated_updates)} paramètres sauvegardés',
-            'updated': validated_updates
+            'updated': validated_updates,
+            'verified': {k: TRADING_CONFIG.get(k) for k in validated_updates.keys()}  # 🔥 Retourner les valeurs vérifiées
         })
 
     except Exception as e:
