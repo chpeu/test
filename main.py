@@ -1140,72 +1140,101 @@ async def api_get_sessions():
     """Liste des sessions (compatibilité frontend Svelte)"""
     import time
     import sys
-    init_instances()
-    current_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-    return JSONResponse({
-        'sessions': [{
-            'id': session_id or f"live_{int(time.time())}",
-            'status': 'running' if app_state.get('is_scanning') else 'stopped',
-            'port': current_port,
-            'started_at': time.time()
-        }] if session_id else []
-    })
+    try:
+        init_instances()
+    except Exception as e:
+        logger.error(f"❌ Erreur init_instances dans /api/sessions: {e}", exc_info=True)
+    
+    try:
+        current_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+        return JSONResponse({
+            'sessions': [{
+                'id': session_id or f"live_{int(time.time())}",
+                'status': 'running' if app_state.get('is_scanning') else 'stopped',
+                'port': current_port,
+                'started_at': time.time()
+            }] if session_id else []
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/sessions: {e}", exc_info=True)
+        return JSONResponse({
+            'sessions': [],
+            'error': str(e)
+        }, status_code=200)  # Retourner 200 avec sessions vide
 
 
 @app.get("/api/sessions/stats/global")
 async def api_get_sessions_stats_global():
     """Stats globales des sessions (compatibilité frontend Svelte)"""
-    init_instances()
     import time
     
-    # Calculer stats depuis app_state ou analytics_db
-    stats_dict = {
-        'total_trades': 0,
-        'wins': 0,
-        'losses': 0,
-        'winrate': 0.0
-    }
+    try:
+        init_instances()
+    except Exception as e:
+        logger.error(f"❌ Erreur init_instances dans /api/sessions/stats/global: {e}", exc_info=True)
     
-    if analytics_db:
-        try:
-            trades = analytics_db.get_trades(limit=10000)
-            if trades:
-                total = len(trades)
-                wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
-                losses = total - wins
-                winrate = (wins / total * 100) if total > 0 else 0.0
-                stats_dict = {
-                    'total_trades': total,
-                    'wins': wins,
-                    'losses': losses,
-                    'winrate': winrate
-                }
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération stats globales: {e}")
-    
-    # Fallback: utiliser app_state['trade_history']
-    if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
-        try:
-            trades = app_state['trade_history']
-            if trades:
-                total = len(trades)
-                wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
-                losses = total - wins
-                winrate = (wins / total * 100) if total > 0 else 0.0
-                stats_dict = {
-                    'total_trades': total,
-                    'wins': wins,
-                    'losses': losses,
-                    'winrate': winrate
-                }
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération stats app_state: {e}")
-    
-    return JSONResponse({
-        'total_sessions': 1,
-        'active_sessions': 1 if app_state.get('is_scanning') else 0,
-        'global_stats': stats_dict
-    })
+    try:
+        # Calculer stats depuis app_state ou analytics_db
+        stats_dict = {
+            'total_trades': 0,
+            'wins': 0,
+            'losses': 0,
+            'winrate': 0.0
+        }
+        
+        if analytics_db:
+            try:
+                trades = analytics_db.get_trades(limit=10000)
+                if trades:
+                    total = len(trades)
+                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                    losses = total - wins
+                    winrate = (wins / total * 100) if total > 0 else 0.0
+                    stats_dict = {
+                        'total_trades': total,
+                        'wins': wins,
+                        'losses': losses,
+                        'winrate': winrate
+                    }
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération stats globales: {e}")
+        
+        # Fallback: utiliser app_state['trade_history']
+        if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
+            try:
+                trades = app_state['trade_history']
+                if trades:
+                    total = len(trades)
+                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                    losses = total - wins
+                    winrate = (wins / total * 100) if total > 0 else 0.0
+                    stats_dict = {
+                        'total_trades': total,
+                        'wins': wins,
+                        'losses': losses,
+                        'winrate': winrate
+                    }
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération stats app_state: {e}")
+        
+        return JSONResponse({
+            'total_sessions': 1,
+            'active_sessions': 1 if app_state.get('is_scanning') else 0,
+            'global_stats': stats_dict
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/sessions/stats/global: {e}", exc_info=True)
+        return JSONResponse({
+            'total_sessions': 0,
+            'active_sessions': 0,
+            'global_stats': {
+                'total_trades': 0,
+                'wins': 0,
+                'losses': 0,
+                'winrate': 0.0
+            },
+            'error': str(e)
+        }, status_code=200)  # Retourner 200 avec stats vides
 
 
 @app.get("/api/state")
