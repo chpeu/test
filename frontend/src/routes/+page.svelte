@@ -16,6 +16,7 @@
 	import ExportPanel from '$lib/components/ExportPanel.svelte';
 	import SessionSelector from '$lib/components/SessionSelector.svelte';
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
+	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
 
 	let backendConnected = false;
 	let backendError = '';
@@ -23,6 +24,7 @@
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
+		{ id: 'variables', label: 'Variables', icon: '🎯' },
 		{ id: 'logs', label: 'Logs', icon: '📝' },
 		{ id: 'charts', label: 'Graphiques', icon: '📉' },
 		{ id: 'history', label: 'Historique', icon: '📜' },
@@ -110,9 +112,10 @@
 					<div class="scanner-panel">
 						<ScannerPanel />
 					</div>
-					<div class="notifications-panel">
-						<NotificationSettings />
-					</div>
+				</div>
+			{:else if activeTab === 'variables'}
+				<div class="tab-content">
+					<VariablesPanel />
 				</div>
 			{:else if activeTab === 'logs'}
 				<div class="tab-content">
