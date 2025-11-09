@@ -76,13 +76,13 @@
 				}
 				
 				// 🔥 FIX: Mettre à jour l'état du bot dans BotControls via l'API status
-				// (BotControls écoute déjà Socket.IO, mais on force une vérification)
+				// (BotControls utilise le store isScanning mis à jour via WebSocket natif)
 				if (data.is_scanning !== undefined) {
-					// L'état sera mis à jour via Socket.IO ou le composant BotControls
+					// L'état sera mis à jour via WebSocket natif ou le composant BotControls
 				}
 				
 				// 🔥 FIX: Nettoyer les données d'anciennes sessions si aucune position active
-				// Les données seront rechargées via Socket.IO si nécessaire
+				// Les données seront rechargées via WebSocket natif si nécessaire
 				if (!data.active_position) {
 					// Nettoyer la position
 					const { clearPosition } = await import('$lib/stores/position');

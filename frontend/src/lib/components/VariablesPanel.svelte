@@ -1,6 +1,7 @@
 <script>
-	import { onMount, onDestroy } from 'svelte';
-	import { getSocket } from '$lib/utils/socket';
+	import { onMount } from 'svelte';
+	// 🔥 REMPLACEMENT: WebSocket natif - plus besoin de getSocket()
+	// import { getSocket } from '$lib/utils/socket';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -269,37 +270,10 @@
 		});
 	}
 
-	// 🔥 FIX: Écouter les changements de config via Socket.IO pour synchronisation temps réel
-	let socket = null;
-	let configChangeListener = null;
-
-	function setupConfigListener() {
-		socket = getSocket();
-		if (!socket) {
-			setTimeout(setupConfigListener, 1000);
-			return;
-		}
-
-		configChangeListener = (configLogEntry) => {
-			if (configLogEntry.changes) {
-				console.log('🔄 Config changée via Socket.IO, rechargement...');
-				// Recharger la config depuis le backend
-				loadConfig();
-			}
-		};
-
-		socket.on('config_change', configChangeListener);
-	}
-
-	onMount(() => {
-		setupConfigListener();
-	});
-
-	onDestroy(() => {
-		if (socket && configChangeListener) {
-			socket.off('config_change', configChangeListener);
-		}
-	});
+	// 🔥 REMPLACEMENT: WebSocket natif gère déjà les changements de config via websocket.js
+	// Les changements de config sont automatiquement synchronisés via le store logs
+	// Plus besoin d'écouter manuellement les événements Socket.IO
+	// Le composant rechargera automatiquement la config après sauvegarde via saveConfig()
 </script>
 
 <div class="variables-panel">

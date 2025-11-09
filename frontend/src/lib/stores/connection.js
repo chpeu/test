@@ -1,5 +1,5 @@
 /**
- * Store Svelte pour l'état de connexion Socket.IO
+ * Store Svelte pour l'état de connexion WebSocket natif
  * Gère reconnexion automatique et état en temps réel
  */
 import { writable, derived } from 'svelte/store';

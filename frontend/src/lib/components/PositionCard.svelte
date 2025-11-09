@@ -24,7 +24,7 @@
 		if (res.ok) {
 			const data = await res.json();
 			console.log('Position fermée:', data);
-			// La synchronisation Socket.IO confirmera et mettra à jour les stats/historique
+			// La synchronisation WebSocket natif confirmera et mettra à jour les stats/historique
 		} else {
 				const errorData = await res.json().catch(() => ({}));
 				alert(`❌ Erreur: ${errorData.error || res.statusText}`);

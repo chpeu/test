@@ -1,5 +1,6 @@
 <script>
-	import '$lib/utils/socket'; // Init Socket.IO
+	// 🔥 REMPLACEMENT: WebSocket natif initialisé dans +page.svelte
+	// Plus besoin d'importer socket.js (Socket.IO)
 	import { theme } from '$lib/stores/theme'; // Init theme
 	import { onMount } from 'svelte';
 

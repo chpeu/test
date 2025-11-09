@@ -1,6 +1,6 @@
 /**
  * Store Svelte pour la position active
- * Synchronisé automatiquement avec Socket.IO
+ * Synchronisé automatiquement avec WebSocket natif
  */
 import { writable, derived } from 'svelte/store';
 
