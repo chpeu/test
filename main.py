@@ -70,16 +70,26 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503"""
+    """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503 pour /api/state"""
     import time
+    
+    # Ne pas intercepter les HTTPException (déjà gérées)
+    if isinstance(exc, (StarletteHTTPException, RequestValidationError)):
+        raise exc
+    
     logger.error(f"❌ Exception globale capturée dans {request.url.path}: {exc}", exc_info=True)
     
     # Si c'est une route /api/state, retourner réponse minimale avec 200
     if request.url.path == "/api/state":
+        try:
+            session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
+        except:
+            session_id_value = f"live_{int(time.time())}"
+        
         return JSONResponse({
             'success': False,
             'error': str(exc),
-            'session_id': session_id if 'session_id' in globals() else f"live_{int(time.time())}",
+            'session_id': session_id_value,
             'config': {},
             'scanner': {'is_scanning': False, 'top_pairs': []},
             'position': {'active': False, 'data': None},
