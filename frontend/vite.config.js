@@ -6,6 +6,7 @@ export default defineConfig({
 
 	server: {
 		port: 3000,
+		host: '0.0.0.0', // 🔥 Permettre l'accès depuis l'extérieur (iPhone, etc.)
 		proxy: {
 			// Proxy API et Socket.IO vers FastAPI backend
 			'/api': {

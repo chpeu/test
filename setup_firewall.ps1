@@ -2,11 +2,11 @@
 # Permet l'accès depuis iPhone et autres appareils sur le réseau local
 
 param(
-    [int]$Port = 5000
+    [int[]]$Ports = @(5000, 3000)  # 🔥 Ports 5000 (Backend) et 3000 (Frontend)
 )
 
 Write-Host "🔥 Configuration du Firewall Windows pour Trade Cursor" -ForegroundColor Cyan
-Write-Host "Port: $Port" -ForegroundColor Yellow
+Write-Host "Ports: $($Ports -join ', ')" -ForegroundColor Yellow
 Write-Host ""
 
 # Vérifier si on est administrateur
@@ -20,51 +20,57 @@ if (-not $isAdmin) {
     exit 1
 }
 
-Write-Host "✅ Droits administrateur confirmés" -ForegroundColor Green
+Write-Host "✅ Droits administrateur détectés." -ForegroundColor Green
 Write-Host ""
 
-# Vérifier si la règle existe déjà
-$ruleName = "Trade Cursor - Port $Port"
-$existingRule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
-
-if ($existingRule) {
-    Write-Host "⚠️  Règle existante trouvée: $ruleName" -ForegroundColor Yellow
-    $remove = Read-Host "Voulez-vous la supprimer et la recréer? (O/N)"
-    if ($remove -eq "O" -or $remove -eq "o") {
-        Remove-NetFirewallRule -DisplayName $ruleName
-        Write-Host "✅ Règle supprimée" -ForegroundColor Green
-    } else {
-        Write-Host "ℹ️  Règle conservée" -ForegroundColor Cyan
-        exit 0
+# 🔥 Configurer le firewall pour chaque port
+foreach ($Port in $Ports) {
+    Write-Host "🔧 Configuration du port $Port..." -ForegroundColor Cyan
+    
+    # Nom de la règle de firewall
+    $ruleName = "TradeCursor_Port_$Port"
+    
+    # Vérifier si la règle existe déjà
+    $existingRule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+    
+    if ($existingRule) {
+        Write-Host "ℹ️ Règle de firewall '$ruleName' existe déjà. Suppression..." -ForegroundColor Yellow
+        Remove-NetFirewallRule -DisplayName $ruleName -Confirm:$false
+        Write-Host "✅ Règle existante supprimée." -ForegroundColor Green
     }
+    
+    Write-Host "➕ Ajout de la règle de firewall '$ruleName' pour le port TCP $Port..." -ForegroundColor Yellow
+    try {
+        $description = if ($Port -eq 5000) {
+            "Permet l'accès au serveur Trade Cursor (FastAPI Backend) sur le port $Port"
+        } else {
+            "Permet l'accès au serveur Trade Cursor (SvelteKit Frontend) sur le port $Port"
+        }
+        
+        New-NetFirewallRule -DisplayName $ruleName `
+                            -Direction Inbound `
+                            -Action Allow `
+                            -Protocol TCP `
+                            -LocalPort $Port `
+                            -Profile Any `
+                            -EdgeTraversalPolicy Allow `
+                            -Description $description
+        Write-Host "✅ Règle de firewall '$ruleName' ajoutée avec succès." -ForegroundColor Green
+    } catch {
+        Write-Host "❌ ERREUR lors de l'ajout de la règle de firewall: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host ""
 }
 
-# Créer la règle de firewall
-Write-Host "🔧 Création de la règle de firewall..." -ForegroundColor Cyan
-
-try {
-    New-NetFirewallRule `
-        -DisplayName $ruleName `
-        -Direction Inbound `
-        -Protocol TCP `
-        -LocalPort $Port `
-        -Action Allow `
-        -Profile Domain,Private,Public `
-        -Description "Autorise l'accès au serveur Trade Cursor depuis le réseau local (iPhone, etc.)"
-
-    Write-Host "✅ Règle de firewall créée avec succès!" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "📱 Vous pouvez maintenant accéder au serveur depuis votre iPhone:" -ForegroundColor Cyan
-    Write-Host "   1. Assurez-vous que votre iPhone est sur le même réseau Wi-Fi" -ForegroundColor Yellow
-    Write-Host "   2. Utilisez l'IP affichée au démarrage du serveur" -ForegroundColor Yellow
-    Write-Host "   3. Format: http://[IP]:$Port/" -ForegroundColor Yellow
-    Write-Host ""
-} catch {
-    Write-Host "❌ Erreur lors de la création de la règle: $_" -ForegroundColor Red
-    exit 1
+Write-Host "🎉 Configuration du firewall terminée pour Trade Cursor sur les ports $($Ports -join ', ')." -ForegroundColor Green
+Write-Host "   Le bot devrait maintenant être accessible depuis d'autres appareils sur votre réseau local." -ForegroundColor Green
+Write-Host ""
+Write-Host "Ports configurés:" -ForegroundColor Yellow
+Write-Host "  - Port 5000: Backend FastAPI" -ForegroundColor Gray
+Write-Host "  - Port 3000: Frontend SvelteKit (dev)" -ForegroundColor Gray
+Write-Host ""
+Write-Host "Pour vérifier l'état des règles, exécutez:" -ForegroundColor DarkGray
+foreach ($Port in $Ports) {
+    Write-Host "Get-NetFirewallRule -DisplayName 'TradeCursor_Port_$Port'" -ForegroundColor DarkGray
 }
-
-# Afficher les règles créées
-Write-Host "📋 Règles de firewall pour Trade Cursor:" -ForegroundColor Cyan
-Get-NetFirewallRule -DisplayName "*Trade Cursor*" | Format-Table DisplayName, Enabled, Direction, Action -AutoSize
-
