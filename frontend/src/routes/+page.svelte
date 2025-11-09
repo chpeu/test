@@ -69,6 +69,19 @@
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
 		const ws = initWebSocket();
 		
+		// Vérifier que l'instance est correcte
+		if (!ws) {
+			console.error('❌ WebSocket instance est null');
+			return;
+		}
+		
+		if (typeof ws.on !== 'function') {
+			console.error('❌ WebSocket.on n\'est pas une fonction', ws);
+			console.error('Type de ws:', typeof ws);
+			console.error('Méthodes disponibles:', Object.keys(ws));
+			return;
+		}
+		
 		// Attendre un peu pour que la connexion soit établie
 		await new Promise(resolve => setTimeout(resolve, 100));
 		
