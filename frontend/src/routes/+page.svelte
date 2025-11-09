@@ -21,6 +21,7 @@
 	let backendConnected = false;
 	let backendError = '';
 	let activeTab = 'dashboard';
+	let tpSlMode = 'FIXE'; // Mode TP/SL actif du bot
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -32,6 +33,24 @@
 		{ id: 'settings', label: 'Paramètres', icon: '⚙️' }
 	];
 
+	async function changeTpSlMode() {
+		try {
+			const res = await fetch('/api/config/update', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ tp_sl_mode: tpSlMode })
+			});
+
+			if (res.ok) {
+				console.log(`TP/SL Mode changé: ${tpSlMode}`);
+			} else {
+				console.error('Erreur changement mode TP/SL');
+			}
+		} catch (err) {
+			console.error('Erreur changement mode TP/SL:', err);
+		}
+	}
+
 	// Fetch initial state on mount
 	onMount(async () => {
 		try {
@@ -40,6 +59,10 @@
 				const data = await res.json();
 				console.log('Initial state loaded:', data);
 				backendConnected = true;
+				// Charger le mode TP/SL actif
+				if (data.config && data.config.tp_sl_mode) {
+					tpSlMode = data.config.tp_sl_mode;
+				}
 			} else {
 				throw new Error(`Backend returned ${res.status}`);
 			}
@@ -106,6 +129,31 @@
 					<div class="status-panel">
 						<StatsPanel />
 					</div>
+
+					<!-- Sélecteur Mode TP/SL -->
+					<div class="tpsl-mode-selector">
+						<h3>🎯 Mode TP/SL Actif</h3>
+						<div class="mode-selector-content">
+							<label for="tp-sl-mode-dashboard">
+								<span class="mode-label">Sélectionner le mode de Take Profit / Stop Loss:</span>
+							</label>
+							<select
+								id="tp-sl-mode-dashboard"
+								bind:value={tpSlMode}
+								on:change={changeTpSlMode}
+							>
+								<option value="FIXE">FIXE - Pourcentages fixes</option>
+								<option value="ATR">ATR - Basé sur volatilité</option>
+								<option value="ESCALIER">ESCALIER - TP partiel progressif</option>
+							</select>
+						</div>
+						<p class="mode-info">
+							Mode actuel: <strong class="mode-value mode-{tpSlMode.toLowerCase()}">{tpSlMode}</strong>
+							<br/>
+							<small>Configurez les paramètres de chaque mode dans l'onglet <strong>Variables → TP/SL & Position</strong></small>
+						</p>
+					</div>
+
 					<div class="position-panel">
 						<PositionCard />
 					</div>
@@ -486,5 +534,98 @@
 		.notifications-settings {
 			padding: 12px;
 		}
+	}
+
+	/* TP/SL Mode Selector */
+	.tpsl-mode-selector {
+		background: #1e2749;
+		border-radius: 12px;
+		padding: 24px;
+		border: 2px solid #2a3a6b;
+		margin-bottom: 20px;
+	}
+
+	.tpsl-mode-selector h3 {
+		font-size: 20px;
+		color: #00ff88;
+		margin: 0 0 16px 0;
+	}
+
+	.mode-selector-content {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		margin-bottom: 16px;
+	}
+
+	.mode-label {
+		font-size: 14px;
+		color: #00aaff;
+		font-weight: bold;
+	}
+
+	.tpsl-mode-selector select {
+		background: #0a0e27;
+		color: #fff;
+		border: 2px solid #00aaff;
+		border-radius: 8px;
+		padding: 12px 16px;
+		font-size: 14px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.tpsl-mode-selector select:hover {
+		border-color: #00ff88;
+		background: rgba(0, 170, 255, 0.1);
+	}
+
+	.tpsl-mode-selector select:focus {
+		outline: none;
+		border-color: #00ff88;
+		box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+	}
+
+	.mode-info {
+		background: rgba(0, 170, 255, 0.1);
+		border-left: 3px solid #00aaff;
+		padding: 12px;
+		font-size: 13px;
+		color: #ccc;
+		margin: 0;
+	}
+
+	.mode-info strong {
+		color: #00aaff;
+	}
+
+	.mode-value {
+		padding: 4px 12px;
+		border-radius: 6px;
+		font-weight: bold;
+		font-size: 13px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.mode-value.mode-fixe {
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		color: #0a0e27;
+	}
+
+	.mode-value.mode-atr {
+		background: linear-gradient(135deg, #00aaff 0%, #0088cc 100%);
+		color: #0a0e27;
+	}
+
+	.mode-value.mode-escalier {
+		background: linear-gradient(135deg, #ff8800 0%, #cc6600 100%);
+		color: #fff;
+	}
+
+	.mode-info small {
+		font-size: 11px;
+		color: #888;
 	}
 </style>

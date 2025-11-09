@@ -2,12 +2,20 @@
 	import { onMount } from 'svelte';
 
 	const DEFAULTS = {
-		// Patterns
+		// Patterns Techniques
 		use_breakout: true,
 		use_snr: true,
 		use_wick: true,
 		use_divergence: true,
-		// Indicateurs
+		// Patterns de Bougies (Candlestick Patterns)
+		use_engulfing: true,
+		use_hammer: true,
+		use_shooting_star: true,
+		use_doji: true,
+		use_marubozu: true,
+		use_morning_star: true,
+		use_evening_star: true,
+		// Indicateurs Techniques
 		snr_threshold: 0.25,
 		breakout_threshold: 0.35,
 		wick_ratio_max: 2.8,
@@ -19,6 +27,10 @@
 		optimal_atr_max_1m: 0.75,
 		optimal_atr_min_5m: 0.22,
 		optimal_atr_max_5m: 1.4,
+		// Validation Setups (déplacé depuis Stratégie)
+		use_confluence: false,
+		volume_multiplier: 0.95,
+		min_score_required: 7.5,
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
@@ -47,17 +59,54 @@
 		trailing_trigger_pnl: 0.25,
 		trailing_atr_multiplier: 0.4,
 		trailing_min_distance: 0.08,
-		trailing_max_distance: 0.25,
-		// Stratégie
-		use_confluence: false,
-		volume_multiplier: 0.95,
-		min_score_required: 7.5
+		trailing_max_distance: 0.25
 	};
 
 	let config = { ...DEFAULTS };
 	let loading = false;
 	let saveMessage = '';
 	let activeSubTab = 'setups';
+	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
+
+	// Auto-ajustement sliders Escalier pour que la somme = 100%
+	function autoAdjustEscalierSize(changedLevel) {
+		const levels = [1, 2, 3, 4];
+		const otherLevels = levels.filter(l => l !== changedLevel);
+
+		const changedValue = config[`escalier_level${changedLevel}_size`];
+		const totalOthers = otherLevels.reduce((sum, l) => sum + config[`escalier_level${l}_size`], 0);
+		const totalAll = changedValue + totalOthers;
+
+		if (totalAll > 100) {
+			// Réduire proportionnellement les autres niveaux
+			const excess = totalAll - 100;
+			const reductionRatio = excess / totalOthers;
+
+			otherLevels.forEach(l => {
+				const currentValue = config[`escalier_level${l}_size`];
+				const reduction = currentValue * reductionRatio;
+				config[`escalier_level${l}_size`] = Math.max(0, Math.round(currentValue - reduction));
+			});
+		}
+	}
+
+	function autoAdjustEscalierPnL(changedLevel) {
+		// S'assurer que les niveaux suivants sont >= niveau actuel
+		const currentPnl = config[`escalier_level${changedLevel}_pnl`];
+
+		for (let i = changedLevel + 1; i <= 4; i++) {
+			if (config[`escalier_level${i}_pnl`] < currentPnl) {
+				config[`escalier_level${i}_pnl`] = currentPnl;
+			}
+		}
+
+		// S'assurer que les niveaux précédents sont <= niveau actuel
+		for (let i = changedLevel - 1; i >= 1; i--) {
+			if (config[`escalier_level${i}_pnl`] > currentPnl) {
+				config[`escalier_level${i}_pnl`] = currentPnl;
+			}
+		}
+	}
 
 	onMount(async () => {
 		await loadConfig();
@@ -70,6 +119,7 @@
 				const data = await res.json();
 				if (data.config) {
 					config = { ...DEFAULTS, ...data.config };
+					viewMode = config.tp_sl_mode; // Sync viewMode avec le mode actif
 				}
 			}
 		} catch (err) {
@@ -156,16 +206,13 @@
 	<!-- Sous-onglets -->
 	<div class="subtabs">
 		<button class="subtab" class:active={activeSubTab === 'setups'} on:click={() => activeSubTab = 'setups'}>
-			📊 Setups
+			📊 Setups & Validation
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'money'} on:click={() => activeSubTab = 'money'}>
 			💰 Money Management
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'}>
 			🎯 TP/SL & Position
-		</button>
-		<button class="subtab" class:active={activeSubTab === 'strategy'} on:click={() => activeSubTab = 'strategy'}>
-			⚙️ Stratégie
 		</button>
 	</div>
 
@@ -529,19 +576,21 @@
 		{#if activeSubTab === 'position'}
 			<section class="variable-section tp-sl-section">
 				<h3>🎯 Take Profit / Stop Loss</h3>
+				<p class="section-info">
+					⚠️ <strong>Note:</strong> Ce sélecteur sert uniquement à afficher les paramètres d'un mode.
+					Pour changer le mode actif du bot, utilisez le sélecteur dans l'onglet <strong>Dashboard</strong>.
+				</p>
 				<div class="variables-list">
 					<div class="variable-item">
 						<div class="var-header">
-							<label for="tp-sl-mode">
-								<span class="var-name">TP/SL Mode</span>
-								<span class="var-desc">Mode de calcul TP/SL</span>
+							<label for="tp-sl-mode-view">
+								<span class="var-name">Afficher Mode</span>
+								<span class="var-desc">Sélectionner le mode à configurer (affichage uniquement)</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('tp_sl_mode')} title="Réinitialiser">⟲</button>
 						</div>
 						<select
-							id="tp-sl-mode"
-							bind:value={config.tp_sl_mode}
-							on:change={() => logConfigChange('tp_sl_mode', `Mode changé: ${config.tp_sl_mode}`)}
+							id="tp-sl-mode-view"
+							bind:value={viewMode}
 						>
 							<option value="FIXE">FIXE - Pourcentages fixes</option>
 							<option value="ATR">ATR - Basé sur volatilité</option>
@@ -549,8 +598,13 @@
 						</select>
 					</div>
 
+					<div class="active-mode-indicator">
+						<span class="indicator-label">Mode Actif Bot:</span>
+						<span class="indicator-value mode-{config.tp_sl_mode.toLowerCase()}">{config.tp_sl_mode}</span>
+					</div>
+
 					<!-- Mode FIXE -->
-					{#if config.tp_sl_mode === 'FIXE'}
+					{#if viewMode === 'FIXE'}
 						<div class="mode-settings">
 							<div class="variable-item">
 								<div class="var-header">
@@ -621,7 +675,7 @@
 					{/if}
 
 					<!-- Mode ATR -->
-					{#if config.tp_sl_mode === 'ATR'}
+					{#if viewMode === 'ATR'}
 						<div class="mode-settings">
 							<div class="variable-item">
 								<div class="var-header">
@@ -714,7 +768,7 @@
 					{/if}
 
 					<!-- Mode ESCALIER -->
-					{#if config.tp_sl_mode === 'ESCALIER'}
+					{#if viewMode === 'ESCALIER'}
 						<div class="mode-settings">
 							<p class="mode-description">
 								Mode Escalier : Vendez votre position en 4 étapes pour sécuriser progressivement vos profits.
@@ -741,7 +795,10 @@
 												min="0.1"
 												max="2"
 												bind:value={config.escalier_level1_pnl}
-												on:change={() => logConfigChange('escalier_level1_pnl', `${config.escalier_level1_pnl.toFixed(2)}%`)}
+												on:change={() => {
+													autoAdjustEscalierPnL(1);
+													logConfigChange('escalier_level1_pnl', `${config.escalier_level1_pnl.toFixed(2)}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level1_pnl).toFixed(2)}%</span>
 										</div>
@@ -763,7 +820,10 @@
 												min="0"
 												max="100"
 												bind:value={config.escalier_level1_size}
-												on:change={() => logConfigChange('escalier_level1_size', `${config.escalier_level1_size}%`)}
+												on:change={() => {
+													autoAdjustEscalierSize(1);
+													logConfigChange('escalier_level1_size', `${config.escalier_level1_size}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level1_size).toFixed(0)}%</span>
 										</div>
@@ -791,7 +851,10 @@
 												min="0.1"
 												max="2"
 												bind:value={config.escalier_level2_pnl}
-												on:change={() => logConfigChange('escalier_level2_pnl', `${config.escalier_level2_pnl.toFixed(2)}%`)}
+												on:change={() => {
+													autoAdjustEscalierPnL(2);
+													logConfigChange('escalier_level2_pnl', `${config.escalier_level2_pnl.toFixed(2)}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level2_pnl).toFixed(2)}%</span>
 										</div>
@@ -813,7 +876,10 @@
 												min="0"
 												max="100"
 												bind:value={config.escalier_level2_size}
-												on:change={() => logConfigChange('escalier_level2_size', `${config.escalier_level2_size}%`)}
+												on:change={() => {
+													autoAdjustEscalierSize(2);
+													logConfigChange('escalier_level2_size', `${config.escalier_level2_size}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level2_size).toFixed(0)}%</span>
 										</div>
@@ -841,7 +907,10 @@
 												min="0.1"
 												max="2"
 												bind:value={config.escalier_level3_pnl}
-												on:change={() => logConfigChange('escalier_level3_pnl', `${config.escalier_level3_pnl.toFixed(2)}%`)}
+												on:change={() => {
+													autoAdjustEscalierPnL(3);
+													logConfigChange('escalier_level3_pnl', `${config.escalier_level3_pnl.toFixed(2)}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level3_pnl).toFixed(2)}%</span>
 										</div>
@@ -863,7 +932,10 @@
 												min="0"
 												max="100"
 												bind:value={config.escalier_level3_size}
-												on:change={() => logConfigChange('escalier_level3_size', `${config.escalier_level3_size}%`)}
+												on:change={() => {
+													autoAdjustEscalierSize(3);
+													logConfigChange('escalier_level3_size', `${config.escalier_level3_size}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level3_size).toFixed(0)}%</span>
 										</div>
@@ -891,7 +963,10 @@
 												min="0.1"
 												max="3"
 												bind:value={config.escalier_level4_pnl}
-												on:change={() => logConfigChange('escalier_level4_pnl', `${config.escalier_level4_pnl.toFixed(2)}%`)}
+												on:change={() => {
+													autoAdjustEscalierPnL(4);
+													logConfigChange('escalier_level4_pnl', `${config.escalier_level4_pnl.toFixed(2)}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level4_pnl).toFixed(2)}%</span>
 										</div>
@@ -913,7 +988,10 @@
 												min="0"
 												max="100"
 												bind:value={config.escalier_level4_size}
-												on:change={() => logConfigChange('escalier_level4_size', `${config.escalier_level4_size}%`)}
+												on:change={() => {
+													autoAdjustEscalierSize(4);
+													logConfigChange('escalier_level4_size', `${config.escalier_level4_size}%`);
+												}}
 											/>
 											<span class="slider-value">{Number(config.escalier_level4_size).toFixed(0)}%</span>
 										</div>
@@ -1038,72 +1116,6 @@
 		{/if}
 
 		<!-- ONGLET STRATEGIE -->
-		{#if activeSubTab === 'strategy'}
-			<section class="variable-section">
-				<h3>⚙️ Stratégie</h3>
-				<div class="variables-list">
-					<div class="variable-item checkbox">
-						<div class="var-header">
-							<label for="use-confluence">
-								<input
-									id="use-confluence"
-									type="checkbox"
-									bind:checked={config.use_confluence}
-									on:change={() => logConfigChange('use_confluence', config.use_confluence ? 'Activé' : 'Désactivé')}
-								/>
-								<span class="var-name">Use Confluence</span>
-								<span class="var-desc">Utiliser la confluence de signaux</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('use_confluence')} title="Réinitialiser">⟲</button>
-						</div>
-					</div>
-
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="volume-multiplier">
-								<span class="var-name">Volume Multiplier</span>
-								<span class="var-desc">Multiplicateur de volume</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('volume_multiplier')} title="Réinitialiser">⟲</button>
-						</div>
-						<div class="slider-container">
-							<input
-								id="volume-multiplier"
-								type="range"
-								step="0.05"
-								min="0.5"
-								max="2"
-								bind:value={config.volume_multiplier}
-								on:change={() => logConfigChange('volume_multiplier', config.volume_multiplier.toFixed(2))}
-							/>
-							<span class="slider-value">{Number(config.volume_multiplier).toFixed(2)}</span>
-						</div>
-					</div>
-
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="min-score">
-								<span class="var-name">Min Score Required</span>
-								<span class="var-desc">Score minimum pour un trade</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('min_score_required')} title="Réinitialiser">⟲</button>
-						</div>
-						<div class="slider-container">
-							<input
-								id="min-score"
-								type="range"
-								step="0.5"
-								min="0"
-								max="20"
-								bind:value={config.min_score_required}
-								on:change={() => logConfigChange('min_score_required', config.min_score_required.toFixed(1))}
-							/>
-							<span class="slider-value">{Number(config.min_score_required).toFixed(1)}</span>
-						</div>
-					</div>
-				</div>
-			</section>
-		{/if}
 	</div>
 </div>
 
@@ -1484,5 +1496,62 @@
 		.subtabs {
 			overflow-x: auto;
 		}
+	}
+
+	/* Section info styling */
+	.section-info {
+		background: rgba(255, 170, 0, 0.1);
+		border-left: 3px solid #ffaa00;
+		padding: 12px;
+		margin-bottom: 20px;
+		font-size: 13px;
+		color: #ffaa00;
+		border-radius: 4px;
+	}
+
+	.section-info strong {
+		color: #ffcc00;
+	}
+
+	/* Active mode indicator */
+	.active-mode-indicator {
+		background: rgba(0, 170, 255, 0.1);
+		border: 1px solid #00aaff;
+		padding: 12px 16px;
+		border-radius: 8px;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 20px;
+	}
+
+	.indicator-label {
+		font-weight: bold;
+		color: #00aaff;
+		font-size: 14px;
+	}
+
+	.indicator-value {
+		padding: 6px 16px;
+		border-radius: 6px;
+		font-weight: bold;
+		font-size: 14px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.indicator-value.mode-fixe {
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		color: #0a0e27;
+	}
+
+	.indicator-value.mode-atr {
+		background: linear-gradient(135deg, #00aaff 0%, #0088cc 100%);
+		color: #0a0e27;
+	}
+
+	.indicator-value.mode-escalier {
+		background: linear-gradient(135deg, #ff8800 0%, #cc6600 100%);
+		color: #fff;
 	}
 </style>
