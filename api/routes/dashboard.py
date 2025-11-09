@@ -92,8 +92,8 @@ async def get_complete_state():
     - Timestamp de la session
     """
     # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
+    # Note: time est déjà importé au niveau du module (ligne 10)
     if not _app_state:
-        import time
         return JSONResponse({
             'success': False,
             'error': 'App state not available',
@@ -154,8 +154,19 @@ async def get_complete_state():
         })
 
     except Exception as e:
-        logger.error(f"Erreur récupération état complet: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        logger.error(f"Erreur récupération état complet: {e}", exc_info=True)
+        # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
+        return JSONResponse({
+            'success': False,
+            'error': str(e),
+            'session_id': f"live_{int(time.time())}",
+            'config': {},
+            'scanner': {'is_scanning': False, 'top_pairs': []},
+            'position': {'active': False, 'data': None},
+            'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
+            'trades': [],
+            'timestamp': time.time()
+        }, status_code=200)  # Retourner 200 avec success=False au lieu de 500
 
 
 @router.post("/start")
