@@ -183,6 +183,18 @@ logger = logging.getLogger(__name__)
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
+
+# 🔥 FIX: Ajouter headers CORS pour Safari et autres navigateurs
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En production, spécifier les origines autorisées
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 templates = Jinja2Templates(directory="templates")
 
 # 🔥 Handler personnalisé pour émettre tous les logs via WebSocket
@@ -237,6 +249,31 @@ try:
     logger.info("✅ Fichiers statiques montés: /static")
 except Exception as e:
     logger.warning(f"⚠️ Fichiers statiques non montés: {e}")
+
+# 🔥 FIX: Servir le frontend SvelteKit build si disponible
+frontend_build_path = None
+for build_path in ["frontend/build", "frontend/.svelte-kit/output", "frontend/dist"]:
+    if os.path.exists(build_path):
+        frontend_build_path = build_path
+        break
+
+if frontend_build_path:
+    try:
+        # Servir les fichiers statiques du frontend
+        static_path = os.path.join(frontend_build_path, "client")
+        if os.path.exists(static_path):
+            app.mount("/_app", StaticFiles(directory=static_path), name="frontend_static")
+            logger.info(f"✅ Frontend SvelteKit monté: /_app depuis {static_path}")
+        
+        # Servir les assets du frontend
+        assets_path = os.path.join(frontend_build_path, "client")
+        if os.path.exists(assets_path):
+            # Les assets sont déjà servis via /_app
+            logger.info(f"✅ Assets frontend disponibles via /_app")
+    except Exception as e:
+        logger.warning(f"⚠️ Frontend SvelteKit non monté: {e}")
+else:
+    logger.info("ℹ️ Frontend SvelteKit non build - servez-le séparément avec 'npm run dev' dans frontend/")
 
 # 🔥 ARCHITECTURE V2: Inclure API router (api/routes/__init__.py)
 if api_router:
@@ -678,10 +715,59 @@ def init_instances():
 
 # Routes FastAPI - Pages HTML
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def index(request: Request):
-    """Page principale - HTML copié de v5.1"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    """Page principale - Servir frontend SvelteKit ou fallback HTML"""
+    # 🔥 FIX: Essayer de servir le frontend SvelteKit build
+    frontend_index = None
+    for build_path in ["frontend/build/client/index.html", 
+                       "frontend/.svelte-kit/output/client/index.html",
+                       "frontend/dist/index.html"]:
+        if os.path.exists(build_path):
+            frontend_index = build_path
+            break
+    
+    if frontend_index:
+        try:
+            with open(frontend_index, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            # 🔥 FIX: Remplacer les chemins relatifs pour fonctionner avec FastAPI
+            # SvelteKit utilise des chemins absolus, on doit les adapter
+            html_content = html_content.replace('href="/', 'href="/_app/')
+            html_content = html_content.replace('src="/', 'src="/_app/')
+            return HTMLResponse(content=html_content)
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur chargement frontend SvelteKit: {e}")
+    
+    # Fallback: servir template HTML basique
+    try:
+        return templates.TemplateResponse("index.html", {"request": request})
+    except Exception:
+        # Si pas de template, retourner message simple
+        return HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Trade Cursor v7.0</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body>
+            <h1>Trade Cursor v7.0 - Backend API</h1>
+            <p>Le frontend SvelteKit n'est pas disponible.</p>
+            <p>Pour lancer le frontend:</p>
+            <ol>
+                <li>Ouvrir un terminal dans le dossier <code>frontend/</code></li>
+                <li>Exécuter <code>npm install</code> puis <code>npm run dev</code></li>
+                <li>Accéder à <code>http://localhost:3000</code></li>
+            </ol>
+            <p>Ou build le frontend avec <code>npm run build</code> et redémarrer ce serveur.</p>
+            <hr>
+            <p><a href="/api/health">API Health Check</a></p>
+            <p><a href="/api/state">API State</a></p>
+        </body>
+        </html>
+        """)
 
 
 @app.get("/favicon.ico")
@@ -1557,6 +1643,10 @@ async def api_config_update(request: Request):
 
         # ✅ Mettre à jour TRADING_CONFIG en mémoire
         TRADING_CONFIG.update(validated_updates)
+        
+        # 🔥 FIX: Logger les valeurs importantes pour debug
+        if 'min_score_required' in validated_updates:
+            logger.info(f"✅ min_score_required mis à jour: {validated_updates['min_score_required']} (vérification: TRADING_CONFIG['min_score_required'] = {TRADING_CONFIG.get('min_score_required')})")
 
         # ✅ Sauvegarder de manière persistante dans config_overrides.json
         config_manager.update_config(validated_updates)
@@ -1992,6 +2082,7 @@ async def get_global_stats():
 
 if __name__ == '__main__':
     import uvicorn
+    import socket
 
     # 🔥 PHASE 4: Charger l'historique au démarrage
     load_trade_history()
@@ -1999,26 +2090,158 @@ if __name__ == '__main__':
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
 
+    # 🔥 FIX: Obtenir l'IP locale et Tailscale pour affichage
+    def get_local_ip():
+        """Obtenir l'IP locale du serveur (réseau Wi-Fi/Ethernet)"""
+        try:
+            # Se connecter à un serveur distant pour obtenir l'IP locale
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            try:
+                # Fallback: utiliser hostname
+                hostname = socket.gethostname()
+                ip = socket.gethostbyname(hostname)
+                return ip
+            except Exception:
+                return None
+
+    def get_tailscale_ip():
+        """Obtenir l'IP Tailscale du serveur"""
+        try:
+            import subprocess
+            import os
+            from pathlib import Path
+            
+            # Chercher tailscale.exe dans les emplacements Windows courants
+            tailscale_paths = [
+                "tailscale",  # Dans le PATH
+                r"C:\Program Files\Tailscale\tailscale.exe",
+                r"C:\Program Files (x86)\Tailscale\tailscale.exe",
+                os.path.expanduser(r"~\AppData\Local\Programs\Tailscale\tailscale.exe"),
+            ]
+            
+            tailscale_cmd = None
+            for path in tailscale_paths:
+                if path == "tailscale":
+                    # Vérifier si tailscale est dans le PATH
+                    try:
+                        result = subprocess.run(
+                            ["where", "tailscale"],
+                            capture_output=True,
+                            text=True,
+                            timeout=1
+                        )
+                        if result.returncode == 0 and result.stdout.strip():
+                            tailscale_cmd = "tailscale"
+                            break
+                    except:
+                        pass
+                else:
+                    # Vérifier si le fichier existe
+                    if Path(path).exists():
+                        tailscale_cmd = path
+                        break
+            
+            if not tailscale_cmd:
+                return None
+            
+            # Exécuter tailscale ip pour obtenir l'IP Tailscale
+            result = subprocess.run(
+                [tailscale_cmd, "ip"],
+                capture_output=True,
+                text=True,
+                timeout=3
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                # tailscale ip peut retourner plusieurs IPs (IPv4 et IPv6)
+                # On prend la première IPv4 (format x.x.x.x)
+                ips = result.stdout.strip().split('\n')
+                for ip in ips:
+                    ip = ip.strip()
+                    # Vérifier si c'est une IPv4 (format x.x.x.x)
+                    parts = ip.split('.')
+                    if len(parts) == 4 and all(part.isdigit() for part in parts):
+                        return ip
+                # Si pas d'IPv4, retourner la première
+                return ips[0].strip() if ips else None
+            return None
+        except FileNotFoundError:
+            # Tailscale CLI non trouvé
+            return None
+        except Exception:
+            # Autre erreur (timeout, etc.)
+            return None
+
+    local_ip = get_local_ip()
+    tailscale_ip = get_tailscale_ip()
+
     logger.info("🚀 Trade Cursor v7.0 démarré (VERSION REFACTORISÉE)")
     logger.info("📊 FastAPI (async natif) + WebSocket")
     logger.info("")
     logger.info("=" * 70)
     logger.info("📍 URLs DISPONIBLES (Instance Port: {})".format(port))
     logger.info("=" * 70)
-    logger.info(f"🏠 Interface principale      → http://localhost:{port}/")
-    logger.info(f"📊 Dashboard graphiques      → http://localhost:{port}/dashboard/charts")
-    logger.info(f"📈 Analytics & Stats         → http://localhost:{port}/analytics")
-    logger.info(f"🔄 Backtesting               → http://localhost:{port}/backtest")
-    logger.info(f"🤖 ML Optimization           → http://localhost:{port}/optimize")
-    logger.info(f"⚙️ Paramètres               → http://localhost:{port}/settings")
-    logger.info(f"💚 API Health check          → http://localhost:{port}/api/health")
-    logger.info(f"📈 API Stats                 → http://localhost:{port}/api/stats")
-    logger.info(f"📋 API Trades (filtres)      → http://localhost:{port}/api/trades?limit=10")
-    logger.info(f"❌ API Setups rejetés        → http://localhost:{port}/api/setups/rejected")
-    logger.info(f"✅ API Setups validés        → http://localhost:{port}/api/setups/validated")
-    logger.info(f"📥 API Export (CSV/JSON)     → http://localhost:{port}/api/export?format=csv")
-    logger.info(f"🔄 API Backtest              → POST http://localhost:{port}/api/backtest")
-    logger.info(f"🤖 API ML Optimize           → POST http://localhost:{port}/api/optimize")
+    logger.info("")
+    logger.info("🖥️  ACCÈS LOCAL (même machine):")
+    logger.info(f"   → http://localhost:{port}/")
+    logger.info("")
+    
+    # Afficher IP locale (réseau Wi-Fi/Ethernet)
+    if local_ip:
+        logger.info("📱 ACCÈS RÉSEAU LOCAL (même Wi-Fi/Ethernet):")
+        logger.info(f"   → http://{local_ip}:{port}/")
+        logger.info("")
+    
+    # Afficher IP Tailscale (accès depuis l'extérieur)
+    if tailscale_ip:
+        logger.info("🌐 ACCÈS TAILSCALE (depuis l'extérieur via VPN):")
+        logger.info(f"   → http://{tailscale_ip}:{port}/")
+        logger.info("")
+        logger.info("   ✅ Tailscale détecté! Vous pouvez vous connecter depuis:")
+        logger.info("      - Votre iPhone (via l'app Tailscale)")
+        logger.info("      - N'importe où dans le monde (si connecté à Tailscale)")
+        logger.info("")
+    else:
+        logger.info("⚠️  Tailscale non détecté")
+        logger.info("   Pour accès depuis l'extérieur, installez Tailscale:")
+        logger.info("   https://tailscale.com/download")
+        logger.info("")
+    
+    logger.info("🌐 URLs COMPLÈTES:")
+    if tailscale_ip:
+        logger.info(f"   🏠 Interface principale      → http://{tailscale_ip}:{port}/")
+        logger.info(f"   📊 Dashboard graphiques      → http://{tailscale_ip}:{port}/dashboard/charts")
+        logger.info(f"   📈 Analytics & Stats         → http://{tailscale_ip}:{port}/analytics")
+        logger.info(f"   🔄 Backtesting               → http://{tailscale_ip}:{port}/backtest")
+        logger.info(f"   🤖 ML Optimization           → http://{tailscale_ip}:{port}/optimize")
+        logger.info(f"   ⚙️ Paramètres               → http://{tailscale_ip}:{port}/settings")
+        logger.info(f"   💚 API Health check          → http://{tailscale_ip}:{port}/api/health")
+    elif local_ip:
+        logger.info(f"   🏠 Interface principale      → http://{local_ip}:{port}/")
+        logger.info(f"   📊 Dashboard graphiques      → http://{local_ip}:{port}/dashboard/charts")
+        logger.info(f"   📈 Analytics & Stats         → http://{local_ip}:{port}/analytics")
+        logger.info(f"   🔄 Backtesting               → http://{local_ip}:{port}/backtest")
+        logger.info(f"   🤖 ML Optimization           → http://{local_ip}:{port}/optimize")
+        logger.info(f"   ⚙️ Paramètres               → http://{local_ip}:{port}/settings")
+        logger.info(f"   💚 API Health check          → http://{local_ip}:{port}/api/health")
+    logger.info("")
+    
+    if tailscale_ip:
+        logger.info("⚠️  IMPORTANT (Tailscale):")
+        logger.info("   1. Votre iPhone doit être connecté à Tailscale")
+        logger.info("   2. Le PC doit apparaître en vert dans l'app Tailscale iPhone")
+        logger.info("   3. Utilisez l'IP Tailscale: {}".format(tailscale_ip))
+        logger.info("   4. Le firewall Windows doit autoriser le port {}".format(port))
+    elif local_ip:
+        logger.info("⚠️  IMPORTANT (Réseau local):")
+        logger.info("   1. Votre iPhone est sur le même réseau Wi-Fi")
+        logger.info("   2. Le firewall Windows autorise le port {}".format(port))
+        logger.info("   3. Vous utilisez l'IP: {}".format(local_ip))
     logger.info("=" * 70)
     logger.info("")
     logger.info("🔥 REFACTORISATION:")
@@ -2029,5 +2252,6 @@ if __name__ == '__main__':
     logger.info("  ✅ Routers inclus avec app.include_router()")
     logger.info("")
 
-    # Lancer FastAPI avec SocketIO
+    # Lancer FastAPI avec SocketIO - Écouter sur toutes les interfaces (0.0.0.0)
+    logger.info(f"🌐 Serveur démarré sur 0.0.0.0:{port} (accessible depuis le réseau)")
     uvicorn.run(socketio_app, host='0.0.0.0', port=port, log_level="info")

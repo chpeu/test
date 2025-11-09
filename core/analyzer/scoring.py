@@ -39,11 +39,16 @@ def get_min_score_required(adx_value: float, use_weighted: bool = True) -> float
         Score minimum requis
     """
     if use_weighted:
+        # 🔥 FIX: Toujours lire depuis TRADING_CONFIG (mis à jour dynamiquement)
         min_score_required = TRADING_CONFIG.get('min_score_required', 7.5)
         if adx_value > 30:
             min_score_required = TRADING_CONFIG.get('min_score_adx_high', 7.0)
         elif adx_value < 25:
             min_score_required = TRADING_CONFIG.get('min_score_adx_low', 8.0)
+        
+        # 🔥 DEBUG: Logger pour vérifier que la valeur est bien lue
+        if TRADING_CONFIG.get('min_score_required') != 7.5:  # Si différent de la valeur par défaut
+            logger.debug(f"📊 get_min_score_required: ADX={adx_value:.1f}, min_score={min_score_required:.1f} (depuis TRADING_CONFIG: {TRADING_CONFIG.get('min_score_required')})")
     else:
         # Système ancien (comptage simple)
         min_conditions = 6  # Par défaut

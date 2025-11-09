@@ -16,6 +16,7 @@
 	import ExportPanel from '$lib/components/ExportPanel.svelte';
 	import SessionSelector from '$lib/components/SessionSelector.svelte';
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
+	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
 
 	let backendConnected = false;
@@ -25,7 +26,7 @@
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
-		{ id: 'variables', label: 'Variables', icon: '🎯' },
+		{ id: 'variables', label: 'Variables', icon: '⚙️' },
 		{ id: 'logs', label: 'Logs', icon: '📝' },
 		{ id: 'charts', label: 'Graphiques', icon: '📉' },
 		{ id: 'history', label: 'Historique', icon: '📜' },
@@ -53,12 +54,17 @@
 
 	// Fetch initial state on mount
 	onMount(async () => {
+		await loadInitialState();
+	});
+
+	async function loadInitialState() {
 		try {
 			const res = await fetch('/api/state');
 			if (res.ok) {
 				const data = await res.json();
 				console.log('Initial state loaded:', data);
 				backendConnected = true;
+				backendError = '';
 				// Charger le mode TP/SL actif
 				if (data.config && data.config.tp_sl_mode) {
 					tpSlMode = data.config.tp_sl_mode;
@@ -69,6 +75,7 @@
 		} catch (err) {
 			console.error('Error loading initial state:', err);
 			backendError = err.message || 'Backend not reachable';
+			backendConnected = false;
 			// Réessayer toutes les 5 secondes
 			const retry = setInterval(async () => {
 				try {
@@ -77,14 +84,27 @@
 						backendConnected = true;
 						backendError = '';
 						clearInterval(retry);
-						window.location.reload();
+						// Recharger les données sans recharger toute la page
+						await loadInitialState();
 					}
 				} catch (e) {
 					// Continue trying
 				}
 			}, 5000);
 		}
-	});
+	}
+
+	// 🔥 FIX: Recharger les données quand on change d'onglet (évite pages vides)
+	let lastTab = activeTab;
+	$: if (activeTab && activeTab !== lastTab && backendConnected) {
+		lastTab = activeTab;
+		// Petit délai pour laisser le DOM se mettre à jour
+		setTimeout(() => {
+			loadInitialState().catch(err => {
+				console.error('Error reloading state on tab change:', err);
+			});
+		}, 100);
+	}
 </script>
 
 <svelte:head>
@@ -124,8 +144,19 @@
 			<Tabs {tabs} bind:activeTab />
 			
 			<!-- Tab Content -->
-			{#if activeTab === 'dashboard'}
+			{#if !backendConnected}
 				<div class="tab-content">
+					<div class="loading-state">
+						<div class="loading-spinner">⏳</div>
+						<p>Connexion au backend...</p>
+						<p class="retry-text">Tentative de reconnexion en cours...</p>
+					</div>
+				</div>
+			{:else if activeTab === 'dashboard'}
+				<div class="tab-content">
+					<div class="bot-controls-panel">
+						<BotControls />
+					</div>
 					<div class="status-panel">
 						<StatsPanel />
 					</div>
@@ -392,6 +423,7 @@
 		gap: 15px;
 	}
 
+	.bot-controls-panel,
 	.status-panel,
 	.position-panel,
 	.scanner-panel,
@@ -508,6 +540,7 @@
 			text-align: center;
 		}
 
+		.bot-controls-panel,
 		.tab-description {
 			padding: 15px;
 		}
@@ -627,5 +660,43 @@
 	.mode-info small {
 		font-size: 11px;
 		color: #888;
+	}
+
+	/* 🔥 FIX: Style pour état de chargement */
+	.loading-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 60px 20px;
+		text-align: center;
+		min-height: 400px;
+	}
+
+	.loading-spinner {
+		font-size: 48px;
+		animation: spin 2s linear infinite;
+		margin-bottom: 20px;
+	}
+
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.loading-state p {
+		font-size: 16px;
+		color: #00ff88;
+		margin: 10px 0;
+	}
+
+	.loading-state .retry-text {
+		font-size: 13px;
+		color: #888;
+		margin-top: 10px;
 	}
 </style>

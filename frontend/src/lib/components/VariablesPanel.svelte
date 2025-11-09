@@ -151,10 +151,26 @@
 			});
 
 			if (res.ok) {
-				saveMessage = '✅ Configuration sauvegardée avec succès';
-				setTimeout(() => (saveMessage = ''), 3000);
+				const result = await res.json();
+				saveMessage = `✅ Configuration sauvegardée: ${result.message || 'Succès'}`;
+				
+				// 🔥 FIX: Recharger la config depuis le backend pour vérifier
+				setTimeout(async () => {
+					await loadConfig();
+					saveMessage = '';
+				}, 2000);
+				
+				// Afficher les paramètres mis à jour
+				if (result.updated) {
+					console.log('✅ Paramètres mis à jour:', result.updated);
+					// Vérifier que min_score_required est bien dans les updates
+					if (result.updated.min_score_required !== undefined) {
+						console.log(`✅ min_score_required mis à jour: ${result.updated.min_score_required}`);
+					}
+				}
 			} else {
-				saveMessage = '❌ Erreur lors de la sauvegarde';
+				const errorData = await res.json().catch(() => ({}));
+				saveMessage = `❌ Erreur lors de la sauvegarde: ${errorData.error || res.statusText}`;
 			}
 		} catch (err) {
 			console.error('Error saving config:', err);
@@ -201,6 +217,386 @@
 
 <div class="variables-panel">
 	<div class="panel-header">
+		<h2>🎯 Variables de Trading</h2>
+		<div class="header-actions">
+			<button class="btn-secondary" on:click={resetDefaults}>🔄 Reset All</button>
+			<button class="btn-primary" on:click={saveConfig} disabled={loading}>
+				{loading ? '⏳ Saving...' : '💾 Save'}
+			</button>
+		</div>
+	</div>
+
+	{#if saveMessage}
+		<div class="save-message" class:success={saveMessage.includes('✅')} class:error={saveMessage.includes('❌')}>
+			{saveMessage}
+		</div>
+	{/if}
+
+	<!-- Sous-onglets -->
+	<div class="subtabs">
+		<button class="subtab" class:active={activeSubTab === 'setups'} on:click={() => activeSubTab = 'setups'}>
+			📊 Setups & Validation
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'money'} on:click={() => activeSubTab = 'money'}>
+			💰 Money Management
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'}>
+			🎯 TP/SL & Position
+		</button>
+	</div>
+
+	<div class="variables-grid">
+		<!-- TP/SL -->
+		<section class="variable-section">
+			<h3>🎯 Take Profit / Stop Loss</h3>
+			<div class="variables-grid">
+				<div class="variable-item full-width">
+					<label>Mode TP/SL</label>
+					<select
+						value={config.tp_sl_mode}
+						on:change={(e) => handleSelectChange('tp_sl_mode', e.target.value)}
+						disabled={isLoading}
+					>
+						<option value="FIXE">FIXE</option>
+						<option value="ATR">ATR</option>
+						<option value="TP_MULTI">TP_MULTI (Escalier)</option>
+					</select>
+					<span class="hint">Mode de calcul TP/SL</span>
+				</div>
+
+				{#if config.tp_sl_mode === 'FIXE'}
+					<div class="variable-item">
+						<label>TP (%)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.1"
+								max="5"
+								step="0.01"
+								value={config.tp_percent}
+								on:input={(e) => handleSliderChange('tp_percent', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.tp_percent.toFixed(2)}%</div>
+						</div>
+						<span class="hint">Take Profit en pourcentage</span>
+					</div>
+
+					<div class="variable-item">
+						<label>SL (%)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.1"
+								max="5"
+								step="0.01"
+								value={config.sl_percent}
+								on:input={(e) => handleSliderChange('sl_percent', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.sl_percent.toFixed(2)}%</div>
+						</div>
+						<span class="hint">Stop Loss en pourcentage</span>
+					</div>
+
+					<div class="variable-item">
+						<label>Break-even Trigger (%)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.1"
+								max="2"
+								step="0.01"
+								value={config.break_even_trigger}
+								on:input={(e) => handleSliderChange('break_even_trigger', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.break_even_trigger.toFixed(2)}%</div>
+						</div>
+						<span class="hint">Déclenchement break-even</span>
+					</div>
+
+					<div class="variable-item">
+						<label>Trailing Distance (%)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.05"
+								max="1"
+								step="0.01"
+								value={config.trailing_distance}
+								on:input={(e) => handleSliderChange('trailing_distance', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.trailing_distance.toFixed(2)}%</div>
+						</div>
+						<span class="hint">Distance du trailing stop</span>
+					</div>
+				{:else if config.tp_sl_mode === 'ATR'}
+					<div class="variable-item">
+						<label>ATR Multiplier TP</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.5"
+								max="5"
+								step="0.1"
+								value={config.atr_mult_tp}
+								on:input={(e) => handleSliderChange('atr_mult_tp', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.atr_mult_tp.toFixed(1)}x</div>
+						</div>
+						<span class="hint">Multiplicateur ATR pour TP</span>
+					</div>
+
+					<div class="variable-item">
+						<label>ATR Multiplier SL</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.5"
+								max="5"
+								step="0.1"
+								value={config.atr_mult_sl}
+								on:input={(e) => handleSliderChange('atr_mult_sl', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.atr_mult_sl.toFixed(1)}x</div>
+						</div>
+						<span class="hint">Multiplicateur ATR pour SL</span>
+					</div>
+				{/if}
+
+				{#if config.tp_sl_mode === 'TP_MULTI'}
+					<div class="variable-item full-width">
+						<label class="toggle-label">
+							<input
+								type="checkbox"
+								checked={config.tp_escalier_enabled}
+								on:change={(e) => handleBooleanChange('tp_escalier_enabled', e.target.checked)}
+								disabled={isLoading}
+							/>
+							<span>Activer TP Escalier (4 niveaux)</span>
+						</label>
+					</div>
+
+					{#if config.tp_escalier_enabled}
+						<div class="variable-item">
+							<label>Niveau 1: PnL (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.1"
+									max="1"
+									step="0.01"
+									value={config.tp_escalier_level1_pnl}
+									on:input={(e) => handleSliderChange('tp_escalier_level1_pnl', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{config.tp_escalier_level1_pnl.toFixed(2)}%</div>
+							</div>
+							<span class="hint">Premier niveau de profit</span>
+						</div>
+
+						<div class="variable-item">
+							<label>Niveau 1: Taille (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.1"
+									max="0.5"
+									step="0.01"
+									value={config.tp_escalier_level1_size}
+									on:input={(e) => handleSliderChange('tp_escalier_level1_size', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{(config.tp_escalier_level1_size * 100).toFixed(0)}%</div>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Niveau 2: PnL (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.2"
+									max="1.5"
+									step="0.01"
+									value={config.tp_escalier_level2_pnl}
+									on:input={(e) => handleSliderChange('tp_escalier_level2_pnl', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{config.tp_escalier_level2_pnl.toFixed(2)}%</div>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Niveau 2: Taille (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.1"
+									max="0.5"
+									step="0.01"
+									value={config.tp_escalier_level2_size}
+									on:input={(e) => handleSliderChange('tp_escalier_level2_size', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{(config.tp_escalier_level2_size * 100).toFixed(0)}%</div>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Niveau 3: PnL (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.3"
+									max="2"
+									step="0.01"
+									value={config.tp_escalier_level3_pnl}
+									on:input={(e) => handleSliderChange('tp_escalier_level3_pnl', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{config.tp_escalier_level3_pnl.toFixed(2)}%</div>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Niveau 3: Taille (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.1"
+									max="0.5"
+									step="0.01"
+									value={config.tp_escalier_level3_size}
+									on:input={(e) => handleSliderChange('tp_escalier_level3_size', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{(config.tp_escalier_level3_size * 100).toFixed(0)}%</div>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Niveau 4: PnL (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.5"
+									max="3"
+									step="0.01"
+									value={config.tp_escalier_level4_pnl}
+									on:input={(e) => handleSliderChange('tp_escalier_level4_pnl', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{config.tp_escalier_level4_pnl.toFixed(2)}%</div>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Niveau 4: Taille (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="0.1"
+									max="0.5"
+									step="0.01"
+									value={config.tp_escalier_level4_size}
+									on:input={(e) => handleSliderChange('tp_escalier_level4_size', e.target.value)}
+									disabled={isLoading}
+									class="modern-slider"
+								/>
+								<div class="slider-value">{(config.tp_escalier_level4_size * 100).toFixed(0)}%</div>
+							</div>
+						</div>
+					{/if}
+				{/if}
+			</div>
+		</section>
+
+		<!-- Trailing Stop -->
+		<section class="variable-section">
+			<h3>📈 Trailing Stop</h3>
+			<div class="variables-grid">
+				<div class="variable-item full-width">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.trailing_stop_enabled}
+							on:change={(e) => handleBooleanChange('trailing_stop_enabled', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>Activer Trailing Stop</span>
+					</label>
+				</div>
+
+				{#if config.trailing_stop_enabled}
+					<div class="variable-item">
+						<label>Trigger PnL (%)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.1"
+								max="1"
+								step="0.01"
+								value={config.trailing_stop_trigger_pnl}
+								on:input={(e) => handleSliderChange('trailing_stop_trigger_pnl', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.trailing_stop_trigger_pnl.toFixed(2)}%</div>
+						</div>
+						<span class="hint">Déclenchement à partir de</span>
+					</div>
+
+					<div class="variable-item">
+						<label>ATR Multiplier</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.1"
+								max="1"
+								step="0.01"
+								value={config.trailing_stop_atr_multiplier}
+								on:input={(e) => handleSliderChange('trailing_stop_atr_multiplier', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.trailing_stop_atr_multiplier.toFixed(2)}x</div>
+						</div>
+						<span class="hint">Distance = ATR × multiplier</span>
+					</div>
+
+					<div class="variable-item">
+						<label>Distance Min (%)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.05"
+								max="0.5"
+								step="0.01"
+								value={config.trailing_stop_min_distance}
+								on:input={(e) => handleSliderChange('trailing_stop_min_distance', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.trailing_stop_min_distance.toFixed(2)}%</div>
+=======
 		<h2>🎯 Variables de Trading</h2>
 		<div class="header-actions">
 			<button class="btn-secondary" on:click={resetDefaults}>🔄 Reset All</button>
@@ -1359,10 +1755,463 @@
 								on:change={() => logConfigChange('trailing_min_distance', `${config.trailing_min_distance.toFixed(2)}%`)}
 							/>
 							<span class="slider-value">{Number(config.trailing_min_distance).toFixed(2)}%</span>
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 						</div>
 					</div>
 
 					<div class="variable-item">
+<<<<<<< HEAD
+						<label>Distance Max (%)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="0.1"
+								max="1"
+								step="0.01"
+								value={config.trailing_stop_max_distance}
+								on:input={(e) => handleSliderChange('trailing_stop_max_distance', e.target.value)}
+								disabled={isLoading}
+								class="modern-slider"
+							/>
+							<div class="slider-value">{config.trailing_stop_max_distance.toFixed(2)}%</div>
+						</div>
+					</div>
+				{/if}
+			</div>
+		</section>
+
+		<!-- Capital & Risk -->
+		<section class="variable-section">
+			<h3>💰 Capital & Risk</h3>
+			<div class="variables-grid">
+				<div class="variable-item">
+					<label>Capital (USDT)</label>
+					<input
+						type="number"
+						step="100"
+						min="100"
+						max="100000"
+						value={config.account_size}
+						on:change={(e) => handleNumberChange('account_size', e.target.value)}
+						disabled={isLoading}
+					/>
+					<span class="hint">Capital initial</span>
+				</div>
+
+				<div class="variable-item">
+					<label>Risk par Trade (%)</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0.5"
+							max="5"
+							step="0.1"
+							value={config.risk_per_trade}
+							on:input={(e) => handleSliderChange('risk_per_trade', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.risk_per_trade.toFixed(1)}%</div>
+					</div>
+					<span class="hint">Risque par trade en %</span>
+				</div>
+			</div>
+		</section>
+
+		<!-- Confluence -->
+		<section class="variable-section">
+			<h3>🧩 Confluence</h3>
+			<div class="variables-grid">
+				<div class="variable-item full-width">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.use_confluence}
+							on:change={(e) => handleBooleanChange('use_confluence', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>Activer Confluence</span>
+					</label>
+					<span class="hint">Utiliser la confluence pour valider les setups</span>
+				</div>
+			</div>
+		</section>
+
+		<!-- Trend -->
+		<section class="variable-section">
+			<h3>📈 Trend</h3>
+			<div class="variables-grid">
+				<div class="variable-item">
+					<label>Trend Timeframe</label>
+					<select
+						value={config.trend_timeframe}
+						on:change={(e) => handleSelectChange('trend_timeframe', e.target.value)}
+						disabled={isLoading}
+					>
+						<option value="5m">5m</option>
+						<option value="15m">15m</option>
+						<option value="30m">30m</option>
+						<option value="1h">1h</option>
+					</select>
+					<span class="hint">Timeframe pour l'analyse de trend</span>
+				</div>
+			</div>
+		</section>
+
+		<!-- Seuils avec sliders -->
+		<section class="variable-section">
+			<h3>📊 Seuils</h3>
+			<div class="variables-grid">
+				<div class="variable-item">
+					<label>SNR Threshold</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0"
+							max="1"
+							step="0.01"
+							value={config.snr_threshold}
+							on:input={(e) => handleSliderChange('snr_threshold', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.snr_threshold.toFixed(2)}</div>
+					</div>
+					<span class="hint">Signal-to-Noise Ratio minimum</span>
+				</div>
+
+				<div class="variable-item">
+					<label>Breakout Threshold</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0"
+							max="1"
+							step="0.01"
+							value={config.breakout_threshold}
+							on:input={(e) => handleSliderChange('breakout_threshold', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.breakout_threshold.toFixed(2)}</div>
+					</div>
+					<span class="hint">Seuil de breakout</span>
+				</div>
+
+				<div class="variable-item">
+					<label>Wick Ratio Max</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="1"
+							max="10"
+							step="0.1"
+							value={config.wick_ratio_max}
+							on:input={(e) => handleSliderChange('wick_ratio_max', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.wick_ratio_max.toFixed(1)}</div>
+					</div>
+					<span class="hint">Ratio de mèche maximum</span>
+				</div>
+
+				<div class="variable-item">
+					<label>DI Gap Min</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0"
+							max="50"
+							step="0.1"
+							value={config.di_gap_min}
+							on:input={(e) => handleSliderChange('di_gap_min', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.di_gap_min.toFixed(1)}</div>
+					</div>
+					<span class="hint">Gap DI minimum</span>
+				</div>
+
+				<div class="variable-item">
+					<label>DI Gap ADX Threshold</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0"
+							max="100"
+							step="1"
+							value={config.di_gap_adx_threshold}
+							on:input={(e) => handleSliderChange('di_gap_adx_threshold', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.di_gap_adx_threshold}</div>
+					</div>
+					<span class="hint">Seuil ADX pour DI Gap</span>
+				</div>
+			</div>
+		</section>
+
+		<!-- Volume -->
+		<section class="variable-section">
+			<h3>📊 Volume</h3>
+			<div class="variables-grid">
+				<div class="variable-item">
+					<label>Volume Multiplier</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0.1"
+							max="2"
+							step="0.01"
+							value={config.volume_multiplier}
+							on:input={(e) => handleSliderChange('volume_multiplier', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.volume_multiplier.toFixed(2)}</div>
+					</div>
+					<span class="hint">Multiplicateur de volume (0.1 - 2.0)</span>
+				</div>
+
+				<div class="variable-item">
+					<label>Min Score Required</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0"
+							max="20"
+							step="0.1"
+							value={config.min_score_required}
+							on:input={(e) => handleSliderChange('min_score_required', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.min_score_required.toFixed(1)}</div>
+					</div>
+					<span class="hint">Score minimum requis pour un setup</span>
+				</div>
+			</div>
+		</section>
+
+		<!-- ATR Optimal -->
+		<section class="variable-section">
+			<h3>📈 ATR Optimal</h3>
+			<div class="variables-grid">
+				<div class="variable-item">
+					<label>ATR Min 1m (%)</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0.01"
+							max="1"
+							step="0.01"
+							value={config.optimal_atr_min_1m}
+							on:input={(e) => handleSliderChange('optimal_atr_min_1m', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.optimal_atr_min_1m.toFixed(2)}%</div>
+					</div>
+					<span class="hint">ATR minimum pour timeframe 1m</span>
+				</div>
+
+				<div class="variable-item">
+					<label>ATR Max 1m (%)</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0.1"
+							max="5"
+							step="0.01"
+							value={config.optimal_atr_max_1m}
+							on:input={(e) => handleSliderChange('optimal_atr_max_1m', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.optimal_atr_max_1m.toFixed(2)}%</div>
+					</div>
+					<span class="hint">ATR maximum pour timeframe 1m</span>
+				</div>
+
+				<div class="variable-item">
+					<label>ATR Min 5m (%)</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0.01"
+							max="2"
+							step="0.01"
+							value={config.optimal_atr_min_5m}
+							on:input={(e) => handleSliderChange('optimal_atr_min_5m', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.optimal_atr_min_5m.toFixed(2)}%</div>
+					</div>
+					<span class="hint">ATR minimum pour timeframe 5m</span>
+				</div>
+
+				<div class="variable-item">
+					<label>ATR Max 5m (%)</label>
+					<div class="slider-container">
+						<input
+							type="range"
+							min="0.5"
+							max="10"
+							step="0.01"
+							value={config.optimal_atr_max_5m}
+							on:input={(e) => handleSliderChange('optimal_atr_max_5m', e.target.value)}
+							disabled={isLoading}
+							class="modern-slider"
+						/>
+						<div class="slider-value">{config.optimal_atr_max_5m.toFixed(2)}%</div>
+					</div>
+					<span class="hint">ATR maximum pour timeframe 5m</span>
+				</div>
+			</div>
+		</section>
+
+		<!-- Patterns -->
+		<section class="variable-section">
+			<h3>🎨 Patterns de Chandeliers</h3>
+			<div class="patterns-grid">
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_engulfing_bullish}
+							on:change={(e) => handleBooleanChange('pattern_engulfing_bullish', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>🔵 Engulfing Bullish</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_engulfing_bearish}
+							on:change={(e) => handleBooleanChange('pattern_engulfing_bearish', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>🔴 Engulfing Bearish</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_hammer}
+							on:change={(e) => handleBooleanChange('pattern_hammer', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>🔨 Hammer</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_shooting_star}
+							on:change={(e) => handleBooleanChange('pattern_shooting_star', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>⭐ Shooting Star</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_doji}
+							on:change={(e) => handleBooleanChange('pattern_doji', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>⚪ Doji</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_doji_dragonfly}
+							on:change={(e) => handleBooleanChange('pattern_doji_dragonfly', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>🐉 Doji Dragonfly</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_doji_gravestone}
+							on:change={(e) => handleBooleanChange('pattern_doji_gravestone', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>🪦 Doji Gravestone</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_marubozu_bullish}
+							on:change={(e) => handleBooleanChange('pattern_marubozu_bullish', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>📈 Marubozu Bullish</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_marubozu_bearish}
+							on:change={(e) => handleBooleanChange('pattern_marubozu_bearish', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>📉 Marubozu Bearish</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_morning_star}
+							on:change={(e) => handleBooleanChange('pattern_morning_star', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>🌅 Morning Star</span>
+					</label>
+				</div>
+
+				<div class="pattern-item">
+					<label class="toggle-label">
+						<input
+							type="checkbox"
+							checked={config.pattern_evening_star}
+							on:change={(e) => handleBooleanChange('pattern_evening_star', e.target.checked)}
+							disabled={isLoading}
+						/>
+						<span>🌆 Evening Star</span>
+					</label>
+				</div>
+			</div>
+		</section>
+=======
 						<div class="var-header">
 							<label for="trailing-max-dist">
 								<span class="var-name">Max Distance (%)</span>
@@ -1388,6 +2237,7 @@
 		{/if}
 
 		<!-- ONGLET STRATEGIE -->
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 	</div>
 </div>
 
@@ -1403,7 +2253,11 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+<<<<<<< HEAD
+		margin-bottom: 30px;
+=======
 		margin-bottom: 24px;
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 		padding-bottom: 16px;
 		border-bottom: 2px solid #2a3a6b;
 	}
@@ -1411,6 +2265,26 @@
 	.panel-header h2 {
 		font-size: 24px;
 		color: #00ff88;
+<<<<<<< HEAD
+		font-weight: bold;
+		margin: 0;
+	}
+
+	.save-status {
+		font-size: 14px;
+		font-weight: bold;
+		padding: 8px 16px;
+		border-radius: 6px;
+		background: rgba(0, 255, 136, 0.1);
+		border: 1px solid #00ff88;
+		color: #00ff88;
+	}
+
+	.variables-content {
+		display: flex;
+		flex-direction: column;
+		gap: 30px;
+=======
 		margin: 0;
 	}
 
@@ -1514,22 +2388,37 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
 		gap: 24px;
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 	}
 
 	.variable-section {
 		background: #0a0e27;
 		border-radius: 10px;
 		padding: 20px;
+<<<<<<< HEAD
+		border: 1px solid #2a3a6b;
+=======
 		border: 2px solid #2a3a6b;
 	}
 
 	.variable-section.tp-sl-section {
 		grid-column: 1 / -1;
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 	}
 
 	.variable-section h3 {
 		font-size: 18px;
 		color: #00aaff;
+<<<<<<< HEAD
+		margin-bottom: 20px;
+		padding-bottom: 10px;
+		border-bottom: 1px solid #2a3a6b;
+	}
+
+	.variables-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+=======
 		margin: 0 0 16px 0;
 		padding-bottom: 12px;
 		border-bottom: 1px solid #2a3a6b;
@@ -1545,12 +2434,31 @@
 	.variables-list {
 		display: flex;
 		flex-direction: column;
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 		gap: 20px;
 	}
 
 	.variable-item {
 		display: flex;
 		flex-direction: column;
+<<<<<<< HEAD
+		gap: 8px;
+		min-height: 80px;
+	}
+
+	.variable-item.full-width {
+		grid-column: 1 / -1;
+	}
+
+	.variable-item label {
+		color: #fff;
+		font-size: 14px;
+		font-weight: 500;
+		margin-bottom: 4px;
+	}
+
+	.variable-item input[type='number'],
+=======
 		gap: 10px;
 	}
 
@@ -1667,10 +2575,121 @@
 		text-align: right;
 	}
 
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 	.variable-item select {
 		background: #1e2749;
 		border: 2px solid #2a3a6b;
 		color: #fff;
+<<<<<<< HEAD
+		padding: 10px 12px;
+		border-radius: 6px;
+		font-family: 'Courier New', monospace;
+		font-size: 14px;
+		transition: all 0.3s;
+	}
+
+	.variable-item input[type='number']:focus,
+	.variable-item select:focus {
+		outline: none;
+		border-color: #00ff88;
+		box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
+	}
+
+	/* Modern Slider Styles */
+	.slider-container {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.modern-slider {
+		width: 100%;
+		height: 10px;
+		background: linear-gradient(to right, #2a3a6b 0%, #2a3a6b 100%);
+		border-radius: 5px;
+		outline: none;
+		-webkit-appearance: none;
+		position: relative;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.modern-slider:hover {
+		background: linear-gradient(to right, #3a4a7b 0%, #3a4a7b 100%);
+	}
+
+	.modern-slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 24px;
+		height: 24px;
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		border-radius: 50%;
+		cursor: pointer;
+		box-shadow: 0 2px 8px rgba(0, 255, 136, 0.4);
+		transition: all 0.3s;
+		border: 2px solid #0a0e27;
+	}
+
+	.modern-slider::-webkit-slider-thumb:hover {
+		transform: scale(1.2);
+		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.6);
+	}
+
+	.modern-slider::-moz-range-thumb {
+		width: 24px;
+		height: 24px;
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		border-radius: 50%;
+		cursor: pointer;
+		border: 2px solid #0a0e27;
+		box-shadow: 0 2px 8px rgba(0, 255, 136, 0.4);
+		transition: all 0.3s;
+	}
+
+	.modern-slider::-moz-range-thumb:hover {
+		transform: scale(1.2);
+		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.6);
+	}
+
+	.modern-slider::-moz-range-track {
+		height: 10px;
+		background: #2a3a6b;
+		border-radius: 5px;
+	}
+
+	.slider-value {
+		font-size: 20px;
+		font-weight: bold;
+		color: #00ff88;
+		text-align: center;
+		padding: 4px 8px;
+		background: rgba(0, 255, 136, 0.1);
+		border-radius: 6px;
+		border: 1px solid rgba(0, 255, 136, 0.3);
+		font-family: 'Courier New', monospace;
+		min-width: 80px;
+		align-self: center;
+	}
+
+	.toggle-label {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		cursor: pointer;
+		padding: 8px;
+		border-radius: 6px;
+		transition: background 0.3s;
+	}
+
+	.toggle-label:hover {
+		background: rgba(0, 255, 136, 0.05);
+	}
+
+	.toggle-label input[type='checkbox'] {
+		width: 24px;
+		height: 24px;
+=======
 		padding: 12px;
 		border-radius: 8px;
 		font-family: 'Courier New', monospace;
@@ -1692,10 +2711,45 @@
 	.variable-item input[type='checkbox'] {
 		width: 20px;
 		height: 20px;
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 		cursor: pointer;
 		accent-color: #00ff88;
 	}
 
+<<<<<<< HEAD
+	.hint {
+		font-size: 12px;
+		color: #888;
+		font-style: italic;
+		margin-top: 4px;
+	}
+
+	/* Patterns Grid */
+	.patterns-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 12px;
+	}
+
+	.pattern-item {
+		background: #1e2749;
+		padding: 12px;
+		border-radius: 8px;
+		border: 1px solid #2a3a6b;
+		transition: all 0.3s;
+	}
+
+	.pattern-item:hover {
+		border-color: #00ff88;
+		background: rgba(0, 255, 136, 0.05);
+	}
+
+	.pattern-item .toggle-label {
+		margin: 0;
+	}
+
+	/* Mobile */
+=======
 	.mode-settings {
 		background: rgba(0, 170, 255, 0.05);
 		border: 1px solid rgba(0, 170, 255, 0.2);
@@ -1740,11 +2794,28 @@
 		margin-top: 8px;
 	}
 
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 	@media (max-width: 768px) {
 		.variables-grid {
 			grid-template-columns: 1fr;
 		}
 
+<<<<<<< HEAD
+		.patterns-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.panel-header {
+			flex-direction: column;
+			gap: 15px;
+			align-items: flex-start;
+		}
+
+		.variable-item {
+			min-height: auto;
+		}
+	}
+=======
 		.panel-header {
 			flex-direction: column;
 			gap: 16px;
@@ -1906,4 +2977,5 @@
 		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 		gap: 12px;
 	}
+>>>>>>> claude/fix-exit-price-zero-011CUxTgPnEK2uY26D86b7SU
 </style>
