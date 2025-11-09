@@ -42,6 +42,12 @@ def set_websocket_manager(ws_manager):
     _sio = ws_manager  # Garder _sio pour compatibilité
 
 
+def set_socketio(sio):
+    """Injecter l'instance SocketIO (alias pour compatibilité)"""
+    global _sio
+    _sio = sio
+
+
 # Créer le router
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
