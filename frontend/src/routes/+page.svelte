@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { initWebSocket } from '$lib/utils/websocket';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -38,7 +39,8 @@
 		try {
 			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
 			const { sendCommandViaWS } = await import('$lib/utils/websocket');
-			const result = await sendCommandViaWS('update_config', { tp_sl_mode: tpSlMode });
+			const ws = initWebSocket();
+			const result = await ws.sendCommand('update_config', { tp_sl_mode: tpSlMode });
 			
 			if (result && result.updated) {
 				console.log(`✅ TP/SL Mode changé via WebSocket: ${tpSlMode}`);
@@ -66,14 +68,10 @@
 	// Fetch initial state on mount
 	onMount(async () => {
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
-		const websocketModule = await import('$lib/utils/websocket');
-		const ws = websocketModule.initWebSocket();
+		const ws = initWebSocket();
 		
-		// Attendre que la connexion soit établie avant d'ajouter les listeners
-		if (!ws || typeof ws.on !== 'function') {
-			console.error('❌ WebSocket non initialisé correctement');
-			return;
-		}
+		// Attendre un peu pour que la connexion soit établie
+		await new Promise(resolve => setTimeout(resolve, 100));
 		
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
 		ws.on('status', (data: any) => {
