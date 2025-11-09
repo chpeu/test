@@ -1209,7 +1209,7 @@ async def api_get_complete_state():
     import time
     logger.info("🔍 /api/state appelé - Début de la fonction")
     
-    # 🔥 FIX: Retourner réponse minimale immédiatement avec try/except global
+    # 🔥 FIX: Retourner réponse minimale immédiatement - TOUJOURS retourner 200
     try:
         # Vérifier que app_state existe (sans utiliser globals() qui peut échouer)
         try:
