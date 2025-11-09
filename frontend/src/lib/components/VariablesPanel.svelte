@@ -159,78 +159,46 @@
 		loading = true;
 		saveMessage = '';
 		try {
-			const res = await fetch('/api/config/update', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(config)
-			});
-
-			if (res.ok) {
-				const result = await res.json();
+			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+			const { sendCommandViaWS } = await import('$lib/utils/websocket');
+			const result = await sendCommandViaWS('update_config', config);
 				
-				// 🔥 AMÉLIORATION: Vérifier que les valeurs sont bien appliquées
-				if (result.verified) {
-					const verifiedDetails = Object.entries(result.verified)
-						.map(([key, value]) => `  ✅ ${key} = ${value}`)
-						.join('\n');
-					console.log('✅ Paramètres vérifiés dans TRADING_CONFIG:\n' + verifiedDetails);
-					
-					// Afficher un message détaillé
-					const verifiedCount = Object.keys(result.verified).length;
-					saveMessage = `✅ ${verifiedCount} paramètre(s) sauvegardé(s) et vérifié(s) dans le bot`;
-				} else {
-					saveMessage = `✅ Configuration sauvegardée: ${result.message || 'Succès'}`;
-				}
+			// 🔥 MIGRATION COMPLÈTE: Résultat de la commande WebSocket
+			if (result && result.updated) {
+				const updatedCount = Object.keys(result.updated).length;
+				saveMessage = `✅ ${updatedCount} paramètre(s) sauvegardé(s) via WebSocket`;
+				console.log('✅ Paramètres mis à jour via WebSocket:', result.updated);
 				
-				// 🔥 FIX: Vérification immédiate sans délai pour synchronisation temps réel
-				// La config a déjà été sauvegardée et vérifiée via result.verified
-				// On ne vérifie que si des incohérences sont détectées
-				try {
-					const verifyRes = await fetch('/api/config/verify');
-					if (verifyRes.ok) {
-						const verifyData = await verifyRes.json();
-						console.log('🔍 Vérification complète:', verifyData);
-						if (verifyData.params) {
-							// Comparer avec la config envoyée (pas la config locale qui peut avoir changé)
-							const mismatches = [];
-							Object.keys(result.verified || {}).forEach(key => {
-								if (verifyData.params[key] !== undefined && 
-								    verifyData.params[key] !== result.verified[key]) {
-									mismatches.push(`${key}: envoyé=${result.verified[key]}, bot=${verifyData.params[key]}`);
-								}
-							});
-							if (mismatches.length > 0) {
-								console.warn('⚠️ Incohérences détectées:', mismatches);
-								saveMessage = `⚠️ ${mismatches.length} incohérence(s) détectée(s). Vérifiez les logs.`;
-								// 🔥 FIX: Recharger la config seulement en cas d'incohérence
-								await loadConfig();
-							} else {
-								console.log('✅ Tous les paramètres sont synchronisés');
-								saveMessage = `✅ ${Object.keys(result.verified || {}).length} paramètre(s) sauvegardé(s) et vérifié(s)`;
-							}
-						}
-					}
-				} catch (err) {
-					console.error('Erreur vérification:', err);
+				// Vérifier que min_score_required est bien dans les updates
+				if (result.updated.min_score_required !== undefined) {
+					console.log(`✅ min_score_required mis à jour: ${result.updated.min_score_required}`);
 				}
 				
 				setTimeout(() => (saveMessage = ''), 3000);
-				
-				// Afficher les paramètres mis à jour
-				if (result.updated) {
-					console.log('✅ Paramètres mis à jour:', result.updated);
-					// Vérifier que min_score_required est bien dans les updates
-					if (result.updated.min_score_required !== undefined) {
-						console.log(`✅ min_score_required mis à jour: ${result.updated.min_score_required}`);
-					}
-				}
 			} else {
-				const errorData = await res.json().catch(() => ({}));
-				saveMessage = `❌ Erreur lors de la sauvegarde: ${errorData.error || res.statusText}`;
+				saveMessage = `✅ Configuration sauvegardée via WebSocket`;
+				setTimeout(() => (saveMessage = ''), 3000);
 			}
 		} catch (err) {
-			console.error('Error saving config:', err);
-			saveMessage = '❌ Erreur: Backend non accessible';
+			console.error('❌ Error saving config via WebSocket:', err);
+			// Fallback REST si WebSocket non disponible
+			try {
+				const res = await fetch('/api/config/update', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(config)
+				});
+				if (res.ok) {
+					const result = await res.json();
+					saveMessage = `✅ Configuration sauvegardée via REST (fallback)`;
+					setTimeout(() => (saveMessage = ''), 3000);
+				} else {
+					saveMessage = '❌ Erreur: Backend non accessible';
+				}
+			} catch (fallbackErr) {
+				console.error('❌ Erreur fallback REST:', fallbackErr);
+				saveMessage = '❌ Erreur: Backend non accessible';
+			}
 		} finally {
 			loading = false;
 		}
@@ -249,17 +217,27 @@
 		logConfigChange(key, `${oldValue} → ${DEFAULTS[key]}`);
 	}
 
-	function logConfigChange(key, change) {
-		// Envoyer log de modification au backend
-		fetch('/api/log/config', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
+	async function logConfigChange(key, change) {
+		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif
+		try {
+			const { sendCommandViaWS } = await import('$lib/utils/websocket');
+			await sendCommandViaWS('log_config', {
 				key,
 				change,
 				timestamp: new Date().toISOString()
-			})
-		}).catch(err => console.error('Error logging config change:', err));
+			});
+		} catch (err) {
+			// Fallback REST si WebSocket non disponible
+			fetch('/api/log/config', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					key,
+					change,
+					timestamp: new Date().toISOString()
+				})
+			}).catch(fetchErr => console.error('Error logging config change:', fetchErr));
+		}
 	}
 
 	// Watcher pour logger les changements

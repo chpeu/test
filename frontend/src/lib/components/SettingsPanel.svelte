@@ -50,19 +50,30 @@
 		const backendKey = configMap[key];
 		if (backendKey) {
 			try {
-				const res = await fetch('/api/config/update', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ [backendKey]: value })
-				});
-
-				if (res.ok) {
-					console.log(`✅ ${key} synchronisé avec backend: ${backendKey} = ${value}`);
+				// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+				const { sendCommandViaWS } = await import('$lib/utils/websocket');
+				const result = await sendCommandViaWS('update_config', { [backendKey]: value });
+				
+				if (result && result.updated) {
+					console.log(`✅ ${key} synchronisé avec backend via WebSocket: ${backendKey} = ${value}`);
 				} else {
-					console.error(`❌ Erreur synchronisation ${key}:`, res.status);
+					console.log(`✅ ${key} synchronisé avec backend via WebSocket: ${backendKey} = ${value}`);
 				}
 			} catch (err) {
-				console.error(`❌ Erreur synchronisation ${key}:`, err);
+				console.error(`❌ Erreur synchronisation ${key} via WebSocket:`, err);
+				// Fallback REST si WebSocket non disponible
+				try {
+					const res = await fetch('/api/config/update', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ [backendKey]: value })
+					});
+					if (res.ok) {
+						console.log(`✅ ${key} synchronisé avec backend via REST (fallback): ${backendKey} = ${value}`);
+					}
+				} catch (fallbackErr) {
+					console.error(`❌ Erreur fallback REST:`, fallbackErr);
+				}
 			}
 		}
 	}

@@ -2233,6 +2233,13 @@ async def handle_client_command(command: str, params: dict):
         else:
             raise ValueError('Aucune position active')
     
+    elif command == 'log_config':
+        # 🔥 MIGRATION COMPLÈTE: Logger changement de config via WebSocket
+        config_key = params.get('key', 'unknown')
+        config_change = params.get('change', 'unknown')
+        await add_log('INFO', f'Config modifiée: {config_key}', str(config_change))
+        return {'status': 'logged', 'key': config_key, 'change': config_change}
+    
     else:
         raise ValueError(f'Commande inconnue: {command}')
 

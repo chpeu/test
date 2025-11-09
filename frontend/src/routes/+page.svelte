@@ -36,28 +36,59 @@
 
 	async function changeTpSlMode() {
 		try {
-			const res = await fetch('/api/config/update', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ tp_sl_mode: tpSlMode })
-			});
-
-			if (res.ok) {
-				console.log(`TP/SL Mode changé: ${tpSlMode}`);
+			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+			const { sendCommandViaWS } = await import('$lib/utils/websocket');
+			const result = await sendCommandViaWS('update_config', { tp_sl_mode: tpSlMode });
+			
+			if (result && result.updated) {
+				console.log(`✅ TP/SL Mode changé via WebSocket: ${tpSlMode}`);
 			} else {
-				console.error('Erreur changement mode TP/SL');
+				console.error('⚠️ Erreur changement mode TP/SL: pas de réponse');
 			}
 		} catch (err) {
-			console.error('Erreur changement mode TP/SL:', err);
+			console.error('❌ Erreur changement mode TP/SL:', err);
+			// Fallback REST si WebSocket non disponible
+			try {
+				const res = await fetch('/api/config/update', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ tp_sl_mode: tpSlMode })
+				});
+				if (res.ok) {
+					console.log(`✅ TP/SL Mode changé via REST (fallback): ${tpSlMode}`);
+				}
+			} catch (fallbackErr) {
+				console.error('❌ Erreur fallback REST:', fallbackErr);
+			}
 		}
 	}
 
 	// Fetch initial state on mount
 	onMount(async () => {
-		// 🔥 REMPLACEMENT: Initialiser WebSocket natif au lieu de Socket.IO
-		const { initWebSocket } = await import('$lib/utils/websocket');
-		initWebSocket();
+		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
+		const { initWebSocket, getWebSocket } = await import('$lib/utils/websocket');
+		const ws = initWebSocket();
 		
+		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
+		ws.on('status', (data: any) => {
+			// Mettre à jour l'état quand le backend envoie un update
+			if (data.config && data.config.tp_sl_mode) {
+				tpSlMode = data.config.tp_sl_mode;
+			}
+		});
+		
+		ws.on('connect', () => {
+			console.log('✅ WebSocket connecté');
+			backendConnected = true;
+			backendError = '';
+		});
+		
+		ws.on('disconnect', () => {
+			console.warn('⚠️ WebSocket déconnecté');
+			backendConnected = false;
+		});
+		
+		// Charger l'état initial (via REST pour le premier chargement, puis WebSocket pour les updates)
 		await loadInitialState();
 	});
 

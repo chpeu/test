@@ -12,45 +12,62 @@
 		clearPosition();
 
 		try {
-			const res = await fetch('/api/position/close', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					reason: 'MANUAL',
-					exit_price: $activePosition.current_price
-				})
+			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+			const { sendCommandViaWS } = await import('$lib/utils/websocket');
+			const result = await sendCommandViaWS('close_position', {
+				reason: 'MANUAL',
+				exit_price: $activePosition.current_price
 			});
-
-		if (res.ok) {
-			const data = await res.json();
-			console.log('Position fermée:', data);
-			// La synchronisation WebSocket natif confirmera et mettra à jour les stats/historique
-		} else {
-				const errorData = await res.json().catch(() => ({}));
-				alert(`❌ Erreur: ${errorData.error || res.statusText}`);
-				// En cas d'erreur, recharger la position depuis le backend
-				const stateRes = await fetch('/api/state');
-				if (stateRes.ok) {
-					const stateData = await stateRes.json();
-					if (stateData.active_position) {
-						updatePosition(stateData.active_position);
-					}
-				}
+			
+			if (result && result.status === 'closed') {
+				console.log('✅ Position fermée via WebSocket:', result.result);
+				// La synchronisation WebSocket natif confirmera et mettra à jour les stats/historique
+			} else {
+				console.log('✅ Position fermée via WebSocket');
 			}
 		} catch (err) {
-			console.error('Error closing position:', err);
-			alert('❌ Erreur: Impossible de clôturer la position');
-			// En cas d'erreur, recharger la position depuis le backend
+			console.error('❌ Error closing position via WebSocket:', err);
+			// Fallback REST si WebSocket non disponible
 			try {
-				const stateRes = await fetch('/api/state');
-				if (stateRes.ok) {
-					const stateData = await stateRes.json();
-					if (stateData.active_position) {
-						updatePosition(stateData.active_position);
+				const res = await fetch('/api/position/close', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						reason: 'MANUAL',
+						exit_price: $activePosition.current_price
+					})
+				});
+				
+				if (res.ok) {
+					const data = await res.json();
+					console.log('✅ Position fermée via REST (fallback):', data);
+				} else {
+					const errorData = await res.json().catch(() => ({}));
+					alert(`❌ Erreur: ${errorData.error || res.statusText}`);
+					// En cas d'erreur, recharger la position depuis le backend
+					const stateRes = await fetch('/api/state');
+					if (stateRes.ok) {
+						const stateData = await stateRes.json();
+						if (stateData.active_position) {
+							updatePosition(stateData.active_position);
+						}
 					}
 				}
-			} catch (e) {
-				console.error('Error reloading position:', e);
+			} catch (fallbackErr) {
+				console.error('❌ Erreur fallback REST:', fallbackErr);
+				alert('❌ Erreur: Impossible de clôturer la position');
+				// En cas d'erreur, recharger la position depuis le backend
+				try {
+					const stateRes = await fetch('/api/state');
+					if (stateRes.ok) {
+						const stateData = await stateRes.json();
+						if (stateData.active_position) {
+							updatePosition(stateData.active_position);
+						}
+					}
+				} catch (e) {
+					console.error('Error reloading position:', e);
+				}
 			}
 		}
 	}
