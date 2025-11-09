@@ -23,9 +23,7 @@
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
-		{ id: 'scanner', label: 'Scanner', icon: '🔍' },
-		{ id: 'position', label: 'Position', icon: '💰' },
-		{ id: 'stats', label: 'Stats', icon: '📈' },
+		{ id: 'logs', label: 'Logs', icon: '📝' },
 		{ id: 'charts', label: 'Graphiques', icon: '📉' },
 		{ id: 'history', label: 'Historique', icon: '📜' },
 		{ id: 'sessions', label: 'Sessions', icon: '🔄' },
@@ -116,25 +114,10 @@
 						<NotificationSettings />
 					</div>
 				</div>
-			{:else if activeTab === 'scanner'}
+			{:else if activeTab === 'logs'}
 				<div class="tab-content">
-					<ScannerPanel />
 					<div class="logs-panel">
 						<LogViewer />
-					</div>
-				</div>
-			{:else if activeTab === 'position'}
-				<div class="tab-content">
-					<PositionCard />
-					<div class="position-details">
-						<StatsPanel />
-					</div>
-				</div>
-			{:else if activeTab === 'stats'}
-				<div class="tab-content">
-					<GlobalStats />
-					<div class="stats-grid">
-						<StatsPanel />
 					</div>
 				</div>
 			{:else if activeTab === 'charts'}
@@ -142,7 +125,6 @@
 					<div class="charts-grid">
 						<PnLChart />
 						<WinLossChart />
-						<VolumeChart />
 					</div>
 				</div>
 			{:else if activeTab === 'history'}
@@ -154,6 +136,14 @@
 				</div>
 			{:else if activeTab === 'sessions'}
 				<div class="tab-content">
+					<div class="tab-description">
+						<h2>📂 Gestion des Sessions de Trading</h2>
+						<p>
+							Les sessions vous permettent de gérer plusieurs stratégies de trading simultanément,
+							chacune avec ses propres paires et configurations.
+							<strong>Note:</strong> Cette fonctionnalité est avancée et nécessite que le backend supporte le multi-sessions.
+						</p>
+					</div>
 					<SessionSelector />
 					<div class="sessions-stats">
 						<GlobalStats />
@@ -412,6 +402,32 @@
 		text-decoration: underline;
 	}
 
+	/* Tab description */
+	.tab-description {
+		background: rgba(0, 170, 255, 0.1);
+		border: 2px solid #00aaff;
+		border-radius: 10px;
+		padding: 20px;
+		margin-bottom: 20px;
+	}
+
+	.tab-description h2 {
+		font-size: 18px;
+		color: #00aaff;
+		margin: 0 0 10px 0;
+	}
+
+	.tab-description p {
+		font-size: 14px;
+		color: #aaa;
+		line-height: 1.6;
+		margin: 0;
+	}
+
+	.tab-description strong {
+		color: #00ff88;
+	}
+
 	/* Mobile Responsive */
 	@media (max-width: 768px) {
 		:global(body) {
@@ -439,6 +455,18 @@
 		.footer-content {
 			flex-direction: column;
 			text-align: center;
+		}
+
+		.tab-description {
+			padding: 15px;
+		}
+
+		.tab-description h2 {
+			font-size: 16px;
+		}
+
+		.tab-description p {
+			font-size: 13px;
 		}
 
 		.status-panel,

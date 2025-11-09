@@ -76,32 +76,40 @@
 	{:else}
 		<div class="notification-types">
 			<p class="description">
-				Vous recevrez des notifications pour les événements suivants:
+				Les notifications sont automatiquement envoyées pour les événements importants :
 			</p>
 
 			<div class="types-grid">
-				<div class="type-card">
+				<div class="type-card active">
 					<div class="type-icon">🟢</div>
 					<div class="type-name">Position Ouverte</div>
-					<div class="type-desc">Nouvelle position détectée</div>
+					<div class="type-desc">Alerte à l'ouverture d'une position</div>
 				</div>
 
-				<div class="type-card">
+				<div class="type-card active">
 					<div class="type-icon">🔴</div>
 					<div class="type-name">Position Fermée</div>
-					<div class="type-desc">TP, SL ou TS atteint</div>
+					<div class="type-desc">TP, SL ou Trailing Stop</div>
 				</div>
 
-				<div class="type-card">
+				<div class="type-card active">
 					<div class="type-icon">🔍</div>
 					<div class="type-name">Setup Détecté</div>
 					<div class="type-desc">Conditions de trading remplies</div>
 				</div>
 
-				<div class="type-card">
-					<div class="type-icon">🏆</div>
-					<div class="type-name">Milestone</div>
-					<div class="type-desc">Winrate ≥ 70%</div>
+				<div class="type-card active">
+					<div class="type-icon">❌</div>
+					<div class="type-name">Erreurs</div>
+					<div class="type-desc">Erreurs critiques du système</div>
+				</div>
+			</div>
+
+			<div class="notification-note">
+				<div class="note-icon">ℹ️</div>
+				<div class="note-text">
+					<strong>Note:</strong> Les notifications sont actives pour tous les événements importants.
+					Vous recevrez également des alertes lorsque votre winrate atteint des seuils significatifs (50%, 60%, 70%).
 				</div>
 			</div>
 		</div>
@@ -275,11 +283,43 @@
 		text-align: center;
 		border: 2px solid #2a3a6b;
 		transition: all 0.3s;
+		opacity: 0.6;
+	}
+
+	.type-card.active {
+		opacity: 1;
+		border-color: rgba(0, 255, 136, 0.5);
 	}
 
 	.type-card:hover {
 		border-color: #00ff88;
 		transform: translateY(-2px);
+	}
+
+	.notification-note {
+		margin-top: 20px;
+		padding: 15px;
+		background: rgba(0, 170, 255, 0.1);
+		border-radius: 8px;
+		border: 1px solid rgba(0, 170, 255, 0.3);
+		display: flex;
+		gap: 12px;
+		align-items: flex-start;
+	}
+
+	.note-icon {
+		font-size: 20px;
+		flex-shrink: 0;
+	}
+
+	.note-text {
+		font-size: 13px;
+		color: #aaa;
+		line-height: 1.6;
+	}
+
+	.note-text strong {
+		color: #00aaff;
 	}
 
 	.type-icon {

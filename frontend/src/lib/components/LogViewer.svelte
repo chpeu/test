@@ -1,22 +1,42 @@
 <script>
 	import { onMount, afterUpdate } from 'svelte';
 	import { recentLogs, errorCount } from '$lib/stores/logs';
+	import { derived } from 'svelte/store';
 
 	let logContainer;
+	let errorContainer;
 	let autoScroll = true;
+	let autoScrollErrors = true;
+
+	// Séparer les erreurs/warnings des autres logs
+	const errorLogs = derived(recentLogs, $logs =>
+		$logs.filter(log => log.level === 'ERROR' || log.level === 'WARNING' || log.level === 'CRITICAL')
+	);
+
+	const regularLogs = derived(recentLogs, $logs =>
+		$logs.filter(log => log.level !== 'ERROR' && log.level !== 'WARNING' && log.level !== 'CRITICAL')
+	);
 
 	// Auto-scroll to bottom when new logs arrive
 	afterUpdate(() => {
 		if (autoScroll && logContainer) {
 			logContainer.scrollTop = logContainer.scrollHeight;
 		}
+		if (autoScrollErrors && errorContainer) {
+			errorContainer.scrollTop = errorContainer.scrollHeight;
+		}
 	});
 
-	function handleScroll() {
-		if (!logContainer) return;
-		const { scrollTop, scrollHeight, clientHeight } = logContainer;
+	function handleScroll(container, isError = false) {
+		if (!container) return;
+		const { scrollTop, scrollHeight, clientHeight } = container;
 		// Auto-scroll if user is within 50px of bottom
-		autoScroll = scrollTop + clientHeight >= scrollHeight - 50;
+		const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+		if (isError) {
+			autoScrollErrors = isAtBottom;
+		} else {
+			autoScroll = isAtBottom;
+		}
 	}
 
 	function getLogColor(level) {
@@ -27,7 +47,7 @@
 			case 'WARNING':
 				return '#ffaa00';
 			case 'INFO':
-				return '#00aaff';
+				return '#00ff88';
 			case 'DEBUG':
 				return '#888';
 			default:
@@ -43,48 +63,88 @@
 </script>
 
 <div class="log-viewer">
-	<div class="log-header">
-		<h3>System Logs</h3>
-		{#if $errorCount > 0}
-			<div class="error-badge">{$errorCount} errors</div>
-		{/if}
-	</div>
+	<!-- Section Erreurs/Warnings -->
+	<div class="errors-section">
+		<div class="log-header">
+			<h3>🚨 Erreurs & Warnings</h3>
+			<div class="error-badge">{$errorLogs.length} problèmes</div>
+		</div>
 
-	<div class="log-container" bind:this={logContainer} on:scroll={handleScroll}>
-		{#if $recentLogs.length === 0}
-			<div class="no-logs">
-				<div class="no-logs-icon">📝</div>
-				<div class="no-logs-text">No logs yet</div>
-			</div>
-		{:else}
-			{#each $recentLogs as log (log.id)}
-				<div class="log-entry" style="border-left-color: {getLogColor(log.level)}">
-					<span class="log-time">{formatTime(log.timestamp)}</span>
-					<span class="log-level" style="color: {getLogColor(log.level)}">[{log.level}]</span>
-					<span class="log-message">{log.message}</span>
+		<div class="log-container errors" bind:this={errorContainer} on:scroll={() => handleScroll(errorContainer, true)}>
+			{#if $errorLogs.length === 0}
+				<div class="no-logs">
+					<div class="no-logs-icon">✅</div>
+					<div class="no-logs-text">Aucune erreur</div>
 				</div>
-			{/each}
-		{/if}
+			{:else}
+				{#each $errorLogs as log (log.id)}
+					<div class="log-entry" style="border-left-color: {getLogColor(log.level)}">
+						<span class="log-time">{formatTime(log.timestamp)}</span>
+						<span class="log-level" style="color: {getLogColor(log.level)}">[{log.level}]</span>
+						<span class="log-message">{log.message}</span>
+					</div>
+				{/each}
+			{/if}
+		</div>
+
+		<div class="log-footer">
+			<label class="auto-scroll-toggle">
+				<input type="checkbox" bind:checked={autoScrollErrors} />
+				<span>Auto-scroll</span>
+			</label>
+			<div class="log-count">{$errorLogs.length} erreurs/warnings</div>
+		</div>
 	</div>
 
-	<div class="log-footer">
-		<label class="auto-scroll-toggle">
-			<input type="checkbox" bind:checked={autoScroll} />
-			<span>Auto-scroll</span>
-		</label>
-		<div class="log-count">{$recentLogs.length} logs</div>
+	<!-- Section Logs Standards -->
+	<div class="logs-section">
+		<div class="log-header">
+			<h3>📝 Logs Backend</h3>
+			<div class="info-badge">{$regularLogs.length} entrées</div>
+		</div>
+
+		<div class="log-container" bind:this={logContainer} on:scroll={() => handleScroll(logContainer, false)}>
+			{#if $regularLogs.length === 0}
+				<div class="no-logs">
+					<div class="no-logs-icon">📝</div>
+					<div class="no-logs-text">Aucun log</div>
+				</div>
+			{:else}
+				{#each $regularLogs as log (log.id)}
+					<div class="log-entry" style="border-left-color: {getLogColor(log.level)}">
+						<span class="log-time">{formatTime(log.timestamp)}</span>
+						<span class="log-level" style="color: {getLogColor(log.level)}">[{log.level}]</span>
+						<span class="log-message">{log.message}</span>
+					</div>
+				{/each}
+			{/if}
+		</div>
+
+		<div class="log-footer">
+			<label class="auto-scroll-toggle">
+				<input type="checkbox" bind:checked={autoScroll} />
+				<span>Auto-scroll</span>
+			</label>
+			<div class="log-count">{$regularLogs.length} logs</div>
+		</div>
 	</div>
 </div>
 
 <style>
 	.log-viewer {
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.errors-section,
+	.logs-section {
 		background: #1e2749;
 		border-radius: 12px;
 		border: 2px solid #2a3a6b;
 		display: flex;
 		flex-direction: column;
-		height: 100%;
-		max-height: 500px;
+		max-height: 400px;
 	}
 
 	.log-header {
@@ -99,6 +159,7 @@
 		font-size: 18px;
 		color: #00ff88;
 		font-weight: bold;
+		margin: 0;
 	}
 
 	.error-badge {
@@ -109,6 +170,16 @@
 		font-size: 12px;
 		font-weight: bold;
 		border: 1px solid #ff4444;
+	}
+
+	.info-badge {
+		background: rgba(0, 170, 255, 0.2);
+		color: #00aaff;
+		padding: 4px 12px;
+		border-radius: 12px;
+		font-size: 12px;
+		font-weight: bold;
+		border: 1px solid #00aaff;
 	}
 
 	.log-container {
@@ -215,7 +286,8 @@
 
 	/* Mobile */
 	@media (max-width: 768px) {
-		.log-viewer {
+		.errors-section,
+		.logs-section {
 			max-height: 300px;
 		}
 

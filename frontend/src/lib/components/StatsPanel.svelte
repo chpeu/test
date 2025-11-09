@@ -1,15 +1,81 @@
 <script>
-	import { stats, winrate, winLossRatio, avgPnl } from '$lib/stores/stats';
+	import { stats, winrate, winLossRatio } from '$lib/stores/stats';
+	import { writable } from 'svelte/store';
+
+	// État du bot
+	let botRunning = writable(false);
+	let botLoading = writable(false);
 
 	function formatNumber(num) {
 		if (num === null || num === undefined) return '0';
 		return Number(num).toFixed(2);
 	}
+
+	async function toggleBot() {
+		$botLoading = true;
+		try {
+			const endpoint = $botRunning ? '/api/stop' : '/api/start';
+			const res = await fetch(endpoint, { method: 'POST' });
+
+			if (res.ok) {
+				const data = await res.json();
+				$botRunning = data.is_scanning || false;
+				console.log(`Bot ${$botRunning ? 'started' : 'stopped'}`);
+			} else {
+				console.error('Error toggling bot:', res.status);
+				alert('❌ Erreur: Impossible de contrôler le bot. Vérifiez que le backend est démarré.');
+			}
+		} catch (err) {
+			console.error('Error toggling bot:', err);
+			alert('❌ Erreur: Backend non accessible');
+		} finally {
+			$botLoading = false;
+		}
+	}
+
+	// Vérifier l'état initial du bot
+	async function checkBotStatus() {
+		try {
+			const res = await fetch('/api/status');
+			if (res.ok) {
+				const data = await res.json();
+				$botRunning = data.is_scanning || false;
+			}
+		} catch (err) {
+			console.error('Error checking bot status:', err);
+		}
+	}
+
+	// Vérifier l'état au montage
+	import { onMount } from 'svelte';
+	onMount(() => {
+		checkBotStatus();
+		// Vérifier l'état toutes les 5 secondes
+		const interval = setInterval(checkBotStatus, 5000);
+		return () => clearInterval(interval);
+	});
 </script>
 
 <div class="stats-panel">
 	<div class="stats-header">
-		<h3>Session Statistics</h3>
+		<div class="header-content">
+			<h3>Session Statistics</h3>
+			<button
+				class="bot-control-btn"
+				class:running={$botRunning}
+				class:loading={$botLoading}
+				on:click={toggleBot}
+				disabled={$botLoading}
+			>
+				{#if $botLoading}
+					⏳ Loading...
+				{:else if $botRunning}
+					⏸️ Stop Bot
+				{:else}
+					▶️ Start Bot
+				{/if}
+			</button>
+		</div>
 	</div>
 
 	<div class="stats-grid">
@@ -48,10 +114,6 @@
 			</div>
 		</div>
 
-		<div class="stat-box">
-			<div class="stat-label">Avg PnL</div>
-			<div class="stat-value">{$avgPnl} USDT</div>
-		</div>
 
 		{#if $stats.best_trade}
 			<div class="stat-box best">
@@ -81,13 +143,66 @@
 
 	.stats-header {
 		margin-bottom: 20px;
-		text-align: center;
+	}
+
+	.header-content {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 15px;
 	}
 
 	.stats-header h3 {
 		font-size: 20px;
 		color: #00ff88;
 		font-weight: bold;
+		margin: 0;
+	}
+
+	.bot-control-btn {
+		padding: 10px 20px;
+		border: 2px solid #2a3a6b;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+		background: #0a0e27;
+		color: #fff;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+
+	.bot-control-btn:not(.running):not(.loading) {
+		border-color: #00ff88;
+		color: #00ff88;
+	}
+
+	.bot-control-btn:not(.running):not(.loading):hover {
+		background: rgba(0, 255, 136, 0.1);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+	}
+
+	.bot-control-btn.running {
+		border-color: #ff4444;
+		color: #ff4444;
+		background: rgba(255, 68, 68, 0.1);
+	}
+
+	.bot-control-btn.running:hover {
+		background: rgba(255, 68, 68, 0.2);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+	}
+
+	.bot-control-btn.loading {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.bot-control-btn:disabled {
+		cursor: not-allowed;
 	}
 
 	.stats-grid {

@@ -1,80 +1,72 @@
 <script>
-	import { isScanning, top10Pairs, pairsCount, avgSpread, avgVolume } from '$lib/stores/scanner';
-
-	async function startScan() {
-		try {
-			const res = await fetch('/api/scanner/start', { method: 'POST' });
-			const data = await res.json();
-			console.log('Scan started:', data);
-		} catch (err) {
-			console.error('Error starting scan:', err);
-		}
-	}
-
-	async function stopScan() {
-		try {
-			const res = await fetch('/api/scanner/stop', { method: 'POST' });
-			const data = await res.json();
-			console.log('Scan stopped:', data);
-		} catch (err) {
-			console.error('Error stopping scan:', err);
-		}
-	}
+	import { top10Pairs } from '$lib/stores/scanner';
 
 	function formatNumber(num) {
 		if (!num) return '0';
-		return Number(num).toLocaleString('en-US');
+		return Number(num).toLocaleString('en-US', { maximumFractionDigits: 2 });
+	}
+
+	function formatPercent(num) {
+		if (num === null || num === undefined) return 'N/A';
+		return Number(num).toFixed(4);
+	}
+
+	function formatVolume(num) {
+		if (!num) return '0';
+		if (num >= 1000000) {
+			return (num / 1000000).toFixed(2) + 'M';
+		} else if (num >= 1000) {
+			return (num / 1000).toFixed(2) + 'K';
+		}
+		return num.toFixed(0);
 	}
 </script>
 
 <div class="scanner-panel">
 	<div class="scanner-header">
-		<h3>Scalability Scanner</h3>
-		<button
-			class="btn"
-			class:btn-danger={$isScanning}
-			class:btn-primary={!$isScanning}
-			on:click={$isScanning ? stopScan : startScan}
-		>
-			{$isScanning ? 'Stop Scan' : 'Start Scan'}
-		</button>
-	</div>
-
-	<div class="scanner-stats">
-		<div class="scanner-stat">
-			<div class="stat-label">Total Pairs</div>
-			<div class="stat-value">{$pairsCount}</div>
-		</div>
-		<div class="scanner-stat">
-			<div class="stat-label">Avg Spread</div>
-			<div class="stat-value">{$avgSpread}%</div>
-		</div>
-		<div class="scanner-stat">
-			<div class="stat-label">Avg Volume</div>
-			<div class="stat-value">{formatNumber($avgVolume)}</div>
+		<h3>🔥 Scalability Scanner - Top Pairs</h3>
+		<div class="scan-status">
+			{$top10Pairs.length > 0 ? `${$top10Pairs.length} paires` : 'En attente...'}
 		</div>
 	</div>
 
 	{#if $top10Pairs.length > 0}
 		<div class="pairs-list">
-			<div class="pairs-header">Top 10 Scalable Pairs</div>
+			<div class="pairs-table-header">
+				<div class="col-rank">#</div>
+				<div class="col-symbol">Paire</div>
+				<div class="col-score">Score</div>
+				<div class="col-spread">Spread</div>
+				<div class="col-volume">Volume 24h</div>
+				<div class="col-price">Prix</div>
+				<div class="col-fees">Fees</div>
+			</div>
 			{#each $top10Pairs as pair, i}
 				<div class="pair-item">
-					<div class="pair-rank">#{i + 1}</div>
-					<div class="pair-symbol">{pair.symbol}</div>
-					<div class="pair-score">{pair.score?.toFixed(1) || 'N/A'}</div>
-					<div class="pair-spread">{pair.spread_pct?.toFixed(4) || 'N/A'}%</div>
+					<div class="col-rank">#{i + 1}</div>
+					<div class="col-symbol">{pair.symbol}</div>
+					<div class="col-score">
+						<span class="score-badge">{formatNumber(pair.score)}</span>
+					</div>
+					<div class="col-spread">
+						<span class="spread-value">{formatPercent(pair.spread_pct)}%</span>
+					</div>
+					<div class="col-volume">
+						<span class="volume-value">{formatVolume(pair.volume_24h)} USDT</span>
+					</div>
+					<div class="col-price">
+						<span class="price-value">{formatNumber(pair.price)}</span>
+					</div>
+					<div class="col-fees">
+						<span class="fees-value">{pair.maker_fee || '0'}% / {pair.taker_fee || '0'}%</span>
+					</div>
 				</div>
 			{/each}
 		</div>
 	{:else}
 		<div class="no-pairs">
-			{#if $isScanning}
-				<div class="scanning-icon">🔍</div>
-				<div class="scanning-text">Scanning markets...</div>
-			{:else}
-				<div class="no-pairs-text">No pairs scanned yet</div>
-			{/if}
+			<div class="no-pairs-icon">🔍</div>
+			<div class="no-pairs-text">Aucune paire scannée. Lancez le bot pour commencer.</div>
 		</div>
 	{/if}
 </div>
@@ -98,153 +90,114 @@
 		font-size: 20px;
 		color: #00ff88;
 		font-weight: bold;
+		margin: 0;
 	}
 
-	.btn {
-		padding: 10px 24px;
-		border: none;
-		border-radius: 8px;
-		font-size: 14px;
-		font-weight: bold;
-		cursor: pointer;
-		transition: all 0.3s;
-		text-transform: uppercase;
-	}
-
-	.btn-primary {
-		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
-		color: #0a0e27;
-	}
-
-	.btn-primary:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 15px rgba(0, 255, 136, 0.4);
-	}
-
-	.btn-danger {
-		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
-		color: white;
-	}
-
-	.btn-danger:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 15px rgba(255, 68, 68, 0.4);
-	}
-
-	.scanner-stats {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 15px;
-		margin-bottom: 20px;
-	}
-
-	.scanner-stat {
-		background: #0a0e27;
-		padding: 12px;
-		border-radius: 8px;
-		text-align: center;
-		border: 1px solid #2a3a6b;
-	}
-
-	.stat-label {
-		font-size: 11px;
-		color: #888;
-		margin-bottom: 5px;
-		text-transform: uppercase;
-	}
-
-	.stat-value {
-		font-size: 18px;
-		font-weight: bold;
+	.scan-status {
+		background: rgba(0, 170, 255, 0.2);
 		color: #00aaff;
+		padding: 6px 14px;
+		border-radius: 12px;
+		font-size: 12px;
+		font-weight: bold;
+		border: 1px solid #00aaff;
 	}
 
 	.pairs-list {
 		background: #0a0e27;
 		border-radius: 8px;
 		padding: 15px;
+		overflow-x: auto;
 	}
 
-	.pairs-header {
-		font-size: 14px;
-		color: #00ff88;
+	.pairs-table-header {
+		display: grid;
+		grid-template-columns: 40px 120px 80px 100px 120px 100px 90px;
+		gap: 10px;
+		padding: 10px;
+		background: rgba(0, 255, 136, 0.1);
+		border-radius: 6px;
+		margin-bottom: 10px;
+		font-size: 11px;
 		font-weight: bold;
-		margin-bottom: 15px;
-		text-align: center;
+		color: #00ff88;
+		text-transform: uppercase;
 	}
 
 	.pair-item {
 		display: grid;
-		grid-template-columns: 40px 1fr auto auto;
-		gap: 15px;
+		grid-template-columns: 40px 120px 80px 100px 120px 100px 90px;
+		gap: 10px;
 		align-items: center;
-		padding: 10px;
+		padding: 12px 10px;
 		background: #1e2749;
 		border-radius: 6px;
-		margin-bottom: 8px;
+		margin-bottom: 6px;
 		border: 1px solid #2a3a6b;
 		transition: all 0.3s;
+		font-size: 12px;
 	}
 
 	.pair-item:hover {
 		border-color: #00ff88;
-		transform: translateX(5px);
+		background: rgba(0, 255, 136, 0.05);
+		transform: translateX(3px);
 	}
 
-	.pair-rank {
-		font-size: 14px;
+	.col-rank {
 		font-weight: bold;
 		color: #888;
 	}
 
-	.pair-symbol {
-		font-size: 14px;
+	.col-symbol {
 		font-weight: bold;
 		color: #fff;
 	}
 
-	.pair-score {
-		font-size: 16px;
+	.score-badge {
+		display: inline-block;
 		font-weight: bold;
 		color: #00ff88;
-		padding: 4px 12px;
+		padding: 4px 10px;
 		background: rgba(0, 255, 136, 0.1);
 		border-radius: 6px;
+		border: 1px solid rgba(0, 255, 136, 0.3);
 	}
 
-	.pair-spread {
-		font-size: 12px;
+	.spread-value {
 		color: #00aaff;
+		font-weight: 600;
+	}
+
+	.volume-value {
+		color: #ffaa00;
+		font-weight: 600;
+	}
+
+	.price-value {
+		color: #fff;
+		font-family: 'Courier New', monospace;
+	}
+
+	.fees-value {
+		color: #888;
+		font-size: 11px;
 	}
 
 	.no-pairs {
 		text-align: center;
-		padding: 40px 20px;
+		padding: 60px 20px;
 	}
 
-	.scanning-icon {
-		font-size: 48px;
+	.no-pairs-icon {
+		font-size: 64px;
 		margin-bottom: 15px;
-		animation: spin 2s linear infinite;
-	}
-
-	.scanning-text {
-		font-size: 16px;
-		color: #888;
+		opacity: 0.5;
 	}
 
 	.no-pairs-text {
-		font-size: 16px;
+		font-size: 14px;
 		color: #888;
-	}
-
-	@keyframes spin {
-		from {
-			transform: rotate(0deg);
-		}
-		to {
-			transform: rotate(360deg);
-		}
 	}
 
 	/* Mobile */
@@ -254,18 +207,55 @@
 			gap: 15px;
 		}
 
-		.scanner-stats {
-			grid-template-columns: 1fr;
+		.pairs-table-header {
+			display: none;
 		}
 
 		.pair-item {
-			grid-template-columns: 30px 1fr;
-			gap: 10px;
+			grid-template-columns: 1fr;
+			gap: 8px;
+			padding: 15px;
 		}
 
-		.pair-score,
-		.pair-spread {
-			grid-column: 2;
+		.pair-item > div {
+			display: flex;
+			justify-content: space-between;
+		}
+
+		.pair-item > div::before {
+			content: attr(class);
+			color: #888;
+			font-size: 11px;
+			text-transform: uppercase;
+			margin-right: 10px;
+		}
+
+		.col-rank::before {
+			content: 'Rang';
+		}
+
+		.col-symbol::before {
+			content: 'Paire';
+		}
+
+		.col-score::before {
+			content: 'Score';
+		}
+
+		.col-spread::before {
+			content: 'Spread';
+		}
+
+		.col-volume::before {
+			content: 'Volume';
+		}
+
+		.col-price::before {
+			content: 'Prix';
+		}
+
+		.col-fees::before {
+			content: 'Fees';
 		}
 	}
 </style>
