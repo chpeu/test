@@ -62,6 +62,21 @@ TRADING_CONFIG = {
     "min_score_adx_high": 7.0,  # Score minimum si ADX > 30
     "min_score_adx_low": 8.0,  # Score minimum si ADX < 25
     
+    # ✅ Patterns Techniques (activés par défaut)
+    "use_breakout": True,  # Cassure de niveaux clés
+    "use_snr": True,  # Rebond support/résistance
+    "use_wick": True,  # Rejet via mèches
+    "use_divergence": True,  # Divergence DI+/DI-
+
+    # ✅ Patterns de Bougies (activés par défaut)
+    "use_engulfing": True,
+    "use_hammer": True,
+    "use_shooting_star": True,
+    "use_doji": True,
+    "use_marubozu": True,
+    "use_morning_star": True,
+    "use_evening_star": True,
+
     # Phase 1+2: New filters (configurable) - 🔥 Valeurs mises à jour
     "snr_threshold": 0.25,  # Signal-to-Noise Ratio minimum (était 0.3)
     "breakout_threshold": 0.35,  # Breakout multiplier (ATR * threshold) (était 0.3)
@@ -195,7 +210,25 @@ TRADING_CONFIG = {
         ]
     },
     
-    # 🔥 PHASE 7: TP Escalier (Multi-Level TP)
+    # ✅ TP Escalier / Multi-Level TP (paramètres individuels pour frontend)
+    "partial_tp_percent": 50,  # % de position vendue au 1er TP (mode FIXE)
+    "escalier_level1_pnl": 0.20,
+    "escalier_level1_size": 25,
+    "escalier_level2_pnl": 0.35,
+    "escalier_level2_size": 25,
+    "escalier_level3_pnl": 0.50,
+    "escalier_level3_size": 25,
+    "escalier_level4_pnl": 0.80,
+    "escalier_level4_size": 25,
+
+    # ✅ Trailing Stop Adaptatif (paramètres individuels)
+    "trailing_enabled": True,
+    "trailing_trigger_pnl": 0.25,
+    "trailing_atr_multiplier": 0.4,
+    "trailing_min_distance": 0.08,
+    "trailing_max_distance": 0.25,
+
+    # 🔥 PHASE 7: TP Escalier (Multi-Level TP) - Format legacy
     "tp_escalier": {
         "enabled": True,  # Activé automatiquement si tp_sl_mode = "TP_MULTI"
         "levels": [
@@ -205,7 +238,7 @@ TRADING_CONFIG = {
             {"pnl": 0.80, "size_pct": 0.25, "move_sl": "trailing"},  # 25% à +0.80%
         ]
     },
-    
+
 }
 
 # Risk management

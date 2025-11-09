@@ -257,6 +257,17 @@ if dashboard_router:
 async def startup_event():
     """Initialiser toutes les dépendances au démarrage de l'application"""
     logger.info("🚀 Initialisation des dépendances au démarrage...")
+
+    # ✅ FIX: Charger la configuration persistante
+    from config import TRADING_CONFIG
+    from core.config_manager import get_config_manager
+
+    config_manager = get_config_manager()
+    overrides = config_manager.get_overrides()
+    if overrides:
+        TRADING_CONFIG.update(overrides)
+        logger.info(f"📄 Configuration chargée depuis config_overrides.json ({len(overrides)} overrides)")
+
     init_instances()
     logger.info("✅ Dépendances initialisées")
 
@@ -1230,7 +1241,7 @@ async def handle_logs_request(sid):
 @app.get("/api/state")
 async def api_get_state():
     """
-    État complet de l'application (stats, position active, logs)
+    État complet de l'application (stats, position active, logs, config)
 
     Utilisé par le frontend pour synchroniser l'affichage
     """
@@ -1243,6 +1254,13 @@ async def api_get_state():
     elif app_state.get('active_position'):
         active_position_dict = app_state['active_position']
 
+    # ✅ FIX: Inclure la configuration complète pour le frontend
+    from config import TRADING_CONFIG
+    from core.config_manager import get_config_manager
+
+    config_manager = get_config_manager()
+    full_config = config_manager.get_config(TRADING_CONFIG)
+
     return JSONResponse({
         'is_scanning': app_state.get('is_scanning', False),
         'active_position': active_position_dict,
@@ -1254,7 +1272,9 @@ async def api_get_state():
         }),
         'top_pairs': app_state.get('top_pairs', []),
         'logs': app_state.get('logs', [])[-50:],  # Derniers 50 logs
-        'trade_history': list(reversed(app_state.get('trade_history', [])[-20:]))  # Derniers 20 trades
+        'trade_history': list(reversed(app_state.get('trade_history', [])[-20:])),  # Derniers 20 trades
+        # ✅ FIX: Ajouter la config complète
+        'config': full_config
     })
 
 
@@ -1433,6 +1453,137 @@ async def api_update_config(request: Request):
 
     except Exception as e:
         logger.error(f"Erreur mise à jour config: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.post("/api/config/update")
+async def api_config_update(request: Request):
+    """
+    ✅ NOUVEAU: Mettre à jour la configuration complète avec sauvegarde persistante
+
+    Accepte TOUTES les variables du frontend (patterns, TP/SL, money management, etc.)
+    et les sauvegarde dans config_overrides.json pour persistance
+    """
+    try:
+        data = await request.json() if hasattr(request, 'json') else {}
+        if not isinstance(data, dict):
+            return JSONResponse({'error': 'Invalid request body'}, status_code=400)
+
+        from config import TRADING_CONFIG
+        from core.config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+
+        # ✅ Validation et mise à jour de toutes les variables
+        validated_updates = {}
+
+        # Patterns Techniques
+        for key in ['use_breakout', 'use_snr', 'use_wick', 'use_divergence']:
+            if key in data:
+                validated_updates[key] = bool(data[key])
+
+        # Patterns de Bougies
+        for key in ['use_engulfing', 'use_hammer', 'use_shooting_star', 'use_doji',
+                    'use_marubozu', 'use_morning_star', 'use_evening_star']:
+            if key in data:
+                validated_updates[key] = bool(data[key])
+
+        # Indicateurs numériques
+        numeric_params = {
+            'snr_threshold': (0.0, 1.0),
+            'breakout_threshold': (0.0, 1.0),
+            'wick_ratio_max': (1.0, 10.0),
+            'di_gap_min': (0.0, 50.0),
+            'di_gap_adx_threshold': (0.0, 100.0),
+            'optimal_atr_min_1m': (0.01, 1.0),
+            'optimal_atr_max_1m': (0.1, 5.0),
+            'optimal_atr_min_5m': (0.01, 2.0),
+            'optimal_atr_max_5m': (0.5, 10.0),
+            'volume_multiplier': (0.5, 2.0),
+            'min_score_required': (0.0, 20.0),
+            'account_size': (100.0, 100000.0),
+            'risk_per_trade': (0.1, 10.0),
+            'tp_percent': (0.05, 5.0),
+            'sl_percent': (0.05, 5.0),
+            'partial_tp_percent': (0, 100),
+            'atr_mult_tp': (0.5, 5.0),
+            'atr_mult_sl': (0.5, 3.0),
+            'atr_min': (0.05, 1.0),
+            'atr_max': (0.5, 5.0),
+            # TP Escalier (4 niveaux)
+            'escalier_level1_pnl': (0.1, 2.0),
+            'escalier_level1_size': (0, 100),
+            'escalier_level2_pnl': (0.1, 2.0),
+            'escalier_level2_size': (0, 100),
+            'escalier_level3_pnl': (0.1, 2.0),
+            'escalier_level3_size': (0, 100),
+            'escalier_level4_pnl': (0.1, 3.0),
+            'escalier_level4_size': (0, 100),
+            # Trailing Stop
+            'trailing_trigger_pnl': (0.1, 3.0),
+            'trailing_atr_multiplier': (0.1, 2.0),
+            'trailing_min_distance': (0.05, 0.5),
+            'trailing_max_distance': (0.1, 2.0),
+        }
+
+        for key, (min_val, max_val) in numeric_params.items():
+            if key in data:
+                try:
+                    val = float(data[key])
+                    # Clamp dans les limites
+                    val = max(min_val, min(max_val, val))
+                    validated_updates[key] = val
+                except (ValueError, TypeError):
+                    logger.warning(f"⚠️ Valeur invalide pour {key}: {data[key]}")
+
+        # Boolean params
+        for key in ['use_confluence', 'trailing_enabled']:
+            if key in data:
+                validated_updates[key] = bool(data[key])
+
+        # String params
+        if 'trend_timeframe' in data:
+            val = str(data['trend_timeframe']).lower()
+            if val in ['5m', '15m', '30m', '1h']:
+                validated_updates['trend_timeframe'] = val
+
+        if 'tp_sl_mode' in data:
+            mode = str(data['tp_sl_mode']).upper()
+            if mode in ['FIXE', 'ATR', 'ESCALIER', 'TP_MULTI']:
+                # TP_MULTI est l'ancien nom pour ESCALIER
+                if mode == 'ESCALIER':
+                    mode = 'TP_MULTI'
+                validated_updates['tp_sl_mode'] = mode
+
+        # ✅ Mettre à jour TRADING_CONFIG en mémoire
+        TRADING_CONFIG.update(validated_updates)
+
+        # ✅ Sauvegarder de manière persistante dans config_overrides.json
+        config_manager.update_config(validated_updates)
+
+        # ✅ Mettre à jour PositionConfig si nécessaire
+        init_instances()
+        if position_config and 'tp_sl_mode' in validated_updates:
+            mode = validated_updates['tp_sl_mode']
+            position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
+
+        if position_config:
+            if 'tp_percent' in validated_updates:
+                position_config.fixed_tp_pct = validated_updates['tp_percent']
+            if 'sl_percent' in validated_updates:
+                position_config.fixed_sl_pct = validated_updates['sl_percent']
+
+        logger.info(f"💾 Configuration sauvegardée: {len(validated_updates)} paramètres mis à jour")
+        await add_log('INFO', 'Config sauvegardée', f"{len(validated_updates)} paramètres")
+
+        return JSONResponse({
+            'success': True,
+            'message': f'{len(validated_updates)} paramètres sauvegardés',
+            'updated': validated_updates
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Erreur update config: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 

@@ -119,11 +119,24 @@
 				const data = await res.json();
 				if (data.config) {
 					config = { ...DEFAULTS, ...data.config };
-					viewMode = config.tp_sl_mode; // Sync viewMode avec le mode actif
+					// ✅ FIX: Gérer le cas où tp_sl_mode n'existe pas
+					viewMode = config.tp_sl_mode || 'FIXE';
+				} else {
+					// ✅ FIX: Si pas de config, utiliser les defaults
+					console.warn('⚠️ Aucune config reçue, utilisation des defaults');
+					config = { ...DEFAULTS };
+					viewMode = 'FIXE';
 				}
+			} else {
+				console.error('❌ Erreur chargement config:', res.status);
+				config = { ...DEFAULTS };
+				viewMode = 'FIXE';
 			}
 		} catch (err) {
-			console.error('Error loading config:', err);
+			console.error('❌ Error loading config:', err);
+			// ✅ FIX: En cas d'erreur, utiliser les defaults
+			config = { ...DEFAULTS };
+			viewMode = 'FIXE';
 		}
 	}
 
