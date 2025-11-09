@@ -36,10 +36,10 @@ def set_app_state(app_state):
     _app_state = app_state
 
 
-def set_socketio(sio):
-    """Injecter l'instance SocketIO"""
+def set_websocket_manager(ws_manager):
+    """Injecter l'instance WebSocketManager"""
     global _sio
-    _sio = sio
+    _sio = ws_manager  # Garder _sio pour compatibilité
 
 
 # Créer le router

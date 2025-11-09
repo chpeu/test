@@ -131,9 +131,9 @@ async def _scan_initial_top_pairs():
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur démarrage WebSocket: {e}")
 
-            # Émettre mise à jour SocketIO
+            # 🔥 REMPLACEMENT: WebSocket natif
             if _sio:
-                await _sio.emit('top_pairs_update', {'pairs': top_pairs})
+                await _sio.send_top_pairs_update(top_pairs)
 
     except Exception as e:
         logger.error(f"❌ Erreur scan initial: {e}")
@@ -260,16 +260,16 @@ async def _scan_top_pairs():
                 if _app_state is not None:
                     _app_state['active_position'] = position_result.to_dict()
 
-                # Émettre événement SocketIO
+                # 🔥 REMPLACEMENT: WebSocket natif
                 if _sio:
-                    await _sio.emit('position_opened', position_result.to_dict())
+                    await _sio.send_position_opened(position_result.to_dict())
 
             except ValueError as e:
                 logger.error(f"❌ Erreur validation position: {e}")
             except Exception as e:
                 logger.error(f"❌ Erreur ouverture position: {e}", exc_info=True)
 
-        # Émettre statistiques SocketIO
+        # 🔥 REMPLACEMENT: WebSocket natif
         if _sio:
             await _sio.emit('volume_stats_update', {
                 'total': len(results),

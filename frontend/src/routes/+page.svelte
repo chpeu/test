@@ -54,6 +54,10 @@
 
 	// Fetch initial state on mount
 	onMount(async () => {
+		// 🔥 REMPLACEMENT: Initialiser WebSocket natif au lieu de Socket.IO
+		const { initWebSocket } = await import('$lib/utils/websocket');
+		initWebSocket();
+		
 		await loadInitialState();
 	});
 
