@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { initWebSocket, BidirectionalWebSocket } from '$lib/utils/websocket';
+	import { initWebSocket } from '$lib/utils/websocket';
+	import BidirectionalWebSocket from '$lib/utils/websocket';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -76,11 +77,11 @@
 				return;
 			}
 			
-			// Vérifier que l'instance est de type BidirectionalWebSocket
-			if (!(ws instanceof BidirectionalWebSocket)) {
-				console.error('❌ WebSocket n\'est pas une instance de BidirectionalWebSocket', ws);
+			// Vérifier que la méthode on existe
+			if (!ws || typeof ws.on !== 'function') {
+				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
 				console.error('Type de ws:', typeof ws);
-				console.error('ws.constructor:', ws?.constructor?.name);
+				console.error('Méthodes disponibles:', Object.keys(ws || {}));
 				return;
 			}
 			
@@ -96,7 +97,7 @@
 		await loadInitialState();
 	});
 	
-	function setupWebSocketListeners(ws: BidirectionalWebSocket) {
+	function setupWebSocketListeners(ws: { on: (event: string, handler: (data: any) => void) => void }) {
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
 		ws.on('status', (data: any) => {
 			// Mettre à jour l'état quand le backend envoie un update
