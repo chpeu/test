@@ -59,6 +59,14 @@ class AnalyticsLogger:
                 except Exception as e:
                     logger.debug(f"Erreur calcul duration: {e}")
 
+            # ✅ FIX: Validation exit_price (double sécurité)
+            if not exit_price or exit_price <= 0:
+                logger.warning(
+                    f"⚠️ Analytics Logger: Exit price invalide pour {position.get('symbol')}: {exit_price}, "
+                    f"utilisation entry price"
+                )
+                exit_price = position.get('entry', 0)
+
             trade_data = {
                 # Champs obligatoires NOT NULL
                 'timestamp': timestamp_iso,

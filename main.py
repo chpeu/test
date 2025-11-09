@@ -1104,6 +1104,27 @@ async def api_close_position():
             price_data = await price_provider.get_price(position_manager.active_position.symbol)
             exit_price = price_data.get('lastPrice') if price_data else None
 
+            # ✅ FIX: Logger et utiliser fallback si prix invalide
+            if not exit_price or exit_price <= 0:
+                logger.error(
+                    f"❌ Prix de sortie invalide pour {position_manager.active_position.symbol}: "
+                    f"price_data={price_data}, exit_price={exit_price}"
+                )
+                # Utiliser le dernier prix connu ou entry
+                if hasattr(position_manager, 'get_cached_price'):
+                    cached_price = position_manager.get_cached_price(
+                        position_manager.active_position.symbol
+                    )
+                    if cached_price and cached_price > 0:
+                        exit_price = cached_price
+                        logger.info(f"✅ Utilisation prix en cache: {exit_price}")
+                    else:
+                        exit_price = position_manager.active_position.entry
+                        logger.warning(f"⚠️ Utilisation prix d'entrée: {exit_price}")
+                else:
+                    exit_price = position_manager.active_position.entry
+                    logger.warning(f"⚠️ Utilisation prix d'entrée: {exit_price}")
+
             # FIX: Ordre correct des paramètres (exit_price, reason)
             result = position_manager.close_position(exit_price=exit_price, reason='MANUAL')
 

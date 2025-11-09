@@ -630,6 +630,36 @@ class PositionManager:
         if not self.active_position:
             raise ValueError("Aucune position active à fermer")
 
+        # ✅ FIX: Validation exit_price avec fallback multi-niveaux
+        exit_price_source = "api"  # Pour tracking
+
+        if exit_price is None or exit_price <= 0:
+            logger.warning(
+                f"⚠️ Exit price invalide ({exit_price}) pour {self.active_position.symbol}"
+            )
+
+            # Fallback 1: Essayer le cache de prix
+            cached_price = self.get_cached_price(
+                self.active_position.symbol,
+                max_age_ms=30000  # 30 secondes max
+            )
+
+            if cached_price and cached_price > 0:
+                exit_price = cached_price
+                exit_price_source = "cache"
+                logger.info(
+                    f"✅ Utilisation prix en cache: {exit_price} "
+                    f"(âge < 30s)"
+                )
+            else:
+                # Fallback 2: Utiliser le prix d'entrée
+                exit_price = self.active_position.entry
+                exit_price_source = "entry_fallback"
+                logger.warning(
+                    f"⚠️ Pas de prix valide disponible, "
+                    f"utilisation prix d'entrée: {exit_price}"
+                )
+
         # Calculer durée
         duration = int(time.time() - self.active_position.start_time)
 
@@ -691,7 +721,10 @@ class PositionManager:
             'closure_id': closure_id,
             'has_partial_tp': self.active_position.partial_tp_sold,
             'size_closed': round(size_closed, 4),
-            'size': self.active_position.size
+            'size': self.active_position.size,
+            # ✅ FIX: Tracking source du exit_price
+            'exit_price_source': exit_price_source,
+            'exit_price_from_fallback': exit_price_source != "api"
         }
 
         # Mettre à jour streaks
