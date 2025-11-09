@@ -413,7 +413,6 @@ export function sendRequestViaWS(requestType: string, params: any = {}): Promise
     return wsInstance.sendRequest(requestType, params);
 }
 
-// Export nommé ET default pour compatibilité
-export { BidirectionalWebSocket };
+// Export default pour compatibilité
 export default BidirectionalWebSocket;
 

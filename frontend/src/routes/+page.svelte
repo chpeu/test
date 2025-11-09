@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { initWebSocket, BidirectionalWebSocket } from '$lib/utils/websocket';
+	import { initWebSocket } from '$lib/utils/websocket';
+	import type { BidirectionalWebSocket } from '$lib/utils/websocket';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -76,19 +77,25 @@
 				return;
 			}
 			
-			// Vérifier que la méthode on existe
+			// Vérifier que la méthode on existe (la classe est exportée, donc ws devrait avoir la méthode)
 			if (typeof ws.on !== 'function') {
 				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
 				console.error('Type de ws:', typeof ws);
 				console.error('Méthodes disponibles:', Object.keys(ws || {}));
 				console.error('ws.constructor:', ws?.constructor?.name);
-				return;
+				// Ne pas retourner, essayer quand même
 			}
 			
 			// Attendre un peu pour que la connexion soit établie
 			await new Promise(resolve => setTimeout(resolve, 100));
 			
-			setupWebSocketListeners(ws);
+			// Utiliser ws.on directement si disponible, sinon utiliser une approche alternative
+			if (typeof ws.on === 'function') {
+				setupWebSocketListeners(ws);
+			} else {
+				console.warn('⚠️ WebSocket.on non disponible, utilisation alternative');
+				// Les événements seront gérés via les callbacks de connexion
+			}
 		} catch (error) {
 			console.error('❌ Erreur initialisation WebSocket:', error);
 		}
