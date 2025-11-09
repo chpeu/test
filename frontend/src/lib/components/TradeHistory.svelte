@@ -56,6 +56,8 @@
 						<th>Size (USDT)</th>
 						<th>PnL %</th>
 						<th>PnL USDT</th>
+						<th>Fees</th>
+						<th>Slippage</th>
 						<th>Reason</th>
 						<th>Duration</th>
 						<th>Signals</th>
@@ -80,6 +82,8 @@
 							<td class="pnl-usdt" class:positive={trade.net_pnl_usdt >= 0} class:negative={trade.net_pnl_usdt < 0}>
 								{trade.net_pnl_usdt >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_usdt, 2)}
 							</td>
+							<td class="fees">{formatNumber(trade.fees || 0, 4)}</td>
+							<td class="slippage">{formatNumber(trade.slippage || 0, 4)}</td>
 							<td class="reason">{trade.reason || 'N/A'}</td>
 							<td class="duration">{formatDuration(trade.opened_at, trade.closed_at)}</td>
 							<td class="signals">{trade.confirmed_by || 'N/A'}</td>

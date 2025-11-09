@@ -1,5 +1,5 @@
 <script>
-	import { top10Pairs } from '$lib/stores/scanner';
+	import { top20Pairs } from '$lib/stores/scanner';
 
 	function formatNumber(num) {
 		if (!num) return '0';
@@ -14,25 +14,48 @@
 
 <div class="scanner-panel">
 	<div class="scanner-header">
-		<h3>🔥 Scalability Scanner - Top Pairs</h3>
+		<h3>🔥 Scalability Scanner - Top 20 Pairs</h3>
 		<div class="scan-status">
-			{$top10Pairs.length > 0 ? `${$top10Pairs.length} paires` : 'En attente...'}
+			{$top20Pairs.length > 0 ? `${$top20Pairs.length} paires` : 'En attente...'}
 		</div>
 	</div>
 
-	{#if $top10Pairs.length > 0}
-		<div class="pairs-list-backend">
-			{#each $top10Pairs as pair, i}
-				<div class="pair-line" class:even={i % 2 === 0}>
-					<span class="rank">#{i + 1}</span>
-					<span class="symbol">{pair.symbol}</span>
-					| <span class="label">Price:</span> <span class="price">{formatNumber(pair.price)}</span>
-					| <span class="label">Vol5:</span> <span class="vol5">{formatNumber(pair.vol5)}%</span>
-					| <span class="label">Vol15:</span> <span class="vol15">{formatNumber(pair.vol15)}%</span>
-					| <span class="label">Spread:</span> <span class="spread">{formatSpread(pair.spread)}%</span>
-					| <span class="label">Depth:</span> <span class="depth">{formatNumber(pair.bookDepth)}</span>
-					| <span class="label">Balance:</span> <span class="balance">{formatNumber(pair.balanceScore)}</span>
-					| <span class="label">Score:</span> <span class="score">{formatNumber(pair.score)}</span>
+	{#if $top20Pairs.length > 0}
+		<div class="pairs-grid">
+			{#each $top20Pairs as pair, i}
+				<div class="pair-card">
+					<div class="pair-rank">#{i + 1}</div>
+					<div class="pair-symbol">{pair.symbol}</div>
+					<div class="pair-metrics">
+						<div class="metric">
+							<span class="metric-label">Score</span>
+							<span class="metric-value score">{formatNumber(pair.score)}</span>
+						</div>
+						<div class="metric">
+							<span class="metric-label">Price</span>
+							<span class="metric-value price">{formatNumber(pair.price)}</span>
+						</div>
+						<div class="metric">
+							<span class="metric-label">Vol5</span>
+							<span class="metric-value vol">{formatNumber(pair.vol5)}%</span>
+						</div>
+						<div class="metric">
+							<span class="metric-label">Vol15</span>
+							<span class="metric-value vol">{formatNumber(pair.vol15)}%</span>
+						</div>
+						<div class="metric">
+							<span class="metric-label">Spread</span>
+							<span class="metric-value spread">{formatSpread(pair.spread)}%</span>
+						</div>
+						<div class="metric">
+							<span class="metric-label">Depth</span>
+							<span class="metric-value depth">{formatNumber(pair.bookDepth)}</span>
+						</div>
+						<div class="metric">
+							<span class="metric-label">Balance</span>
+							<span class="metric-value balance">{formatNumber(pair.balanceScore)}</span>
+						</div>
+					</div>
 				</div>
 			{/each}
 		</div>
@@ -76,75 +99,108 @@
 		border: 1px solid #00aaff;
 	}
 
-	.pairs-list-backend {
+	.pairs-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		gap: 16px;
+	}
+
+	.pair-card {
+		background: #0a0e27;
+		border: 2px solid #2a3a6b;
+		border-radius: 10px;
+		padding: 16px;
+		transition: all 0.3s;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.pair-card::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 4px;
+		height: 100%;
+		background: linear-gradient(180deg, #00ff88 0%, #00cc6a 100%);
+	}
+
+	.pair-card:hover {
+		transform: translateY(-4px);
+		border-color: #00ff88;
+		box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
+	}
+
+	.pair-rank {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		background: rgba(0, 170, 255, 0.2);
+		color: #00aaff;
+		padding: 4px 10px;
+		border-radius: 12px;
+		font-size: 11px;
+		font-weight: bold;
 		font-family: 'Courier New', monospace;
-		font-size: 13px;
-		line-height: 1.8;
-		background: #0a0e27;
-		padding: 15px;
-		border-radius: 8px;
 	}
 
-	.pair-line {
-		padding: 10px;
-		margin-bottom: 3px;
-		background: #0a0e27;
-		border-left: 4px solid #00ff88;
-		transition: all 0.2s;
-	}
-
-	.pair-line.even {
-		background: #1a1e3a;
-	}
-
-	.pair-line:hover {
-		background: rgba(0, 255, 136, 0.1);
-		transform: translateX(5px);
-		border-left-color: #00ff88;
-		box-shadow: 0 2px 10px rgba(0, 255, 136, 0.2);
-	}
-
-	.rank {
-		color: #888;
+	.pair-symbol {
+		font-size: 18px;
 		font-weight: bold;
-	}
-
-	.symbol {
 		color: #fff;
-		font-weight: bold;
-		font-size: 14px;
+		margin-bottom: 14px;
+		font-family: 'Courier New', monospace;
+		padding-left: 8px;
 	}
 
-	.label {
+	.pair-metrics {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
+
+	.metric {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.metric-label {
+		font-size: 11px;
 		color: #888;
-		font-size: 12px;
+		text-transform: uppercase;
+		font-weight: bold;
 	}
 
-	.price {
+	.metric-value {
+		font-size: 13px;
+		font-family: 'Courier New', monospace;
+		font-weight: bold;
+	}
+
+	.metric-value.score {
+		color: #00ff88;
+		font-size: 16px;
+	}
+
+	.metric-value.price {
 		color: #00aaff;
 	}
 
-	.vol5, .vol15 {
+	.metric-value.vol {
 		color: #ffaa00;
 	}
 
-	.spread {
+	.metric-value.spread {
 		color: #ff00ff;
-		font-weight: bold;
 	}
 
-	.depth {
+	.metric-value.depth {
 		color: #00ffff;
 	}
 
-	.balance {
+	.metric-value.balance {
 		color: #00ff88;
-	}
-
-	.score {
-		color: #00ff88;
-		font-weight: bold;
-		font-size: 15px;
 	}
 
 	.no-pairs {
@@ -165,13 +221,20 @@
 
 	/* Mobile */
 	@media (max-width: 768px) {
-		.pairs-list-backend {
-			font-size: 11px;
-			overflow-x: auto;
+		.pairs-grid {
+			grid-template-columns: 1fr;
 		}
+	}
 
-		.pair-line {
-			white-space: nowrap;
+	@media (min-width: 769px) and (max-width: 1200px) {
+		.pairs-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	@media (min-width: 1201px) {
+		.pairs-grid {
+			grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 		}
 	}
 </style>

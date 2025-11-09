@@ -215,6 +215,9 @@ async def _emit_position_update(position, current_price: float):
             f"PnL={pnl:.2f}% | PnL USDT={pnl_usdt:.4f}"
         )
 
+        # Importer config pour récupérer le mode TP/SL
+        from config import TRADING_CONFIG
+
         # Émettre mise à jour au frontend
         update_data = {
             'symbol': position.symbol,
@@ -227,7 +230,8 @@ async def _emit_position_update(position, current_price: float):
             'pnl_usdt': pnl_usdt,
             'size': position.size,
             'break_even_set': getattr(position, 'break_even_set', False),
-            'partial_tp_sold': getattr(position, 'partial_tp_sold', False)
+            'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
+            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
         }
 
         await _sio.emit('position_update', update_data)

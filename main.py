@@ -185,6 +185,52 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Trade Cursor v7.0")
 templates = Jinja2Templates(directory="templates")
 
+# 🔥 Handler personnalisé pour émettre tous les logs via WebSocket
+class SocketIOHandler(logging.Handler):
+    """Handler qui émet tous les logs vers le frontend via SocketIO"""
+    def __init__(self):
+        super().__init__()
+        self.sio = None
+
+    def set_sio(self, sio_instance):
+        """Configurer l'instance SocketIO"""
+        self.sio = sio_instance
+
+    def emit(self, record):
+        """Émettre le log via SocketIO"""
+        if self.sio is None:
+            return
+
+        try:
+            # Créer l'entrée de log
+            log_entry = {
+                'timestamp': datetime.now().strftime('%H:%M:%S.%f')[:-3],
+                'level': record.levelname,
+                'message': record.getMessage(),
+                'detail': ''
+            }
+
+            # Émettre via WebSocket (méthode synchrone car emit() de Handler est sync)
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.sio.emit('log', log_entry))
+                else:
+                    loop.run_until_complete(self.sio.emit('log', log_entry))
+            except RuntimeError:
+                # Pas de loop actif, créer une task quand même
+                asyncio.create_task(self.sio.emit('log', log_entry))
+
+        except Exception as e:
+            # Ne pas bloquer si erreur d'émission
+            pass
+
+# Créer et ajouter le handler SocketIO
+socketio_handler = SocketIOHandler()
+socketio_handler.setLevel(logging.INFO)  # Capturer INFO et plus
+logging.getLogger().addHandler(socketio_handler)
+
 # 🔥 ARCHITECTURE V2: Monter fichiers statiques
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -225,6 +271,9 @@ async def startup_event():
 # 🔥 FIX: Utiliser async_mode='asgi' pour compatibilité avec Uvicorn
 sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode='asgi')
 socketio_app = socketio.ASGIApp(sio, app)
+
+# 🔥 Configurer le handler SocketIO avec l'instance sio
+socketio_handler.set_sio(sio)
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances

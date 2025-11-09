@@ -21,8 +21,15 @@
 	<div class="position-card">
 		<div class="position-header">
 			<div class="symbol">{$activePosition.symbol}</div>
-			<div class="direction" class:long={$activePosition.direction === 'LONG'} class:short={$activePosition.direction === 'SHORT'}>
-				{$activePosition.direction}
+			<div class="header-right">
+				<div class="direction" class:long={$activePosition.direction === 'LONG'} class:short={$activePosition.direction === 'SHORT'}>
+					{$activePosition.direction}
+				</div>
+				{#if $activePosition.tp_sl_mode}
+					<div class="tp-sl-mode">
+						Mode: {$activePosition.tp_sl_mode}
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -110,11 +117,29 @@
 		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
 	}
 
+	.header-right {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 8px;
+	}
+
 	.direction {
 		padding: 8px 16px;
 		border-radius: 8px;
 		font-size: 14px;
 		font-weight: bold;
+	}
+
+	.tp-sl-mode {
+		background: rgba(0, 170, 255, 0.15);
+		color: #00aaff;
+		padding: 4px 12px;
+		border-radius: 6px;
+		font-size: 11px;
+		font-weight: bold;
+		border: 1px solid rgba(0, 170, 255, 0.3);
+		font-family: 'Courier New', monospace;
 	}
 
 	.direction.long {

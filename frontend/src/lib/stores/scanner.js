@@ -16,6 +16,13 @@ export const top10Pairs = derived(topPairs, $pairs =>
 		.slice(0, 10)
 );
 
+// Computed: Top 20 pairs by score
+export const top20Pairs = derived(topPairs, $pairs =>
+	[...$pairs]
+		.sort((a, b) => (b.score || 0) - (a.score || 0))
+		.slice(0, 20)
+);
+
 // Computed: Pairs count
 export const pairsCount = derived(topPairs, $pairs => $pairs.length);
 
