@@ -1203,6 +1203,37 @@ async def api_get_complete_state():
     """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
     import time
     logger.info("🔍 /api/state appelé - Début de la fonction")
+    
+    # 🔥 FIX: Retourner réponse minimale immédiatement si variables globales non initialisées
+    try:
+        # Vérifier que app_state existe
+        if 'app_state' not in globals():
+            logger.error("❌ app_state non défini")
+            return JSONResponse({
+                'success': False,
+                'error': 'app_state not initialized',
+                'session_id': f"live_{int(time.time())}",
+                'config': {},
+                'scanner': {'is_scanning': False, 'top_pairs': []},
+                'position': {'active': False, 'data': None},
+                'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
+                'trades': [],
+                'timestamp': time.time()
+            }, status_code=200)
+    except Exception as check_error:
+        logger.error(f"❌ Erreur vérification variables globales: {check_error}")
+        return JSONResponse({
+            'success': False,
+            'error': f'Initialization check failed: {str(check_error)}',
+            'session_id': f"live_{int(time.time())}",
+            'config': {},
+            'scanner': {'is_scanning': False, 'top_pairs': []},
+            'position': {'active': False, 'data': None},
+            'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
+            'trades': [],
+            'timestamp': time.time()
+        }, status_code=200)
+    
     try:
         # 🔥 FIX: Envelopper init_instances dans try/except pour éviter 503
         try:
