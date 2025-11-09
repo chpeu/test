@@ -76,12 +76,6 @@
 				return;
 			}
 			
-			// Vérifier que l'instance est correcte
-			if (!ws) {
-				console.error('❌ WebSocket instance est null');
-				return;
-			}
-			
 			// Vérifier que la méthode on existe
 			if (typeof ws.on !== 'function') {
 				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
