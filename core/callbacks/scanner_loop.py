@@ -131,9 +131,9 @@ async def _scan_initial_top_pairs():
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur démarrage WebSocket: {e}")
 
-            # 🔥 REMPLACEMENT: WebSocket natif
+            # 🔥 FIX: Utiliser emit() au lieu de send_top_pairs_update()
             if _sio:
-                await _sio.send_top_pairs_update(top_pairs)
+                await _sio.emit('top_pairs_update', {'pairs': top_pairs})
 
     except Exception as e:
         logger.error(f"❌ Erreur scan initial: {e}")
@@ -260,9 +260,9 @@ async def _scan_top_pairs():
                 if _app_state is not None:
                     _app_state['active_position'] = position_result.to_dict()
 
-                # 🔥 REMPLACEMENT: WebSocket natif
+                # 🔥 FIX: Utiliser emit() au lieu de send_position_opened()
                 if _sio:
-                    await _sio.send_position_opened(position_result.to_dict())
+                    await _sio.emit('position_opened', position_result.to_dict())
 
             except ValueError as e:
                 logger.error(f"❌ Erreur validation position: {e}")
