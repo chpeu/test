@@ -67,24 +67,44 @@
 	// Fetch initial state on mount
 	onMount(async () => {
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
-		const ws = initWebSocket();
-		
-		// Vérifier que l'instance est correcte
-		if (!ws) {
-			console.error('❌ WebSocket instance est null');
-			return;
+		try {
+			const ws = initWebSocket();
+			
+			// Vérifier que l'instance est correcte
+			if (!ws) {
+				console.error('❌ WebSocket instance est null');
+				return;
+			}
+			
+			// Vérifier que la méthode on existe
+			if (!ws || typeof (ws as any).on !== 'function') {
+				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
+				console.error('Type de ws:', typeof ws);
+				console.error('Méthodes disponibles:', Object.keys(ws || {}));
+				console.error('ws.constructor:', ws?.constructor?.name);
+				// Essayer d'utiliser getWebSocket à la place
+				const { getWebSocket } = await import('$lib/utils/websocket');
+				const ws2 = getWebSocket();
+				if (ws2 && typeof (ws2 as any).on === 'function') {
+					console.log('✅ Utilisation de getWebSocket()');
+					setupWebSocketListeners(ws2);
+				}
+				return;
+			}
+			
+			// Attendre un peu pour que la connexion soit établie
+			await new Promise(resolve => setTimeout(resolve, 100));
+			
+			setupWebSocketListeners(ws);
+		} catch (error) {
+			console.error('❌ Erreur initialisation WebSocket:', error);
 		}
 		
-		if (typeof ws.on !== 'function') {
-			console.error('❌ WebSocket.on n\'est pas une fonction', ws);
-			console.error('Type de ws:', typeof ws);
-			console.error('Méthodes disponibles:', Object.keys(ws));
-			return;
-		}
-		
-		// Attendre un peu pour que la connexion soit établie
-		await new Promise(resolve => setTimeout(resolve, 100));
-		
+		// Charger l'état initial (via REST pour le premier chargement, puis WebSocket pour les updates)
+		await loadInitialState();
+	});
+	
+	function setupWebSocketListeners(ws: any) {
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
 		ws.on('status', (data: any) => {
 			// Mettre à jour l'état quand le backend envoie un update
@@ -103,10 +123,7 @@
 			console.warn('⚠️ WebSocket déconnecté');
 			backendConnected = false;
 		});
-		
-		// Charger l'état initial (via REST pour le premier chargement, puis WebSocket pour les updates)
-		await loadInitialState();
-	});
+	}
 
 	async function loadInitialState() {
 		try {
