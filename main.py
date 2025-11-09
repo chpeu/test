@@ -105,6 +105,30 @@ async def global_exception_handler(request, exc):
     }, status_code=500)
 templates = Jinja2Templates(directory="templates")
 
+# 🔥 FIX: Middleware pour logger toutes les requêtes et réponses
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        import time
+        start_time = time.time()
+        path = request.url.path
+        
+        logger.info(f"📥 Requête entrante: {request.method} {path}")
+        
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            logger.info(f"📤 Réponse: {request.method} {path} - {response.status_code} ({process_time:.3f}s)")
+            return response
+        except Exception as e:
+            process_time = time.time() - start_time
+            logger.error(f"❌ Exception dans middleware pour {path}: {e} ({process_time:.3f}s)", exc_info=True)
+            raise
+
+app.add_middleware(LoggingMiddleware)
+
 # 🔥 ARCHITECTURE V2: Monter fichiers statiques et inclure routes API
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -1178,6 +1202,7 @@ async def api_get_sessions_stats_global():
 async def api_get_complete_state():
     """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
     import time
+    logger.info("🔍 /api/state appelé - Début de la fonction")
     try:
         # 🔥 FIX: Envelopper init_instances dans try/except pour éviter 503
         try:
