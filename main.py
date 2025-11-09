@@ -81,8 +81,13 @@ async def global_exception_handler(request, exc):
     
     # Si c'est une route /api/state, retourner réponse minimale avec 200
     if request.url.path == "/api/state":
+        logger.info(f"🔍 Exception handler global appelé pour /api/state - Exception: {type(exc).__name__}: {exc}")
         try:
-            session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
+            # 🔥 FIX: Gestion sécurisée de session_id
+            try:
+                session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
+            except:
+                session_id_value = f"live_{int(time.time())}"
         except:
             session_id_value = f"live_{int(time.time())}"
         
