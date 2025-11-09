@@ -58,7 +58,7 @@ class AnalyticsLogger:
                 'tp_escalier_enabled': position.get('tp_escalier_enabled', False)
             }
 
-            self.analytics_db.log_trade(trade_data)
+            self.analytics_db.insert_trade(trade_data)
 
             logger.debug(f"📊 Trade loggé dans Analytics DB: {trade_data['symbol']}")
 

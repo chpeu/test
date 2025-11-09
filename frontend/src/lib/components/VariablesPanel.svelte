@@ -27,16 +27,21 @@
 		// Mode FIXE
 		tp_percent: 0.6,
 		sl_percent: 0.25,
-		break_even_trigger: 0.3,
-		trailing_distance: 0.15,
+		partial_tp_percent: 50,
 		// Mode ATR
 		atr_mult_tp: 1.5,
 		atr_mult_sl: 1.0,
 		atr_min: 0.15,
 		atr_max: 1.5,
-		// Mode ESCALIER (TP_MULTI)
-		partial_tp_percent: 50,
-		escalier_break_even: 0.35,
+		// Mode ESCALIER (TP_MULTI) - 4 niveaux
+		escalier_level1_pnl: 0.20,
+		escalier_level1_size: 25,
+		escalier_level2_pnl: 0.35,
+		escalier_level2_size: 25,
+		escalier_level3_pnl: 0.50,
+		escalier_level3_size: 25,
+		escalier_level4_pnl: 0.80,
+		escalier_level4_size: 25,
 		// Trailing Stop Adaptatif (tous modes)
 		trailing_enabled: true,
 		trailing_trigger_pnl: 0.25,
@@ -551,7 +556,7 @@
 								<div class="var-header">
 									<label for="tp-percent">
 										<span class="var-name">TP Percent (%)</span>
-										<span class="var-desc">Take profit en %</span>
+										<span class="var-desc">Take profit final en %</span>
 									</label>
 									<button class="btn-reset" on:click={() => resetVariable('tp_percent')} title="Réinitialiser">⟲</button>
 								</div>
@@ -593,45 +598,23 @@
 
 							<div class="variable-item">
 								<div class="var-header">
-									<label for="break-even-trigger-fixe">
-										<span class="var-name">Break Even Trigger (%)</span>
-										<span class="var-desc">% profit pour passer SL à break-even</span>
+									<label for="partial-tp-percent-fixe">
+										<span class="var-name">TP Partiel (%)</span>
+										<span class="var-desc">% de position clôturée au 1er TP</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('break_even_trigger')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('partial_tp_percent')} title="Réinitialiser">⟲</button>
 								</div>
 								<div class="slider-container">
 									<input
-										id="break-even-trigger-fixe"
+										id="partial-tp-percent-fixe"
 										type="range"
-										step="0.05"
-										min="0.1"
-										max="2"
-										bind:value={config.break_even_trigger}
-										on:change={() => logConfigChange('break_even_trigger', `${config.break_even_trigger.toFixed(2)}%`)}
+										step="5"
+										min="0"
+										max="100"
+										bind:value={config.partial_tp_percent}
+										on:change={() => logConfigChange('partial_tp_percent', `${config.partial_tp_percent}%`)}
 									/>
-									<span class="slider-value">{Number(config.break_even_trigger).toFixed(2)}%</span>
-								</div>
-							</div>
-
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="trailing-distance">
-										<span class="var-name">Trailing Distance (%)</span>
-										<span class="var-desc">Distance du trailing stop</span>
-									</label>
-									<button class="btn-reset" on:click={() => resetVariable('trailing_distance')} title="Réinitialiser">⟲</button>
-								</div>
-								<div class="slider-container">
-									<input
-										id="trailing-distance"
-										type="range"
-										step="0.01"
-										min="0.05"
-										max="1"
-										bind:value={config.trailing_distance}
-										on:change={() => logConfigChange('trailing_distance', `${config.trailing_distance.toFixed(2)}%`)}
-									/>
-									<span class="slider-value">{Number(config.trailing_distance).toFixed(2)}%</span>
+									<span class="slider-value">{Number(config.partial_tp_percent).toFixed(0)}%</span>
 								</div>
 							</div>
 						</div>
@@ -733,47 +716,208 @@
 					<!-- Mode ESCALIER -->
 					{#if config.tp_sl_mode === 'ESCALIER'}
 						<div class="mode-settings">
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="partial-tp">
-										<span class="var-name">Partial TP (%)</span>
-										<span class="var-desc">% de position vendue au 1er TP</span>
-									</label>
-									<button class="btn-reset" on:click={() => resetVariable('partial_tp_percent')} title="Réinitialiser">⟲</button>
-								</div>
-								<div class="slider-container">
-									<input
-										id="partial-tp"
-										type="range"
-										step="5"
-										min="25"
-										max="75"
-										bind:value={config.partial_tp_percent}
-										on:change={() => logConfigChange('partial_tp_percent', `${config.partial_tp_percent}%`)}
-									/>
-									<span class="slider-value">{Number(config.partial_tp_percent).toFixed(0)}%</span>
+							<p class="mode-description">
+								Mode Escalier : Vendez votre position en 4 étapes pour sécuriser progressivement vos profits.
+								À chaque niveau, définissez le % de profit (PnL) et la taille de position à clôturer.
+							</p>
+
+							<!-- Niveau 1 -->
+							<div class="escalier-level">
+								<h4>🎯 Niveau 1</h4>
+								<div class="level-inputs">
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l1-pnl">
+												<span class="var-name">PnL Niveau 1 (%)</span>
+												<span class="var-desc">% profit pour déclencher TP1</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level1_pnl')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l1-pnl"
+												type="range"
+												step="0.05"
+												min="0.1"
+												max="2"
+												bind:value={config.escalier_level1_pnl}
+												on:change={() => logConfigChange('escalier_level1_pnl', `${config.escalier_level1_pnl.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level1_pnl).toFixed(2)}%</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l1-size">
+												<span class="var-name">Taille Niveau 1 (%)</span>
+												<span class="var-desc">% de position à clôturer</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level1_size')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l1-size"
+												type="range"
+												step="5"
+												min="0"
+												max="100"
+												bind:value={config.escalier_level1_size}
+												on:change={() => logConfigChange('escalier_level1_size', `${config.escalier_level1_size}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level1_size).toFixed(0)}%</span>
+										</div>
+									</div>
 								</div>
 							</div>
 
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="escalier-break-even">
-										<span class="var-name">Break Even (%)</span>
-										<span class="var-desc">% profit pour break-even (mode escalier)</span>
-									</label>
-									<button class="btn-reset" on:click={() => resetVariable('escalier_break_even')} title="Réinitialiser">⟲</button>
+							<!-- Niveau 2 -->
+							<div class="escalier-level">
+								<h4>🎯 Niveau 2</h4>
+								<div class="level-inputs">
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l2-pnl">
+												<span class="var-name">PnL Niveau 2 (%)</span>
+												<span class="var-desc">% profit pour déclencher TP2</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level2_pnl')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l2-pnl"
+												type="range"
+												step="0.05"
+												min="0.1"
+												max="2"
+												bind:value={config.escalier_level2_pnl}
+												on:change={() => logConfigChange('escalier_level2_pnl', `${config.escalier_level2_pnl.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level2_pnl).toFixed(2)}%</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l2-size">
+												<span class="var-name">Taille Niveau 2 (%)</span>
+												<span class="var-desc">% de position à clôturer</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level2_size')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l2-size"
+												type="range"
+												step="5"
+												min="0"
+												max="100"
+												bind:value={config.escalier_level2_size}
+												on:change={() => logConfigChange('escalier_level2_size', `${config.escalier_level2_size}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level2_size).toFixed(0)}%</span>
+										</div>
+									</div>
 								</div>
-								<div class="slider-container">
-									<input
-										id="escalier-break-even"
-										type="range"
-										step="0.05"
-										min="0.2"
-										max="2"
-										bind:value={config.escalier_break_even}
-										on:change={() => logConfigChange('escalier_break_even', `${config.escalier_break_even.toFixed(2)}%`)}
-									/>
-									<span class="slider-value">{Number(config.escalier_break_even).toFixed(2)}%</span>
+							</div>
+
+							<!-- Niveau 3 -->
+							<div class="escalier-level">
+								<h4>🎯 Niveau 3</h4>
+								<div class="level-inputs">
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l3-pnl">
+												<span class="var-name">PnL Niveau 3 (%)</span>
+												<span class="var-desc">% profit pour déclencher TP3</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level3_pnl')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l3-pnl"
+												type="range"
+												step="0.05"
+												min="0.1"
+												max="2"
+												bind:value={config.escalier_level3_pnl}
+												on:change={() => logConfigChange('escalier_level3_pnl', `${config.escalier_level3_pnl.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level3_pnl).toFixed(2)}%</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l3-size">
+												<span class="var-name">Taille Niveau 3 (%)</span>
+												<span class="var-desc">% de position à clôturer</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level3_size')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l3-size"
+												type="range"
+												step="5"
+												min="0"
+												max="100"
+												bind:value={config.escalier_level3_size}
+												on:change={() => logConfigChange('escalier_level3_size', `${config.escalier_level3_size}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level3_size).toFixed(0)}%</span>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<!-- Niveau 4 -->
+							<div class="escalier-level">
+								<h4>🎯 Niveau 4</h4>
+								<div class="level-inputs">
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l4-pnl">
+												<span class="var-name">PnL Niveau 4 (%)</span>
+												<span class="var-desc">% profit pour déclencher TP4 (final)</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level4_pnl')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l4-pnl"
+												type="range"
+												step="0.05"
+												min="0.1"
+												max="3"
+												bind:value={config.escalier_level4_pnl}
+												on:change={() => logConfigChange('escalier_level4_pnl', `${config.escalier_level4_pnl.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level4_pnl).toFixed(2)}%</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="escalier-l4-size">
+												<span class="var-name">Taille Niveau 4 (%)</span>
+												<span class="var-desc">% de position à clôturer</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level4_size')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="escalier-l4-size"
+												type="range"
+												step="5"
+												min="0"
+												max="100"
+												bind:value={config.escalier_level4_size}
+												on:change={() => logConfigChange('escalier_level4_size', `${config.escalier_level4_size}%`)}
+											/>
+											<span class="slider-value">{Number(config.escalier_level4_size).toFixed(0)}%</span>
+										</div>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -1276,6 +1420,39 @@
 		display: flex;
 		flex-direction: column;
 		gap: 16px;
+	}
+
+	.mode-description {
+		color: #888;
+		font-size: 13px;
+		line-height: 1.6;
+		margin-bottom: 8px;
+		padding: 12px;
+		background: rgba(0, 170, 255, 0.1);
+		border-left: 3px solid #00aaff;
+		border-radius: 4px;
+	}
+
+	.escalier-level {
+		background: rgba(0, 255, 136, 0.05);
+		border: 1px solid rgba(0, 255, 136, 0.2);
+		border-radius: 6px;
+		padding: 12px;
+		margin-top: 8px;
+	}
+
+	.escalier-level h4 {
+		color: #00ff88;
+		font-size: 14px;
+		margin: 0 0 12px 0;
+		padding-bottom: 8px;
+		border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+	}
+
+	.level-inputs {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
 		margin-top: 8px;
 	}
 
