@@ -16,7 +16,8 @@ from .dashboard import (
     set_scheduler,
     set_position_manager,
     set_app_state as set_app_state_dashboard,
-    set_socketio as set_socketio_dashboard
+    set_socketio as set_socketio_dashboard,
+    set_websocket_manager as set_websocket_manager_dashboard
 )
 
 # Créer un router combiné pour compatibilité avec main.py
@@ -55,6 +56,15 @@ def set_socketio(sio):
     set_socketio_scanner(sio)
     set_socketio_dashboard(sio)
 
+def set_websocket_manager(ws_manager):
+    """Injecter WebSocketManager (propage aux deux modules)"""
+    # 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans dashboard
+    if set_websocket_manager_dashboard:
+        set_websocket_manager_dashboard(ws_manager)
+    # Scanner utilise set_socketio pour compatibilité
+    if set_socketio_scanner:
+        set_socketio_scanner(ws_manager)
+
 __all__ = [
     'router',
     'scanner_router',
@@ -68,5 +78,6 @@ __all__ = [
     'set_notification_manager',
     'set_instance_port',
     'set_app_state',
-    'set_socketio'
+    'set_socketio',
+    'set_websocket_manager'
 ]

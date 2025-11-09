@@ -46,7 +46,7 @@ except ImportError as e:
 try:
     from core.analytics_database import AnalyticsDatabase
     from notifications import create_notification_manager
-    from api.routes import router as api_router, set_analytics_db, set_position_manager, set_notification_manager, set_instance_port, set_app_state
+    from api.routes import router as api_router, set_analytics_db, set_position_manager, set_notification_manager, set_instance_port, set_app_state, set_websocket_manager as set_websocket_manager_routes
 except ImportError as e:
     logging.warning(f"Architecture V2 imports (optionnels): {e}")
     AnalyticsDatabase = None
@@ -150,6 +150,11 @@ if api_router:
 
 # 🔥 WebSocket Natif - Instance globale
 ws_manager = get_websocket_manager()
+
+# 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les routes
+if set_websocket_manager_routes:
+    set_websocket_manager_routes(ws_manager)
+    logger.info("✅ ws_manager injecté dans API routes")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -289,6 +294,8 @@ app_state = {
 if api_router and set_app_state:
     set_app_state(app_state)
     logger.info("✅ app_state injecté dans API routes")
+
+# 🔥 MIGRATION COMPLÈTE: ws_manager injecté dans les routes (fait après création de ws_manager)
 
 # 🔥 v7.0: Instances globales (lazy init)
 scanner = None

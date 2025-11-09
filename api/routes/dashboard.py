@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 _scheduler = None
 _position_manager = None
 _app_state = None
-_sio = None
+_ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif uniquement
+_sio = None  # 🔥 LEGACY: Gardé pour compatibilité (sera remplacé par _ws_manager)
 
 
 def set_scheduler(scheduler):
@@ -38,14 +39,16 @@ def set_app_state(app_state):
 
 def set_websocket_manager(ws_manager):
     """Injecter l'instance WebSocketManager"""
-    global _sio
-    _sio = ws_manager  # Garder _sio pour compatibilité
+    global _ws_manager, _sio
+    _ws_manager = ws_manager
+    _sio = ws_manager  # 🔥 LEGACY: Garder _sio pour compatibilité (sera supprimé plus tard)
 
 
 def set_socketio(sio):
     """Injecter l'instance SocketIO (alias pour compatibilité)"""
-    global _sio
+    global _sio, _ws_manager
     _sio = sio
+    _ws_manager = sio if hasattr(sio, 'emit') else None  # 🔥 LEGACY: Si c'est un ws_manager, l'utiliser
 
 
 # Créer le router
@@ -208,8 +211,17 @@ async def start_scanner():
             if _app_state:
                 _app_state['is_scanning'] = True
 
-            # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
-            if _sio:
+            # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif
+            if _ws_manager:
+                status_data = {
+                    'is_scanning': True,
+                    'active_position': _app_state.get('active_position'),
+                    'stats': _app_state.get('stats', {}),
+                    'top_pairs': _app_state.get('top_pairs', [])
+                }
+                await _ws_manager.emit('status', status_data)
+                await _ws_manager.emit('scan_started', {'timestamp': time.time()})
+            elif _sio:  # 🔥 LEGACY: Fallback Socket.IO (sera supprimé)
                 status_data = {
                     'is_scanning': True,
                     'active_position': _app_state.get('active_position'),
@@ -282,8 +294,16 @@ async def stop_scanner():
             if _app_state:
                 _app_state['is_scanning'] = False
 
-            # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
-            if _sio:
+            # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif
+            if _ws_manager:
+                status_data = {
+                    'is_scanning': False,
+                    'active_position': _app_state.get('active_position'),
+                    'stats': _app_state.get('stats', {}),
+                    'top_pairs': _app_state.get('top_pairs', [])
+                }
+                await _ws_manager.emit('status', status_data)
+            elif _sio:  # 🔥 LEGACY: Fallback Socket.IO (sera supprimé)
                 status_data = {
                     'is_scanning': False,
                     'active_position': _app_state.get('active_position'),
