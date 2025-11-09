@@ -2,34 +2,51 @@
 	import { onMount } from 'svelte';
 
 	const DEFAULTS = {
+		// Patterns
+		use_breakout: true,
+		use_snr: true,
+		use_wick: true,
+		use_divergence: true,
 		// Indicateurs
 		snr_threshold: 0.25,
 		breakout_threshold: 0.35,
 		wick_ratio_max: 2.8,
 		di_gap_min: 4.0,
+		di_gap_adx_threshold: 25,
 		trend_timeframe: '15m',
+		// Optimal ATR ranges
+		optimal_atr_min_1m: 0.12,
+		optimal_atr_max_1m: 0.75,
+		optimal_atr_min_5m: 0.22,
+		optimal_atr_max_5m: 1.4,
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
-		// TP/SL
+		// TP/SL Mode
 		tp_sl_mode: 'FIXE',
-		tp_percent: 0.25,
+		// Mode FIXE
+		tp_percent: 0.6,
 		sl_percent: 0.25,
-		atr_multiplier_tp: 2.0,
-		atr_multiplier_sl: 1.5,
-		trailing_activation: 0.5,
-		trailing_callback: 0.3,
+		break_even_trigger: 0.3,
+		trailing_distance: 0.15,
+		// Mode ATR
+		atr_mult_tp: 1.5,
+		atr_mult_sl: 1.0,
+		atr_min: 0.15,
+		atr_max: 1.5,
+		// Mode ESCALIER (TP_MULTI)
 		partial_tp_percent: 50,
-		break_even_trigger: 0.5,
+		escalier_break_even: 0.35,
+		// Trailing Stop Adaptatif (tous modes)
+		trailing_enabled: true,
+		trailing_trigger_pnl: 0.25,
+		trailing_atr_multiplier: 0.4,
+		trailing_min_distance: 0.08,
+		trailing_max_distance: 0.25,
 		// Stratégie
 		use_confluence: false,
 		volume_multiplier: 0.95,
-		min_score_required: 7.5,
-		// Patterns
-		use_breakout: true,
-		use_snr: true,
-		use_wick: true,
-		use_divergence: true
+		min_score_required: 7.5
 	};
 
 	let config = { ...DEFAULTS };
@@ -314,6 +331,28 @@
 
 					<div class="variable-item">
 						<div class="var-header">
+							<label for="di-gap-adx-threshold">
+								<span class="var-name">DI Gap ADX Threshold</span>
+								<span class="var-desc">Seuil ADX pour le DI gap</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('di_gap_adx_threshold')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="di-gap-adx-threshold"
+								type="range"
+								step="1"
+								min="0"
+								max="100"
+								bind:value={config.di_gap_adx_threshold}
+								on:change={() => logConfigChange('di_gap_adx_threshold', config.di_gap_adx_threshold.toFixed(0))}
+							/>
+							<span class="slider-value">{Number(config.di_gap_adx_threshold).toFixed(0)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
 							<label for="trend-timeframe">
 								<span class="var-name">Trend Timeframe</span>
 								<span class="var-desc">Période pour l'analyse de tendance</span>
@@ -330,6 +369,100 @@
 							<option value="30m">30 minutes</option>
 							<option value="1h">1 heure</option>
 						</select>
+					</div>
+				</div>
+			</section>
+
+			<!-- Section Optimal ATR Ranges -->
+			<section class="variable-section">
+				<h3>📉 Optimal ATR Ranges</h3>
+				<div class="variables-list">
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="optimal-atr-min-1m">
+								<span class="var-name">ATR Min 1m (%)</span>
+								<span class="var-desc">ATR minimum pour timeframe 1m</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_min_1m')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="optimal-atr-min-1m"
+								type="range"
+								step="0.01"
+								min="0.01"
+								max="1"
+								bind:value={config.optimal_atr_min_1m}
+								on:change={() => logConfigChange('optimal_atr_min_1m', config.optimal_atr_min_1m.toFixed(2) + '%')}
+							/>
+							<span class="slider-value">{Number(config.optimal_atr_min_1m).toFixed(2)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="optimal-atr-max-1m">
+								<span class="var-name">ATR Max 1m (%)</span>
+								<span class="var-desc">ATR maximum pour timeframe 1m</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_max_1m')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="optimal-atr-max-1m"
+								type="range"
+								step="0.01"
+								min="0.1"
+								max="5"
+								bind:value={config.optimal_atr_max_1m}
+								on:change={() => logConfigChange('optimal_atr_max_1m', config.optimal_atr_max_1m.toFixed(2) + '%')}
+							/>
+							<span class="slider-value">{Number(config.optimal_atr_max_1m).toFixed(2)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="optimal-atr-min-5m">
+								<span class="var-name">ATR Min 5m (%)</span>
+								<span class="var-desc">ATR minimum pour timeframe 5m</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_min_5m')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="optimal-atr-min-5m"
+								type="range"
+								step="0.01"
+								min="0.01"
+								max="1"
+								bind:value={config.optimal_atr_min_5m}
+								on:change={() => logConfigChange('optimal_atr_min_5m', config.optimal_atr_min_5m.toFixed(2) + '%')}
+							/>
+							<span class="slider-value">{Number(config.optimal_atr_min_5m).toFixed(2)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="optimal-atr-max-5m">
+								<span class="var-name">ATR Max 5m (%)</span>
+								<span class="var-desc">ATR maximum pour timeframe 5m</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_max_5m')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="optimal-atr-max-5m"
+								type="range"
+								step="0.01"
+								min="0.1"
+								max="5"
+								bind:value={config.optimal_atr_max_5m}
+								on:change={() => logConfigChange('optimal_atr_max_5m', config.optimal_atr_max_5m.toFixed(2) + '%')}
+							/>
+							<span class="slider-value">{Number(config.optimal_atr_max_5m).toFixed(2)}%</span>
+						</div>
 					</div>
 				</div>
 			</section>
@@ -408,7 +541,6 @@
 							<option value="FIXE">FIXE - Pourcentages fixes</option>
 							<option value="ATR">ATR - Basé sur volatilité</option>
 							<option value="ESCALIER">ESCALIER - TP partiel progressif</option>
-							<option value="TRAILING">TRAILING - Stop suiveur</option>
 						</select>
 					</div>
 
@@ -458,6 +590,50 @@
 									<span class="slider-value">{Number(config.sl_percent).toFixed(2)}%</span>
 								</div>
 							</div>
+
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="break-even-trigger-fixe">
+										<span class="var-name">Break Even Trigger (%)</span>
+										<span class="var-desc">% profit pour passer SL à break-even</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('break_even_trigger')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="break-even-trigger-fixe"
+										type="range"
+										step="0.05"
+										min="0.1"
+										max="2"
+										bind:value={config.break_even_trigger}
+										on:change={() => logConfigChange('break_even_trigger', `${config.break_even_trigger.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{Number(config.break_even_trigger).toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="trailing-distance">
+										<span class="var-name">Trailing Distance (%)</span>
+										<span class="var-desc">Distance du trailing stop</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('trailing_distance')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="trailing-distance"
+										type="range"
+										step="0.01"
+										min="0.05"
+										max="1"
+										bind:value={config.trailing_distance}
+										on:change={() => logConfigChange('trailing_distance', `${config.trailing_distance.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{Number(config.trailing_distance).toFixed(2)}%</span>
+								</div>
+							</div>
 						</div>
 					{/if}
 
@@ -467,10 +643,10 @@
 							<div class="variable-item">
 								<div class="var-header">
 									<label for="atr-tp">
-										<span class="var-name">ATR Multiplier TP</span>
+										<span class="var-name">ATR Mult TP</span>
 										<span class="var-desc">Multiplicateur ATR pour TP</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('atr_multiplier_tp')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('atr_mult_tp')} title="Réinitialiser">⟲</button>
 								</div>
 								<div class="slider-container">
 									<input
@@ -479,20 +655,20 @@
 										step="0.1"
 										min="0.5"
 										max="5"
-										bind:value={config.atr_multiplier_tp}
-										on:change={() => logConfigChange('atr_multiplier_tp', `${config.atr_multiplier_tp.toFixed(1)}x`)}
+										bind:value={config.atr_mult_tp}
+										on:change={() => logConfigChange('atr_mult_tp', `${config.atr_mult_tp.toFixed(1)}x`)}
 									/>
-									<span class="slider-value">{Number(config.atr_multiplier_tp).toFixed(1)}x ATR</span>
+									<span class="slider-value">{Number(config.atr_mult_tp).toFixed(1)}x ATR</span>
 								</div>
 							</div>
 
 							<div class="variable-item">
 								<div class="var-header">
 									<label for="atr-sl">
-										<span class="var-name">ATR Multiplier SL</span>
+										<span class="var-name">ATR Mult SL</span>
 										<span class="var-desc">Multiplicateur ATR pour SL</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('atr_multiplier_sl')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('atr_mult_sl')} title="Réinitialiser">⟲</button>
 								</div>
 								<div class="slider-container">
 									<input
@@ -501,10 +677,54 @@
 										step="0.1"
 										min="0.5"
 										max="3"
-										bind:value={config.atr_multiplier_sl}
-										on:change={() => logConfigChange('atr_multiplier_sl', `${config.atr_multiplier_sl.toFixed(1)}x`)}
+										bind:value={config.atr_mult_sl}
+										on:change={() => logConfigChange('atr_mult_sl', `${config.atr_mult_sl.toFixed(1)}x`)}
 									/>
-									<span class="slider-value">{Number(config.atr_multiplier_sl).toFixed(1)}x ATR</span>
+									<span class="slider-value">{Number(config.atr_mult_sl).toFixed(1)}x ATR</span>
+								</div>
+							</div>
+
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="atr-min">
+										<span class="var-name">ATR Min (%)</span>
+										<span class="var-desc">ATR minimum (limite basse)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('atr_min')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="atr-min"
+										type="range"
+										step="0.01"
+										min="0.05"
+										max="1"
+										bind:value={config.atr_min}
+										on:change={() => logConfigChange('atr_min', `${config.atr_min.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{Number(config.atr_min).toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="atr-max">
+										<span class="var-name">ATR Max (%)</span>
+										<span class="var-desc">ATR maximum (limite haute)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('atr_max')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="atr-max"
+										type="range"
+										step="0.05"
+										min="0.5"
+										max="5"
+										bind:value={config.atr_max}
+										on:change={() => logConfigChange('atr_max', `${config.atr_max.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{Number(config.atr_max).toFixed(2)}%</span>
 								</div>
 							</div>
 						</div>
@@ -537,76 +757,138 @@
 
 							<div class="variable-item">
 								<div class="var-header">
-									<label for="break-even">
-										<span class="var-name">Break Even Trigger (%)</span>
-										<span class="var-desc">% profit pour passer SL à break-even</span>
+									<label for="escalier-break-even">
+										<span class="var-name">Break Even (%)</span>
+										<span class="var-desc">% profit pour break-even (mode escalier)</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('break_even_trigger')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('escalier_break_even')} title="Réinitialiser">⟲</button>
 								</div>
 								<div class="slider-container">
 									<input
-										id="break-even"
-										type="range"
-										step="0.1"
-										min="0.2"
-										max="2"
-										bind:value={config.break_even_trigger}
-										on:change={() => logConfigChange('break_even_trigger', `${config.break_even_trigger.toFixed(1)}%`)}
-									/>
-									<span class="slider-value">{Number(config.break_even_trigger).toFixed(1)}%</span>
-								</div>
-							</div>
-						</div>
-					{/if}
-
-					<!-- Mode TRAILING -->
-					{#if config.tp_sl_mode === 'TRAILING'}
-						<div class="mode-settings">
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="trailing-activation">
-										<span class="var-name">Activation (%)</span>
-										<span class="var-desc">% profit pour activer trailing stop</span>
-									</label>
-									<button class="btn-reset" on:click={() => resetVariable('trailing_activation')} title="Réinitialiser">⟲</button>
-								</div>
-								<div class="slider-container">
-									<input
-										id="trailing-activation"
-										type="range"
-										step="0.1"
-										min="0.2"
-										max="3"
-										bind:value={config.trailing_activation}
-										on:change={() => logConfigChange('trailing_activation', `${config.trailing_activation.toFixed(1)}%`)}
-									/>
-									<span class="slider-value">{Number(config.trailing_activation).toFixed(1)}%</span>
-								</div>
-							</div>
-
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="trailing-callback">
-										<span class="var-name">Callback (%)</span>
-										<span class="var-desc">% de retour avant trigger</span>
-									</label>
-									<button class="btn-reset" on:click={() => resetVariable('trailing_callback')} title="Réinitialiser">⟲</button>
-								</div>
-								<div class="slider-container">
-									<input
-										id="trailing-callback"
+										id="escalier-break-even"
 										type="range"
 										step="0.05"
-										min="0.1"
-										max="1"
-										bind:value={config.trailing_callback}
-										on:change={() => logConfigChange('trailing_callback', `${config.trailing_callback.toFixed(2)}%`)}
+										min="0.2"
+										max="2"
+										bind:value={config.escalier_break_even}
+										on:change={() => logConfigChange('escalier_break_even', `${config.escalier_break_even.toFixed(2)}%`)}
 									/>
-									<span class="slider-value">{Number(config.trailing_callback).toFixed(2)}%</span>
+									<span class="slider-value">{Number(config.escalier_break_even).toFixed(2)}%</span>
 								</div>
 							</div>
 						</div>
 					{/if}
+				</div>
+			</section>
+
+			<!-- Section Trailing Stop Adaptatif -->
+			<section class="variable-section">
+				<h3>🔄 Trailing Stop Adaptatif</h3>
+				<p class="section-desc">S'applique à tous les modes TP/SL</p>
+				<div class="variables-list">
+					<div class="variable-item checkbox">
+						<div class="var-header">
+							<label for="trailing-enabled">
+								<input
+									id="trailing-enabled"
+									type="checkbox"
+									bind:checked={config.trailing_enabled}
+									on:change={() => logConfigChange('trailing_enabled', config.trailing_enabled ? 'Activé' : 'Désactivé')}
+								/>
+								<span class="var-name">Trailing Stop Enabled</span>
+								<span class="var-desc">Activer le trailing stop adaptatif</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_enabled')} title="Réinitialiser">⟲</button>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="trailing-trigger">
+								<span class="var-name">Trigger PnL (%)</span>
+								<span class="var-desc">% profit pour activer le trailing</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_trigger_pnl')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="trailing-trigger"
+								type="range"
+								step="0.05"
+								min="0.1"
+								max="3"
+								bind:value={config.trailing_trigger_pnl}
+								on:change={() => logConfigChange('trailing_trigger_pnl', `${config.trailing_trigger_pnl.toFixed(2)}%`)}
+							/>
+							<span class="slider-value">{Number(config.trailing_trigger_pnl).toFixed(2)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="trailing-atr-mult">
+								<span class="var-name">ATR Multiplier</span>
+								<span class="var-desc">Distance = ATR × multiplier</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_atr_multiplier')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="trailing-atr-mult"
+								type="range"
+								step="0.1"
+								min="0.1"
+								max="2"
+								bind:value={config.trailing_atr_multiplier}
+								on:change={() => logConfigChange('trailing_atr_multiplier', `${config.trailing_atr_multiplier.toFixed(1)}x`)}
+							/>
+							<span class="slider-value">{Number(config.trailing_atr_multiplier).toFixed(1)}x</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="trailing-min-dist">
+								<span class="var-name">Min Distance (%)</span>
+								<span class="var-desc">Distance minimum du trailing</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_min_distance')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="trailing-min-dist"
+								type="range"
+								step="0.01"
+								min="0.05"
+								max="0.5"
+								bind:value={config.trailing_min_distance}
+								on:change={() => logConfigChange('trailing_min_distance', `${config.trailing_min_distance.toFixed(2)}%`)}
+							/>
+							<span class="slider-value">{Number(config.trailing_min_distance).toFixed(2)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="trailing-max-dist">
+								<span class="var-name">Max Distance (%)</span>
+								<span class="var-desc">Distance maximum du trailing</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_max_distance')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="trailing-max-dist"
+								type="range"
+								step="0.05"
+								min="0.1"
+								max="2"
+								bind:value={config.trailing_max_distance}
+								on:change={() => logConfigChange('trailing_max_distance', `${config.trailing_max_distance.toFixed(2)}%`)}
+							/>
+							<span class="slider-value">{Number(config.trailing_max_distance).toFixed(2)}%</span>
+						</div>
+					</div>
 				</div>
 			</section>
 		{/if}
@@ -823,6 +1105,13 @@
 		margin: 0 0 16px 0;
 		padding-bottom: 12px;
 		border-bottom: 1px solid #2a3a6b;
+	}
+
+	.section-desc {
+		font-size: 13px;
+		color: #888;
+		margin: -8px 0 16px 0;
+		font-style: italic;
 	}
 
 	.variables-list {
