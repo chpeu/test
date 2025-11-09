@@ -19,11 +19,14 @@ class WebSocketManager:
     - Broadcast automatique
     - Reconnexion côté client
     - Performance optimale
+    - Support rooms/namespaces
+    - Communication bidirectionnelle
     """
     
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
         self.connection_data: Dict[WebSocket, dict] = {}
+        self.rooms: Dict[str, Set[WebSocket]] = {}  # Support rooms
         self._lock = asyncio.Lock()
     
     async def connect(self, websocket: WebSocket):
@@ -38,10 +41,13 @@ class WebSocketManager:
         logger.info(f"✅ WebSocket connecté (total: {len(self.active_connections)})")
     
     async def disconnect(self, websocket: WebSocket):
-        """Déconnecter un WebSocket"""
+        """Déconnecter un WebSocket (optimisé)"""
         async with self._lock:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
+            # 🔥 OPTIMISATION: Nettoyer aussi des rooms en une seule passe
+            for room_connections in self.rooms.values():
+                room_connections.discard(websocket)
         logger.info(f"❌ WebSocket déconnecté (total: {len(self.active_connections)})")
     
     async def send_personal_message(self, message: dict, websocket: WebSocket):
@@ -54,28 +60,38 @@ class WebSocketManager:
             await self.disconnect(websocket)
     
     async def broadcast(self, message: dict):
-        """Diffuser un message à tous les clients connectés"""
+        """Diffuser un message à tous les clients connectés (optimisé pour performances maximales)"""
         if not self.active_connections:
             return
         
-        # Créer le message JSON une seule fois
+        # 🔥 OPTIMISATION: Créer le message JSON une seule fois
         message_json = json.dumps(message)
         
-        # Envoyer à tous les clients en parallèle
-        disconnected = []
-        for connection in list(self.active_connections):
+        # 🔥 OPTIMISATION: Envoyer à tous les clients en parallèle avec asyncio.gather
+        async def send_to_connection(connection):
             try:
                 await connection.send_text(message_json)
+                return None  # Succès
             except Exception as e:
                 logger.warning(f"⚠️ Erreur broadcast WebSocket: {e}")
-                disconnected.append(connection)
+                return connection  # Échec - retourner connexion à nettoyer
+        
+        # Exécuter tous les envois en parallèle
+        results = await asyncio.gather(
+            *[send_to_connection(conn) for conn in list(self.active_connections)],
+            return_exceptions=True
+        )
         
         # Nettoyer les connexions déconnectées
+        disconnected = [conn for conn in results if conn is not None and not isinstance(conn, Exception)]
         if disconnected:
             async with self._lock:
                 for conn in disconnected:
                     self.active_connections.discard(conn)
                     self.connection_data.pop(conn, None)
+                    # Nettoyer aussi des rooms
+                    for room_connections in self.rooms.values():
+                        room_connections.discard(conn)
     
     async def emit(self, event: str, data: any = None):
         """
@@ -151,6 +167,58 @@ class WebSocketManager:
             'timestamp': datetime.now().isoformat()
         }
         await self.broadcast(message)
+    
+    def subscribe(self, websocket: WebSocket, room: str):
+        """S'abonner à une room"""
+        if room not in self.rooms:
+            self.rooms[room] = set()
+        self.rooms[room].add(websocket)
+        logger.debug(f"📡 WebSocket abonné à room: {room}")
+    
+    def unsubscribe(self, websocket: WebSocket, room: str):
+        """Se désabonner d'une room"""
+        if room in self.rooms:
+            self.rooms[room].discard(websocket)
+            logger.debug(f"📡 WebSocket désabonné de room: {room}")
+    
+    async def emit_to_room(self, event: str, data: any = None, room: str = None):
+        """Émettre vers une room spécifique (optimisé pour performances maximales)"""
+        if room and room in self.rooms:
+            message = {
+                'type': 'event',
+                'event': event,
+                'data': data,
+                'timestamp': datetime.now().isoformat()
+            }
+            message_json = json.dumps(message)
+            
+            # 🔥 OPTIMISATION: Envoyer en parallèle avec asyncio.gather
+            async def send_to_connection(connection):
+                try:
+                    await connection.send_text(message_json)
+                    return None  # Succès
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur emit room {room}: {e}")
+                    return connection  # Échec
+            
+            room_connections = list(self.rooms[room])
+            if room_connections:
+                results = await asyncio.gather(
+                    *[send_to_connection(conn) for conn in room_connections],
+                    return_exceptions=True
+                )
+                
+                # Nettoyer connexions déconnectées
+                disconnected = [conn for conn in results if conn is not None and not isinstance(conn, Exception)]
+                if disconnected:
+                    async with self._lock:
+                        for conn in disconnected:
+                            self.rooms[room].discard(conn)
+                            self.active_connections.discard(conn)
+                            self.connection_data.pop(conn, None)
+        else:
+            # Si pas de room ou room inexistante, broadcast normal
+            await self.emit(event, data)
 
 
 # Instance globale du gestionnaire WebSocket

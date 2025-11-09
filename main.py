@@ -1,14 +1,7 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-Trade Cursor v7.0 - Application FastAPI (async natif) - VERSION REFACTORIS├ëE
-Interface HTML identique ├á v5.1 avec backend Python
-
-­ƒöÑ REFACTORISATION: Callbacks et routes API d├®plac├®s dans des modules s├®par├®s
-- api/routes/scanner.py - Routes scanner (/api/scanner/*)
-- api/routes/dashboard.py - Routes dashboard (/api/status, /api/state, etc.)
-- core/callbacks/scanner_loop.py - scanner_loop_callback(), scan_pair_for_setup()
-- core/callbacks/position_check_loop.py - position_check_loop_callback()
-- core/callbacks/scalability_refresh.py - scalability_refresh_loop_callback()
+Trade Cursor v7.0 - Application FastAPI (async natif)
+Interface HTML identique à v5.1 avec backend Python
 """
 
 import sys
@@ -20,13 +13,15 @@ import csv
 import io
 from datetime import datetime
 from typing import Optional, List, Dict
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-import socketio
+from starlette.templating import Jinja2Templates
+# 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
+from core.websocket_manager import get_websocket_manager
+import time
 
-# ­ƒöÑ v7.0: Imports complets
+# 🔥 v7.0: Imports complets
 try:
     from api.price_provider import get_price_provider
     from core.scanner import ScalabilityScanner
@@ -34,10 +29,10 @@ try:
     from core.position_manager import PositionManager, PositionConfig
     from core.scheduler import Scheduler
     from core.metrics import get_metrics_collector
-    from core.database import TradeDatabase  # ­ƒöÑ PHASE 8: SQLite (legacy)
+    from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
 except ImportError as e:
     logging.error(f"Import error: {e}")
-    # Fallback pour les d├®pendances manquantes
+    # Fallback pour les dépendances manquantes
     get_price_provider = None
     TradeDatabase = None
     ScalabilityScanner = None
@@ -47,7 +42,7 @@ except ImportError as e:
     Scheduler = None
     get_metrics_collector = None
 
-# ­ƒöÑ ARCHITECTURE V2: Nouveaux imports
+# 🔥 ARCHITECTURE V2: Nouveaux imports
 try:
     from core.analytics_database import AnalyticsDatabase
     from notifications import create_notification_manager
@@ -59,315 +54,79 @@ except ImportError as e:
     api_router = None
     set_analytics_db = None
 
-# ­ƒöÑ REFACTORISATION: Imports des modules refactoris├®s
-try:
-    from api.routes.scanner import router as scanner_router
-    from api.routes.scanner import (
-        set_scanner as set_scanner_router,
-        set_analyzer as set_analyzer_router,
-        set_price_provider as set_price_provider_router,
-        set_app_state as set_app_state_scanner,
-        set_socketio as set_socketio_scanner
-    )
-except ImportError as e:
-    logging.warning(f"Scanner router import: {e}")
-    scanner_router = None
-
-try:
-    from api.routes.dashboard import router as dashboard_router
-    from api.routes.dashboard import (
-        set_scheduler as set_scheduler_dashboard,
-        set_position_manager as set_position_manager_dashboard,
-        set_app_state as set_app_state_dashboard,
-        set_socketio as set_socketio_dashboard
-    )
-except ImportError as e:
-    logging.warning(f"Dashboard router import: {e}")
-    dashboard_router = None
-
-try:
-    from core.callbacks.scanner_loop import (
-        scanner_loop_callback,
-        scan_pair_for_setup,
-        set_scanner as set_scanner_callback,
-        set_analyzer as set_analyzer_callback,
-        set_position_manager as set_position_manager_scanner,
-        set_price_provider as set_price_provider_scanner,
-        set_app_state as set_app_state_scanner_callback,
-        set_socketio as set_socketio_scanner_callback,
-        set_scanner_lock
-    )
-except ImportError as e:
-    logging.warning(f"Scanner callback import: {e}")
-    scanner_loop_callback = None
-    scan_pair_for_setup = None
-
-try:
-    from core.callbacks.position_check_loop import (
-        position_check_loop_callback,
-        set_position_manager as set_position_manager_position_check,
-        set_price_provider as set_price_provider_position_check,
-        set_app_state as set_app_state_position_check,
-        set_socketio as set_socketio_position_check,
-        set_position_lock as set_position_lock_callback,
-        set_analytics_db as set_analytics_db_position_check
-    )
-except ImportError as e:
-    logging.warning(f"Position check callback import: {e}")
-    position_check_loop_callback = None
-
-try:
-    from core.callbacks.scalability_refresh import (
-        scalability_refresh_loop_callback,
-        set_scanner as set_scanner_scalability,
-        set_position_manager as set_position_manager_scalability,
-        set_price_provider as set_price_provider_scalability,
-        set_app_state as set_app_state_scalability,
-        set_socketio as set_socketio_scalability
-    )
-except ImportError as e:
-    logging.warning(f"Scalability refresh callback import: {e}")
-    scalability_refresh_loop_callback = None
-
-# Configuration logging avec couleurs
-try:
-    import colorama
-    from colorama import Fore, Style, init
-    init(autoreset=True)  # Auto-reset apr├¿s chaque print
-    
-    # Formatter personnalis├® avec couleurs
-    class ColoredFormatter(logging.Formatter):
-        COLORS = {
-            'DEBUG': Fore.CYAN,
-            'INFO': Fore.GREEN,
-            'WARNING': Fore.YELLOW,
-            'ERROR': Fore.RED,
-            'CRITICAL': Fore.RED + Style.BRIGHT
-        }
-        
-        def format(self, record):
-            log_color = self.COLORS.get(record.levelname, '')
-            original_msg = record.getMessage()
-            
-            # Colorier les emojis et messages sp├®ciaux
-            colored_msg = original_msg
-            colored_msg = colored_msg.replace('Ô£à', f'{Fore.GREEN}Ô£à{Style.RESET_ALL}')
-            colored_msg = colored_msg.replace('ÔØî', f'{Fore.RED}ÔØî{Style.RESET_ALL}')
-            colored_msg = colored_msg.replace('ÔÜá´©Å', f'{Fore.YELLOW}ÔÜá´©Å{Style.RESET_ALL}')
-            colored_msg = colored_msg.replace('­ƒöÑ', f'{Fore.MAGENTA}­ƒöÑ{Style.RESET_ALL}')
-            colored_msg = colored_msg.replace('­ƒôè', f'{Fore.CYAN}­ƒôè{Style.RESET_ALL}')
-            colored_msg = colored_msg.replace('­ƒôØ', f'{Fore.BLUE}­ƒôØ{Style.RESET_ALL}')
-            colored_msg = colored_msg.replace('­ƒÜÇ', f'{Fore.CYAN}­ƒÜÇ{Style.RESET_ALL}')
-            
-            # Appliquer couleur au levelname
-            colored_level = f"{log_color}{record.levelname}{Style.RESET_ALL}"
-            
-            # Cr├®er un nouveau record avec le message color├®
-            record.msg = colored_msg
-            record.levelname = colored_level
-            return super().format(record)
-    
-    handler = logging.StreamHandler()
-    handler.setFormatter(ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logging.basicConfig(level=logging.INFO, handlers=[handler])
-    USE_COLORS = True
-except ImportError:
-    # Fallback sans couleurs si colorama pas install├®
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    USE_COLORS = False
-
+# Configuration logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
-
-# ­ƒöÑ FIX: Ajouter headers CORS pour Safari et autres navigateurs
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # En production, sp├®cifier les origines autoris├®es
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
 templates = Jinja2Templates(directory="templates")
 
-# ­ƒöÑ Handler personnalis├® pour ├®mettre tous les logs via WebSocket
-class SocketIOHandler(logging.Handler):
-    """Handler qui ├®met tous les logs vers le frontend via SocketIO"""
-    def __init__(self):
-        super().__init__()
-        self.sio = None
-
-    def set_sio(self, sio_instance):
-        """Configurer l'instance SocketIO"""
-        self.sio = sio_instance
-
-    def emit(self, record):
-        """├ëmettre le log via SocketIO"""
-        if self.sio is None:
-            return
-
-        try:
-            # Cr├®er l'entr├®e de log
-            log_entry = {
-                'timestamp': datetime.now().strftime('%H:%M:%S.%f')[:-3],
-                'level': record.levelname,
-                'message': record.getMessage(),
-                'detail': ''
-            }
-
-            # ├ëmettre via WebSocket (m├®thode synchrone car emit() de Handler est sync)
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(self.sio.emit('log', log_entry))
-                else:
-                    loop.run_until_complete(self.sio.emit('log', log_entry))
-            except RuntimeError:
-                # Pas de loop actif, cr├®er une task quand m├¬me
-                asyncio.create_task(self.sio.emit('log', log_entry))
-
-        except Exception as e:
-            # Ne pas bloquer si erreur d'├®mission
-            pass
-
-# Cr├®er et ajouter le handler SocketIO
-socketio_handler = SocketIOHandler()
-socketio_handler.setLevel(logging.DEBUG)  # ­ƒöÑ FIX: Capturer DEBUG et plus (inclut ERROR, WARNING, CRITICAL)
-logging.getLogger().addHandler(socketio_handler)
-
-# ­ƒöÑ ARCHITECTURE V2: Monter fichiers statiques
+# 🔥 ARCHITECTURE V2: Monter fichiers statiques et inclure routes API
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")
-    logger.info("Ô£à Fichiers statiques mont├®s: /static")
+    logger.info("✅ Fichiers statiques montés: /static")
 except Exception as e:
-    logger.warning(f"ÔÜá´©Å Fichiers statiques non mont├®s: {e}")
+    logger.warning(f"⚠️ Fichiers statiques non montés: {e}")
 
-# ­ƒöÑ FIX: Servir le frontend SvelteKit build si disponible
-frontend_build_path = None
-for build_path in ["frontend/build", "frontend/.svelte-kit/output", "frontend/dist"]:
-    if os.path.exists(build_path):
-        frontend_build_path = build_path
-        break
-
-if frontend_build_path:
-    try:
-        # Servir les fichiers statiques du frontend
-        static_path = os.path.join(frontend_build_path, "client")
-        if os.path.exists(static_path):
-            app.mount("/_app", StaticFiles(directory=static_path), name="frontend_static")
-            logger.info(f"Ô£à Frontend SvelteKit mont├®: /_app depuis {static_path}")
-        
-        # Servir les assets du frontend
-        assets_path = os.path.join(frontend_build_path, "client")
-        if os.path.exists(assets_path):
-            # Les assets sont d├®j├á servis via /_app
-            logger.info(f"Ô£à Assets frontend disponibles via /_app")
-    except Exception as e:
-        logger.warning(f"ÔÜá´©Å Frontend SvelteKit non mont├®: {e}")
-else:
-    logger.info("Ôä╣´©Å Frontend SvelteKit non build - servez-le s├®par├®ment avec 'npm run dev' dans frontend/")
-
-# ­ƒöÑ ARCHITECTURE V2: Inclure API router (api/routes/__init__.py)
 if api_router:
     app.include_router(api_router)
-    logger.info("Ô£à API REST routes incluses: /api/*")
+    logger.info("✅ API REST routes incluses: /api/*")
 
-# ­ƒöÑ REFACTORISATION: Inclure les nouveaux routers
-if scanner_router:
-    app.include_router(scanner_router)
-    logger.info("Ô£à Scanner router inclus: /api/scanner/*")
+# 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
+# Socket.IO complètement retiré pour performances maximales
 
-if dashboard_router:
-    app.include_router(dashboard_router)
-    logger.info("Ô£à Dashboard router inclus: /api/status, /api/state, /api/start, /api/stop")
+# 🔥 WebSocket Natif - Instance globale
+ws_manager = get_websocket_manager()
 
-# ­ƒöÑ FIX: ├ëv├®nement de d├®marrage pour initialiser les d├®pendances
-@app.on_event("startup")
-async def startup_event():
-    """Initialiser toutes les d├®pendances au d├®marrage de l'application"""
-    logger.info("­ƒÜÇ Initialisation des d├®pendances au d├®marrage...")
-
-    # Ô£à FIX: Charger la configuration persistante
-    from config import TRADING_CONFIG
-    from core.config_manager import get_config_manager
-
-    config_manager = get_config_manager()
-    overrides = config_manager.get_overrides()
-    if overrides:
-        TRADING_CONFIG.update(overrides)
-        logger.info(f"­ƒôä Configuration charg├®e depuis config_overrides.json ({len(overrides)} overrides)")
-
-    init_instances()
-    logger.info("Ô£à D├®pendances initialis├®es")
-
-    # ­ƒöÑ FIX: D├®marrer le scheduler pour les boucles de scan
-    global scheduler
-    if scheduler:
-        logger.info("ÔÅ░ D├®marrage du scheduler (scan loop, position check, scalability refresh)...")
-        scheduler.start()
-        logger.info("Ô£à Scheduler d├®marr├®")
-
-# SocketIO
-# ­ƒöÑ FIX: Utiliser async_mode='asgi' pour compatibilit├® avec Uvicorn
-sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode='asgi')
-socketio_app = socketio.ASGIApp(sio, app)
-
-# ­ƒöÑ Configurer le handler SocketIO avec l'instance sio
-socketio_handler.set_sio(sio)
-
-# ­ƒöÑ PHASE 4: Fichier de persistance pour trade history
-# ­ƒöÑ FIX: Fichier historique par instance pour ├®viter conflits multi-instances
-# Utiliser le port comme identifiant d'instance (d├®faut: 5000)
+# 🔥 PHASE 4: Fichier de persistance pour trade history
+# 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
+# Utiliser le port comme identifiant d'instance (défaut: 5000)
 def get_trade_history_file():
     """Retourner le nom du fichier historique selon le port de l'instance"""
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     return f"trade_history_instance_{port}.json"
 
-TRADE_HISTORY_FILE = None  # Sera initialis├® au d├®marrage
+TRADE_HISTORY_FILE = None  # Sera initialisé au démarrage
 
-# ­ƒöÑ PHASE 8: Instance globale TradeDatabase
+# 🔥 PHASE 8: Instance globale TradeDatabase
 trade_db = None
 
 def init_trade_database():
-    """Initialiser base de donn├®es SQLite"""
+    """Initialiser base de données SQLite"""
     global trade_db
     if TradeDatabase and not trade_db:
         try:
             trade_db = TradeDatabase()
-            logger.info("Ô£à Base de donn├®es SQLite initialis├®e")
+            logger.info("✅ Base de données SQLite initialisée")
         except Exception as e:
-            logger.error(f"ÔØî Erreur initialisation DB: {e}")
+            logger.error(f"❌ Erreur initialisation DB: {e}")
             trade_db = None
 
 def save_trade_history():
     """Sauvegarder l'historique des trades dans un fichier JSON et SQLite"""
     global TRADE_HISTORY_FILE, trade_db
-
+    
     if TRADE_HISTORY_FILE is None:
         TRADE_HISTORY_FILE = get_trade_history_file()
-
+    
     try:
-        # ­ƒöÑ FIX: ├ëcriture atomique avec fichier temporaire puis rename
+        # 🔥 FIX: Écriture atomique avec fichier temporaire puis rename
         temp_file = TRADE_HISTORY_FILE + ".tmp"
         with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(app_state['trade_history'], f, indent=2, ensure_ascii=False)
-        # Renommer atomiquement (Windows supporte cette op├®ration)
+        # Renommer atomiquement (Windows supporte cette opération)
         if os.path.exists(TRADE_HISTORY_FILE):
             os.replace(temp_file, TRADE_HISTORY_FILE)
         else:
             os.rename(temp_file, TRADE_HISTORY_FILE)
-        logger.debug(f"Ô£à Historique sauvegard├®: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
+        logger.debug(f"✅ Historique sauvegardé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
     except Exception as e:
-        logger.error(f"ÔØî Erreur sauvegarde historique JSON: {e}")
+        logger.error(f"❌ Erreur sauvegarde historique JSON: {e}")
         # Nettoyer fichier temporaire en cas d'erreur
         temp_file = TRADE_HISTORY_FILE + ".tmp"
         if os.path.exists(temp_file):
@@ -375,71 +134,71 @@ def save_trade_history():
                 os.remove(temp_file)
             except:
                 pass
-
-    # ­ƒöÑ PHASE 8: Sauvegarder aussi en SQLite (si activ├®)
+    
+    # 🔥 PHASE 8: Sauvegarder aussi en SQLite (si activé)
     if trade_db and app_state['trade_history']:
         try:
-            # Sauvegarder uniquement le dernier trade (├®viter doublons)
+            # Sauvegarder uniquement le dernier trade (éviter doublons)
             last_trade = app_state['trade_history'][0] if app_state['trade_history'] else None
             if last_trade:
-                # V├®rifier si d├®j├á en DB (par timestamp)
+                # Vérifier si déjà en DB (par timestamp)
                 existing = trade_db.get_trades_by_date_range(
                     last_trade.get('date', ''),
                     last_trade.get('date', '')
                 )
-                # Si pas d├®j├á pr├®sent, ins├®rer
+                # Si pas déjà présent, insérer
                 if not any(t.get('timestamp') == last_trade.get('timestamp') for t in existing):
                     trade_db.insert_trade(last_trade)
-                    logger.debug(f"Ô£à Trade sauvegard├® en DB: {last_trade.get('symbol')}")
+                    logger.debug(f"✅ Trade sauvegardé en DB: {last_trade.get('symbol')}")
         except Exception as e:
-            logger.error(f"ÔØî Erreur sauvegarde DB: {e}")
+            logger.error(f"❌ Erreur sauvegarde DB: {e}")
 
 def load_trade_history():
     """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
     global TRADE_HISTORY_FILE, trade_db
-
+    
     if TRADE_HISTORY_FILE is None:
         TRADE_HISTORY_FILE = get_trade_history_file()
-
-    # ­ƒöÑ PHASE 8: Charger depuis SQLite si disponible (priorit├®)
+    
+    # 🔥 PHASE 8: Charger depuis SQLite si disponible (priorité)
     if trade_db:
         try:
             db_trades = trade_db.get_all_trades()
             if db_trades:
                 app_state['trade_history'] = db_trades
-                logger.info(f"Ô£à Historique charg├® depuis DB: {len(db_trades)} trades")
+                logger.info(f"✅ Historique chargé depuis DB: {len(db_trades)} trades")
                 # Sauvegarder aussi en JSON (backup)
                 save_trade_history()
                 return
         except Exception as e:
-            logger.error(f"ÔØî Erreur chargement DB: {e}")
-
+            logger.error(f"❌ Erreur chargement DB: {e}")
+    
     # Fallback: Charger depuis JSON
     try:
         if os.path.exists(TRADE_HISTORY_FILE):
             with open(TRADE_HISTORY_FILE, 'r', encoding='utf-8') as f:
                 app_state['trade_history'] = json.load(f)
-            logger.info(f"Ô£à Historique charg├®: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
-
-            # ­ƒöÑ PHASE 8: Migrer JSON ÔåÆ SQLite si DB disponible
+            logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
+            
+            # 🔥 PHASE 8: Migrer JSON → SQLite si DB disponible
             if trade_db and app_state['trade_history']:
                 try:
                     for trade in app_state['trade_history']:
-                        # V├®rifier si d├®j├á en DB
+                        # Vérifier si déjà en DB
                         existing = trade_db.get_trades_by_date_range(
                             trade.get('date', ''),
                             trade.get('date', '')
                         )
                         if not any(t.get('timestamp') == trade.get('timestamp') for t in existing):
                             trade_db.insert_trade(trade)
-                    logger.info(f"Ô£à Migration JSON ÔåÆ SQLite: {len(app_state['trade_history'])} trades")
+                    logger.info(f"✅ Migration JSON → SQLite: {len(app_state['trade_history'])} trades")
                 except Exception as e:
-                    logger.error(f"ÔØî Erreur migration DB: {e}")
+                    logger.error(f"❌ Erreur migration DB: {e}")
         else:
             app_state['trade_history'] = []
-            logger.info(f"­ƒôØ Nouveau fichier historique cr├®├®: {TRADE_HISTORY_FILE}")
+            logger.info(f"📝 Nouveau fichier historique créé: {TRADE_HISTORY_FILE}")
     except Exception as e:
-        logger.error(f"ÔØî Erreur chargement historique: {e}")
+        logger.error(f"❌ Erreur chargement historique: {e}")
         app_state['trade_history'] = []
 
 # Global state
@@ -454,45 +213,10 @@ app_state = {
     },
     'top_pairs': [],
     'logs': [],
-    'trade_history': []  # ­ƒöÑ PHASE 4: Historique des trades
+    'trade_history': []  # 🔥 PHASE 4: Historique des trades
 }
 
-
-def update_session_stats(result: dict):
-    """
-    Mettre ├á jour les statistiques de session apr├¿s fermeture d'une position
-
-    Args:
-        result: Dictionnaire retourn├® par position_manager.close_position()
-    """
-    if not result:
-        return
-
-    # Incr├®menter total trades
-    app_state['stats']['total_trades'] += 1
-
-    # D├®terminer si win ou loss bas├® sur net_pnl_usdt
-    net_pnl = result.get('net_pnl_usdt', result.get('pnl_usdt', 0))
-
-    if net_pnl > 0:
-        app_state['stats']['wins'] += 1
-    else:
-        app_state['stats']['losses'] += 1
-
-    # Calculer winrate
-    total = app_state['stats']['total_trades']
-    wins = app_state['stats']['wins']
-    app_state['stats']['winrate'] = round((wins / total * 100), 2) if total > 0 else 0.0
-
-    logger.info(
-        f"­ƒôè Stats session mises ├á jour: "
-        f"{wins}W/{app_state['stats']['losses']}L "
-        f"({app_state['stats']['winrate']:.1f}% WR) "
-        f"- Total: {total}"
-    )
-
-
-# ­ƒöÑ v7.0: Instances globales (lazy init)
+# 🔥 v7.0: Instances globales (lazy init)
 scanner = None
 analyzer = None
 position_config = None
@@ -500,279 +224,780 @@ position_manager = None
 price_provider = None
 scheduler = None
 
-# ­ƒöÑ ARCHITECTURE V2: Nouvelles instances
+# 🔥 ARCHITECTURE V2: Nouvelles instances
 analytics_db = None
 notification_manager = None
 session_id = None  # ID unique de cette session
 
-# ­ƒöÑ FIX: Lock pour ├®viter les ouvertures multiples de positions
+# 🔥 FIX: Lock pour éviter les ouvertures multiples de positions
 position_lock = asyncio.Lock()
 
-# ­ƒöÑ FIX: Lock pour ├®viter les scans multiples en parall├¿le
+# 🔥 FIX: Lock pour éviter les scans multiples en parallèle
 scanner_lock = asyncio.Lock()
 
 
+# 🔥 JOUR 3: Callbacks pour le scheduler (doivent être définis avant init_instances)
+
+async def scanner_loop_callback():
+    """Callback appelé toutes les 45 secondes pour scanner les setups"""
+    global price_provider  # 🔥 FIX: Utiliser variable globale
+    
+    init_instances()
+    
+    # 🔥 FIX: Lock global pour éviter les scans multiples en parallèle
+    async with scanner_lock:
+        # Ne pas scanner si on a déjà une position active (vérification atomique dans le lock)
+        # Cette vérification est faite AVANT de commencer le scan pour éviter de gaspiller des ressources
+        if app_state['active_position'] or (position_manager and position_manager.active_position):
+            logger.debug("⏸️ Scanner ignoré : position active")
+            return
+        
+        # 🔥 JOUR 3: Si on n'a pas de top_pairs, on les scanne d'abord
+        if not app_state['top_pairs']:
+            await add_log('INFO', 'Scanner loop', 'Scan initial des top pairs...')
+            if scanner:
+                top_pairs = await scanner.scan_top_pairs(20)
+                app_state['top_pairs'] = top_pairs
+                
+                # 🔥 OPTIMISATION: Invalider cache quand top_pairs change
+                if hasattr(app, '_top_pairs_cache'):
+                    app._top_pairs_cache.pop('top_pairs', None)
+                
+                await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+                
+                # 🔥 JOUR 3: Démarrer WebSocket pour les top pairs
+                if price_provider and top_pairs:
+                    symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                    if symbols:
+                        try:
+                            await price_provider.start_websocket(symbols)
+                            await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                        except Exception as e:
+                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+        
+        # 🔥 JOUR 3: Scanner plusieurs paires en parallèle (top 20)
+        if app_state['top_pairs']:
+            # 🔥 FIX: Scanner top 20 au lieu de top 5 pour plus d'opportunités
+            from config import TRADING_CONFIG
+            max_pairs = TRADING_CONFIG.get('top_pairs_limit', 20)
+            total_available = len(app_state['top_pairs'])
+            top_n = min(max_pairs, total_available)  # Scanner top 20
+            pairs_to_scan = app_state['top_pairs'][:top_n]
+            
+            # 🔥 DEBUG: Log détaillé pour comprendre
+            symbols_list = [p.get('symbol', '') for p in pairs_to_scan if p.get('symbol')]
+            await add_log('INFO', 'Scanner loop', 
+                f'Analyse {top_n}/{total_available} paires disponibles: {", ".join(symbols_list[:10])}' + 
+                (f'... (+{len(symbols_list)-10} autres)' if len(symbols_list) > 10 else ''))
+            
+            # 🔥 WARNING si moins de paires que prévu
+            if total_available < max_pairs:
+                await add_log('WARNING', 'Paires limitées', 
+                    f'Seulement {total_available} paires disponibles (attendu: {max_pairs})')
+            
+            # Scanner toutes les paires en parallèle
+            scan_tasks = []
+            for pair in pairs_to_scan:
+                symbol = pair.get('symbol', '')
+                if symbol:
+                    scan_tasks.append(scan_pair_for_setup(symbol))
+            
+            if scan_tasks:
+                # Exécuter toutes les analyses en parallèle
+                results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+                
+                # Compter les résultats avec détails
+                valid_setups = 0
+                no_setup = 0
+                errors = 0
+                rejection_reasons = {}  # Dict pour compter les raisons de rejet
+                
+                # 🔥 FIX: Analyser chaque résultat en détail
+                for i, result in enumerate(results):
+                    symbol_analyzed = pairs_to_scan[i].get('symbol', 'UNKNOWN') if i < len(pairs_to_scan) else 'UNKNOWN'
+                    
+                    if isinstance(result, Exception):
+                        errors += 1
+                        logger.warning(f"❌ Erreur analyse {symbol_analyzed}: {result}")
+                    elif result and isinstance(result, dict):
+                        # Vérifier si c'est une raison de rejet ou un setup valide
+                        if 'reason' in result:
+                            # C'est une raison de rejet
+                            no_setup += 1
+                            reason = result.get('reason', 'Raison inconnue')
+                            # Extraire la raison principale (avant le | ou le premier mot)
+                            main_reason = reason.split('|')[0].strip() if '|' in reason else reason.split(':')[0].strip() if ':' in reason else reason[:50]
+                            rejection_reasons[main_reason] = rejection_reasons.get(main_reason, 0) + 1
+                            
+                            # 🔥 FIX: Log détaillé pour chaque rejet
+                            logger.debug(f"🔍 {symbol_analyzed}: {reason}")
+                        elif 'symbol' in result and 'direction' in result:
+                            # C'est un setup valide
+                            valid_setups += 1
+                            logger.info(
+                                f"✅ Setup trouvé: {result.get('symbol')} - {result.get('direction')} | "
+                                f"Timeframe: {result.get('confirmedBy', 'N/A')} | "
+                                f"Conditions: {len(result.get('signals', []))} | "
+                                f"Entry: {result.get('price', 'N/A')} | "
+                                f"ATR: {result.get('atr', 0):.6f} ({result.get('atr', 0) / result.get('price', 1) * 100 if result.get('price') else 0:.3f}%)"
+                            )
+                        else:
+                            # Résultat inattendu
+                            no_setup += 1
+                            logger.warning(f"⚠️ Résultat inattendu pour {symbol_analyzed}: {result}")
+                    else:
+                        # None ou résultat vide
+                        no_setup += 1
+                        logger.debug(f"🔍 {symbol_analyzed}: Pas de setup (None)")
+                
+                # 🔥 FIX: Envoyer stats volume au frontend pour mettre à jour le compteur
+                total_analyzed = len(results)
+                validated_count = valid_setups
+                # Émettre événement SocketIO pour mettre à jour les stats côté frontend
+                await ws_manager.emit('volume_stats_update', {
+                    'total': total_analyzed,
+                    'validated': validated_count,
+                    'ratio': (validated_count / total_analyzed * 100) if total_analyzed > 0 else 0
+                })
+                
+                # 🔥 FIX: Log résumé détaillé avec raisons principales
+                summary_parts = [f'{valid_setups} setups valides', f'{no_setup} sans setup']
+                if errors > 0:
+                    summary_parts.append(f'{errors} erreurs')
+                
+                summary = ', '.join(summary_parts)
+                
+                # Ajouter les raisons principales de rejet si aucune setup n'a été trouvé
+                if valid_setups == 0 and rejection_reasons:
+                    # Trier par fréquence (plus fréquent en premier)
+                    sorted_reasons = sorted(rejection_reasons.items(), key=lambda x: x[1], reverse=True)
+                    top_reasons = sorted_reasons[:5]  # Top 5 raisons
+                    reasons_text = ' | '.join([f"{reason} ({count}x)" for reason, count in top_reasons])
+                    summary += f" | Principales raisons: {reasons_text}"
+                
+                await add_log('INFO', 'Résumé scan', summary)
+                
+                # 🔥 FIX: Log détaillé dans le logger Python aussi
+                logger.info(f"📊 Résumé scan: {summary}")
+                
+                # Si on a trouvé un setup valide, ouvrir la position
+                if valid_setups > 0:
+                    logger.info(f"🎯 {valid_setups} setup(s) valide(s) trouvé(s), tentative d'ouverture de position...")
+                    for result in results:
+                        # 🔥 FIX: Vérifier que result est un setup valide (dict avec 'symbol' et 'direction', pas une raison)
+                        if result and not isinstance(result, Exception) and isinstance(result, dict):
+                            # Vérifier que ce n'est PAS une raison de rejet
+                            if 'reason' in result:
+                                continue  # C'est une raison, pas un setup
+                            
+                            # Vérifier que c'est un setup valide (avec symbol et direction)
+                            if 'symbol' not in result or 'direction' not in result:
+                                continue  # Ce n'est pas un setup complet
+                            
+                            # 🔥 FIX: Log détaillé avant tentative d'ouverture
+                            symbol = result.get('symbol', 'UNKNOWN')
+                            direction = result.get('direction', 'UNKNOWN')
+                            logger.info(
+                                f"🚀 Tentative d'ouverture position: {symbol} - {direction} | "
+                                f"Entry (setup): {result.get('price', 'N/A')} | "
+                                f"SL: {result.get('sl', 'N/A')} | TP: {result.get('tp', 'N/A')} | "
+                                f"ATR: {result.get('atr', 0):.6f} | "
+                                f"Conditions: {len(result.get('signals', []))} | "
+                                f"Confirmed by: {result.get('confirmedBy', 'N/A')}"
+                            )
+                            
+                            # 🔥 FIX: Lock pour éviter les ouvertures multiples
+                            async with position_lock:
+                                # Vérifier à nouveau qu'on n'a pas déjà une position (double-check après lock)
+                                if app_state['active_position'] or (position_manager and position_manager.active_position):
+                                    logger.warning(
+                                        f"🚫 Position déjà active - Scanner ignoré. "
+                                        f"app_state['active_position']={app_state['active_position'] is not None}, "
+                                        f"position_manager.active_position={position_manager.active_position if position_manager else None}"
+                                    )
+                                    await add_log('WARNING', 'Position déjà active', 
+                                        'Un setup a été trouvé mais une position est déjà ouverte')
+                                    break
+                                
+                                # 🔥 FIX: Log avant ouverture pour debug
+                                logger.info(f"🔓 Lock acquis - Ouverture position pour {symbol}")
+                                
+                                # 🔥 FIX: Ouvrir position automatiquement
+                                setup = result
+                                # symbol et direction déjà définis avant le lock
+                                # symbol = setup.get('symbol', '')
+                                # direction = setup.get('direction', 'LONG')
+                                
+                                await add_log('INFO', 'Setup trouvé', 
+                                    f"{symbol} - {direction} - {len(setup.get('signals', []))} conditions")
+                                
+                                try:
+                                    # Récupérer prix d'entrée
+                                    if not price_provider:
+                                        price_provider = get_price_provider()
+                                    
+                                    price_data = await price_provider.get_price(symbol)
+                                    if not price_data:
+                                        await add_log('ERROR', 'Prix non disponible', symbol)
+                                        continue
+                                    
+                                    entry_price = price_data.get('lastPrice', setup.get('price', 0))
+                                    if not entry_price or entry_price == 0:
+                                        await add_log('ERROR', 'Prix invalide', f"{symbol}: {entry_price}")
+                                        continue
+                                    
+                                    # 🔥 FIX: Log pour debug - vérifier le prix récupéré
+                                    logger.info(
+                                        f"💰 Prix récupéré pour {symbol}: lastPrice={price_data.get('lastPrice')}, "
+                                        f"setup.get('price')={setup.get('price')}, entry_price={entry_price}"
+                                    )
+                                    
+                                    # Calculer taille de position (position sizing)
+                                    from config import TRADING_CONFIG, RISK_CONFIG
+                                    
+                                    # Capital par défaut (peut être modifié via config)
+                                    account_size = TRADING_CONFIG.get('account_size', 1000.0)
+                                    risk_per_trade = TRADING_CONFIG.get('risk_per_trade', 2.0) / 100  # 2% par défaut
+                                    
+                                    # Récupérer ATR pour calculer SL%
+                                    atr = setup.get('atr', 0)
+                                    atr5m = setup.get('atr5m')
+                                    
+                                    # Calculer SL% selon le mode
+                                    tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                                    # 🔥 PHASE 7: TP_MULTI utilise aussi le calcul ATR
+                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI') and atr and entry_price:
+                                        sl_percent = (atr / entry_price) * 100
+                                        # Clamp selon config
+                                        atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                                        atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+                                        sl_percent = max(atr_min, min(atr_max, sl_percent))
+                                    else:
+                                        sl_percent = TRADING_CONFIG.get('sl_percent', 0.25)
+                                    
+                                    # 🔥 PHASE 2: Position sizing adaptatif
+                                    position_size = position_manager.calculate_adaptive_position_size(
+                                        setup=setup,
+                                        capital=account_size,
+                                        sl_percent=sl_percent
+                                    )
+                                    
+                                    # 🔥 FIX: Log détaillé du calcul de taille pour debug
+                                    logger.info(
+                                        f"💰 Calcul taille position adaptative: {symbol} | "
+                                        f"Capital: {account_size:.2f} USDT | "
+                                        f"Risk%: {risk_per_trade*100:.2f}% | "
+                                        f"SL%: {sl_percent:.4f}% | "
+                                        f"Taille calculée: {position_size:.2f} USDT"
+                                    )
+                                    
+                                    # Récupérer scalability_data pour slippage
+                                    scalability_data = None
+                                    if app_state['top_pairs']:
+                                        for pair in app_state['top_pairs']:
+                                            if pair.get('symbol') == symbol:
+                                                scalability_data = pair
+                                                break
+                                    
+                                    # Ouvrir la position
+                                    condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
+                                    position = position_manager.open_position(
+                                        symbol=symbol,
+                                        direction=direction,
+                                        entry=entry_price,
+                                        size=position_size,
+                                        atr=atr,
+                                        atr5m=atr5m,
+                                        confirmed_by=setup.get('confirmedBy', 'Scanner auto'),
+                                        scalability_data=scalability_data,
+                                        condition_types=condition_types  # 🔥 PHASE 5: Types de conditions
+                                    )
+                                    
+                                    # Stocker capital
+                                    position.capital = account_size
+                                    
+                                    # Mettre à jour app_state AVANT d'émettre l'événement
+                                    app_state['active_position'] = position
+                                    
+                                    # 🔥 FIX: Vérification finale avant de continuer
+                                    if app_state['active_position'] != position:
+                                        logger.error(f"❌ ERREUR: app_state['active_position'] a été modifié pendant l'ouverture !")
+                                        break
+                                    
+                                    # 🔥 FIX: S'abonner au WebSocket pour prix en temps réel
+                                    if price_provider and price_provider.ws_manager and price_provider.ws_manager.connected:
+                                        try:
+                                            await price_provider.ws_manager.subscribe_ticker(symbol)
+                                            logger.debug(f"📡 WebSocket: Abonné à {symbol} pour prix temps réel")
+                                            
+                                            # 🔥 FIX: Configurer callback pour suivre position active
+                                            # Le WebSocket met à jour le cache en temps réel
+                                            # La boucle de check à 0.5s récupère le prix du cache et émet position_update
+                                            price_provider.set_socketio_callback(None, symbol)
+                                            logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
+                                        except Exception as e:
+                                            logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
+                                    
+                                    # Logger et notifier (UNE SEULE FOIS)
+                                    await add_log('INFO', 'Position ouverte automatiquement', 
+                                        f"{direction} {symbol} @ {entry_price:.6f} | Size: {position_size:.2f} USDT")
+                                    
+                                    # 🔥 FIX: Émettre l'événement UNE SEULE FOIS
+                                    await ws_manager.emit('position_opened', position.to_dict())
+                                    
+                                    # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend
+                                    try:
+                                        current_price_data = await price_provider.get_price(symbol)
+                                        if current_price_data:
+                                            current_price = current_price_data.get('lastPrice', entry_price) if isinstance(current_price_data, dict) else entry_price
+                                            pnl = position_manager._calculate_pnl(current_price)
+                                            pnl_pct = pnl / 100
+                                            pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
+                                            
+                                            await ws_manager.emit('position_update', {
+                                                'symbol': position.symbol,
+                                                'direction': position.direction,
+                                                'entry': position.entry,
+                                                'current_price': current_price,
+                                                'sl': position.sl,
+                                                'tp': position.tp,
+                                                'pnl': pnl,
+                                                'pnl_usdt': pnl_usdt,
+                                                'size': position.size,
+                                                'break_even_set': position.break_even_set,
+                                                'partial_tp_sold': position.partial_tp_sold
+                                            })
+                                            logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ Erreur émission prix initial: {e}")
+                                    
+                                    logger.info(
+                                        f"🟢 POSITION OUVERTE (Auto): {direction} {symbol} | "
+                                        f"Entry: {entry_price:.6f} | Size: {position_size:.2f} USDT (position.size={position.size:.2f}) | "
+                                        f"SL: {position.sl:.6f} | TP: {position.tp:.6f} | "
+                                        f"Lock maintenu jusqu'à la fin"
+                                    )
+                                    
+                                    # Ne prendre que le premier setup valide - sortir immédiatement
+                                    break
+                                    
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur ouverture position auto pour {symbol}: {e}")
+                                    import traceback
+                                    logger.error(f"Traceback: {traceback.format_exc()}")
+                                    await add_log('ERROR', 'Erreur ouverture position', f"{symbol}: {str(e)}")
+                                    continue
+                else:
+                    # 🔥 FIX: Log détaillé quand aucun setup n'est trouvé
+                    # Note: rejection_reasons est défini dans le bloc if scan_tasks ci-dessus
+                    await add_log('INFO', 'Aucun setup', 
+                        'Aucun setup valide trouvé sur les paires analysées')
+    
+    # 🔥 FIX: Le lock scanner_lock est automatiquement libéré ici (fin du bloc async with)
+
+
+async def scan_pair_for_setup(symbol: str):
+    """Scanner une paire pour trouver un setup"""
+    init_instances()
+    
+    if not analyzer:
+        logger.warning(f"Analyzer non disponible pour {symbol}")
+        return None
+    
+    # 🔥 FIX: Ajouter log pour voir que l'analyse démarre
+    logger.info(f"🔍 Analyse {symbol}...")
+    
+    try:
+        # 🔥 FIX: Récupérer paramètres depuis TRADING_CONFIG
+        from config import TRADING_CONFIG
+        use_confluence = TRADING_CONFIG.get('use_confluence', False)
+        volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
+        trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
+        
+        # 🔥 FIX: Calculer trend_data avec le timeframe configuré
+        trend_data = await analyzer.calculate_trend_data(symbol, trend_timeframe)
+        if trend_data:
+            logger.debug(f"📊 {symbol}: Trend {trend_timeframe} = {trend_data['trend']} ({trend_data['strength']}, bonus={trend_data['bonus']})")
+        
+        # 🔥 PHASE 6: Récupérer positions actives pour Correlation Filter
+        active_positions = []
+        if position_manager and position_manager.active_position:
+            active_positions = [position_manager.active_position.symbol]
+        
+        # 🔥 FIX: Analyser avec retour de raison si pas de setup + paramètres configurables
+        analysis = await analyzer.analyze_pair(
+            symbol, 
+            trend_data=trend_data,  # 🔥 Utiliser trend_data calculé
+            volume_multiplier=volume_multiplier,
+            use_confluence=use_confluence,
+            return_reason=True,
+            active_positions=active_positions,  # 🔥 PHASE 6: Correlation Filter
+            position_manager=position_manager  # 🔥 PHASE 6: Recovery Mode
+        )
+        
+        # 🔥 FIX: Envoyer événement SocketIO pour mettre à jour le compteur de validation
+        # Un setup valide = validé (true), pas de setup = non validé (false)
+        is_valid = False
+        if analysis:
+            if isinstance(analysis, dict) and 'reason' in analysis:
+                # C'est une raison de rejet, pas un setup
+                reason = analysis.get('reason', 'Inconnu')
+                logger.info(f"❌ {symbol}: Pas de setup - {reason}")
+                is_valid = False
+            else:
+                # C'est un vrai setup
+                logger.info(f"✅ {symbol}: Setup trouvé - {analysis.get('direction', 'N/A')} - {len(analysis.get('signals', []))} conditions")
+                is_valid = True
+        else:
+            # Si analysis est None, c'est que les deux timeframes ont retourné None
+            logger.warning(f"⚠️ {symbol}: Analyse retournée None - Vérifier les erreurs dans analyze_timeframe")
+            is_valid = False
+        
+        # Envoyer événement pour mettre à jour le compteur
+        await ws_manager.emit('volume_validation_update', {
+            'symbol': symbol,
+            'valid': is_valid
+        })
+        
+        if analysis and not (isinstance(analysis, dict) and 'reason' in analysis):
+            return analysis
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur scan {symbol}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Envoyer événement pour erreur (non validé)
+        await ws_manager.emit('volume_validation_update', {
+            'symbol': symbol,
+            'valid': False
+        })
+        return None
+
+
+async def position_check_loop_callback():
+    """Callback appelé toutes les 2 secondes pour vérifier la position"""
+    init_instances()
+    
+    # Vérifier si on a une position active
+    if not position_manager or not position_manager.active_position:
+        return
+    
+    if not price_provider:
+        return
+    
+    try:
+        # Récupérer prix actuel
+        current_price_data = await price_provider.get_price(position_manager.active_position.symbol)
+        if not current_price_data:
+            return
+        
+        current_price = current_price_data.get('lastPrice', 0) if isinstance(current_price_data, dict) else current_price_data
+        
+        # Check position (renvoie None ou raison de fermeture)
+        close_reason = await position_manager.check_position(current_price)
+        
+        # 🔥 FIX: Émettre position_update même si pas de fermeture (pour affichage frontend)
+        if not close_reason:
+            # Calculer PnL pour affichage
+            position = position_manager.active_position
+            if position:
+                pnl = position_manager._calculate_pnl(current_price)
+                # 🔥 FIX: Calculer PnL USDT correctement selon direction (incluant TP partiel)
+                pnl_pct = pnl / 100  # Convertir % en décimal
+                
+                # Taille de position à considérer (50% si TP partiel vendu)
+                size_to_consider = position.size
+                partial_profit_usdt = 0.0
+                if hasattr(position, 'partial_tp_sold') and position.partial_tp_sold:
+                    size_to_consider = getattr(position, 'size_remaining', position.size * 0.5)
+                    partial_profit_usdt = getattr(position, 'partial_profit_usdt', 0.0)
+                
+                # 🔥 FIX: Calculer PnL USDT correctement (comme dans position_manager)
+                if position.direction == 'LONG':
+                    # LONG: profit quand prix monte
+                    price_diff = current_price - position.entry
+                    pnl_usdt = size_to_consider * (price_diff / position.entry)
+                else:  # SHORT
+                    # SHORT: profit quand prix baisse
+                    price_diff = position.entry - current_price
+                    pnl_usdt = size_to_consider * (price_diff / position.entry)
+                
+                # Ajouter le profit du TP partiel si vendu
+                pnl_usdt += partial_profit_usdt
+                
+                # 🔥 FIX: Log détaillé pour debug
+                logger.debug(
+                    f"📊 Position check: {position.symbol} {position.direction} | "
+                    f"Entry={position.entry:.6f} | Prix={current_price:.6f} | "
+                    f"PnL={pnl:.2f}% | PnL USDT={pnl_usdt:.4f} | "
+                    f"SL={position.sl:.6f} | TP={position.tp:.6f}"
+                )
+                
+                # Émettre update pour le frontend
+                update_data = {
+                    'symbol': position.symbol,
+                    'direction': position.direction,
+                    'entry': position.entry,
+                    'current_price': current_price,
+                    'sl': position.sl,
+                    'tp': position.tp,
+                    'pnl': pnl,
+                    'pnl_usdt': pnl_usdt,
+                    'size': position.size,
+                    'break_even_set': position.break_even_set,
+                    'partial_tp_sold': position.partial_tp_sold
+                }
+                await ws_manager.emit('position_update', update_data)
+                
+                # 🔥 FIX: Log pour vérifier que le prix est bien émis
+                logger.debug(
+                    f"📡 position_update émis: {position.symbol} | "
+                    f"Prix actuel: {current_price:.6f} | "
+                    f"Size: {position.size:.2f} USDT | "
+                    f"PnL: {pnl:.2f}% ({pnl_usdt:.2f} USDT)"
+                )
+        
+        if close_reason:
+            # Position fermée
+            # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
+            async with position_lock:
+                result = position_manager.close_position(close_reason, exit_price=current_price)
+                app_state['active_position'] = None
+                
+                # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
+                if result:
+                    result['timestamp'] = datetime.now().isoformat()
+                    app_state['trade_history'].append(result)
+                    if len(app_state['trade_history']) > 1000:
+                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    save_trade_history()
+                
+                # 🔥 FIX: Désactiver callback WebSocket si position fermée
+                if price_provider:
+                    price_provider.set_socketio_callback(None, None)
+                
+                # 🔥 FIX: Log pour debug
+                logger.info(
+                    f"🔒 Position fermée avec lock: {close_reason} | "
+                    f"app_state['active_position']=None, "
+                    f"position_manager.active_position={position_manager.active_position}"
+                )
+            
+            await add_log('INFO', 'Position fermée', f"{close_reason} - PnL: {result.get('pnl_usdt', 0):.2f} USDT")
+            await ws_manager.emit('position_closed', result)
+            
+            # 🔥 FIX: Ne PAS mettre à jour les stats ici - elles sont gérées dans le frontend
+            # pour éviter le double comptage. Le frontend reçoit position_closed et incrémente les stats.
+            # Les stats backend (app_state['stats']) sont utilisées pour autre chose si nécessaire.
+            
+            # 🔥 JOUR 5: Métriques
+            if get_metrics_collector:
+                metrics = get_metrics_collector()
+                if metrics:
+                    metrics.positions_closed += 1
+                    if result.get('pnl_usdt', 0) > 0:
+                        metrics.trades_wins += 1
+                    else:
+                        metrics.trades_losses += 1
+    
+    except Exception as e:
+        logger.error(f"Erreur dans position check loop: {e}")
+        await add_log('ERROR', 'Erreur position check', str(e))
+
+
+async def scalability_refresh_loop_callback():
+    """Callback appelé toutes les 90 secondes pour rafraîchir la liste des top pairs"""
+    if not app_state['is_scanning']:
+        return
+    
+    # 🔥 FIX: Initialiser avant de vérifier position_manager
+    init_instances()
+    
+    # 🔥 FIX: Ne pas rafraîchir si on a une position active (pour éviter interruption du TP partiel)
+    if app_state['active_position'] or (position_manager and position_manager.active_position):
+        logger.info("⏸️ Scalability refresh ignoré - Position active en cours")
+        return
+    
+    if not scanner:
+        return
+    
+    try:
+        await add_log('INFO', 'Scalability refresh', 'Rafraîchissement des top pairs...')
+        
+        top_pairs = await scanner.scan_top_pairs(20)
+        app_state['top_pairs'] = top_pairs
+        
+        # 🔥 OPTIMISATION: Invalider cache quand top_pairs change
+        if hasattr(app, '_top_pairs_cache'):
+            app._top_pairs_cache.pop('top_pairs', None)
+        
+        await add_log('INFO', 'Scalability refresh', f'{len(top_pairs)} paires scalables')
+        await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+        
+        # 🔥 JOUR 3: Mettre à jour WebSocket avec les nouvelles top pairs
+        if price_provider and top_pairs:
+            # Arrêter l'ancien WebSocket
+            await price_provider.stop_websocket()
+            
+            # Démarrer avec les nouvelles paires
+            symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            if symbols:
+                try:
+                    await price_provider.start_websocket(symbols)
+                    await add_log('INFO', 'WebSocket mis à jour', f'{len(symbols)} symboles')
+                except Exception as e:
+                    logger.warning(f"Erreur démarrage WebSocket: {e}")
+    
+    except Exception as e:
+        logger.error(f"Erreur scalability refresh: {e}")
+        await add_log('ERROR', 'Erreur scalability refresh', str(e))
+
+
 def init_instances():
-    """Initialiser les instances et injecter les d├®pendances dans les modules"""
+    """Initialiser les instances (après import)"""
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
     global analytics_db, notification_manager, session_id
-
-    # ­ƒöÑ ARCHITECTURE V2: Initialiser Analytics DB
+    
+    # 🔥 ARCHITECTURE V2: Initialiser Analytics DB
     if not analytics_db and AnalyticsDatabase:
         from config import ANALYTICS_DB_PATH
         import time
-
-        # Cr├®er dossier data/ si n├®cessaire
+        
+        # Créer dossier data/ si nécessaire
         os.makedirs(os.path.dirname(ANALYTICS_DB_PATH) if os.path.dirname(ANALYTICS_DB_PATH) else "data", exist_ok=True)
-
-        # ­ƒöÑ ARCHITECTURE V2: AnalyticsDatabase s'initialise automatiquement dans __init__
+        
+        # 🔥 ARCHITECTURE V2: AnalyticsDatabase s'initialise automatiquement dans __init__
         try:
-            # R├®cup├®rer port instance pour multi-instances
+            # Récupérer port instance pour multi-instances
             port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
             analytics_db = AnalyticsDatabase(db_path=ANALYTICS_DB_PATH, instance_port=port)
-            # La DB est d├®j├á initialis├®e dans __init__ (via _init_database())
-            logger.info(f"Ô£à Analytics DB pr├¬te: {ANALYTICS_DB_PATH}")
+            # La DB est déjà initialisée dans __init__ (via _init_database())
+            logger.info(f"✅ Analytics DB prête: {ANALYTICS_DB_PATH}")
         except Exception as e:
-            logger.error(f"ÔØî Erreur init Analytics DB: {e}")
+            logger.error(f"❌ Erreur init Analytics DB: {e}")
             analytics_db = None
-
-        # G├®n├®rer session ID unique
+        
+        # Générer session ID unique
         if not session_id:
             session_id = f"live_{int(time.time())}"
-            logger.info(f"­ƒôØ Session ID: {session_id}")
-
+            logger.info(f"📝 Session ID: {session_id}")
+        
         # Injecter Analytics DB dans API routes
         if set_analytics_db and analytics_db:
             set_analytics_db(analytics_db)
-
-        # ­ƒöÑ NOUVEAU: Injecter Position Manager, Notification Manager et instance port
-        # R├®cup├®rer port instance pour multi-instances
+        
+        # 🔥 NOUVEAU: Injecter Position Manager, Notification Manager et instance port
+        # Récupérer port instance pour multi-instances
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-
+        
         if set_instance_port:
             set_instance_port(port)
-
-    # ­ƒöÑ ARCHITECTURE V2: Initialiser Notification Manager
+    
+    # 🔥 ARCHITECTURE V2: Initialiser Notification Manager
     if not notification_manager and create_notification_manager:
         from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
         from config import NOTIFICATION_BATCHING_ENABLED, NOTIFICATION_THROTTLE_SECONDS
-
-        async def socketio_callback(event_type, data):
-            """Callback pour envoyer via SocketIO"""
-            await sio.emit(event_type, data)
-
-        # ­ƒöÑ NOUVEAU: R├®cup├®rer port instance pour multi-instances
+        
+        async def websocket_callback(event_type, data):
+            """Callback pour envoyer via WebSocket natif"""
+            await ws_manager.emit(event_type, data)
+        
+        # 🔥 NOUVEAU: Récupérer port instance pour multi-instances
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-
+        
         notification_manager = create_notification_manager(
             telegram_bot_token=TELEGRAM_BOT_TOKEN,
             telegram_chat_id=TELEGRAM_CHAT_ID,
-            socketio_callback=socketio_callback,
+            socketio_callback=websocket_callback,  # 🔥 MIGRATION COMPLÈTE: Utiliser websocket_callback
             enable_batching=NOTIFICATION_BATCHING_ENABLED,
-            instance_port=port  # ­ƒöÑ NOUVEAU: Passer instance_port
+            instance_port=port  # 🔥 NOUVEAU: Passer instance_port
         )
-
+        
         if TELEGRAM_ENABLED:
-            logger.info(f"­ƒô▒ Notification Manager initialis├® (Telegram activ├®)")
+            logger.info(f"📱 Notification Manager initialisé (Telegram activé)")
         else:
-            logger.info(f"­ƒô▒ Notification Manager initialis├® (Telegram d├®sactiv├®)")
-
-        # ­ƒöÑ NOUVEAU: Injecter Notification Manager dans API routes (pour webhook Telegram)
+            logger.info(f"📱 Notification Manager initialisé (Telegram désactivé)")
+        
+        # 🔥 NOUVEAU: Injecter Notification Manager dans API routes (pour webhook Telegram)
         if set_notification_manager and notification_manager:
             set_notification_manager(notification_manager)
-
+    
     if not scanner and ScalabilityScanner:
         scanner = ScalabilityScanner()
     if not analyzer and TechnicalAnalyzer:
         analyzer = TechnicalAnalyzer()
     if not position_config and PositionConfig:
-        # ­ƒöÑ FIX: Initialiser PositionConfig depuis TRADING_CONFIG
+        # 🔥 FIX: Initialiser PositionConfig depuis TRADING_CONFIG
         from config import TRADING_CONFIG
         position_config = PositionConfig()
-
+        
         # Configurer TP/SL mode depuis TRADING_CONFIG
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-        # ­ƒöÑ PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
+        # 🔥 PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
         position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI')
-
+        
         # Configurer valeurs FIXE depuis TRADING_CONFIG
         position_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.25)
         position_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
         position_config.break_even_trigger = TRADING_CONFIG.get('break_even_trigger', 0.3)
         position_config.trailing_distance = TRADING_CONFIG.get('trailing_distance', 0.1)
-
+        
         # Configurer valeurs ATR depuis TRADING_CONFIG
         position_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
         position_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
         position_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         position_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
-
+    
     if not position_manager and PositionManager and position_config:
         position_manager = PositionManager(position_config)
-
-        # ­ƒöÑ ARCHITECTURE V2: Injecter analytics_db, notification_manager, session_id
+        
+        # 🔥 ARCHITECTURE V2: Injecter analytics_db, notification_manager, session_id
         if analytics_db:
             position_manager.analytics_db = analytics_db
-            position_manager.analytics_logger.analytics_db = analytics_db  # FIX: Mettre ├á jour analytics_logger aussi
-            logger.info("­ƒÆ¥ Analytics DB inject├® dans Position Manager")
-
+            logger.info("💾 Analytics DB injecté dans Position Manager")
+        
         if session_id:
             position_manager.session_id = session_id
-            logger.info(f"­ƒôØ Session ID inject├® dans Position Manager: {session_id}")
-
+            logger.info(f"📝 Session ID injecté dans Position Manager: {session_id}")
+        
         if notification_manager:
             position_manager.notification_manager = notification_manager
-            logger.info("­ƒôó Notification Manager inject├® dans Position Manager")
-
-        # ­ƒöÑ NOUVEAU: Injecter Position Manager dans API routes (pour webhook Telegram)
+            logger.info("📢 Notification Manager injecté dans Position Manager")
+        
+        # 🔥 NOUVEAU: Injecter Position Manager dans API routes (pour webhook Telegram)
         if set_position_manager and position_manager:
             set_position_manager(position_manager)
-
     if not price_provider and get_price_provider:
         price_provider = get_price_provider()
-
-    # ­ƒöÑ REFACTORISATION: Injecter les d├®pendances dans les modules
-    # Scanner router
-    if scanner_router:
-        if scanner and set_scanner_router:
-            set_scanner_router(scanner)
-        if analyzer and set_analyzer_router:
-            set_analyzer_router(analyzer)
-        if price_provider and set_price_provider_router:
-            set_price_provider_router(price_provider)
-        if set_app_state_scanner:
-            set_app_state_scanner(app_state)
-        if set_socketio_scanner:
-            set_socketio_scanner(sio)
-
-    # Dashboard router
-    if dashboard_router:
-        if scheduler and set_scheduler_dashboard:
-            set_scheduler_dashboard(scheduler)
-        if position_manager and set_position_manager_dashboard:
-            set_position_manager_dashboard(position_manager)
-        if set_app_state_dashboard:
-            set_app_state_dashboard(app_state)
-        if set_socketio_dashboard:
-            set_socketio_dashboard(sio)
-
-    # Scanner loop callback
-    if scanner_loop_callback:
-        if scanner and set_scanner_callback:
-            set_scanner_callback(scanner)
-        if analyzer and set_analyzer_callback:
-            set_analyzer_callback(analyzer)
-        if position_manager and set_position_manager_scanner:
-            set_position_manager_scanner(position_manager)
-        if price_provider and set_price_provider_scanner:
-            set_price_provider_scanner(price_provider)
-        if set_app_state_scanner_callback:
-            set_app_state_scanner_callback(app_state)
-        if set_socketio_scanner_callback:
-            set_socketio_scanner_callback(sio)
-        if set_scanner_lock:
-            set_scanner_lock(scanner_lock)
-
-    # Position check loop callback
-    if position_check_loop_callback:
-        if position_manager and set_position_manager_position_check:
-            set_position_manager_position_check(position_manager)
-        if price_provider and set_price_provider_position_check:
-            set_price_provider_position_check(price_provider)
-        if set_app_state_position_check:
-            set_app_state_position_check(app_state)
-        if set_socketio_position_check:
-            set_socketio_position_check(sio)
-        if set_position_lock_callback:
-            set_position_lock_callback(position_lock)
-        if analytics_db and set_analytics_db_position_check:
-            set_analytics_db_position_check(analytics_db)
-
-    # Scalability refresh callback
-    if scalability_refresh_loop_callback:
-        if scanner and set_scanner_scalability:
-            set_scanner_scalability(scanner)
-        if position_manager and set_position_manager_scalability:
-            set_position_manager_scalability(position_manager)
-        if price_provider and set_price_provider_scalability:
-            set_price_provider_scalability(price_provider)
-        if set_app_state_scalability:
-            set_app_state_scalability(app_state)
-        if set_socketio_scalability:
-            set_socketio_scalability(sio)
-
-    # ­ƒöÑ JOUR 3: Initialiser scheduler et configurer les callbacks
+    # 🔥 JOUR 3: Initialiser scheduler et configurer les callbacks
     if not scheduler and Scheduler:
         scheduler = Scheduler()
-        # Configurer les callbacks (import├®s depuis les modules)
-        if scanner_loop_callback:
-            scheduler.set_scanner_callback(scanner_loop_callback)
-        if position_check_loop_callback:
-            scheduler.set_position_check_callback(position_check_loop_callback)
-        if scalability_refresh_loop_callback:
-            scheduler.set_scalability_refresh_callback(scalability_refresh_loop_callback)
-
-
-# Routes FastAPI - Pages HTML
-
-@app.get("/")
-async def index(request: Request):
-    """Page principale - Servir frontend SvelteKit ou fallback HTML"""
-    # ­ƒöÑ FIX: Essayer de servir le frontend SvelteKit build
-    frontend_index = None
-    for build_path in ["frontend/build/client/index.html", 
-                       "frontend/.svelte-kit/output/client/index.html",
-                       "frontend/dist/index.html"]:
-        if os.path.exists(build_path):
-            frontend_index = build_path
-            break
-    
-    if frontend_index:
+        # Configurer les callbacks (définis après init_instances)
+        scheduler.set_scanner_callback(scanner_loop_callback)
+        scheduler.set_position_check_callback(position_check_loop_callback)
+        scheduler.set_scalability_refresh_callback(scalability_refresh_loop_callback)
+        
+        # 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les callbacks
         try:
-            with open(frontend_index, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            # ­ƒöÑ FIX: Remplacer les chemins relatifs pour fonctionner avec FastAPI
-            # SvelteKit utilise des chemins absolus, on doit les adapter
-            html_content = html_content.replace('href="/', 'href="/_app/')
-            html_content = html_content.replace('src="/', 'src="/_app/')
-            return HTMLResponse(content=html_content)
-        except Exception as e:
-            logger.warning(f"ÔÜá´©Å Erreur chargement frontend SvelteKit: {e}")
-    
-    # Fallback: servir template HTML basique
-    try:
-        return templates.TemplateResponse("index.html", {"request": request})
-    except Exception:
-        # Si pas de template, retourner message simple
-        return HTMLResponse("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Trade Cursor v7.0</title>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body>
-            <h1>Trade Cursor v7.0 - Backend API</h1>
-            <p>Le frontend SvelteKit n'est pas disponible.</p>
-            <p>Pour lancer le frontend:</p>
-            <ol>
-                <li>Ouvrir un terminal dans le dossier <code>frontend/</code></li>
-                <li>Ex├®cuter <code>npm install</code> puis <code>npm run dev</code></li>
-                <li>Acc├®der ├á <code>http://localhost:3000</code></li>
-            </ol>
-            <p>Ou build le frontend avec <code>npm run build</code> et red├®marrer ce serveur.</p>
-            <hr>
-            <p><a href="/api/health">API Health Check</a></p>
-            <p><a href="/api/state">API State</a></p>
-        </body>
-        </html>
-        """)
+            from core.callbacks.scanner_loop import set_websocket_manager
+            if set_websocket_manager:
+                set_websocket_manager(ws_manager)
+        except ImportError:
+            pass  # Callback module optionnel
+
+
+# Routes FastAPI
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    """Page principale - HTML copié de v5.1"""
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.get("/favicon.ico")
 async def favicon():
-    """Favicon (├®vite 404)"""
+    """Favicon (évite 404)"""
     from fastapi.responses import Response
     # Retourner un favicon vide (1x1 pixel transparent)
     # En production, tu peux ajouter un vrai favicon.ico dans static/
@@ -781,98 +1006,285 @@ async def favicon():
 
 @app.get("/dashboard/charts", response_class=HTMLResponse)
 async def dashboard_charts(request: Request):
-    """­ƒöÑ ARCHITECTURE V2: Dashboard graphiques avec Chart.js"""
+    """🔥 ARCHITECTURE V2: Dashboard graphiques avec Chart.js"""
     try:
         return templates.TemplateResponse("dashboard_charts.html", {"request": request})
     except Exception as e:
-        logger.error(f"ÔØî Erreur dashboard: {e}")
+        logger.error(f"❌ Erreur dashboard: {e}")
         return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/backtest", response_class=HTMLResponse)
-async def backtest(request: Request):
-    """Page backtest"""
+async def backtest_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface Backtesting"""
     try:
         return templates.TemplateResponse("backtest.html", {"request": request})
     except Exception as e:
-        logger.error(f"ÔØî Erreur backtest page: {e}")
+        logger.error(f"❌ Erreur backtest page: {e}")
         return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/optimize", response_class=HTMLResponse)
-async def optimize(request: Request):
-    """Page optimisation ML"""
+async def optimize_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface ML Optimization"""
     try:
         return templates.TemplateResponse("optimize.html", {"request": request})
     except Exception as e:
-        logger.error(f"ÔØî Erreur optimize page: {e}")
+        logger.error(f"❌ Erreur optimize page: {e}")
         return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/analytics", response_class=HTMLResponse)
-async def analytics(request: Request):
-    """Page analytics & stats"""
+async def analytics_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface Analytics"""
     try:
         return templates.TemplateResponse("analytics.html", {"request": request})
     except Exception as e:
-        logger.error(f"ÔØî Erreur analytics page: {e}")
+        logger.error(f"❌ Erreur analytics page: {e}")
         return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/settings", response_class=HTMLResponse)
-async def settings(request: Request):
-    """Page param├¿tres"""
+async def settings_page(request: Request):
+    """🔥 ARCHITECTURE V2: Interface Paramètres"""
     try:
         return templates.TemplateResponse("settings.html", {"request": request})
     except Exception as e:
-        logger.error(f"ÔØî Erreur settings page: {e}")
+        logger.error(f"❌ Erreur settings page: {e}")
         return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
-# Routes API - Health Check & Price & WebSocket
+@app.get("/api/status")
+async def api_status():
+    """État global de l'application"""
+    return JSONResponse(app_state)
 
-@app.get("/api/health")
-async def api_health():
-    """Health check endpoint pour monitoring"""
+
+@app.get("/api/state")
+async def api_get_complete_state():
+    """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
+    init_instances()
+    from config import TRADING_CONFIG
+    
+    # Récupérer position active
+    import time
+    active_position_dict = None
+    if position_manager and position_manager.active_position:
+        active_position = position_manager.active_position
+        active_position_dict = active_position.to_dict()
+        active_position_dict['timestamp'] = time.time()
+    
+    # Récupérer stats depuis Analytics DB
+    stats_dict = {
+        'total_trades': 0,
+        'wins': 0,
+        'losses': 0,
+        'winrate': 0.0
+    }
+    if analytics_db:
+        try:
+            trades = analytics_db.get_trades(limit=10000)
+            if trades:
+                total = len(trades)
+                wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                losses = total - wins
+                winrate = (wins / total * 100) if total > 0 else 0.0
+                stats_dict = {
+                    'total_trades': total,
+                    'wins': wins,
+                    'losses': losses,
+                    'winrate': winrate
+                }
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération stats: {e}")
+    
+    # Récupérer historique trades
+    trades_history = []
+    if analytics_db:
+        try:
+            trades_history = analytics_db.get_trades(limit=50)
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération historique: {e}")
+    
+    # 🔥 NOUVEAU: Filtrer les trades par session_id actuelle (seulement cette session)
+    current_session_trades = []
+    if analytics_db and session_id:
+        try:
+            # Récupérer seulement les trades de la session actuelle
+            all_trades = analytics_db.get_trades(limit=10000)
+            current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
+            
+            # Recalculer stats pour cette session seulement
+            if current_session_trades:
+                total = len(current_session_trades)
+                wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0)
+                losses = total - wins
+                winrate = (wins / total * 100) if total > 0 else 0.0
+                stats_dict = {
+                    'total_trades': total,
+                    'wins': wins,
+                    'losses': losses,
+                    'winrate': winrate
+                }
+            else:
+                stats_dict = {
+                    'total_trades': 0,
+                    'wins': 0,
+                    'losses': 0,
+                    'winrate': 0.0
+                }
+        except Exception as e:
+            logger.error(f"❌ Erreur filtrage trades par session: {e}")
+    
     return JSONResponse({
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "version": "7.0.0",
-        "backend": "FastAPI",
-        "websocket": "Socket.IO"
+        'success': True,
+        'session_id': session_id,  # 🔥 NOUVEAU: Inclure session_id pour détection nouvelle session
+        'config': {
+            # Seuils configurables
+            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+            'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+            'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+            'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+            # Trend timeframe
+            'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+            # Capital
+            'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+            'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+            # Confluence
+            'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+            # TP/SL Mode
+            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+            'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+            'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+            # Volume multiplier
+            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+            # Min score
+            'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+        },
+        'scanner': {
+            'is_scanning': app_state.get('is_scanning', False),
+            'top_pairs': app_state.get('top_pairs', [])
+        },
+        'position': {
+            'active': active_position_dict is not None,
+            'data': active_position_dict
+        },
+        'stats': stats_dict,
+        'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
+        'timestamp': time.time()
     })
+
+
+@app.post("/api/start")
+async def api_start():
+    """Démarrer le scanner et le scheduler"""
+    init_instances()
+    
+    # 🔥 JOUR 3: Si pas de top_pairs, faire un scan initial
+    if not app_state['top_pairs']:
+        await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
+        if scanner:
+            top_pairs = await scanner.scan_top_pairs(20)
+            app_state['top_pairs'] = top_pairs
+            await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+            
+            # Démarrer WebSocket pour les top pairs
+            if price_provider and top_pairs:
+                symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                if symbols:
+                    try:
+                        await price_provider.start_websocket(symbols)
+                        await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                    except Exception as e:
+                        logger.warning(f"Erreur démarrage WebSocket: {e}")
+    
+    # 🔥 JOUR 3: Démarrer le scheduler
+    if scheduler:
+        scheduler.start()
+        logger.info("Scanner démarré")
+        await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
+        await ws_manager.emit('status', {'is_scanning': True})
+    else:
+        app_state['is_scanning'] = True
+        logger.info("Scanner démarré (sans scheduler)")
+        await ws_manager.emit('status', {'is_scanning': True})
+    
+    return JSONResponse({'status': 'started'})
+
+
+@app.post("/api/stop")
+async def api_stop():
+    """Arrêter le scanner et le scheduler"""
+    init_instances()
+    
+    # 🔥 JOUR 3: Arrêter le scheduler
+    if scheduler:
+        await scheduler.stop_async()
+        logger.info("Scanner arrêté")
+    
+    app_state['is_scanning'] = False
+    await ws_manager.emit('status', {'is_scanning': False})
+    return JSONResponse({'status': 'stopped'})
+
+
+# 🔥 v7.0: Jour 1 - Nouveaux endpoints
+
+@app.get("/api/scanner/top-pairs")
+async def api_get_top_pairs():
+    """Récupérer les top pairs"""
+    return JSONResponse({'pairs': app_state['top_pairs']})
+
+
+@app.post("/api/scanner/start")
+async def api_scanner_start(request: Request):
+    """Démarrer scanner scalability"""
+    if app_state['is_scanning']:
+        return JSONResponse({'error': 'Déjà en cours'}, status_code=400)
+    
+    init_instances()
+    data = await request.json() if hasattr(request, 'json') else {}
+    top_n = data.get('top_n', 20) if isinstance(data, dict) else 20
+    
+    app_state['is_scanning'] = True
+    await add_log('INFO', 'Scanner démarré', f'Top {top_n} paires')
+    
+    # Lancer scan asynchrone
+    if scanner:
+        asyncio.create_task(scan_top_pairs_task(top_n))
+    
+    return JSONResponse({'status': 'started'})
 
 
 @app.get("/api/price/{symbol}")
 async def api_get_price(symbol: str):
-    """R├®cup├®rer prix depuis WebSocket ou REST avec info de debug"""
+    """Récupérer prix depuis WebSocket ou REST avec info de debug"""
     init_instances()
     if not price_provider:
         return JSONResponse({'error': 'Price provider not available'}, status_code=503)
-
+    
     try:
         import time
         price_data = await price_provider.get_price(symbol)
         if price_data:
-            # ­ƒöÑ DEBUG: Ajouter info sur la source (WebSocket ou REST)
-            is_ws = (price_provider.use_websocket and
-                    price_provider.ws_manager and
+            # 🔥 DEBUG: Ajouter info sur la source (WebSocket ou REST)
+            is_ws = (price_provider.use_websocket and 
+                    price_provider.ws_manager and 
                     price_provider.ws_manager.connected)
-
+            
             async with price_provider.cache_lock:
                 from_cache = symbol in price_provider.price_cache
-
+            
             source = "WebSocket" if (is_ws and from_cache) else "REST"
             price_data['_source'] = source
-
-            # Calculer l'├óge du prix (en secondes)
+            
+            # Calculer l'âge du prix (en secondes)
             if 'timestamp' in price_data:
                 age = time.time() - price_data['timestamp']
                 price_data['_age_seconds'] = round(age, 2)
             else:
                 price_data['timestamp'] = time.time()
                 price_data['_age_seconds'] = 0
-
+            
             return JSONResponse(price_data)
         return JSONResponse({'error': 'Price not available'}, status_code=404)
     except Exception as e:
@@ -883,29 +1295,29 @@ async def api_get_price(symbol: str):
 @app.get("/api/prices/live")
 async def api_get_live_prices():
     """
-    ­ƒöÑ TEST: R├®cup├®rer tous les prix en cache WebSocket
-    Utile pour v├®rifier que les prix sont bien mis ├á jour en temps r├®el
+    🔥 TEST: Récupérer tous les prix en cache WebSocket
+    Utile pour vérifier que les prix sont bien mis à jour en temps réel
     """
     init_instances()
-
+    
     if not price_provider:
         return JSONResponse({'error': 'Price provider not available'}, status_code=503)
-
+    
     result = {
         "websocket_connected": False,
         "cache_size": 0,
         "prices": {},
         "timestamp": None
     }
-
+    
     try:
         import time
-
-        # V├®rifier ├®tat WebSocket
+        
+        # Vérifier état WebSocket
         if price_provider.ws_manager:
             result["websocket_connected"] = price_provider.ws_manager.connected
-
-        # R├®cup├®rer tous les prix du cache
+        
+        # Récupérer tous les prix du cache
         async with price_provider.cache_lock:
             result["cache_size"] = len(price_provider.price_cache)
             for symbol, price_data in price_provider.price_cache.items():
@@ -916,86 +1328,78 @@ async def api_get_live_prices():
                     "age_seconds": round(age, 2),
                     "timestamp": price_data.get('timestamp', 0)
                 }
-
+        
         result["timestamp"] = time.time()
-
+        
         return JSONResponse(result)
-
+        
     except Exception as e:
-        logger.error(f"Erreur r├®cup├®ration prix live: {e}")
+        logger.error(f"Erreur récupération prix live: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
 @app.post("/api/websocket/start")
 async def api_start_websocket():
     """
-    ­ƒöÑ D├®marrer manuellement le WebSocket pour les top pairs
-    Utile si le WebSocket n'a pas ├®t├® d├®marr├® automatiquement
+    🔥 Démarrer manuellement le WebSocket pour les top pairs
+    Utile si le WebSocket n'a pas été démarré automatiquement
     """
     init_instances()
-
+    
     if not price_provider:
         return JSONResponse({'error': 'Price provider not available'}, status_code=503)
-
+    
     if not app_state['top_pairs']:
         return JSONResponse({
             'error': 'Aucune top pair disponible. Lancez d\'abord /api/scanner/start',
             'status': 'no_pairs'
         }, status_code=400)
-
+    
     try:
-        # R├®cup├®rer les top 30 pairs
+        # Récupérer les top 30 pairs
         symbols = [p.get('symbol', '') for p in app_state['top_pairs'][:30] if p.get('symbol')]
-
+        
         if not symbols:
-            return JSONResponse({'error': 'Aucun symbole valide trouv├®'}, status_code=400)
-
-        # D├®marrer WebSocket
+            return JSONResponse({'error': 'Aucun symbole valide trouvé'}, status_code=400)
+        
+        # Démarrer WebSocket
         await price_provider.start_websocket(symbols)
-
+        
         return JSONResponse({
             'status': 'started',
             'symbols_count': len(symbols),
             'symbols': symbols[:10]  # Afficher les 10 premiers
         })
-
+        
     except Exception as e:
-        # Code 1000 = fermeture normale WebSocket (pas une vraie erreur)
-        error_msg = str(e)
-        if "1000" in error_msg and ("OK" in error_msg or "Normal" in error_msg):
-            logger.info(f"Ôä╣´©Å WebSocket ferm├® normalement: {e}")
-            return JSONResponse({'status': 'closed_normally', 'message': str(e)})
-        else:
-            logger.error(f"Erreur d├®marrage WebSocket: {e}")
-            return JSONResponse({'error': str(e)}, status_code=500)
+        logger.error(f"Erreur démarrage WebSocket: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
 
-
-# Routes API - Analyze
 
 @app.get("/api/analyze/{symbol}")
 async def api_analyze_symbol(
-    symbol: str,
-    tf: str = Query('1m', description="Timeframe (pour compatibilit├®)"),
+    symbol: str, 
+    tf: str = Query('1m', description="Timeframe (pour compatibilité)"),
     use_confluence: bool = Query(None, description="True = 1m ET 5m, False = 1m OU 5m"),
     volume_multiplier: float = Query(None, description="Multiplicateur de volume 0.1-2.0"),
     trend_timeframe: str = Query(None, description="Timeframe pour trend_data (5m, 15m, 30m, 1h)")
 ):
     """
-    Analyser un symbole avec param├¿tres configurables
-
+    Analyser un symbole avec paramètres configurables
+    
     Args:
         symbol: Symbole de la paire
-        tf: Timeframe (1m ou 5m) - pour compatibilit├®, mais utilise analyze_pair maintenant
-        use_confluence: True = 1m ET 5m, False = 1m OU 5m (d├®faut: depuis TRADING_CONFIG)
-        volume_multiplier: Multiplicateur de volume 0.1-2.0 (d├®faut: depuis TRADING_CONFIG)
-        trend_timeframe: Timeframe pour calculer trend_data (d├®faut: depuis TRADING_CONFIG)
+        tf: Timeframe (1m ou 5m) - pour compatibilité, mais utilise analyze_pair maintenant
+        use_confluence: True = 1m ET 5m, False = 1m OU 5m (défaut: depuis TRADING_CONFIG)
+        volume_multiplier: Multiplicateur de volume 0.1-2.0 (défaut: depuis TRADING_CONFIG)
+        trend_timeframe: Timeframe pour calculer trend_data (défaut: depuis TRADING_CONFIG)
     """
     init_instances()
     if not analyzer:
         return JSONResponse({'error': 'Analyzer not available'}, status_code=503)
-
+    
     try:
-        # ­ƒöÑ FIX: R├®cup├®rer valeurs depuis TRADING_CONFIG si non fournies
+        # 🔥 FIX: Récupérer valeurs depuis TRADING_CONFIG si non fournies
         from config import TRADING_CONFIG
         if use_confluence is None:
             use_confluence = TRADING_CONFIG.get('use_confluence', False)
@@ -1003,26 +1407,26 @@ async def api_analyze_symbol(
             volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
         if trend_timeframe is None:
             trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
-
-        # ­ƒöÑ FIX: Calculer trend_data avec le timeframe fourni ou configur├®
+        
+        # 🔥 FIX: Calculer trend_data avec le timeframe fourni ou configuré
         trend_data = await analyzer.calculate_trend_data(symbol, trend_timeframe)
-
-        # ­ƒöÑ PHASE 6: R├®cup├®rer positions actives pour Correlation Filter
+        
+        # 🔥 PHASE 6: Récupérer positions actives pour Correlation Filter
         active_positions = []
         if position_manager and position_manager.active_position:
             active_positions = [position_manager.active_position.symbol]
-
-        # ­ƒöÑ FIX: Utiliser analyze_pair au lieu de analyze_symbol pour supporter confluence et volume_multiplier
+        
+        # 🔥 FIX: Utiliser analyze_pair au lieu de analyze_symbol pour supporter confluence et volume_multiplier
         analysis = await analyzer.analyze_pair(
-            symbol,
-            trend_data=trend_data,  # ­ƒöÑ Utiliser trend_data calcul├®
+            symbol, 
+            trend_data=trend_data,  # 🔥 Utiliser trend_data calculé
             volume_multiplier=volume_multiplier,
             use_confluence=use_confluence,
             return_reason=False,
-            active_positions=active_positions,  # ­ƒöÑ PHASE 6: Correlation Filter
-            position_manager=position_manager  # ­ƒöÑ PHASE 6: Recovery Mode
+            active_positions=active_positions,  # 🔥 PHASE 6: Correlation Filter
+            position_manager=position_manager  # 🔥 PHASE 6: Recovery Mode
         )
-
+        
         if analysis:
             return JSONResponse({'analysis': analysis})
         return JSONResponse({'analysis': None})
@@ -1031,7 +1435,7 @@ async def api_analyze_symbol(
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-# Routes API - Position Management
+
 
 @app.post("/api/position/open")
 async def api_open_position(request: Request):
@@ -1039,64 +1443,55 @@ async def api_open_position(request: Request):
     init_instances()
     if not position_manager:
         return JSONResponse({'error': 'Position manager not available'}, status_code=503)
-
-    # ­ƒöÑ FIX: Utiliser le m├¬me lock que le scanner pour ├®viter les ouvertures multiples
+    
+    # 🔥 FIX: Utiliser le même lock que le scanner pour éviter les ouvertures multiples
     async with position_lock:
-        # V├®rifier qu'on n'a pas d├®j├á une position active
+        # Vérifier qu'on n'a pas déjà une position active
         if app_state['active_position'] or (position_manager and position_manager.active_position):
-            return JSONResponse({'error': 'Une position est d├®j├á active'}, status_code=400)
-
+            return JSONResponse({'error': 'Une position est déjà active'}, status_code=400)
+        
         try:
             data = await request.json() if hasattr(request, 'json') else {}
             data = data if isinstance(data, dict) else {}
-
-            # V├®rifier donn├®es minimales
+            
+            # Vérifier données minimales
             if not data or 'symbol' not in data:
                 return JSONResponse({'error': 'Missing symbol'}, status_code=400)
-
-            # Double-check apr├¿s avoir acquis le lock
+            
+            # Double-check après avoir acquis le lock
             if app_state['active_position'] or (position_manager and position_manager.active_position):
-                return JSONResponse({'error': 'Une position est d├®j├á active (double-check)'}, status_code=400)
-
-            # ­ƒöÑ FIX: V├®rifier que entry est fourni et valide
+                return JSONResponse({'error': 'Une position est déjà active (double-check)'}, status_code=400)
+            
+            # 🔥 FIX: Vérifier que entry est fourni et valide
             entry = data.get('entry')
             if not entry or entry <= 0:
                 return JSONResponse({
-                    'error': f'Entry invalide ou manquant: {entry}. Entry doit ├¬tre > 0.'
+                    'error': f'Entry invalide ou manquant: {entry}. Entry doit être > 0.'
                 }, status_code=400)
-
-            # Extraire param├¿tres avec valeurs par d├®faut
-            condition_types = data.get('condition_types', [])  # ­ƒöÑ PHASE 5: Types de conditions
+            
+            # Extraire paramètres avec valeurs par défaut
+            condition_types = data.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
             position = position_manager.open_position(
                 symbol=data['symbol'],
                 direction=data.get('direction', 'LONG'),
-                entry=float(entry),  # ­ƒöÑ FIX: S'assurer que c'est un float
+                entry=float(entry),  # 🔥 FIX: S'assurer que c'est un float
                 size=data.get('size', 100.0),
                 atr=data.get('atr'),
                 atr5m=data.get('atr5m'),
                 confirmed_by=data.get('confirmed_by', ''),
                 scalability_data=data.get('scalability_data'),
-                condition_types=condition_types  # ­ƒöÑ PHASE 5: Types de conditions
+                condition_types=condition_types  # 🔥 PHASE 5: Types de conditions
             )
-
-            # ­ƒöÑ FIX: Stocker capital si fourni dans data
+            
+            # 🔥 FIX: Stocker capital si fourni dans data
             if 'capital' in data:
                 position.capital = data.get('capital')
-
-            app_state['active_position'] = position
-
-            await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
-            await sio.emit('position_opened', position.to_dict())
             
-            # ­ƒöÑ FIX: ├ëmettre l'├®tat mis ├á jour pour synchronisation temps r├®el
-            status_data = {
-                'is_scanning': app_state.get('is_scanning', False),
-                'active_position': position.to_dict(),
-                'stats': app_state.get('stats', {}),
-                'top_pairs': app_state.get('top_pairs', [])
-            }
-            await sio.emit('status', status_data)
-
+            app_state['active_position'] = position
+            
+            await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
+            await ws_manager.emit('position_opened', position.to_dict())
+            
             return JSONResponse({'status': 'opened', 'position': position.to_dict()})
         except Exception as e:
             logger.error(f"Erreur ouverture position: {e}")
@@ -1105,7 +1500,7 @@ async def api_open_position(request: Request):
 
 @app.get("/api/position/active")
 async def api_get_active_position():
-    """­ƒöÑ FIX: R├®cup├®rer position active pour restauration au refresh"""
+    """🔥 FIX: Récupérer position active pour restauration au refresh"""
     init_instances()
     if not position_manager or not position_manager.active_position:
         return JSONResponse({
@@ -1113,14 +1508,14 @@ async def api_get_active_position():
             'active': False,
             'position': None
         })
-
+    
     position = position_manager.active_position
     position_dict = position.to_dict()
-
-    # Ajouter timestamp pour v├®rifier fra├«cheur
+    
+    # Ajouter timestamp pour vérifier fraîcheur
     import time
     position_dict['timestamp'] = time.time()
-
+    
     return JSONResponse({
         'success': True,
         'active': True,
@@ -1134,32 +1529,27 @@ async def api_check_position():
     init_instances()
     if not position_manager or not position_manager.active_position:
         return JSONResponse({'status': 'no_position'})
-
+    
     if not price_provider:
         return JSONResponse({'error': 'Price provider not available'}, status_code=503)
-
+    
     try:
-        # R├®cup├®rer prix actuel
+        # Récupérer prix actuel
         price_data = await price_provider.get_price(position_manager.active_position.symbol)
         current_price = price_data.get('lastPrice') if price_data else None
-
+        
         if not current_price:
             return JSONResponse({'error': 'Price not available'}, status_code=500)
-
+        
         # Check position (renvoie None ou raison de fermeture)
         result = await position_manager.check_position(current_price)
-
-        # Construire r├®ponse
+        
+        # Construire réponse
         position = position_manager.active_position
-        # BUG #10 FIX: utiliser pnl_calculator au lieu de _calculate_pnl
-        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
-            entry=position.entry,
-            current_price=current_price,
-            direction=position.direction
-        )
+        pnl = position_manager._calculate_pnl(current_price)
         pnl_pct = pnl / 100
         pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
-
+        
         response = {
             'status': 'position_active',
             'symbol': position.symbol,
@@ -1171,12 +1561,12 @@ async def api_check_position():
             'tp': position.tp,
             'size': position.size
         }
-
+        
         if result:
-            # Position ├á fermer
+            # Position à fermer
             response['close_reason'] = result
-
-        await sio.emit('position_update', response)
+        
+        await ws_manager.emit('position_update', response)
         return JSONResponse(response)
     except Exception as e:
         logger.error(f"Erreur check position: {e}")
@@ -1185,450 +1575,525 @@ async def api_check_position():
 
 @app.post("/api/position/close")
 async def api_close_position():
-    """Cl├┤turer position manuellement"""
+    """Clôturer position manuellement"""
     init_instances()
-
-    # ­ƒöÑ FIX: Utiliser le lock pour synchroniser la fermeture
+    
+    # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
     async with position_lock:
-        # Double-check que la position existe AVANT et APR├êS avoir acquis le lock
+        # Double-check que la position existe AVANT et APRÈS avoir acquis le lock
         if not position_manager or not position_manager.active_position:
-            # V├®rifier aussi dans app_state
+            # Vérifier aussi dans app_state
             if not app_state.get('active_position'):
-                logger.warning("ÔÜá´©Å Tentative de fermeture sans position active (position_manager)")
+                logger.warning("⚠️ Tentative de fermeture sans position active (position_manager)")
                 return JSONResponse({'error': 'No active position'}, status_code=400)
             else:
                 # Position dans app_state mais pas dans position_manager - nettoyer app_state
-                logger.warning("ÔÜá´©Å Position dans app_state mais pas dans position_manager - nettoyage")
+                logger.warning("⚠️ Position dans app_state mais pas dans position_manager - nettoyage")
                 app_state['active_position'] = None
                 return JSONResponse({'error': 'Position state inconsistent'}, status_code=400)
-
+        
         if not price_provider:
             return JSONResponse({'error': 'Price provider not available'}, status_code=503)
-
+        
         try:
-            # R├®cup├®rer prix actuel
+            # Récupérer prix actuel
             price_data = await price_provider.get_price(position_manager.active_position.symbol)
             exit_price = price_data.get('lastPrice') if price_data else None
-
-            # Ô£à FIX: Logger et utiliser fallback si prix invalide
-            if not exit_price or exit_price <= 0:
-                logger.error(
-                    f"ÔØî Prix de sortie invalide pour {position_manager.active_position.symbol}: "
-                    f"price_data={price_data}, exit_price={exit_price}"
-                )
-                # Utiliser le dernier prix connu ou entry
-                if hasattr(position_manager, 'get_cached_price'):
-                    cached_price = position_manager.get_cached_price(
-                        position_manager.active_position.symbol
-                    )
-                    if cached_price and cached_price > 0:
-                        exit_price = cached_price
-                        logger.info(f"Ô£à Utilisation prix en cache: {exit_price}")
-                    else:
-                        exit_price = position_manager.active_position.entry
-                        logger.warning(f"ÔÜá´©Å Utilisation prix d'entr├®e: {exit_price}")
-                else:
-                    exit_price = position_manager.active_position.entry
-                    logger.warning(f"ÔÜá´©Å Utilisation prix d'entr├®e: {exit_price}")
-
-            # FIX: Ordre correct des param├¿tres (exit_price, reason)
-            result = position_manager.close_position(exit_price=exit_price, reason='MANUAL')
-
-            app_state['active_position'] = None
-
-            # ­ƒöÑ FIX: ├ëmettre IMM├ëDIATEMENT les ├®v├®nements Socket.IO AVANT les op├®rations lourdes
-            # pour synchronisation instantan├®e du frontend
-            status_data = {
-                'is_scanning': app_state.get('is_scanning', False),
-                'active_position': None,
-                'stats': app_state.get('stats', {}),
-                'top_pairs': app_state.get('top_pairs', []),
-                'trade_history': list(reversed(app_state.get('trade_history', [])[-20:]))
-            }
-            await sio.emit('status', status_data)
             
-            # ├ëmettre position_closed imm├®diatement pour que le frontend mette ├á jour l'historique
-            if result:
-                await sio.emit('position_closed', result)
-
-            # ­ƒöÑ FIX: Faire les op├®rations lourdes APR├êS l'├®mission Socket.IO (en arri├¿re-plan)
+            result = position_manager.close_position('MANUAL', exit_price=exit_price)
+            
+            app_state['active_position'] = None
+            
+            # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
             if result:
                 result['timestamp'] = datetime.now().isoformat()
                 app_state['trade_history'].append(result)
                 if len(app_state['trade_history']) > 1000:
                     app_state['trade_history'] = app_state['trade_history'][-1000:]
-                
-                # FIX: Mettre ├á jour les stats de session
-                update_session_stats(result)
-                
-                # ­ƒöÑ FIX: ├ëmettre stats_update via Socket.IO pour synchronisation temps r├®el
-                if app_state.get('stats'):
-                    await sio.emit('stats_update', app_state.get('stats'))
-                
-                # Sauvegarder l'historique en arri├¿re-plan (ne bloque pas la r├®ponse)
                 save_trade_history()
-
-            # ­ƒöÑ FIX: D├®sactiver callback WebSocket si position ferm├®e
+            
+            # 🔥 FIX: Désactiver callback WebSocket si position fermée
             if price_provider:
                 price_provider.set_socketio_callback(None, None)
-
+            
             logger.info(
-                f"­ƒöÆ Position ferm├®e manuellement avec lock: "
+                f"🔒 Position fermée manuellement avec lock: "
                 f"app_state['active_position']=None, "
                 f"position_manager.active_position={position_manager.active_position}"
             )
-
-            await add_log('INFO', 'Position cl├┤tur├®e', 'Manuel')
-
+            
+            await add_log('INFO', 'Position clôturée', 'Manuel')
+            await ws_manager.emit('position_closed', result)
+            
             return JSONResponse(result)
         except Exception as e:
-            logger.error(f"Erreur cl├┤ture position: {e}")
+            logger.error(f"Erreur clôture position: {e}")
             return JSONResponse({'error': str(e)}, status_code=500)
 
 
 # Helper async tasks
 
 async def scan_top_pairs_task(n):
-    """T├óche asynchrone pour scanner top pairs"""
+    """Tâche asynchrone pour scanner top pairs"""
     if not scanner:
         return
-
+    
     try:
-        await add_log('INFO', 'Scan scalability', 'D├®marrage...')
-
+        await add_log('INFO', 'Scan scalability', 'Démarrage...')
+        
         top_pairs = await scanner.scan_top_pairs(n)
         app_state['top_pairs'] = top_pairs
-
-        # ­ƒöÑ OPTIMISATION: Invalider cache quand top_pairs change
+        
+        # 🔥 OPTIMISATION: Invalider cache quand top_pairs change
         if hasattr(app, '_top_pairs_cache'):
             app._top_pairs_cache.pop('top_pairs', None)
-
-        await add_log('INFO', 'Scan termin├®', f'{len(top_pairs)} paires scalables')
-        await sio.emit('top_pairs_update', {'pairs': top_pairs})
-
-        # ­ƒöÑ JOUR 3: D├®marrer WebSocket pour les top pairs apr├¿s le scan
+        
+        await add_log('INFO', 'Scan terminé', f'{len(top_pairs)} paires scalables')
+        await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+        
+        # 🔥 JOUR 3: Démarrer WebSocket pour les top pairs après le scan
         if price_provider and top_pairs:
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
-                    await add_log('INFO', 'WebSocket d├®marr├®', f'{len(symbols)} symboles monitor├®s')
+                    await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
                 except Exception as e:
-                    logger.warning(f"Erreur d├®marrage WebSocket: {e}")
-
+                    logger.warning(f"Erreur démarrage WebSocket: {e}")
+        
     except Exception as e:
         logger.error(f"Erreur scan: {e}")
         await add_log('ERROR', 'Erreur scan', str(e))
     finally:
         app_state['is_scanning'] = False
-        # ­ƒöÑ FIX: ├ëmettre l'├®tat mis ├á jour via Socket.IO pour synchronisation temps r├®el
-        status_data = {
-            'is_scanning': False,
-            'active_position': app_state.get('active_position'),
-            'stats': app_state.get('stats', {}),
-            'top_pairs': app_state.get('top_pairs', [])
-        }
-        await sio.emit('status', status_data)
 
 
-# SocketIO Handlers
+# 🔥 MIGRATION COMPLÈTE: Handlers Socket.IO supprimés - WebSocket natif uniquement
+# Tous les handlers sont maintenant dans l'endpoint /ws ci-dessous
 
-@sio.on('connect')
-async def handle_connect(sid, environ):
-    """Connexion WebSocket"""
-    logger.info("Client connect├®")
-    # ­ƒöÑ FIX: Convertir active_position en dict pour s├®rialisation JSON
+
+# 🔥 WebSocket Natif - Endpoint Bidirectionnel
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Endpoint WebSocket bidirectionnel natif"""
+    await ws_manager.connect(websocket)
+    
+    # Envoyer état initial au client
     status_data = app_state.copy()
     if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
         status_data['active_position'] = status_data['active_position'].to_dict()
-    await sio.emit('status', status_data, room=sid)
+    
+    await ws_manager.send_personal_message({
+        'type': 'event',
+        'event': 'status',
+        'data': status_data
+    }, websocket)
+    
     # Envoyer les derniers logs
     for log_entry in app_state['logs'][-50:]:
-        await sio.emit('log', log_entry, room=sid)
+        await ws_manager.send_personal_message({
+            'type': 'event',
+            'event': 'log',
+            'data': log_entry
+        }, websocket)
+    
+    try:
+        # Boucle bidirectionnelle : recevoir et traiter messages
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            
+            msg_type = message.get('type')
+            
+            # Traiter commandes (Frontend → Backend)
+            if msg_type == 'command':
+                command = message.get('command')
+                params = message.get('params', {})
+                command_id = message.get('id')
+                
+                logger.info(f"📨 Commande reçue: {command} (ID: {command_id})")
+                
+                try:
+                    result = await handle_client_command(command, params)
+                    await ws_manager.send_personal_message({
+                        'type': 'command_response',
+                        'id': command_id,
+                        'command': command,
+                        'result': result,
+                        'status': 'success',
+                        'timestamp': time.time()
+                    }, websocket)
+                except Exception as e:
+                    logger.error(f"Erreur commande {command}: {e}")
+                    await ws_manager.send_personal_message({
+                        'type': 'command_error',
+                        'id': command_id,
+                        'command': command,
+                        'error': str(e),
+                        'timestamp': time.time()
+                    }, websocket)
+            
+            # Heartbeat (Frontend ↔ Backend)
+            elif msg_type == 'ping':
+                await ws_manager.send_personal_message({
+                    'type': 'pong',
+                    'timestamp': time.time()
+                }, websocket)
+            
+            # Subscription (Frontend → Backend)
+            elif msg_type == 'subscribe':
+                channel = message.get('channel', 'all')
+                ws_manager.subscribe(websocket, channel)
+                await ws_manager.send_personal_message({
+                    'type': 'subscribed',
+                    'channel': channel,
+                    'timestamp': time.time()
+                }, websocket)
+            
+            # Unsubscribe (Frontend → Backend)
+            elif msg_type == 'unsubscribe':
+                channel = message.get('channel', 'all')
+                ws_manager.unsubscribe(websocket, channel)
+                await ws_manager.send_personal_message({
+                    'type': 'unsubscribed',
+                    'channel': channel,
+                    'timestamp': time.time()
+                }, websocket)
+            
+            # Request (Frontend → Backend)
+            elif msg_type == 'request':
+                request_type = message.get('request_type')
+                request_id = message.get('id')
+                
+                if request_type == 'logs':
+                    await ws_manager.send_personal_message({
+                        'type': 'request_response',
+                        'id': request_id,
+                        'request_type': request_type,
+                        'data': app_state['logs'][-100:]
+                    }, websocket)
+                
+                elif request_type == 'position':
+                    if position_manager and position_manager.active_position:
+                        await ws_manager.send_personal_message({
+                            'type': 'request_response',
+                            'id': request_id,
+                            'request_type': request_type,
+                            'data': position_manager.active_position.to_dict()
+                        }, websocket)
+                    else:
+                        await ws_manager.send_personal_message({
+                            'type': 'request_response',
+                            'id': request_id,
+                            'request_type': request_type,
+                            'data': None
+                        }, websocket)
+    
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Erreur WebSocket: {e}")
+        await ws_manager.disconnect(websocket)
 
 
-@sio.on('disconnect')
-async def handle_disconnect(sid):
-    """D├®connexion WebSocket"""
-    logger.info("Client d├®connect├®")
-
-
-@sio.on('request_logs')
-async def handle_logs_request(sid):
-    """Demander les logs"""
-    await sio.emit('logs', app_state['logs'][-100:], room=sid)
+# 🔥 Fonction : Traiter commandes du client
+async def handle_client_command(command: str, params: dict):
+    """Exécuter une commande du client via WebSocket"""
+    
+    if command == 'start_scanner':
+        await api_start()
+        return {'status': 'started', 'is_scanning': True}
+    
+    elif command == 'stop_scanner':
+        await api_stop()
+        return {'status': 'stopped', 'is_scanning': False}
+    
+    elif command == 'update_config':
+        # 🔥 BIDIRECTIONNEL: Mettre à jour config avec validation complète (même logique que /api/config)
+        from config import TRADING_CONFIG
+        updated = {}
+        
+        # 🔥 Volume multiplier
+        if 'volume_multiplier' in params:
+            val = float(params['volume_multiplier'])
+            val = max(0.1, min(2.0, val))  # Clamp 0.1-2.0
+            TRADING_CONFIG['volume_multiplier'] = val
+            updated['volume_multiplier'] = val
+        
+        # 🔥 Confluence
+        if 'use_confluence' in params:
+            TRADING_CONFIG['use_confluence'] = bool(params['use_confluence'])
+            updated['use_confluence'] = TRADING_CONFIG['use_confluence']
+        
+        # 🔥 TP/SL Mode
+        if 'tp_sl_mode' in params:
+            mode = str(params['tp_sl_mode']).upper()
+            if mode in ['FIXE', 'ATR', 'TP_MULTI']:
+                TRADING_CONFIG['tp_sl_mode'] = mode
+                init_instances()
+                if position_config:
+                    position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
+                updated['tp_sl_mode'] = mode
+        
+        if 'tp_percent' in params:
+            val = float(params['tp_percent'])
+            TRADING_CONFIG['tp_percent'] = val
+            if position_config:
+                position_config.fixed_tp_pct = val
+            updated['tp_percent'] = val
+        
+        if 'sl_percent' in params:
+            val = float(params['sl_percent'])
+            TRADING_CONFIG['sl_percent'] = val
+            if position_config:
+                position_config.fixed_sl_pct = val
+            updated['sl_percent'] = val
+        
+        # 🔥 4 seuils configurables
+        if 'snr_threshold' in params:
+            val = float(params['snr_threshold'])
+            val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
+            TRADING_CONFIG['snr_threshold'] = val
+            updated['snr_threshold'] = val
+        
+        if 'breakout_threshold' in params:
+            val = float(params['breakout_threshold'])
+            val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
+            TRADING_CONFIG['breakout_threshold'] = val
+            updated['breakout_threshold'] = val
+        
+        if 'wick_ratio_max' in params:
+            val = float(params['wick_ratio_max'])
+            val = max(1.0, min(10.0, val))  # Clamp 1.0-10.0
+            TRADING_CONFIG['wick_ratio_max'] = val
+            updated['wick_ratio_max'] = val
+        
+        if 'di_gap_min' in params:
+            val = float(params['di_gap_min'])
+            val = max(0.0, min(50.0, val))  # Clamp 0.0-50.0
+            TRADING_CONFIG['di_gap_min'] = val
+            updated['di_gap_min'] = val
+        
+        if 'di_gap_adx_threshold' in params:
+            val = float(params['di_gap_adx_threshold'])
+            val = max(0.0, min(100.0, val))  # Clamp 0.0-100.0
+            TRADING_CONFIG['di_gap_adx_threshold'] = val
+            updated['di_gap_adx_threshold'] = val
+        
+        # 🔥 Seuils ATR optimal
+        if 'optimal_atr_min_1m' in params:
+            val = float(params['optimal_atr_min_1m'])
+            val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
+            TRADING_CONFIG['optimal_atr_min_1m'] = val
+            updated['optimal_atr_min_1m'] = val
+        
+        if 'optimal_atr_max_1m' in params:
+            val = float(params['optimal_atr_max_1m'])
+            val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0%
+            TRADING_CONFIG['optimal_atr_max_1m'] = val
+            updated['optimal_atr_max_1m'] = val
+        
+        if 'optimal_atr_min_5m' in params:
+            val = float(params['optimal_atr_min_5m'])
+            val = max(0.01, min(2.0, val))  # Clamp 0.01-2.0%
+            TRADING_CONFIG['optimal_atr_min_5m'] = val
+            updated['optimal_atr_min_5m'] = val
+        
+        if 'optimal_atr_max_5m' in params:
+            val = float(params['optimal_atr_max_5m'])
+            val = max(0.5, min(10.0, val))  # Clamp 0.5-10.0%
+            TRADING_CONFIG['optimal_atr_max_5m'] = val
+            updated['optimal_atr_max_5m'] = val
+        
+        # 🔥 Trend timeframe
+        if 'trend_timeframe' in params:
+            val = str(params['trend_timeframe']).lower()
+            valid_timeframes = ['5m', '15m', '30m', '1h']
+            if val in valid_timeframes:
+                TRADING_CONFIG['trend_timeframe'] = val
+                updated['trend_timeframe'] = val
+        
+        # 🔥 Account size et risk per trade
+        if 'account_size' in params:
+            val = float(params['account_size'])
+            val = max(100.0, min(100000.0, val))  # Clamp 100-100000
+            TRADING_CONFIG['account_size'] = val
+            updated['account_size'] = val
+        
+        if 'risk_per_trade' in params:
+            val = float(params['risk_per_trade'])
+            val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
+            TRADING_CONFIG['risk_per_trade'] = val
+            updated['risk_per_trade'] = val
+        
+        if updated:
+            logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
+            await add_log('INFO', 'Config mise à jour', str(updated))
+        
+        return {'updated': updated}
+    
+    elif command == 'get_status':
+        status_data = app_state.copy()
+        if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
+            status_data['active_position'] = status_data['active_position'].to_dict()
+        return status_data
+    
+    elif command == 'close_position':
+        if position_manager and position_manager.active_position:
+            result = await api_close_position()
+            return {'status': 'closed', 'result': result}
+        else:
+            raise ValueError('Aucune position active')
+    
+    else:
+        raise ValueError(f'Commande inconnue: {command}')
 
 
 # Configuration endpoints
 
-@app.get("/api/state")
-async def api_get_state():
-    """
-    ├ëtat complet de l'application (stats, position active, logs, config)
-
-    Utilis├® par le frontend pour synchroniser l'affichage
-    """
-    init_instances()
-
-    # Position active (si existe)
-    active_position_dict = None
-    if position_manager and position_manager.active_position:
-        active_position_dict = position_manager.active_position.to_dict()
-    elif app_state.get('active_position'):
-        active_position_dict = app_state['active_position']
-
-    # Ô£à FIX: Inclure la configuration compl├¿te pour le frontend
-    from config import TRADING_CONFIG
-    from core.config_manager import get_config_manager
-
-    config_manager = get_config_manager()
-    full_config = config_manager.get_config(TRADING_CONFIG)
-
-    return JSONResponse({
-        'is_scanning': app_state.get('is_scanning', False),
-        'active_position': active_position_dict,
-        'stats': app_state.get('stats', {
-            'total_trades': 0,
-            'wins': 0,
-            'losses': 0,
-            'winrate': 0.0
-        }),
-        'top_pairs': app_state.get('top_pairs', []),
-        'logs': app_state.get('logs', [])[-50:],  # Derniers 50 logs
-        'trade_history': list(reversed(app_state.get('trade_history', [])[-20:])),  # Derniers 20 trades
-        # Ô£à FIX: Ajouter la config compl├¿te
-        'config': full_config
-    })
-
-
 @app.get("/api/config")
 async def api_get_config():
-    """R├®cup├®rer la configuration actuelle (tous les param├¿tres)"""
-    from config import TRADING_CONFIG, TELEGRAM_ENABLED
+    """Récupérer la configuration actuelle (tous les paramètres)"""
+    from config import TRADING_CONFIG
     return JSONResponse({
-        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # ­ƒöÑ Valeur mise ├á jour
-        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # ­ƒöÑ PHASE 6: Score minimum
+        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # 🔥 Valeur mise à jour
+        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # 🔥 PHASE 6: Score minimum
         'use_confluence': TRADING_CONFIG.get('use_confluence', False),
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-        # ­ƒöÑ FIX: Ajouter statut Telegram
-        'telegram_enabled': TELEGRAM_ENABLED,
-        # ­ƒöÑ 4 seuils configurables - Valeurs mises ├á jour
+        # 🔥 4 seuils configurables - Valeurs mises à jour
         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
         'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
         'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-        # ­ƒöÑ Seuils ATR optimal - Valeurs mises ├á jour
+        # 🔥 Seuils ATR optimal - Valeurs mises à jour
         'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
         'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
         'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
         'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-        # ­ƒöÑ Trend timeframe
+        # 🔥 Trend timeframe
         'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
         'account_size': TRADING_CONFIG.get('account_size', 1000.0),
         'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
     })
 
 
-@app.get("/api/config/verify")
-async def api_verify_config():
-    """
-    ­ƒöÑ NOUVEAU: Endpoint de v├®rification - Retourne TOUS les param├¿tres avec leurs valeurs actuelles dans TRADING_CONFIG
-    Utile pour v├®rifier que les modifications frontend sont bien appliqu├®es
-    """
-    from config import TRADING_CONFIG
-    from core.config_manager import get_config_manager
-    
-    config_manager = get_config_manager()
-    overrides = config_manager.get_overrides()
-    
-    # Retourner tous les param├¿tres configurables avec leurs valeurs actuelles
-    all_params = {
-        # Patterns Techniques
-        'use_breakout': TRADING_CONFIG.get('use_breakout', True),
-        'use_snr': TRADING_CONFIG.get('use_snr', True),
-        'use_wick': TRADING_CONFIG.get('use_wick', True),
-        'use_divergence': TRADING_CONFIG.get('use_divergence', True),
-        # Patterns de Bougies
-        'use_engulfing': TRADING_CONFIG.get('use_engulfing', True),
-        'use_hammer': TRADING_CONFIG.get('use_hammer', True),
-        'use_shooting_star': TRADING_CONFIG.get('use_shooting_star', True),
-        'use_doji': TRADING_CONFIG.get('use_doji', True),
-        'use_marubozu': TRADING_CONFIG.get('use_marubozu', True),
-        'use_morning_star': TRADING_CONFIG.get('use_morning_star', True),
-        'use_evening_star': TRADING_CONFIG.get('use_evening_star', True),
-        # Indicateurs Techniques
-        'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
-        'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
-        'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-        'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
-        'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-        'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
-        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-        # Validation Setups
-        'use_confluence': TRADING_CONFIG.get('use_confluence', False),
-        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
-        # Money Management
-        'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-        'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
-        # TP/SL Mode
-        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-        # Mode FIXE
-        'tp_percent': TRADING_CONFIG.get('tp_percent', 0.6),
-        'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-        'partial_tp_percent': TRADING_CONFIG.get('partial_tp_percent', 50.0),
-        # Mode ATR
-        'atr_mult_tp': TRADING_CONFIG.get('atr_mult_tp', 1.5),
-        'atr_mult_sl': TRADING_CONFIG.get('atr_mult_sl', 1.0),
-        'atr_min': TRADING_CONFIG.get('atr_min', 0.15),
-        'atr_max': TRADING_CONFIG.get('atr_max', 1.5),
-        # Mode ESCALIER
-        'escalier_level1_pnl': TRADING_CONFIG.get('escalier_level1_pnl', 0.2),
-        'escalier_level1_size': TRADING_CONFIG.get('escalier_level1_size', 25.0),
-        'escalier_level2_pnl': TRADING_CONFIG.get('escalier_level2_pnl', 0.35),
-        'escalier_level2_size': TRADING_CONFIG.get('escalier_level2_size', 25.0),
-        'escalier_level3_pnl': TRADING_CONFIG.get('escalier_level3_pnl', 0.5),
-        'escalier_level3_size': TRADING_CONFIG.get('escalier_level3_size', 25.0),
-        'escalier_level4_pnl': TRADING_CONFIG.get('escalier_level4_pnl', 0.8),
-        'escalier_level4_size': TRADING_CONFIG.get('escalier_level4_size', 25.0),
-        # Trailing Stop
-        'trailing_enabled': TRADING_CONFIG.get('trailing_enabled', True),
-        'trailing_trigger_pnl': TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
-        'trailing_atr_multiplier': TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
-        'trailing_min_distance': TRADING_CONFIG.get('trailing_min_distance', 0.08),
-        'trailing_max_distance': TRADING_CONFIG.get('trailing_max_distance', 0.25),
-    }
-    
-    return JSONResponse({
-        'success': True,
-        'timestamp': datetime.now().isoformat(),
-        'params': all_params,
-        'overrides_count': len(overrides),
-        'message': f'Ô£à {len(all_params)} param├¿tres v├®rifi├®s depuis TRADING_CONFIG'
-    })
-
-
 @app.get("/api/metrics/conditions")
 async def get_condition_metrics():
-    """M├®triques par condition"""
+    """Métriques par condition"""
     from core.metrics import condition_metrics
-
+    
     stats = condition_metrics.get_stats_summary()
     return JSONResponse(stats)
 
-
 @app.post("/api/config")
 async def api_update_config(request: Request):
-    """Modifier la configuration ├á la vol├®e (tous les param├¿tres)"""
+    """Modifier la configuration à la volée (tous les paramètres)"""
     from config import TRADING_CONFIG
-
+    
     try:
         data = await request.json() if hasattr(request, 'json') else {}
         data = data if isinstance(data, dict) else {}
-
+        
         updated = {}
-
-        # ­ƒöÑ Volume multiplier
+        
+        # 🔥 Volume multiplier
         if 'volume_multiplier' in data:
             val = float(data['volume_multiplier'])
             val = max(0.1, min(2.0, val))  # Clamp 0.1-2.0
             TRADING_CONFIG['volume_multiplier'] = val
             updated['volume_multiplier'] = val
-
-        # ­ƒöÑ Confluence
+        
+        # 🔥 Confluence
         if 'use_confluence' in data:
             TRADING_CONFIG['use_confluence'] = bool(data['use_confluence'])
             updated['use_confluence'] = TRADING_CONFIG['use_confluence']
-
-        # ­ƒöÑ TP/SL Mode
+        
+        # 🔥 TP/SL Mode
         if 'tp_sl_mode' in data:
             mode = str(data['tp_sl_mode']).upper()
-            if mode in ['FIXE', 'ATR', 'TP_MULTI']:  # ­ƒöÑ PHASE 7: TP_MULTI remplace ATR_MULTI
+            if mode in ['FIXE', 'ATR', 'TP_MULTI']:  # 🔥 PHASE 7: TP_MULTI remplace ATR_MULTI
                 TRADING_CONFIG['tp_sl_mode'] = mode
-                # Mettre ├á jour PositionConfig si position_manager existe
+                # Mettre à jour PositionConfig si position_manager existe
                 init_instances()
                 if position_config:
-                    # ­ƒöÑ PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
+                    # 🔥 PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
                     position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
                 updated['tp_sl_mode'] = mode
-
+        
         if 'tp_percent' in data:
             val = float(data['tp_percent'])
             TRADING_CONFIG['tp_percent'] = val
             if position_config:
                 position_config.fixed_tp_pct = val
             updated['tp_percent'] = val
-
+        
         if 'sl_percent' in data:
             val = float(data['sl_percent'])
             TRADING_CONFIG['sl_percent'] = val
             if position_config:
                 position_config.fixed_sl_pct = val
             updated['sl_percent'] = val
-
-        # ­ƒöÑ FIX: 4 seuils configurables
+        
+        # 🔥 FIX: 4 seuils configurables
         if 'snr_threshold' in data:
             val = float(data['snr_threshold'])
             val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
             TRADING_CONFIG['snr_threshold'] = val
             updated['snr_threshold'] = val
-
+        
         if 'breakout_threshold' in data:
             val = float(data['breakout_threshold'])
             val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
             TRADING_CONFIG['breakout_threshold'] = val
             updated['breakout_threshold'] = val
-
+        
         if 'wick_ratio_max' in data:
             val = float(data['wick_ratio_max'])
             val = max(1.0, min(10.0, val))  # Clamp 1.0-10.0
             TRADING_CONFIG['wick_ratio_max'] = val
             updated['wick_ratio_max'] = val
-
+        
         if 'di_gap_min' in data:
             val = float(data['di_gap_min'])
             val = max(0.0, min(50.0, val))  # Clamp 0.0-50.0
             TRADING_CONFIG['di_gap_min'] = val
             updated['di_gap_min'] = val
-
+        
         if 'di_gap_adx_threshold' in data:
             val = float(data['di_gap_adx_threshold'])
             val = max(0.0, min(100.0, val))  # Clamp 0.0-100.0
             TRADING_CONFIG['di_gap_adx_threshold'] = val
             updated['di_gap_adx_threshold'] = val
-
-        # ­ƒöÑ FIX: Permettre modification des seuils ATR optimal
+        
+        # 🔥 FIX: Permettre modification des seuils ATR optimal
         if 'optimal_atr_min_1m' in data:
             val = float(data['optimal_atr_min_1m'])
             val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
             TRADING_CONFIG['optimal_atr_min_1m'] = val
             updated['optimal_atr_min_1m'] = val
-
+        
         if 'optimal_atr_max_1m' in data:
             val = float(data['optimal_atr_max_1m'])
             val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0%
             TRADING_CONFIG['optimal_atr_max_1m'] = val
             updated['optimal_atr_max_1m'] = val
-
+        
         if 'optimal_atr_min_5m' in data:
             val = float(data['optimal_atr_min_5m'])
             val = max(0.01, min(2.0, val))  # Clamp 0.01-2.0%
             TRADING_CONFIG['optimal_atr_min_5m'] = val
             updated['optimal_atr_min_5m'] = val
-
+        
         if 'optimal_atr_max_5m' in data:
             val = float(data['optimal_atr_max_5m'])
             val = max(0.5, min(10.0, val))  # Clamp 0.5-10.0%
             TRADING_CONFIG['optimal_atr_max_5m'] = val
             updated['optimal_atr_max_5m'] = val
-
-        # ­ƒöÑ FIX: Permettre modification du trend timeframe
+        
+        # 🔥 FIX: Permettre modification du trend timeframe
         if 'trend_timeframe' in data:
             val = str(data['trend_timeframe']).lower()
             valid_timeframes = ['5m', '15m', '30m', '1h']
@@ -1636,230 +2101,39 @@ async def api_update_config(request: Request):
                 TRADING_CONFIG['trend_timeframe'] = val
                 updated['trend_timeframe'] = val
             else:
-                return JSONResponse({'error': f'Timeframe invalide: {val}. Valeurs accept├®es: {valid_timeframes}'}, status_code=400)
-
-        # ­ƒöÑ FIX: Ajouter support pour account_size et risk_per_trade
+                return JSONResponse({'error': f'Timeframe invalide: {val}. Valeurs acceptées: {valid_timeframes}'}, status_code=400)
+        
+        # 🔥 FIX: Ajouter support pour account_size et risk_per_trade
         if 'account_size' in data:
             val = float(data['account_size'])
             val = max(100.0, min(100000.0, val))  # Clamp 100-100000
             TRADING_CONFIG['account_size'] = val
             updated['account_size'] = val
-
+        
         if 'risk_per_trade' in data:
             val = float(data['risk_per_trade'])
             val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
             TRADING_CONFIG['risk_per_trade'] = val
             updated['risk_per_trade'] = val
-
+        
         if updated:
-            logger.info(f"Ô£à Configuration mise ├á jour: {updated}")
-            await add_log('INFO', 'Config mise ├á jour', str(updated))
+            logger.info(f"✅ Configuration mise à jour: {updated}")
+            await add_log('INFO', 'Config mise à jour', str(updated))
             return JSONResponse({'status': 'updated', 'updated': updated})
         else:
-            return JSONResponse({'status': 'no_changes', 'message': 'Aucun param├¿tre valide fourni'})
-
+            return JSONResponse({'status': 'no_changes', 'message': 'Aucun paramètre valide fourni'})
+    
     except Exception as e:
-        logger.error(f"Erreur mise ├á jour config: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
-
-
-@app.post("/api/config/update")
-async def api_config_update(request: Request):
-    """
-    Ô£à NOUVEAU: Mettre ├á jour la configuration compl├¿te avec sauvegarde persistante
-
-    Accepte TOUTES les variables du frontend (patterns, TP/SL, money management, etc.)
-    et les sauvegarde dans config_overrides.json pour persistance
-    """
-    try:
-        data = await request.json() if hasattr(request, 'json') else {}
-        if not isinstance(data, dict):
-            return JSONResponse({'error': 'Invalid request body'}, status_code=400)
-
-        from config import TRADING_CONFIG
-        from core.config_manager import get_config_manager
-
-        config_manager = get_config_manager()
-
-        # Ô£à Validation et mise ├á jour de toutes les variables
-        validated_updates = {}
-
-        # Patterns Techniques
-        for key in ['use_breakout', 'use_snr', 'use_wick', 'use_divergence']:
-            if key in data:
-                validated_updates[key] = bool(data[key])
-
-        # Patterns de Bougies
-        for key in ['use_engulfing', 'use_hammer', 'use_shooting_star', 'use_doji',
-                    'use_marubozu', 'use_morning_star', 'use_evening_star']:
-            if key in data:
-                validated_updates[key] = bool(data[key])
-
-        # Indicateurs num├®riques
-        numeric_params = {
-            'snr_threshold': (0.0, 1.0),
-            'breakout_threshold': (0.0, 1.0),
-            'wick_ratio_max': (1.0, 10.0),
-            'di_gap_min': (0.0, 50.0),
-            'di_gap_adx_threshold': (0.0, 100.0),
-            'optimal_atr_min_1m': (0.01, 1.0),
-            'optimal_atr_max_1m': (0.1, 5.0),
-            'optimal_atr_min_5m': (0.01, 2.0),
-            'optimal_atr_max_5m': (0.5, 10.0),
-            'volume_multiplier': (0.5, 2.0),
-            'min_score_required': (0.0, 20.0),
-            'account_size': (100.0, 100000.0),
-            'risk_per_trade': (0.1, 10.0),
-            'tp_percent': (0.05, 5.0),
-            'sl_percent': (0.05, 5.0),
-            'partial_tp_percent': (0, 100),
-            'atr_mult_tp': (0.5, 5.0),
-            'atr_mult_sl': (0.5, 3.0),
-            'atr_min': (0.05, 1.0),
-            'atr_max': (0.5, 5.0),
-            # TP Escalier (4 niveaux)
-            'escalier_level1_pnl': (0.1, 2.0),
-            'escalier_level1_size': (0, 100),
-            'escalier_level2_pnl': (0.1, 2.0),
-            'escalier_level2_size': (0, 100),
-            'escalier_level3_pnl': (0.1, 2.0),
-            'escalier_level3_size': (0, 100),
-            'escalier_level4_pnl': (0.1, 3.0),
-            'escalier_level4_size': (0, 100),
-            # Trailing Stop
-            'trailing_trigger_pnl': (0.1, 3.0),
-            'trailing_atr_multiplier': (0.1, 2.0),
-            'trailing_min_distance': (0.05, 0.5),
-            'trailing_max_distance': (0.1, 2.0),
-        }
-
-        for key, (min_val, max_val) in numeric_params.items():
-            if key in data:
-                try:
-                    val = float(data[key])
-                    # Clamp dans les limites
-                    val = max(min_val, min(max_val, val))
-                    validated_updates[key] = val
-                except (ValueError, TypeError):
-                    logger.warning(f"ÔÜá´©Å Valeur invalide pour {key}: {data[key]}")
-
-        # Boolean params
-        for key in ['use_confluence', 'trailing_enabled']:
-            if key in data:
-                validated_updates[key] = bool(data[key])
-
-        # String params
-        if 'trend_timeframe' in data:
-            val = str(data['trend_timeframe']).lower()
-            if val in ['5m', '15m', '30m', '1h']:
-                validated_updates['trend_timeframe'] = val
-
-        if 'tp_sl_mode' in data:
-            mode = str(data['tp_sl_mode']).upper()
-            if mode in ['FIXE', 'ATR', 'ESCALIER', 'TP_MULTI']:
-                # TP_MULTI est l'ancien nom pour ESCALIER
-                if mode == 'ESCALIER':
-                    mode = 'TP_MULTI'
-                validated_updates['tp_sl_mode'] = mode
-
-        # Ô£à Mettre ├á jour TRADING_CONFIG en m├®moire
-        TRADING_CONFIG.update(validated_updates)
-        
-        # ­ƒöÑ AM├ëLIORATION: Logger TOUS les param├¿tres modifi├®s avec leurs valeurs
-        logger.info(f"­ƒôØ D├ëTAIL DES MODIFICATIONS ({len(validated_updates)} param├¿tres):")
-        for key, value in validated_updates.items():
-            logger.info(f"   Ô£à {key} = {value} (v├®rifi├®: TRADING_CONFIG['{key}'] = {TRADING_CONFIG.get(key)})")
-        
-        # ­ƒöÑ FIX: Logger les valeurs importantes pour debug
-        if 'min_score_required' in validated_updates:
-            logger.info(f"Ô£à min_score_required mis ├á jour: {validated_updates['min_score_required']} (v├®rification: TRADING_CONFIG['min_score_required'] = {TRADING_CONFIG.get('min_score_required')})")
-        
-        # ­ƒöÑ FIX: Logger sp├®cifiquement les patterns techniques pour confirmation
-        pattern_keys = ['use_breakout', 'use_snr', 'use_wick', 'use_divergence']
-        updated_patterns = {k: validated_updates[k] for k in pattern_keys if k in validated_updates}
-        if updated_patterns:
-            logger.info(f"­ƒÄ» PATTERNS TECHNIQUES MIS ├Ç JOUR ({len(updated_patterns)} patterns):")
-            for key, value in updated_patterns.items():
-                status = "Ô£à ACTIV├ë" if value else "ÔØî D├ëSACTIV├ë"
-                logger.info(f"   {status}: {key} = {value} (v├®rifi├®: TRADING_CONFIG['{key}'] = {TRADING_CONFIG.get(key)})")
-
-        # Ô£à Sauvegarder de mani├¿re persistante dans config_overrides.json
-        config_manager.update_config(validated_updates)
-
-        # Ô£à Mettre ├á jour PositionConfig si n├®cessaire
-        init_instances()
-        if position_config and 'tp_sl_mode' in validated_updates:
-            mode = validated_updates['tp_sl_mode']
-            position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
-
-        if position_config:
-            if 'tp_percent' in validated_updates:
-                position_config.fixed_tp_pct = validated_updates['tp_percent']
-            if 'sl_percent' in validated_updates:
-                position_config.fixed_sl_pct = validated_updates['sl_percent']
-            # Ô£à Mettre ├á jour param├¿tres ATR
-            if 'atr_mult_tp' in validated_updates:
-                position_config.atr_mult_tp = validated_updates['atr_mult_tp']
-            if 'atr_mult_sl' in validated_updates:
-                position_config.atr_mult_sl = validated_updates['atr_mult_sl']
-            if 'atr_min' in validated_updates:
-                position_config.atr_min = validated_updates['atr_min']
-            if 'atr_max' in validated_updates:
-                position_config.atr_max = validated_updates['atr_max']
-        
-        # Ô£à Mettre ├á jour TrailingStopManager si n├®cessaire
-        if position_manager and position_manager.trailing_stop:
-            trailing_params = ['trailing_enabled', 'trailing_trigger_pnl', 'trailing_atr_multiplier', 
-                             'trailing_min_distance', 'trailing_max_distance']
-            if any(param in validated_updates for param in trailing_params):
-                from core.position.trailing_stop import TrailingStopConfig
-                position_manager.trailing_stop.config = TrailingStopConfig(
-                    enabled=TRADING_CONFIG.get('trailing_enabled', True),
-                    trigger_pnl=TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
-                    atr_multiplier=TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
-                    min_distance=TRADING_CONFIG.get('trailing_min_distance', 0.08),
-                    max_distance=TRADING_CONFIG.get('trailing_max_distance', 0.25)
-                )
-                logger.info("Ô£à TrailingStopManager mis ├á jour avec nouvelles valeurs")
-
-                logger.info(f"­ƒÆ¥ Configuration sauvegard├®e: {len(validated_updates)} param├¿tres mis ├á jour")
-                
-                # ­ƒöÑ FIX: ├ëmettre l'├®tat mis ├á jour via Socket.IO pour synchronisation temps r├®el
-                status_data = {
-                    'is_scanning': app_state.get('is_scanning', False),
-                    'active_position': app_state.get('active_position'),
-                    'stats': app_state.get('stats', {}),
-                    'top_pairs': app_state.get('top_pairs', []),
-                    'config': {k: TRADING_CONFIG.get(k) for k in validated_updates.keys()}
-                }
-                await sio.emit('status', status_data)
-                await sio.emit('config_change', {
-                    'timestamp': datetime.now().isoformat(),
-                    'changes': validated_updates
-                })
-        
-        # ­ƒöÑ AM├ëLIORATION: Log d├®taill├® pour chaque param├¿tre modifi├®
-        updated_summary = ", ".join([f"{k}={v}" for k, v in validated_updates.items()])
-        await add_log('INFO', 'Config sauvegard├®e', f"{len(validated_updates)} param├¿tres: {updated_summary}")
-
-        return JSONResponse({
-            'success': True,
-            'message': f'{len(validated_updates)} param├¿tres sauvegard├®s',
-            'updated': validated_updates,
-            'verified': {k: TRADING_CONFIG.get(k) for k in validated_updates.keys()}  # ­ƒöÑ Retourner les valeurs v├®rifi├®es
-        })
-
-    except Exception as e:
-        logger.error(f"ÔØî Erreur update config: {e}", exc_info=True)
+        logger.error(f"Erreur mise à jour config: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
 # Helper functions
 
 async def add_log(level, message, detail=''):
-    """Ajouter un log et envoyer via SocketIO"""
+    """Ajouter un log et envoyer via WebSocket (SocketIO + WebSocket natif)"""
     from datetime import datetime
-
+    
     entry = {
         'timestamp': datetime.now().strftime('%H:%M:%S'),
         'level': level,
@@ -1867,97 +2141,62 @@ async def add_log(level, message, detail=''):
         'detail': detail
     }
     app_state['logs'].append(entry)
-
+    
     # Garder seulement les 1000 derniers logs
     if len(app_state['logs']) > 1000:
         app_state['logs'] = app_state['logs'][-1000:]
-
-    # Envoyer via WebSocket
-    await sio.emit('log', entry)
+    
+    # 🔥 MIGRATION COMPLÈTE: Envoyer uniquement via WebSocket natif
+    await ws_manager.emit('log', entry)
+    
     logger.info(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}")
 
 
-@app.post("/api/log/config")
-async def log_config_change(request: Request):
-    """
-    Endpoint pour logger les modifications de configuration
-    Re├ºoit les changements de variables depuis le frontend et les ├®met via WebSocket
-    """
-    try:
-        data = await request.json()
+# Main entry point
 
-        # Cr├®er l'entr├®e de log de configuration
-        config_log_entry = {
-            'timestamp': datetime.now().strftime('%H:%M:%S.%f')[:-3],
-            'key': data.get('key', ''),
-            'change': data.get('change', ''),
-            'iso_timestamp': data.get('timestamp', datetime.now().isoformat())
-        }
-
-        # ├ëmettre via WebSocket avec ├®v├®nement sp├®cifique 'config_change'
-        await sio.emit('config_change', config_log_entry)
-
-        # Logger ├®galement dans les logs normaux pour tra├ºabilit├®
-        logger.info(f"Config change: {config_log_entry['key']} ÔåÆ {config_log_entry['change']}")
-
-        return JSONResponse({
-            'status': 'success',
-            'message': 'Config change logged',
-            'data': config_log_entry
-        })
-
-    except Exception as e:
-        logger.error(f"Error logging config change: {e}")
-        return JSONResponse({
-            'status': 'error',
-            'message': str(e)
-        }, status_code=500)
-
-
-# Dashboard endpoints
-
+# 🔥 PHASE 4: Endpoints Dashboard
 def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:
     """
-    ­ƒöÑ PHASE 8: Calculer drawdown maximum historique (peak to trough)
-
+    🔥 PHASE 8: Calculer drawdown maximum historique (peak to trough)
+    
     Returns:
         Dict avec max_dd, max_dd_date, current_dd
     """
     if not trade_history:
         return {'max_dd': 0, 'max_dd_date': None, 'current_dd': 0, 'current_peak': 0}
-
+    
     # Calculer equity curve
     equity_curve = []
     cumulative = 0
     dates = []
-
+    
     for trade in trade_history:
         cumulative += trade.get('gross_pnl_pct', 0)
         equity_curve.append(cumulative)
         dates.append(trade.get('timestamp', ''))
-
+    
     # Trouver drawdown maximum
     peak = equity_curve[0] if equity_curve else 0
     peak_idx = 0
     max_dd = 0
     max_dd_idx = 0
-
+    
     for i, equity in enumerate(equity_curve):
         if equity > peak:
             peak = equity
             peak_idx = i
-
+        
         dd = ((equity - peak) / peak * 100) if peak > 0 else 0
-
+        
         if dd < max_dd:
             max_dd = dd
             max_dd_idx = i
-
+    
     # Drawdown actuel
     current_peak = max(equity_curve) if equity_curve else 0
     current_equity = equity_curve[-1] if equity_curve else 0
     current_dd = ((current_equity - current_peak) / current_peak * 100) if current_peak > 0 else 0
-
+    
     return {
         'max_dd': round(max_dd, 2),
         'max_dd_date': dates[max_dd_idx] if max_dd_idx < len(dates) else None,
@@ -1969,42 +2208,42 @@ def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:
 
 @app.get("/api/dashboard/summary")
 async def get_dashboard_summary():
-    """R├®sum├® des statistiques de trading"""
+    """Résumé des statistiques de trading"""
     init_instances()
-
+    
     trades = app_state['trade_history']
-
+    
     # Calculer statistiques
     total_trades = len(trades)
     wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0)
     losses = total_trades - wins
     winrate = (wins / total_trades * 100) if total_trades > 0 else 0.0
-
+    
     # Profit total et aujourd'hui
     profit_total = sum(t.get('net_pnl_usdt', 0) for t in trades)
     today = datetime.now().date().isoformat()
     profit_today = sum(
-        t.get('net_pnl_usdt', 0)
-        for t in trades
+        t.get('net_pnl_usdt', 0) 
+        for t in trades 
         if t.get('timestamp', '').startswith(today)
     )
-
-    # ­ƒöÑ PHASE 8: Max Drawdown Tracking (calcul pr├®cis)
+    
+    # 🔥 PHASE 8: Max Drawdown Tracking (calcul précis)
     max_dd_info = calculate_max_drawdown(trades)
-
-    # Equity curve pour graphique (bas├®e sur PnL USDT)
+    
+    # Equity curve pour graphique (basée sur PnL USDT)
     equity_curve = []
     running_equity = 0.0
     for trade in trades:
         running_equity += trade.get('net_pnl_usdt', 0)
         equity_curve.append(running_equity)
-
+    
     # Win/Loss streaks
     win_streak = 0
     loss_streak = 0
     current_win_streak = 0
     current_loss_streak = 0
-
+    
     for trade in reversed(trades):
         pnl = trade.get('net_pnl_usdt', 0)
         if pnl > 0:
@@ -2017,12 +2256,12 @@ async def get_dashboard_summary():
             current_win_streak = 0
             if current_loss_streak > loss_streak:
                 loss_streak = current_loss_streak
-
+    
     # Recovery Mode
     recovery_mode_active = False
     if position_manager and position_manager.config:
         recovery_mode_active = position_manager.config.recovery_mode_active
-
+    
     return JSONResponse({
         'total_trades': total_trades,
         'wins': wins,
@@ -2040,12 +2279,11 @@ async def get_dashboard_summary():
         'equity_curve': equity_curve[-100:]  # Derniers 100 points
     })
 
-
 @app.get("/api/dashboard/trades-history")
 async def get_trades_history(limit: int = 50):
-    """Historique des trades r├®cents"""
+    """Historique des trades récents"""
     trades = app_state['trade_history']
-    # Retourner les plus r├®cents en premier
+    # Retourner les plus récents en premier
     recent_trades = list(reversed(trades[-limit:]))
     return JSONResponse(recent_trades)
 
@@ -2057,16 +2295,16 @@ async def export_trades_csv(
     format: str = "csv"
 ):
     """
-    ­ƒöÑ PHASE 8: Exporter trades en CSV ou JSON
-
+    🔥 PHASE 8: Exporter trades en CSV ou JSON
+    
     Args:
-        start_date: Date d├®but (YYYY-MM-DD)
+        start_date: Date début (YYYY-MM-DD)
         end_date: Date fin (YYYY-MM-DD)
-        format: csv ou json (d├®faut: csv)
+        format: csv ou json (défaut: csv)
     """
     trades = app_state['trade_history']
-
-    # Filtrer par dates si fourni
+    
+    # Filtrer par date si fourni
     if start_date and end_date:
         filtered_trades = [
             t for t in trades
@@ -2074,10 +2312,10 @@ async def export_trades_csv(
         ]
     else:
         filtered_trades = trades
-
+    
     if format == "json":
         return JSONResponse(filtered_trades)
-
+    
     # Format CSV
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=[
@@ -2086,7 +2324,7 @@ async def export_trades_csv(
         'net_pnl_pct', 'net_pnl_usdt', 'fees', 'slippage',
         'total_costs', 'reason', 'duration'
     ])
-
+    
     writer.writeheader()
     for trade in filtered_trades:
         writer.writerow({
@@ -2107,328 +2345,48 @@ async def export_trades_csv(
             'reason': trade.get('reason', ''),
             'duration': trade.get('duration', 0)
         })
-
+    
     output.seek(0)
-
+    
     filename = f"trades_{start_date}_{end_date}.csv" if (start_date and end_date) else "trades_all.csv"
-
+    
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode('utf-8')),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
-
-# ============================================================================
-# ­ƒöÑ MULTI-SESSIONS API ENDPOINTS
-# ============================================================================
-
-try:
-    from session_manager import session_manager
-except ImportError:
-    logger.warning("session_manager not available - multi-sessions disabled")
-    session_manager = None
-
-
-@app.post("/api/sessions/create")
-async def create_session(request: Request):
-    """Cr├®er une nouvelle session"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    try:
-        data = await request.json()
-        session = session_manager.create_session(
-            session_id=data['session_id'],
-            name=data['name'],
-            pairs=data['pairs'],
-            strategy=data.get('strategy', 'scalping'),
-            config=data.get('config', {})
-        )
-        return JSONResponse({"status": "success", "session": session.to_dict()})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except Exception as e:
-        logger.error(f"Error creating session: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/api/sessions/{session_id}/start")
-async def start_session(session_id: str):
-    """D├®marrer une session"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    try:
-        await session_manager.start_session(session_id)
-        return JSONResponse({"status": "started", "session_id": session_id})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except Exception as e:
-        logger.error(f"Error starting session: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/api/sessions/{session_id}/stop")
-async def stop_session(session_id: str):
-    """Arr├¬ter une session"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    try:
-        await session_manager.stop_session(session_id)
-        return JSONResponse({"status": "stopped", "session_id": session_id})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except Exception as e:
-        logger.error(f"Error stopping session: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/api/sessions/{session_id}/pause")
-async def pause_session(session_id: str):
-    """Mettre en pause une session"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    try:
-        await session_manager.pause_session(session_id)
-        return JSONResponse({"status": "paused", "session_id": session_id})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-
-
-@app.post("/api/sessions/{session_id}/resume")
-async def resume_session(session_id: str):
-    """Reprendre une session"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    try:
-        await session_manager.resume_session(session_id)
-        return JSONResponse({"status": "resumed", "session_id": session_id})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-
-
-@app.delete("/api/sessions/{session_id}")
-async def delete_session(session_id: str):
-    """Supprimer une session"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    try:
-        session_manager.delete_session(session_id)
-        return JSONResponse({"status": "deleted", "session_id": session_id})
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-
-
-@app.get("/api/sessions")
-async def get_sessions():
-    """Lister toutes les sessions"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    sessions = session_manager.get_all_sessions()
-    return JSONResponse({"sessions": sessions})
-
-
-@app.get("/api/sessions/{session_id}")
-async def get_session(session_id: str):
-    """Obtenir une session sp├®cifique"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    session = session_manager.get_session(session_id)
-    if session:
-        return JSONResponse({"session": session})
-    else:
-        return JSONResponse({"error": "Session not found"}, status_code=404)
-
-
-@app.get("/api/sessions/stats/global")
-async def get_global_stats():
-    """Stats globales de toutes les sessions"""
-    if not session_manager:
-        return JSONResponse({"error": "Multi-sessions not available"}, status_code=503)
-
-    stats = session_manager.get_global_stats()
-    return JSONResponse(stats)
-
-
 if __name__ == '__main__':
     import uvicorn
-    import socket
-
-    # ­ƒöÑ PHASE 4: Charger l'historique au d├®marrage
+    
+    # 🔥 PHASE 4: Charger l'historique au démarrage
     load_trade_history()
-
-    # R├®cup├®rer le port depuis les arguments (d├®faut: 5000)
+    
+    # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-
-    # ­ƒöÑ FIX: Obtenir l'IP locale et Tailscale pour affichage
-    def get_local_ip():
-        """Obtenir l'IP locale du serveur (r├®seau Wi-Fi/Ethernet)"""
-        try:
-            # Se connecter ├á un serveur distant pour obtenir l'IP locale
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except Exception:
-            try:
-                # Fallback: utiliser hostname
-                hostname = socket.gethostname()
-                ip = socket.gethostbyname(hostname)
-                return ip
-            except Exception:
-                return None
-
-    def get_tailscale_ip():
-        """Obtenir l'IP Tailscale du serveur"""
-        try:
-            import subprocess
-            import os
-            from pathlib import Path
-            
-            # Chercher tailscale.exe dans les emplacements Windows courants
-            tailscale_paths = [
-                "tailscale",  # Dans le PATH
-                r"C:\Program Files\Tailscale\tailscale.exe",
-                r"C:\Program Files (x86)\Tailscale\tailscale.exe",
-                os.path.expanduser(r"~\AppData\Local\Programs\Tailscale\tailscale.exe"),
-            ]
-            
-            tailscale_cmd = None
-            for path in tailscale_paths:
-                if path == "tailscale":
-                    # V├®rifier si tailscale est dans le PATH
-                    try:
-                        result = subprocess.run(
-                            ["where", "tailscale"],
-                            capture_output=True,
-                            text=True,
-                            timeout=1
-                        )
-                        if result.returncode == 0 and result.stdout.strip():
-                            tailscale_cmd = "tailscale"
-                            break
-                    except:
-                        pass
-                else:
-                    # V├®rifier si le fichier existe
-                    if Path(path).exists():
-                        tailscale_cmd = path
-                        break
-            
-            if not tailscale_cmd:
-                return None
-            
-            # Ex├®cuter tailscale ip pour obtenir l'IP Tailscale
-            result = subprocess.run(
-                [tailscale_cmd, "ip"],
-                capture_output=True,
-                text=True,
-                timeout=3
-            )
-            
-            if result.returncode == 0 and result.stdout.strip():
-                # tailscale ip peut retourner plusieurs IPs (IPv4 et IPv6)
-                # On prend la premi├¿re IPv4 (format x.x.x.x)
-                ips = result.stdout.strip().split('\n')
-                for ip in ips:
-                    ip = ip.strip()
-                    # V├®rifier si c'est une IPv4 (format x.x.x.x)
-                    parts = ip.split('.')
-                    if len(parts) == 4 and all(part.isdigit() for part in parts):
-                        return ip
-                # Si pas d'IPv4, retourner la premi├¿re
-                return ips[0].strip() if ips else None
-            return None
-        except FileNotFoundError:
-            # Tailscale CLI non trouv├®
-            return None
-        except Exception:
-            # Autre erreur (timeout, etc.)
-            return None
-
-    local_ip = get_local_ip()
-    tailscale_ip = get_tailscale_ip()
-
-    logger.info("­ƒÜÇ Trade Cursor v7.0 d├®marr├® (VERSION REFACTORIS├ëE)")
-    logger.info("­ƒôè FastAPI (async natif) + WebSocket")
+    
+    logger.info("🚀 Trade Cursor v7.0 démarré")
+    logger.info("📊 FastAPI (async natif) + WebSocket")
     logger.info("")
     logger.info("=" * 70)
-    logger.info("­ƒôì URLs DISPONIBLES (Instance Port: {})".format(port))
+    logger.info("📍 URLs DISPONIBLES (Instance Port: {})".format(port))
+    logger.info("=" * 70)
+    logger.info(f"🏠 Interface principale      → http://localhost:{port}/")
+    logger.info(f"📊 Dashboard graphiques      → http://localhost:{port}/dashboard/charts")
+    logger.info(f"📈 Analytics & Stats         → http://localhost:{port}/analytics")
+    logger.info(f"🔄 Backtesting               → http://localhost:{port}/backtest")
+    logger.info(f"🤖 ML Optimization           → http://localhost:{port}/optimize")
+    logger.info(f"⚙️ Paramètres               → http://localhost:{port}/settings")
+    logger.info(f"💚 API Health check          → http://localhost:{port}/api/health")
+    logger.info(f"📈 API Stats                 → http://localhost:{port}/api/stats")
+    logger.info(f"📋 API Trades (filtres)      → http://localhost:{port}/api/trades?limit=10")
+    logger.info(f"❌ API Setups rejetés        → http://localhost:{port}/api/setups/rejected")
+    logger.info(f"✅ API Setups validés        → http://localhost:{port}/api/setups/validated")
+    logger.info(f"📥 API Export (CSV/JSON)     → http://localhost:{port}/api/export?format=csv")
+    logger.info(f"🔄 API Backtest              → POST http://localhost:{port}/api/backtest")
+    logger.info(f"🤖 API ML Optimize           → POST http://localhost:{port}/api/optimize")
     logger.info("=" * 70)
     logger.info("")
-    logger.info("­ƒûÑ´©Å  ACC├êS LOCAL (m├¬me machine):")
-    logger.info(f"   ÔåÆ http://localhost:{port}/")
-    logger.info("")
     
-    # Afficher IP locale (r├®seau Wi-Fi/Ethernet)
-    if local_ip:
-        logger.info("­ƒô▒ ACC├êS R├ëSEAU LOCAL (m├¬me Wi-Fi/Ethernet):")
-        logger.info(f"   ÔåÆ http://{local_ip}:{port}/")
-        logger.info("")
-    
-    # Afficher IP Tailscale (acc├¿s depuis l'ext├®rieur)
-    if tailscale_ip:
-        logger.info("­ƒîÉ ACC├êS TAILSCALE (depuis l'ext├®rieur via VPN):")
-        logger.info(f"   ÔåÆ http://{tailscale_ip}:{port}/")
-        logger.info("")
-        logger.info("   Ô£à Tailscale d├®tect├®! Vous pouvez vous connecter depuis:")
-        logger.info("      - Votre iPhone (via l'app Tailscale)")
-        logger.info("      - N'importe o├╣ dans le monde (si connect├® ├á Tailscale)")
-        logger.info("")
-    else:
-        logger.info("ÔÜá´©Å  Tailscale non d├®tect├®")
-        logger.info("   Pour acc├¿s depuis l'ext├®rieur, installez Tailscale:")
-        logger.info("   https://tailscale.com/download")
-        logger.info("")
-    
-    logger.info("­ƒîÉ URLs COMPL├êTES:")
-    if tailscale_ip:
-        logger.info(f"   ­ƒÅá Interface principale      ÔåÆ http://{tailscale_ip}:{port}/")
-        logger.info(f"   ­ƒôè Dashboard graphiques      ÔåÆ http://{tailscale_ip}:{port}/dashboard/charts")
-        logger.info(f"   ­ƒôê Analytics & Stats         ÔåÆ http://{tailscale_ip}:{port}/analytics")
-        logger.info(f"   ­ƒöä Backtesting               ÔåÆ http://{tailscale_ip}:{port}/backtest")
-        logger.info(f"   ­ƒñû ML Optimization           ÔåÆ http://{tailscale_ip}:{port}/optimize")
-        logger.info(f"   ÔÜÖ´©Å Param├¿tres               ÔåÆ http://{tailscale_ip}:{port}/settings")
-        logger.info(f"   ­ƒÆÜ API Health check          ÔåÆ http://{tailscale_ip}:{port}/api/health")
-    elif local_ip:
-        logger.info(f"   ­ƒÅá Interface principale      ÔåÆ http://{local_ip}:{port}/")
-        logger.info(f"   ­ƒôè Dashboard graphiques      ÔåÆ http://{local_ip}:{port}/dashboard/charts")
-        logger.info(f"   ­ƒôê Analytics & Stats         ÔåÆ http://{local_ip}:{port}/analytics")
-        logger.info(f"   ­ƒöä Backtesting               ÔåÆ http://{local_ip}:{port}/backtest")
-        logger.info(f"   ­ƒñû ML Optimization           ÔåÆ http://{local_ip}:{port}/optimize")
-        logger.info(f"   ÔÜÖ´©Å Param├¿tres               ÔåÆ http://{local_ip}:{port}/settings")
-        logger.info(f"   ­ƒÆÜ API Health check          ÔåÆ http://{local_ip}:{port}/api/health")
-    logger.info("")
-    
-    if tailscale_ip:
-        logger.info("ÔÜá´©Å  IMPORTANT (Tailscale):")
-        logger.info("   1. Votre iPhone doit ├¬tre connect├® ├á Tailscale")
-        logger.info("   2. Le PC doit appara├«tre en vert dans l'app Tailscale iPhone")
-        logger.info("   3. Utilisez l'IP Tailscale: {}".format(tailscale_ip))
-        logger.info("   4. Le firewall Windows doit autoriser le port {}".format(port))
-    elif local_ip:
-        logger.info("ÔÜá´©Å  IMPORTANT (R├®seau local):")
-        logger.info("   1. Votre iPhone est sur le m├¬me r├®seau Wi-Fi")
-        logger.info("   2. Le firewall Windows autorise le port {}".format(port))
-        logger.info("   3. Vous utilisez l'IP: {}".format(local_ip))
-    logger.info("=" * 70)
-    logger.info("")
-    logger.info("­ƒöÑ REFACTORISATION:")
-    logger.info("  Ô£à Callbacks d├®plac├®s dans core/callbacks/")
-    logger.info("  Ô£à Routes scanner d├®plac├®es dans api/routes/scanner.py")
-    logger.info("  Ô£à Routes dashboard d├®plac├®es dans api/routes/dashboard.py")
-    logger.info("  Ô£à Injection de d├®pendances via set_*()")
-    logger.info("  Ô£à Routers inclus avec app.include_router()")
-    logger.info("")
-
-    # Lancer FastAPI avec SocketIO - ├ëcouter sur toutes les interfaces (0.0.0.0)
-    logger.info(f"­ƒîÉ Serveur d├®marr├® sur 0.0.0.0:{port} (accessible depuis le r├®seau)")
-    uvicorn.run(socketio_app, host='0.0.0.0', port=port, log_level="info")
+    # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
+    uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
