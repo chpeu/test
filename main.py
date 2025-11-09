@@ -1137,9 +1137,36 @@ async def api_get_sessions_stats_global():
 @app.get("/api/state")
 async def api_get_complete_state():
     """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
+    import time
     try:
-        init_instances()
-        from config import TRADING_CONFIG
+        # 🔥 FIX: Envelopper init_instances dans try/except pour éviter 503
+        try:
+            init_instances()
+        except Exception as init_error:
+            logger.error(f"❌ Erreur init_instances dans /api/state: {init_error}", exc_info=True)
+            # Continuer quand même avec les valeurs par défaut
+        
+        # 🔥 FIX: Envelopper import TRADING_CONFIG dans try/except
+        try:
+            from config import TRADING_CONFIG
+        except Exception as config_error:
+            logger.error(f"❌ Erreur import TRADING_CONFIG: {config_error}", exc_info=True)
+            # Utiliser valeurs par défaut
+            TRADING_CONFIG = {
+                'snr_threshold': 0.25,
+                'breakout_threshold': 0.35,
+                'wick_ratio_max': 2.8,
+                'di_gap_min': 4.0,
+                'trend_timeframe': '15m',
+                'account_size': 1000.0,
+                'risk_per_trade': 2.0,
+                'use_confluence': False,
+                'tp_sl_mode': 'FIXE',
+                'tp_percent': 0.25,
+                'sl_percent': 0.25,
+                'volume_multiplier': 0.95,
+                'min_score_required': 7.5
+            }
         
         # Récupérer position active
         import time
