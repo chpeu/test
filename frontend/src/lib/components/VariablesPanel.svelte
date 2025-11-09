@@ -219,190 +219,456 @@
 	<div class="variables-grid">
 		<!-- ONGLET SETUPS -->
 		{#if activeSubTab === 'setups'}
-			<!-- Section Patterns Actifs -->
+			<!-- Texte Explicatif: Comment fonctionne la validation des setups -->
 			<section class="variable-section">
-				<h3>🎯 Patterns Actifs</h3>
+				<h3>📖 Système de Validation des Setups</h3>
+				<div class="setup-explanation">
+					<p class="explanation-intro">
+						<strong>Comment un setup est-il validé ?</strong><br/>
+						Le bot analyse chaque paire en temps réel et combine plusieurs types d'indicateurs pour décider si un trade doit être pris.
+					</p>
+
+					<div class="explanation-section">
+						<h4>1️⃣ Patterns Techniques</h4>
+						<p>
+							Les patterns détectent des situations de marché spécifiques (cassure, rebond, rejet, divergence).
+							Chaque pattern activé ajoute des conditions qui doivent être remplies avec leurs indicateurs associés.
+						</p>
+					</div>
+
+					<div class="explanation-section">
+						<h4>2️⃣ Patterns de Bougies</h4>
+						<p>
+							Les patterns de bougies (Doji, Hammer, Engulfing, etc.) détectent des signaux de retournement ou continuation.
+							Ils sont calculés automatiquement si activés et augmentent le score du setup.
+						</p>
+					</div>
+
+					<div class="explanation-section">
+						<h4>3️⃣ Système de Score</h4>
+						<p>
+							Chaque indicateur valide donne des points au setup :
+						</p>
+						<ul>
+							<li><strong>EMAs (2.5 pts)</strong> - Tendance haussière/baissière</li>
+							<li><strong>ADX/DI (2.5 pts)</strong> - Force de la tendance</li>
+							<li><strong>MACD (2.0 pts)</strong> - Momentum haussier/baissier</li>
+							<li><strong>RSI (1.5 pts)</strong> - Momentum + divergences</li>
+							<li><strong>Volume (1.5 pts)</strong> - Confirmation par le volume</li>
+							<li><strong>Bollinger (0.8 pts)</strong> - Position dans les bandes</li>
+							<li><strong>Pattern (0.8 pts)</strong> - Patterns de bougies</li>
+						</ul>
+						<p>
+							Le setup est validé si le <strong>score total</strong> dépasse le <strong>seuil minimum requis</strong> (configurable ci-dessous).
+						</p>
+					</div>
+
+					<div class="explanation-section">
+						<h4>4️⃣ Confluence (Optionnel)</h4>
+						<p>
+							Si activée, la confluence exige que <strong>TOUS les timeframes</strong> (1m + 5m) confirment le signal.
+							Cela réduit le nombre de trades mais augmente la qualité.
+						</p>
+					</div>
+
+					<div class="explanation-section">
+						<h4>5️⃣ Volume</h4>
+						<p>
+							Le volume actuel doit être supérieur à <strong>volume_multiplier × moyenne</strong>.
+							Un volume élevé confirme la validité du mouvement.
+						</p>
+					</div>
+				</div>
+			</section>
+
+			<!-- Section 1: Patterns Techniques & Indicateurs Associés -->
+			<section class="variable-section">
+				<h3>🎯 Patterns Techniques & Indicateurs</h3>
+				<p class="section-subtitle">Activez/désactivez chaque pattern et ajustez ses indicateurs associés</p>
+
+				<div class="variables-list">
+					<!-- 1. Breakout Pattern -->
+					<div class="pattern-group">
+						<div class="pattern-header">
+							<div class="variable-item checkbox">
+								<label for="use-breakout">
+									<input
+										id="use-breakout"
+										type="checkbox"
+										bind:checked={config.use_breakout}
+										on:change={() => logConfigChange('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé')}
+									/>
+									<span class="var-name">🔼 Breakout Pattern</span>
+									<span class="var-desc">Cassure de niveaux clés (support/résistance)</span>
+								</label>
+								<button class="btn-reset" on:click={() => resetVariable('use_breakout')} title="Réinitialiser">⟲</button>
+							</div>
+						</div>
+
+						{#if config.use_breakout}
+							<div class="pattern-indicators">
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="breakout-threshold">
+											<span class="var-name">Breakout Threshold</span>
+											<span class="var-desc">Seuil de cassure (distance minimale en × ATR)</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('breakout_threshold')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="breakout-threshold"
+											type="range"
+											step="0.01"
+											min="0"
+											max="1"
+											bind:value={config.breakout_threshold}
+											on:change={() => logConfigChange('breakout_threshold', config.breakout_threshold.toFixed(2))}
+										/>
+										<span class="slider-value">{Number(config.breakout_threshold).toFixed(2)}</span>
+									</div>
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					<!-- 2. SNR Pattern -->
+					<div class="pattern-group">
+						<div class="pattern-header">
+							<div class="variable-item checkbox">
+								<label for="use-snr">
+									<input
+										id="use-snr"
+										type="checkbox"
+										bind:checked={config.use_snr}
+										on:change={() => logConfigChange('use_snr', config.use_snr ? 'Activé' : 'Désactivé')}
+									/>
+									<span class="var-name">📍 SNR Pattern</span>
+									<span class="var-desc">Rebond sur support/résistance</span>
+								</label>
+								<button class="btn-reset" on:click={() => resetVariable('use_snr')} title="Réinitialiser">⟲</button>
+							</div>
+						</div>
+
+						{#if config.use_snr}
+							<div class="pattern-indicators">
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="snr-threshold">
+											<span class="var-name">SNR Threshold</span>
+											<span class="var-desc">Seuil de support/résistance (distance en × ATR)</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('snr_threshold')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="snr-threshold"
+											type="range"
+											step="0.01"
+											min="0"
+											max="1"
+											bind:value={config.snr_threshold}
+											on:change={() => logConfigChange('snr_threshold', config.snr_threshold.toFixed(2))}
+										/>
+										<span class="slider-value">{Number(config.snr_threshold).toFixed(2)}</span>
+									</div>
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					<!-- 3. Wick Pattern -->
+					<div class="pattern-group">
+						<div class="pattern-header">
+							<div class="variable-item checkbox">
+								<label for="use-wick">
+									<input
+										id="use-wick"
+										type="checkbox"
+										bind:checked={config.use_wick}
+										on:change={() => logConfigChange('use_wick', config.use_wick ? 'Activé' : 'Désactivé')}
+									/>
+									<span class="var-name">📏 Wick Pattern</span>
+									<span class="var-desc">Rejet de prix via longues mèches</span>
+								</label>
+								<button class="btn-reset" on:click={() => resetVariable('use_wick')} title="Réinitialiser">⟲</button>
+							</div>
+						</div>
+
+						{#if config.use_wick}
+							<div class="pattern-indicators">
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="wick-ratio">
+											<span class="var-name">Wick Ratio Max</span>
+											<span class="var-desc">Ratio maximum mèche/corps de bougie</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('wick_ratio_max')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="wick-ratio"
+											type="range"
+											step="0.1"
+											min="0"
+											max="10"
+											bind:value={config.wick_ratio_max}
+											on:change={() => logConfigChange('wick_ratio_max', config.wick_ratio_max.toFixed(1))}
+										/>
+										<span class="slider-value">{Number(config.wick_ratio_max).toFixed(1)}</span>
+									</div>
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					<!-- 4. Divergence Pattern -->
+					<div class="pattern-group">
+						<div class="pattern-header">
+							<div class="variable-item checkbox">
+								<label for="use-divergence">
+									<input
+										id="use-divergence"
+										type="checkbox"
+										bind:checked={config.use_divergence}
+										on:change={() => logConfigChange('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé')}
+									/>
+									<span class="var-name">🔀 Divergence Pattern</span>
+									<span class="var-desc">Divergence DI+ vs DI-</span>
+								</label>
+								<button class="btn-reset" on:click={() => resetVariable('use_divergence')} title="Réinitialiser">⟲</button>
+							</div>
+						</div>
+
+						{#if config.use_divergence}
+							<div class="pattern-indicators">
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="di-gap">
+											<span class="var-name">DI Gap Min</span>
+											<span class="var-desc">Gap minimum entre DI+ et DI-</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('di_gap_min')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="di-gap"
+											type="range"
+											step="0.5"
+											min="0"
+											max="20"
+											bind:value={config.di_gap_min}
+											on:change={() => logConfigChange('di_gap_min', config.di_gap_min.toFixed(1))}
+										/>
+										<span class="slider-value">{Number(config.di_gap_min).toFixed(1)}</span>
+									</div>
+								</div>
+
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="di-gap-adx-threshold">
+											<span class="var-name">DI Gap ADX Threshold</span>
+											<span class="var-desc">Seuil ADX pour valider le DI gap</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('di_gap_adx_threshold')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="di-gap-adx-threshold"
+											type="range"
+											step="1"
+											min="0"
+											max="100"
+											bind:value={config.di_gap_adx_threshold}
+											on:change={() => logConfigChange('di_gap_adx_threshold', config.di_gap_adx_threshold.toFixed(0))}
+										/>
+										<span class="slider-value">{Number(config.di_gap_adx_threshold).toFixed(0)}</span>
+									</div>
+								</div>
+							</div>
+						{/if}
+					</div>
+				</div>
+			</section>
+
+			<!-- Section 2: Patterns de Bougies (Candlestick Patterns) -->
+			<section class="variable-section">
+				<h3>🕯️ Patterns de Bougies</h3>
+				<p class="section-subtitle">Patterns de chandeliers détectés automatiquement (1 à 3 bougies)</p>
+
+				<div class="variables-list candlestick-patterns">
+					<div class="variable-item checkbox">
+						<label for="use-engulfing">
+							<input
+								id="use-engulfing"
+								type="checkbox"
+								bind:checked={config.use_engulfing}
+								on:change={() => logConfigChange('use_engulfing', config.use_engulfing ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Engulfing</span>
+							<span class="var-desc">Bougie engloutissante (bullish/bearish)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_engulfing')} title="Réinitialiser">⟲</button>
+					</div>
+
+					<div class="variable-item checkbox">
+						<label for="use-hammer">
+							<input
+								id="use-hammer"
+								type="checkbox"
+								bind:checked={config.use_hammer}
+								on:change={() => logConfigChange('use_hammer', config.use_hammer ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Hammer</span>
+							<span class="var-desc">Marteau (reversal haussier)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_hammer')} title="Réinitialiser">⟲</button>
+					</div>
+
+					<div class="variable-item checkbox">
+						<label for="use-shooting-star">
+							<input
+								id="use-shooting-star"
+								type="checkbox"
+								bind:checked={config.use_shooting_star}
+								on:change={() => logConfigChange('use_shooting_star', config.use_shooting_star ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Shooting Star</span>
+							<span class="var-desc">Étoile filante (reversal baissier)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_shooting_star')} title="Réinitialiser">⟲</button>
+					</div>
+
+					<div class="variable-item checkbox">
+						<label for="use-doji">
+							<input
+								id="use-doji"
+								type="checkbox"
+								bind:checked={config.use_doji}
+								on:change={() => logConfigChange('use_doji', config.use_doji ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Doji</span>
+							<span class="var-desc">Doji, Dragonfly, Gravestone (indécision)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_doji')} title="Réinitialiser">⟲</button>
+					</div>
+
+					<div class="variable-item checkbox">
+						<label for="use-marubozu">
+							<input
+								id="use-marubozu"
+								type="checkbox"
+								bind:checked={config.use_marubozu}
+								on:change={() => logConfigChange('use_marubozu', config.use_marubozu ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Marubozu</span>
+							<span class="var-desc">Bougie pleine (momentum fort)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_marubozu')} title="Réinitialiser">⟲</button>
+					</div>
+
+					<div class="variable-item checkbox">
+						<label for="use-morning-star">
+							<input
+								id="use-morning-star"
+								type="checkbox"
+								bind:checked={config.use_morning_star}
+								on:change={() => logConfigChange('use_morning_star', config.use_morning_star ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Morning Star</span>
+							<span class="var-desc">Étoile du matin (3 bougies, reversal haussier)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_morning_star')} title="Réinitialiser">⟲</button>
+					</div>
+
+					<div class="variable-item checkbox">
+						<label for="use-evening-star">
+							<input
+								id="use-evening-star"
+								type="checkbox"
+								bind:checked={config.use_evening_star}
+								on:change={() => logConfigChange('use_evening_star', config.use_evening_star ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Evening Star</span>
+							<span class="var-desc">Étoile du soir (3 bougies, reversal baissier)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_evening_star')} title="Réinitialiser">⟲</button>
+					</div>
+				</div>
+			</section>
+
+			<!-- Section 3: Validation des Setups -->
+			<section class="variable-section">
+				<h3>✅ Validation des Setups</h3>
+				<p class="section-subtitle">Critères pour valider un trade (confluence, volume, score minimum)</p>
+
 				<div class="variables-list">
 					<div class="variable-item checkbox">
+						<label for="use-confluence">
+							<input
+								id="use-confluence"
+								type="checkbox"
+								bind:checked={config.use_confluence}
+								on:change={() => logConfigChange('use_confluence', config.use_confluence ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">Use Confluence</span>
+							<span class="var-desc">Exiger confirmation sur TOUS les timeframes (1m + 5m)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_confluence')} title="Réinitialiser">⟲</button>
+					</div>
+
+					<div class="variable-item">
 						<div class="var-header">
-							<label for="use-breakout">
-								<input
-									id="use-breakout"
-									type="checkbox"
-									bind:checked={config.use_breakout}
-									on:change={() => logConfigChange('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé')}
-								/>
-								<span class="var-name">Breakout Pattern</span>
-								<span class="var-desc">Activer les signaux de cassure</span>
+							<label for="volume-multiplier">
+								<span class="var-name">Volume Multiplier</span>
+								<span class="var-desc">Volume actuel doit être > moyenne × ce multiplicateur</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('use_breakout')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('volume_multiplier')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="volume-multiplier"
+								type="range"
+								step="0.05"
+								min="0.5"
+								max="2"
+								bind:value={config.volume_multiplier}
+								on:change={() => logConfigChange('volume_multiplier', config.volume_multiplier.toFixed(2))}
+							/>
+							<span class="slider-value">{Number(config.volume_multiplier).toFixed(2)}×</span>
 						</div>
 					</div>
 
-					<div class="variable-item checkbox">
+					<div class="variable-item">
 						<div class="var-header">
-							<label for="use-snr">
-								<input
-									id="use-snr"
-									type="checkbox"
-									bind:checked={config.use_snr}
-									on:change={() => logConfigChange('use_snr', config.use_snr ? 'Activé' : 'Désactivé')}
-								/>
-								<span class="var-name">SNR Pattern</span>
-								<span class="var-desc">Activer les signaux support/résistance</span>
+							<label for="min-score">
+								<span class="var-name">Min Score Required</span>
+								<span class="var-desc">Score minimum pour valider un setup</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('use_snr')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('min_score_required')} title="Réinitialiser">⟲</button>
 						</div>
-					</div>
-
-					<div class="variable-item checkbox">
-						<div class="var-header">
-							<label for="use-wick">
-								<input
-									id="use-wick"
-									type="checkbox"
-									bind:checked={config.use_wick}
-									on:change={() => logConfigChange('use_wick', config.use_wick ? 'Activé' : 'Désactivé')}
-								/>
-								<span class="var-name">Wick Pattern</span>
-								<span class="var-desc">Activer les signaux de rejet (mèches)</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('use_wick')} title="Réinitialiser">⟲</button>
-						</div>
-					</div>
-
-					<div class="variable-item checkbox">
-						<div class="var-header">
-							<label for="use-divergence">
-								<input
-									id="use-divergence"
-									type="checkbox"
-									bind:checked={config.use_divergence}
-									on:change={() => logConfigChange('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé')}
-								/>
-								<span class="var-name">Divergence Pattern</span>
-								<span class="var-desc">Activer les signaux de divergence DI</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('use_divergence')} title="Réinitialiser">⟲</button>
+						<div class="slider-container">
+							<input
+								id="min-score"
+								type="range"
+								step="0.5"
+								min="0"
+								max="20"
+								bind:value={config.min_score_required}
+								on:change={() => logConfigChange('min_score_required', config.min_score_required.toFixed(1))}
+							/>
+							<span class="slider-value">{Number(config.min_score_required).toFixed(1)} pts</span>
 						</div>
 					</div>
 				</div>
 			</section>
 
-			<!-- Section Indicateurs Techniques -->
+			<!-- Section 4: Timeframes & ATR Optimal -->
 			<section class="variable-section">
-				<h3>📊 Indicateurs Techniques</h3>
+				<h3>⏱️ Timeframes & ATR Optimal</h3>
+				<p class="section-subtitle">Configuration des timeframes et plages ATR optimales pour filtrage</p>
+
 				<div class="variables-list">
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="snr-threshold">
-								<span class="var-name">SNR Threshold</span>
-								<span class="var-desc">Seuil de support/résistance</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('snr_threshold')} title="Réinitialiser">⟲</button>
-						</div>
-						<div class="slider-container">
-							<input
-								id="snr-threshold"
-								type="range"
-								step="0.01"
-								min="0"
-								max="1"
-								bind:value={config.snr_threshold}
-								on:change={() => logConfigChange('snr_threshold', config.snr_threshold.toFixed(2))}
-							/>
-							<span class="slider-value">{Number(config.snr_threshold).toFixed(2)}</span>
-						</div>
-					</div>
-
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="breakout-threshold">
-								<span class="var-name">Breakout Threshold</span>
-								<span class="var-desc">Seuil de cassure</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('breakout_threshold')} title="Réinitialiser">⟲</button>
-						</div>
-						<div class="slider-container">
-							<input
-								id="breakout-threshold"
-								type="range"
-								step="0.01"
-								min="0"
-								max="1"
-								bind:value={config.breakout_threshold}
-								on:change={() => logConfigChange('breakout_threshold', config.breakout_threshold.toFixed(2))}
-							/>
-							<span class="slider-value">{Number(config.breakout_threshold).toFixed(2)}</span>
-						</div>
-					</div>
-
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="wick-ratio">
-								<span class="var-name">Wick Ratio Max</span>
-								<span class="var-desc">Ratio maximum des mèches</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('wick_ratio_max')} title="Réinitialiser">⟲</button>
-						</div>
-						<div class="slider-container">
-							<input
-								id="wick-ratio"
-								type="range"
-								step="0.1"
-								min="0"
-								max="10"
-								bind:value={config.wick_ratio_max}
-								on:change={() => logConfigChange('wick_ratio_max', config.wick_ratio_max.toFixed(1))}
-							/>
-							<span class="slider-value">{Number(config.wick_ratio_max).toFixed(1)}</span>
-						</div>
-					</div>
-
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="di-gap">
-								<span class="var-name">DI Gap Min</span>
-								<span class="var-desc">Gap minimum directional indicator</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('di_gap_min')} title="Réinitialiser">⟲</button>
-						</div>
-						<div class="slider-container">
-							<input
-								id="di-gap"
-								type="range"
-								step="0.5"
-								min="0"
-								max="20"
-								bind:value={config.di_gap_min}
-								on:change={() => logConfigChange('di_gap_min', config.di_gap_min.toFixed(1))}
-							/>
-							<span class="slider-value">{Number(config.di_gap_min).toFixed(1)}</span>
-						</div>
-					</div>
-
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="di-gap-adx-threshold">
-								<span class="var-name">DI Gap ADX Threshold</span>
-								<span class="var-desc">Seuil ADX pour le DI gap</span>
-							</label>
-							<button class="btn-reset" on:click={() => resetVariable('di_gap_adx_threshold')} title="Réinitialiser">⟲</button>
-						</div>
-						<div class="slider-container">
-							<input
-								id="di-gap-adx-threshold"
-								type="range"
-								step="1"
-								min="0"
-								max="100"
-								bind:value={config.di_gap_adx_threshold}
-								on:change={() => logConfigChange('di_gap_adx_threshold', config.di_gap_adx_threshold.toFixed(0))}
-							/>
-							<span class="slider-value">{Number(config.di_gap_adx_threshold).toFixed(0)}</span>
-						</div>
-					</div>
-
 					<div class="variable-item">
 						<div class="var-header">
 							<label for="trend-timeframe">
@@ -422,13 +688,7 @@
 							<option value="1h">1 heure</option>
 						</select>
 					</div>
-				</div>
-			</section>
 
-			<!-- Section Optimal ATR Ranges -->
-			<section class="variable-section">
-				<h3>📉 Optimal ATR Ranges</h3>
-				<div class="variables-list">
 					<div class="variable-item">
 						<div class="var-header">
 							<label for="optimal-atr-min-1m">
@@ -519,7 +779,6 @@
 				</div>
 			</section>
 		{/if}
-
 		<!-- ONGLET MONEY MANAGEMENT -->
 		{#if activeSubTab === 'money'}
 			<section class="variable-section">
@@ -1553,5 +1812,85 @@
 	.indicator-value.mode-escalier {
 		background: linear-gradient(135deg, #ff8800 0%, #cc6600 100%);
 		color: #fff;
+	}
+
+	/* Setup Explanation Section */
+	.setup-explanation {
+		background: rgba(0, 170, 255, 0.05);
+		border: 1px solid rgba(0, 170, 255, 0.2);
+		border-radius: 8px;
+		padding: 20px;
+	}
+
+	.explanation-intro {
+		font-size: 14px;
+		line-height: 1.6;
+		color: #ccc;
+		margin-bottom: 20px;
+	}
+
+	.explanation-section {
+		margin-bottom: 16px;
+		padding-left: 12px;
+		border-left: 2px solid rgba(0, 255, 136, 0.3);
+	}
+
+	.explanation-section h4 {
+		font-size: 14px;
+		color: #00ff88;
+		margin: 0 0 8px 0;
+	}
+
+	.explanation-section p {
+		font-size: 13px;
+		line-height: 1.5;
+		color: #bbb;
+		margin: 0 0 8px 0;
+	}
+
+	.explanation-section ul {
+		margin: 8px 0;
+		padding-left: 20px;
+	}
+
+	.explanation-section li {
+		font-size: 13px;
+		line-height: 1.6;
+		color: #bbb;
+		margin-bottom: 4px;
+	}
+
+	/* Section Subtitle */
+	.section-subtitle {
+		font-size: 13px;
+		color: #888;
+		font-style: italic;
+		margin: -8px 0 16px 0;
+	}
+
+	/* Pattern Groups */
+	.pattern-group {
+		background: rgba(0, 255, 136, 0.03);
+		border: 1px solid rgba(0, 255, 136, 0.15);
+		border-radius: 8px;
+		padding: 12px;
+		margin-bottom: 12px;
+	}
+
+	.pattern-header {
+		margin-bottom: 8px;
+	}
+
+	.pattern-indicators {
+		margin-left: 24px;
+		padding-left: 16px;
+		border-left: 2px solid rgba(0, 255, 136, 0.3);
+	}
+
+	/* Candlestick Patterns Grid */
+	.candlestick-patterns {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+		gap: 12px;
 	}
 </style>
