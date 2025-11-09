@@ -1,107 +1,93 @@
 <script>
 	import { sortedTrades } from '$lib/stores/trades';
-	import { flip } from 'svelte/animate';
-	import { fade } from 'svelte/transition';
-
-	let showCount = 10;
 
 	function formatDate(dateStr) {
 		if (!dateStr) return '';
 		const date = new Date(dateStr);
-		return date.toLocaleString('en-US', {
-			month: 'short',
-			day: 'numeric',
+		return date.toLocaleString('fr-FR', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric',
 			hour: '2-digit',
-			minute: '2-digit'
+			minute: '2-digit',
+			second: '2-digit'
 		});
 	}
 
-	function formatNumber(num) {
+	function formatNumber(num, decimals = 2) {
 		if (num === null || num === undefined) return '0.00';
-		return Number(num).toFixed(2);
+		return Number(num).toFixed(decimals);
 	}
 
-	$: displayTrades = $sortedTrades.slice(0, showCount);
+	function formatDuration(openedAt, closedAt) {
+		if (!openedAt || !closedAt) return 'N/A';
+		const diff = new Date(closedAt) - new Date(openedAt);
+		const seconds = Math.floor(diff / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+
+		if (hours > 0) return `${hours}h ${minutes % 60}m`;
+		if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+		return `${seconds}s`;
+	}
 </script>
 
 <div class="trade-history">
 	<div class="history-header">
-		<h3>Trade History</h3>
-		<div class="total-count">{$sortedTrades.length} total trades</div>
+		<h3>📜 Historique des Trades</h3>
+		<div class="total-count">{$sortedTrades.length} trades</div>
 	</div>
 
 	{#if $sortedTrades.length === 0}
 		<div class="no-trades">
 			<div class="no-trades-icon">📊</div>
-			<div class="no-trades-text">No trades yet</div>
+			<div class="no-trades-text">Aucun trade pour le moment</div>
 		</div>
 	{:else}
-		<div class="trades-list">
-			{#each displayTrades as trade (trade.id || `${trade.symbol}_${trade.closed_at || Date.now()}_${trade.entry || ''}_${trade.exit_price || ''}`)}
-				<div
-					class="trade-item"
-					class:win={trade.net_pnl_usdt >= 0}
-					class:loss={trade.net_pnl_usdt < 0}
-					animate:flip={{ duration: 300 }}
-					in:fade={{ duration: 200 }}
-				>
-					<div class="trade-header">
-						<div class="trade-symbol">{trade.symbol}</div>
-						<div
-							class="trade-direction"
-							class:long={trade.direction === 'LONG'}
-							class:short={trade.direction === 'SHORT'}
-						>
-							{trade.direction}
-						</div>
-						<div class="trade-reason">{trade.reason}</div>
-					</div>
-
-					<div class="trade-pnl">
-						<div class="pnl-percent" class:positive={trade.net_pnl_pct >= 0} class:negative={trade.net_pnl_pct < 0}>
-							{trade.net_pnl_pct >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_pct)}%
-						</div>
-						<div class="pnl-usdt" class:positive={trade.net_pnl_usdt >= 0} class:negative={trade.net_pnl_usdt < 0}>
-							{trade.net_pnl_usdt >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_usdt)} USDT
-						</div>
-					</div>
-
-					<div class="trade-details">
-						<div class="detail">
-							<span class="detail-label">Entry:</span>
-							<span class="detail-value">{formatNumber(trade.entry)}</span>
-						</div>
-						<div class="detail">
-							<span class="detail-label">Exit:</span>
-							<span class="detail-value">{formatNumber(trade.exit_price)}</span>
-						</div>
-						<div class="detail">
-							<span class="detail-label">Size:</span>
-							<span class="detail-value">{formatNumber(trade.size)} USDT</span>
-						</div>
-						<div class="detail">
-							<span class="detail-label">Closed:</span>
-							<span class="detail-value">{formatDate(trade.closed_at)}</span>
-						</div>
-					</div>
-
-					{#if trade.slippage_pct}
-						<div class="trade-footer">
-							<div class="slippage">Slippage: {formatNumber(trade.slippage_pct)}%</div>
-							<div class="fees">Fees: {formatNumber(trade.fees_usdt)} USDT</div>
-						</div>
-					{/if}
-				</div>
-			{/each}
+		<div class="table-container">
+			<table class="trades-table">
+				<thead>
+					<tr>
+						<th>Timestamp</th>
+						<th>Symbol</th>
+						<th>Direction</th>
+						<th>Entry</th>
+						<th>Exit</th>
+						<th>Size (USDT)</th>
+						<th>PnL %</th>
+						<th>PnL USDT</th>
+						<th>Reason</th>
+						<th>Duration</th>
+						<th>Signals</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each $sortedTrades as trade (trade.id || `${trade.symbol}_${trade.closed_at}`)}
+						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0}>
+							<td class="timestamp">{formatDate(trade.closed_at)}</td>
+							<td class="symbol">{trade.symbol}</td>
+							<td class="direction">
+								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'}>
+									{trade.direction}
+								</span>
+							</td>
+							<td class="price">{formatNumber(trade.entry, 6)}</td>
+							<td class="price">{formatNumber(trade.exit_price, 6)}</td>
+							<td class="size">{formatNumber(trade.size, 2)}</td>
+							<td class="pnl-pct" class:positive={trade.net_pnl_pct >= 0} class:negative={trade.net_pnl_pct < 0}>
+								{trade.net_pnl_pct >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_pct, 2)}%
+							</td>
+							<td class="pnl-usdt" class:positive={trade.net_pnl_usdt >= 0} class:negative={trade.net_pnl_usdt < 0}>
+								{trade.net_pnl_usdt >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_usdt, 2)}
+							</td>
+							<td class="reason">{trade.reason || 'N/A'}</td>
+							<td class="duration">{formatDuration(trade.opened_at, trade.closed_at)}</td>
+							<td class="signals">{trade.confirmed_by || 'N/A'}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
-
-		{#if $sortedTrades.length > showCount}
-			<div class="load-more">
-				<button class="btn-load-more" on:click={() => (showCount += 10)}>
-					Load More ({$sortedTrades.length - showCount} remaining)
-				</button>
-			</div>
-		{/if}
 	{/if}
 </div>
 
@@ -118,17 +104,25 @@
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 20px;
+		padding-bottom: 15px;
+		border-bottom: 2px solid #2a3a6b;
 	}
 
 	.history-header h3 {
 		font-size: 20px;
 		color: #00ff88;
 		font-weight: bold;
+		margin: 0;
 	}
 
 	.total-count {
-		font-size: 14px;
-		color: #888;
+		background: rgba(0, 170, 255, 0.2);
+		color: #00aaff;
+		padding: 6px 14px;
+		border-radius: 12px;
+		font-size: 12px;
+		font-weight: bold;
+		border: 1px solid #00aaff;
 	}
 
 	.no-trades {
@@ -138,194 +132,156 @@
 
 	.no-trades-icon {
 		font-size: 64px;
-		margin-bottom: 20px;
+		margin-bottom: 15px;
+		opacity: 0.5;
 	}
 
 	.no-trades-text {
-		font-size: 18px;
+		font-size: 14px;
 		color: #888;
 	}
 
-	.trades-list {
-		display: flex;
-		flex-direction: column;
-		gap: 15px;
-	}
-
-	.trade-item {
+	.table-container {
+		overflow-x: auto;
 		background: #0a0e27;
-		border-radius: 10px;
+		border-radius: 8px;
 		padding: 15px;
-		border: 2px solid;
-		transition: all 0.3s;
 	}
 
-	.trade-item.win {
-		border-color: rgba(0, 255, 136, 0.3);
+	.trades-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-family: 'Courier New', monospace;
+		font-size: 12px;
 	}
 
-	.trade-item.loss {
-		border-color: rgba(255, 68, 68, 0.3);
+	.trades-table thead {
+		background: rgba(0, 255, 136, 0.1);
+		border-bottom: 2px solid #00ff88;
 	}
 
-	.trade-item:hover {
-		transform: translateX(5px);
+	.trades-table th {
+		padding: 12px 10px;
+		text-align: left;
+		font-weight: bold;
+		color: #00ff88;
+		text-transform: uppercase;
+		font-size: 11px;
+		letter-spacing: 0.5px;
+		border-bottom: 2px solid #00ff88;
 	}
 
-	.trade-item.win:hover {
-		border-color: #00ff88;
-		box-shadow: 0 4px 15px rgba(0, 255, 136, 0.2);
+	.trades-table tbody tr {
+		border-bottom: 1px solid #2a3a6b;
+		transition: all 0.2s;
 	}
 
-	.trade-item.loss:hover {
-		border-color: #ff4444;
-		box-shadow: 0 4px 15px rgba(255, 68, 68, 0.2);
+	.trades-table tbody tr:hover {
+		background: rgba(0, 255, 136, 0.05);
 	}
 
-	.trade-header {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		margin-bottom: 12px;
+	.trades-table tbody tr.win {
+		border-left: 4px solid #00ff88;
 	}
 
-	.trade-symbol {
-		font-size: 16px;
+	.trades-table tbody tr.loss {
+		border-left: 4px solid #ff4444;
+	}
+
+	.trades-table td {
+		padding: 10px;
+		color: #fff;
+	}
+
+	.timestamp {
+		color: #888;
+		font-size: 11px;
+		white-space: nowrap;
+	}
+
+	.symbol {
 		font-weight: bold;
 		color: #fff;
 	}
 
-	.trade-direction {
-		padding: 4px 10px;
-		border-radius: 6px;
-		font-size: 11px;
+	.direction span {
+		padding: 4px 8px;
+		border-radius: 4px;
 		font-weight: bold;
+		font-size: 11px;
 	}
 
-	.trade-direction.long {
+	.direction .long {
 		background: rgba(0, 255, 136, 0.2);
 		color: #00ff88;
+		border: 1px solid #00ff88;
 	}
 
-	.trade-direction.short {
+	.direction .short {
 		background: rgba(255, 68, 68, 0.2);
 		color: #ff4444;
+		border: 1px solid #ff4444;
 	}
 
-	.trade-reason {
-		margin-left: auto;
-		font-size: 12px;
-		color: #888;
-		padding: 4px 10px;
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 6px;
-	}
-
-	.trade-pnl {
-		display: flex;
-		gap: 15px;
-		margin-bottom: 12px;
-	}
-
-	.pnl-percent {
-		font-size: 24px;
-		font-weight: bold;
-	}
-
-	.pnl-percent.positive {
-		color: #00ff88;
-		text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-	}
-
-	.pnl-percent.negative {
-		color: #ff4444;
-		text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
-	}
-
-	.pnl-usdt {
-		font-size: 18px;
-		font-weight: bold;
-		align-self: flex-end;
-	}
-
-	.pnl-usdt.positive {
-		color: #00ff88;
-	}
-
-	.pnl-usdt.negative {
-		color: #ff4444;
-	}
-
-	.trade-details {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 8px;
-		margin-bottom: 10px;
-	}
-
-	.detail {
-		font-size: 12px;
-	}
-
-	.detail-label {
-		color: #888;
-		margin-right: 5px;
-	}
-
-	.detail-value {
+	.price {
+		font-family: 'Courier New', monospace;
 		color: #00aaff;
+	}
+
+	.size {
+		color: #ffaa00;
+	}
+
+	.pnl-pct, .pnl-usdt {
 		font-weight: bold;
 	}
 
-	.trade-footer {
-		display: flex;
-		gap: 15px;
-		padding-top: 10px;
-		border-top: 1px solid #2a3a6b;
-		font-size: 11px;
-		color: #888;
-	}
-
-	.load-more {
-		text-align: center;
-		margin-top: 20px;
-	}
-
-	.btn-load-more {
-		padding: 12px 24px;
-		background: #2a3a6b;
-		border: 2px solid #00ff88;
-		border-radius: 8px;
+	.positive {
 		color: #00ff88;
-		font-size: 14px;
-		font-weight: bold;
-		cursor: pointer;
-		transition: all 0.3s;
 	}
 
-	.btn-load-more:hover {
-		background: rgba(0, 255, 136, 0.1);
-		transform: translateY(-2px);
+	.negative {
+		color: #ff4444;
 	}
 
-	/* Mobile */
+	.reason {
+		color: #888;
+		font-size: 11px;
+	}
+
+	.duration {
+		color: #888;
+		font-size: 11px;
+	}
+
+	.signals {
+		color: #00aaff;
+		font-size: 10px;
+		max-width: 150px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* Mobile responsive */
+	@media (max-width: 1024px) {
+		.table-container {
+			overflow-x: scroll;
+		}
+
+		.trades-table {
+			min-width: 1200px;
+		}
+	}
+
 	@media (max-width: 768px) {
-		.trade-header {
-			flex-wrap: wrap;
+		.trades-table {
+			font-size: 10px;
 		}
 
-		.trade-reason {
-			margin-left: 0;
-			flex-basis: 100%;
-		}
-
-		.trade-details {
-			grid-template-columns: 1fr;
-		}
-
-		.trade-pnl {
-			flex-direction: column;
-			gap: 5px;
+		.trades-table th,
+		.trades-table td {
+			padding: 8px 6px;
 		}
 	}
 </style>
