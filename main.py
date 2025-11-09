@@ -1087,6 +1087,15 @@ async def api_open_position(request: Request):
 
             await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
             await sio.emit('position_opened', position.to_dict())
+            
+            # 🔥 FIX: Émettre l'état mis à jour pour synchronisation temps réel
+            status_data = {
+                'is_scanning': app_state.get('is_scanning', False),
+                'active_position': position.to_dict(),
+                'stats': app_state.get('stats', {}),
+                'top_pairs': app_state.get('top_pairs', [])
+            }
+            await sio.emit('status', status_data)
 
             return JSONResponse({'status': 'opened', 'position': position.to_dict()})
         except Exception as e:
@@ -1250,6 +1259,16 @@ async def api_close_position():
 
             await add_log('INFO', 'Position clôturée', 'Manuel')
             await sio.emit('position_closed', result)
+            
+            # 🔥 FIX: Émettre l'état mis à jour pour synchronisation temps réel
+            status_data = {
+                'is_scanning': app_state.get('is_scanning', False),
+                'active_position': None,
+                'stats': app_state.get('stats', {}),
+                'top_pairs': app_state.get('top_pairs', []),
+                'trade_history': list(reversed(app_state.get('trade_history', [])[-20:]))
+            }
+            await sio.emit('status', status_data)
 
             return JSONResponse(result)
         except Exception as e:
@@ -1292,6 +1311,14 @@ async def scan_top_pairs_task(n):
         await add_log('ERROR', 'Erreur scan', str(e))
     finally:
         app_state['is_scanning'] = False
+        # 🔥 FIX: Émettre l'état mis à jour via Socket.IO pour synchronisation temps réel
+        status_data = {
+            'is_scanning': False,
+            'active_position': app_state.get('active_position'),
+            'stats': app_state.get('stats', {}),
+            'top_pairs': app_state.get('top_pairs', [])
+        }
+        await sio.emit('status', status_data)
 
 
 # SocketIO Handlers
@@ -1776,7 +1803,21 @@ async def api_config_update(request: Request):
                 )
                 logger.info("✅ TrailingStopManager mis à jour avec nouvelles valeurs")
 
-        logger.info(f"💾 Configuration sauvegardée: {len(validated_updates)} paramètres mis à jour")
+                logger.info(f"💾 Configuration sauvegardée: {len(validated_updates)} paramètres mis à jour")
+                
+                # 🔥 FIX: Émettre l'état mis à jour via Socket.IO pour synchronisation temps réel
+                status_data = {
+                    'is_scanning': app_state.get('is_scanning', False),
+                    'active_position': app_state.get('active_position'),
+                    'stats': app_state.get('stats', {}),
+                    'top_pairs': app_state.get('top_pairs', []),
+                    'config': {k: TRADING_CONFIG.get(k) for k in validated_updates.keys()}
+                }
+                await sio.emit('status', status_data)
+                await sio.emit('config_change', {
+                    'timestamp': datetime.now().isoformat(),
+                    'changes': validated_updates
+                })
         
         # 🔥 AMÉLIORATION: Log détaillé pour chaque paramètre modifié
         updated_summary = ", ".join([f"{k}={v}" for k, v in validated_updates.items()])

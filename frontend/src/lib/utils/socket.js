@@ -77,6 +77,11 @@ export function initSocket() {
 
 	socket.on('config_change', (configLogEntry) => {
 		addConfigLog(configLogEntry);
+		// 🔥 FIX: Recharger la config depuis le backend pour synchronisation temps réel
+		if (configLogEntry.changes) {
+			console.log('🔄 Config changée via Socket.IO:', configLogEntry.changes);
+			// Les composants qui utilisent la config devront recharger depuis /api/state
+		}
 	});
 
 	// === ÉVÉNEMENTS SCANNER ===

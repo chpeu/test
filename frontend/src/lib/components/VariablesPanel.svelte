@@ -1,5 +1,6 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { getSocket } from '$lib/utils/socket';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -167,28 +168,30 @@
 					saveMessage = `✅ Configuration sauvegardée: ${result.message || 'Succès'}`;
 				}
 				
-				// 🔥 FIX: Recharger la config depuis le backend pour vérifier
+				// 🔥 FIX: Ne PAS recharger la config immédiatement après save (évite incohérences)
+				// La config a déjà été sauvegardée et vérifiée via result.verified
+				// On ne vérifie que si des incohérences sont détectées
 				setTimeout(async () => {
-					await loadConfig();
-					
-					// 🔥 AMÉLIORATION: Vérifier via l'endpoint de vérification
+					// 🔥 AMÉLIORATION: Vérifier via l'endpoint de vérification (sans recharger config locale)
 					try {
 						const verifyRes = await fetch('/api/config/verify');
 						if (verifyRes.ok) {
 							const verifyData = await verifyRes.json();
 							console.log('🔍 Vérification complète:', verifyData);
 							if (verifyData.params) {
-								// Comparer avec la config locale
+								// Comparer avec la config envoyée (pas la config locale qui peut avoir changé)
 								const mismatches = [];
-								Object.keys(config).forEach(key => {
+								Object.keys(result.verified || {}).forEach(key => {
 									if (verifyData.params[key] !== undefined && 
-									    verifyData.params[key] !== config[key]) {
-										mismatches.push(`${key}: frontend=${config[key]}, bot=${verifyData.params[key]}`);
+									    verifyData.params[key] !== result.verified[key]) {
+										mismatches.push(`${key}: envoyé=${result.verified[key]}, bot=${verifyData.params[key]}`);
 									}
 								});
 								if (mismatches.length > 0) {
 									console.warn('⚠️ Incohérences détectées:', mismatches);
 									saveMessage = `⚠️ ${mismatches.length} incohérence(s) détectée(s). Vérifiez les logs.`;
+									// 🔥 FIX: Recharger la config seulement en cas d'incohérence
+									await loadConfig();
 								} else {
 									console.log('✅ Tous les paramètres sont synchronisés');
 								}
@@ -254,6 +257,38 @@
 			// Note: dans un vrai système, on voudrait comparer avec la valeur précédente, pas DEFAULTS
 		});
 	}
+
+	// 🔥 FIX: Écouter les changements de config via Socket.IO pour synchronisation temps réel
+	let socket = null;
+	let configChangeListener = null;
+
+	function setupConfigListener() {
+		socket = getSocket();
+		if (!socket) {
+			setTimeout(setupConfigListener, 1000);
+			return;
+		}
+
+		configChangeListener = (configLogEntry) => {
+			if (configLogEntry.changes) {
+				console.log('🔄 Config changée via Socket.IO, rechargement...');
+				// Recharger la config depuis le backend
+				loadConfig();
+			}
+		};
+
+		socket.on('config_change', configChangeListener);
+	}
+
+	onMount(() => {
+		setupConfigListener();
+	});
+
+	onDestroy(() => {
+		if (socket && configChangeListener) {
+			socket.off('config_change', configChangeListener);
+		}
+	});
 </script>
 
 <div class="variables-panel">
@@ -355,6 +390,22 @@
 			<section class="variable-section">
 				<h3>🎯 Patterns Techniques & Indicateurs</h3>
 				<p class="section-subtitle">Activez/désactivez chaque pattern et ajustez ses indicateurs associés</p>
+				
+				<!-- 🔥 FIX: Explication sur le rejet orderbook -->
+				<div class="info-box orderbook-info">
+					<div class="info-icon">ℹ️</div>
+					<div class="info-content">
+						<strong>Pourquoi un setup peut être rejeté ?</strong>
+						<p>
+							Un setup LONG est rejeté si le ratio orderbook (bid/ask) est &lt; 1.1. 
+							Ce ratio mesure la pression acheteuse : il faut plus d'ordres d'achat que de vente pour valider un LONG.
+							<strong>Ratio actuel &lt; 1.1 = pas assez de pression acheteuse = setup rejeté</strong>
+						</p>
+						<p>
+							Pour un SHORT, le ratio doit être &gt; 0.95 (plus de pression vendeuse).
+						</p>
+					</div>
+				</div>
 
 				<div class="variables-list">
 					<!-- 1. Breakout Pattern -->
@@ -1926,6 +1977,50 @@
 		line-height: 1.6;
 		color: #bbb;
 		margin-bottom: 4px;
+	}
+
+	/* 🔥 FIX: Style pour la box d'info orderbook */
+	.info-box {
+		background: rgba(0, 170, 255, 0.1);
+		border: 1px solid rgba(0, 170, 255, 0.3);
+		border-radius: 8px;
+		padding: 15px;
+		margin: 15px 0;
+		display: flex;
+		gap: 12px;
+		align-items: flex-start;
+	}
+
+	.info-box.orderbook-info {
+		background: rgba(255, 170, 0, 0.1);
+		border-color: rgba(255, 170, 0, 0.3);
+	}
+
+	.info-icon {
+		font-size: 20px;
+		flex-shrink: 0;
+	}
+
+	.info-content {
+		flex: 1;
+	}
+
+	.info-content strong {
+		color: #00aaff;
+		display: block;
+		margin-bottom: 8px;
+		font-size: 14px;
+	}
+
+	.info-content p {
+		font-size: 12px;
+		color: #aaa;
+		line-height: 1.6;
+		margin: 5px 0;
+	}
+
+	.orderbook-info .info-content strong {
+		color: #ffaa00;
 	}
 
 	/* Section Subtitle */

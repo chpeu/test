@@ -155,11 +155,24 @@ async def start_scanner():
         return JSONResponse({'error': 'Scheduler not available'}, status_code=503)
 
     try:
-        # Implémenter la logique du démarrage
-        # Cette fonction sera implémentée depuis main.py
+        # 🔥 FIX: Démarrer le scheduler si disponible
+        if _scheduler and not _app_state.get('is_scanning', False):
+            _scheduler.start()
+            logger.info("✅ Scanner démarré via /api/start")
 
         if _app_state:
             _app_state['is_scanning'] = True
+
+        # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
+        if _sio:
+            status_data = {
+                'is_scanning': True,
+                'active_position': _app_state.get('active_position'),
+                'stats': _app_state.get('stats', {}),
+                'top_pairs': _app_state.get('top_pairs', [])
+            }
+            await _sio.emit('status', status_data)
+            await _sio.emit('scan_started', {'timestamp': time.time()})
 
         return JSONResponse({
             'status': 'started',
@@ -186,11 +199,23 @@ async def stop_scanner():
         return JSONResponse({'error': 'Scheduler not available'}, status_code=503)
 
     try:
-        # Implémenter la logique d'arrêt
-        # Cette fonction sera implémentée depuis main.py
+        # 🔥 FIX: Arrêter le scheduler si disponible
+        if _scheduler and _app_state.get('is_scanning', False):
+            _scheduler.stop()
+            logger.info("⏸️ Scanner arrêté via /api/stop")
 
         if _app_state:
             _app_state['is_scanning'] = False
+
+        # 🔥 FIX: Émettre l'état via Socket.IO pour synchronisation temps réel
+        if _sio:
+            status_data = {
+                'is_scanning': False,
+                'active_position': _app_state.get('active_position'),
+                'stats': _app_state.get('stats', {}),
+                'top_pairs': _app_state.get('top_pairs', [])
+            }
+            await _sio.emit('status', status_data)
 
         return JSONResponse({
             'status': 'stopped',

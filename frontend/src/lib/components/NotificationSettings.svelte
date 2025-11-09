@@ -140,12 +140,21 @@
 					<h4 class="system-title">📱 Notifications Telegram</h4>
 					<div class="telegram-config">
 						<p class="telegram-info">
-							Les notifications Telegram sont configurées via les variables d'environnement :
+							Les notifications Telegram sont configurées via le fichier <code>.env</code> à la racine du projet :
 						</p>
-						<ul class="telegram-vars">
-							<li><code>TELEGRAM_BOT_TOKEN</code> - Token du bot Telegram</li>
-							<li><code>TELEGRAM_CHAT_ID</code> - ID du chat/group Telegram</li>
-						</ul>
+						<div class="telegram-instructions">
+							<ol class="telegram-steps">
+								<li>Créez un fichier <code>.env</code> à la racine du projet</li>
+								<li>Ajoutez vos identifiants Telegram :
+									<pre class="env-example">TELEGRAM_BOT_TOKEN=votre_token_ici
+TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
+								</li>
+								<li>Redémarrez le backend pour appliquer les changements</li>
+							</ol>
+							<div class="telegram-security">
+								<strong>🔒 Sécurité :</strong> Le fichier <code>.env</code> est dans <code>.gitignore</code> et ne sera jamais commité sur GitHub.
+							</div>
+						</div>
 						<div class="telegram-status">
 							<span class="status-label">Statut:</span>
 							<span class="status-value">{telegramStatus}</span>
@@ -432,20 +441,58 @@
 		margin: 15px 0;
 	}
 
-	.telegram-vars li {
-		font-size: 12px;
-		color: #888;
-		padding: 8px;
-		margin: 5px 0;
-		background: rgba(0, 170, 255, 0.1);
-		border-radius: 6px;
-		border: 1px solid rgba(0, 170, 255, 0.2);
-		font-family: 'Courier New', monospace;
+	.telegram-instructions {
+		margin: 15px 0;
 	}
 
-	.telegram-vars code {
+	.telegram-steps {
+		list-style: decimal;
+		padding-left: 25px;
+		margin: 15px 0;
+	}
+
+	.telegram-steps li {
+		font-size: 13px;
+		color: #aaa;
+		margin: 10px 0;
+		line-height: 1.6;
+	}
+
+	.telegram-steps code {
 		color: #00aaff;
 		font-weight: bold;
+		font-family: 'Courier New', monospace;
+		background: rgba(0, 170, 255, 0.1);
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+
+	.env-example {
+		background: #0a0e27;
+		border: 1px solid #2a3a6b;
+		border-radius: 6px;
+		padding: 12px;
+		margin: 10px 0;
+		font-family: 'Courier New', monospace;
+		font-size: 12px;
+		color: #00ff88;
+		overflow-x: auto;
+		white-space: pre;
+	}
+
+	.telegram-security {
+		margin-top: 15px;
+		padding: 12px;
+		background: rgba(0, 255, 136, 0.1);
+		border-radius: 6px;
+		border: 1px solid rgba(0, 255, 136, 0.3);
+		font-size: 12px;
+		color: #00ff88;
+		line-height: 1.6;
+	}
+
+	.telegram-security strong {
+		color: #00ff88;
 	}
 
 	.telegram-status {
