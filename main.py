@@ -1060,27 +1060,38 @@ async def api_status():
     return JSONResponse(app_state)
 
 
-@app.get("/api/state")
-async def api_get_complete_state():
-    """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
-    init_instances()
-    from config import TRADING_CONFIG
-    
-    # Récupérer position active
+# 🔥 FIX: Endpoints sessions pour compatibilité frontend Svelte
+@app.get("/api/sessions")
+async def api_get_sessions():
+    """Liste des sessions (compatibilité frontend Svelte)"""
     import time
-    active_position_dict = None
-    if position_manager and position_manager.active_position:
-        active_position = position_manager.active_position
-        active_position_dict = active_position.to_dict()
-        active_position_dict['timestamp'] = time.time()
+    import sys
+    init_instances()
+    current_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    return JSONResponse({
+        'sessions': [{
+            'id': session_id or f"live_{int(time.time())}",
+            'status': 'running' if app_state.get('is_scanning') else 'stopped',
+            'port': current_port,
+            'started_at': time.time()
+        }] if session_id else []
+    })
+
+
+@app.get("/api/sessions/stats/global")
+async def api_get_sessions_stats_global():
+    """Stats globales des sessions (compatibilité frontend Svelte)"""
+    init_instances()
+    import time
     
-    # Récupérer stats depuis Analytics DB
+    # Calculer stats depuis app_state ou analytics_db
     stats_dict = {
         'total_trades': 0,
         'wins': 0,
         'losses': 0,
         'winrate': 0.0
     }
+    
     if analytics_db:
         try:
             trades = analytics_db.get_trades(limit=10000)
@@ -1096,28 +1107,15 @@ async def api_get_complete_state():
                     'winrate': winrate
                 }
         except Exception as e:
-            logger.error(f"❌ Erreur récupération stats: {e}")
+            logger.error(f"❌ Erreur récupération stats globales: {e}")
     
-    # Récupérer historique trades
-    trades_history = []
-    if analytics_db:
+    # Fallback: utiliser app_state['trade_history']
+    if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
         try:
-            trades_history = analytics_db.get_trades(limit=50)
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération historique: {e}")
-    
-    # 🔥 NOUVEAU: Filtrer les trades par session_id actuelle (seulement cette session)
-    current_session_trades = []
-    if analytics_db and session_id:
-        try:
-            # Récupérer seulement les trades de la session actuelle
-            all_trades = analytics_db.get_trades(limit=10000)
-            current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
-            
-            # Recalculer stats pour cette session seulement
-            if current_session_trades:
-                total = len(current_session_trades)
-                wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0)
+            trades = app_state['trade_history']
+            if trades:
+                total = len(trades)
+                wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
                 losses = total - wins
                 winrate = (wins / total * 100) if total > 0 else 0.0
                 stats_dict = {
@@ -1126,53 +1124,173 @@ async def api_get_complete_state():
                     'losses': losses,
                     'winrate': winrate
                 }
-            else:
-                stats_dict = {
-                    'total_trades': 0,
-                    'wins': 0,
-                    'losses': 0,
-                    'winrate': 0.0
-                }
         except Exception as e:
-            logger.error(f"❌ Erreur filtrage trades par session: {e}")
+            logger.error(f"❌ Erreur récupération stats app_state: {e}")
     
     return JSONResponse({
-        'success': True,
-        'session_id': session_id,  # 🔥 NOUVEAU: Inclure session_id pour détection nouvelle session
-        'config': {
-            # Seuils configurables
-            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
-            'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
-            'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-            'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
-            # Trend timeframe
-            'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
-            # Capital
-            'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-            'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
-            # Confluence
-            'use_confluence': TRADING_CONFIG.get('use_confluence', False),
-            # TP/SL Mode
-            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-            'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
-            'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-            # Volume multiplier
-            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-            # Min score
-            'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
-        },
-        'scanner': {
-            'is_scanning': app_state.get('is_scanning', False),
-            'top_pairs': app_state.get('top_pairs', [])
-        },
-        'position': {
-            'active': active_position_dict is not None,
-            'data': active_position_dict
-        },
-        'stats': stats_dict,
-        'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
-        'timestamp': time.time()
+        'total_sessions': 1,
+        'active_sessions': 1 if app_state.get('is_scanning') else 0,
+        'global_stats': stats_dict
     })
+
+
+@app.get("/api/state")
+async def api_get_complete_state():
+    """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
+    try:
+        init_instances()
+        from config import TRADING_CONFIG
+        
+        # Récupérer position active
+        import time
+        active_position_dict = None
+        if position_manager and position_manager.active_position:
+            try:
+                active_position = position_manager.active_position
+                active_position_dict = active_position.to_dict()
+                active_position_dict['timestamp'] = time.time()
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération position: {e}")
+                active_position_dict = None
+        
+        # Récupérer stats depuis Analytics DB (avec fallback sur app_state)
+        stats_dict = {
+            'total_trades': 0,
+            'wins': 0,
+            'losses': 0,
+            'winrate': 0.0
+        }
+        
+        # 🔥 FIX: Utiliser app_state['trade_history'] comme fallback si analytics_db non disponible
+        if analytics_db:
+            try:
+                trades = analytics_db.get_trades(limit=10000)
+                if trades:
+                    total = len(trades)
+                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                    losses = total - wins
+                    winrate = (wins / total * 100) if total > 0 else 0.0
+                    stats_dict = {
+                        'total_trades': total,
+                        'wins': wins,
+                        'losses': losses,
+                        'winrate': winrate
+                    }
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération stats analytics_db: {e}")
+        
+        # Fallback: utiliser app_state['trade_history'] si analytics_db non disponible
+        if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
+            try:
+                trades = app_state['trade_history']
+                if trades:
+                    total = len(trades)
+                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                    losses = total - wins
+                    winrate = (wins / total * 100) if total > 0 else 0.0
+                    stats_dict = {
+                        'total_trades': total,
+                        'wins': wins,
+                        'losses': losses,
+                        'winrate': winrate
+                    }
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération stats app_state: {e}")
+        
+        # Récupérer historique trades
+        trades_history = []
+        if analytics_db:
+            try:
+                trades_history = analytics_db.get_trades(limit=50)
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération historique analytics_db: {e}")
+        
+        # Fallback: utiliser app_state['trade_history']
+        if not trades_history and app_state.get('trade_history'):
+            trades_history = app_state['trade_history'][:50]
+        
+        # 🔥 NOUVEAU: Filtrer les trades par session_id actuelle (seulement cette session)
+        current_session_trades = []
+        if analytics_db and session_id:
+            try:
+                # Récupérer seulement les trades de la session actuelle
+                all_trades = analytics_db.get_trades(limit=10000)
+                current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
+                
+                # Recalculer stats pour cette session seulement
+                if current_session_trades:
+                    total = len(current_session_trades)
+                    wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0)
+                    losses = total - wins
+                    winrate = (wins / total * 100) if total > 0 else 0.0
+                    stats_dict = {
+                        'total_trades': total,
+                        'wins': wins,
+                        'losses': losses,
+                        'winrate': winrate
+                    }
+                else:
+                    stats_dict = {
+                        'total_trades': 0,
+                        'wins': 0,
+                        'losses': 0,
+                        'winrate': 0.0
+                    }
+            except Exception as e:
+                logger.error(f"❌ Erreur filtrage trades par session: {e}")
+        
+        return JSONResponse({
+            'success': True,
+            'session_id': session_id or f"live_{int(time.time())}",  # 🔥 FIX: Fallback si session_id None
+            'config': {
+                # Seuils configurables
+                'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+                'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+                'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+                'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+                # Trend timeframe
+                'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+                # Capital
+                'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+                'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+                # Confluence
+                'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+                # TP/SL Mode
+                'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+                'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                # Volume multiplier
+                'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+                # Min score
+                'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+            },
+            'scanner': {
+                'is_scanning': app_state.get('is_scanning', False),
+                'top_pairs': app_state.get('top_pairs', [])
+            },
+            'position': {
+                'active': active_position_dict is not None,
+                'data': active_position_dict
+            },
+            'stats': stats_dict,
+            'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
+            'timestamp': time.time()
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/state: {e}", exc_info=True)
+        # 🔥 FIX: Retourner réponse minimale au lieu de 503
+        import time
+        return JSONResponse({
+            'success': False,
+            'error': str(e),
+            'session_id': session_id or f"live_{int(time.time())}",
+            'config': {},
+            'scanner': {'is_scanning': False, 'top_pairs': []},
+            'position': {'active': False, 'data': None},
+            'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
+            'trades': [],
+            'timestamp': time.time()
+        }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
 
 
 @app.post("/api/start")
