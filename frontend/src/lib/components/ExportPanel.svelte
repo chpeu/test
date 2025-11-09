@@ -2,6 +2,7 @@
 	import { exportToCSV, exportToJSON, exportSummary, exportAnalytics } from '$lib/utils/export';
 	import { tradeHistory } from '$lib/stores/trades';
 	import { stats } from '$lib/stores/stats';
+	import { formatUSDT } from '$lib/utils/format';
 
 	$: tradesCount = $tradeHistory?.length || 0;
 	$: totalPnL = ($tradeHistory || []).reduce((sum, t) => sum + (t.net_pnl_usdt || 0), 0);
@@ -13,7 +14,7 @@
 		<div class="stats-preview">
 			<span class="stat">{tradesCount} trades</span>
 			<span class="stat" class:profit={totalPnL >= 0} class:loss={totalPnL < 0}>
-				{totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
+				{totalPnL >= 0 ? '+' : ''}{formatUSDT(totalPnL)} USDT
 			</span>
 		</div>
 	</div>

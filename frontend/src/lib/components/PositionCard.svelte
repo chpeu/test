@@ -1,26 +1,15 @@
 <script>
-	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration } from '$lib/stores/position';
-
-	// Format price based on value
-	function formatPrice(price) {
-		if (!price) return '0.00';
-		if (price < 0.001) return price.toFixed(8);
-		if (price < 0.01) return price.toFixed(6);
-		if (price < 1) return price.toFixed(4);
-		return price.toFixed(2);
-	}
-
-	// Format percentage
-	function formatPct(pct) {
-		if (pct === null || pct === undefined) return '0.00';
-		return pct.toFixed(2);
-	}
+	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
+	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
 
 	// 🔥 FIX: Fonction pour clôturer la position manuellement
 	async function closePosition() {
 		if (!confirm('Êtes-vous sûr de vouloir clôturer cette position manuellement ?')) {
 			return;
 		}
+
+		// 🔥 FIX: Mise à jour optimiste immédiate pour feedback instantané
+		clearPosition();
 
 		try {
 			const res = await fetch('/api/position/close', {
@@ -35,15 +24,34 @@
 		if (res.ok) {
 			const data = await res.json();
 			console.log('Position fermée:', data);
-			// 🔥 FIX: Ne pas afficher d'alert, la synchronisation Socket.IO mettra à jour automatiquement
-			// La position sera mise à jour via l'événement 'position_closed' dans socket.js
+			// La synchronisation Socket.IO confirmera et mettra à jour les stats/historique
 		} else {
 				const errorData = await res.json().catch(() => ({}));
 				alert(`❌ Erreur: ${errorData.error || res.statusText}`);
+				// En cas d'erreur, recharger la position depuis le backend
+				const stateRes = await fetch('/api/state');
+				if (stateRes.ok) {
+					const stateData = await stateRes.json();
+					if (stateData.active_position) {
+						updatePosition(stateData.active_position);
+					}
+				}
 			}
 		} catch (err) {
 			console.error('Error closing position:', err);
 			alert('❌ Erreur: Impossible de clôturer la position');
+			// En cas d'erreur, recharger la position depuis le backend
+			try {
+				const stateRes = await fetch('/api/state');
+				if (stateRes.ok) {
+					const stateData = await stateRes.json();
+					if (stateData.active_position) {
+						updatePosition(stateData.active_position);
+					}
+				}
+			} catch (e) {
+				console.error('Error reloading position:', e);
+			}
 		}
 	}
 </script>
@@ -66,10 +74,10 @@
 
 		<div class="pnl-section">
 			<div class="pnl-value" style="color: {$pnlColor}">
-				{formatPct($activePosition.pnl)}%
+				{formatPercent($activePosition.pnl)}%
 			</div>
 			<div class="pnl-usdt" style="color: {$pnlColor}">
-				{formatPct($activePosition.pnl_usdt)} USDT
+				{formatUSDT($activePosition.pnl_usdt)} USDT
 			</div>
 		</div>
 

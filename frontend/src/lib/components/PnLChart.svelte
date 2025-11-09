@@ -62,7 +62,14 @@
 							if (label) {
 								label += ': ';
 							}
-							label += context.parsed.y.toFixed(2) + ' USDT';
+							// 🔥 FIX: Formatage adaptatif pour USDT
+							const value = context.parsed.y;
+							const absValue = Math.abs(value);
+							let decimals = 2;
+							if (absValue < 0.01) decimals = 4;
+							else if (absValue < 1) decimals = 3;
+							else if (absValue >= 10) decimals = 1;
+							label += value.toFixed(decimals).replace(/\.?0+$/, '') + ' USDT';
 							return label;
 						}
 					}
@@ -81,7 +88,13 @@
 							family: "'Courier New', monospace"
 						},
 						callback: function (value) {
-							return value.toFixed(2) + ' $';
+							// 🔥 FIX: Formatage adaptatif pour les ticks
+							const absValue = Math.abs(value);
+							let decimals = 2;
+							if (absValue < 0.01) decimals = 4;
+							else if (absValue < 1) decimals = 3;
+							else if (absValue >= 10) decimals = 1;
+							return value.toFixed(decimals).replace(/\.?0+$/, '') + ' $';
 						}
 					}
 				},

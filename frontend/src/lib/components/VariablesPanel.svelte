@@ -428,11 +428,7 @@
 										id="use-breakout"
 										type="checkbox"
 										bind:checked={config.use_breakout}
-										on:change={async () => {
-											logConfigChange('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé');
-											// 🔥 FIX: Sauvegarder immédiatement pour prise en compte totale
-											await saveConfig();
-										}}
+										on:change={() => logConfigChange('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">🔼 Breakout Pattern</span>
 									<span class="var-desc">Cassure de niveaux clés (support/résistance)</span>
@@ -477,10 +473,7 @@
 										id="use-snr"
 										type="checkbox"
 										bind:checked={config.use_snr}
-										on:change={async () => {
-											logConfigChange('use_snr', config.use_snr ? 'Activé' : 'Désactivé');
-											await saveConfig();
-										}}
+										on:change={() => logConfigChange('use_snr', config.use_snr ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">📍 SNR Pattern</span>
 									<span class="var-desc">Rebond sur support/résistance</span>
@@ -525,10 +518,7 @@
 										id="use-wick"
 										type="checkbox"
 										bind:checked={config.use_wick}
-										on:change={async () => {
-											logConfigChange('use_wick', config.use_wick ? 'Activé' : 'Désactivé');
-											await saveConfig();
-										}}
+										on:change={() => logConfigChange('use_wick', config.use_wick ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">📏 Wick Pattern</span>
 									<span class="var-desc">Rejet de prix via longues mèches</span>
@@ -573,10 +563,7 @@
 										id="use-divergence"
 										type="checkbox"
 										bind:checked={config.use_divergence}
-										on:change={async () => {
-											logConfigChange('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé');
-											await saveConfig();
-										}}
+										on:change={() => logConfigChange('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">🔀 Divergence Pattern</span>
 									<span class="var-desc">Divergence DI+ vs DI-</span>

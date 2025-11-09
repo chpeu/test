@@ -53,14 +53,32 @@
 						},
 						label: function (context) {
 							const size = context.parsed.y;
-							return `Size: ${size.toFixed(2)} USDT`;
+							// 🔥 FIX: Formatage adaptatif
+						const absSize = Math.abs(size);
+						let decimals = 2;
+						if (absSize < 0.01) decimals = 4;
+						else if (absSize < 1) decimals = 3;
+						else if (absSize >= 10) decimals = 1;
+						return `Size: ${size.toFixed(decimals).replace(/\.?0+$/, '')} USDT`;
 						},
 						afterLabel: function (context) {
 							const index = context.dataIndex;
 							const trade = lastTrades[index];
 							if (trade) {
-								const pnl = trade.net_pnl_usdt >= 0 ? `+${trade.net_pnl_usdt.toFixed(2)}` : trade.net_pnl_usdt.toFixed(2);
-								return `PnL: ${pnl} USDT (${trade.net_pnl_pct.toFixed(2)}%)`;
+								// 🔥 FIX: Formatage adaptatif pour PnL
+								const pnlValue = trade.net_pnl_usdt;
+								const pnlPct = trade.net_pnl_pct || 0;
+								const absPnl = Math.abs(pnlValue);
+								const absPct = Math.abs(pnlPct);
+								let pnlDecimals = 2;
+								let pctDecimals = 2;
+								if (absPnl < 0.01) pnlDecimals = 4;
+								else if (absPnl < 1) pnlDecimals = 3;
+								else if (absPnl >= 10) pnlDecimals = 1;
+								if (absPct < 0.01) pctDecimals = 4;
+								else if (absPct >= 10) pctDecimals = 1;
+								const pnl = pnlValue >= 0 ? `+${pnlValue.toFixed(pnlDecimals).replace(/\.?0+$/, '')}` : pnlValue.toFixed(pnlDecimals).replace(/\.?0+$/, '');
+								return `PnL: ${pnl} USDT (${pnlPct.toFixed(pctDecimals).replace(/\.?0+$/, '')}%)`;
 							}
 							return '';
 						}
@@ -80,7 +98,12 @@
 							family: "'Courier New', monospace"
 						},
 						callback: function (value) {
-							return value.toFixed(0) + ' $';
+							// 🔥 FIX: Formatage adaptatif pour les ticks
+							const absValue = Math.abs(value);
+							let decimals = 0;
+							if (absValue < 0.01) decimals = 2;
+							else if (absValue < 1) decimals = 1;
+							return value.toFixed(decimals).replace(/\.?0+$/, '') + ' $';
 						}
 					}
 				},

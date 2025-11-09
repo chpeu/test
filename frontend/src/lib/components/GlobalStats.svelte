@@ -1,6 +1,7 @@
 <script>
 	import { globalStats, loadGlobalStats } from '$lib/stores/sessions';
 	import { onMount, onDestroy } from 'svelte';
+	import { formatUSDT, formatPercent } from '$lib/utils/format';
 
 	let interval;
 
@@ -68,7 +69,7 @@
 			<div class="stat-content">
 				<div class="stat-label">Total PnL</div>
 				<div class="stat-value">
-					{$globalStats.total_pnl >= 0 ? '+' : ''}{$globalStats.total_pnl.toFixed(2)} USDT
+					{$globalStats.total_pnl >= 0 ? '+' : ''}{formatUSDT($globalStats.total_pnl)} USDT
 				</div>
 			</div>
 		</div>
@@ -93,7 +94,7 @@
 			<div class="stat-icon">📈</div>
 			<div class="stat-content">
 				<div class="stat-label">Win Rate</div>
-				<div class="stat-value">{$globalStats.win_rate.toFixed(1)}%</div>
+				<div class="stat-value">{formatPercent($globalStats.win_rate)}%</div>
 			</div>
 		</div>
 	</div>

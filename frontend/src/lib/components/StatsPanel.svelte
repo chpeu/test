@@ -1,10 +1,6 @@
 <script>
 	import { stats, winrate, winLossRatio } from '$lib/stores/stats';
-
-	function formatNumber(num) {
-		if (num === null || num === undefined || isNaN(num)) return '0.00';
-		return Number(num).toFixed(2);
-	}
+	import { formatUSDT, formatPercent } from '$lib/utils/format';
 </script>
 
 <div class="stats-panel">
@@ -38,21 +34,21 @@
 			<div class="stat-value">{$winLossRatio}</div>
 		</div>
 
-		<div class="stat-box pnl" class:positive={$stats.total_pnl_usdt >= 0} class:negative={$stats.total_pnl_usdt < 0}>
-			<div class="stat-label">Total PnL</div>
-			<div class="stat-value">
-				{formatNumber($stats.total_pnl_usdt)} USDT
-			</div>
-			<div class="stat-subvalue">
-				{formatNumber($stats.total_pnl_pct)}%
-			</div>
-		</div>
+				<div class="stat-box pnl" class:positive={$stats.total_pnl_usdt >= 0} class:negative={$stats.total_pnl_usdt < 0}>
+					<div class="stat-label">Total PnL</div>
+					<div class="stat-value">
+						{formatUSDT($stats.total_pnl_usdt)} USDT
+					</div>
+					<div class="stat-subvalue">
+						{formatPercent($stats.total_pnl_pct)}%
+					</div>
+				</div>
 
 
 		{#if $stats.best_trade}
 			<div class="stat-box best">
 				<div class="stat-label">Best Trade</div>
-				<div class="stat-value">+{formatNumber($stats.best_trade.pnl_usdt)} USDT</div>
+				<div class="stat-value">+{formatUSDT($stats.best_trade.pnl_usdt)} USDT</div>
 				<div class="stat-subvalue">{$stats.best_trade.symbol}</div>
 			</div>
 		{/if}
@@ -60,7 +56,7 @@
 		{#if $stats.worst_trade}
 			<div class="stat-box worst">
 				<div class="stat-label">Worst Trade</div>
-				<div class="stat-value">{formatNumber($stats.worst_trade.pnl_usdt)} USDT</div>
+				<div class="stat-value">{formatUSDT($stats.worst_trade.pnl_usdt)} USDT</div>
 				<div class="stat-subvalue">{$stats.worst_trade.symbol}</div>
 			</div>
 		{/if}

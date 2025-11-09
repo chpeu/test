@@ -1,15 +1,6 @@
 <script>
 	import { top20Pairs } from '$lib/stores/scanner';
-
-	function formatNumber(num) {
-		if (!num) return '0';
-		return Number(num).toFixed(4);
-	}
-
-	function formatSpread(num) {
-		if (num === null || num === undefined || isNaN(num)) return 'N/A';
-		return (num * 100).toFixed(4);
-	}
+	import { formatAdaptive, formatSpread, formatPrice, formatPercent } from '$lib/utils/format';
 </script>
 
 <div class="scanner-panel">
@@ -29,19 +20,19 @@
 					<div class="pair-metrics">
 						<div class="metric">
 							<span class="metric-label">Score</span>
-							<span class="metric-value score">{formatNumber(pair.score)}</span>
+							<span class="metric-value score">{formatAdaptive(pair.score, 2, 4)}</span>
 						</div>
 						<div class="metric">
 							<span class="metric-label">Price</span>
-							<span class="metric-value price">{formatNumber(pair.price)}</span>
+							<span class="metric-value price">{formatPrice(pair.price)}</span>
 						</div>
 						<div class="metric">
 							<span class="metric-label">Vol5</span>
-							<span class="metric-value vol">{formatNumber(pair.vol5)}%</span>
+							<span class="metric-value vol">{formatPercent(pair.vol5)}%</span>
 						</div>
 						<div class="metric">
 							<span class="metric-label">Vol15</span>
-							<span class="metric-value vol">{formatNumber(pair.vol15)}%</span>
+							<span class="metric-value vol">{formatPercent(pair.vol15)}%</span>
 						</div>
 						<div class="metric">
 							<span class="metric-label">Spread</span>
@@ -49,11 +40,11 @@
 						</div>
 						<div class="metric">
 							<span class="metric-label">Depth</span>
-							<span class="metric-value depth">{formatNumber(pair.bookDepth)}</span>
+							<span class="metric-value depth">{formatAdaptive(pair.bookDepth, 0, 2)}</span>
 						</div>
 						<div class="metric">
 							<span class="metric-label">Balance</span>
-							<span class="metric-value balance">{formatNumber(pair.balanceScore)}</span>
+							<span class="metric-value balance">{formatAdaptive(pair.balanceScore, 2, 4)}</span>
 						</div>
 					</div>
 				</div>

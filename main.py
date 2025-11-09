@@ -1236,20 +1236,37 @@ async def api_close_position():
 
             app_state['active_position'] = None
 
-            # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
+            # 🔥 FIX: Émettre IMMÉDIATEMENT les événements Socket.IO AVANT les opérations lourdes
+            # pour synchronisation instantanée du frontend
+            status_data = {
+                'is_scanning': app_state.get('is_scanning', False),
+                'active_position': None,
+                'stats': app_state.get('stats', {}),
+                'top_pairs': app_state.get('top_pairs', []),
+                'trade_history': list(reversed(app_state.get('trade_history', [])[-20:]))
+            }
+            await sio.emit('status', status_data)
+            
+            # Émettre position_closed immédiatement pour que le frontend mette à jour l'historique
+            if result:
+                await sio.emit('position_closed', result)
+
+            # 🔥 FIX: Faire les opérations lourdes APRÈS l'émission Socket.IO (en arrière-plan)
             if result:
                 result['timestamp'] = datetime.now().isoformat()
                 app_state['trade_history'].append(result)
                 if len(app_state['trade_history']) > 1000:
                     app_state['trade_history'] = app_state['trade_history'][-1000:]
-                save_trade_history()
-
+                
                 # FIX: Mettre à jour les stats de session
                 update_session_stats(result)
                 
                 # 🔥 FIX: Émettre stats_update via Socket.IO pour synchronisation temps réel
                 if app_state.get('stats'):
                     await sio.emit('stats_update', app_state.get('stats'))
+                
+                # Sauvegarder l'historique en arrière-plan (ne bloque pas la réponse)
+                save_trade_history()
 
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
             if price_provider:
@@ -1262,19 +1279,6 @@ async def api_close_position():
             )
 
             await add_log('INFO', 'Position clôturée', 'Manuel')
-            
-            # 🔥 FIX: Émettre IMMÉDIATEMENT pour synchronisation instantanée (avant position_closed)
-            status_data = {
-                'is_scanning': app_state.get('is_scanning', False),
-                'active_position': None,
-                'stats': app_state.get('stats', {}),
-                'top_pairs': app_state.get('top_pairs', []),
-                'trade_history': list(reversed(app_state.get('trade_history', [])[-20:]))
-            }
-            await sio.emit('status', status_data)
-            
-            # Émettre position_closed après status pour que le frontend mette à jour l'historique
-            await sio.emit('position_closed', result)
 
             return JSONResponse(result)
         except Exception as e:

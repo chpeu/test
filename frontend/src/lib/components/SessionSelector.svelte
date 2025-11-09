@@ -1,4 +1,5 @@
 <script>
+	import { formatUSDT } from '$lib/utils/format';
 	import {
 		sessions,
 		activeSessionId,
@@ -197,7 +198,7 @@
 					<div class="session-stats">
 						<span class="stat">{session.stats?.trades || 0} trades</span>
 						<span class="stat" class:profit={session.stats?.pnl >= 0} class:loss={session.stats?.pnl < 0}>
-							{(session.stats?.pnl || 0).toFixed(2)} USDT
+							{formatUSDT(session.stats?.pnl || 0)} USDT
 						</span>
 					</div>
 

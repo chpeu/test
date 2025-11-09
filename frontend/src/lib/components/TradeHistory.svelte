@@ -1,6 +1,8 @@
 <script>
 	import { sortedTrades } from '$lib/stores/trades';
 
+	import { formatAdaptive, formatPercent, formatUSDT } from '$lib/utils/format';
+
 	function formatTime(dateStr) {
 		if (!dateStr) return '';
 		const date = new Date(dateStr);
@@ -10,21 +12,6 @@
 			second: '2-digit',
 			hour12: false
 		});
-	}
-
-	function formatNumber(num, decimals = 2) {
-		if (num === null || num === undefined || isNaN(num)) return '0.00';
-		const value = Number(num);
-		if (value === 0) return '0.00';
-		return value.toFixed(decimals);
-	}
-
-	// 🔥 FIX: Format haute précision pour PnL et slippage
-	function formatHighPrecision(num, decimals = 4) {
-		if (num === null || num === undefined || isNaN(num)) return '0.00';
-		const value = Number(num);
-		if (value === 0) return '0.00';
-		return value.toFixed(decimals);
 	}
 
 	function formatDuration(openedAt, closedAt) {
@@ -96,19 +83,19 @@
 									{trade.reason || trade.close_reason || 'N/A'}
 								{/if}
 							</td>
-							<!-- 🔥 FIX: PnL Brut avec haute précision (4 décimales) -->
+							<!-- 🔥 FIX: PnL Brut avec formatage adaptatif -->
 							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0}>
-								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatHighPrecision(trade.gross_pnl_pct || trade.pnl_pct || 0, 4)}%
+								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.gross_pnl_pct || trade.pnl_pct || 0)}%
 							</td>
-							<!-- 🔥 FIX: Slippage avec haute précision (4 décimales) -->
-							<td class="slippage">{formatHighPrecision(trade.slippage || 0, 4)}%</td>
-							<!-- 🔥 FIX: PnL Net avec haute précision (4 décimales) -->
+							<!-- 🔥 FIX: Slippage avec formatage adaptatif -->
+							<td class="slippage">{formatPercent(trade.slippage || 0)}%</td>
+							<!-- 🔥 FIX: PnL Net avec formatage adaptatif -->
 							<td class="pnl-net" class:positive={(trade.net_pnl || trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl || trade.net_pnl_pct || 0) < 0}>
-								{(trade.net_pnl || trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatHighPrecision(trade.net_pnl || trade.net_pnl_pct || 0, 4)}%
+								{(trade.net_pnl || trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl || trade.net_pnl_pct || 0)}%
 							</td>
-							<!-- 🔥 FIX: PnL USDT avec haute précision (6 décimales) -->
+							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
 							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
-								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatHighPrecision(trade.net_pnl_usdt || 0, 6)} USDT
+								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
 							</td>
 						</tr>
 					{/each}
