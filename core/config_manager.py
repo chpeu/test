@@ -8,7 +8,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any
-from threading import Lock
+from threading import RLock
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class ConfigManager:
     def __init__(self, config_file: str = "config_overrides.json"):
         self.config_file = Path(config_file)
         self.overrides = {}
-        self.lock = Lock()
+        self.lock = RLock()  # Utiliser RLock pour éviter deadlock
         self.load_overrides()
 
     def load_overrides(self) -> None:
