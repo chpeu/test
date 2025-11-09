@@ -66,8 +66,14 @@
 	// Fetch initial state on mount
 	onMount(async () => {
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
-		const { initWebSocket, getWebSocket } = await import('$lib/utils/websocket');
-		const ws = initWebSocket();
+		const websocketModule = await import('$lib/utils/websocket');
+		const ws = websocketModule.initWebSocket();
+		
+		// Attendre que la connexion soit établie avant d'ajouter les listeners
+		if (!ws || typeof ws.on !== 'function') {
+			console.error('❌ WebSocket non initialisé correctement');
+			return;
+		}
 		
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
 		ws.on('status', (data: any) => {

@@ -4,9 +4,8 @@
 	import { theme } from '$lib/stores/theme'; // Init theme
 	import { onMount } from 'svelte';
 
-	// SvelteKit props (pour référence externe uniquement)
-	// 🔥 FIX: Utiliser la syntaxe correcte pour SvelteKit (const pour référence externe)
-	export const params = {};
+	// SvelteKit props - SvelteKit passe automatiquement params, mais on ne l'utilise pas
+	// On ne l'exporte pas pour éviter le warning
 
 	// Appliquer le thème au chargement
 	onMount(() => {

@@ -2082,7 +2082,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     try:
                         # Utiliser la même logique que api_get_complete_state
                         from config import TRADING_CONFIG
-                        import time
+                        # time est déjà importé au niveau du module
                         
                         # Récupérer position active
                         active_position_dict = None
