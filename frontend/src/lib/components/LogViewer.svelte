@@ -73,6 +73,26 @@
 		// Supprimer les codes ANSI de couleur: \x1b[XXm ou [XXm
 		return text.replace(/\x1b\[\d+m/g, '').replace(/\[\d+m/g, '');
 	}
+
+	function exportLogs() {
+		const allLogs = [...$errorLogs, ...$regularLogs, ...$recentConfigLogs];
+		const csv = [
+			['Timestamp', 'Level', 'Message'].join(','),
+			...allLogs.map(log => [
+				new Date(log.timestamp).toISOString(),
+				log.level || 'CONFIG',
+				`"${(log.message || log.change || '').replace(/"/g, '""')}"`
+			].join(','))
+		].join('\n');
+
+		const blob = new Blob([csv], { type: 'text/csv' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `logs_${new Date().toISOString().split('T')[0]}.csv`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
 </script>
 
 <div class="log-viewer">
@@ -80,7 +100,10 @@
 	<div class="errors-section">
 		<div class="log-header">
 			<h3>🚨 Erreurs & Warnings</h3>
-			<div class="error-badge">{$errorLogs.length} problèmes</div>
+			<div class="header-controls">
+				<div class="error-badge">{$errorLogs.length} problèmes</div>
+				<button class="export-btn" on:click={exportLogs}>📥 Export</button>
+			</div>
 		</div>
 
 		<div class="log-container errors" bind:this={errorContainer} on:scroll={() => handleScroll(errorContainer, 'error')}>
@@ -201,6 +224,44 @@
 		align-items: center;
 		padding: 15px 20px;
 		border-bottom: 1px solid #2a3a6b;
+		flex-wrap: wrap;
+		gap: 10px;
+	}
+
+	.header-controls {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.level-filter,
+	.search-input {
+		background: #0a0e27;
+		border: 1px solid #2a3a6b;
+		color: #fff;
+		padding: 6px 12px;
+		border-radius: 6px;
+		font-size: 13px;
+	}
+
+	.search-input {
+		min-width: 150px;
+	}
+
+	.export-btn {
+		background: rgba(0, 255, 136, 0.1);
+		border: 1px solid #00ff88;
+		color: #00ff88;
+		padding: 6px 12px;
+		border-radius: 6px;
+		font-size: 13px;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.export-btn:hover {
+		background: rgba(0, 255, 136, 0.2);
 	}
 
 	.log-header h3 {

@@ -1,20 +1,26 @@
 <script>
 	import { sortedTrades } from '$lib/stores/trades';
 
-	function formatDate(dateStr) {
+	function formatTime(dateStr) {
 		if (!dateStr) return '';
 		const date = new Date(dateStr);
-		return date.toLocaleString('fr-FR', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric',
+		return date.toLocaleTimeString('fr-FR', {
 			hour: '2-digit',
 			minute: '2-digit',
-			second: '2-digit'
+			second: '2-digit',
+			hour12: false
 		});
 	}
 
 	function formatNumber(num, decimals = 2) {
+		if (num === null || num === undefined || isNaN(num)) return '0.00';
+		const value = Number(num);
+		if (value === 0) return '0.00';
+		return value.toFixed(decimals);
+	}
+
+	// 🔥 FIX: Format haute précision pour PnL et slippage
+	function formatHighPrecision(num, decimals = 4) {
 		if (num === null || num === undefined || isNaN(num)) return '0.00';
 		const value = Number(num);
 		if (value === 0) return '0.00';
@@ -61,55 +67,49 @@
 			<table class="trades-table">
 				<thead>
 					<tr>
-						<th>Timestamp</th>
-						<th>Symbol</th>
-						<th>Direction</th>
-						<th>Entry</th>
-						<th>Exit</th>
-						<th>Size (USDT)</th>
-						<th>PnL %</th>
-						<th>PnL USDT</th>
-						<th>Fees</th>
+						<th>#</th>
+						<th>Heure</th>
+						<th>Paire</th>
+						<th>Dir</th>
+						<th>Raison</th>
+						<th>PnL Brut %</th>
 						<th>Slippage</th>
-						<th>Reason</th>
-						<th>Duration</th>
-						<th>Signals</th>
+						<th>PnL Net %</th>
+						<th>PnL Net USDT</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each $sortedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
 						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0}>
-							<td class="timestamp">{formatDate(trade.closed_at || trade.timestamp)}</td>
+							<td class="index">{index + 1}</td>
+							<td class="time">{formatTime(trade.closed_at || trade.timestamp)}</td>
 							<td class="symbol">{trade.symbol}</td>
 							<td class="direction">
 								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'}>
 									{trade.direction}
 								</span>
 							</td>
-							<td class="price">{formatNumber(trade.entry, 6)}</td>
-							<!-- 🔥 FIX: Utiliser 'exit' au lieu de 'exit_price' (mapping backend) -->
-							<td class="price">{formatNumber(trade.exit || trade.exit_price || 0, 6)}</td>
-							<td class="size">{formatNumber(trade.size || trade.size_closed || 0, 2)}</td>
-							<!-- 🔥 FIX: Utiliser 'net_pnl' au lieu de 'net_pnl_pct' (mapping backend) -->
-							<td class="pnl-pct" class:positive={(trade.net_pnl || trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl || trade.net_pnl_pct || 0) < 0}>
-								{(trade.net_pnl || trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatNumber(trade.net_pnl || trade.net_pnl_pct || 0, 2)}%
-							</td>
-							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
-								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_usdt || 0, 4)}
-							</td>
-							<td class="fees">{formatNumber(trade.fees || 0, 4)}</td>
-							<!-- 🔥 FIX: Slippage avec 6 décimales pour éviter confusion avec fees -->
-							<td class="slippage">{formatNumber(trade.slippage || 0, 6)}</td>
-							<td class="reason">{trade.reason || trade.close_reason || 'N/A'}</td>
-							<!-- 🔥 FIX: Utiliser 'duration' (en secondes) ou calculer depuis opened_at/closed_at -->
-							<td class="duration">
-								{#if trade.duration !== undefined && trade.duration !== null}
-									{formatDurationFromSeconds(trade.duration)}
+							<td class="reason">
+								{#if trade.reason === 'MANUAL'}
+									<span class="reason-manual">👤 Manuel</span>
 								{:else}
-									{formatDuration(trade.opened_at, trade.closed_at || trade.timestamp)}
+									{trade.reason || trade.close_reason || 'N/A'}
 								{/if}
 							</td>
-							<td class="signals">{trade.confirmed_by || 'N/A'}</td>
+							<!-- 🔥 FIX: PnL Brut avec haute précision (4 décimales) -->
+							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0}>
+								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatHighPrecision(trade.gross_pnl_pct || trade.pnl_pct || 0, 4)}%
+							</td>
+							<!-- 🔥 FIX: Slippage avec haute précision (4 décimales) -->
+							<td class="slippage">{formatHighPrecision(trade.slippage || 0, 4)}%</td>
+							<!-- 🔥 FIX: PnL Net avec haute précision (4 décimales) -->
+							<td class="pnl-net" class:positive={(trade.net_pnl || trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl || trade.net_pnl_pct || 0) < 0}>
+								{(trade.net_pnl || trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatHighPrecision(trade.net_pnl || trade.net_pnl_pct || 0, 4)}%
+							</td>
+							<!-- 🔥 FIX: PnL USDT avec haute précision (6 décimales) -->
+							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
+								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatHighPrecision(trade.net_pnl_usdt || 0, 6)} USDT
+							</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -220,10 +220,18 @@
 		color: #fff;
 	}
 
-	.timestamp {
+	.index {
+		color: #888;
+		font-size: 11px;
+		text-align: center;
+		width: 40px;
+	}
+
+	.time {
 		color: #888;
 		font-size: 11px;
 		white-space: nowrap;
+		font-family: 'Courier New', monospace;
 	}
 
 	.symbol {
@@ -272,8 +280,19 @@
 	}
 
 	.reason {
-		color: #888;
+		color: #00aaff;
 		font-size: 11px;
+	}
+
+	.reason-manual {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: #00aaff;
+	}
+
+	.pnl-gross {
+		font-weight: bold;
 	}
 
 	.duration {

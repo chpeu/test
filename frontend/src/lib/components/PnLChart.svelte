@@ -119,10 +119,17 @@
 				return;
 			}
 
+			// 🔥 FIX: Vérifier que les données sont valides
+			if (!Array.isArray(data.values) || !Array.isArray(data.labels)) {
+				console.warn('PnLChart: Données invalides', data);
+				return;
+			}
+
 			// Calculer PnL cumulatif
 			let cumulative = 0;
 			const cumulativeData = data.values.map((val) => {
-				cumulative += val;
+				const numVal = Number(val) || 0;
+				cumulative += numVal;
 				return cumulative;
 			});
 

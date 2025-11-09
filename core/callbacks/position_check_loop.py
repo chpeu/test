@@ -115,7 +115,9 @@ async def position_check_loop_callback():
         # Récupérer prix actuel
         current_price_data = await _price_provider.get_price(symbol)
         if not current_price_data:
-            logger.warning(f"⚠️ Prix indisponible pour {symbol}")
+            # 🔥 FIX: Ne pas logger en WARNING si c'est juste temporaire (peut être normal)
+            # Le prix peut être indisponible temporairement sans être une erreur critique
+            logger.debug(f"⚠️ Prix indisponible pour {symbol} (tentative suivante dans {_app_state.get('check_interval', 0.1)}s)")
             return
 
         current_price = (
@@ -235,6 +237,15 @@ async def _emit_position_update(position, current_price: float):
         }
 
         await _sio.emit('position_update', update_data)
+        # 🔥 FIX: Émettre aussi status pour synchronisation temps réel complète
+        if _app_state:
+            status_data = {
+                'is_scanning': _app_state.get('is_scanning', False),
+                'active_position': update_data,
+                'stats': _app_state.get('stats', {}),
+                'top_pairs': _app_state.get('top_pairs', [])
+            }
+            await _sio.emit('status', status_data)
 
         logger.debug(
             f"📡 position_update émis: {position.symbol} | "

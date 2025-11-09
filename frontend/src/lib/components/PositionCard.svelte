@@ -32,11 +32,12 @@
 				})
 			});
 
-			if (res.ok) {
-				const data = await res.json();
-				console.log('Position fermée:', data);
-				alert('✅ Position fermée avec succès');
-			} else {
+		if (res.ok) {
+			const data = await res.json();
+			console.log('Position fermée:', data);
+			// 🔥 FIX: Ne pas afficher d'alert, la synchronisation Socket.IO mettra à jour automatiquement
+			// La position sera mise à jour via l'événement 'position_closed' dans socket.js
+		} else {
 				const errorData = await res.json().catch(() => ({}));
 				alert(`❌ Erreur: ${errorData.error || res.statusText}`);
 			}

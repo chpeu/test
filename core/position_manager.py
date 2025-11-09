@@ -507,7 +507,8 @@ class PositionManager:
         # Limiter à 1% maximum
         slippage_pct = min(slippage_pct, 1.0)
 
-        return round(slippage_pct, 4)
+        # 🔥 FIX: Retourner en % (pas en décimales) pour cohérence avec l'affichage
+        return round(slippage_pct, 2)  # Déjà en %, pas besoin de multiplier
 
     async def check_position(self, current_price: float) -> Optional[str]:
         """
@@ -748,7 +749,7 @@ class PositionManager:
             'gross_pnl_pct': round(pnl_data['pnl_pct'], 2),
             'gross_pnl_usdt': round(pnl_data['pnl_usdt_gross'], 4),
             'fees': round(pnl_data['fees'], 4),  # 🔥 FIX: Plus de précision pour les fees (devrait être 0.0000 pour paires 0% fee)
-            'slippage': round(slippage, 6),  # 🔥 FIX: Plus de précision pour le slippage (6 décimales pour éviter confusion avec fees)
+            'slippage': round(slippage, 2),  # 🔥 FIX: Slippage en % (déjà en % depuis _estimate_slippage)
             'total_costs': round(total_costs, 2),
             'total_costs_usdt': round(total_costs, 4),
             'net_pnl': round(net_pnl_pct, 2),

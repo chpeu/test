@@ -119,9 +119,22 @@
 			if (res.ok) {
 				const data = await res.json();
 				if (data.config) {
-					config = { ...DEFAULTS, ...data.config };
+					// 🔥 FIX: Ne PAS écraser avec DEFAULTS, utiliser directement data.config
+					// Les valeurs par défaut ne doivent être utilisées QUE si la clé n'existe pas dans data.config
+					config = {};
+					// D'abord copier les defaults
+					Object.keys(DEFAULTS).forEach(key => {
+						config[key] = DEFAULTS[key];
+					});
+					// Ensuite écraser avec les valeurs du backend (qui incluent les overrides)
+					Object.keys(data.config).forEach(key => {
+						if (data.config[key] !== undefined && data.config[key] !== null) {
+							config[key] = data.config[key];
+						}
+					});
 					// ✅ FIX: Gérer le cas où tp_sl_mode n'existe pas
 					viewMode = config.tp_sl_mode || 'FIXE';
+					console.log('✅ Config chargée depuis backend:', config);
 				} else {
 					// ✅ FIX: Si pas de config, utiliser les defaults
 					console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -168,41 +181,39 @@
 					saveMessage = `✅ Configuration sauvegardée: ${result.message || 'Succès'}`;
 				}
 				
-				// 🔥 FIX: Ne PAS recharger la config immédiatement après save (évite incohérences)
+				// 🔥 FIX: Vérification immédiate sans délai pour synchronisation temps réel
 				// La config a déjà été sauvegardée et vérifiée via result.verified
 				// On ne vérifie que si des incohérences sont détectées
-				setTimeout(async () => {
-					// 🔥 AMÉLIORATION: Vérifier via l'endpoint de vérification (sans recharger config locale)
-					try {
-						const verifyRes = await fetch('/api/config/verify');
-						if (verifyRes.ok) {
-							const verifyData = await verifyRes.json();
-							console.log('🔍 Vérification complète:', verifyData);
-							if (verifyData.params) {
-								// Comparer avec la config envoyée (pas la config locale qui peut avoir changé)
-								const mismatches = [];
-								Object.keys(result.verified || {}).forEach(key => {
-									if (verifyData.params[key] !== undefined && 
-									    verifyData.params[key] !== result.verified[key]) {
-										mismatches.push(`${key}: envoyé=${result.verified[key]}, bot=${verifyData.params[key]}`);
-									}
-								});
-								if (mismatches.length > 0) {
-									console.warn('⚠️ Incohérences détectées:', mismatches);
-									saveMessage = `⚠️ ${mismatches.length} incohérence(s) détectée(s). Vérifiez les logs.`;
-									// 🔥 FIX: Recharger la config seulement en cas d'incohérence
-									await loadConfig();
-								} else {
-									console.log('✅ Tous les paramètres sont synchronisés');
+				try {
+					const verifyRes = await fetch('/api/config/verify');
+					if (verifyRes.ok) {
+						const verifyData = await verifyRes.json();
+						console.log('🔍 Vérification complète:', verifyData);
+						if (verifyData.params) {
+							// Comparer avec la config envoyée (pas la config locale qui peut avoir changé)
+							const mismatches = [];
+							Object.keys(result.verified || {}).forEach(key => {
+								if (verifyData.params[key] !== undefined && 
+								    verifyData.params[key] !== result.verified[key]) {
+									mismatches.push(`${key}: envoyé=${result.verified[key]}, bot=${verifyData.params[key]}`);
 								}
+							});
+							if (mismatches.length > 0) {
+								console.warn('⚠️ Incohérences détectées:', mismatches);
+								saveMessage = `⚠️ ${mismatches.length} incohérence(s) détectée(s). Vérifiez les logs.`;
+								// 🔥 FIX: Recharger la config seulement en cas d'incohérence
+								await loadConfig();
+							} else {
+								console.log('✅ Tous les paramètres sont synchronisés');
+								saveMessage = `✅ ${Object.keys(result.verified || {}).length} paramètre(s) sauvegardé(s) et vérifié(s)`;
 							}
 						}
-					} catch (err) {
-						console.error('Erreur vérification:', err);
 					}
-					
-					setTimeout(() => (saveMessage = ''), 5000);
-				}, 1000);
+				} catch (err) {
+					console.error('Erreur vérification:', err);
+				}
+				
+				setTimeout(() => (saveMessage = ''), 3000);
 				
 				// Afficher les paramètres mis à jour
 				if (result.updated) {
@@ -417,7 +428,11 @@
 										id="use-breakout"
 										type="checkbox"
 										bind:checked={config.use_breakout}
-										on:change={() => logConfigChange('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé')}
+										on:change={async () => {
+											logConfigChange('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé');
+											// 🔥 FIX: Sauvegarder immédiatement pour prise en compte totale
+											await saveConfig();
+										}}
 									/>
 									<span class="var-name">🔼 Breakout Pattern</span>
 									<span class="var-desc">Cassure de niveaux clés (support/résistance)</span>
@@ -462,7 +477,10 @@
 										id="use-snr"
 										type="checkbox"
 										bind:checked={config.use_snr}
-										on:change={() => logConfigChange('use_snr', config.use_snr ? 'Activé' : 'Désactivé')}
+										on:change={async () => {
+											logConfigChange('use_snr', config.use_snr ? 'Activé' : 'Désactivé');
+											await saveConfig();
+										}}
 									/>
 									<span class="var-name">📍 SNR Pattern</span>
 									<span class="var-desc">Rebond sur support/résistance</span>
@@ -507,7 +525,10 @@
 										id="use-wick"
 										type="checkbox"
 										bind:checked={config.use_wick}
-										on:change={() => logConfigChange('use_wick', config.use_wick ? 'Activé' : 'Désactivé')}
+										on:change={async () => {
+											logConfigChange('use_wick', config.use_wick ? 'Activé' : 'Désactivé');
+											await saveConfig();
+										}}
 									/>
 									<span class="var-name">📏 Wick Pattern</span>
 									<span class="var-desc">Rejet de prix via longues mèches</span>
@@ -552,7 +573,10 @@
 										id="use-divergence"
 										type="checkbox"
 										bind:checked={config.use_divergence}
-										on:change={() => logConfigChange('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé')}
+										on:change={async () => {
+											logConfigChange('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé');
+											await saveConfig();
+										}}
 									/>
 									<span class="var-name">🔀 Divergence Pattern</span>
 									<span class="var-desc">Divergence DI+ vs DI-</span>

@@ -127,6 +127,8 @@ export function initSocket() {
 
 	socket.on('position_update', (data) => {
 		updatePosition(data);
+		// 🔥 FIX: Mise à jour immédiate pour synchronisation temps réel
+		console.log('🔄 Position mise à jour via Socket.IO:', data.symbol);
 	});
 
 	socket.on('position_closed', (result) => {
@@ -168,6 +170,13 @@ export function initSocket() {
 	// === ÉVÉNEMENTS ÉTAT ===
 
 	socket.on('status', (status) => {
+		// 🔥 FIX: Mise à jour immédiate pour synchronisation temps réel
+		console.log('🔄 Status mis à jour via Socket.IO:', {
+			is_scanning: status.is_scanning,
+			has_position: !!status.active_position,
+			trades_count: status.trade_history?.length || 0
+		});
+
 		// Update scanning state
 		if (status.is_scanning !== undefined) {
 			if (status.is_scanning) {

@@ -1246,6 +1246,10 @@ async def api_close_position():
 
                 # FIX: Mettre à jour les stats de session
                 update_session_stats(result)
+                
+                # 🔥 FIX: Émettre stats_update via Socket.IO pour synchronisation temps réel
+                if app_state.get('stats'):
+                    await sio.emit('stats_update', app_state.get('stats'))
 
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
             if price_provider:
@@ -1258,9 +1262,8 @@ async def api_close_position():
             )
 
             await add_log('INFO', 'Position clôturée', 'Manuel')
-            await sio.emit('position_closed', result)
             
-            # 🔥 FIX: Émettre l'état mis à jour pour synchronisation temps réel
+            # 🔥 FIX: Émettre IMMÉDIATEMENT pour synchronisation instantanée (avant position_closed)
             status_data = {
                 'is_scanning': app_state.get('is_scanning', False),
                 'active_position': None,
@@ -1269,6 +1272,9 @@ async def api_close_position():
                 'trade_history': list(reversed(app_state.get('trade_history', [])[-20:]))
             }
             await sio.emit('status', status_data)
+            
+            # Émettre position_closed après status pour que le frontend mette à jour l'historique
+            await sio.emit('position_closed', result)
 
             return JSONResponse(result)
         except Exception as e:
@@ -1763,6 +1769,15 @@ async def api_config_update(request: Request):
         # 🔥 FIX: Logger les valeurs importantes pour debug
         if 'min_score_required' in validated_updates:
             logger.info(f"✅ min_score_required mis à jour: {validated_updates['min_score_required']} (vérification: TRADING_CONFIG['min_score_required'] = {TRADING_CONFIG.get('min_score_required')})")
+        
+        # 🔥 FIX: Logger spécifiquement les patterns techniques pour confirmation
+        pattern_keys = ['use_breakout', 'use_snr', 'use_wick', 'use_divergence']
+        updated_patterns = {k: validated_updates[k] for k in pattern_keys if k in validated_updates}
+        if updated_patterns:
+            logger.info(f"🎯 PATTERNS TECHNIQUES MIS À JOUR ({len(updated_patterns)} patterns):")
+            for key, value in updated_patterns.items():
+                status = "✅ ACTIVÉ" if value else "❌ DÉSACTIVÉ"
+                logger.info(f"   {status}: {key} = {value} (vérifié: TRADING_CONFIG['{key}'] = {TRADING_CONFIG.get(key)})")
 
         # ✅ Sauvegarder de manière persistante dans config_overrides.json
         config_manager.update_config(validated_updates)
