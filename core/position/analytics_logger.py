@@ -40,22 +40,72 @@ class AnalyticsLogger:
             return
 
         try:
+            # Timestamp actuel
+            now = datetime.now()
+            timestamp_iso = now.isoformat()
+            date_str = now.strftime('%Y-%m-%d')
+            time_str = now.strftime('%H:%M:%S')
+
+            # Calculer durée
+            opened_at = position.get('opened_at')
+            duration = None
+            if opened_at:
+                try:
+                    if isinstance(opened_at, str):
+                        opened_dt = datetime.fromisoformat(opened_at.replace('Z', '+00:00'))
+                    else:
+                        opened_dt = opened_at
+                    duration = int((now - opened_dt).total_seconds())
+                except Exception as e:
+                    logger.debug(f"Erreur calcul duration: {e}")
+
             trade_data = {
+                # Champs obligatoires NOT NULL
+                'timestamp': timestamp_iso,
+                'date': date_str,
+                'time': time_str,
                 'symbol': position.get('symbol', 'N/A'),
                 'direction': position.get('direction', 'LONG'),
-                'entry_price': position.get('entry', 0),
-                'exit_price': exit_price,
-                'size_usdt': position.get('size', 0),
-                'pnl_percent': pnl_data.get('pnl_pct', 0),
-                'pnl_usdt': pnl_data.get('net_pnl', 0),
+                'entry': position.get('entry', 0),
+                'exit': exit_price,
+
+                # PnL (obligatoires NOT NULL)
+                'gross_pnl_pct': pnl_data.get('pnl_pct', 0),
+                'gross_pnl_usdt': pnl_data.get('gross_pnl', pnl_data.get('net_pnl', 0)),
+                'net_pnl_pct': pnl_data.get('pnl_pct', 0),
+                'net_pnl_usdt': pnl_data.get('net_pnl', 0),
+
+                # Coûts
                 'fees': pnl_data.get('fees', 0),
+                'slippage': pnl_data.get('slippage', 0),
+                'total_costs': pnl_data.get('fees', 0) + pnl_data.get('slippage', 0),
+
+                # Infos trade
                 'reason': reason,
-                'mode': mode,
-                'timestamp': datetime.now().isoformat(),
-                'atr': position.get('atr'),
-                'confirmed_by': position.get('confirmed_by', ''),
-                'partial_tp_sold': position.get('partial_tp_sold', False),
-                'tp_escalier_enabled': position.get('tp_escalier_enabled', False)
+                'duration': duration,
+                'condition_types': position.get('confirmed_by', ''),
+
+                # Mode & Config
+                'trading_mode': mode,
+                'tp_sl_mode': position.get('tp_sl_mode'),
+
+                # États
+                'break_even_triggered': position.get('break_even_triggered', False),
+                'trailing_stop_triggered': position.get('trailing_stop_triggered', False),
+                'partial_tp_triggered': position.get('partial_tp_sold', False),
+
+                # TP Escalier
+                'tp_escalier_enabled': position.get('tp_escalier_enabled', False),
+                'tp_escalier_levels_hit': position.get('tp_escalier_levels_hit', []),
+                'tp_escalier_profits': position.get('tp_escalier_profits', []),
+
+                # Métriques
+                'max_pnl_reached': position.get('max_pnl_reached'),
+                'min_pnl_reached': position.get('min_pnl_reached'),
+
+                # Metadata
+                'session_id': position.get('session_id'),
+                'is_backtest': mode == 'BACKTEST'
             }
 
             self.analytics_db.insert_trade(trade_data)
