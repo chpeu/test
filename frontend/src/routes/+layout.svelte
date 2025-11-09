@@ -5,8 +5,8 @@
 	import { onMount } from 'svelte';
 
 	// SvelteKit props (pour référence externe uniquement)
-	// 🔥 FIX: Utiliser la syntaxe correcte pour SvelteKit
-	export let params = {};
+	// 🔥 FIX: Utiliser la syntaxe correcte pour SvelteKit (const pour référence externe)
+	export const params = {};
 
 	// Appliquer le thème au chargement
 	onMount(() => {
