@@ -1,10 +1,14 @@
 <script>
 	import { stats, winrate, winLossRatio } from '$lib/stores/stats';
+	import { onMount, onDestroy } from 'svelte';
 	import { writable } from 'svelte/store';
+	import { getSocket } from '$lib/utils/socket';
 
 	// État du bot
 	let botRunning = writable(false);
 	let botLoading = writable(false);
+	let statusInterval = null;
+	let socket = null;
 
 	function formatNumber(num) {
 		if (num === null || num === undefined || isNaN(num)) return '0.00';
@@ -46,13 +50,35 @@
 		}
 	}
 
-	// Vérifier l'état au montage
-	import { onMount } from 'svelte';
+	// 🔥 FIX: Écouter les événements Socket.IO pour mettre à jour l'état
+	function setupSocketListeners() {
+		socket = getSocket();
+		if (!socket) {
+			setTimeout(setupSocketListeners, 1000);
+			return;
+		}
+
+		socket.on('status', (status) => {
+			if (status.is_scanning !== undefined) {
+				$botRunning = status.is_scanning;
+			}
+		});
+
+		socket.on('scan_started', () => {
+			$botRunning = true;
+		});
+	}
+
 	onMount(() => {
 		checkBotStatus();
-		// Vérifier l'état toutes les 5 secondes
-		const interval = setInterval(checkBotStatus, 5000);
-		return () => clearInterval(interval);
+		setupSocketListeners();
+		statusInterval = setInterval(checkBotStatus, 5000);
+	});
+
+	onDestroy(() => {
+		if (statusInterval) {
+			clearInterval(statusInterval);
+		}
 	});
 </script>
 

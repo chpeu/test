@@ -1367,7 +1367,7 @@ async def api_get_state():
 @app.get("/api/config")
 async def api_get_config():
     """Récupérer la configuration actuelle (tous les paramètres)"""
-    from config import TRADING_CONFIG
+    from config import TRADING_CONFIG, TELEGRAM_ENABLED
     return JSONResponse({
         'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # 🔥 Valeur mise à jour
         'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # 🔥 PHASE 6: Score minimum
@@ -1375,6 +1375,8 @@ async def api_get_config():
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+        # 🔥 FIX: Ajouter statut Telegram
+        'telegram_enabled': TELEGRAM_ENABLED,
         # 🔥 4 seuils configurables - Valeurs mises à jour
         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),

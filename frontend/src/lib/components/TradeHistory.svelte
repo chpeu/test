@@ -98,7 +98,8 @@
 								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatNumber(trade.net_pnl_usdt || 0, 4)}
 							</td>
 							<td class="fees">{formatNumber(trade.fees || 0, 4)}</td>
-							<td class="slippage">{formatNumber(trade.slippage || 0, 4)}</td>
+							<!-- 🔥 FIX: Slippage avec 6 décimales pour éviter confusion avec fees -->
+							<td class="slippage">{formatNumber(trade.slippage || 0, 6)}</td>
 							<td class="reason">{trade.reason || trade.close_reason || 'N/A'}</td>
 							<!-- 🔥 FIX: Utiliser 'duration' (en secondes) ou calculer depuis opened_at/closed_at -->
 							<td class="duration">

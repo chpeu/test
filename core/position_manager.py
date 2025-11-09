@@ -697,11 +697,11 @@ class PositionManager:
         # Calculer durée
         duration = int(time.time() - self.active_position.start_time)
 
-        # Calculer PnL réalisé
+        # 🔥 FIX: Calculer PnL réalisé avec fees à 0% (scan scalabilité uniquement sur paires 0% fee)
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
             position=self.active_position.to_dict(),
             exit_price=exit_price,
-            fees_percent=0.04  # 0.04% fees
+            fees_percent=0.0  # 🔥 FIX: 0% fees (paires scalabilité uniquement)
         )
 
         # Calculer slippage si applicable
@@ -747,8 +747,8 @@ class PositionManager:
             'pnl_usdt': round(net_pnl_usdt, 4),
             'gross_pnl_pct': round(pnl_data['pnl_pct'], 2),
             'gross_pnl_usdt': round(pnl_data['pnl_usdt_gross'], 4),
-            'fees': round(pnl_data['fees'], 4),  # 🔥 FIX: Plus de précision pour les fees
-            'slippage': round(slippage, 4),  # 🔥 FIX: Plus de précision pour le slippage
+            'fees': round(pnl_data['fees'], 4),  # 🔥 FIX: Plus de précision pour les fees (devrait être 0.0000 pour paires 0% fee)
+            'slippage': round(slippage, 6),  # 🔥 FIX: Plus de précision pour le slippage (6 décimales pour éviter confusion avec fees)
             'total_costs': round(total_costs, 2),
             'total_costs_usdt': round(total_costs, 4),
             'net_pnl': round(net_pnl_pct, 2),

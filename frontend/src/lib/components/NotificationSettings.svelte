@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import {
 		notificationsEnabled,
 		notificationPermission,
@@ -6,6 +7,8 @@
 		toggleNotifications,
 		sendNotification
 	} from '$lib/utils/notifications';
+
+	let telegramStatus = 'Vérification...';
 
 	async function handleToggle() {
 		const enabled = await toggleNotifications();
@@ -25,6 +28,27 @@
 			});
 		}
 	}
+
+	// 🔥 FIX: Vérifier le statut Telegram au chargement
+	async function checkTelegramStatus() {
+		try {
+			const res = await fetch('/api/config');
+			if (res.ok) {
+				const data = await res.json();
+				// Vérifier si Telegram est configuré (via backend)
+				// Le backend devrait exposer cette info
+				telegramStatus = data.telegram_enabled ? '✅ Activé' : '❌ Désactivé (variables d\'environnement manquantes)';
+			} else {
+				telegramStatus = '❌ Erreur de vérification';
+			}
+		} catch (err) {
+			telegramStatus = '❌ Erreur de connexion';
+		}
+	}
+
+	onMount(() => {
+		checkTelegramStatus();
+	});
 </script>
 
 <div class="notification-settings">
@@ -79,29 +103,54 @@
 				Les notifications sont automatiquement envoyées pour les événements importants :
 			</p>
 
-			<div class="types-grid">
-				<div class="type-card active">
-					<div class="type-icon">🟢</div>
-					<div class="type-name">Position Ouverte</div>
-					<div class="type-desc">Alerte à l'ouverture d'une position</div>
+			<!-- 🔥 FIX: Séparer les différents systèmes de notifications -->
+			<div class="notification-systems">
+				<!-- Système 1: Notifications Navigateur (Browser) -->
+				<div class="system-section">
+					<h4 class="system-title">🌐 Notifications Navigateur</h4>
+					<div class="types-grid">
+						<div class="type-card active">
+							<div class="type-icon">🟢</div>
+							<div class="type-name">Position Ouverte</div>
+							<div class="type-desc">Alerte à l'ouverture d'une position</div>
+						</div>
+
+						<div class="type-card active">
+							<div class="type-icon">🔴</div>
+							<div class="type-name">Position Fermée</div>
+							<div class="type-desc">TP, SL ou Trailing Stop</div>
+						</div>
+
+						<div class="type-card active">
+							<div class="type-icon">🔍</div>
+							<div class="type-name">Setup Détecté</div>
+							<div class="type-desc">Conditions de trading remplies</div>
+						</div>
+
+						<div class="type-card active">
+							<div class="type-icon">❌</div>
+							<div class="type-name">Erreurs</div>
+							<div class="type-desc">Erreurs critiques du système</div>
+						</div>
+					</div>
 				</div>
 
-				<div class="type-card active">
-					<div class="type-icon">🔴</div>
-					<div class="type-name">Position Fermée</div>
-					<div class="type-desc">TP, SL ou Trailing Stop</div>
-				</div>
-
-				<div class="type-card active">
-					<div class="type-icon">🔍</div>
-					<div class="type-name">Setup Détecté</div>
-					<div class="type-desc">Conditions de trading remplies</div>
-				</div>
-
-				<div class="type-card active">
-					<div class="type-icon">❌</div>
-					<div class="type-name">Erreurs</div>
-					<div class="type-desc">Erreurs critiques du système</div>
+				<!-- Système 2: Telegram -->
+				<div class="system-section">
+					<h4 class="system-title">📱 Notifications Telegram</h4>
+					<div class="telegram-config">
+						<p class="telegram-info">
+							Les notifications Telegram sont configurées via les variables d'environnement :
+						</p>
+						<ul class="telegram-vars">
+							<li><code>TELEGRAM_BOT_TOKEN</code> - Token du bot Telegram</li>
+							<li><code>TELEGRAM_CHAT_ID</code> - ID du chat/group Telegram</li>
+						</ul>
+						<div class="telegram-status">
+							<span class="status-label">Statut:</span>
+							<span class="status-value">{telegramStatus}</span>
+						</div>
+					</div>
 				</div>
 			</div>
 
@@ -337,6 +386,89 @@
 	.type-desc {
 		font-size: 12px;
 		color: #888;
+	}
+
+	/* 🔥 FIX: Styles pour les systèmes de notifications séparés */
+	.notification-systems {
+		display: flex;
+		flex-direction: column;
+		gap: 25px;
+		margin-bottom: 20px;
+	}
+
+	.system-section {
+		background: #0a0e27;
+		padding: 20px;
+		border-radius: 10px;
+		border: 2px solid #2a3a6b;
+	}
+
+	.system-title {
+		font-size: 16px;
+		color: #00ff88;
+		font-weight: bold;
+		margin-bottom: 15px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.telegram-config {
+		padding: 15px;
+		background: rgba(0, 170, 255, 0.05);
+		border-radius: 8px;
+		border: 1px solid rgba(0, 170, 255, 0.3);
+	}
+
+	.telegram-info {
+		font-size: 13px;
+		color: #aaa;
+		margin-bottom: 15px;
+		line-height: 1.6;
+	}
+
+	.telegram-vars {
+		list-style: none;
+		padding: 0;
+		margin: 15px 0;
+	}
+
+	.telegram-vars li {
+		font-size: 12px;
+		color: #888;
+		padding: 8px;
+		margin: 5px 0;
+		background: rgba(0, 170, 255, 0.1);
+		border-radius: 6px;
+		border: 1px solid rgba(0, 170, 255, 0.2);
+		font-family: 'Courier New', monospace;
+	}
+
+	.telegram-vars code {
+		color: #00aaff;
+		font-weight: bold;
+	}
+
+	.telegram-status {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-top: 15px;
+		padding: 10px;
+		background: rgba(0, 255, 136, 0.1);
+		border-radius: 6px;
+		border: 1px solid rgba(0, 255, 136, 0.3);
+	}
+
+	.status-label {
+		font-size: 13px;
+		color: #888;
+		font-weight: bold;
+	}
+
+	.status-value {
+		font-size: 13px;
+		color: #00ff88;
+		font-weight: bold;
 	}
 
 	/* Mobile */

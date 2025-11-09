@@ -18,14 +18,16 @@ export const stats = writable({
 
 // Computed: Winrate
 export const winrate = derived(stats, $stats => {
-	if ($stats.total_trades === 0) return 0;
-	return (($stats.wins / $stats.total_trades) * 100).toFixed(2);
+	if ($stats.total_trades === 0) return '0.00';
+	const winrateValue = ($stats.wins / $stats.total_trades) * 100;
+	return winrateValue.toFixed(2);
 });
 
 // Computed: Win/Loss ratio
 export const winLossRatio = derived(stats, $stats => {
-	if ($stats.losses === 0) return $stats.wins > 0 ? '∞' : '0';
-	return ($stats.wins / $stats.losses).toFixed(2);
+	if ($stats.losses === 0) return $stats.wins > 0 ? '∞' : '0.00';
+	const ratio = $stats.wins / $stats.losses;
+	return ratio.toFixed(2);
 });
 
 // Computed: Average PnL per trade
@@ -53,9 +55,9 @@ export function incrementWin(trade) {
 		...$stats,
 		wins: $stats.wins + 1,
 		total_trades: $stats.total_trades + 1,
-		total_pnl_usdt: $stats.total_pnl_usdt + (trade.pnl_usdt || 0),
-		total_pnl_pct: $stats.total_pnl_pct + (trade.pnl_pct || 0),
-		best_trade: !$stats.best_trade || trade.pnl_usdt > $stats.best_trade.pnl_usdt
+		total_pnl_usdt: $stats.total_pnl_usdt + (trade.net_pnl_usdt || trade.pnl_usdt || 0),
+		total_pnl_pct: $stats.total_pnl_pct + (trade.net_pnl || trade.net_pnl_pct || trade.pnl_pct || 0),
+		best_trade: !$stats.best_trade || (trade.net_pnl_usdt || trade.pnl_usdt || 0) > ($stats.best_trade.net_pnl_usdt || $stats.best_trade.pnl_usdt || 0)
 			? trade
 			: $stats.best_trade
 	}));
@@ -66,9 +68,9 @@ export function incrementLoss(trade) {
 		...$stats,
 		losses: $stats.losses + 1,
 		total_trades: $stats.total_trades + 1,
-		total_pnl_usdt: $stats.total_pnl_usdt + (trade.pnl_usdt || 0),
-		total_pnl_pct: $stats.total_pnl_pct + (trade.pnl_pct || 0),
-		worst_trade: !$stats.worst_trade || trade.pnl_usdt < $stats.worst_trade.pnl_usdt
+		total_pnl_usdt: $stats.total_pnl_usdt + (trade.net_pnl_usdt || trade.pnl_usdt || 0),
+		total_pnl_pct: $stats.total_pnl_pct + (trade.net_pnl || trade.net_pnl_pct || trade.pnl_pct || 0),
+		worst_trade: !$stats.worst_trade || (trade.net_pnl_usdt || trade.pnl_usdt || 0) < ($stats.worst_trade.net_pnl_usdt || $stats.worst_trade.pnl_usdt || 0)
 			? trade
 			: $stats.worst_trade
 	}));

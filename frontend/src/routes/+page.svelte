@@ -85,16 +85,36 @@
 					clearPosition();
 				}
 				
-				// 🔥 FIX: Charger l'historique des trades depuis le backend (remplace les anciennes données)
-				if (data.trade_history && Array.isArray(data.trade_history)) {
-					const { setTradeHistory } = await import('$lib/stores/trades');
+				// 🔥 FIX: Nettoyer et charger l'historique des trades depuis le backend
+				const { setTradeHistory, clearHistory } = await import('$lib/stores/trades');
+				if (data.trade_history && Array.isArray(data.trade_history) && data.trade_history.length > 0) {
 					setTradeHistory(data.trade_history);
+				} else {
+					// Nettoyer si pas de trades ou liste vide
+					clearHistory();
 				}
 				
 				// 🔥 FIX: Charger les stats depuis le backend (remplace les anciennes stats)
 				if (data.stats) {
 					const { updateStats } = await import('$lib/stores/stats');
-					updateStats(data.stats);
+					// S'assurer que les valeurs sont numériques
+					const cleanStats = {
+						wins: Number(data.stats.wins || 0),
+						losses: Number(data.stats.losses || 0),
+						total_trades: Number(data.stats.total_trades || 0),
+						total_pnl_usdt: Number(data.stats.total_pnl_usdt || 0),
+						total_pnl_pct: Number(data.stats.total_pnl_pct || 0),
+						best_trade: data.stats.best_trade || null,
+						worst_trade: data.stats.worst_trade || null,
+						avg_trade_duration: Number(data.stats.avg_trade_duration || 0)
+					};
+					updateStats(cleanStats);
+				}
+				
+				// 🔥 FIX: Nettoyer les graphiques PnL au démarrage si pas de trades
+				if (!data.trade_history || data.trade_history.length === 0) {
+					const { clearHistory: clearTrades } = await import('$lib/stores/trades');
+					clearTrades();
 				}
 			} else {
 				throw new Error(`Backend returned ${res.status}`);

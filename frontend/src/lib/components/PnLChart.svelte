@@ -109,7 +109,15 @@
 
 		// Souscrire aux données
 		const unsubscribe = pnlChartData.subscribe((data) => {
-			if (!chart || !data) return;
+			if (!chart) return;
+			
+			// 🔥 FIX: Nettoyer le graphique si pas de données
+			if (!data || !data.values || data.values.length === 0) {
+				chart.data.labels = [];
+				chart.data.datasets[0].data = [];
+				chart.update('none');
+				return;
+			}
 
 			// Calculer PnL cumulatif
 			let cumulative = 0;
