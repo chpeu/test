@@ -1169,7 +1169,6 @@ async def api_get_complete_state():
             }
         
         # Récupérer position active
-        import time
         active_position_dict = None
         if position_manager and position_manager.active_position:
             try:
