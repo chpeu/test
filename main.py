@@ -2076,6 +2076,132 @@ async def websocket_endpoint(websocket: WebSocket):
                             'request_type': request_type,
                             'data': None
                         }, websocket)
+                
+                elif request_type == 'state':
+                    # 🔥 MIGRATION COMPLÈTE: Récupérer état complet via WebSocket (remplace fetch('/api/state'))
+                    try:
+                        # Utiliser la même logique que api_get_complete_state
+                        from config import TRADING_CONFIG
+                        import time
+                        
+                        # Récupérer position active
+                        active_position_dict = None
+                        if position_manager and position_manager.active_position:
+                            try:
+                                active_position = position_manager.active_position
+                                active_position_dict = active_position.to_dict()
+                                active_position_dict['timestamp'] = time.time()
+                            except Exception as e:
+                                logger.error(f"❌ Erreur récupération position: {e}")
+                                active_position_dict = None
+                        
+                        # Récupérer stats
+                        stats_dict = {
+                            'total_trades': 0,
+                            'wins': 0,
+                            'losses': 0,
+                            'winrate': 0.0
+                        }
+                        
+                        if analytics_db:
+                            try:
+                                trades = analytics_db.get_trades(limit=10000)
+                                if trades:
+                                    total = len(trades)
+                                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                                    losses = total - wins
+                                    winrate = (wins / total * 100) if total > 0 else 0.0
+                                    stats_dict = {
+                                        'total_trades': total,
+                                        'wins': wins,
+                                        'losses': losses,
+                                        'winrate': winrate
+                                    }
+                            except Exception as e:
+                                logger.error(f"❌ Erreur récupération stats: {e}")
+                        
+                        # Fallback app_state
+                        if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
+                            try:
+                                trades = app_state['trade_history']
+                                if trades:
+                                    total = len(trades)
+                                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                                    losses = total - wins
+                                    winrate = (wins / total * 100) if total > 0 else 0.0
+                                    stats_dict = {
+                                        'total_trades': total,
+                                        'wins': wins,
+                                        'losses': losses,
+                                        'winrate': winrate
+                                    }
+                            except Exception as e:
+                                logger.error(f"❌ Erreur récupération stats app_state: {e}")
+                        
+                        # Récupérer historique trades
+                        trades_history = []
+                        if analytics_db:
+                            try:
+                                trades_history = analytics_db.get_trades(limit=50)
+                            except Exception as e:
+                                logger.error(f"❌ Erreur récupération historique: {e}")
+                        
+                        if not trades_history and app_state.get('trade_history'):
+                            trades_history = app_state['trade_history'][:50]
+                        
+                        state_data = {
+                            'success': True,
+                            'session_id': session_id or f"live_{int(time.time())}",
+                            'config': {
+                                'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+                                'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                                'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+                                'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                                'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+                                'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                                'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+                                'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+                                'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+                                'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+                                'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
+                                'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+                                'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+                                'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+                                'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                                'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+                                'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+                                'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
+                            },
+                            'scanner': {
+                                'is_scanning': app_state.get('is_scanning', False),
+                                'top_pairs': app_state.get('top_pairs', [])
+                            },
+                            'position': {
+                                'active': active_position_dict is not None,
+                                'data': active_position_dict
+                            },
+                            'stats': stats_dict,
+                            'trade_history': trades_history,
+                            'timestamp': time.time()
+                        }
+                        
+                        await ws_manager.send_personal_message({
+                            'type': 'request_response',
+                            'id': request_id,
+                            'request_type': request_type,
+                            'data': state_data
+                        }, websocket)
+                    except Exception as e:
+                        logger.error(f"❌ Erreur récupération state via WebSocket: {e}", exc_info=True)
+                        await ws_manager.send_personal_message({
+                            'type': 'request_response',
+                            'id': request_id,
+                            'request_type': request_type,
+                            'data': {
+                                'success': False,
+                                'error': str(e)
+                            }
+                        }, websocket)
     
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket)
@@ -2213,6 +2339,13 @@ async def handle_client_command(command: str, params: dict):
             val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
             TRADING_CONFIG['risk_per_trade'] = val
             updated['risk_per_trade'] = val
+        
+        # 🔥 FIX: Support min_score_required dans update_config WebSocket
+        if 'min_score_required' in params:
+            val = float(params['min_score_required'])
+            val = max(1.0, min(20.0, val))  # Clamp 1.0-20.0
+            TRADING_CONFIG['min_score_required'] = val
+            updated['min_score_required'] = val
         
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
