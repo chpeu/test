@@ -790,8 +790,9 @@ class TestAnalyticsLogger:
             def __init__(self):
                 self.trades = []
 
-            def log_trade(self, trade_data):
+            def insert_trade(self, trade_data):
                 self.trades.append(trade_data)
+                return len(self.trades)  # Return row ID like real DB
 
         mock_db = MockDB()
         logger = AnalyticsLogger(analytics_db=mock_db)
@@ -811,7 +812,7 @@ class TestAnalyticsLogger:
 
         assert len(mock_db.trades) == 1
         assert mock_db.trades[0]['symbol'] == 'BTCUSDT'
-        assert mock_db.trades[0]['mode'] == 'PAPER'
+        assert mock_db.trades[0]['trading_mode'] == 'PAPER'
 
     def test_log_setup_rejected(self):
         """Test logging rejected setups"""
