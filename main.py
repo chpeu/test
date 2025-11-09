@@ -46,7 +46,7 @@ except ImportError as e:
 try:
     from core.analytics_database import AnalyticsDatabase
     from notifications import create_notification_manager
-    from api.routes import router as api_router, set_analytics_db, set_position_manager, set_notification_manager, set_instance_port
+    from api.routes import router as api_router, set_analytics_db, set_position_manager, set_notification_manager, set_instance_port, set_app_state
 except ImportError as e:
     logging.warning(f"Architecture V2 imports (optionnels): {e}")
     AnalyticsDatabase = None
@@ -140,6 +140,11 @@ try:
     logger.info("✅ Fichiers statiques montés: /static")
 except Exception as e:
     logger.warning(f"⚠️ Fichiers statiques non montés: {e}")
+
+# 🔥 FIX: Injecter app_state dans le router AVANT inclusion
+if api_router and set_app_state:
+    set_app_state(app_state)
+    logger.info("✅ app_state injecté dans API routes")
 
 if api_router:
     app.include_router(api_router)
