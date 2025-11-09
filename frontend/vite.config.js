@@ -17,7 +17,20 @@ export default defineConfig({
 			'/socket.io': {
 				target: 'http://localhost:5000',
 				changeOrigin: true,
-				ws: true // WebSocket support
+				ws: true, // WebSocket support
+				rewrite: (path) => path, // 🔥 FIX: Ne pas réécrire le chemin
+				configure: (proxy, _options) => {
+					// 🔥 FIX: Gérer les erreurs de connexion WebSocket
+					proxy.on('error', (err, _req, _res) => {
+						console.log('Proxy WebSocket error (normal if backend not running):', err.message);
+					});
+					proxy.on('proxyReqWs', (proxyReq, req, socket) => {
+						// 🔥 FIX: Gérer les reconnexions WebSocket
+						socket.on('error', (err) => {
+							console.log('WebSocket connection error (normal if backend not running):', err.message);
+						});
+					});
+				}
 			}
 		}
 	},

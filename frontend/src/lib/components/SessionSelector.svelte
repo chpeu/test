@@ -216,13 +216,17 @@
 		{/if}
 	</div>
 
-	{#if showCreateModal}
+		{#if showCreateModal}
 		<div
 			class="modal-overlay"
 			role="button"
 			tabindex="0"
-			on:click={() => (showCreateModal = false)}
-			on:keydown={(e) => e.key === 'Escape' && (showCreateModal = false)}
+			on:click|stopPropagation={() => (showCreateModal = false)}
+			on:keydown={(e) => {
+				if (e.key === 'Escape') {
+					showCreateModal = false;
+				}
+			}}
 		>
 			<div class="modal-content" role="dialog" on:click|stopPropagation>
 				<h3>Create New Session</h3>
@@ -449,6 +453,7 @@
 		align-items: center;
 		justify-content: center;
 		z-index: 1000;
+		pointer-events: auto; /* 🔥 FIX: Permettre les clics sur le modal */
 	}
 
 	.modal-content {

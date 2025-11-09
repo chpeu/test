@@ -1,134 +1,139 @@
 <script>
 	export let tabs = [];
-	export let activeTab = '';
-
+	export let activeTab = tabs[0]?.id || '';
+	
+	$: currentTab = tabs.find(t => t.id === activeTab) || tabs[0];
+	
 	function selectTab(tabId) {
 		activeTab = tabId;
 	}
 </script>
 
 <div class="tabs-container">
-	<div class="tabs">
+	<div class="tabs-header">
 		{#each tabs as tab}
 			<button
-				class="tab"
+				class="tab-button"
 				class:active={activeTab === tab.id}
 				on:click={() => selectTab(tab.id)}
+				role="tab"
+				aria-selected={activeTab === tab.id}
 			>
-				<span class="tab-icon">{tab.icon}</span>
+				<span class="tab-icon">{tab.icon || ''}</span>
 				<span class="tab-label">{tab.label}</span>
 			</button>
 		{/each}
 	</div>
+	
+	<!-- Tab content is rendered by parent component -->
 </div>
 
 <style>
 	.tabs-container {
-		margin-bottom: 20px;
-		border-bottom: 2px solid #2a3a6b;
+		background: #1e2749;
+		border-radius: 10px;
+		border: 2px solid #2a3a6b;
+		overflow: hidden;
+		margin-bottom: 15px;
 	}
-
-	.tabs {
+	
+	.tabs-header {
 		display: flex;
-		gap: 5px;
+		gap: 0;
+		background: #0a0e27;
+		border-bottom: 2px solid #2a3a6b;
 		overflow-x: auto;
-		padding: 0 5px 5px;
+		scrollbar-width: thin;
+		scrollbar-color: #2a3a6b #0a0e27;
 	}
-
-	/* Custom scrollbar for tabs */
-	.tabs::-webkit-scrollbar {
+	
+	.tabs-header::-webkit-scrollbar {
 		height: 6px;
 	}
-
-	.tabs::-webkit-scrollbar-track {
+	
+	.tabs-header::-webkit-scrollbar-track {
 		background: #0a0e27;
-		border-radius: 3px;
 	}
-
-	.tabs::-webkit-scrollbar-thumb {
+	
+	.tabs-header::-webkit-scrollbar-thumb {
 		background: #2a3a6b;
 		border-radius: 3px;
 	}
-
-	.tabs::-webkit-scrollbar-thumb:hover {
-		background: #00ff88;
-	}
-
-	.tab {
-		display: flex;
-		align-items: center;
-		gap: 8px;
+	
+	.tab-button {
 		padding: 12px 20px;
-		background: #1e2749;
-		border: 2px solid #2a3a6b;
-		border-bottom: none;
-		border-radius: 10px 10px 0 0;
+		background: transparent;
+		border: none;
+		border-bottom: 3px solid transparent;
 		color: #888;
-		font-size: 14px;
+		font-family: 'Courier New', monospace;
+		font-size: 13px;
 		font-weight: bold;
 		cursor: pointer;
 		transition: all 0.3s;
 		white-space: nowrap;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		text-transform: uppercase;
-		letter-spacing: 0.5px;
+		position: relative;
+		z-index: 1001; /* 🔥 FIX: Au-dessus du modal pour permettre les clics */
+		pointer-events: auto; /* 🔥 FIX: Permettre les clics même si modal ouvert */
 	}
-
-	.tab:hover {
+	
+	.tab-button:hover {
 		background: rgba(0, 255, 136, 0.05);
 		color: #00ff88;
-		border-color: #00ff88;
 	}
-
-	.tab.active {
-		background: #0a0e27;
+	
+	.tab-button.active {
+		background: rgba(0, 255, 136, 0.1);
 		color: #00ff88;
-		border-color: #00ff88;
-		box-shadow: 0 -4px 15px rgba(0, 255, 136, 0.2);
+		border-bottom-color: #00ff88;
+		text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
 	}
-
+	
 	.tab-icon {
-		font-size: 18px;
-		line-height: 1;
+		font-size: 16px;
 	}
-
+	
 	.tab-label {
-		font-size: 13px;
+		font-size: 12px;
 	}
-
-	/* Mobile responsive */
+	
+	.tabs-content {
+		padding: 18px;
+		min-height: 200px;
+	}
+	
+	.tab-panel {
+		animation: fadeIn 0.3s ease-in;
+	}
+	
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+	
+	/* Mobile */
 	@media (max-width: 768px) {
-		.tabs {
-			gap: 3px;
-			padding: 0 3px 3px;
-		}
-
-		.tab {
+		.tab-button {
 			padding: 10px 15px;
-			gap: 6px;
-		}
-
-		.tab-icon {
-			font-size: 16px;
-		}
-
-		.tab-label {
 			font-size: 11px;
 		}
-	}
-
-	@media (max-width: 480px) {
-		.tab {
-			flex-direction: column;
-			gap: 4px;
-			padding: 8px 12px;
-		}
-
+		
 		.tab-icon {
-			font-size: 20px;
+			font-size: 14px;
 		}
-
-		.tab-label {
-			font-size: 10px;
+		
+		.tabs-content {
+			padding: 12px;
 		}
 	}
 </style>
