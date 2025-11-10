@@ -10,7 +10,7 @@
       0.1,
       2.0
     ],
-    "tp_sl_mode": "ATR",
+    "tp_sl_mode": "FIXE",
     "tp_percent": 0.6,
     "sl_percent": 0.25,
     "break_even_trigger": 0.3,
@@ -39,7 +39,7 @@
     "use_morning_star": true,
     "use_evening_star": true,
     "snr_threshold": 0.25,
-    "breakout_threshold": 1.0,
+    "breakout_threshold": 0.35,
     "wick_ratio_max": 2.8,
     "di_gap_min": 4.0,
     "di_gap_adx_threshold": 25.0,
@@ -226,6 +226,6 @@
       ]
     }
   },
-  "timestamp": 1762793494.5945406,
+  "timestamp": 1762755248.435041,
   "version": "7.0.0"
 }
