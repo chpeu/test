@@ -22,6 +22,9 @@ from core.websocket_manager import get_websocket_manager
 from core.config_persistence import get_config_persistence
 import time
 
+# 🔥 RELIABILITY: Pydantic validation models for WebSocket commands
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
 # 🔥 v7.0: Imports complets
 try:
     from api.price_provider import get_price_provider
@@ -61,6 +64,65 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# 🔥 RELIABILITY: Pydantic validation models for WebSocket commands
+class UpdateConfigParams(BaseModel):
+    """Validation model for update_config command parameters"""
+    volume_multiplier: Optional[float] = Field(None, ge=0.1, le=2.0, description="Volume multiplier (0.1-2.0)")
+    min_score_required: Optional[float] = Field(None, ge=1.0, le=20.0, description="Minimum score required (1.0-20.0)")
+    use_confluence: Optional[bool] = Field(None, description="Use confluence indicator")
+    tp_sl_mode: Optional[str] = Field(None, description="TP/SL mode (FIXE, ATR, TP_MULTI)")
+    tp_percent: Optional[float] = Field(None, gt=0, le=10.0, description="Take profit percent (0-10%)")
+    sl_percent: Optional[float] = Field(None, gt=0, le=10.0, description="Stop loss percent (0-10%)")
+    snr_threshold: Optional[float] = Field(None, ge=0.0, le=1.0, description="SNR threshold (0.0-1.0)")
+    breakout_threshold: Optional[float] = Field(None, ge=0.0, le=1.0, description="Breakout threshold (0.0-1.0)")
+    wick_ratio_max: Optional[float] = Field(None, ge=1.0, le=10.0, description="Max wick ratio (1.0-10.0)")
+    di_gap_min: Optional[float] = Field(None, ge=0.0, le=50.0, description="Min DI gap (0.0-50.0)")
+    di_gap_adx_threshold: Optional[float] = Field(None, ge=0.0, le=100.0, description="DI gap ADX threshold (0.0-100.0)")
+    optimal_atr_min_1m: Optional[float] = Field(None, ge=0.01, le=1.0, description="Min ATR 1m (0.01-1.0%)")
+    optimal_atr_max_1m: Optional[float] = Field(None, ge=0.1, le=5.0, description="Max ATR 1m (0.1-5.0%)")
+    optimal_atr_min_5m: Optional[float] = Field(None, ge=0.01, le=2.0, description="Min ATR 5m (0.01-2.0%)")
+    optimal_atr_max_5m: Optional[float] = Field(None, ge=0.5, le=10.0, description="Max ATR 5m (0.5-10.0%)")
+    trend_timeframe: Optional[str] = Field(None, description="Trend timeframe (5m, 15m, 30m, 1h)")
+    account_size: Optional[float] = Field(None, ge=100.0, le=100000.0, description="Account size (100-100000)")
+    risk_per_trade: Optional[float] = Field(None, ge=0.5, le=5.0, description="Risk per trade % (0.5-5.0)")
+
+    @field_validator('tp_sl_mode')
+    @classmethod
+    def validate_tp_sl_mode(cls, v):
+        if v is not None:
+            v_upper = v.upper()
+            if v_upper not in ['FIXE', 'ATR', 'TP_MULTI']:
+                raise ValueError(f"tp_sl_mode must be FIXE, ATR or TP_MULTI, got {v}")
+            return v_upper
+        return v
+
+    @field_validator('trend_timeframe')
+    @classmethod
+    def validate_trend_timeframe(cls, v):
+        if v is not None:
+            v_lower = v.lower()
+            if v_lower not in ['5m', '15m', '30m', '1h']:
+                raise ValueError(f"trend_timeframe must be 5m, 15m, 30m or 1h, got {v}")
+            return v_lower
+        return v
+
+
+class ScanTopPairsParams(BaseModel):
+    """Validation model for scan_top_pairs command parameters"""
+    n: Optional[int] = Field(30, ge=1, le=100, description="Number of pairs to scan (1-100)")
+
+
+class LogConfigParams(BaseModel):
+    """Validation model for log_config command parameters"""
+    key: str = Field(..., min_length=1, max_length=100, description="Config key name")
+    change: str = Field(..., min_length=1, max_length=500, description="Change description")
+
+
+# 🔥 RELIABILITY: Global lock for config updates to prevent race conditions
+_config_lock = asyncio.Lock()
+
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
@@ -2224,150 +2286,147 @@ async def handle_client_command(command: str, params: dict):
         return {'status': 'stopped', 'is_scanning': False}
     
     elif command == 'update_config':
-        # 🔥 BIDIRECTIONNEL: Mettre à jour config avec validation complète (même logique que /api/config)
-        from config import TRADING_CONFIG
-        updated = {}
-        
-        # 🔥 Volume multiplier
-        if 'volume_multiplier' in params:
-            val = float(params['volume_multiplier'])
-            val = max(0.1, min(2.0, val))  # Clamp 0.1-2.0
-            TRADING_CONFIG['volume_multiplier'] = val
-            updated['volume_multiplier'] = val
-        
-        # 🔥 Confluence
-        if 'use_confluence' in params:
-            TRADING_CONFIG['use_confluence'] = bool(params['use_confluence'])
-            updated['use_confluence'] = TRADING_CONFIG['use_confluence']
-        
-        # 🔥 TP/SL Mode
-        if 'tp_sl_mode' in params:
-            mode = str(params['tp_sl_mode']).upper()
-            if mode in ['FIXE', 'ATR', 'TP_MULTI']:
+        # 🔥 RELIABILITY: Use Pydantic validation and asyncio.Lock to prevent race conditions
+        try:
+            # Validate parameters with Pydantic
+            validated_params = UpdateConfigParams(**params)
+        except ValidationError as e:
+            error_msg = f"Invalid parameters: {e}"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+
+        # 🔥 RELIABILITY: Use lock to prevent concurrent config updates
+        async with _config_lock:
+            from config import TRADING_CONFIG
+            updated = {}
+
+            # Update only non-None validated fields
+            params_dict = validated_params.model_dump(exclude_none=True)
+
+            # 🔥 Volume multiplier
+            if 'volume_multiplier' in params_dict:
+                val = params_dict['volume_multiplier']
+                TRADING_CONFIG['volume_multiplier'] = val
+                updated['volume_multiplier'] = val
+
+            # 🔥 Confluence
+            if 'use_confluence' in params_dict:
+                TRADING_CONFIG['use_confluence'] = params_dict['use_confluence']
+                updated['use_confluence'] = TRADING_CONFIG['use_confluence']
+
+            # 🔥 TP/SL Mode (already validated and uppercased by Pydantic)
+            if 'tp_sl_mode' in params_dict:
+                mode = params_dict['tp_sl_mode']
                 TRADING_CONFIG['tp_sl_mode'] = mode
                 init_instances()
                 if position_config:
                     position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
                 updated['tp_sl_mode'] = mode
-        
-        if 'tp_percent' in params:
-            val = float(params['tp_percent'])
-            TRADING_CONFIG['tp_percent'] = val
-            if position_config:
-                position_config.fixed_tp_pct = val
-            updated['tp_percent'] = val
-        
-        if 'sl_percent' in params:
-            val = float(params['sl_percent'])
-            TRADING_CONFIG['sl_percent'] = val
-            if position_config:
-                position_config.fixed_sl_pct = val
-            updated['sl_percent'] = val
-        
-        # 🔥 4 seuils configurables
-        if 'snr_threshold' in params:
-            val = float(params['snr_threshold'])
-            val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
-            TRADING_CONFIG['snr_threshold'] = val
-            updated['snr_threshold'] = val
-        
-        if 'breakout_threshold' in params:
-            val = float(params['breakout_threshold'])
-            val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
-            TRADING_CONFIG['breakout_threshold'] = val
-            updated['breakout_threshold'] = val
-        
-        if 'wick_ratio_max' in params:
-            val = float(params['wick_ratio_max'])
-            val = max(1.0, min(10.0, val))  # Clamp 1.0-10.0
-            TRADING_CONFIG['wick_ratio_max'] = val
-            updated['wick_ratio_max'] = val
-        
-        if 'di_gap_min' in params:
-            val = float(params['di_gap_min'])
-            val = max(0.0, min(50.0, val))  # Clamp 0.0-50.0
-            TRADING_CONFIG['di_gap_min'] = val
-            updated['di_gap_min'] = val
-        
-        if 'di_gap_adx_threshold' in params:
-            val = float(params['di_gap_adx_threshold'])
-            val = max(0.0, min(100.0, val))  # Clamp 0.0-100.0
-            TRADING_CONFIG['di_gap_adx_threshold'] = val
-            updated['di_gap_adx_threshold'] = val
-        
-        # 🔥 Seuils ATR optimal
-        if 'optimal_atr_min_1m' in params:
-            val = float(params['optimal_atr_min_1m'])
-            val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
-            TRADING_CONFIG['optimal_atr_min_1m'] = val
-            updated['optimal_atr_min_1m'] = val
-        
-        if 'optimal_atr_max_1m' in params:
-            val = float(params['optimal_atr_max_1m'])
-            val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0%
-            TRADING_CONFIG['optimal_atr_max_1m'] = val
-            updated['optimal_atr_max_1m'] = val
-        
-        if 'optimal_atr_min_5m' in params:
-            val = float(params['optimal_atr_min_5m'])
-            val = max(0.01, min(2.0, val))  # Clamp 0.01-2.0%
-            TRADING_CONFIG['optimal_atr_min_5m'] = val
-            updated['optimal_atr_min_5m'] = val
-        
-        if 'optimal_atr_max_5m' in params:
-            val = float(params['optimal_atr_max_5m'])
-            val = max(0.5, min(10.0, val))  # Clamp 0.5-10.0%
-            TRADING_CONFIG['optimal_atr_max_5m'] = val
-            updated['optimal_atr_max_5m'] = val
-        
-        # 🔥 Trend timeframe
-        if 'trend_timeframe' in params:
-            val = str(params['trend_timeframe']).lower()
-            valid_timeframes = ['5m', '15m', '30m', '1h']
-            if val in valid_timeframes:
+
+            if 'tp_percent' in params_dict:
+                val = params_dict['tp_percent']
+                TRADING_CONFIG['tp_percent'] = val
+                if position_config:
+                    position_config.fixed_tp_pct = val
+                updated['tp_percent'] = val
+
+            if 'sl_percent' in params_dict:
+                val = params_dict['sl_percent']
+                TRADING_CONFIG['sl_percent'] = val
+                if position_config:
+                    position_config.fixed_sl_pct = val
+                updated['sl_percent'] = val
+
+            # 🔥 4 seuils configurables
+            if 'snr_threshold' in params_dict:
+                val = params_dict['snr_threshold']
+                TRADING_CONFIG['snr_threshold'] = val
+                updated['snr_threshold'] = val
+
+            if 'breakout_threshold' in params_dict:
+                val = params_dict['breakout_threshold']
+                TRADING_CONFIG['breakout_threshold'] = val
+                updated['breakout_threshold'] = val
+
+            if 'wick_ratio_max' in params_dict:
+                val = params_dict['wick_ratio_max']
+                TRADING_CONFIG['wick_ratio_max'] = val
+                updated['wick_ratio_max'] = val
+
+            if 'di_gap_min' in params_dict:
+                val = params_dict['di_gap_min']
+                TRADING_CONFIG['di_gap_min'] = val
+                updated['di_gap_min'] = val
+
+            if 'di_gap_adx_threshold' in params_dict:
+                val = params_dict['di_gap_adx_threshold']
+                TRADING_CONFIG['di_gap_adx_threshold'] = val
+                updated['di_gap_adx_threshold'] = val
+
+            # 🔥 Seuils ATR optimal
+            if 'optimal_atr_min_1m' in params_dict:
+                val = params_dict['optimal_atr_min_1m']
+                TRADING_CONFIG['optimal_atr_min_1m'] = val
+                updated['optimal_atr_min_1m'] = val
+
+            if 'optimal_atr_max_1m' in params_dict:
+                val = params_dict['optimal_atr_max_1m']
+                TRADING_CONFIG['optimal_atr_max_1m'] = val
+                updated['optimal_atr_max_1m'] = val
+
+            if 'optimal_atr_min_5m' in params_dict:
+                val = params_dict['optimal_atr_min_5m']
+                TRADING_CONFIG['optimal_atr_min_5m'] = val
+                updated['optimal_atr_min_5m'] = val
+
+            if 'optimal_atr_max_5m' in params_dict:
+                val = params_dict['optimal_atr_max_5m']
+                TRADING_CONFIG['optimal_atr_max_5m'] = val
+                updated['optimal_atr_max_5m'] = val
+
+            # 🔥 Trend timeframe (already validated and lowercased by Pydantic)
+            if 'trend_timeframe' in params_dict:
+                val = params_dict['trend_timeframe']
                 TRADING_CONFIG['trend_timeframe'] = val
                 updated['trend_timeframe'] = val
-        
-        # 🔥 Account size et risk per trade
-        if 'account_size' in params:
-            val = float(params['account_size'])
-            val = max(100.0, min(100000.0, val))  # Clamp 100-100000
-            TRADING_CONFIG['account_size'] = val
-            updated['account_size'] = val
-        
-        if 'risk_per_trade' in params:
-            val = float(params['risk_per_trade'])
-            val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
-            TRADING_CONFIG['risk_per_trade'] = val
-            updated['risk_per_trade'] = val
-        
-        # 🔥 FIX: Support min_score_required dans update_config WebSocket
-        if 'min_score_required' in params:
-            val = float(params['min_score_required'])
-            val = max(1.0, min(20.0, val))  # Clamp 1.0-20.0
-            TRADING_CONFIG['min_score_required'] = val
-            updated['min_score_required'] = val
-        
-        if updated:
-            logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
-            await add_log('INFO', 'Config mise à jour', str(updated))
 
-            # 🔥 BIDIRECTIONNEL: Broadcaster les changements à tous les clients
-            if ws_manager:
-                await ws_manager.emit('config_change', {
-                    'changes': updated,
-                    'timestamp': time.time()
-                })
+            # 🔥 Account size et risk per trade
+            if 'account_size' in params_dict:
+                val = params_dict['account_size']
+                TRADING_CONFIG['account_size'] = val
+                updated['account_size'] = val
 
-            # 🔥 BUG FIX #1: Sauvegarder la configuration après mise à jour
-            try:
-                config_persistence = get_config_persistence()
-                config_persistence.save(TRADING_CONFIG)
-                logger.debug("💾 Configuration sauvegardée automatiquement")
-            except Exception as e:
-                logger.error(f"❌ Erreur sauvegarde configuration: {e}")
+            if 'risk_per_trade' in params_dict:
+                val = params_dict['risk_per_trade']
+                TRADING_CONFIG['risk_per_trade'] = val
+                updated['risk_per_trade'] = val
 
-        return {'updated': updated, 'success': True}
+            # 🔥 FIX: Support min_score_required dans update_config WebSocket
+            if 'min_score_required' in params_dict:
+                val = params_dict['min_score_required']
+                TRADING_CONFIG['min_score_required'] = val
+                updated['min_score_required'] = val
+
+            if updated:
+                logger.info(f"✅ Config mise à jour via WebSocket (with lock): {updated}")
+                await add_log('INFO', 'Config mise à jour', str(updated))
+
+                # 🔥 BIDIRECTIONNEL: Broadcaster les changements à tous les clients
+                if ws_manager:
+                    await ws_manager.emit('config_change', {
+                        'changes': updated,
+                        'timestamp': time.time()
+                    })
+
+                # 🔥 BUG FIX #1: Sauvegarder la configuration après mise à jour
+                try:
+                    config_persistence = get_config_persistence()
+                    config_persistence.save(TRADING_CONFIG)
+                    logger.debug("💾 Configuration sauvegardée automatiquement")
+                except Exception as e:
+                    logger.error(f"❌ Erreur sauvegarde configuration: {e}")
+
+            return {'updated': updated, 'success': True}
     
     elif command == 'get_status':
         status_data = app_state.copy()
@@ -2406,9 +2465,17 @@ async def handle_client_command(command: str, params: dict):
             raise ValueError('Aucune position active')
     
     elif command == 'log_config':
+        # 🔥 RELIABILITY: Validate log_config parameters with Pydantic
+        try:
+            validated_params = LogConfigParams(**params)
+        except ValidationError as e:
+            error_msg = f"Invalid parameters: {e}"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+
         # 🔥 MIGRATION COMPLÈTE: Logger changement de config via WebSocket
-        config_key = params.get('key', 'unknown')
-        config_change = params.get('change', 'unknown')
+        config_key = validated_params.key
+        config_change = validated_params.change
         await add_log('INFO', f'Config modifiée: {config_key}', str(config_change))
         return {'status': 'logged', 'key': config_key, 'change': config_change}
     

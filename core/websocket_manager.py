@@ -28,6 +28,8 @@ class WebSocketManager:
         self.connection_data: Dict[WebSocket, dict] = {}
         self.rooms: Dict[str, Set[WebSocket]] = {}  # Support rooms
         self._lock = asyncio.Lock()
+        # 🔥 RELIABILITY: Track active tasks per client for cleanup on disconnect
+        self.client_tasks: Dict[WebSocket, Set[asyncio.Task]] = {}
     
     async def connect(self, websocket: WebSocket):
         """Accepter une nouvelle connexion WebSocket"""
@@ -38,13 +40,33 @@ class WebSocketManager:
                 'connected_at': datetime.now().isoformat(),
                 'last_ping': datetime.now().isoformat()
             }
+            # 🔥 RELIABILITY: Initialize task tracking for this client
+            self.client_tasks[websocket] = set()
         logger.info(f"✅ WebSocket connecté (total: {len(self.active_connections)})")
     
     async def disconnect(self, websocket: WebSocket):
         """Déconnecter un WebSocket (optimisé)"""
+        # 🔥 RELIABILITY: Cancel all active tasks for this client
+        if websocket in self.client_tasks:
+            tasks = self.client_tasks[websocket]
+            if tasks:
+                logger.info(f"🔄 Cancelling {len(tasks)} active tasks for disconnected client")
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                # Wait for tasks to cancel (with timeout)
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*tasks, return_exceptions=True),
+                        timeout=5.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("⚠️ Some tasks didn't cancel within timeout")
+
         async with self._lock:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
+            self.client_tasks.pop(websocket, None)  # 🔥 RELIABILITY: Remove task tracking
             # 🔥 OPTIMISATION: Nettoyer aussi des rooms en une seule passe
             for room_connections in self.rooms.values():
                 room_connections.discard(websocket)
@@ -156,6 +178,23 @@ class WebSocketManager:
     def get_connection_count(self) -> int:
         """Retourner le nombre de connexions actives"""
         return len(self.active_connections)
+
+    def register_task(self, websocket: WebSocket, task: asyncio.Task):
+        """
+        🔥 RELIABILITY: Register a task for a specific client
+        This allows automatic cancellation if client disconnects
+        """
+        if websocket in self.client_tasks:
+            self.client_tasks[websocket].add(task)
+            logger.debug(f"📝 Task registered for client (total: {len(self.client_tasks[websocket])})")
+
+    def unregister_task(self, websocket: WebSocket, task: asyncio.Task):
+        """
+        🔥 RELIABILITY: Unregister a completed task for a specific client
+        """
+        if websocket in self.client_tasks:
+            self.client_tasks[websocket].discard(task)
+            logger.debug(f"✅ Task unregistered for client (remaining: {len(self.client_tasks[websocket])})")
     
     async def ping_all(self):
         """Envoyer un ping à tous les clients (keep-alive)"""
