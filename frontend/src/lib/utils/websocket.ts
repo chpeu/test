@@ -422,3 +422,6 @@ export default BidirectionalWebSocket;
 // Force les exports nommés pour Vite/SvelteKit
 export type { WebSocketMessage, CommandCallback };
 
+// Ré-export explicite de sendCommandViaWS pour forcer la reconnaissance par Vite
+export { sendCommandViaWS, sendRequestViaWS, initWebSocket, getWebSocket };
+
