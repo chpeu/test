@@ -111,7 +111,7 @@ async def _refresh_top_pairs():
 
         logger.info(f"✅ Top pairs rafraîchies: {len(top_pairs)} paires")
 
-        # Émettre événement SocketIO
+        # 🔥 FIX: Utiliser emit() au lieu de send_top_pairs_update()
         if _sio:
             await _sio.emit('top_pairs_update', {'pairs': top_pairs})
             logger.debug(f"📡 top_pairs_update émis: {len(top_pairs)} paires")

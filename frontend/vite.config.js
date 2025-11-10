@@ -8,24 +8,25 @@ export default defineConfig({
 		port: 3000,
 		host: '0.0.0.0', // 🔥 Permettre l'accès depuis l'extérieur (iPhone, etc.)
 		proxy: {
-			// Proxy API et Socket.IO vers FastAPI backend
+			// Proxy API vers FastAPI backend
 			'/api': {
 				target: 'http://localhost:5000',
 				changeOrigin: true,
 				ws: false
 			},
-			'/socket.io': {
-				target: 'http://localhost:5000',
+			// 🔥 REMPLACEMENT: WebSocket natif au lieu de Socket.IO
+			'/ws': {
+				target: 'ws://localhost:5000',
 				changeOrigin: true,
 				ws: true, // WebSocket support
-				rewrite: (path) => path, // 🔥 FIX: Ne pas réécrire le chemin
+				rewrite: (path) => path,
 				configure: (proxy, _options) => {
-					// 🔥 FIX: Gérer les erreurs de connexion WebSocket
+					// Gérer les erreurs de connexion WebSocket
 					proxy.on('error', (err, _req, _res) => {
 						console.log('Proxy WebSocket error (normal if backend not running):', err.message);
 					});
 					proxy.on('proxyReqWs', (proxyReq, req, socket) => {
-						// 🔥 FIX: Gérer les reconnexions WebSocket
+						// Gérer les reconnexions WebSocket
 						socket.on('error', (err) => {
 							console.log('WebSocket connection error (normal if backend not running):', err.message);
 						});
@@ -46,8 +47,7 @@ export default defineConfig({
 					if (id.includes('chart.js')) {
 						return 'charts';
 					}
-					// Ne pas mettre socket.io-client dans manualChunks
-					// Il sera géré automatiquement par SvelteKit
+					// 🔥 REMPLACEMENT: Plus besoin de socket.io-client (WebSocket natif)
 				}
 			}
 		}

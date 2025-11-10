@@ -1,5 +1,7 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
+	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
+	import type BidirectionalWebSocket from '$lib/utils/websocket';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -36,26 +38,109 @@
 
 	async function changeTpSlMode() {
 		try {
-			const res = await fetch('/api/config/update', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ tp_sl_mode: tpSlMode })
-			});
-
-			if (res.ok) {
-				console.log(`TP/SL Mode changé: ${tpSlMode}`);
+			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+			const ws = initWebSocket();
+			const result = await ws.sendCommand('update_config', { tp_sl_mode: tpSlMode });
+			
+			if (result && result.updated) {
+				console.log(`✅ TP/SL Mode changé via WebSocket: ${tpSlMode}`);
 			} else {
-				console.error('Erreur changement mode TP/SL');
+				console.error('⚠️ Erreur changement mode TP/SL: pas de réponse');
 			}
 		} catch (err) {
-			console.error('Erreur changement mode TP/SL:', err);
+			console.error('❌ Erreur changement mode TP/SL:', err);
+			// Fallback REST si WebSocket non disponible
+			try {
+				const res = await fetch('/api/config/update', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ tp_sl_mode: tpSlMode })
+				});
+				if (res.ok) {
+					console.log(`✅ TP/SL Mode changé via REST (fallback): ${tpSlMode}`);
+				}
+			} catch (fallbackErr) {
+				console.error('❌ Erreur fallback REST:', fallbackErr);
+			}
 		}
 	}
 
 	// Fetch initial state on mount
 	onMount(async () => {
+		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
+		try {
+			const ws = initWebSocket();
+			
+			// Vérifier que l'instance est correcte
+			if (!ws) {
+				console.error('❌ WebSocket instance est null');
+				return;
+			}
+			
+			// Debug: Vérifier le type de l'instance
+			console.log('🔍 Type de ws:', typeof ws);
+			console.log('🔍 ws.constructor:', ws?.constructor?.name);
+			console.log('🔍 ws instanceof BidirectionalWebSocket:', ws instanceof BidirectionalWebSocket);
+			console.log('🔍 Méthodes disponibles:', Object.getOwnPropertyNames(Object.getPrototypeOf(ws)));
+			console.log('🔍 ws.on existe?', 'on' in ws);
+			console.log('🔍 typeof ws.on:', typeof ws.on);
+			
+			// Vérifier que la méthode on existe
+			if (!('on' in ws) || typeof ws.on !== 'function') {
+				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
+				console.error('Type de ws:', typeof ws);
+				console.error('Méthodes disponibles:', Object.keys(ws || {}));
+				console.error('ws.constructor:', ws?.constructor?.name);
+				// Attendre un peu et réessayer (peut-être que l'instance n'est pas encore complètement initialisée)
+				await new Promise(resolve => setTimeout(resolve, 500));
+				if ('on' in ws && typeof ws.on === 'function') {
+					setupWebSocketListeners(ws);
+				} else {
+					console.error('❌ WebSocket.on toujours non disponible après attente');
+					// Essayer d'utiliser getWebSocket à la place
+					const { getWebSocket } = await import('$lib/utils/websocket');
+					const ws2 = getWebSocket();
+					if (ws2 && 'on' in ws2 && typeof ws2.on === 'function') {
+						console.log('✅ Utilisation de getWebSocket() comme fallback');
+						setupWebSocketListeners(ws2);
+					} else {
+						console.error('❌ Impossible d\'initialiser WebSocket correctement');
+					}
+					return;
+				}
+			} else {
+				// Attendre un peu pour que la connexion soit établie
+				await new Promise(resolve => setTimeout(resolve, 100));
+				setupWebSocketListeners(ws);
+			}
+		} catch (error) {
+			console.error('❌ Erreur initialisation WebSocket:', error);
+		}
+		
+		// Charger l'état initial (via REST pour le premier chargement, puis WebSocket pour les updates)
 		await loadInitialState();
 	});
+	
+	function setupWebSocketListeners(ws: BidirectionalWebSocket) {
+		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
+		ws.on('status', (data: any) => {
+			// Mettre à jour l'état quand le backend envoie un update
+			if (data.config && data.config.tp_sl_mode) {
+				tpSlMode = data.config.tp_sl_mode;
+			}
+		});
+		
+		ws.on('connect', () => {
+			console.log('✅ WebSocket connecté');
+			backendConnected = true;
+			backendError = '';
+		});
+		
+		ws.on('disconnect', () => {
+			console.warn('⚠️ WebSocket déconnecté');
+			backendConnected = false;
+		});
+	}
 
 	async function loadInitialState() {
 		try {
@@ -72,13 +157,13 @@
 				}
 				
 				// 🔥 FIX: Mettre à jour l'état du bot dans BotControls via l'API status
-				// (BotControls écoute déjà Socket.IO, mais on force une vérification)
+				// (BotControls utilise le store isScanning mis à jour via WebSocket natif)
 				if (data.is_scanning !== undefined) {
-					// L'état sera mis à jour via Socket.IO ou le composant BotControls
+					// L'état sera mis à jour via WebSocket natif ou le composant BotControls
 				}
 				
 				// 🔥 FIX: Nettoyer les données d'anciennes sessions si aucune position active
-				// Les données seront rechargées via Socket.IO si nécessaire
+				// Les données seront rechargées via WebSocket natif si nécessaire
 				if (!data.active_position) {
 					// Nettoyer la position
 					const { clearPosition } = await import('$lib/stores/position');

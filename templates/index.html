@@ -608,10 +608,11 @@
         <div class="loading-text" id="loadingText">Chargement...</div>
     </div>
 
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <!-- 🔥 MIGRATION COMPLÈTE: WebSocket Natif Bidirectionnel UNIQUEMENT -->
+    <script src="/static/js/websocket_native.js"></script>
     <script>
-        // 🔥 v7.0: SocketIO client pour FastAPI
-        var socket = null;
+        // 🔥 MIGRATION COMPLÈTE: WebSocket Natif uniquement pour performances maximales
+        var ws = null;  // WebSocket natif (unique)
         var API_BASE_URL = window.location.origin; // Utilise le même serveur
         
         // 🔥 NOUVEAU: Appel direct + proxies fiables (gardé pour compatibilité)
@@ -628,22 +629,39 @@
         var priceCache = {}; // 🔥 Cache des derniers prix
         const MEXC_FUTURES_URL = 'https://contract.mexc.com';
         
-        // 🔥 v7.0: Initialiser SocketIO
+        // 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket Natif uniquement
+        function initWebSocket() {
+            // Initialiser WebSocket Natif (unique)
+            if (!ws && window.BidirectionalWebSocket) {
+                try {
+                    ws = new BidirectionalWebSocket(API_BASE_URL);
+                    ws.connect();
+                    console.log('✅ WebSocket natif initialisé');
+                    
+                    // Écouter connexion WebSocket natif
+                    ws.on('connect', () => {
+                        console.log('✅ WebSocket natif connecté');
+                    });
+                    
+                    // Configurer tous les event listeners
+                    setupWebSocketListeners();
+                } catch (error) {
+                    console.error('❌ Erreur WebSocket natif:', error);
+                }
+            }
+        }
+        
+        // Alias pour compatibilité (ancien nom de fonction)
         function initSocketIO() {
-            if (socket) return; // Déjà initialisé
-            
-            socket = io(API_BASE_URL);
-            
-            socket.on('connect', function() {
-                // Connexion SocketIO - log déjà visible dans les logs Python
-            });
-            
-            socket.on('disconnect', function() {
-                // Déconnexion SocketIO - log déjà visible dans les logs Python
-            });
+            initWebSocket();
+        }
+        
+        // 🔥 MIGRATION COMPLÈTE: Configurer les listeners WebSocket natif uniquement
+        function setupWebSocketListeners() {
+            if (!ws) return;
             
             // Écouter les logs du serveur - UNIQUEMENT pour les logs de décision de trade et suivi
-            socket.on('log', function(logEntry) {
+            ws.on('log', function(logEntry) {
                 var level = logEntry.level || 'INFO';
                 var message = logEntry.message || '';
                 var detail = logEntry.detail || '';
@@ -662,7 +680,7 @@
             });
             
             // Écouter les updates de status
-            socket.on('status', function(status) {
+            ws.on('status', function(status) {
                 if (status.is_scanning !== undefined) {
                     isScanning = status.is_scanning;
                     updateStateDisplay();
@@ -670,7 +688,7 @@
             });
             
             // Écouter les setups détectés
-            socket.on('setup_detected', function(data) {
+            ws.on('setup_detected', function(data) {
                 var symbol = data.symbol;
                 var analysis = data.analysis;
                 
@@ -695,7 +713,7 @@
             });
             
             // Écouter les updates de position
-            socket.on('position_update', function(update) {
+            ws.on('position_update', function(update) {
                 if (activePosition && activePosition.symbol === update.symbol) {
                     activePosition.currentPrice = update.current_price;
                     activePosition.pnl = update.pnl;
@@ -705,7 +723,7 @@
             });
             
             // 🔥 FIX: Écouter les ouvertures de position automatiques
-            socket.on('position_opened', function(position) {
+            ws.on('position_opened', function(position) {
                 if (position && position.symbol) {
                     debugLog('🟢 Position ouverte (auto)', position.symbol + ' - ' + position.direction);
                     
@@ -744,12 +762,12 @@
                 }
             });
             
-            // 🔥 FIX: Tracker événements SocketIO pour éviter race conditions
-            socket.on('position_closed', function(result) {
+            // 🔥 FIX: Tracker événements WebSocket pour éviter race conditions
+            ws.on('position_closed', function(result) {
                 // 🔥 FIX CRITIQUE: Vérifier si cet événement n'a pas déjà été traité récemment
                 // Éviter traitement double si événement reçu deux fois rapidement
                 var eventKey = (result.symbol || '') + '_' + (result.closure_id || result.timestamp || Date.now());
-                var recentEvent = socketioEvents.find(e => 
+                var recentEvent = websocketEvents.find(e => 
                     e.type === 'closed' && 
                     e.eventKey === eventKey && 
                     (Date.now() - e.time) < 2000  // 2 secondes de tolérance
@@ -761,7 +779,7 @@
                 }
                 
                 // Enregistrer événement pour mitigation restauration
-                socketioEvents.push({
+                websocketEvents.push({
                     type: 'closed',
                     time: Date.now(),
                     symbol: result.symbol,
@@ -769,7 +787,7 @@
                 });
                 
                 // Nettoyer événements anciens (> 10 secondes)
-                socketioEvents = socketioEvents.filter(e => (Date.now() - e.time) < 10000);
+                websocketEvents = websocketEvents.filter(e => (Date.now() - e.time) < 10000);
                 
                 // Annuler restauration en cours si position fermée
                 if (restoreTimeout) {
@@ -980,7 +998,7 @@
             });
             
             // Écouter les updates de top pairs
-            socket.on('top_pairs_update', function(data) {
+            ws.on('top_pairs_update', function(data) {
                 if (data.pairs && Array.isArray(data.pairs)) {
                     allPairs = data.pairs;
                     displayTop20ScalablePairs();
@@ -995,7 +1013,7 @@
             
             // 🔥 FIX: Écouter les mises à jour de validation volume depuis le scanner automatique
             // Événement envoyé pour CHAQUE paire analysée (pas seulement le résumé)
-            socket.on('volume_validation_update', function(data) {
+            ws.on('volume_validation_update', function(data) {
                 // Mettre à jour le compteur avec chaque résultat
                 if (data && typeof data.valid !== 'undefined') {
                     updateVolumeStatsUI(data.valid); // true si setup trouvé, false sinon
@@ -1003,20 +1021,22 @@
             });
             
             // Événement pour résumé (optionnel, pour info)
-            socket.on('volume_stats_update', function(data) {
+            ws.on('volume_stats_update', function(data) {
                 // Stats volume - log déjà visible dans les logs Python
             });
             
             // Écouter la completion du scan
-            socket.on('scan_completed', function(data) {
+            ws.on('scan_completed', function(data) {
                 // Scan terminé - log déjà visible dans les logs Python
             });
             
             // Écouter les erreurs de scan
-            socket.on('scan_error', function(data) {
+            ws.on('scan_error', function(data) {
                 // Erreur scan - log déjà visible dans les logs Python
             });
         }
+        
+        // 🔥 MIGRATION COMPLÈTE: Socket.IO complètement supprimé - WebSocket natif uniquement
         
         // 🔥 NOUVEAU v5.1: Paires 0% fees MEXC (liste statique à maintenir manuellement depuis https://www.mexc.com/fr/zero-fee)
         var ZERO_FEE_PAIRS = [
@@ -2865,53 +2885,36 @@
         }
         
         // 🔥 NOUVEAU: Fonction pour mettre à jour volume_multiplier dans TRADING_CONFIG
+        // 🔥 BIDIRECTIONNEL: Mettre à jour config via WebSocket natif (priorité) avec fallback REST
         async function updateConfigThreshold(key, value) {
             try {
-                var response = await fetch(API_BASE_URL + '/api/config', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        [key]: value
-                    })
+                // Utiliser WebSocket natif si disponible (bidirectionnel)
+                var result = await sendCommandViaWS('update_config', {
+                    [key]: value
                 });
                 
-                if (response.ok) {
-                    var data = await response.json();
-                    if (data.status === 'updated') {
-                        // Config mise à jour - log déjà visible dans les logs Python
-                    }
-                } else {
-                    // Erreur config - log déjà visible dans les logs Python
+                if (result && result.updated) {
+                    // Config mise à jour via WebSocket - log déjà visible dans les logs Python
+                    debugLog('✅ Config WebSocket', key + ' = ' + value);
                 }
             } catch (error) {
                 // Erreur config - log déjà visible dans les logs Python
+                console.warn('⚠️ Erreur updateConfigThreshold:', error);
             }
         }
         
+        // 🔥 BIDIRECTIONNEL: Mettre à jour volume_multiplier via WebSocket natif (priorité) avec fallback REST
         async function updateVolumeMultiplierConfig(value, isAuto) {
             try {
-                var response = await fetch(API_BASE_URL + '/api/config', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        volume_multiplier: value
-                    })
+                // Utiliser WebSocket natif si disponible (bidirectionnel)
+                var result = await sendCommandViaWS('update_config', {
+                    volume_multiplier: value
                 });
                 
-                if (response.ok) {
-                    var data = await response.json();
-                    if (data.status === 'updated') {
-                        if (!isAuto) {
-                            // Config mise à jour - log déjà visible dans les logs Python
-                        }
-                    }
-                } else {
+                if (result && result.updated) {
                     if (!isAuto) {
-                        debugLog('⚠️ Erreur config', 'Impossible de mettre à jour volume_multiplier');
+                        // Config mise à jour via WebSocket - log déjà visible dans les logs Python
+                        debugLog('✅ Volume Multiplier WebSocket', 'volume_multiplier = ' + value);
                     }
                 }
             } catch (error) {
@@ -3834,7 +3837,9 @@
                         resolve([]);
                     }, 60000);
                     
-                    socket.once('top_pairs_update', function(data) {
+                    // 🔥 MIGRATION COMPLÈTE: Utiliser ws au lieu de socket
+                    if (ws) {
+                        ws.once('top_pairs_update', function(data) {
                         clearTimeout(timeout);
                         var pairs = data.pairs || [];
                         debugLog('✅ Paires reçues', pairs.length + ' paires via FastAPI');
@@ -4260,6 +4265,38 @@
         }
         
         // 🔥 NOUVEAU: Fonction unifiée qui lance scalabilité puis setup
+        // 🔥 Fonction helper : Utiliser WebSocket natif si disponible, sinon REST
+        async function sendCommandViaWS(command, params = {}) {
+            // Vérifier si WebSocket natif est disponible et connecté
+            if (ws && ws.ws && ws.ws.readyState === WebSocket.OPEN) {
+                try {
+                    const result = await ws.sendCommand(command, params);
+                    return result.result || result; // Retourner le résultat
+                } catch (error) {
+                    console.warn('⚠️ Erreur WebSocket, fallback REST:', error);
+                    // Fallback vers REST
+                }
+            }
+            // Fallback REST
+            const endpoint = command === 'start_scanner' ? '/api/start' : 
+                           command === 'stop_scanner' ? '/api/stop' : 
+                           command === 'update_config' ? '/api/config' : null;
+            if (!endpoint) {
+                throw new Error('Commande non supportée: ' + command);
+            }
+            const method = command === 'update_config' ? 'POST' : 'POST';
+            const response = await fetch(API_BASE_URL + endpoint, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Erreur ' + command);
+            }
+            return await response.json();
+        }
+        
         async function startFullScanner() {
             var btn = document.getElementById('scanPairsBtn');
             var stopBtn = document.getElementById('stopBtn');
@@ -4346,21 +4383,28 @@
         }
         
         async function startScanning() {
-            // 🔥 v7.0: Utiliser l'API FastAPI
-            initSocketIO(); // Initialiser SocketIO si pas déjà fait
+            // 🔥 v7.0: Utiliser WebSocket natif ou API FastAPI
+            initSocketIO(); // Initialiser SocketIO/WebSocket si pas déjà fait
             
             try {
-                var response = await fetch(API_BASE_URL + '/api/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                if (!response.ok) {
-                    var error = await response.json();
-                    throw new Error(error.error || 'Erreur démarrage');
+                // 🔥 Utiliser WebSocket natif si disponible
+                var result;
+                try {
+                    result = await sendCommandViaWS('start_scanner');
+                } catch (error) {
+                    // Fallback REST si WebSocket non disponible
+                    var response = await fetch(API_BASE_URL + '/api/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                        var errorData = await response.json();
+                        throw new Error(errorData.error || 'Erreur démarrage');
+                    }
+                    
+                    result = await response.json();
                 }
-                
-                var result = await response.json();
                 
                 // Mode parallèle: scanner toutes les paires allPairs
                 if (!selectMultiPairs()) return;
@@ -4395,19 +4439,16 @@
         }
         
         async function stopScanning() {
-            // 🔥 v7.0: Utiliser l'API FastAPI
+            // 🔥 BIDIRECTIONNEL: Utiliser WebSocket natif (priorité) avec fallback REST
             try {
-                var response = await fetch(API_BASE_URL + '/api/stop', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
+                // Utiliser WebSocket natif si disponible (bidirectionnel)
+                var result = await sendCommandViaWS('stop_scanner');
                 
-                if (!response.ok) {
-                    var error = await response.json();
-                    throw new Error(error.error || 'Erreur arrêt');
+                if (result && result.status === 'stopped') {
+                    debugLog('✅ Scanner arrêté via WebSocket', 'Commande exécutée');
                 }
             } catch(error) {
-                debugLog('⚠️ Erreur arrêt API', error.message);
+                debugLog('⚠️ Erreur arrêt', error.message);
             }
             
             isScanning = false;
@@ -4499,18 +4540,25 @@
                         if (data.pairs && Array.isArray(data.pairs) && data.pairs.length > 0) {
                             scanCompleted = true;
                             clearTimeout(scanTimeout);
-                            socket.off('top_pairs_update', tempHandler);
+                            if (ws) {
+                                ws.off('top_pairs_update', tempHandler);
+                            }
                             resolve();
                         }
                     };
                     
-                    socket.on('top_pairs_update', tempHandler);
+                    // Utiliser ws si disponible, sinon socket
+                    if (ws) {
+                        ws.on('top_pairs_update', tempHandler);
+                    }
                     
                     // Timeout de secours après 60 secondes
                     var scanTimeout = setTimeout(function() {
                         if (!scanCompleted) {
                             debugLog('⚠️ Timeout', 'Scan prend trop de temps, récupération des pairs disponibles');
-                            socket.off('top_pairs_update', tempHandler);
+                            if (ws) {
+                                ws.off('top_pairs_update', tempHandler);
+                            }
                             resolve();
                         }
                     }, 60000);
@@ -4608,12 +4656,18 @@
                         debugLog('✅ Scan terminé', 'Pairs reçues via SocketIO');
                         fetchTopPairs();
                         // Ne plus écouter après la première réception
-                        socket.off('top_pairs_update', pairsUpdateHandler);
+                        if (ws) {
+                            ws.off('top_pairs_update', pairsUpdateHandler);
+                        }
                     }
                 };
                 
-                // S'abonner à l'événement
-                socket.on('top_pairs_update', pairsUpdateHandler);
+                // S'abonner à l'événement (ws priorité, sinon socket)
+                if (ws) {
+                    ws.on('top_pairs_update', pairsUpdateHandler);
+                } else if (socket) {
+                    socket.on('top_pairs_update', pairsUpdateHandler);
+                }
                 
                 // Fallback: essayer de récupérer après 5 secondes (au cas où SocketIO ne fonctionne pas)
                 setTimeout(function() {
@@ -4715,7 +4769,7 @@
         }
         
         // 🔥 FIX: Restaurer position active depuis API (avec toutes les mitigations)
-        let socketioEvents = [];  // Tracker événements SocketIO récents
+        let websocketEvents = [];  // Tracker événements WebSocket récents
         let restoreTimeout = null;  // Timeout pour délai de grâce
         
         async function restoreActivePosition() {
@@ -4739,8 +4793,8 @@
                     }
                 }
                 
-                // 🔥 MITIGATION 2: Vérifier si position fermée récemment via SocketIO
-                const recentClose = socketioEvents.find(e => 
+                // 🔥 MITIGATION 2: Vérifier si position fermée récemment via WebSocket
+                const recentClose = websocketEvents.find(e => 
                     e.type === 'closed' && (Date.now() - e.time) < 2000
                 );
                 if (recentClose) {
@@ -5163,10 +5217,10 @@
                     debugLog('🔄 Historique réinitialisé', 'Nouvelle session - Historique vide');
                 }
                 
-                // 4. RESTAURER POSITION (avec délai de grâce SocketIO)
+                // 4. RESTAURER POSITION (avec délai de grâce WebSocket)
                 if (stateData.position && stateData.position.active && stateData.position.data) {
                     restoreTimeout = setTimeout(() => {
-                        const recentClose = socketioEvents.find(e => 
+                        const recentClose = websocketEvents.find(e => 
                             e.type === 'closed' && (Date.now() - e.time) < 2000
                         );
                         
@@ -5204,12 +5258,12 @@
                     
                     // Restaurer top pairs (paires scalables identifiées) - 🔥 FIX: Liste des paires
                     if (stateData.scanner.top_pairs && Array.isArray(stateData.scanner.top_pairs)) {
-                        // Émettre événement SocketIO pour mettre à jour l'affichage
-                        if (socket && socket.connected) {
-                            socket.emit('top_pairs_update', { pairs: stateData.scanner.top_pairs });
+                        // 🔥 MIGRATION COMPLÈTE: Émettre via WebSocket natif
+                        if (ws && ws.connected) {
+                            ws.emit('top_pairs_update', { pairs: stateData.scanner.top_pairs });
                         }
                         // 🔥 FIX: Également mettre à jour directement si handler existe
-                        // Le handler SocketIO 'top_pairs_update' devrait mettre à jour l'affichage
+                        // Le handler WebSocket 'top_pairs_update' devrait mettre à jour l'affichage
                         debugLog('✅ Top pairs restaurés', `${stateData.scanner.top_pairs.length} paires`);
                     }
                 }
@@ -5282,11 +5336,11 @@
             // 🔥 PHASE 6: Charger config depuis serveur au démarrage
             loadConfigFromServer();
             
-            // 🔥 v7.0: Initialiser SocketIO au chargement
-            initSocketIO();
+            // 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif au chargement
+            initWebSocket();
             
             // 🔥 FIX: Restaurer tout l'état (stats + position + historique) en parallèle
-            // Attendre que SocketIO soit connecté avant de restaurer
+            // Attendre que WebSocket soit connecté avant de restaurer
             setTimeout(() => {
                 try {
                     if (typeof restoreAllState === 'function') {
@@ -5297,7 +5351,7 @@
                 } catch (error) {
                     console.error('❌ Erreur restauration état:', error);
                 }
-            }, 1000);  // Délai pour laisser SocketIO se connecter
+            }, 1000);  // Délai pour laisser WebSocket se connecter
             
             // 🔥 Supprimer l'état sauvegardé pour forcer un reset propre
             localStorage.removeItem('mexcScannerState');

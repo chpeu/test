@@ -1,11 +1,11 @@
 <script>
-	import '$lib/utils/socket'; // Init Socket.IO
+	// 🔥 REMPLACEMENT: WebSocket natif initialisé dans +page.svelte
+	// Plus besoin d'importer socket.js (Socket.IO)
 	import { theme } from '$lib/stores/theme'; // Init theme
 	import { onMount } from 'svelte';
 
-	// SvelteKit props (pour référence externe uniquement)
-	// 🔥 FIX: Utiliser la syntaxe correcte pour SvelteKit
-	export let params = {};
+	// SvelteKit props - SvelteKit passe automatiquement params, mais on ne l'utilise pas
+	// On ne l'exporte pas pour éviter le warning
 
 	// Appliquer le thème au chargement
 	onMount(() => {

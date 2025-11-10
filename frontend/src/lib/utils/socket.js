@@ -238,7 +238,8 @@ export function getSocket() {
 	return socket;
 }
 
-// Auto-init on client-side
-if (browser) {
-	initSocket();
-}
+// 🔥 REMPLACEMENT: WebSocket natif utilisé maintenant
+// Auto-init désactivé - utiliser websocket.js à la place
+// if (browser) {
+// 	initSocket();
+// }

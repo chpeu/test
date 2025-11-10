@@ -164,7 +164,7 @@ async def position_check_loop_callback():
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
 
-                # FIX: Émettre événement de fermeture avec result directement (compatible frontend)
+                # 🔥 FIX: Utiliser emit() au lieu de send_position_closed()
                 if _sio:
                     await _sio.emit('position_closed', result)
 
@@ -236,7 +236,9 @@ async def _emit_position_update(position, current_price: float):
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
         }
 
-        await _sio.emit('position_update', update_data)
+        # 🔥 FIX: Utiliser emit() au lieu de send_position_update()
+        if _sio:
+            await _sio.emit('position_update', update_data)
         # 🔥 FIX: Émettre aussi status pour synchronisation temps réel complète
         if _app_state:
             status_data = {
@@ -245,7 +247,9 @@ async def _emit_position_update(position, current_price: float):
                 'stats': _app_state.get('stats', {}),
                 'top_pairs': _app_state.get('top_pairs', [])
             }
-            await _sio.emit('status', status_data)
+            # 🔥 FIX: Utiliser emit() au lieu de send_status()
+            if _sio:
+                await _sio.emit('status', status_data)
 
         logger.debug(
             f"📡 position_update émis: {position.symbol} | "

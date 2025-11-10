@@ -15,7 +15,8 @@ _analyzer = None
 _position_manager = None
 _price_provider = None
 _app_state = None
-_sio = None
+_sio = None  # 🔥 MIGRATION COMPLÈTE: Gardé pour compatibilité, mais utiliser _ws_manager
+_ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
 
 
@@ -50,9 +51,14 @@ def set_app_state(app_state):
 
 
 def set_socketio(sio):
-    """Injecter l'instance SocketIO"""
+    """Injecter l'instance SocketIO (legacy - gardé pour compatibilité)"""
     global _sio
     _sio = sio
+
+def set_websocket_manager(ws_manager):
+    """🔥 MIGRATION COMPLÈTE: Injecter l'instance WebSocketManager"""
+    global _ws_manager
+    _ws_manager = ws_manager
 
 
 def set_scanner_lock(lock):
@@ -131,8 +137,10 @@ async def _scan_initial_top_pairs():
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur démarrage WebSocket: {e}")
 
-            # Émettre mise à jour SocketIO
-            if _sio:
+            # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif
+            if _ws_manager:
+                await _ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+            elif _sio:  # Fallback legacy
                 await _sio.emit('top_pairs_update', {'pairs': top_pairs})
 
     except Exception as e:
@@ -260,8 +268,10 @@ async def _scan_top_pairs():
                 if _app_state is not None:
                     _app_state['active_position'] = position_result.to_dict()
 
-                # Émettre événement SocketIO
-                if _sio:
+                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif
+                if _ws_manager:
+                    await _ws_manager.emit('position_opened', position_result.to_dict())
+                elif _sio:  # Fallback legacy
                     await _sio.emit('position_opened', position_result.to_dict())
 
             except ValueError as e:
@@ -269,8 +279,14 @@ async def _scan_top_pairs():
             except Exception as e:
                 logger.error(f"❌ Erreur ouverture position: {e}", exc_info=True)
 
-        # Émettre statistiques SocketIO
-        if _sio:
+        # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif
+        if _ws_manager:
+            await _ws_manager.emit('volume_stats_update', {
+                'total': len(results),
+                'validated': len(valid_setups),
+                'ratio': (len(valid_setups) / len(results) * 100) if results else 0
+            })
+        elif _sio:  # Fallback legacy
             await _sio.emit('volume_stats_update', {
                 'total': len(results),
                 'validated': len(valid_setups),
