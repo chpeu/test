@@ -24,7 +24,7 @@ export interface CommandCallback {
     reject: (error: Error) => void;
 }
 
-export class BidirectionalWebSocket {
+class BidirectionalWebSocket {
     private baseUrl: string;
     private url: string;
     private ws: WebSocket | null = null;
@@ -389,7 +389,7 @@ export class BidirectionalWebSocket {
 // Instance globale
 let wsInstance: BidirectionalWebSocket | null = null;
 
-export function initWebSocket(url?: string): BidirectionalWebSocket {
+function initWebSocket(url?: string): BidirectionalWebSocket {
     if (!wsInstance) {
         wsInstance = new BidirectionalWebSocket(url);
         wsInstance.connect();
@@ -397,31 +397,26 @@ export function initWebSocket(url?: string): BidirectionalWebSocket {
     return wsInstance;
 }
 
-export function getWebSocket(): BidirectionalWebSocket | null {
+function getWebSocket(): BidirectionalWebSocket | null {
     return wsInstance;
 }
 
-// Export explicite pour sendCommandViaWS - Utilisation de function declaration pour compatibilité Vite
-export function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
+function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendCommand(command, params);
 }
 
-export function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
+function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendRequest(requestType, params);
 }
 
-// Export default pour compatibilité
-export default BidirectionalWebSocket;
-
-// Force les exports nommés pour Vite/SvelteKit
+// Tous les exports en un seul endroit à la fin du fichier pour garantir la compatibilité Vite/SvelteKit
+export { BidirectionalWebSocket, initWebSocket, getWebSocket, sendCommandViaWS, sendRequestViaWS };
 export type { WebSocketMessage, CommandCallback };
-
-// Ré-export explicite de sendCommandViaWS pour forcer la reconnaissance par Vite
-export { sendCommandViaWS, sendRequestViaWS, initWebSocket, getWebSocket };
+export default BidirectionalWebSocket;
 
