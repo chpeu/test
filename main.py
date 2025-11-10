@@ -552,10 +552,9 @@ async def scanner_loop_callback():
                                         sl_percent = TRADING_CONFIG.get('sl_percent', 0.25)
                                     
                                     # 🔥 PHASE 2: Position sizing adaptatif
-                                    position_size = position_manager.calculate_adaptive_position_size(
+                                    position_size = position_manager.calculate_position_size(
                                         setup=setup,
-                                        capital=account_size,
-                                        sl_percent=sl_percent
+                                        capital=account_size
                                     )
                                     
                                     # 🔥 FIX: Log détaillé du calcul de taille pour debug
