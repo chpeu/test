@@ -140,6 +140,70 @@
 			}
 		});
 		
+		// 🔥 BIDIRECTIONNEL: Écouter les logs depuis le backend pour synchronisation temps réel
+		ws.on('log', async (logEntry: any) => {
+			const { addLog } = await import('$lib/stores/logs');
+			// Convertir le timestamp si nécessaire
+			if (logEntry.timestamp && !logEntry.timestamp.includes('T')) {
+				// Format HH:MM:SS -> ISO
+				const today = new Date().toISOString().split('T')[0];
+				logEntry.timestamp = `${today}T${logEntry.timestamp}`;
+			}
+			addLog(logEntry);
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de position
+		ws.on('position_update', async (data: any) => {
+			const { setPosition } = await import('$lib/stores/position');
+			if (data) {
+				setPosition(data);
+			}
+		});
+		
+		ws.on('position_opened', async (data: any) => {
+			const { setPosition } = await import('$lib/stores/position');
+			if (data) {
+				setPosition(data);
+			}
+		});
+		
+		ws.on('position_closed', async (data: any) => {
+			const { clearPosition } = await import('$lib/stores/position');
+			clearPosition();
+			// Recharger l'historique des trades
+			const { setTradeHistory } = await import('$lib/stores/trades');
+			if (data && data.trade) {
+				setTradeHistory([data.trade]);
+			}
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de stats
+		ws.on('stats_update', async (data: any) => {
+			const { updateStats } = await import('$lib/stores/stats');
+			if (data) {
+				updateStats(data);
+			}
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour des top pairs
+		ws.on('top_pairs_update', async (data: any) => {
+			// Mettre à jour le store si nécessaire
+			if (data && data.pairs) {
+				// Les top pairs seront affichés dans ScannerPanel
+			}
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les événements de scan
+		ws.on('scan_started', async (data: any) => {
+			const { setIsScanning } = await import('$lib/stores/scanner');
+			setIsScanning(true);
+		});
+		
+		ws.on('scan_complete', async (data: any) => {
+			const { setIsScanning } = await import('$lib/stores/scanner');
+			setIsScanning(false);
+		});
+		
 		ws.on('connect', () => {
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;

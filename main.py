@@ -2478,6 +2478,39 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['partial_tp_percent'] = val
             updated['partial_tp_percent'] = val
         
+        # 🔥 BIDIRECTIONNEL: Paramètres ATR (atr_mult_tp, atr_mult_sl, atr_min, atr_max)
+        if 'atr_mult_tp' in params:
+            val = float(params['atr_mult_tp'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0x
+            TRADING_CONFIG['atr_mult_tp'] = val
+            updated['atr_mult_tp'] = val
+            if position_config:
+                position_config.atr_mult_tp = val
+        
+        if 'atr_mult_sl' in params:
+            val = float(params['atr_mult_sl'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0x
+            TRADING_CONFIG['atr_mult_sl'] = val
+            updated['atr_mult_sl'] = val
+            if position_config:
+                position_config.atr_mult_sl = val
+        
+        if 'atr_min' in params:
+            val = float(params['atr_min'])
+            val = max(0.01, min(5.0, val))  # Clamp 0.01-5.0%
+            TRADING_CONFIG['atr_min'] = val
+            updated['atr_min'] = val
+            if position_config:
+                position_config.atr_min = val
+        
+        if 'atr_max' in params:
+            val = float(params['atr_max'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0%
+            TRADING_CONFIG['atr_max'] = val
+            updated['atr_max'] = val
+            if position_config:
+                position_config.atr_max = val
+        
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -2697,6 +2730,40 @@ async def api_update_config(request: Request):
             val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
             TRADING_CONFIG['risk_per_trade'] = val
             updated['risk_per_trade'] = val
+        
+        # 🔥 BIDIRECTIONNEL: Paramètres ATR (atr_mult_tp, atr_mult_sl, atr_min, atr_max)
+        if 'atr_mult_tp' in data:
+            val = float(data['atr_mult_tp'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0x
+            TRADING_CONFIG['atr_mult_tp'] = val
+            updated['atr_mult_tp'] = val
+            init_instances()
+            if position_config:
+                position_config.atr_mult_tp = val
+        
+        if 'atr_mult_sl' in data:
+            val = float(data['atr_mult_sl'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0x
+            TRADING_CONFIG['atr_mult_sl'] = val
+            updated['atr_mult_sl'] = val
+            if position_config:
+                position_config.atr_mult_sl = val
+        
+        if 'atr_min' in data:
+            val = float(data['atr_min'])
+            val = max(0.01, min(5.0, val))  # Clamp 0.01-5.0%
+            TRADING_CONFIG['atr_min'] = val
+            updated['atr_min'] = val
+            if position_config:
+                position_config.atr_min = val
+        
+        if 'atr_max' in data:
+            val = float(data['atr_max'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0%
+            TRADING_CONFIG['atr_max'] = val
+            updated['atr_max'] = val
+            if position_config:
+                position_config.atr_max = val
         
         if updated:
             logger.info(f"✅ Configuration mise à jour: {updated}")
