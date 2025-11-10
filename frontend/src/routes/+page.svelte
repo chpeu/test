@@ -209,7 +209,9 @@
 			const ws = getWebSocket();
 			if (ws && ws.connected) {
 				try {
-					const stateData = await ws.sendRequest('state', {});
+					const response = await ws.sendRequest('state', {});
+					// 🔥 FIX: Le backend envoie { type: 'request_response', data: state_data }
+					const stateData = response?.data || response;
 					if (stateData && (stateData.success || stateData.config || stateData.trade_history !== undefined)) {
 						console.log('Initial state loaded via WebSocket:', stateData);
 						backendConnected = true;
