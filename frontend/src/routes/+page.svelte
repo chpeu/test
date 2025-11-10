@@ -77,24 +77,41 @@
 				return;
 			}
 			
-			// Vérifier que la méthode on existe (la classe est exportée, donc ws devrait avoir la méthode)
-			if (typeof ws.on !== 'function') {
+			// Debug: Vérifier le type de l'instance
+			console.log('🔍 Type de ws:', typeof ws);
+			console.log('🔍 ws.constructor:', ws?.constructor?.name);
+			console.log('🔍 ws instanceof BidirectionalWebSocket:', ws instanceof BidirectionalWebSocket);
+			console.log('🔍 Méthodes disponibles:', Object.getOwnPropertyNames(Object.getPrototypeOf(ws)));
+			console.log('🔍 ws.on existe?', 'on' in ws);
+			console.log('🔍 typeof ws.on:', typeof ws.on);
+			
+			// Vérifier que la méthode on existe
+			if (!('on' in ws) || typeof ws.on !== 'function') {
 				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
 				console.error('Type de ws:', typeof ws);
 				console.error('Méthodes disponibles:', Object.keys(ws || {}));
 				console.error('ws.constructor:', ws?.constructor?.name);
-				// Ne pas retourner, essayer quand même
-			}
-			
-			// Attendre un peu pour que la connexion soit établie
-			await new Promise(resolve => setTimeout(resolve, 100));
-			
-			// Utiliser ws.on directement si disponible, sinon utiliser une approche alternative
-			if (typeof ws.on === 'function') {
-				setupWebSocketListeners(ws);
+				// Attendre un peu et réessayer (peut-être que l'instance n'est pas encore complètement initialisée)
+				await new Promise(resolve => setTimeout(resolve, 500));
+				if ('on' in ws && typeof ws.on === 'function') {
+					setupWebSocketListeners(ws);
+				} else {
+					console.error('❌ WebSocket.on toujours non disponible après attente');
+					// Essayer d'utiliser getWebSocket à la place
+					const { getWebSocket } = await import('$lib/utils/websocket');
+					const ws2 = getWebSocket();
+					if (ws2 && 'on' in ws2 && typeof ws2.on === 'function') {
+						console.log('✅ Utilisation de getWebSocket() comme fallback');
+						setupWebSocketListeners(ws2);
+					} else {
+						console.error('❌ Impossible d\'initialiser WebSocket correctement');
+					}
+					return;
+				}
 			} else {
-				console.warn('⚠️ WebSocket.on non disponible, utilisation alternative');
-				// Les événements seront gérés via les callbacks de connexion
+				// Attendre un peu pour que la connexion soit établie
+				await new Promise(resolve => setTimeout(resolve, 100));
+				setupWebSocketListeners(ws);
 			}
 		} catch (error) {
 			console.error('❌ Erreur initialisation WebSocket:', error);

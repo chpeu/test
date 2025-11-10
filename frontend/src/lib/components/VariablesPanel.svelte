@@ -159,9 +159,12 @@
 		loading = true;
 		saveMessage = '';
 		try {
-			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-			const { sendCommandViaWS } = await import('$lib/utils/websocket');
-			const result = await sendCommandViaWS('update_config', config);
+		// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+		const { sendCommandViaWS } = await import('$lib/utils/websocket');
+		if (typeof sendCommandViaWS !== 'function') {
+			throw new Error('sendCommandViaWS is not a function');
+		}
+		const result = await sendCommandViaWS('update_config', config);
 				
 			// 🔥 MIGRATION COMPLÈTE: Résultat de la commande WebSocket
 			if (result && result.updated) {
@@ -221,6 +224,9 @@
 		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif
 		try {
 			const { sendCommandViaWS } = await import('$lib/utils/websocket');
+			if (typeof sendCommandViaWS !== 'function') {
+				throw new Error('sendCommandViaWS is not a function');
+			}
 			await sendCommandViaWS('log_config', {
 				key,
 				change,
