@@ -52,7 +52,6 @@
 		if (backendKey) {
 			try {
 				// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-				const { sendCommandViaWS } = await import('$lib/utils/websocket');
 				const result = await sendCommandViaWS('update_config', { [backendKey]: value });
 				
 				if (result && result.updated) {
