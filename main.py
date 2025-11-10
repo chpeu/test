@@ -1266,15 +1266,10 @@ async def api_get_sessions_stats_global():
         return response
 
 
-@app.get("/api/state")
-async def api_get_complete_state():
-    """
-    ⚠️ DEPRECATED: Utiliser WebSocket request 'state' à la place
-    Conservé pour compatibilité uniquement
-    """
-    """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
+# 🔥 NOUVEAU: Fonction helper pour get_state (utilisée par REST et WebSocket)
+async def _get_complete_state_data():
+    """Helper function pour récupérer l'état complet (partagé entre REST et WebSocket)"""
     import time
-    logger.info("🔍 /api/state appelé - Début de la fonction")
     
     # 🔥 FIX: Retourner réponse minimale immédiatement - TOUJOURS retourner 200
     try:
@@ -1435,29 +1430,22 @@ async def api_get_complete_state():
             except Exception as e:
                 logger.error(f"❌ Erreur filtrage trades par session: {e}")
         
-        return JSONResponse({
+        return {
             'success': True,
-            'session_id': session_id or f"live_{int(time.time())}",  # 🔥 FIX: Fallback si session_id None
+            'session_id': session_id or f"live_{int(time.time())}",
             'config': {
-                # Seuils configurables
                 'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                 'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                 'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
                 'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
-                # Trend timeframe
                 'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
-                # Capital
                 'account_size': TRADING_CONFIG.get('account_size', 1000.0),
                 'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
-                # Confluence
                 'use_confluence': TRADING_CONFIG.get('use_confluence', False),
-                # TP/SL Mode
                 'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                 'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
                 'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-                # Volume multiplier
                 'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-                # Min score
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
             },
             'scanner': {
@@ -1469,14 +1457,14 @@ async def api_get_complete_state():
                 'data': active_position_dict
             },
             'stats': stats_dict,
-            'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
+            'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],
             'timestamp': time.time()
-        })
+        }
     except Exception as e:
-        logger.error(f"❌ Erreur /api/state: {e}", exc_info=True)
-        # 🔥 FIX: Retourner réponse minimale au lieu de 503
+        logger.error(f"❌ Erreur _get_complete_state_data: {e}", exc_info=True)
+        # Retourner réponse minimale
         import time
-        return JSONResponse({
+        return {
             'success': False,
             'error': str(e),
             'session_id': session_id or f"live_{int(time.time())}",
@@ -1486,7 +1474,25 @@ async def api_get_complete_state():
             'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
             'trades': [],
             'timestamp': time.time()
-        }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
+        }
+
+
+@app.get("/api/state")
+async def api_get_complete_state():
+    """
+    GET /api/state - ⚠️ DEPRECATED
+    État complet de l'application (config + UI + position + stats + etc.)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_state' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/state appelé - Utiliser WebSocket command 'get_state' à la place")
+    logger.info("🔍 /api/state appelé - Début de la fonction")
+
+    state_data = await _get_complete_state_data()
+    response = JSONResponse(state_data)
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_state'"
+    return response
 
 
 @app.post("/api/start")
@@ -2685,6 +2691,34 @@ async def handle_client_command(command: str, params: dict):
                 'error': str(e)
             }
 
+    elif command == 'get_config':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/config
+        from config import TRADING_CONFIG
+        return {
+            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+            'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+            'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+            'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+            'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+            'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+            'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+            'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+            'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
+            'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+            'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+            'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+            'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+            'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+            'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+            'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
+        }
+
+    elif command == 'get_state':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/state
+        return await _get_complete_state_data()
+
     else:
         raise ValueError(f'Commande inconnue: {command}')
 
@@ -2693,31 +2727,38 @@ async def handle_client_command(command: str, params: dict):
 
 @app.get("/api/config")
 async def api_get_config():
-    """Récupérer la configuration actuelle (tous les paramètres)"""
+    """
+    GET /api/config - ⚠️ DEPRECATED
+    Récupérer la configuration actuelle (tous les paramètres)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_config' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/config appelé - Utiliser WebSocket command 'get_config' à la place")
+
     from config import TRADING_CONFIG
-    return JSONResponse({
-        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # 🔥 Valeur mise à jour
-        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # 🔥 PHASE 6: Score minimum
+    response = JSONResponse({
+        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
         'use_confluence': TRADING_CONFIG.get('use_confluence', False),
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-        # 🔥 4 seuils configurables - Valeurs mises à jour
         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
         'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
         'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-        # 🔥 Seuils ATR optimal - Valeurs mises à jour
         'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
         'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
         'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
         'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-        # 🔥 Trend timeframe
         'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
         'account_size': TRADING_CONFIG.get('account_size', 1000.0),
         'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
     })
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_config'"
+    return response
 
 
 @app.get("/api/metrics/conditions")
