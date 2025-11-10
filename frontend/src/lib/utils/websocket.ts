@@ -419,3 +419,7 @@ export function sendRequestViaWS(requestType: string, params: any = {}): Promise
 // Export default pour compatibilité
 export default BidirectionalWebSocket;
 
+// Ré-export explicite pour garantir la compatibilité avec Vite/SvelteKit
+// Cette ligne force Vite à inclure sendCommandViaWS dans les exports du module
+export { sendCommandViaWS as _sendCommandViaWS };
+
