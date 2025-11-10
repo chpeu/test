@@ -62,24 +62,7 @@
 				}
 			}
 			
-			// Fallback REST si WebSocket non disponible
-			const res = await fetch('/api/state');
-			if (res.ok) {
-				const data = await res.json();
-				if (data.config) {
-					backendConfig = data.config;
-					// ✅ Synchroniser les paramètres qui existent dans le backend
-					if (data.config.sl_percent !== undefined) {
-						updateSetting('stopLossPercent', data.config.sl_percent);
-					}
-					if (data.config.tp_percent !== undefined) {
-						updateSetting('takeProfitPercent', data.config.tp_percent);
-					}
-					if (data.config.trailing_trigger_pnl !== undefined) {
-						updateSetting('trailingStopPercent', data.config.trailing_trigger_pnl);
-					}
-				}
-			}
+			// 🔥 BIDIRECTIONNEL: Plus de fallback REST - WebSocket uniquement
 		} catch (err) {
 			console.error('Error loading backend config:', err);
 		}
@@ -109,19 +92,7 @@
 				}
 			} catch (err) {
 				console.error(`❌ Erreur synchronisation ${key} via WebSocket:`, err);
-				// Fallback REST si WebSocket non disponible
-				try {
-					const res = await fetch('/api/config/update', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ [backendKey]: value })
-					});
-					if (res.ok) {
-						console.log(`✅ ${key} synchronisé avec backend via REST (fallback): ${backendKey} = ${value}`);
-					}
-				} catch (fallbackErr) {
-					console.error(`❌ Erreur fallback REST:`, fallbackErr);
-				}
+				alert(`❌ Erreur: Impossible de synchroniser ${key}. Vérifiez la connexion WebSocket.`);
 			}
 		}
 	}

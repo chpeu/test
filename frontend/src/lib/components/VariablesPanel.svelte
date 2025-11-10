@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
-	// 🔥 REMPLACEMENT: WebSocket natif - plus besoin de getSocket()
-	// import { getSocket } from '$lib/utils/socket';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -117,40 +115,39 @@
 
 	async function loadConfig() {
 		try {
-			const res = await fetch('/api/state');
-			if (res.ok) {
-				const data = await res.json();
-				if (data.config) {
-					// 🔥 FIX: Ne PAS écraser avec DEFAULTS, utiliser directement data.config
-					// Les valeurs par défaut ne doivent être utilisées QUE si la clé n'existe pas dans data.config
-					config = {};
-					// D'abord copier les defaults
-					Object.keys(DEFAULTS).forEach(key => {
-						config[key] = DEFAULTS[key];
-					});
-					// Ensuite écraser avec les valeurs du backend (qui incluent les overrides)
-					Object.keys(data.config).forEach(key => {
-						if (data.config[key] !== undefined && data.config[key] !== null) {
-							config[key] = data.config[key];
-						}
-					});
-					// ✅ FIX: Gérer le cas où tp_sl_mode n'existe pas
-					viewMode = config.tp_sl_mode || 'FIXE';
-					console.log('✅ Config chargée depuis backend:', config);
-				} else {
-					// ✅ FIX: Si pas de config, utiliser les defaults
-					console.warn('⚠️ Aucune config reçue, utilisation des defaults');
-					config = { ...DEFAULTS };
-					viewMode = 'FIXE';
-				}
+			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket uniquement
+			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+
+			if (!ws || !ws.connected) {
+				throw new Error('WebSocket non connecté');
+			}
+
+			const response = await sendRequestViaWS('state', {});
+			const stateData = response?.data || response;
+			
+			if (stateData && stateData.config) {
+				// 🔥 FIX: Ne PAS écraser avec DEFAULTS, utiliser directement data.config
+				config = {};
+				// D'abord copier les defaults
+				Object.keys(DEFAULTS).forEach(key => {
+					config[key] = DEFAULTS[key];
+				});
+				// Ensuite écraser avec les valeurs du backend
+				Object.keys(stateData.config).forEach(key => {
+					if (stateData.config[key] !== undefined && stateData.config[key] !== null) {
+						config[key] = stateData.config[key];
+					}
+				});
+				viewMode = config.tp_sl_mode || 'FIXE';
+				console.log('✅ Config chargée depuis backend via WebSocket:', config);
 			} else {
-				console.error('❌ Erreur chargement config:', res.status);
+				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
 				config = { ...DEFAULTS };
 				viewMode = 'FIXE';
 			}
 		} catch (err) {
 			console.error('❌ Error loading config:', err);
-			// ✅ FIX: En cas d'erreur, utiliser les defaults
 			config = { ...DEFAULTS };
 			viewMode = 'FIXE';
 		}
@@ -181,24 +178,8 @@
 			}
 		} catch (err) {
 			console.error('❌ Error saving config via WebSocket:', err);
-			// Fallback REST si WebSocket non disponible
-			try {
-				const res = await fetch('/api/config/update', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(config)
-				});
-				if (res.ok) {
-					const result = await res.json();
-					saveMessage = `✅ Configuration sauvegardée via REST (fallback)`;
-					setTimeout(() => (saveMessage = ''), 3000);
-				} else {
-					saveMessage = '❌ Erreur: Backend non accessible';
-				}
-			} catch (fallbackErr) {
-				console.error('❌ Erreur fallback REST:', fallbackErr);
-				saveMessage = '❌ Erreur: Backend non accessible';
-			}
+			saveMessage = `❌ Erreur: ${err.message || 'Impossible de sauvegarder. Vérifiez la connexion WebSocket.'}`;
+			setTimeout(() => (saveMessage = ''), 5000);
 		} finally {
 			loading = false;
 		}
@@ -218,7 +199,7 @@
 	}
 
 	async function logConfigChange(key, change) {
-		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif
+		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif uniquement
 		try {
 			await sendCommandViaWS('log_config', {
 				key,
@@ -226,16 +207,7 @@
 				timestamp: new Date().toISOString()
 			});
 		} catch (err) {
-			// Fallback REST si WebSocket non disponible
-			fetch('/api/log/config', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					key,
-					change,
-					timestamp: new Date().toISOString()
-				})
-			}).catch(fetchErr => console.error('Error logging config change:', fetchErr));
+			console.error('❌ Error logging config change via WebSocket:', err);
 		}
 	}
 

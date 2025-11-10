@@ -49,19 +49,7 @@
 			}
 		} catch (err) {
 			console.error('❌ Erreur changement mode TP/SL:', err);
-			// Fallback REST si WebSocket non disponible
-			try {
-				const res = await fetch('/api/config/update', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ tp_sl_mode: tpSlMode })
-				});
-				if (res.ok) {
-					console.log(`✅ TP/SL Mode changé via REST (fallback): ${tpSlMode}`);
-				}
-			} catch (fallbackErr) {
-				console.error('❌ Erreur fallback REST:', fallbackErr);
-			}
+			alert(`❌ Erreur: ${err.message || 'Impossible de changer le mode TP/SL. Vérifiez la connexion WebSocket.'}`);
 		}
 	}
 
@@ -269,49 +257,30 @@
 
 	async function loadInitialState() {
 		try {
-			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket pour charger l'état initial (priorité)
+			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket uniquement (plus de fallback REST)
 			const ws = getWebSocket();
-			if (ws && ws.connected) {
-				try {
-					const response = await ws.sendRequest('state', {});
-					// 🔥 FIX: Le backend envoie { type: 'request_response', data: state_data }
-					const stateData = response?.data || response;
-					if (stateData && (stateData.success || stateData.config || stateData.trade_history !== undefined)) {
-						console.log('Initial state loaded via WebSocket:', stateData);
-						backendConnected = true;
-						backendError = '';
-						
-						// 🔥 FIX: Charger le mode TP/SL actif
-						if (stateData.config && stateData.config.tp_sl_mode) {
-							tpSlMode = stateData.config.tp_sl_mode;
-						}
-						
-						// Traiter les autres données comme avec REST
-						await processStateData(stateData);
-						return;
-					}
-				} catch (wsErr) {
-					console.warn('⚠️ Erreur chargement état via WebSocket, fallback REST:', wsErr);
-				}
+			if (!ws || !ws.connected) {
+				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
+			}
+
+			const response = await ws.sendRequest('state', {});
+			// 🔥 FIX: Le backend envoie { type: 'request_response', data: state_data }
+			const stateData = response?.data || response;
+			if (!stateData || (!stateData.success && !stateData.config && stateData.trade_history === undefined)) {
+				throw new Error('Données d\'état invalides reçues du backend');
+			}
+
+			console.log('Initial state loaded via WebSocket:', stateData);
+			backendConnected = true;
+			backendError = '';
+			
+			// 🔥 FIX: Charger le mode TP/SL actif
+			if (stateData.config && stateData.config.tp_sl_mode) {
+				tpSlMode = stateData.config.tp_sl_mode;
 			}
 			
-			// Fallback REST si WebSocket non disponible
-			const res = await fetch('/api/state');
-			if (res.ok) {
-				const data = await res.json();
-				console.log('Initial state loaded via REST:', data);
-				backendConnected = true;
-				backendError = '';
-				
-				// 🔥 FIX: Charger le mode TP/SL actif
-				if (data.config && data.config.tp_sl_mode) {
-					tpSlMode = data.config.tp_sl_mode;
-				}
-				
-				await processStateData(data);
-			} else {
-				throw new Error(`Backend returned ${res.status}`);
-			}
+			// Traiter les autres données
+			await processStateData(stateData);
 		} catch (err) {
 			console.error('Error loading initial state:', err);
 			backendError = err.message || 'Backend not reachable';

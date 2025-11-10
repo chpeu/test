@@ -1,32 +1,23 @@
 <script>
 	import { isScanning } from '$lib/stores/scanner';
-	import { initWebSocket } from '$lib/utils/websocket';
 
 	let loading = false;
 
 	async function startBot() {
 		try {
 			loading = true;
-			const ws = initWebSocket();
+			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
 
 			if (!ws || !ws.connected) {
-				// Fallback to REST API if WebSocket not available
-				const res = await fetch('/api/scanner/start', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' }
-				});
-
-				if (res.ok) {
-					console.log('✅ Bot started via REST API');
-				} else {
-					console.error('❌ Failed to start bot');
-				}
-			} else {
-				await ws.sendCommand('start_scanner');
-				console.log('✅ Bot started via WebSocket');
+				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
 			}
+
+			await sendCommandViaWS('start_scanner', {});
+			console.log('✅ Bot started via WebSocket');
 		} catch (err) {
 			console.error('❌ Error starting bot:', err);
+			alert(`❌ Erreur: ${err.message || 'Impossible de démarrer le scanner'}`);
 		} finally {
 			loading = false;
 		}
@@ -35,26 +26,18 @@
 	async function stopBot() {
 		try {
 			loading = true;
-			const ws = initWebSocket();
+			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
 
 			if (!ws || !ws.connected) {
-				// Fallback to REST API if WebSocket not available
-				const res = await fetch('/api/scanner/stop', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' }
-				});
-
-				if (res.ok) {
-					console.log('✅ Bot stopped via REST API');
-				} else {
-					console.error('❌ Failed to stop bot');
-				}
-			} else {
-				await ws.sendCommand('stop_scanner');
-				console.log('✅ Bot stopped via WebSocket');
+				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
 			}
+
+			await sendCommandViaWS('stop_scanner', {});
+			console.log('✅ Bot stopped via WebSocket');
 		} catch (err) {
 			console.error('❌ Error stopping bot:', err);
+			alert(`❌ Erreur: ${err.message || 'Impossible d\'arrêter le scanner'}`);
 		} finally {
 			loading = false;
 		}
