@@ -92,8 +92,11 @@ export class BidirectionalWebSocket {
                 } else if (message.type === 'request_response' && message.id !== undefined) {
                     this.handleResponse(message.id, message.data, message.error);
                 } else if (message.type === 'ping') {
-                    this.lastPing = Date.now();
+                    // 🔥 FIX: Répondre au ping du serveur
                     this.sendRaw(JSON.stringify({ type: 'pong' }));
+                } else if (message.type === 'pong') {
+                    // 🔥 FIX: Mettre à jour lastPing quand on reçoit le pong (réponse à notre ping)
+                    this.lastPing = Date.now();
                 }
             } catch (error) {
                 console.error('❌ Erreur traitement message WebSocket:', error, event.data);
@@ -233,18 +236,23 @@ export class BidirectionalWebSocket {
 
     private startHeartbeat(): void {
         this.stopHeartbeat(); // S'assurer qu'il n'y a qu'un seul intervalle
-        const PING_INTERVAL = 10000; // 10 secondes
-        const PONG_TIMEOUT = 20000; // 20 secondes (2x ping interval)
+        const PING_INTERVAL = 30000; // 30 secondes (augmenté pour éviter reconnexions fréquentes)
+        const PONG_TIMEOUT = 60000; // 60 secondes (2x ping interval)
+        
+        // 🔥 FIX: Initialiser lastPing à la connexion
+        this.lastPing = Date.now();
         
         this.pingInterval = window.setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.sendRaw(JSON.stringify({ type: 'ping' }));
-                // 🔥 FIX: Vérifier si pas de pong reçu depuis PONG_TIMEOUT ms
+                // 🔥 FIX: Vérifier d'abord si pas de pong reçu depuis PONG_TIMEOUT ms
                 const timeSinceLastPong = Date.now() - this.lastPing;
                 if (timeSinceLastPong > PONG_TIMEOUT) {
-                    console.warn('⚠️ Pas de pong reçu, reconnexion forcée.');
+                    console.warn('⚠️ Pas de pong reçu depuis', Math.round(timeSinceLastPong / 1000), 'secondes, reconnexion forcée.');
                     this.ws.close(); // Force la reconnexion via onclose
+                    return;
                 }
+                // Envoyer ping seulement si connexion OK
+                this.sendRaw(JSON.stringify({ type: 'ping' }));
             }
         }, PING_INTERVAL);
     }

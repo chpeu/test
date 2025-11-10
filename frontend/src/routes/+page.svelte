@@ -316,21 +316,8 @@
 			console.error('Error loading initial state:', err);
 			backendError = err.message || 'Backend not reachable';
 			backendConnected = false;
-			// Réessayer toutes les 5 secondes
-			const retry = setInterval(async () => {
-				try {
-					const res = await fetch('/api/state');
-					if (res.ok) {
-						backendConnected = true;
-						backendError = '';
-						clearInterval(retry);
-						// Recharger les données sans recharger toute la page
-						await loadInitialState();
-					}
-				} catch (e) {
-					// Continue trying
-				}
-			}, 5000);
+			// 🔥 BIDIRECTIONNEL: Plus de retry REST - La reconnexion WebSocket gère automatiquement les tentatives
+			// Le WebSocket se reconnectera automatiquement et chargera l'état via WebSocket
 		}
 	}
 
