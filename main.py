@@ -1096,6 +1096,14 @@ def init_instances():
         except ImportError:
             pass  # Callback module optionnel
 
+        # 🔥 FIX BUG #14: Injecter ws_manager dans scalability_refresh
+        try:
+            from core.callbacks.scalability_refresh import set_websocket_manager
+            if set_websocket_manager:
+                set_websocket_manager(ws_manager)
+        except ImportError:
+            pass  # Callback module optionnel
+
 
 # Routes FastAPI
 
