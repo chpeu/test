@@ -24,7 +24,7 @@ interface CommandCallback {
     reject: (error: Error) => void;
 }
 
-class BidirectionalWebSocket {
+export class BidirectionalWebSocket {
     private baseUrl: string;
     private url: string;
     private ws: WebSocket | null = null;
@@ -389,7 +389,7 @@ class BidirectionalWebSocket {
 // Instance globale
 let wsInstance: BidirectionalWebSocket | null = null;
 
-function initWebSocket(url?: string): BidirectionalWebSocket {
+export function initWebSocket(url?: string): BidirectionalWebSocket {
     if (!wsInstance) {
         wsInstance = new BidirectionalWebSocket(url);
         wsInstance.connect();
@@ -397,11 +397,12 @@ function initWebSocket(url?: string): BidirectionalWebSocket {
     return wsInstance;
 }
 
-function getWebSocket(): BidirectionalWebSocket | null {
+export function getWebSocket(): BidirectionalWebSocket | null {
     return wsInstance;
 }
 
-function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
+// Export explicite au niveau de la déclaration pour compatibilité Vite
+export function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
@@ -415,9 +416,6 @@ function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
     return wsInstance.sendRequest(requestType, params);
 }
 
-// Tous les exports en un seul endroit à la fin du fichier pour garantir la compatibilité Vite/SvelteKit
-// IMPORTANT: Les exports doivent être dans l'ordre : types, puis valeurs, puis default
-export type { WebSocketMessage, CommandCallback };
-export { BidirectionalWebSocket, initWebSocket, getWebSocket, sendCommandViaWS, sendRequestViaWS };
+// Export default pour compatibilité
 export default BidirectionalWebSocket;
 
