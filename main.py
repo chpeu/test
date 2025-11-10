@@ -2347,9 +2347,145 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['min_score_required'] = val
             updated['min_score_required'] = val
         
+        # 🔥 BIDIRECTIONNEL: Patterns Techniques (use_breakout, use_snr, use_wick, use_divergence)
+        if 'use_breakout' in params:
+            TRADING_CONFIG['use_breakout'] = bool(params['use_breakout'])
+            updated['use_breakout'] = TRADING_CONFIG['use_breakout']
+        
+        if 'use_snr' in params:
+            TRADING_CONFIG['use_snr'] = bool(params['use_snr'])
+            updated['use_snr'] = TRADING_CONFIG['use_snr']
+        
+        if 'use_wick' in params:
+            TRADING_CONFIG['use_wick'] = bool(params['use_wick'])
+            updated['use_wick'] = TRADING_CONFIG['use_wick']
+        
+        if 'use_divergence' in params:
+            TRADING_CONFIG['use_divergence'] = bool(params['use_divergence'])
+            updated['use_divergence'] = TRADING_CONFIG['use_divergence']
+        
+        # 🔥 BIDIRECTIONNEL: Patterns de Bougies
+        if 'use_engulfing' in params:
+            TRADING_CONFIG['use_engulfing'] = bool(params['use_engulfing'])
+            updated['use_engulfing'] = TRADING_CONFIG['use_engulfing']
+        
+        if 'use_hammer' in params:
+            TRADING_CONFIG['use_hammer'] = bool(params['use_hammer'])
+            updated['use_hammer'] = TRADING_CONFIG['use_hammer']
+        
+        if 'use_shooting_star' in params:
+            TRADING_CONFIG['use_shooting_star'] = bool(params['use_shooting_star'])
+            updated['use_shooting_star'] = TRADING_CONFIG['use_shooting_star']
+        
+        if 'use_doji' in params:
+            TRADING_CONFIG['use_doji'] = bool(params['use_doji'])
+            updated['use_doji'] = TRADING_CONFIG['use_doji']
+        
+        if 'use_marubozu' in params:
+            TRADING_CONFIG['use_marubozu'] = bool(params['use_marubozu'])
+            updated['use_marubozu'] = TRADING_CONFIG['use_marubozu']
+        
+        if 'use_morning_star' in params:
+            TRADING_CONFIG['use_morning_star'] = bool(params['use_morning_star'])
+            updated['use_morning_star'] = TRADING_CONFIG['use_morning_star']
+        
+        if 'use_evening_star' in params:
+            TRADING_CONFIG['use_evening_star'] = bool(params['use_evening_star'])
+            updated['use_evening_star'] = TRADING_CONFIG['use_evening_star']
+        
+        # 🔥 BIDIRECTIONNEL: Paramètres TP/SL Escalier (TP_MULTI)
+        if 'escalier_level1_pnl' in params:
+            val = float(params['escalier_level1_pnl'])
+            val = max(0.0, min(5.0, val))  # Clamp 0.0-5.0%
+            TRADING_CONFIG['escalier_level1_pnl'] = val
+            updated['escalier_level1_pnl'] = val
+        
+        if 'escalier_level1_size' in params:
+            val = float(params['escalier_level1_size'])
+            val = max(0.0, min(100.0, val))  # Clamp 0-100%
+            TRADING_CONFIG['escalier_level1_size'] = val
+            updated['escalier_level1_size'] = val
+        
+        if 'escalier_level2_pnl' in params:
+            val = float(params['escalier_level2_pnl'])
+            val = max(0.0, min(5.0, val))
+            TRADING_CONFIG['escalier_level2_pnl'] = val
+            updated['escalier_level2_pnl'] = val
+        
+        if 'escalier_level2_size' in params:
+            val = float(params['escalier_level2_size'])
+            val = max(0.0, min(100.0, val))
+            TRADING_CONFIG['escalier_level2_size'] = val
+            updated['escalier_level2_size'] = val
+        
+        if 'escalier_level3_pnl' in params:
+            val = float(params['escalier_level3_pnl'])
+            val = max(0.0, min(5.0, val))
+            TRADING_CONFIG['escalier_level3_pnl'] = val
+            updated['escalier_level3_pnl'] = val
+        
+        if 'escalier_level3_size' in params:
+            val = float(params['escalier_level3_size'])
+            val = max(0.0, min(100.0, val))
+            TRADING_CONFIG['escalier_level3_size'] = val
+            updated['escalier_level3_size'] = val
+        
+        if 'escalier_level4_pnl' in params:
+            val = float(params['escalier_level4_pnl'])
+            val = max(0.0, min(5.0, val))
+            TRADING_CONFIG['escalier_level4_pnl'] = val
+            updated['escalier_level4_pnl'] = val
+        
+        if 'escalier_level4_size' in params:
+            val = float(params['escalier_level4_size'])
+            val = max(0.0, min(100.0, val))
+            TRADING_CONFIG['escalier_level4_size'] = val
+            updated['escalier_level4_size'] = val
+        
+        # 🔥 BIDIRECTIONNEL: Trailing Stop
+        if 'trailing_enabled' in params:
+            TRADING_CONFIG['trailing_enabled'] = bool(params['trailing_enabled'])
+            updated['trailing_enabled'] = TRADING_CONFIG['trailing_enabled']
+        
+        if 'trailing_trigger_pnl' in params:
+            val = float(params['trailing_trigger_pnl'])
+            val = max(0.0, min(5.0, val))  # Clamp 0.0-5.0%
+            TRADING_CONFIG['trailing_trigger_pnl'] = val
+            updated['trailing_trigger_pnl'] = val
+        
+        if 'trailing_atr_multiplier' in params:
+            val = float(params['trailing_atr_multiplier'])
+            val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0x
+            TRADING_CONFIG['trailing_atr_multiplier'] = val
+            updated['trailing_atr_multiplier'] = val
+        
+        if 'trailing_min_distance' in params:
+            val = float(params['trailing_min_distance'])
+            val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
+            TRADING_CONFIG['trailing_min_distance'] = val
+            updated['trailing_min_distance'] = val
+        
+        if 'trailing_max_distance' in params:
+            val = float(params['trailing_max_distance'])
+            val = max(0.01, min(5.0, val))  # Clamp 0.01-5.0%
+            TRADING_CONFIG['trailing_max_distance'] = val
+            updated['trailing_max_distance'] = val
+        
+        # 🔥 BIDIRECTIONNEL: Partial TP
+        if 'partial_tp_percent' in params:
+            val = float(params['partial_tp_percent'])
+            val = max(0.0, min(100.0, val))  # Clamp 0-100%
+            TRADING_CONFIG['partial_tp_percent'] = val
+            updated['partial_tp_percent'] = val
+        
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
+            # 🔥 BIDIRECTIONNEL: Émettre événement de mise à jour de config pour synchroniser le frontend
+            await ws_manager.emit('config_updated', {
+                'updated': updated,
+                'timestamp': time.time()
+            })
         
         return {'updated': updated}
     
@@ -2565,6 +2701,11 @@ async def api_update_config(request: Request):
         if updated:
             logger.info(f"✅ Configuration mise à jour: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
+            # 🔥 BIDIRECTIONNEL: Émettre événement de mise à jour de config pour synchroniser le frontend
+            await ws_manager.emit('config_updated', {
+                'updated': updated,
+                'timestamp': time.time()
+            })
             return JSONResponse({'status': 'updated', 'updated': updated})
         else:
             return JSONResponse({'status': 'no_changes', 'message': 'Aucun paramètre valide fourni'})

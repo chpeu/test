@@ -15,7 +15,7 @@ _scanner = None
 _analyzer = None
 _price_provider = None
 _app_state = None
-_sio = None
+_ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif uniquement
 
 
 def set_scanner(scanner):
@@ -42,10 +42,16 @@ def set_app_state(app_state):
     _app_state = app_state
 
 
+def set_websocket_manager(ws_manager):
+    """🔥 MIGRATION COMPLÈTE: Injecter l'instance WebSocketManager (WebSocket natif uniquement)"""
+    global _ws_manager
+    _ws_manager = ws_manager
+
 def set_socketio(sio):
-    """Injecter l'instance SocketIO"""
-    global _sio
-    _sio = sio
+    """🔥 LEGACY: Alias pour compatibilité (déprécié - utiliser set_websocket_manager)"""
+    global _ws_manager
+    # Si c'est un ws_manager, l'utiliser
+    _ws_manager = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
 
 
 # Créer le router
@@ -107,9 +113,9 @@ async def start_scanner(request: Request):
             _app_state['top_pairs'] = pairs
             _app_state['scanner_running'] = True
 
-        # Émettre l'événement via SocketIO si disponible
-        if _sio:
-            await _sio.emit('scanner_started', {
+        # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+        if _ws_manager:
+            await _ws_manager.emit('scanner_started', {
                 'status': 'success',
                 'top_n': top_n,
                 'pairs_found': len(pairs)

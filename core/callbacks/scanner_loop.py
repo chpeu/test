@@ -137,11 +137,9 @@ async def _scan_initial_top_pairs():
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur démarrage WebSocket: {e}")
 
-            # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif
+            # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
             if _ws_manager:
                 await _ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
-            elif _sio:  # Fallback legacy
-                await _sio.emit('top_pairs_update', {'pairs': top_pairs})
 
     except Exception as e:
         logger.error(f"❌ Erreur scan initial: {e}")
@@ -268,26 +266,18 @@ async def _scan_top_pairs():
                 if _app_state is not None:
                     _app_state['active_position'] = position_result.to_dict()
 
-                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif
+                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
                     await _ws_manager.emit('position_opened', position_result.to_dict())
-                elif _sio:  # Fallback legacy
-                    await _sio.emit('position_opened', position_result.to_dict())
 
             except ValueError as e:
                 logger.error(f"❌ Erreur validation position: {e}")
             except Exception as e:
                 logger.error(f"❌ Erreur ouverture position: {e}", exc_info=True)
 
-        # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif
+        # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
         if _ws_manager:
             await _ws_manager.emit('volume_stats_update', {
-                'total': len(results),
-                'validated': len(valid_setups),
-                'ratio': (len(valid_setups) / len(results) * 100) if results else 0
-            })
-        elif _sio:  # Fallback legacy
-            await _sio.emit('volume_stats_update', {
                 'total': len(results),
                 'validated': len(valid_setups),
                 'ratio': (len(valid_setups) / len(results) * 100) if results else 0

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
-	import type BidirectionalWebSocket from '$lib/utils/websocket';
+	type BidirectionalWebSocket = ReturnType<typeof initWebSocket>;
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -80,7 +80,8 @@
 			// Debug: Vérifier le type de l'instance
 			console.log('🔍 Type de ws:', typeof ws);
 			console.log('🔍 ws.constructor:', ws?.constructor?.name);
-			console.log('🔍 ws instanceof BidirectionalWebSocket:', ws instanceof BidirectionalWebSocket);
+			// Note: instanceof ne fonctionne pas avec les types, on vérifie les méthodes à la place
+			console.log('🔍 ws a la méthode on?', typeof (ws as any).on === 'function');
 			console.log('🔍 Méthodes disponibles:', Object.getOwnPropertyNames(Object.getPrototypeOf(ws)));
 			console.log('🔍 ws.on existe?', 'on' in ws);
 			console.log('🔍 typeof ws.on:', typeof ws.on);
@@ -130,6 +131,15 @@
 			}
 		});
 		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de config depuis le backend
+		ws.on('config_updated', (data: any) => {
+			console.log('🔄 Config mise à jour depuis backend:', data.updated);
+			// Le frontend peut réagir aux changements de config du backend
+			if (data.updated && data.updated.tp_sl_mode) {
+				tpSlMode = data.updated.tp_sl_mode;
+			}
+		});
+		
 		ws.on('connect', () => {
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;
@@ -144,10 +154,35 @@
 
 	async function loadInitialState() {
 		try {
+			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket pour charger l'état initial (priorité)
+			const ws = getWebSocket();
+			if (ws && ws.connected) {
+				try {
+					const stateData = await ws.sendRequest('state', {});
+					if (stateData && stateData.success) {
+						console.log('Initial state loaded via WebSocket:', stateData);
+						backendConnected = true;
+						backendError = '';
+						
+						// 🔥 FIX: Charger le mode TP/SL actif
+						if (stateData.config && stateData.config.tp_sl_mode) {
+							tpSlMode = stateData.config.tp_sl_mode;
+						}
+						
+						// Traiter les autres données comme avec REST
+						await processStateData(stateData);
+						return;
+					}
+				} catch (wsErr) {
+					console.warn('⚠️ Erreur chargement état via WebSocket, fallback REST:', wsErr);
+				}
+			}
+			
+			// Fallback REST si WebSocket non disponible
 			const res = await fetch('/api/state');
 			if (res.ok) {
 				const data = await res.json();
-				console.log('Initial state loaded:', data);
+				console.log('Initial state loaded via REST:', data);
 				backendConnected = true;
 				backendError = '';
 				
@@ -155,6 +190,8 @@
 				if (data.config && data.config.tp_sl_mode) {
 					tpSlMode = data.config.tp_sl_mode;
 				}
+				
+				await processStateData(data);
 				
 				// 🔥 FIX: Mettre à jour l'état du bot dans BotControls via l'API status
 				// (BotControls utilise le store isScanning mis à jour via WebSocket natif)

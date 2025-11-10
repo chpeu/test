@@ -1,7 +1,7 @@
 <script>
 	import { settings, updateSetting, resetSettings, exportSettings, importSettings } from '$lib/stores/settings';
 	import { onMount } from 'svelte';
-	import { sendCommandViaWS } from '$lib/utils/websocket';
+	import { sendCommandViaWS, getWebSocket } from '$lib/utils/websocket';
 
 	let fileInput;
 	let showResetConfirm = false;
@@ -11,10 +11,58 @@
 	// ✅ Charger la config depuis le backend au démarrage
 	onMount(async () => {
 		await loadBackendConfig();
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de config depuis le backend
+		const ws = getWebSocket();
+		if (ws) {
+			ws.on('config_updated', (data: any) => {
+				console.log('🔄 Config mise à jour depuis backend dans SettingsPanel:', data.updated);
+				// Synchroniser les paramètres avec les changements du backend
+				if (data.updated) {
+					if (data.updated.sl_percent !== undefined) {
+						updateSetting('stopLossPercent', data.updated.sl_percent);
+					}
+					if (data.updated.tp_percent !== undefined) {
+						updateSetting('takeProfitPercent', data.updated.tp_percent);
+					}
+					if (data.updated.trailing_trigger_pnl !== undefined) {
+						updateSetting('trailingStopPercent', data.updated.trailing_trigger_pnl);
+					}
+					// Mettre à jour backendConfig pour affichage
+					backendConfig = { ...backendConfig, ...data.updated };
+				}
+			});
+		}
 	});
 
 	async function loadBackendConfig() {
 		try {
+			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket pour charger la config (priorité)
+			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+			if (ws && ws.connected) {
+				try {
+					const stateData = await sendRequestViaWS('state', {});
+					if (stateData && stateData.config) {
+						backendConfig = stateData.config;
+						// ✅ Synchroniser les paramètres qui existent dans le backend
+						if (stateData.config.sl_percent !== undefined) {
+							updateSetting('stopLossPercent', stateData.config.sl_percent);
+						}
+						if (stateData.config.tp_percent !== undefined) {
+							updateSetting('takeProfitPercent', stateData.config.tp_percent);
+						}
+						if (stateData.config.trailing_trigger_pnl !== undefined) {
+							updateSetting('trailingStopPercent', stateData.config.trailing_trigger_pnl);
+						}
+						return;
+					}
+				} catch (wsErr) {
+					console.warn('⚠️ Erreur chargement config via WebSocket, fallback REST:', wsErr);
+				}
+			}
+			
+			// Fallback REST si WebSocket non disponible
 			const res = await fetch('/api/state');
 			if (res.ok) {
 				const data = await res.json();

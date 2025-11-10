@@ -111,9 +111,9 @@ async def _refresh_top_pairs():
 
         logger.info(f"✅ Top pairs rafraîchies: {len(top_pairs)} paires")
 
-        # 🔥 FIX: Utiliser emit() au lieu de send_top_pairs_update()
-        if _sio:
-            await _sio.emit('top_pairs_update', {'pairs': top_pairs})
+        # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+        if _ws_manager:
+            await _ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
             logger.debug(f"📡 top_pairs_update émis: {len(top_pairs)} paires")
 
         # Mettre à jour WebSocket si price_provider disponible
