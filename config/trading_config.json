@@ -1,0 +1,231 @@
+{
+  "config": {
+    "fee_per_trade": 0.0004,
+    "use_slippage_calculation": true,
+    "position_timeout": 300,
+    "check_interval": 0.1,
+    "scan_interval": 45,
+    "scalability_interval": 90,
+    "volume_multiplier_range": [
+      0.1,
+      2.0
+    ],
+    "tp_sl_mode": "FIXE",
+    "tp_percent": 0.6,
+    "sl_percent": 0.25,
+    "break_even_trigger": 0.3,
+    "trailing_distance": 0.15,
+    "atr_mult_tp": 1.5,
+    "atr_mult_sl": 1.0,
+    "atr_min": 0.15,
+    "atr_max": 1.5,
+    "trend_timeframe": "15m",
+    "min_conditions": 6,
+    "dynamic_tolerance_adx_high": 30,
+    "dynamic_tolerance_adx_low": 25,
+    "use_weighted_scoring": true,
+    "min_score_required": 7.5,
+    "min_score_adx_high": 7.0,
+    "min_score_adx_low": 8.0,
+    "use_breakout": true,
+    "use_snr": true,
+    "use_wick": true,
+    "use_divergence": true,
+    "use_engulfing": true,
+    "use_hammer": true,
+    "use_shooting_star": true,
+    "use_doji": true,
+    "use_marubozu": true,
+    "use_morning_star": true,
+    "use_evening_star": true,
+    "snr_threshold": 0.25,
+    "breakout_threshold": 0.35,
+    "wick_ratio_max": 2.8,
+    "di_gap_min": 4.0,
+    "di_gap_adx_threshold": 25.0,
+    "optimal_atr_min_1m": 0.12,
+    "optimal_atr_max_1m": 0.75,
+    "optimal_atr_min_5m": 0.22,
+    "optimal_atr_max_5m": 1.4,
+    "volume_multiplier": 0.95,
+    "top_pairs_limit": 20,
+    "balance_score_min": 0.7,
+    "use_confluence": false,
+    "account_size": 1000.0,
+    "risk_per_trade": 2.0,
+    "early_invalidation": {
+      "enabled": true,
+      "delay": 10,
+      "threshold_15s": -0.12,
+      "threshold_30s": -0.08
+    },
+    "trailing_stop": {
+      "enabled": true,
+      "trigger_pnl": 0.25,
+      "atr_multiplier": 0.4,
+      "min_distance": 0.08,
+      "max_distance": 0.25
+    },
+    "adaptive_thresholds": {
+      "enabled": true,
+      "early_invalidation": {
+        "low_vol_multiplier": 0.7,
+        "high_vol_multiplier": 1.3
+      },
+      "stagnation": {
+        "low_vol_threshold": 0.015,
+        "high_vol_threshold": 0.04
+      }
+    },
+    "dynamic_correlation": {
+      "enabled": false,
+      "period": 50,
+      "threshold": 0.7,
+      "max_penalty": -3.0
+    },
+    "position_sizing": {
+      "base_risk": 0.02,
+      "min_risk": 0.005,
+      "max_risk": 0.03,
+      "quality_multipliers": {
+        "excellent": 1.4,
+        "good": 1.2,
+        "acceptable": 1.0,
+        "weak": 0.8
+      },
+      "streak_multipliers": {
+        "win_streak_3+": 1.1,
+        "loss_streak_2+": 0.85
+      }
+    },
+    "correlation_filter": {
+      "enabled": true,
+      "mode": "SOFT",
+      "max_positions_per_group": 2,
+      "penalty_score": -1.5,
+      "groups": {
+        "BTC_GROUP": [
+          "BTC",
+          "ETH",
+          "BNB",
+          "SOL"
+        ],
+        "MEME_GROUP": [
+          "DOGE",
+          "SHIB",
+          "PEPE",
+          "FLOKI",
+          "BONK"
+        ],
+        "LAYER1_GROUP": [
+          "ADA",
+          "DOT",
+          "AVAX",
+          "NEAR",
+          "ATOM",
+          "ALGO"
+        ],
+        "DEFI_GROUP": [
+          "UNI",
+          "AAVE",
+          "SUSHI",
+          "LINK",
+          "MKR",
+          "CRV"
+        ],
+        "L2_GROUP": [
+          "MATIC",
+          "ARB",
+          "OP",
+          "STRK",
+          "IMX"
+        ],
+        "EXCHANGE_GROUP": [
+          "BNB",
+          "FTT",
+          "HT",
+          "OKB"
+        ],
+        "STABLECOIN_GROUP": [
+          "USDC",
+          "USDT",
+          "DAI",
+          "BUSD"
+        ]
+      }
+    },
+    "recovery_mode": {
+      "enabled": true,
+      "mode": "PROGRESSIVE",
+      "trigger_loss_streak": 3,
+      "min_score_boost": 1.5,
+      "position_size_reduction": 0.7,
+      "confluence_forced": false,
+      "duration_trades": 5,
+      "levels": [
+        {
+          "trigger_loss_streak": 2,
+          "min_score_boost": 0.5,
+          "position_size_reduction": 0.85,
+          "confluence_forced": false,
+          "duration_trades": 3
+        },
+        {
+          "trigger_loss_streak": 3,
+          "min_score_boost": 1.5,
+          "position_size_reduction": 0.7,
+          "confluence_forced": false,
+          "duration_trades": 5
+        },
+        {
+          "trigger_loss_streak": 5,
+          "min_score_boost": 2.5,
+          "position_size_reduction": 0.5,
+          "confluence_forced": true,
+          "duration_trades": 7
+        }
+      ]
+    },
+    "partial_tp_percent": 50,
+    "escalier_level1_pnl": 0.2,
+    "escalier_level1_size": 25,
+    "escalier_level2_pnl": 0.35,
+    "escalier_level2_size": 25,
+    "escalier_level3_pnl": 0.5,
+    "escalier_level3_size": 25,
+    "escalier_level4_pnl": 0.8,
+    "escalier_level4_size": 25,
+    "trailing_enabled": true,
+    "trailing_trigger_pnl": 0.25,
+    "trailing_atr_multiplier": 0.4,
+    "trailing_min_distance": 0.08,
+    "trailing_max_distance": 0.25,
+    "tp_escalier": {
+      "enabled": true,
+      "levels": [
+        {
+          "pnl": 0.2,
+          "size_pct": 0.25,
+          "move_sl": "entry"
+        },
+        {
+          "pnl": 0.35,
+          "size_pct": 0.25,
+          "move_sl": "breakeven"
+        },
+        {
+          "pnl": 0.5,
+          "size_pct": 0.25,
+          "move_sl": "trailing"
+        },
+        {
+          "pnl": 0.8,
+          "size_pct": 0.25,
+          "move_sl": "trailing"
+        }
+      ]
+    }
+  },
+  "timestamp": 1762757201.0844336,
+  "version": "7.0.0"
+}
