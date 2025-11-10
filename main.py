@@ -1139,45 +1139,64 @@ async def api_status():
     return JSONResponse(app_state)
 
 
-# 🔥 FIX: Endpoints sessions pour compatibilité frontend Svelte
+# 🔥 DEPRECATED: Endpoints sessions - Utiliser WebSocket commands à la place
 @app.get("/api/sessions")
 async def api_get_sessions():
-    """Liste des sessions (compatibilité frontend Svelte)"""
+    """
+    GET /api/sessions - ⚠️ DEPRECATED
+    Liste des sessions (compatibilité frontend Svelte)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_sessions' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/sessions appelé - Utiliser WebSocket command 'get_sessions' à la place")
+
     import time
     import sys
     try:
         init_instances()
     except Exception as e:
         logger.error(f"❌ Erreur init_instances dans /api/sessions: {e}", exc_info=True)
-    
+
     try:
         current_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-        return JSONResponse({
+        response = JSONResponse({
             'sessions': [{
-                'id': session_id or f"live_{int(time.time())}",
+                'session_id': session_id or f"live_{int(time.time())}",
                 'status': 'running' if app_state.get('is_scanning') else 'stopped',
                 'port': current_port,
                 'started_at': time.time()
             }] if session_id else []
         })
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_sessions'"
+        return response
     except Exception as e:
         logger.error(f"❌ Erreur /api/sessions: {e}", exc_info=True)
-        return JSONResponse({
+        response = JSONResponse({
             'sessions': [],
             'error': str(e)
-        }, status_code=200)  # Retourner 200 avec sessions vide
+        }, status_code=200)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
 @app.get("/api/sessions/stats/global")
 async def api_get_sessions_stats_global():
-    """Stats globales des sessions (compatibilité frontend Svelte)"""
+    """
+    GET /api/sessions/stats/global - ⚠️ DEPRECATED
+    Stats globales des sessions (compatibilité frontend Svelte)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_sessions_stats' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/sessions/stats/global appelé - Utiliser WebSocket command 'get_sessions_stats' à la place")
+
     import time
-    
+
     try:
         init_instances()
     except Exception as e:
         logger.error(f"❌ Erreur init_instances dans /api/sessions/stats/global: {e}", exc_info=True)
-    
+
     try:
         # Calculer stats depuis app_state ou analytics_db
         stats_dict = {
@@ -1186,7 +1205,7 @@ async def api_get_sessions_stats_global():
             'losses': 0,
             'winrate': 0.0
         }
-        
+
         if analytics_db:
             try:
                 trades = analytics_db.get_trades(limit=10000)
@@ -1203,7 +1222,7 @@ async def api_get_sessions_stats_global():
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats globales: {e}")
-        
+
         # Fallback: utiliser app_state['trade_history']
         if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
             try:
@@ -1221,15 +1240,18 @@ async def api_get_sessions_stats_global():
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats app_state: {e}")
-        
-        return JSONResponse({
+
+        response = JSONResponse({
             'total_sessions': 1,
             'active_sessions': 1 if app_state.get('is_scanning') else 0,
             'global_stats': stats_dict
         })
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_sessions_stats'"
+        return response
     except Exception as e:
         logger.error(f"❌ Erreur /api/sessions/stats/global: {e}", exc_info=True)
-        return JSONResponse({
+        response = JSONResponse({
             'total_sessions': 0,
             'active_sessions': 0,
             'global_stats': {
@@ -1239,7 +1261,9 @@ async def api_get_sessions_stats_global():
                 'winrate': 0.0
             },
             'error': str(e)
-        }, status_code=200)  # Retourner 200 avec stats vides
+        }, status_code=200)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
 @app.get("/api/state")
@@ -2559,7 +2583,99 @@ async def handle_client_command(command: str, params: dict):
         config_change = params.get('change', 'unknown')
         await add_log('INFO', f'Config modifiée: {config_key}', str(config_change))
         return {'status': 'logged', 'key': config_key, 'change': config_change}
-    
+
+    elif command == 'get_sessions':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/sessions
+        try:
+            init_instances()
+        except Exception as e:
+            logger.error(f"❌ Erreur init_instances dans get_sessions: {e}", exc_info=True)
+
+        try:
+            import sys
+            current_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+            return {
+                'sessions': [{
+                    'session_id': session_id or f"live_{int(time.time())}",
+                    'status': 'running' if app_state.get('is_scanning') else 'stopped',
+                    'port': current_port,
+                    'started_at': time.time()
+                }] if session_id else []
+            }
+        except Exception as e:
+            logger.error(f"❌ Erreur get_sessions: {e}", exc_info=True)
+            return {'sessions': [], 'error': str(e)}
+
+    elif command == 'get_sessions_stats':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/sessions/stats/global
+        try:
+            init_instances()
+        except Exception as e:
+            logger.error(f"❌ Erreur init_instances dans get_sessions_stats: {e}", exc_info=True)
+
+        try:
+            # Calculer stats depuis app_state ou analytics_db
+            stats_dict = {
+                'total_trades': 0,
+                'wins': 0,
+                'losses': 0,
+                'winrate': 0.0
+            }
+
+            if analytics_db:
+                try:
+                    trades = analytics_db.get_trades(limit=10000)
+                    if trades:
+                        total = len(trades)
+                        wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                        losses = total - wins
+                        winrate = (wins / total * 100) if total > 0 else 0.0
+                        stats_dict = {
+                            'total_trades': total,
+                            'wins': wins,
+                            'losses': losses,
+                            'winrate': winrate
+                        }
+                except Exception as e:
+                    logger.error(f"❌ Erreur récupération stats globales: {e}")
+
+            # Fallback: utiliser app_state['trade_history']
+            if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
+                try:
+                    trades = app_state['trade_history']
+                    if trades:
+                        total = len(trades)
+                        wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                        losses = total - wins
+                        winrate = (wins / total * 100) if total > 0 else 0.0
+                        stats_dict = {
+                            'total_trades': total,
+                            'wins': wins,
+                            'losses': losses,
+                            'winrate': winrate
+                        }
+                except Exception as e:
+                    logger.error(f"❌ Erreur récupération stats app_state: {e}")
+
+            return {
+                'total_sessions': 1,
+                'active_sessions': 1 if app_state.get('is_scanning') else 0,
+                'global_stats': stats_dict
+            }
+        except Exception as e:
+            logger.error(f"❌ Erreur get_sessions_stats: {e}", exc_info=True)
+            return {
+                'total_sessions': 0,
+                'active_sessions': 0,
+                'global_stats': {
+                    'total_trades': 0,
+                    'wins': 0,
+                    'losses': 0,
+                    'winrate': 0.0
+                },
+                'error': str(e)
+            }
+
     else:
         raise ValueError(f'Commande inconnue: {command}')
 
