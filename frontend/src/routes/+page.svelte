@@ -167,6 +167,7 @@
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de stats
 		ws.on('stats_update', async (data: any) => {
+			console.log('📊 stats_update reçu:', data);
 			const { updateStats } = await import('$lib/stores/stats');
 			if (data) {
 				updateStats(data);

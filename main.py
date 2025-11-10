@@ -868,9 +868,12 @@ async def position_check_loop_callback():
             await add_log('INFO', 'Position fermée', f"{close_reason} - PnL: {result.get('pnl_usdt', 0):.2f} USDT")
             await ws_manager.emit('position_closed', result)
             
-            # 🔥 FIX: Ne PAS mettre à jour les stats ici - elles sont gérées dans le frontend
-            # pour éviter le double comptage. Le frontend reçoit position_closed et incrémente les stats.
-            # Les stats backend (app_state['stats']) sont utilisées pour autre chose si nécessaire.
+            # 🔥 FIX: Émettre stats_update après fermeture de position pour synchronisation temps réel
+            try:
+                from core.callbacks.position_check_loop import _emit_stats_update
+                await _emit_stats_update()
+            except Exception as e:
+                logger.error(f"❌ Erreur émission stats_update: {e}")
             
             # 🔥 JOUR 5: Métriques
             if get_metrics_collector:
@@ -1062,6 +1065,14 @@ def init_instances():
         # 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les callbacks
         try:
             from core.callbacks.scanner_loop import set_websocket_manager
+            if set_websocket_manager:
+                set_websocket_manager(ws_manager)
+        except ImportError:
+            pass  # Callback module optionnel
+        
+        # 🔥 FIX: Injecter ws_manager dans position_check_loop
+        try:
+            from core.callbacks.position_check_loop import set_websocket_manager
             if set_websocket_manager:
                 set_websocket_manager(ws_manager)
         except ImportError:
@@ -1942,6 +1953,13 @@ async def api_close_position():
             
             await add_log('INFO', 'Position clôturée', 'Manuel')
             await ws_manager.emit('position_closed', result)
+            
+            # 🔥 FIX: Émettre stats_update après fermeture manuelle de position
+            try:
+                from core.callbacks.position_check_loop import _emit_stats_update
+                await _emit_stats_update()
+            except Exception as e:
+                logger.error(f"❌ Erreur émission stats_update: {e}")
             
             return JSONResponse(result)
         except Exception as e:
