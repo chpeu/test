@@ -416,7 +416,8 @@ function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
 }
 
 // Tous les exports en un seul endroit à la fin du fichier pour garantir la compatibilité Vite/SvelteKit
-export { BidirectionalWebSocket, initWebSocket, getWebSocket, sendCommandViaWS, sendRequestViaWS };
+// IMPORTANT: Les exports doivent être dans l'ordre : types, puis valeurs, puis default
 export type { WebSocketMessage, CommandCallback };
+export { BidirectionalWebSocket, initWebSocket, getWebSocket, sendCommandViaWS, sendRequestViaWS };
 export default BidirectionalWebSocket;
 
