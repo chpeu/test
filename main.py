@@ -163,6 +163,40 @@ _config_lock = asyncio.Lock()
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
 
+# 🔥 PHASE 3: Middleware pour marquer endpoints REST comme deprecated
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
+
+# Map des endpoints deprecated avec leur alternative WebSocket
+DEPRECATED_ENDPOINTS = {
+    "/api/start": "Use 'start_scanner' command via WebSocket /ws",
+    "/api/stop": "Use 'stop_scanner' command via WebSocket /ws",
+    "/api/scanner/start": "Use 'start_scanner' command via WebSocket /ws",
+    "/api/position/close": "Use 'close_position' command via WebSocket /ws",
+    "/api/log/config": "Use 'log_config' command via WebSocket /ws",
+    "/api/config": "Use 'update_config' command via WebSocket /ws",
+    "/api/config/update": "Use 'update_config' command via WebSocket /ws",
+}
+
+class DeprecatedEndpointMiddleware(BaseHTTPMiddleware):
+    """Middleware pour ajouter headers X-Deprecated aux endpoints REST legacy"""
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response: StarletteResponse = await call_next(request)
+
+        # Vérifier si c'est un endpoint deprecated
+        path = request.url.path
+        if path in DEPRECATED_ENDPOINTS:
+            response.headers["X-Deprecated"] = "true"
+            response.headers["X-Deprecated-Alternative"] = DEPRECATED_ENDPOINTS[path]
+            response.headers["X-Deprecated-Version"] = "v7.0"
+
+        return response
+
+# Ajouter le middleware
+app.add_middleware(DeprecatedEndpointMiddleware)
+
 # 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -1566,7 +1600,7 @@ async def api_get_complete_state():
 async def api_start():
     """Démarrer le scanner et le scheduler"""
     init_instances()
-    
+
     # 🔥 JOUR 3: Si pas de top_pairs, faire un scan initial
     if not app_state['top_pairs']:
         await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
@@ -1574,7 +1608,7 @@ async def api_start():
             top_pairs = await scanner.scan_top_pairs(20)
             app_state['top_pairs'] = top_pairs
             await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
-            
+
             # Démarrer WebSocket pour les top pairs
             if price_provider and top_pairs:
                 symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
@@ -1584,7 +1618,7 @@ async def api_start():
                         await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
                     except Exception as e:
                         logger.warning(f"Erreur démarrage WebSocket: {e}")
-    
+
     # 🔥 JOUR 3: Démarrer le scheduler
     if scheduler:
         scheduler.start()
@@ -1595,7 +1629,7 @@ async def api_start():
         app_state['is_scanning'] = True
         logger.info("Scanner démarré (sans scheduler)")
         await ws_manager.emit('status', {'is_scanning': True})
-    
+
     return JSONResponse({'status': 'started'})
 
 
@@ -1603,12 +1637,12 @@ async def api_start():
 async def api_stop():
     """Arrêter le scanner et le scheduler"""
     init_instances()
-    
+
     # 🔥 JOUR 3: Arrêter le scheduler
     if scheduler:
         await scheduler.stop_async()
         logger.info("Scanner arrêté")
-    
+
     app_state['is_scanning'] = False
     await ws_manager.emit('status', {'is_scanning': False})
     return JSONResponse({'status': 'stopped'})
@@ -1627,18 +1661,18 @@ async def api_scanner_start(request: Request):
     """Démarrer scanner scalability"""
     if app_state['is_scanning']:
         return JSONResponse({'error': 'Déjà en cours'}, status_code=400)
-    
+
     init_instances()
     data = await request.json() if hasattr(request, 'json') else {}
     top_n = data.get('top_n', 20) if isinstance(data, dict) else 20
-    
+
     app_state['is_scanning'] = True
     await add_log('INFO', 'Scanner démarré', f'Top {top_n} paires')
-    
+
     # Lancer scan asynchrone
     if scanner:
         asyncio.create_task(scan_top_pairs_task(top_n))
-    
+
     return JSONResponse({'status': 'started'})
 
 
@@ -2564,12 +2598,12 @@ async def api_log_config(request: Request):
     try:
         data = await request.json() if hasattr(request, 'json') else {}
         data = data if isinstance(data, dict) else {}
-        
+
         # Logger le changement de config
         config_key = data.get('key', 'unknown')
         config_value = data.get('value', 'unknown')
         await add_log('INFO', f'Config modifiée: {config_key}', str(config_value))
-        
+
         return JSONResponse({'status': 'logged', 'key': config_key, 'value': config_value})
     except Exception as e:
         logger.error(f"Erreur log config: {e}")
