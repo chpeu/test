@@ -1144,7 +1144,11 @@ async def api_status():
 # 🔥 FIX: Endpoints sessions pour compatibilité frontend Svelte
 @app.get("/api/sessions")
 async def api_get_sessions():
-    """Liste des sessions (compatibilité frontend Svelte)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket request 'state' ou événements 'sessions_update' à la place
+    Conservé pour compatibilité uniquement
+    Liste des sessions (compatibilité frontend Svelte)
+    """
     import time
     import sys
     try:
@@ -1172,7 +1176,11 @@ async def api_get_sessions():
 
 @app.get("/api/sessions/stats/global")
 async def api_get_sessions_stats_global():
-    """Stats globales des sessions (compatibilité frontend Svelte)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket request 'state' ou événements 'stats_update' à la place
+    Conservé pour compatibilité uniquement
+    Stats globales des sessions (compatibilité frontend Svelte)
+    """
     import time
     
     try:
@@ -1437,6 +1445,8 @@ async def api_get_complete_state():
                 'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
                 # Min score
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
+                'telegram_enabled': TELEGRAM_ENABLED if 'TELEGRAM_ENABLED' in locals() else False,
             },
             'scanner': {
                 'is_scanning': app_state.get('is_scanning', False),
@@ -2169,6 +2179,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         if not trades_history and app_state.get('trade_history'):
                             trades_history = app_state['trade_history'][:50]
                         
+                        # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
+                        from config import TELEGRAM_ENABLED
+                        
                         state_data = {
                             'success': True,
                             'session_id': session_id or f"live_{int(time.time())}",
@@ -2190,7 +2203,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
                                 'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
                                 'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-                                'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
+                                'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+                                'telegram_enabled': TELEGRAM_ENABLED  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
                             },
                             'scanner': {
                                 'is_scanning': app_state.get('is_scanning', False),

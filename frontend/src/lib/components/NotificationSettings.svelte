@@ -29,19 +29,26 @@
 		}
 	}
 
-	// 🔥 FIX: Vérifier le statut Telegram au chargement
+	// 🔥 MIGRATION COMPLÈTE: Vérifier le statut Telegram via WebSocket
 	async function checkTelegramStatus() {
 		try {
-			const res = await fetch('/api/config');
-			if (res.ok) {
-				const data = await res.json();
+			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+			if (ws && ws.connected) {
+				const response = await sendRequestViaWS('state', {});
+				const stateData = response?.data || response;
 				// Vérifier si Telegram est configuré (via backend)
-				// Le backend devrait exposer cette info
-				telegramStatus = data.telegram_enabled ? '✅ Activé' : '❌ Désactivé (variables d\'environnement manquantes)';
+				// Le backend devrait exposer cette info dans state.config
+				if (stateData && stateData.config) {
+					telegramStatus = stateData.config.telegram_enabled ? '✅ Activé' : '❌ Désactivé (variables d\'environnement manquantes)';
+				} else {
+					telegramStatus = '❌ Désactivé (variables d\'environnement manquantes)';
+				}
 			} else {
-				telegramStatus = '❌ Erreur de vérification';
+				telegramStatus = '❌ WebSocket non connecté';
 			}
 		} catch (err) {
+			console.error('Erreur vérification Telegram:', err);
 			telegramStatus = '❌ Erreur de connexion';
 		}
 	}
