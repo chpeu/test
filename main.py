@@ -625,9 +625,17 @@ async def scanner_loop_callback():
                                         current_price_data = await price_provider.get_price(symbol)
                                         if current_price_data:
                                             current_price = current_price_data.get('lastPrice', entry_price) if isinstance(current_price_data, dict) else entry_price
-                                            pnl = position_manager._calculate_pnl(current_price)
-                                            pnl_pct = pnl / 100
-                                            pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
+                                            # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
+                                            pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                                                entry=position.entry,
+                                                current_price=current_price,
+                                                direction=position.direction
+                                            )
+                                            # Calculer PnL USDT
+                                            pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                                                position=position.to_dict(),
+                                                current_price=current_price
+                                            )
                                             
                                             await ws_manager.emit('position_update', {
                                                 'symbol': position.symbol,
@@ -777,29 +785,17 @@ async def position_check_loop_callback():
             # Calculer PnL pour affichage
             position = position_manager.active_position
             if position:
-                pnl = position_manager._calculate_pnl(current_price)
-                # 🔥 FIX: Calculer PnL USDT correctement selon direction (incluant TP partiel)
-                pnl_pct = pnl / 100  # Convertir % en décimal
-                
-                # Taille de position à considérer (50% si TP partiel vendu)
-                size_to_consider = position.size
-                partial_profit_usdt = 0.0
-                if hasattr(position, 'partial_tp_sold') and position.partial_tp_sold:
-                    size_to_consider = getattr(position, 'size_remaining', position.size * 0.5)
-                    partial_profit_usdt = getattr(position, 'partial_profit_usdt', 0.0)
-                
-                # 🔥 FIX: Calculer PnL USDT correctement (comme dans position_manager)
-                if position.direction == 'LONG':
-                    # LONG: profit quand prix monte
-                    price_diff = current_price - position.entry
-                    pnl_usdt = size_to_consider * (price_diff / position.entry)
-                else:  # SHORT
-                    # SHORT: profit quand prix baisse
-                    price_diff = position.entry - current_price
-                    pnl_usdt = size_to_consider * (price_diff / position.entry)
-                
-                # Ajouter le profit du TP partiel si vendu
-                pnl_usdt += partial_profit_usdt
+                # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
+                pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                    entry=position.entry,
+                    current_price=current_price,
+                    direction=position.direction
+                )
+                # 🔥 FIX: Calculer PnL USDT avec pnl_calculator (incluant TP partiel automatiquement)
+                pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                    position=position.to_dict(),
+                    current_price=current_price
+                )
                 
                 # 🔥 FIX: Log détaillé pour debug
                 logger.debug(
@@ -1811,9 +1807,17 @@ async def api_check_position():
         
         # Construire réponse
         position = position_manager.active_position
-        pnl = position_manager._calculate_pnl(current_price)
-        pnl_pct = pnl / 100
-        pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
+        # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
+        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+            entry=position.entry,
+            current_price=current_price,
+            direction=position.direction
+        )
+        # Calculer PnL USDT
+        pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+            position=position.to_dict(),
+            current_price=current_price
+        )
         
         response = {
             'status': 'position_active',
