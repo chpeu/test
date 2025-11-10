@@ -1446,7 +1446,7 @@ async def api_get_complete_state():
                 # Min score
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
                 # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
-                'telegram_enabled': TELEGRAM_ENABLED if 'TELEGRAM_ENABLED' in locals() else False,
+                'telegram_enabled': TELEGRAM_ENABLED,
             },
             'scanner': {
                 'is_scanning': app_state.get('is_scanning', False),
