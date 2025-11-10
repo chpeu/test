@@ -22,7 +22,7 @@ export interface CommandCallback {
     reject: (error: Error) => void;
 }
 
-class BidirectionalWebSocket {
+export class BidirectionalWebSocket {
     private baseUrl: string;
     private url: string;
     private ws: WebSocket | null = null;
@@ -387,7 +387,7 @@ class BidirectionalWebSocket {
 // Instance globale
 let wsInstance: BidirectionalWebSocket | null = null;
 
-function initWebSocket(url?: string): BidirectionalWebSocket {
+export function initWebSocket(url?: string): BidirectionalWebSocket {
     if (!wsInstance) {
         wsInstance = new BidirectionalWebSocket(url);
         wsInstance.connect();
@@ -395,27 +395,23 @@ function initWebSocket(url?: string): BidirectionalWebSocket {
     return wsInstance;
 }
 
-function getWebSocket(): BidirectionalWebSocket | null {
+export function getWebSocket(): BidirectionalWebSocket | null {
     return wsInstance;
 }
 
-function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
+export function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendCommand(command, params);
 }
 
-function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
+export function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendRequest(requestType, params);
 }
-
-// Exports nommés explicites (tous les exports en un seul endroit)
-export { BidirectionalWebSocket, initWebSocket, getWebSocket, sendCommandViaWS, sendRequestViaWS };
-export type { WebSocketMessage, CommandCallback };
 
 // Export default pour compatibilité
 export default BidirectionalWebSocket;
