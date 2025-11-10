@@ -14,9 +14,8 @@ import io
 from datetime import datetime
 from typing import Optional, List, Dict
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from starlette.templating import Jinja2Templates
+from fastapi.responses import JSONResponse, StreamingResponse
+# 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from core.websocket_manager import get_websocket_manager
 import time
@@ -108,7 +107,7 @@ async def global_exception_handler(request, exc):
         'error': str(exc),
         'path': request.url.path
     }, status_code=500)
-templates = Jinja2Templates(directory="templates")
+# 🔥 CLEANUP: Jinja2Templates supprimé - Frontend Svelte gère l'interface
 
 # 🔥 FIX: Middleware pour logger toutes les requêtes et réponses
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -134,12 +133,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(LoggingMiddleware)
 
-# 🔥 ARCHITECTURE V2: Monter fichiers statiques et inclure routes API
-try:
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-    logger.info("✅ Fichiers statiques montés: /static")
-except Exception as e:
-    logger.warning(f"⚠️ Fichiers statiques non montés: {e}")
+# 🔥 CLEANUP: Fichiers statiques supprimés - Frontend Svelte gère l'interface
+# Plus besoin de servir des fichiers statiques, le frontend Svelte est indépendant
 
 if api_router:
     app.include_router(api_router)
@@ -1081,69 +1076,15 @@ def init_instances():
 
 # Routes FastAPI
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Page principale - HTML copié de v5.1"""
-    return templates.TemplateResponse("index.html", {"request": request})
-
+# 🔥 CLEANUP: Routes HTML supprimées - Frontend Svelte gère toute l'interface
+# Plus besoin de servir des pages HTML, le frontend Svelte est indépendant
 
 @app.get("/favicon.ico")
 async def favicon():
     """Favicon (évite 404)"""
     from fastapi.responses import Response
     # Retourner un favicon vide (1x1 pixel transparent)
-    # En production, tu peux ajouter un vrai favicon.ico dans static/
     return Response(content=b'', media_type='image/x-icon')
-
-
-@app.get("/dashboard/charts", response_class=HTMLResponse)
-async def dashboard_charts(request: Request):
-    """🔥 ARCHITECTURE V2: Dashboard graphiques avec Chart.js"""
-    try:
-        return templates.TemplateResponse("dashboard_charts.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur dashboard: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/backtest", response_class=HTMLResponse)
-async def backtest_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface Backtesting"""
-    try:
-        return templates.TemplateResponse("backtest.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur backtest page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/optimize", response_class=HTMLResponse)
-async def optimize_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface ML Optimization"""
-    try:
-        return templates.TemplateResponse("optimize.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur optimize page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/analytics", response_class=HTMLResponse)
-async def analytics_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface Analytics"""
-    try:
-        return templates.TemplateResponse("analytics.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur analytics page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface Paramètres"""
-    try:
-        return templates.TemplateResponse("settings.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur settings page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/api/status")
