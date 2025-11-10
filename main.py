@@ -1957,9 +1957,8 @@ async def api_close_position():
                     app_state['trade_history'] = app_state['trade_history'][-1000:]
                 save_trade_history()
             
-            # 🔥 FIX: Désactiver callback WebSocket si position fermée
-            if price_provider:
-                # 🔥 CLEANUP: Supprimé set_socketio_callback (Socket.IO obsolète)
+            # 🔥 CLEANUP: Code set_socketio_callback supprimé (Socket.IO obsolète)
+            # Plus de callback WebSocket à désactiver (migration complète vers WebSocket natif)
 
             logger.info(
                 f"🔒 Position fermée manuellement avec lock: "
