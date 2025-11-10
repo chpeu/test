@@ -416,6 +416,3 @@ export function sendRequestViaWS(requestType: string, params: any = {}): Promise
 // Export default pour compatibilité
 export default BidirectionalWebSocket;
 
-// Ré-exports explicites pour garantir la compatibilité (au cas où)
-export { sendCommandViaWS, sendRequestViaWS, initWebSocket, getWebSocket };
-
