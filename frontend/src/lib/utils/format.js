@@ -106,6 +106,27 @@ export function formatVolume(volume) {
 }
 
 /**
+ * Format a USDT value
+ * @param {number} value - The USDT value
+ * @returns {string} Formatted USDT value
+ */
+export function formatUSDT(value) {
+	if (value === null || value === undefined || isNaN(value)) {
+		return '0.00';
+	}
+
+	const num = Number(value);
+
+	// For very small values, use more decimals
+	if (Math.abs(num) < 0.01 && num !== 0) {
+		return num.toFixed(4);
+	}
+
+	// For normal values, use 2 decimals
+	return num.toFixed(2);
+}
+
+/**
  * Format a PnL value with color indication
  * @param {number} pnl - The PnL value
  * @param {boolean} isPercent - Whether the value is a percentage
