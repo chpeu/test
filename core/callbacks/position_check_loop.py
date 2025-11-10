@@ -180,7 +180,7 @@ async def _emit_position_update(position, current_price: float):
         position: Objet position active
         current_price: Prix actuel du marché
     """
-    if not _position_manager or not _sio:
+    if not _position_manager or not _ws_manager:
         return
 
     try:

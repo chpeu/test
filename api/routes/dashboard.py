@@ -16,7 +16,6 @@ _scheduler = None
 _position_manager = None
 _app_state = None
 _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif uniquement
-_sio = None  # 🔥 LEGACY: Gardé pour compatibilité (sera remplacé par _ws_manager)
 
 
 def set_scheduler(scheduler):
@@ -210,7 +209,7 @@ async def start_scanner():
             if _app_state:
                 _app_state['is_scanning'] = True
 
-            # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif
+            # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif uniquement
             if _ws_manager:
                 status_data = {
                     'is_scanning': True,
@@ -220,17 +219,6 @@ async def start_scanner():
                 }
                 await _ws_manager.emit('status', status_data)
                 await _ws_manager.emit('scan_started', {'timestamp': time.time()})
-            elif _sio:  # 🔥 LEGACY: Fallback Socket.IO (sera supprimé)
-                status_data = {
-                    'is_scanning': True,
-                    'active_position': _app_state.get('active_position'),
-                    'stats': _app_state.get('stats', {}),
-                    'top_pairs': _app_state.get('top_pairs', [])
-                }
-                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-                if _ws_manager:
-                    await _ws_manager.emit('status', status_data)
-                    await _ws_manager.emit('scan_started', {'timestamp': time.time()})
 
             return JSONResponse({
                 'success': True,
