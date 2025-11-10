@@ -2219,6 +2219,12 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as e:
             logger.error(f"Erreur WebSocket: {e}")
             await ws_manager.disconnect(websocket)
+    
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Erreur WebSocket globale: {e}")
+        await ws_manager.disconnect(websocket)
 
 
 # 🔥 Fonction : Traiter commandes du client
