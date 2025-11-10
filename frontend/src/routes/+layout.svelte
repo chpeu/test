@@ -4,8 +4,9 @@
 	import { theme } from '$lib/stores/theme'; // Init theme
 	import { onMount } from 'svelte';
 
-	// SvelteKit props - SvelteKit passe automatiquement params, mais on ne l'utilise pas
-	// On ne l'exporte pas pour éviter le warning
+	// 🔥 FIX: SvelteKit passe automatiquement params, mais on ne l'utilise pas
+	// On doit l'accepter explicitement pour éviter le warning
+	export let params = {};
 
 	// Appliquer le thème au chargement
 	onMount(() => {

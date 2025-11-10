@@ -2,6 +2,9 @@
 	import { onMount } from 'svelte';
 	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
 	type BidirectionalWebSocket = ReturnType<typeof initWebSocket>;
+	
+	// 🔥 FIX: SvelteKit passe automatiquement params, mais on ne l'utilise pas
+	export let params = {};
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -65,49 +68,53 @@
 				return;
 			}
 			
-			// Debug: Vérifier le type de l'instance
-			console.log('🔍 Type de ws:', typeof ws);
-			console.log('🔍 ws.constructor:', ws?.constructor?.name);
-			// Note: instanceof ne fonctionne pas avec les types, on vérifie les méthodes à la place
-			console.log('🔍 ws a la méthode on?', typeof (ws as any).on === 'function');
-			console.log('🔍 Méthodes disponibles:', Object.getOwnPropertyNames(Object.getPrototypeOf(ws)));
-			console.log('🔍 ws.on existe?', 'on' in ws);
-			console.log('🔍 typeof ws.on:', typeof ws.on);
-			
 			// Vérifier que la méthode on existe
 			if (!('on' in ws) || typeof ws.on !== 'function') {
 				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
-				console.error('Type de ws:', typeof ws);
-				console.error('Méthodes disponibles:', Object.keys(ws || {}));
-				console.error('ws.constructor:', ws?.constructor?.name);
-				// Attendre un peu et réessayer (peut-être que l'instance n'est pas encore complètement initialisée)
+				// Attendre un peu et réessayer
 				await new Promise(resolve => setTimeout(resolve, 500));
-				if ('on' in ws && typeof ws.on === 'function') {
-					setupWebSocketListeners(ws);
-				} else {
+				if (!('on' in ws) || typeof ws.on !== 'function') {
 					console.error('❌ WebSocket.on toujours non disponible après attente');
-					// Essayer d'utiliser getWebSocket à la place
-					const { getWebSocket } = await import('$lib/utils/websocket');
-					const ws2 = getWebSocket();
-					if (ws2 && 'on' in ws2 && typeof ws2.on === 'function') {
-						console.log('✅ Utilisation de getWebSocket() comme fallback');
-						setupWebSocketListeners(ws2);
-					} else {
-						console.error('❌ Impossible d\'initialiser WebSocket correctement');
-					}
 					return;
 				}
+			}
+			
+			// 🔥 FIX: Écouter l'événement 'connect' avant de charger l'état initial
+			ws.once('connect', async () => {
+				console.log('✅ WebSocket connecté, chargement de l\'état initial...');
+				await loadInitialState();
+			});
+			
+			// Configurer les listeners
+			setupWebSocketListeners(ws);
+			
+			// Si déjà connecté, charger immédiatement
+			if (ws.connected) {
+				await loadInitialState();
 			} else {
-				// Attendre un peu pour que la connexion soit établie
-				await new Promise(resolve => setTimeout(resolve, 100));
-				setupWebSocketListeners(ws);
+				// Attendre la connexion (max 5 secondes)
+				let attempts = 0;
+				const maxAttempts = 50; // 50 * 100ms = 5 secondes
+				while ((!ws.connected) && attempts < maxAttempts) {
+					await new Promise(resolve => setTimeout(resolve, 100));
+					attempts++;
+				}
+				
+				if (ws.connected) {
+					await loadInitialState();
+				} else {
+					console.warn('⚠️ WebSocket non connecté après 5 secondes, le chargement se fera automatiquement à la connexion');
+				}
 			}
 		} catch (error) {
 			console.error('❌ Erreur initialisation WebSocket:', error);
+			// Réessayer après un délai
+			setTimeout(() => {
+				loadInitialState().catch(err => {
+					console.error('Error loading initial state:', err);
+				});
+			}, 2000);
 		}
-		
-		// Charger l'état initial (via REST pour le premier chargement, puis WebSocket pour les updates)
-		await loadInitialState();
 	});
 	
 	function setupWebSocketListeners(ws: BidirectionalWebSocket) {
@@ -193,10 +200,16 @@
 			setIsScanning(false);
 		});
 		
-		ws.on('connect', () => {
+		ws.on('connect', async () => {
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;
 			backendError = '';
+			// 🔥 FIX: Charger l'état initial quand le WebSocket se connecte
+			try {
+				await loadInitialState();
+			} catch (err) {
+				console.error('Error loading initial state on connect:', err);
+			}
 		});
 		
 		ws.on('disconnect', () => {
