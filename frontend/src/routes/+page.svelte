@@ -102,6 +102,22 @@
 			}
 		});
 
+		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Écouter scan_started pour mettre à jour le bouton Start/Stop
+		ws.on('scan_started', (data: any) => {
+			console.log('✅ Scanner démarré (événement temps réel)', data);
+			import('$lib/stores/scanner').then(({ isScanning }) => {
+				isScanning.set(true);
+			});
+		});
+
+		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Écouter scan_stopped pour mettre à jour le bouton Start/Stop
+		ws.on('scan_stopped', (data: any) => {
+			console.log('✅ Scanner arrêté (événement temps réel)', data);
+			import('$lib/stores/scanner').then(({ isScanning }) => {
+				isScanning.set(false);
+			});
+		});
+
 		// 🔥 BIDIRECTIONNEL: Écouter les changements de config
 		ws.on('config_change', (data: any) => {
 			console.log('🔄 +page: Config change reçu du serveur:', data);

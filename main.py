@@ -1658,6 +1658,12 @@ async def api_start():
         logger.info("Scanner démarré (sans scheduler)")
         await ws_manager.emit('status', {'is_scanning': True})
 
+    # 🔥 BIDIRECTIONNEL: Émettre événement scan_started pour mise à jour temps réel frontend
+    await ws_manager.emit('scan_started', {
+        'timestamp': time.time(),
+        'is_scanning': True
+    })
+
     # 🔥 NOUVEAU: Émettre événements sessions pour GlobalStats
     await ws_manager.emit('session_started', {'timestamp': time.time()})
     await ws_manager.emit('sessions_update', {'timestamp': time.time()})
@@ -1681,6 +1687,12 @@ async def api_stop():
 
     app_state['is_scanning'] = False
     await ws_manager.emit('status', {'is_scanning': False})
+
+    # 🔥 BIDIRECTIONNEL: Émettre événement scan_stopped pour mise à jour temps réel frontend
+    await ws_manager.emit('scan_stopped', {
+        'timestamp': time.time(),
+        'is_scanning': False
+    })
 
     # 🔥 NOUVEAU: Émettre événements sessions pour GlobalStats
     await ws_manager.emit('session_stopped', {'timestamp': time.time()})
