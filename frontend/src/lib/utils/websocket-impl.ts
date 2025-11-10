@@ -45,12 +45,21 @@ export class BidirectionalWebSocket {
     constructor(url: string = '') {
         // Détecter l'URL depuis window.location si non fournie
         if (!url) {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            url = `${protocol}//${host}`;
+            // 🔥 FIX: En développement, utiliser directement le backend (port 5000)
+            // En production, utiliser le proxy Vite (window.location.host)
+            const isDev = window.location.hostname === 'localhost' && window.location.port === '3000';
+            if (isDev) {
+                // Développement: connexion directe au backend
+                url = 'ws://localhost:5000';
+            } else {
+                // Production: utiliser le proxy ou l'URL de production
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host;
+                url = `${protocol}//${host}`;
+            }
         }
         
-        // Convertir http:// en ws:// ou https:// en wss://
+        // Convertir http:// en ws:// ou https:// en wss:// si nécessaire
         this.baseUrl = url.replace(/^http/, 'ws');
         this.url = this.baseUrl + '/ws';
     }
