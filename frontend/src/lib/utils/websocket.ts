@@ -6,7 +6,7 @@
 
 // Force les exports nommés pour Vite/SvelteKit - Tous les exports doivent être au niveau racine
 
-export interface WebSocketMessage {
+interface WebSocketMessage {
     type: string;
     event?: string;
     command?: string;
@@ -19,7 +19,7 @@ export interface WebSocketMessage {
     timestamp?: number;
 }
 
-export interface CommandCallback {
+interface CommandCallback {
     resolve: (data: any) => void;
     reject: (error: Error) => void;
 }
