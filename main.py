@@ -14,9 +14,8 @@ import io
 from datetime import datetime
 from typing import Optional, List, Dict
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from starlette.templating import Jinja2Templates
+from fastapi.responses import JSONResponse, StreamingResponse
+# 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from core.websocket_manager import get_websocket_manager
 import time
@@ -108,7 +107,7 @@ async def global_exception_handler(request, exc):
         'error': str(exc),
         'path': request.url.path
     }, status_code=500)
-templates = Jinja2Templates(directory="templates")
+# 🔥 CLEANUP: Jinja2Templates supprimé - Frontend Svelte gère l'interface
 
 # 🔥 FIX: Middleware pour logger toutes les requêtes et réponses
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -134,12 +133,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(LoggingMiddleware)
 
-# 🔥 ARCHITECTURE V2: Monter fichiers statiques et inclure routes API
-try:
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-    logger.info("✅ Fichiers statiques montés: /static")
-except Exception as e:
-    logger.warning(f"⚠️ Fichiers statiques non montés: {e}")
+# 🔥 CLEANUP: Fichiers statiques supprimés - Frontend Svelte gère l'interface
+# Plus besoin de servir des fichiers statiques, le frontend Svelte est indépendant
 
 if api_router:
     app.include_router(api_router)
@@ -557,10 +552,9 @@ async def scanner_loop_callback():
                                         sl_percent = TRADING_CONFIG.get('sl_percent', 0.25)
                                     
                                     # 🔥 PHASE 2: Position sizing adaptatif
-                                    position_size = position_manager.calculate_adaptive_position_size(
+                                    position_size = position_manager.calculate_position_size(
                                         setup=setup,
-                                        capital=account_size,
-                                        sl_percent=sl_percent
+                                        capital=account_size
                                     )
                                     
                                     # 🔥 FIX: Log détaillé du calcul de taille pour debug
@@ -631,9 +625,17 @@ async def scanner_loop_callback():
                                         current_price_data = await price_provider.get_price(symbol)
                                         if current_price_data:
                                             current_price = current_price_data.get('lastPrice', entry_price) if isinstance(current_price_data, dict) else entry_price
-                                            pnl = position_manager._calculate_pnl(current_price)
-                                            pnl_pct = pnl / 100
-                                            pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
+                                            # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
+                                            pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                                                entry=position.entry,
+                                                current_price=current_price,
+                                                direction=position.direction
+                                            )
+                                            # Calculer PnL USDT
+                                            pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                                                position=position.to_dict(),
+                                                current_price=current_price
+                                            )
                                             
                                             await ws_manager.emit('position_update', {
                                                 'symbol': position.symbol,
@@ -783,29 +785,17 @@ async def position_check_loop_callback():
             # Calculer PnL pour affichage
             position = position_manager.active_position
             if position:
-                pnl = position_manager._calculate_pnl(current_price)
-                # 🔥 FIX: Calculer PnL USDT correctement selon direction (incluant TP partiel)
-                pnl_pct = pnl / 100  # Convertir % en décimal
-                
-                # Taille de position à considérer (50% si TP partiel vendu)
-                size_to_consider = position.size
-                partial_profit_usdt = 0.0
-                if hasattr(position, 'partial_tp_sold') and position.partial_tp_sold:
-                    size_to_consider = getattr(position, 'size_remaining', position.size * 0.5)
-                    partial_profit_usdt = getattr(position, 'partial_profit_usdt', 0.0)
-                
-                # 🔥 FIX: Calculer PnL USDT correctement (comme dans position_manager)
-                if position.direction == 'LONG':
-                    # LONG: profit quand prix monte
-                    price_diff = current_price - position.entry
-                    pnl_usdt = size_to_consider * (price_diff / position.entry)
-                else:  # SHORT
-                    # SHORT: profit quand prix baisse
-                    price_diff = position.entry - current_price
-                    pnl_usdt = size_to_consider * (price_diff / position.entry)
-                
-                # Ajouter le profit du TP partiel si vendu
-                pnl_usdt += partial_profit_usdt
+                # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
+                pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                    entry=position.entry,
+                    current_price=current_price,
+                    direction=position.direction
+                )
+                # 🔥 FIX: Calculer PnL USDT avec pnl_calculator (incluant TP partiel automatiquement)
+                pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                    position=position.to_dict(),
+                    current_price=current_price
+                )
                 
                 # 🔥 FIX: Log détaillé pour debug
                 logger.debug(
@@ -868,9 +858,12 @@ async def position_check_loop_callback():
             await add_log('INFO', 'Position fermée', f"{close_reason} - PnL: {result.get('pnl_usdt', 0):.2f} USDT")
             await ws_manager.emit('position_closed', result)
             
-            # 🔥 FIX: Ne PAS mettre à jour les stats ici - elles sont gérées dans le frontend
-            # pour éviter le double comptage. Le frontend reçoit position_closed et incrémente les stats.
-            # Les stats backend (app_state['stats']) sont utilisées pour autre chose si nécessaire.
+            # 🔥 FIX: Émettre stats_update après fermeture de position pour synchronisation temps réel
+            try:
+                from core.callbacks.position_check_loop import _emit_stats_update
+                await _emit_stats_update()
+            except Exception as e:
+                logger.error(f"❌ Erreur émission stats_update: {e}")
             
             # 🔥 JOUR 5: Métriques
             if get_metrics_collector:
@@ -1066,73 +1059,27 @@ def init_instances():
                 set_websocket_manager(ws_manager)
         except ImportError:
             pass  # Callback module optionnel
+        
+        # 🔥 FIX: Injecter ws_manager dans position_check_loop
+        try:
+            from core.callbacks.position_check_loop import set_websocket_manager
+            if set_websocket_manager:
+                set_websocket_manager(ws_manager)
+        except ImportError:
+            pass  # Callback module optionnel
 
 
 # Routes FastAPI
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Page principale - HTML copié de v5.1"""
-    return templates.TemplateResponse("index.html", {"request": request})
-
+# 🔥 CLEANUP: Routes HTML supprimées - Frontend Svelte gère toute l'interface
+# Plus besoin de servir des pages HTML, le frontend Svelte est indépendant
 
 @app.get("/favicon.ico")
 async def favicon():
     """Favicon (évite 404)"""
     from fastapi.responses import Response
     # Retourner un favicon vide (1x1 pixel transparent)
-    # En production, tu peux ajouter un vrai favicon.ico dans static/
     return Response(content=b'', media_type='image/x-icon')
-
-
-@app.get("/dashboard/charts", response_class=HTMLResponse)
-async def dashboard_charts(request: Request):
-    """🔥 ARCHITECTURE V2: Dashboard graphiques avec Chart.js"""
-    try:
-        return templates.TemplateResponse("dashboard_charts.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur dashboard: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/backtest", response_class=HTMLResponse)
-async def backtest_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface Backtesting"""
-    try:
-        return templates.TemplateResponse("backtest.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur backtest page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/optimize", response_class=HTMLResponse)
-async def optimize_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface ML Optimization"""
-    try:
-        return templates.TemplateResponse("optimize.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur optimize page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/analytics", response_class=HTMLResponse)
-async def analytics_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface Analytics"""
-    try:
-        return templates.TemplateResponse("analytics.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur analytics page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
-
-
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
-    """🔥 ARCHITECTURE V2: Interface Paramètres"""
-    try:
-        return templates.TemplateResponse("settings.html", {"request": request})
-    except Exception as e:
-        logger.error(f"❌ Erreur settings page: {e}")
-        return HTMLResponse(f"<h1>Erreur</h1><p>{e}</p>", status_code=500)
 
 
 @app.get("/api/status")
@@ -1144,7 +1091,11 @@ async def api_status():
 # 🔥 FIX: Endpoints sessions pour compatibilité frontend Svelte
 @app.get("/api/sessions")
 async def api_get_sessions():
-    """Liste des sessions (compatibilité frontend Svelte)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket request 'state' ou événements 'sessions_update' à la place
+    Conservé pour compatibilité uniquement
+    Liste des sessions (compatibilité frontend Svelte)
+    """
     import time
     import sys
     try:
@@ -1172,7 +1123,11 @@ async def api_get_sessions():
 
 @app.get("/api/sessions/stats/global")
 async def api_get_sessions_stats_global():
-    """Stats globales des sessions (compatibilité frontend Svelte)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket request 'state' ou événements 'stats_update' à la place
+    Conservé pour compatibilité uniquement
+    Stats globales des sessions (compatibilité frontend Svelte)
+    """
     import time
     
     try:
@@ -1437,6 +1392,8 @@ async def api_get_complete_state():
                 'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
                 # Min score
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
+                'telegram_enabled': TELEGRAM_ENABLED,
             },
             'scanner': {
                 'is_scanning': app_state.get('is_scanning', False),
@@ -1850,9 +1807,17 @@ async def api_check_position():
         
         # Construire réponse
         position = position_manager.active_position
-        pnl = position_manager._calculate_pnl(current_price)
-        pnl_pct = pnl / 100
-        pnl_usdt = position.size * pnl_pct * (current_price / position.entry)
+        # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
+        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+            entry=position.entry,
+            current_price=current_price,
+            direction=position.direction
+        )
+        # Calculer PnL USDT
+        pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+            position=position.to_dict(),
+            current_price=current_price
+        )
         
         response = {
             'status': 'position_active',
@@ -1933,6 +1898,13 @@ async def api_close_position():
             await add_log('INFO', 'Position clôturée', 'Manuel')
             await ws_manager.emit('position_closed', result)
             
+            # 🔥 FIX: Émettre stats_update après fermeture manuelle de position
+            try:
+                from core.callbacks.position_check_loop import _emit_stats_update
+                await _emit_stats_update()
+            except Exception as e:
+                logger.error(f"❌ Erreur émission stats_update: {e}")
+            
             return JSONResponse(result)
         except Exception as e:
             logger.error(f"Erreur clôture position: {e}")
@@ -1984,249 +1956,274 @@ async def scan_top_pairs_task(n):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Endpoint WebSocket bidirectionnel natif"""
-    await ws_manager.connect(websocket)
-    
-    # Envoyer état initial au client
-    status_data = app_state.copy()
-    if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
-        status_data['active_position'] = status_data['active_position'].to_dict()
-    
-    await ws_manager.send_personal_message({
-        'type': 'event',
-        'event': 'status',
-        'data': status_data
-    }, websocket)
-    
-    # Envoyer les derniers logs
-    for log_entry in app_state['logs'][-50:]:
-        await ws_manager.send_personal_message({
-            'type': 'event',
-            'event': 'log',
-            'data': log_entry
-        }, websocket)
-    
     try:
-        # Boucle bidirectionnelle : recevoir et traiter messages
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            
-            msg_type = message.get('type')
-            
-            # Traiter commandes (Frontend → Backend)
-            if msg_type == 'command':
-                command = message.get('command')
-                params = message.get('params', {})
-                command_id = message.get('id')
-                
-                logger.info(f"📨 Commande reçue: {command} (ID: {command_id})")
-                
+        await ws_manager.connect(websocket)
+        
+        # 🔥 FIX: Envoyer état initial au client avec gestion d'erreur
+        try:
+            status_data = app_state.copy()
+            if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
                 try:
-                    result = await handle_client_command(command, params)
+                    status_data['active_position'] = status_data['active_position'].to_dict()
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur conversion position en dict: {e}")
+                    status_data['active_position'] = None
+            
+            await ws_manager.send_personal_message({
+                'type': 'event',
+                'event': 'status',
+                'data': status_data
+            }, websocket)
+        except Exception as e:
+            logger.error(f"❌ Erreur envoi état initial: {e}")
+        
+        # 🔥 FIX: Envoyer les derniers logs avec gestion d'erreur
+        try:
+            for log_entry in app_state.get('logs', [])[-50:]:
+                try:
                     await ws_manager.send_personal_message({
-                        'type': 'command_response',
-                        'id': command_id,
-                        'command': command,
-                        'result': result,
-                        'status': 'success',
-                        'timestamp': time.time()
+                        'type': 'event',
+                        'event': 'log',
+                        'data': log_entry
                     }, websocket)
                 except Exception as e:
-                    logger.error(f"Erreur commande {command}: {e}")
-                    await ws_manager.send_personal_message({
-                        'type': 'command_error',
-                        'id': command_id,
-                        'command': command,
-                        'error': str(e),
-                        'timestamp': time.time()
-                    }, websocket)
-            
-            # Heartbeat (Frontend ↔ Backend)
-            elif msg_type == 'ping':
-                await ws_manager.send_personal_message({
-                    'type': 'pong',
-                    'timestamp': time.time()
-                }, websocket)
-            
-            # Subscription (Frontend → Backend)
-            elif msg_type == 'subscribe':
-                channel = message.get('channel', 'all')
-                ws_manager.subscribe(websocket, channel)
-                await ws_manager.send_personal_message({
-                    'type': 'subscribed',
-                    'channel': channel,
-                    'timestamp': time.time()
-                }, websocket)
-            
-            # Unsubscribe (Frontend → Backend)
-            elif msg_type == 'unsubscribe':
-                channel = message.get('channel', 'all')
-                ws_manager.unsubscribe(websocket, channel)
-                await ws_manager.send_personal_message({
-                    'type': 'unsubscribed',
-                    'channel': channel,
-                    'timestamp': time.time()
-                }, websocket)
-            
-            # Request (Frontend → Backend)
-            elif msg_type == 'request':
-                request_type = message.get('request_type')
-                request_id = message.get('id')
+                    logger.debug(f"⚠️ Erreur envoi log: {e}")
+                    break  # Arrêter si erreur
+        except Exception as e:
+            logger.error(f"❌ Erreur envoi logs: {e}")
+        
+        # Boucle bidirectionnelle : recevoir et traiter messages
+        try:
+            while True:
+                data = await websocket.receive_text()
+                message = json.loads(data)
                 
-                if request_type == 'logs':
-                    await ws_manager.send_personal_message({
-                        'type': 'request_response',
-                        'id': request_id,
-                        'request_type': request_type,
-                        'data': app_state['logs'][-100:]
-                    }, websocket)
+                msg_type = message.get('type')
                 
-                elif request_type == 'position':
-                    if position_manager and position_manager.active_position:
-                        await ws_manager.send_personal_message({
-                            'type': 'request_response',
-                            'id': request_id,
-                            'request_type': request_type,
-                            'data': position_manager.active_position.to_dict()
-                        }, websocket)
-                    else:
-                        await ws_manager.send_personal_message({
-                            'type': 'request_response',
-                            'id': request_id,
-                            'request_type': request_type,
-                            'data': None
-                        }, websocket)
-                
-                elif request_type == 'state':
-                    # 🔥 MIGRATION COMPLÈTE: Récupérer état complet via WebSocket (remplace fetch('/api/state'))
+                # Traiter commandes (Frontend → Backend)
+                if msg_type == 'command':
+                    command = message.get('command')
+                    params = message.get('params', {})
+                    command_id = message.get('id')
+                    
+                    logger.info(f"📨 Commande reçue: {command} (ID: {command_id})")
+                    
                     try:
-                        # Utiliser la même logique que api_get_complete_state
-                        from config import TRADING_CONFIG
-                        # time est déjà importé au niveau du module
-                        
-                        # Récupérer position active
-                        active_position_dict = None
-                        if position_manager and position_manager.active_position:
-                            try:
-                                active_position = position_manager.active_position
-                                active_position_dict = active_position.to_dict()
-                                active_position_dict['timestamp'] = time.time()
-                            except Exception as e:
-                                logger.error(f"❌ Erreur récupération position: {e}")
-                                active_position_dict = None
-                        
-                        # Récupérer stats
-                        stats_dict = {
-                            'total_trades': 0,
-                            'wins': 0,
-                            'losses': 0,
-                            'winrate': 0.0
-                        }
-                        
-                        if analytics_db:
-                            try:
-                                trades = analytics_db.get_trades(limit=10000)
-                                if trades:
-                                    total = len(trades)
-                                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
-                                    losses = total - wins
-                                    winrate = (wins / total * 100) if total > 0 else 0.0
-                                    stats_dict = {
-                                        'total_trades': total,
-                                        'wins': wins,
-                                        'losses': losses,
-                                        'winrate': winrate
-                                    }
-                            except Exception as e:
-                                logger.error(f"❌ Erreur récupération stats: {e}")
-                        
-                        # Fallback app_state
-                        if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
-                            try:
-                                trades = app_state['trade_history']
-                                if trades:
-                                    total = len(trades)
-                                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
-                                    losses = total - wins
-                                    winrate = (wins / total * 100) if total > 0 else 0.0
-                                    stats_dict = {
-                                        'total_trades': total,
-                                        'wins': wins,
-                                        'losses': losses,
-                                        'winrate': winrate
-                                    }
-                            except Exception as e:
-                                logger.error(f"❌ Erreur récupération stats app_state: {e}")
-                        
-                        # Récupérer historique trades
-                        trades_history = []
-                        if analytics_db:
-                            try:
-                                trades_history = analytics_db.get_trades(limit=50)
-                            except Exception as e:
-                                logger.error(f"❌ Erreur récupération historique: {e}")
-                        
-                        if not trades_history and app_state.get('trade_history'):
-                            trades_history = app_state['trade_history'][:50]
-                        
-                        state_data = {
-                            'success': True,
-                            'session_id': session_id or f"live_{int(time.time())}",
-                            'config': {
-                                'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-                                'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
-                                'use_confluence': TRADING_CONFIG.get('use_confluence', False),
-                                'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-                                'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
-                                'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-                                'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
-                                'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
-                                'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                                'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
-                                'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-                                'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-                                'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-                                'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-                                'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-                                'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
-                                'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-                                'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
-                            },
-                            'scanner': {
-                                'is_scanning': app_state.get('is_scanning', False),
-                                'top_pairs': app_state.get('top_pairs', [])
-                            },
-                            'position': {
-                                'active': active_position_dict is not None,
-                                'data': active_position_dict
-                            },
-                            'stats': stats_dict,
-                            'trade_history': trades_history,
-                            'timestamp': time.time()
-                        }
-                        
+                        result = await handle_client_command(command, params)
                         await ws_manager.send_personal_message({
-                            'type': 'request_response',
-                            'id': request_id,
-                            'request_type': request_type,
-                            'data': state_data
+                            'type': 'command_response',
+                            'id': command_id,
+                            'command': command,
+                            'result': result,
+                            'status': 'success',
+                            'timestamp': time.time()
                         }, websocket)
                     except Exception as e:
-                        logger.error(f"❌ Erreur récupération state via WebSocket: {e}", exc_info=True)
+                        logger.error(f"Erreur commande {command}: {e}")
+                        await ws_manager.send_personal_message({
+                            'type': 'command_error',
+                            'id': command_id,
+                            'command': command,
+                            'error': str(e),
+                            'timestamp': time.time()
+                        }, websocket)
+                
+                # Heartbeat (Frontend ↔ Backend)
+                elif msg_type == 'ping':
+                    await ws_manager.send_personal_message({
+                        'type': 'pong',
+                        'timestamp': time.time()
+                    }, websocket)
+                
+                # Subscription (Frontend → Backend)
+                elif msg_type == 'subscribe':
+                    channel = message.get('channel', 'all')
+                    ws_manager.subscribe(websocket, channel)
+                    await ws_manager.send_personal_message({
+                        'type': 'subscribed',
+                        'channel': channel,
+                        'timestamp': time.time()
+                    }, websocket)
+                
+                # Unsubscribe (Frontend → Backend)
+                elif msg_type == 'unsubscribe':
+                    channel = message.get('channel', 'all')
+                    ws_manager.unsubscribe(websocket, channel)
+                    await ws_manager.send_personal_message({
+                        'type': 'unsubscribed',
+                        'channel': channel,
+                        'timestamp': time.time()
+                    }, websocket)
+                
+                # Request (Frontend → Backend)
+                elif msg_type == 'request':
+                    request_type = message.get('request_type')
+                    request_id = message.get('id')
+                    
+                    if request_type == 'logs':
                         await ws_manager.send_personal_message({
                             'type': 'request_response',
                             'id': request_id,
                             'request_type': request_type,
-                            'data': {
-                                'success': False,
-                                'error': str(e)
-                            }
+                            'data': app_state['logs'][-100:]
                         }, websocket)
+                    
+                    elif request_type == 'position':
+                        if position_manager and position_manager.active_position:
+                            await ws_manager.send_personal_message({
+                                'type': 'request_response',
+                                'id': request_id,
+                                'request_type': request_type,
+                                'data': position_manager.active_position.to_dict()
+                            }, websocket)
+                        else:
+                            await ws_manager.send_personal_message({
+                                'type': 'request_response',
+                                'id': request_id,
+                                'request_type': request_type,
+                                'data': None
+                            }, websocket)
+                    
+                    elif request_type == 'state':
+                        # 🔥 MIGRATION COMPLÈTE: Récupérer état complet via WebSocket (remplace fetch('/api/state'))
+                        try:
+                            # Utiliser la même logique que api_get_complete_state
+                            from config import TRADING_CONFIG
+                            # time est déjà importé au niveau du module
+                            
+                            # Récupérer position active
+                            active_position_dict = None
+                            if position_manager and position_manager.active_position:
+                                try:
+                                    active_position = position_manager.active_position
+                                    active_position_dict = active_position.to_dict()
+                                    active_position_dict['timestamp'] = time.time()
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur récupération position: {e}")
+                                    active_position_dict = None
+                            
+                            # Récupérer stats
+                            stats_dict = {
+                                'total_trades': 0,
+                                'wins': 0,
+                                'losses': 0,
+                                'winrate': 0.0
+                            }
+                            
+                            if analytics_db:
+                                try:
+                                    trades = analytics_db.get_trades(limit=10000)
+                                    if trades:
+                                        total = len(trades)
+                                        wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                                        losses = total - wins
+                                        winrate = (wins / total * 100) if total > 0 else 0.0
+                                        stats_dict = {
+                                            'total_trades': total,
+                                            'wins': wins,
+                                            'losses': losses,
+                                            'winrate': winrate
+                                        }
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur récupération stats: {e}")
+                            
+                            # Fallback app_state
+                            if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
+                                try:
+                                    trades = app_state['trade_history']
+                                    if trades:
+                                        total = len(trades)
+                                        wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                                        losses = total - wins
+                                        winrate = (wins / total * 100) if total > 0 else 0.0
+                                        stats_dict = {
+                                            'total_trades': total,
+                                            'wins': wins,
+                                            'losses': losses,
+                                            'winrate': winrate
+                                        }
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur récupération stats app_state: {e}")
+                            
+                            # Récupérer historique trades
+                            trades_history = []
+                            if analytics_db:
+                                try:
+                                    trades_history = analytics_db.get_trades(limit=50)
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur récupération historique: {e}")
+                            
+                            if not trades_history and app_state.get('trade_history'):
+                                trades_history = app_state['trade_history'][:50]
+                            
+                            # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
+                            from config import TELEGRAM_ENABLED
+                            
+                            state_data = {
+                                'success': True,
+                                'session_id': session_id or f"live_{int(time.time())}",
+                                'config': {
+                                    'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+                                    'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                                    'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+                                    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                                    'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+                                    'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                                    'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+                                    'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+                                    'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+                                    'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+                                    'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
+                                    'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+                                    'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+                                    'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+                                    'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                                    'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+                                    'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+                                    'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+                                    'telegram_enabled': TELEGRAM_ENABLED  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
+                                },
+                                'scanner': {
+                                    'is_scanning': app_state.get('is_scanning', False),
+                                    'top_pairs': app_state.get('top_pairs', [])
+                                },
+                                'position': {
+                                    'active': active_position_dict is not None,
+                                    'data': active_position_dict
+                                },
+                                'stats': stats_dict,
+                                'trade_history': trades_history,
+                                'timestamp': time.time()
+                            }
+                            
+                            await ws_manager.send_personal_message({
+                                'type': 'request_response',
+                                'id': request_id,
+                                'request_type': request_type,
+                                'data': state_data
+                            }, websocket)
+                        except Exception as e:
+                            logger.error(f"❌ Erreur récupération state via WebSocket: {e}", exc_info=True)
+                            await ws_manager.send_personal_message({
+                                'type': 'request_response',
+                                'id': request_id,
+                                'request_type': request_type,
+                                'data': {
+                                    'success': False,
+                                    'error': str(e)
+                                }
+                            }, websocket)
+        
+        except WebSocketDisconnect:
+            await ws_manager.disconnect(websocket)
+        except Exception as e:
+            logger.error(f"Erreur WebSocket: {e}")
+            await ws_manager.disconnect(websocket)
     
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket)
     except Exception as e:
-        logger.error(f"Erreur WebSocket: {e}")
+        logger.error(f"Erreur WebSocket globale: {e}")
         await ws_manager.disconnect(websocket)
 
 
@@ -2594,6 +2591,27 @@ async def api_get_config():
         'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
         'account_size': TRADING_CONFIG.get('account_size', 1000.0),
         'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
+    })
+
+
+@app.get("/api/config/complete")
+async def api_get_complete_config():
+    """
+    🔥 NOUVEAU: Récupérer TOUTES les variables de configuration (TRADING_CONFIG complet)
+    Utile pour vérifier toutes les variables prises en compte par le bot
+    """
+    from config import TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
+    from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG
+    
+    return JSONResponse({
+        'trading_config': TRADING_CONFIG,
+        'risk_config': RISK_CONFIG,
+        'condition_weights': CONDITION_WEIGHTS,
+        'trend_bonus_config': TREND_BONUS_CONFIG,
+        'retry_config': RETRY_CONFIG,
+        'circuit_breaker_config': CIRCUIT_BREAKER_CONFIG,
+        'websocket_config': WEBSOCKET_CONFIG,
+        'timestamp': time.time()
     })
 
 
@@ -3047,18 +3065,14 @@ if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     
     logger.info("🚀 Trade Cursor v7.0 démarré")
-    logger.info("📊 FastAPI (async natif) + WebSocket")
+    logger.info("📊 FastAPI (async natif) + WebSocket natif")
+    logger.info("🔥 Backend API uniquement - Frontend Svelte gère l'interface")
     logger.info("")
     logger.info("=" * 70)
     logger.info("📍 URLs DISPONIBLES (Instance Port: {})".format(port))
     logger.info("=" * 70)
-    logger.info(f"🏠 Interface principale      → http://localhost:{port}/")
-    logger.info(f"📊 Dashboard graphiques      → http://localhost:{port}/dashboard/charts")
-    logger.info(f"📈 Analytics & Stats         → http://localhost:{port}/analytics")
-    logger.info(f"🔄 Backtesting               → http://localhost:{port}/backtest")
-    logger.info(f"🤖 ML Optimization           → http://localhost:{port}/optimize")
-    logger.info(f"⚙️ Paramètres               → http://localhost:{port}/settings")
     logger.info(f"💚 API Health check          → http://localhost:{port}/api/health")
+    logger.info(f"📡 WebSocket                 → ws://localhost:{port}/ws")
     logger.info(f"📈 API Stats                 → http://localhost:{port}/api/stats")
     logger.info(f"📋 API Trades (filtres)      → http://localhost:{port}/api/trades?limit=10")
     logger.info(f"❌ API Setups rejetés        → http://localhost:{port}/api/setups/rejected")

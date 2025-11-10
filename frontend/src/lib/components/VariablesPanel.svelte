@@ -68,6 +68,11 @@
 	let saveMessage = '';
 	let activeSubTab = 'setups';
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
+	
+	// Variables pour l'onglet "Variables en cours"
+	let completeConfig = null;
+	let loadingCompleteConfig = false;
+	let completeConfigError = null;
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
 	function autoAdjustEscalierSize(changedLevel) {
@@ -112,6 +117,166 @@
 	onMount(async () => {
 		await loadConfig();
 	});
+	
+	// Fonction pour charger la configuration complète
+	async function loadCompleteConfig() {
+		loadingCompleteConfig = true;
+		completeConfigError = null;
+		try {
+			const response = await fetch('/api/config/complete');
+			if (!response.ok) {
+				throw new Error(`Erreur HTTP: ${response.status}`);
+			}
+			completeConfig = await response.json();
+			console.log('✅ Configuration complète chargée:', completeConfig);
+		} catch (err) {
+			console.error('❌ Erreur chargement config complète:', err);
+			completeConfigError = err.message || 'Impossible de charger la configuration complète';
+		} finally {
+			loadingCompleteConfig = false;
+		}
+	}
+	
+	// Charger la config complète quand on active l'onglet
+	$: if (activeSubTab === 'current' && !completeConfig && !loadingCompleteConfig) {
+		loadCompleteConfig();
+	}
+	
+	// Fonction pour formater une valeur selon son type
+	function formatValue(value: any): string {
+		if (value === null || value === undefined) return 'N/A';
+		if (typeof value === 'boolean') return value ? '✅ Activé' : '❌ Désactivé';
+		if (typeof value === 'object') {
+			// Pour les objets, retourner une représentation compacte
+			if (Array.isArray(value)) {
+				return `[${value.length} éléments]`;
+			}
+			return `{${Object.keys(value).length} propriétés}`;
+		}
+		if (typeof value === 'number') {
+			// Formater les nombres avec 2-4 décimales selon la valeur
+			if (value < 0.01) return value.toFixed(4);
+			if (value < 1) return value.toFixed(3);
+			if (value < 100) return value.toFixed(2);
+			return value.toFixed(0);
+		}
+		return String(value);
+	}
+
+	// Fonction pour formater une valeur complète (pour les objets)
+	function formatFullValue(value: any): string {
+		if (value === null || value === undefined) return 'N/A';
+		if (typeof value === 'boolean') return value ? '✅ Activé' : '❌ Désactivé';
+		if (typeof value === 'object') {
+			return JSON.stringify(value, null, 2);
+		}
+		return formatValue(value);
+	}
+
+	// Fonction pour organiser TRADING_CONFIG par catégories
+	function organizeTradingConfig(tradingConfig: any) {
+		if (!tradingConfig) return {};
+		
+		return {
+			'⚙️ Général': {
+				fee_per_trade: tradingConfig.fee_per_trade,
+				use_slippage_calculation: tradingConfig.use_slippage_calculation,
+				position_timeout: tradingConfig.position_timeout,
+				check_interval: tradingConfig.check_interval,
+				scan_interval: tradingConfig.scan_interval,
+				scalability_interval: tradingConfig.scalability_interval,
+			},
+			'📊 Validation & Scoring': {
+				min_conditions: tradingConfig.min_conditions,
+				use_weighted_scoring: tradingConfig.use_weighted_scoring,
+				min_score_required: tradingConfig.min_score_required,
+				min_score_adx_high: tradingConfig.min_score_adx_high,
+				min_score_adx_low: tradingConfig.min_score_adx_low,
+				dynamic_tolerance_adx_high: tradingConfig.dynamic_tolerance_adx_high,
+				dynamic_tolerance_adx_low: tradingConfig.dynamic_tolerance_adx_low,
+			},
+			'🎯 Patterns Techniques': {
+				use_breakout: tradingConfig.use_breakout,
+				use_snr: tradingConfig.use_snr,
+				use_wick: tradingConfig.use_wick,
+				use_divergence: tradingConfig.use_divergence,
+			},
+			'🕯️ Patterns de Bougies': {
+				use_engulfing: tradingConfig.use_engulfing,
+				use_hammer: tradingConfig.use_hammer,
+				use_shooting_star: tradingConfig.use_shooting_star,
+				use_doji: tradingConfig.use_doji,
+				use_marubozu: tradingConfig.use_marubozu,
+				use_morning_star: tradingConfig.use_morning_star,
+				use_evening_star: tradingConfig.use_evening_star,
+			},
+			'📈 Seuils & Filtres': {
+				snr_threshold: tradingConfig.snr_threshold,
+				breakout_threshold: tradingConfig.breakout_threshold,
+				wick_ratio_max: tradingConfig.wick_ratio_max,
+				di_gap_min: tradingConfig.di_gap_min,
+				di_gap_adx_threshold: tradingConfig.di_gap_adx_threshold,
+				optimal_atr_min_1m: tradingConfig.optimal_atr_min_1m,
+				optimal_atr_max_1m: tradingConfig.optimal_atr_max_1m,
+				optimal_atr_min_5m: tradingConfig.optimal_atr_min_5m,
+				optimal_atr_max_5m: tradingConfig.optimal_atr_max_5m,
+			},
+			'💰 Money Management': {
+				account_size: tradingConfig.account_size,
+				risk_per_trade: tradingConfig.risk_per_trade,
+				volume_multiplier: tradingConfig.volume_multiplier,
+				use_confluence: tradingConfig.use_confluence,
+			},
+			'🎯 TP/SL Configuration': {
+				tp_sl_mode: tradingConfig.tp_sl_mode,
+				tp_percent: tradingConfig.tp_percent,
+				sl_percent: tradingConfig.sl_percent,
+				break_even_trigger: tradingConfig.break_even_trigger,
+				trailing_distance: tradingConfig.trailing_distance,
+			},
+			'📐 Mode ATR': {
+				atr_mult_tp: tradingConfig.atr_mult_tp,
+				atr_mult_sl: tradingConfig.atr_mult_sl,
+				atr_min: tradingConfig.atr_min,
+				atr_max: tradingConfig.atr_max,
+			},
+			'🪜 TP Escalier': {
+				partial_tp_percent: tradingConfig.partial_tp_percent,
+				escalier_level1_pnl: tradingConfig.escalier_level1_pnl,
+				escalier_level1_size: tradingConfig.escalier_level1_size,
+				escalier_level2_pnl: tradingConfig.escalier_level2_pnl,
+				escalier_level2_size: tradingConfig.escalier_level2_size,
+				escalier_level3_pnl: tradingConfig.escalier_level3_pnl,
+				escalier_level3_size: tradingConfig.escalier_level3_size,
+				escalier_level4_pnl: tradingConfig.escalier_level4_pnl,
+				escalier_level4_size: tradingConfig.escalier_level4_size,
+			},
+			'📉 Trailing Stop': {
+				trailing_enabled: tradingConfig.trailing_enabled,
+				trailing_trigger_pnl: tradingConfig.trailing_trigger_pnl,
+				trailing_atr_multiplier: tradingConfig.trailing_atr_multiplier,
+				trailing_min_distance: tradingConfig.trailing_min_distance,
+				trailing_max_distance: tradingConfig.trailing_max_distance,
+			},
+			'⏱️ Timeframe & Trend': {
+				trend_timeframe: tradingConfig.trend_timeframe,
+			},
+			'🔍 Scanner': {
+				top_pairs_limit: tradingConfig.top_pairs_limit,
+				balance_score_min: tradingConfig.balance_score_min,
+			},
+			'⚙️ Configurations Avancées': {
+				early_invalidation: tradingConfig.early_invalidation,
+				trailing_stop: tradingConfig.trailing_stop,
+				adaptive_thresholds: tradingConfig.adaptive_thresholds,
+				dynamic_correlation: tradingConfig.dynamic_correlation,
+				position_sizing: tradingConfig.position_sizing,
+				correlation_filter: tradingConfig.correlation_filter,
+				recovery_mode: tradingConfig.recovery_mode,
+				tp_escalier: tradingConfig.tp_escalier,
+			},
+		};
+	}
 
 	async function loadConfig() {
 		try {
@@ -269,6 +434,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'}>
 			🎯 TP/SL & Position
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'current'} on:click={() => activeSubTab = 'current'}>
+			📋 Variables en cours
 		</button>
 	</div>
 
@@ -1445,6 +1613,152 @@
 				</div>
 			</section>
 		{/if}
+
+		<!-- ONGLET VARIABLES EN COURS -->
+		{#if activeSubTab === 'current'}
+			<section class="variable-section current-vars-section">
+				<div class="current-vars-header">
+					<h3>📋 Variables en cours</h3>
+					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig}>
+						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
+					</button>
+				</div>
+				<p class="section-desc">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
+
+				{#if loadingCompleteConfig}
+					<div class="loading-message">
+						⏳ Chargement de la configuration complète...
+					</div>
+				{:else if completeConfigError}
+					<div class="error-message">
+						❌ Erreur: {completeConfigError}
+					</div>
+				{:else if completeConfig}
+					<div class="complete-config-container">
+						<!-- TRADING_CONFIG organisé par catégories -->
+						<div class="config-category main-category">
+							<h4 class="category-title">🔧 TRADING_CONFIG</h4>
+							{#each Object.entries(organizeTradingConfig(completeConfig.trading_config)) as [categoryName, categoryVars]}
+								<div class="config-subcategory">
+									<h5 class="subcategory-title">{categoryName}</h5>
+									<div class="config-grid">
+										{#each Object.entries(categoryVars) as [key, value]}
+											{#if value !== undefined && value !== null}
+												<div class="config-item">
+													<span class="config-key">{key}:</span>
+													<span class="config-value" title={typeof value === 'object' ? formatFullValue(value) : ''}>
+														{formatValue(value)}
+													</span>
+												</div>
+											{/if}
+										{/each}
+									</div>
+									{#if Object.values(categoryVars).some(v => typeof v === 'object' && v !== null && !Array.isArray(v))}
+										<!-- Afficher les objets complexes en détail -->
+										{#each Object.entries(categoryVars) as [key, value]}
+											{#if typeof value === 'object' && value !== null && !Array.isArray(value)}
+												<div class="config-object-detail">
+													<details>
+														<summary class="config-object-summary">{key} (détails)</summary>
+														<pre class="config-object-content">{formatFullValue(value)}</pre>
+													</details>
+												</div>
+											{/if}
+										{/each}
+									{/if}
+								</div>
+							{/each}
+						</div>
+
+						<!-- RISK_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">⚠️ RISK_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.risk_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- CONDITION_WEIGHTS -->
+						<div class="config-category">
+							<h4 class="category-title">⚖️ CONDITION_WEIGHTS</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.condition_weights || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- TREND_BONUS_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">📈 TREND_BONUS_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.trend_bonus_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- RETRY_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">🔄 RETRY_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.retry_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- CIRCUIT_BREAKER_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">⚡ CIRCUIT_BREAKER_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.circuit_breaker_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- WEBSOCKET_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">📡 WEBSOCKET_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.websocket_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<div class="config-timestamp">
+							<small>Dernière mise à jour: {new Date(completeConfig.timestamp * 1000).toLocaleString('fr-FR')}</small>
+						</div>
+					</div>
+				{:else}
+					<div class="info-message">
+						ℹ️ Cliquez sur "Actualiser" pour charger la configuration complète
+					</div>
+				{/if}
+			</section>
+		{/if}
 	</div>
 </div>
 
@@ -2006,5 +2320,207 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 		gap: 12px;
+	}
+
+	/* Variables en cours - Styles */
+	.current-vars-section {
+		grid-column: 1 / -1;
+	}
+
+	.current-vars-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 16px;
+	}
+
+	.current-vars-header h3 {
+		margin: 0;
+	}
+
+	.btn-refresh {
+		background: linear-gradient(135deg, #00aaff 0%, #0088cc 100%);
+		border: none;
+		color: #fff;
+		padding: 8px 16px;
+		border-radius: 6px;
+		font-size: 13px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.btn-refresh:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 170, 255, 0.4);
+	}
+
+	.btn-refresh:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.loading-message,
+	.error-message,
+	.info-message {
+		padding: 20px;
+		border-radius: 8px;
+		text-align: center;
+		font-size: 14px;
+		margin: 20px 0;
+	}
+
+	.loading-message {
+		background: rgba(0, 170, 255, 0.1);
+		border: 1px solid rgba(0, 170, 255, 0.3);
+		color: #00aaff;
+	}
+
+	.error-message {
+		background: rgba(255, 68, 68, 0.1);
+		border: 1px solid rgba(255, 68, 68, 0.3);
+		color: #ff4444;
+	}
+
+	.info-message {
+		background: rgba(255, 170, 0, 0.1);
+		border: 1px solid rgba(255, 170, 0, 0.3);
+		color: #ffaa00;
+	}
+
+	.complete-config-container {
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+	}
+
+	.config-category {
+		background: rgba(0, 170, 255, 0.05);
+		border: 1px solid rgba(0, 170, 255, 0.2);
+		border-radius: 8px;
+		padding: 16px;
+	}
+
+	.config-category.main-category {
+		background: rgba(0, 170, 255, 0.08);
+		border: 2px solid rgba(0, 170, 255, 0.3);
+	}
+
+	.category-title {
+		font-size: 18px;
+		color: #00aaff;
+		margin: 0 0 20px 0;
+		padding-bottom: 12px;
+		border-bottom: 2px solid rgba(0, 170, 255, 0.3);
+		font-weight: bold;
+	}
+
+	.config-subcategory {
+		margin-bottom: 24px;
+		padding: 16px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 6px;
+		border-left: 3px solid rgba(0, 255, 136, 0.5);
+	}
+
+	.subcategory-title {
+		font-size: 14px;
+		color: #00ff88;
+		margin: 0 0 12px 0;
+		padding-bottom: 8px;
+		border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+		font-weight: bold;
+	}
+
+	.config-object-detail {
+		margin-top: 12px;
+		padding: 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.config-object-summary {
+		cursor: pointer;
+		color: #00aaff;
+		font-size: 13px;
+		font-weight: bold;
+		padding: 8px;
+		user-select: none;
+	}
+
+	.config-object-summary:hover {
+		color: #00ff88;
+	}
+
+	.config-object-content {
+		margin: 8px 0 0 0;
+		padding: 12px;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 4px;
+		font-family: 'Courier New', monospace;
+		font-size: 12px;
+		color: #ccc;
+		overflow-x: auto;
+		white-space: pre-wrap;
+		word-wrap: break-word;
+	}
+
+	.config-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+		gap: 12px;
+	}
+
+	.config-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		gap: 12px;
+	}
+
+	.config-key {
+		font-family: 'Courier New', monospace;
+		font-size: 13px;
+		color: #00ff88;
+		font-weight: bold;
+		flex-shrink: 0;
+	}
+
+	.config-value {
+		font-family: 'Courier New', monospace;
+		font-size: 13px;
+		color: #fff;
+		text-align: right;
+		word-break: break-word;
+		flex: 1;
+	}
+
+	.config-timestamp {
+		text-align: center;
+		padding: 12px;
+		color: #888;
+		font-size: 12px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		margin-top: 8px;
+	}
+
+	@media (max-width: 768px) {
+		.config-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.config-item {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.config-value {
+			text-align: left;
+		}
 	}
 </style>

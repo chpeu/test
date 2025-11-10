@@ -167,6 +167,8 @@ async def position_check_loop_callback():
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
                     await _ws_manager.emit('position_closed', result)
+                    # 🔥 FIX: Émettre stats_update après fermeture de position
+                    await _emit_stats_update()
 
     except Exception as e:
         logger.error(f"❌ Erreur position_check_loop_callback: {e}")
@@ -256,3 +258,98 @@ async def _emit_position_update(position, current_price: float):
 
     except Exception as e:
         logger.error(f"❌ Erreur émission position_update: {e}")
+
+
+async def _emit_stats_update():
+    """
+    Calculer et émettre les stats au frontend via WebSocket
+    
+    Cette fonction calcule les stats depuis analytics_db ou app_state
+    et les émet via WebSocket pour synchronisation temps réel
+    """
+    if not _ws_manager or not _app_state:
+        return
+    
+    try:
+        import time
+        stats_dict = {
+            'total_trades': 0,
+            'wins': 0,
+            'losses': 0,
+            'total_pnl_usdt': 0.0,
+            'total_pnl_pct': 0.0,
+            'best_trade': None,
+            'worst_trade': None,
+            'avg_trade_duration': 0.0
+        }
+        
+        # Récupérer stats depuis analytics_db si disponible
+        if _analytics_db:
+            try:
+                trades = _analytics_db.get_trades(limit=10000)
+                if trades:
+                    total = len(trades)
+                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                    losses = total - wins
+                    
+                    # Calculer PnL total
+                    total_pnl_usdt = sum(t.get('pnl_usdt', 0) for t in trades)
+                    total_pnl_pct = sum(t.get('pnl_pct', 0) for t in trades)
+                    
+                    # Trouver best/worst trade
+                    best_trade = max(trades, key=lambda t: t.get('pnl_usdt', 0), default=None)
+                    worst_trade = min(trades, key=lambda t: t.get('pnl_usdt', 0), default=None)
+                    
+                    # Calculer durée moyenne
+                    durations = [t.get('duration_seconds', 0) for t in trades if t.get('duration_seconds')]
+                    avg_duration = sum(durations) / len(durations) if durations else 0.0
+                    
+                    stats_dict = {
+                        'total_trades': total,
+                        'wins': wins,
+                        'losses': losses,
+                        'total_pnl_usdt': round(total_pnl_usdt, 2),
+                        'total_pnl_pct': round(total_pnl_pct, 2),
+                        'best_trade': best_trade,
+                        'worst_trade': worst_trade,
+                        'avg_trade_duration': round(avg_duration, 2)
+                    }
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération stats analytics_db: {e}")
+        
+        # Fallback: utiliser app_state['trade_history']
+        if stats_dict['total_trades'] == 0 and _app_state.get('trade_history'):
+            try:
+                trades = _app_state['trade_history']
+                if trades:
+                    total = len(trades)
+                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('pnl_usdt', 0) > 0)
+                    losses = total - wins
+                    
+                    # Calculer PnL total
+                    total_pnl_usdt = sum(t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) for t in trades)
+                    total_pnl_pct = sum(t.get('net_pnl_pct', t.get('pnl_pct', 0)) for t in trades)
+                    
+                    # Trouver best/worst trade
+                    best_trade = max(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
+                    worst_trade = min(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
+                    
+                    stats_dict = {
+                        'total_trades': total,
+                        'wins': wins,
+                        'losses': losses,
+                        'total_pnl_usdt': round(total_pnl_usdt, 2),
+                        'total_pnl_pct': round(total_pnl_pct, 2),
+                        'best_trade': best_trade,
+                        'worst_trade': worst_trade,
+                        'avg_trade_duration': 0.0  # Pas disponible dans app_state
+                    }
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération stats app_state: {e}")
+        
+        # Émettre stats_update via WebSocket
+        await _ws_manager.emit('stats_update', stats_dict)
+        logger.debug(f"📊 stats_update émis: {stats_dict['wins']}W/{stats_dict['losses']}L - Total: {stats_dict['total_trades']}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur émission stats_update: {e}")
