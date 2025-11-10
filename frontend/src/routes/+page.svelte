@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
-	import type BidirectionalWebSocket from '$lib/utils/websocket';
+	type BidirectionalWebSocket = ReturnType<typeof initWebSocket>;
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -80,7 +80,8 @@
 			// Debug: Vérifier le type de l'instance
 			console.log('🔍 Type de ws:', typeof ws);
 			console.log('🔍 ws.constructor:', ws?.constructor?.name);
-			console.log('🔍 ws instanceof BidirectionalWebSocket:', ws instanceof BidirectionalWebSocket);
+			// Note: instanceof ne fonctionne pas avec les types, on vérifie les méthodes à la place
+			console.log('🔍 ws a la méthode on?', typeof (ws as any).on === 'function');
 			console.log('🔍 Méthodes disponibles:', Object.getOwnPropertyNames(Object.getPrototypeOf(ws)));
 			console.log('🔍 ws.on existe?', 'on' in ws);
 			console.log('🔍 typeof ws.on:', typeof ws.on);
