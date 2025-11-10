@@ -68,6 +68,11 @@
 	let saveMessage = '';
 	let activeSubTab = 'setups';
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
+	
+	// Variables pour l'onglet "Variables en cours"
+	let completeConfig = null;
+	let loadingCompleteConfig = false;
+	let completeConfigError = null;
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
 	function autoAdjustEscalierSize(changedLevel) {
@@ -112,6 +117,45 @@
 	onMount(async () => {
 		await loadConfig();
 	});
+	
+	// Fonction pour charger la configuration complète
+	async function loadCompleteConfig() {
+		loadingCompleteConfig = true;
+		completeConfigError = null;
+		try {
+			const response = await fetch('/api/config/complete');
+			if (!response.ok) {
+				throw new Error(`Erreur HTTP: ${response.status}`);
+			}
+			completeConfig = await response.json();
+			console.log('✅ Configuration complète chargée:', completeConfig);
+		} catch (err) {
+			console.error('❌ Erreur chargement config complète:', err);
+			completeConfigError = err.message || 'Impossible de charger la configuration complète';
+		} finally {
+			loadingCompleteConfig = false;
+		}
+	}
+	
+	// Charger la config complète quand on active l'onglet
+	$: if (activeSubTab === 'current' && !completeConfig && !loadingCompleteConfig) {
+		loadCompleteConfig();
+	}
+	
+	// Fonction pour formater une valeur selon son type
+	function formatValue(value: any): string {
+		if (value === null || value === undefined) return 'N/A';
+		if (typeof value === 'boolean') return value ? '✅ Activé' : '❌ Désactivé';
+		if (typeof value === 'object') return JSON.stringify(value, null, 2);
+		if (typeof value === 'number') {
+			// Formater les nombres avec 2-4 décimales selon la valeur
+			if (value < 0.01) return value.toFixed(4);
+			if (value < 1) return value.toFixed(3);
+			if (value < 100) return value.toFixed(2);
+			return value.toFixed(0);
+		}
+		return String(value);
+	}
 
 	async function loadConfig() {
 		try {
@@ -269,6 +313,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'}>
 			🎯 TP/SL & Position
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'current'} on:click={() => activeSubTab = 'current'}>
+			📋 Variables en cours
 		</button>
 	</div>
 
@@ -1445,6 +1492,130 @@
 				</div>
 			</section>
 		{/if}
+
+		<!-- ONGLET VARIABLES EN COURS -->
+		{#if activeSubTab === 'current'}
+			<section class="variable-section current-vars-section">
+				<div class="current-vars-header">
+					<h3>📋 Variables en cours</h3>
+					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig}>
+						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
+					</button>
+				</div>
+				<p class="section-desc">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
+
+				{#if loadingCompleteConfig}
+					<div class="loading-message">
+						⏳ Chargement de la configuration complète...
+					</div>
+				{:else if completeConfigError}
+					<div class="error-message">
+						❌ Erreur: {completeConfigError}
+					</div>
+				{:else if completeConfig}
+					<div class="complete-config-container">
+						<!-- TRADING_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">🔧 TRADING_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.trading_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- RISK_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">⚠️ RISK_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.risk_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- CONDITION_WEIGHTS -->
+						<div class="config-category">
+							<h4 class="category-title">⚖️ CONDITION_WEIGHTS</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.condition_weights || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- TREND_BONUS_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">📈 TREND_BONUS_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.trend_bonus_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- RETRY_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">🔄 RETRY_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.retry_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- CIRCUIT_BREAKER_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">⚡ CIRCUIT_BREAKER_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.circuit_breaker_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- WEBSOCKET_CONFIG -->
+						<div class="config-category">
+							<h4 class="category-title">📡 WEBSOCKET_CONFIG</h4>
+							<div class="config-grid">
+								{#each Object.entries(completeConfig.websocket_config || {}) as [key, value]}
+									<div class="config-item">
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<div class="config-timestamp">
+							<small>Dernière mise à jour: {new Date(completeConfig.timestamp * 1000).toLocaleString('fr-FR')}</small>
+						</div>
+					</div>
+				{:else}
+					<div class="info-message">
+						ℹ️ Cliquez sur "Actualiser" pour charger la configuration complète
+					</div>
+				{/if}
+			</section>
+		{/if}
 	</div>
 </div>
 
@@ -2006,5 +2177,150 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 		gap: 12px;
+	}
+
+	/* Variables en cours - Styles */
+	.current-vars-section {
+		grid-column: 1 / -1;
+	}
+
+	.current-vars-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 16px;
+	}
+
+	.current-vars-header h3 {
+		margin: 0;
+	}
+
+	.btn-refresh {
+		background: linear-gradient(135deg, #00aaff 0%, #0088cc 100%);
+		border: none;
+		color: #fff;
+		padding: 8px 16px;
+		border-radius: 6px;
+		font-size: 13px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.btn-refresh:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 170, 255, 0.4);
+	}
+
+	.btn-refresh:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.loading-message,
+	.error-message,
+	.info-message {
+		padding: 20px;
+		border-radius: 8px;
+		text-align: center;
+		font-size: 14px;
+		margin: 20px 0;
+	}
+
+	.loading-message {
+		background: rgba(0, 170, 255, 0.1);
+		border: 1px solid rgba(0, 170, 255, 0.3);
+		color: #00aaff;
+	}
+
+	.error-message {
+		background: rgba(255, 68, 68, 0.1);
+		border: 1px solid rgba(255, 68, 68, 0.3);
+		color: #ff4444;
+	}
+
+	.info-message {
+		background: rgba(255, 170, 0, 0.1);
+		border: 1px solid rgba(255, 170, 0, 0.3);
+		color: #ffaa00;
+	}
+
+	.complete-config-container {
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+	}
+
+	.config-category {
+		background: rgba(0, 170, 255, 0.05);
+		border: 1px solid rgba(0, 170, 255, 0.2);
+		border-radius: 8px;
+		padding: 16px;
+	}
+
+	.category-title {
+		font-size: 16px;
+		color: #00aaff;
+		margin: 0 0 16px 0;
+		padding-bottom: 12px;
+		border-bottom: 2px solid rgba(0, 170, 255, 0.3);
+	}
+
+	.config-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+		gap: 12px;
+	}
+
+	.config-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		gap: 12px;
+	}
+
+	.config-key {
+		font-family: 'Courier New', monospace;
+		font-size: 13px;
+		color: #00ff88;
+		font-weight: bold;
+		flex-shrink: 0;
+	}
+
+	.config-value {
+		font-family: 'Courier New', monospace;
+		font-size: 13px;
+		color: #fff;
+		text-align: right;
+		word-break: break-word;
+		flex: 1;
+	}
+
+	.config-timestamp {
+		text-align: center;
+		padding: 12px;
+		color: #888;
+		font-size: 12px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		margin-top: 8px;
+	}
+
+	@media (max-width: 768px) {
+		.config-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.config-item {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.config-value {
+			text-align: left;
+		}
 	}
 </style>
