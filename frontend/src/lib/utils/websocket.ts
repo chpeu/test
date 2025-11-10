@@ -399,12 +399,13 @@ export function getWebSocket(): BidirectionalWebSocket | null {
     return wsInstance;
 }
 
-export function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
+// Export explicite pour sendCommandViaWS
+export const sendCommandViaWS = function(command: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendCommand(command, params);
-}
+};
 
 export function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
