@@ -1956,26 +1956,41 @@ async def scan_top_pairs_task(n):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Endpoint WebSocket bidirectionnel natif"""
-    await ws_manager.connect(websocket)
-    
-    # Envoyer état initial au client
-    status_data = app_state.copy()
-    if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
-        status_data['active_position'] = status_data['active_position'].to_dict()
-    
-    await ws_manager.send_personal_message({
-        'type': 'event',
-        'event': 'status',
-        'data': status_data
-    }, websocket)
-    
-    # Envoyer les derniers logs
-    for log_entry in app_state['logs'][-50:]:
-        await ws_manager.send_personal_message({
-            'type': 'event',
-            'event': 'log',
-            'data': log_entry
-        }, websocket)
+    try:
+        await ws_manager.connect(websocket)
+        
+        # 🔥 FIX: Envoyer état initial au client avec gestion d'erreur
+        try:
+            status_data = app_state.copy()
+            if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
+                try:
+                    status_data['active_position'] = status_data['active_position'].to_dict()
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur conversion position en dict: {e}")
+                    status_data['active_position'] = None
+            
+            await ws_manager.send_personal_message({
+                'type': 'event',
+                'event': 'status',
+                'data': status_data
+            }, websocket)
+        except Exception as e:
+            logger.error(f"❌ Erreur envoi état initial: {e}")
+        
+        # 🔥 FIX: Envoyer les derniers logs avec gestion d'erreur
+        try:
+            for log_entry in app_state.get('logs', [])[-50:]:
+                try:
+                    await ws_manager.send_personal_message({
+                        'type': 'event',
+                        'event': 'log',
+                        'data': log_entry
+                    }, websocket)
+                except Exception as e:
+                    logger.debug(f"⚠️ Erreur envoi log: {e}")
+                    break  # Arrêter si erreur
+        except Exception as e:
+            logger.error(f"❌ Erreur envoi logs: {e}")
     
     try:
         # Boucle bidirectionnelle : recevoir et traiter messages
