@@ -1246,6 +1246,10 @@ async def api_get_sessions_stats_global():
 
 @app.get("/api/state")
 async def api_get_complete_state():
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket request 'state' à la place
+    Conservé pour compatibilité uniquement
+    """
     """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
     import time
     logger.info("🔍 /api/state appelé - Début de la fonction")
@@ -1465,7 +1469,11 @@ async def api_get_complete_state():
 
 @app.post("/api/start")
 async def api_start():
-    """Démarrer le scanner et le scheduler"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'start_scanner' à la place
+    Conservé pour compatibilité uniquement
+    Démarrer le scanner et le scheduler
+    """
     init_instances()
     
     # 🔥 JOUR 3: Si pas de top_pairs, faire un scan initial
@@ -1502,7 +1510,11 @@ async def api_start():
 
 @app.post("/api/stop")
 async def api_stop():
-    """Arrêter le scanner et le scheduler"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'stop_scanner' à la place
+    Conservé pour compatibilité uniquement
+    Arrêter le scanner et le scheduler
+    """
     init_instances()
     
     # 🔥 JOUR 3: Arrêter le scheduler
@@ -1525,7 +1537,11 @@ async def api_get_top_pairs():
 
 @app.post("/api/scanner/start")
 async def api_scanner_start(request: Request):
-    """Démarrer scanner scalability"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'start_scanner' à la place
+    Conservé pour compatibilité uniquement
+    Démarrer scanner scalability
+    """
     if app_state['is_scanning']:
         return JSONResponse({'error': 'Déjà en cours'}, status_code=400)
     
@@ -1863,7 +1879,11 @@ async def api_check_position():
 
 @app.post("/api/position/close")
 async def api_close_position():
-    """Clôturer position manuellement"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'close_position' à la place
+    Conservé pour compatibilité uniquement
+    Clôturer position manuellement
+    """
     init_instances()
     
     # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
@@ -2587,7 +2607,10 @@ async def get_condition_metrics():
 
 @app.post("/api/log/config")
 async def api_log_config(request: Request):
-    """🔥 FIX: Endpoint pour logger les changements de config (compatibilité frontend Svelte)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'log_config' à la place
+    Conservé pour compatibilité uniquement
+    """
     try:
         data = await request.json() if hasattr(request, 'json') else {}
         data = data if isinstance(data, dict) else {}
@@ -2603,9 +2626,13 @@ async def api_log_config(request: Request):
         return JSONResponse({'error': str(e)}, status_code=500)
 
 @app.post("/api/config")
-@app.post("/api/config/update")  # 🔥 FIX: Alias pour compatibilité frontend Svelte
+@app.post("/api/config/update")  # ⚠️ DEPRECATED: Utiliser WebSocket command 'update_config' à la place
 async def api_update_config(request: Request):
-    """Modifier la configuration à la volée (tous les paramètres)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'update_config' à la place
+    Conservé pour compatibilité uniquement
+    Modifier la configuration à la volée (tous les paramètres)
+    """
     from config import TRADING_CONFIG
     
     try:
@@ -2785,7 +2812,7 @@ async def api_update_config(request: Request):
 # Helper functions
 
 async def add_log(level, message, detail=''):
-    """Ajouter un log et envoyer via WebSocket (SocketIO + WebSocket natif)"""
+    """Ajouter un log et envoyer via WebSocket natif uniquement"""
     from datetime import datetime
     
     entry = {
