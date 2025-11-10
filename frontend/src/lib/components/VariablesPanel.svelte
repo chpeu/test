@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	// 🔥 REMPLACEMENT: WebSocket natif - plus besoin de getSocket()

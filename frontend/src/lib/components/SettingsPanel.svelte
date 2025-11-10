@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { settings, updateSetting, resetSettings, exportSettings, importSettings } from '$lib/stores/settings';
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS, getWebSocket } from '$lib/utils/websocket';

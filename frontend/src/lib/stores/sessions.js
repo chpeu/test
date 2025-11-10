@@ -305,10 +305,5 @@ function getActiveSessionId() {
 	return id;
 }
 
-// Auto-refresh sessions toutes les 10 secondes
-if (browser) {
-	setInterval(() => {
-		loadSessions();
-		loadGlobalStats();
-	}, 10000);
-}
+// 🔥 BIDIRECTIONNEL: Plus de polling REST - Utiliser WebSocket pour mises à jour temps réel
+// Les mises à jour seront déclenchées par les événements WebSocket dans les composants

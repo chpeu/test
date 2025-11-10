@@ -140,6 +140,70 @@
 			}
 		});
 		
+		// 🔥 BIDIRECTIONNEL: Écouter les logs depuis le backend pour synchronisation temps réel
+		ws.on('log', async (logEntry: any) => {
+			const { addLog } = await import('$lib/stores/logs');
+			// Convertir le timestamp si nécessaire
+			if (logEntry.timestamp && !logEntry.timestamp.includes('T')) {
+				// Format HH:MM:SS -> ISO
+				const today = new Date().toISOString().split('T')[0];
+				logEntry.timestamp = `${today}T${logEntry.timestamp}`;
+			}
+			addLog(logEntry);
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de position
+		ws.on('position_update', async (data: any) => {
+			const { setPosition } = await import('$lib/stores/position');
+			if (data) {
+				setPosition(data);
+			}
+		});
+		
+		ws.on('position_opened', async (data: any) => {
+			const { setPosition } = await import('$lib/stores/position');
+			if (data) {
+				setPosition(data);
+			}
+		});
+		
+		ws.on('position_closed', async (data: any) => {
+			const { clearPosition } = await import('$lib/stores/position');
+			clearPosition();
+			// Recharger l'historique des trades
+			const { setTradeHistory } = await import('$lib/stores/trades');
+			if (data && data.trade) {
+				setTradeHistory([data.trade]);
+			}
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de stats
+		ws.on('stats_update', async (data: any) => {
+			const { updateStats } = await import('$lib/stores/stats');
+			if (data) {
+				updateStats(data);
+			}
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour des top pairs
+		ws.on('top_pairs_update', async (data: any) => {
+			// Mettre à jour le store si nécessaire
+			if (data && data.pairs) {
+				// Les top pairs seront affichés dans ScannerPanel
+			}
+		});
+		
+		// 🔥 BIDIRECTIONNEL: Écouter les événements de scan
+		ws.on('scan_started', async (data: any) => {
+			const { setIsScanning } = await import('$lib/stores/scanner');
+			setIsScanning(true);
+		});
+		
+		ws.on('scan_complete', async (data: any) => {
+			const { setIsScanning } = await import('$lib/stores/scanner');
+			setIsScanning(false);
+		});
+		
 		ws.on('connect', () => {
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;
@@ -152,14 +216,67 @@
 		});
 	}
 
+	// 🔥 BIDIRECTIONNEL: Fonction helper pour traiter les données d'état
+	async function processStateData(data: any) {
+		// 🔥 FIX: Mettre à jour l'état du bot dans BotControls via l'API status
+		// (BotControls utilise le store isScanning mis à jour via WebSocket natif)
+		if (data.is_scanning !== undefined) {
+			// L'état sera mis à jour via WebSocket natif ou le composant BotControls
+		}
+		
+		// 🔥 FIX: Nettoyer les données d'anciennes sessions si aucune position active
+		// Les données seront rechargées via WebSocket natif si nécessaire
+		if (!data.active_position && !data.position?.active) {
+			// Nettoyer la position
+			const { clearPosition } = await import('$lib/stores/position');
+			clearPosition();
+		}
+		
+		// 🔥 FIX: Nettoyer et charger l'historique des trades depuis le backend
+		const { setTradeHistory, clearHistory } = await import('$lib/stores/trades');
+		const tradeHistory = data.trade_history || (data.position?.data ? [] : []);
+		if (tradeHistory && Array.isArray(tradeHistory) && tradeHistory.length > 0) {
+			setTradeHistory(tradeHistory);
+		} else {
+			// Nettoyer si pas de trades ou liste vide
+			clearHistory();
+		}
+		
+		// 🔥 FIX: Charger les stats depuis le backend (remplace les anciennes stats)
+		const stats = data.stats || {};
+		if (stats && (stats.wins !== undefined || stats.total_trades !== undefined)) {
+			const { updateStats } = await import('$lib/stores/stats');
+			// S'assurer que les valeurs sont numériques
+			const cleanStats = {
+				wins: Number(stats.wins || 0),
+				losses: Number(stats.losses || 0),
+				total_trades: Number(stats.total_trades || 0),
+				total_pnl_usdt: Number(stats.total_pnl_usdt || 0),
+				total_pnl_pct: Number(stats.total_pnl_pct || 0),
+				best_trade: stats.best_trade || null,
+				worst_trade: stats.worst_trade || null,
+				avg_trade_duration: Number(stats.avg_trade_duration || 0)
+			};
+			updateStats(cleanStats);
+		}
+		
+		// 🔥 FIX: Nettoyer les graphiques PnL au démarrage si pas de trades
+		if (!tradeHistory || tradeHistory.length === 0) {
+			const { clearHistory: clearTrades } = await import('$lib/stores/trades');
+			clearTrades();
+		}
+	}
+
 	async function loadInitialState() {
 		try {
 			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket pour charger l'état initial (priorité)
 			const ws = getWebSocket();
 			if (ws && ws.connected) {
 				try {
-					const stateData = await ws.sendRequest('state', {});
-					if (stateData && stateData.success) {
+					const response = await ws.sendRequest('state', {});
+					// 🔥 FIX: Le backend envoie { type: 'request_response', data: state_data }
+					const stateData = response?.data || response;
+					if (stateData && (stateData.success || stateData.config || stateData.trade_history !== undefined)) {
 						console.log('Initial state loaded via WebSocket:', stateData);
 						backendConnected = true;
 						backendError = '';
@@ -192,52 +309,6 @@
 				}
 				
 				await processStateData(data);
-				
-				// 🔥 FIX: Mettre à jour l'état du bot dans BotControls via l'API status
-				// (BotControls utilise le store isScanning mis à jour via WebSocket natif)
-				if (data.is_scanning !== undefined) {
-					// L'état sera mis à jour via WebSocket natif ou le composant BotControls
-				}
-				
-				// 🔥 FIX: Nettoyer les données d'anciennes sessions si aucune position active
-				// Les données seront rechargées via WebSocket natif si nécessaire
-				if (!data.active_position) {
-					// Nettoyer la position
-					const { clearPosition } = await import('$lib/stores/position');
-					clearPosition();
-				}
-				
-				// 🔥 FIX: Nettoyer et charger l'historique des trades depuis le backend
-				const { setTradeHistory, clearHistory } = await import('$lib/stores/trades');
-				if (data.trade_history && Array.isArray(data.trade_history) && data.trade_history.length > 0) {
-					setTradeHistory(data.trade_history);
-				} else {
-					// Nettoyer si pas de trades ou liste vide
-					clearHistory();
-				}
-				
-				// 🔥 FIX: Charger les stats depuis le backend (remplace les anciennes stats)
-				if (data.stats) {
-					const { updateStats } = await import('$lib/stores/stats');
-					// S'assurer que les valeurs sont numériques
-					const cleanStats = {
-						wins: Number(data.stats.wins || 0),
-						losses: Number(data.stats.losses || 0),
-						total_trades: Number(data.stats.total_trades || 0),
-						total_pnl_usdt: Number(data.stats.total_pnl_usdt || 0),
-						total_pnl_pct: Number(data.stats.total_pnl_pct || 0),
-						best_trade: data.stats.best_trade || null,
-						worst_trade: data.stats.worst_trade || null,
-						avg_trade_duration: Number(data.stats.avg_trade_duration || 0)
-					};
-					updateStats(cleanStats);
-				}
-				
-				// 🔥 FIX: Nettoyer les graphiques PnL au démarrage si pas de trades
-				if (!data.trade_history || data.trade_history.length === 0) {
-					const { clearHistory: clearTrades } = await import('$lib/stores/trades');
-					clearTrades();
-				}
 			} else {
 				throw new Error(`Backend returned ${res.status}`);
 			}
@@ -245,21 +316,8 @@
 			console.error('Error loading initial state:', err);
 			backendError = err.message || 'Backend not reachable';
 			backendConnected = false;
-			// Réessayer toutes les 5 secondes
-			const retry = setInterval(async () => {
-				try {
-					const res = await fetch('/api/state');
-					if (res.ok) {
-						backendConnected = true;
-						backendError = '';
-						clearInterval(retry);
-						// Recharger les données sans recharger toute la page
-						await loadInitialState();
-					}
-				} catch (e) {
-					// Continue trying
-				}
-			}, 5000);
+			// 🔥 BIDIRECTIONNEL: Plus de retry REST - La reconnexion WebSocket gère automatiquement les tentatives
+			// Le WebSocket se reconnectera automatiquement et chargera l'état via WebSocket
 		}
 	}
 

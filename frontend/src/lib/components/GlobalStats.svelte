@@ -5,12 +5,28 @@
 
 	let interval;
 
-	onMount(() => {
+	onMount(async () => {
 		// Charger stats initiales
 		loadGlobalStats();
 
-		// Auto-refresh toutes les 5 secondes
-		interval = setInterval(loadGlobalStats, 5000);
+		// 🔥 BIDIRECTIONNEL: Utiliser WebSocket pour mises à jour temps réel au lieu de polling REST
+		const { getWebSocket } = await import('$lib/utils/websocket');
+		const ws = getWebSocket();
+		if (ws) {
+			// Écouter les événements de mise à jour de sessions
+			ws.on('sessions_update', () => {
+				loadGlobalStats();
+			});
+			ws.on('session_started', () => {
+				loadGlobalStats();
+			});
+			ws.on('session_stopped', () => {
+				loadGlobalStats();
+			});
+		} else {
+			// Fallback: Auto-refresh toutes les 10 secondes si WebSocket non disponible
+			interval = setInterval(loadGlobalStats, 10000);
+		}
 	});
 
 	onDestroy(() => {
