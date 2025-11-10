@@ -247,10 +247,27 @@
 		});
 	}
 
-	// 🔥 REMPLACEMENT: WebSocket natif gère déjà les changements de config via websocket.js
-	// Les changements de config sont automatiquement synchronisés via le store logs
-	// Plus besoin d'écouter manuellement les événements Socket.IO
-	// Le composant rechargera automatiquement la config après sauvegarde via saveConfig()
+	// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de config depuis le backend
+	onMount(async () => {
+		const { getWebSocket } = await import('$lib/utils/websocket');
+		const ws = getWebSocket();
+		if (ws) {
+			ws.on('config_updated', (data: any) => {
+				console.log('🔄 Config mise à jour depuis backend:', data.updated);
+				// Synchroniser la config locale avec les changements du backend
+				if (data.updated) {
+					Object.keys(data.updated).forEach(key => {
+						if (key in config) {
+							config[key] = data.updated[key];
+						}
+					});
+					if (data.updated.tp_sl_mode) {
+						viewMode = data.updated.tp_sl_mode;
+					}
+				}
+			});
+		}
+	});
 </script>
 
 <div class="variables-panel">
