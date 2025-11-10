@@ -1991,11 +1991,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     break  # Arrêter si erreur
         except Exception as e:
             logger.error(f"❌ Erreur envoi logs: {e}")
-    
-    try:
+        
         # Boucle bidirectionnelle : recevoir et traiter messages
-        while True:
-            data = await websocket.receive_text()
+        try:
+            while True:
+                data = await websocket.receive_text()
             message = json.loads(data)
             
             msg_type = message.get('type')
