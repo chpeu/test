@@ -86,12 +86,22 @@ class HybridPriceProvider:
                     "timestamp": time.time()
                 }
                 
-                # 🔥 FIX: Mise à jour directe du cache (thread-safe)
-                # Le cache dict est thread-safe pour les opérations simples en Python
-                # On évite le lock async car on est dans un callback synchrone
-                self.price_cache[ccxt_symbol] = ticker_info
-                if len(self.message_buffer) < self.message_buffer.maxlen:
-                    self.message_buffer.append(ticker_info)
+                # 🔥 FIX: Mise à jour thread-safe via asyncio task
+                # Utiliser _update_cache pour garantir la cohérence avec le lock
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop and loop.is_running():
+                        asyncio.create_task(self._update_cache(ccxt_symbol, ticker_info))
+                    else:
+                        # Fallback si pas de boucle événements (ne devrait pas arriver)
+                        self.price_cache[ccxt_symbol] = ticker_info
+                        if len(self.message_buffer) < self.message_buffer.maxlen:
+                            self.message_buffer.append(ticker_info)
+                except RuntimeError:
+                    # Pas de boucle événements active, utiliser mise à jour directe
+                    self.price_cache[ccxt_symbol] = ticker_info
+                    if len(self.message_buffer) < self.message_buffer.maxlen:
+                        self.message_buffer.append(ticker_info)
                 
                 # 🔥 FIX: Émettre prix en temps réel via SocketIO si position active
                 # WebSocket émet à chaque tick, donc latence minimale pour scalping (< 100ms)

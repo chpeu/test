@@ -433,11 +433,18 @@ if (socket.connected) {
 
 // Refresh périodique (toutes les 30s - backup si SocketIO échoue)
 // SocketIO gère les mises à jour temps réel via position_opened/closed/tp_escalier_level
-setInterval(() => {
+const refreshInterval = setInterval(() => {
     if (socket.connected) {
         loadInitialData();
     }
 }, 30000);  // 🔥 FIX: Rafraîchir toutes les 30 secondes (backup) au lieu de 60s
+
+// Cleanup lors de la fermeture/navigation
+window.addEventListener('beforeunload', () => {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+});
 
 console.log('📊 Dashboard Charts initialisé');
 
