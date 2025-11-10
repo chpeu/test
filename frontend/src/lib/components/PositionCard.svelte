@@ -1,6 +1,7 @@
 <script>
 	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
 	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
+	import { sendCommandViaWS } from '$lib/utils/websocket';
 
 	// 🔥 FIX: Fonction pour clôturer la position manuellement
 	async function closePosition() {
@@ -13,7 +14,6 @@
 
 		try {
 			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-			const { sendCommandViaWS } = await import('$lib/utils/websocket');
 			const result = await sendCommandViaWS('close_position', {
 				reason: 'MANUAL',
 				exit_price: $activePosition.current_price

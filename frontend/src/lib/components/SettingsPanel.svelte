@@ -1,6 +1,7 @@
 <script>
 	import { settings, updateSetting, resetSettings, exportSettings, importSettings } from '$lib/stores/settings';
 	import { onMount } from 'svelte';
+	import { sendCommandViaWS } from '$lib/utils/websocket';
 
 	let fileInput;
 	let showResetConfirm = false;
