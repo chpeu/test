@@ -47,11 +47,7 @@ def set_websocket_manager(ws_manager):
     global _ws_manager
     _ws_manager = ws_manager
 
-def set_socketio(sio):
-    """🔥 LEGACY: Alias pour compatibilité (déprécié - utiliser set_websocket_manager)"""
-    global _ws_manager
-    # Si c'est un ws_manager, l'utiliser
-    _ws_manager = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
+# 🔥 CLEANUP: Supprimé set_socketio (Socket.IO obsolète, utiliser set_websocket_manager)
 
 
 # Créer le router

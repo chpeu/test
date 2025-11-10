@@ -32,23 +32,23 @@ class NotificationManager:
     def __init__(
         self,
         telegram_notifier: Optional[TelegramNotifier] = None,
-        socketio_callback: Optional[Callable] = None,
+        websocket_callback: Optional[Callable] = None,  # 🔥 RENAMED: socketio_callback -> websocket_callback
         enable_batching: bool = True,
         batch_interval: int = 5,
         telegram_notify_settings: Optional[Dict[str, bool]] = None
     ):
         """
         Initialiser Notification Manager
-        
+
         Args:
             telegram_notifier: Instance TelegramNotifier
-            socketio_callback: Callback SocketIO (async func)
+            websocket_callback: Callback WebSocket natif (async func)
             enable_batching: Activer batching
             batch_interval: Intervalle batch (secondes)
             telegram_notify_settings: Dict des types de notifications activés (ex: {'position_opened': True})
         """
         self.telegram_notifier = telegram_notifier
-        self.socketio_callback = socketio_callback
+        self.websocket_callback = websocket_callback  # 🔥 RENAMED: socketio_callback -> websocket_callback
         self.enable_batching = enable_batching
         self.batch_interval = batch_interval
         
@@ -143,7 +143,7 @@ class NotificationManager:
             await self._send_telegram(event_type, data, priority)
         
         # SocketIO
-        if 'socketio' in channels and self.socketio_callback:
+        if 'socketio' in channels and self.websocket_callback:
             await self._send_socketio(event_type, data)
         
         self.stats['total_sent'] += 1
@@ -205,8 +205,8 @@ class NotificationManager:
     async def _send_socketio(self, event_type: str, data: Dict):
         """Envoyer vers SocketIO"""
         try:
-            if self.socketio_callback:
-                await self.socketio_callback(event_type, data)
+            if self.websocket_callback:
+                await self.websocket_callback(event_type, data)
             
             self.stats['socketio_sent'] += 1
         
@@ -310,20 +310,20 @@ class NotificationManager:
 def create_notification_manager(
     telegram_bot_token: Optional[str] = None,
     telegram_chat_id: Optional[Union[str, int]] = None,  # 🔥 FIX: Accepter str ou int
-    socketio_callback: Optional[Callable] = None,
+    websocket_callback: Optional[Callable] = None,  # 🔥 RENAMED: socketio_callback -> websocket_callback
     enable_batching: bool = True,
     telegram_notify_settings: Optional[Dict[str, bool]] = None,
     instance_port: Optional[int] = None  # 🔥 NOUVEAU: Port instance pour multi-instances
 ) -> NotificationManager:
     """
     Factory pour créer Notification Manager
-    
+
     Args:
         telegram_bot_token: Token bot Telegram
         telegram_chat_id: ID chat Telegram
-        socketio_callback: Callback SocketIO
+        websocket_callback: Callback WebSocket natif
         enable_batching: Activer batching
-    
+
     Returns:
         Instance NotificationManager
     """
@@ -341,7 +341,7 @@ def create_notification_manager(
     
     return NotificationManager(
         telegram_notifier=telegram_notifier,
-        socketio_callback=socketio_callback,
+        websocket_callback=websocket_callback,  # 🔥 RENAMED: socketio_callback -> websocket_callback
         enable_batching=enable_batching,
         telegram_notify_settings=telegram_notify_settings
     )

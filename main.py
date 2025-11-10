@@ -614,7 +614,7 @@ async def scanner_loop_callback():
                                             # 🔥 FIX: Configurer callback pour suivre position active
                                             # Le WebSocket met à jour le cache en temps réel
                                             # La boucle de check à 0.5s récupère le prix du cache et émet position_update
-                                            price_provider.set_socketio_callback(None, symbol)
+                                            # 🔥 CLEANUP: Supprimé set_socketio_callback (Socket.IO obsolète)
                                             logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
                                             logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
@@ -854,9 +854,7 @@ async def position_check_loop_callback():
                         app_state['trade_history'] = app_state['trade_history'][-1000:]
                     save_trade_history()
                 
-                # 🔥 FIX: Désactiver callback WebSocket si position fermée
-                if price_provider:
-                    price_provider.set_socketio_callback(None, None)
+                # 🔥 CLEANUP: Supprimé set_socketio_callback (Socket.IO obsolète)
                 
                 # 🔥 FIX: Log pour debug
                 logger.info(
@@ -990,7 +988,7 @@ def init_instances():
         notification_manager = create_notification_manager(
             telegram_bot_token=TELEGRAM_BOT_TOKEN,
             telegram_chat_id=TELEGRAM_CHAT_ID,
-            socketio_callback=websocket_callback,  # 🔥 MIGRATION COMPLÈTE: Utiliser websocket_callback
+            websocket_callback=websocket_callback,  # 🔥 MIGRATION COMPLÈTE: WebSocket natif uniquement
             enable_batching=NOTIFICATION_BATCHING_ENABLED,
             instance_port=port  # 🔥 NOUVEAU: Passer instance_port
         )
@@ -1922,8 +1920,8 @@ async def api_close_position():
             
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
             if price_provider:
-                price_provider.set_socketio_callback(None, None)
-            
+                # 🔥 CLEANUP: Supprimé set_socketio_callback (Socket.IO obsolète)
+
             logger.info(
                 f"🔒 Position fermée manuellement avec lock: "
                 f"app_state['active_position']=None, "
