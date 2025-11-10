@@ -387,7 +387,7 @@ class BidirectionalWebSocket {
 // Instance globale
 let wsInstance: BidirectionalWebSocket | null = null;
 
-export function initWebSocket(url?: string): BidirectionalWebSocket {
+function initWebSocket(url?: string): BidirectionalWebSocket {
     if (!wsInstance) {
         wsInstance = new BidirectionalWebSocket(url);
         wsInstance.connect();
@@ -395,25 +395,25 @@ export function initWebSocket(url?: string): BidirectionalWebSocket {
     return wsInstance;
 }
 
-export function getWebSocket(): BidirectionalWebSocket | null {
+function getWebSocket(): BidirectionalWebSocket | null {
     return wsInstance;
 }
 
-export function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
+function sendCommandViaWS(command: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendCommand(command, params);
 }
 
-export function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
+function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendRequest(requestType, params);
 }
 
-// Exports nommés explicites pour garantir la compatibilité avec les imports nommés
+// Exports nommés explicites (tous les exports en un seul endroit)
 export { BidirectionalWebSocket, initWebSocket, getWebSocket, sendCommandViaWS, sendRequestViaWS };
 export type { WebSocketMessage, CommandCallback };
 
