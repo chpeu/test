@@ -3,8 +3,6 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { formatUSDT, formatPercent } from '$lib/utils/format';
 
-	let interval;
-
 	// 🔥 FIX MEMORY LEAK: Stocker unsubscribe functions pour cleanup
 	let unsubscribeFunctions = [];
 
@@ -12,7 +10,7 @@
 		// Charger stats initiales
 		loadGlobalStats();
 
-		// 🔥 BIDIRECTIONNEL: Utiliser WebSocket pour mises à jour temps réel au lieu de polling REST
+		// 🔥 MIGRATION COMPLÈTE: WebSocket push uniquement (plus de polling REST)
 		const { getWebSocket } = await import('$lib/utils/websocket');
 		const ws = getWebSocket();
 		if (ws) {
@@ -27,16 +25,12 @@
 			unsubscribeFunctions.push(ws.on('session_stopped', () => {
 				loadGlobalStats();
 			}));
-		} else {
-			// Fallback: Auto-refresh toutes les 10 secondes si WebSocket non disponible
-			interval = setInterval(loadGlobalStats, 10000);
 		}
+		// Note: Pas de fallback polling - WebSocket requis pour temps réel
 	});
 
 	// 🔥 FIX MEMORY LEAK: Nettoyer tous les listeners lors de la destruction
 	onDestroy(() => {
-		if (interval) clearInterval(interval);
-
 		// Nettoyer les listeners WebSocket
 		console.log(`🧹 Nettoyage de ${unsubscribeFunctions.length} listeners WebSocket dans GlobalStats`);
 		unsubscribeFunctions.forEach(unsubscribe => {
