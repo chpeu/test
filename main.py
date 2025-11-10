@@ -58,12 +58,48 @@ except ImportError as e:
     api_router = None
     set_analytics_db = None
 
-# Configuration logging
+# 🔥 RELIABILITY: Configuration logging avec rotation automatique
+from logging.handlers import RotatingFileHandler
+import os
+
+# Créer le répertoire logs si nécessaire
+logs_dir = 'logs'
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
+
+# Configuration du logger avec rotation
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Format du log
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Handler console (pour le développement)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+# 🔥 RELIABILITY: Handler fichier avec rotation (5 fichiers de 10MB max)
+file_handler = RotatingFileHandler(
+    os.path.join(logs_dir, 'trade_cursor.log'),
+    maxBytes=10 * 1024 * 1024,  # 10 MB par fichier
+    backupCount=5,  # Garder 5 fichiers de backup (50 MB total)
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+# Ajouter les handlers si pas déjà présents
+if not logger.handlers:
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+
+# Configuration du logging racine pour les autres modules
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[console_handler, file_handler]
 )
-logger = logging.getLogger(__name__)
 
 
 # 🔥 RELIABILITY: Pydantic validation models for WebSocket commands
