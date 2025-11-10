@@ -101,13 +101,23 @@
 				tpSlMode = data.config.tp_sl_mode;
 			}
 		});
-		
+
+		// 🔥 BIDIRECTIONNEL: Écouter les changements de config
+		ws.on('config_change', (data: any) => {
+			console.log('🔄 +page: Config change reçu du serveur:', data);
+
+			if (data.changes && data.changes.tp_sl_mode) {
+				tpSlMode = data.changes.tp_sl_mode;
+				console.log(`✅ Mode TP/SL mis à jour: ${tpSlMode}`);
+			}
+		});
+
 		ws.on('connect', () => {
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;
 			backendError = '';
 		});
-		
+
 		ws.on('disconnect', () => {
 			console.warn('⚠️ WebSocket déconnecté');
 			backendConnected = false;
