@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
 	type BidirectionalWebSocket = ReturnType<typeof initWebSocket>;
 	import Tabs from '$lib/components/Tabs.svelte';
@@ -25,6 +25,9 @@
 	let backendError = '';
 	let activeTab = 'dashboard';
 	let tpSlMode = 'FIXE'; // Mode TP/SL actif du bot
+
+	// 🔥 FIX: Array pour stocker les unsubscribe functions et éviter memory leaks
+	let unsubscribeFunctions: (() => void)[] = [];
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -112,24 +115,25 @@
 	
 	function setupWebSocketListeners(ws: BidirectionalWebSocket) {
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
-		ws.on('status', (data: any) => {
+		// 🔥 FIX MEMORY LEAK: Stocker les unsubscribe functions pour cleanup dans onDestroy
+		unsubscribeFunctions.push(ws.on('status', (data: any) => {
 			// Mettre à jour l'état quand le backend envoie un update
 			if (data.config && data.config.tp_sl_mode) {
 				tpSlMode = data.config.tp_sl_mode;
 			}
-		});
-		
+		}));
+
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de config depuis le backend
-		ws.on('config_updated', (data: any) => {
+		unsubscribeFunctions.push(ws.on('config_updated', (data: any) => {
 			console.log('🔄 Config mise à jour depuis backend:', data.updated);
 			// Le frontend peut réagir aux changements de config du backend
 			if (data.updated && data.updated.tp_sl_mode) {
 				tpSlMode = data.updated.tp_sl_mode;
 			}
-		});
-		
+		}));
+
 		// 🔥 BIDIRECTIONNEL: Écouter les logs depuis le backend pour synchronisation temps réel
-		ws.on('log', async (logEntry: any) => {
+		unsubscribeFunctions.push(ws.on('log', async (logEntry: any) => {
 			const { addLog } = await import('$lib/stores/logs');
 			// Convertir le timestamp si nécessaire
 			if (logEntry.timestamp && !logEntry.timestamp.includes('T')) {
@@ -138,24 +142,24 @@
 				logEntry.timestamp = `${today}T${logEntry.timestamp}`;
 			}
 			addLog(logEntry);
-		});
-		
+		}));
+
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de position
-		ws.on('position_update', async (data: any) => {
+		unsubscribeFunctions.push(ws.on('position_update', async (data: any) => {
 			const { setPosition } = await import('$lib/stores/position');
 			if (data) {
 				setPosition(data);
 			}
-		});
-		
-		ws.on('position_opened', async (data: any) => {
+		}));
+
+		unsubscribeFunctions.push(ws.on('position_opened', async (data: any) => {
 			const { setPosition } = await import('$lib/stores/position');
 			if (data) {
 				setPosition(data);
 			}
-		});
-		
-		ws.on('position_closed', async (data: any) => {
+		}));
+
+		unsubscribeFunctions.push(ws.on('position_closed', async (data: any) => {
 			const { clearPosition } = await import('$lib/stores/position');
 			clearPosition();
 			// Recharger l'historique des trades
@@ -163,46 +167,59 @@
 			if (data && data.trade) {
 				setTradeHistory([data.trade]);
 			}
-		});
-		
+		}));
+
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de stats
-		ws.on('stats_update', async (data: any) => {
+		unsubscribeFunctions.push(ws.on('stats_update', async (data: any) => {
 			const { updateStats } = await import('$lib/stores/stats');
 			if (data) {
 				updateStats(data);
 			}
-		});
-		
+		}));
+
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour des top pairs
-		ws.on('top_pairs_update', async (data: any) => {
+		unsubscribeFunctions.push(ws.on('top_pairs_update', async (data: any) => {
 			// Mettre à jour le store si nécessaire
 			if (data && data.pairs) {
 				// Les top pairs seront affichés dans ScannerPanel
 			}
-		});
-		
+		}));
+
 		// 🔥 BIDIRECTIONNEL: Écouter les événements de scan
-		ws.on('scan_started', async (data: any) => {
+		unsubscribeFunctions.push(ws.on('scan_started', async (data: any) => {
 			const { setIsScanning } = await import('$lib/stores/scanner');
 			setIsScanning(true);
-		});
-		
-		ws.on('scan_complete', async (data: any) => {
+		}));
+
+		unsubscribeFunctions.push(ws.on('scan_complete', async (data: any) => {
 			const { setIsScanning } = await import('$lib/stores/scanner');
 			setIsScanning(false);
-		});
-		
-		ws.on('connect', () => {
+		}));
+
+		unsubscribeFunctions.push(ws.on('connect', () => {
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;
 			backendError = '';
-		});
-		
-		ws.on('disconnect', () => {
+		}));
+
+		unsubscribeFunctions.push(ws.on('disconnect', () => {
 			console.warn('⚠️ WebSocket déconnecté');
 			backendConnected = false;
-		});
+		}));
 	}
+
+	// 🔥 FIX MEMORY LEAK: Nettoyer tous les listeners WebSocket lors de la destruction du composant
+	onDestroy(() => {
+		console.log(`🧹 Nettoyage de ${unsubscribeFunctions.length} listeners WebSocket`);
+		unsubscribeFunctions.forEach(unsubscribe => {
+			try {
+				unsubscribe();
+			} catch (err) {
+				console.error('Erreur lors du cleanup listener:', err);
+			}
+		});
+		unsubscribeFunctions = [];
+	});
 
 	// 🔥 BIDIRECTIONNEL: Fonction helper pour traiter les données d'état
 	async function processStateData(data: any) {

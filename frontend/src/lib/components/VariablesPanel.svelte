@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 
 	const DEFAULTS = {
@@ -68,6 +68,9 @@
 	let saveMessage = '';
 	let activeSubTab = 'setups';
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
+
+	// 🔥 FIX MEMORY LEAK: Stocker unsubscribe function pour cleanup
+	let unsubscribeConfigUpdated: (() => void) | null = null;
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
 	function autoAdjustEscalierSize(changedLevel) {
@@ -224,7 +227,8 @@
 		const { getWebSocket } = await import('$lib/utils/websocket');
 		const ws = getWebSocket();
 		if (ws) {
-			ws.on('config_updated', (data: any) => {
+			// 🔥 FIX MEMORY LEAK: Stocker unsubscribe function
+			unsubscribeConfigUpdated = ws.on('config_updated', (data: any) => {
 				console.log('🔄 Config mise à jour depuis backend:', data.updated);
 				// Synchroniser la config locale avec les changements du backend
 				if (data.updated) {
@@ -238,6 +242,14 @@
 					}
 				}
 			});
+		}
+	});
+
+	// 🔥 FIX MEMORY LEAK: Nettoyer le listener lors de la destruction du composant
+	onDestroy(() => {
+		if (unsubscribeConfigUpdated) {
+			unsubscribeConfigUpdated();
+			console.log('🧹 Listener config_updated nettoyé dans VariablesPanel');
 		}
 	});
 </script>

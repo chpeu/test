@@ -5,6 +5,9 @@
 
 	let interval;
 
+	// 🔥 FIX MEMORY LEAK: Stocker unsubscribe functions pour cleanup
+	let unsubscribeFunctions = [];
+
 	onMount(async () => {
 		// Charger stats initiales
 		loadGlobalStats();
@@ -13,24 +16,37 @@
 		const { getWebSocket } = await import('$lib/utils/websocket');
 		const ws = getWebSocket();
 		if (ws) {
+			// 🔥 FIX MEMORY LEAK: Stocker unsubscribe functions
 			// Écouter les événements de mise à jour de sessions
-			ws.on('sessions_update', () => {
+			unsubscribeFunctions.push(ws.on('sessions_update', () => {
 				loadGlobalStats();
-			});
-			ws.on('session_started', () => {
+			}));
+			unsubscribeFunctions.push(ws.on('session_started', () => {
 				loadGlobalStats();
-			});
-			ws.on('session_stopped', () => {
+			}));
+			unsubscribeFunctions.push(ws.on('session_stopped', () => {
 				loadGlobalStats();
-			});
+			}));
 		} else {
 			// Fallback: Auto-refresh toutes les 10 secondes si WebSocket non disponible
 			interval = setInterval(loadGlobalStats, 10000);
 		}
 	});
 
+	// 🔥 FIX MEMORY LEAK: Nettoyer tous les listeners lors de la destruction
 	onDestroy(() => {
 		if (interval) clearInterval(interval);
+
+		// Nettoyer les listeners WebSocket
+		console.log(`🧹 Nettoyage de ${unsubscribeFunctions.length} listeners WebSocket dans GlobalStats`);
+		unsubscribeFunctions.forEach(unsubscribe => {
+			try {
+				unsubscribe();
+			} catch (err) {
+				console.error('Erreur lors du cleanup listener:', err);
+			}
+		});
+		unsubscribeFunctions = [];
 	});
 </script>
 

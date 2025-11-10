@@ -32,6 +32,8 @@ export class BidirectionalWebSocket {
     private maxReconnectAttempts: number = 10;
     private reconnectDelay: number = 1000;
     private messageQueue: any[] = [];
+    // 🔥 FIX MEMORY: Limite max de la queue pour éviter débordement mémoire pendant déconnexion prolongée
+    private readonly MAX_QUEUE_SIZE: number = 100; // Max 100 messages en attente (~20KB)
     private commandCallbacks: Map<number, CommandCallback> = new Map();
     private commandIdCounter: number = 0;
     private eventHandlers: Map<string, Array<(data: any) => void>> = new Map();
@@ -124,6 +126,12 @@ export class BidirectionalWebSocket {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(message);
         } else {
+            // 🔥 FIX MEMORY: Vérifier la limite de la queue avant d'ajouter
+            if (this.messageQueue.length >= this.MAX_QUEUE_SIZE) {
+                // Stratégie FIFO: Supprimer les messages les plus anciens
+                const removed = this.messageQueue.shift();
+                console.warn(`⚠️ Queue WebSocket pleine (${this.MAX_QUEUE_SIZE}), message le plus ancien supprimé`);
+            }
             this.messageQueue.push(message);
         }
     }

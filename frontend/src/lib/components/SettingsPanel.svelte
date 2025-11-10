@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { settings, updateSetting, resetSettings, exportSettings, importSettings } from '$lib/stores/settings';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { sendCommandViaWS, getWebSocket } from '$lib/utils/websocket';
 
 	let fileInput;
@@ -8,14 +8,18 @@
 	let importError = '';
 	let backendConfig = {};
 
+	// 🔥 FIX MEMORY LEAK: Stocker unsubscribe function pour cleanup
+	let unsubscribeConfigUpdated: (() => void) | null = null;
+
 	// ✅ Charger la config depuis le backend au démarrage
 	onMount(async () => {
 		await loadBackendConfig();
-		
+
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de config depuis le backend
 		const ws = getWebSocket();
 		if (ws) {
-			ws.on('config_updated', (data: any) => {
+			// 🔥 FIX MEMORY LEAK: Stocker unsubscribe function
+			unsubscribeConfigUpdated = ws.on('config_updated', (data: any) => {
 				console.log('🔄 Config mise à jour depuis backend dans SettingsPanel:', data.updated);
 				// Synchroniser les paramètres avec les changements du backend
 				if (data.updated) {
@@ -32,6 +36,14 @@
 					backendConfig = { ...backendConfig, ...data.updated };
 				}
 			});
+		}
+	});
+
+	// 🔥 FIX MEMORY LEAK: Nettoyer le listener lors de la destruction du composant
+	onDestroy(() => {
+		if (unsubscribeConfigUpdated) {
+			unsubscribeConfigUpdated();
+			console.log('🧹 Listener config_updated nettoyé dans SettingsPanel');
 		}
 	});
 
