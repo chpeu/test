@@ -22,6 +22,17 @@ export interface WebSocketMessage {
 export interface CommandCallback {
     resolve: (data: any) => void;
     reject: (error: Error) => void;
+    sentAt?: number;  // Timestamp pour timeout
+    retries?: number;  // Nombre de retry tentés
+}
+
+export interface WebSocketMetrics {
+    commandsSent: number;
+    commandsSucceeded: number;
+    commandsFailed: number;
+    averageResponseTime: number;
+    totalResponseTime: number;
+    reconnections: number;
 }
 
 export class BidirectionalWebSocket {
@@ -43,6 +54,24 @@ export class BidirectionalWebSocket {
     private reconnectTimeout: number | null = null;
     private rooms: Set<string> = new Set();
     public connected: boolean = false;
+
+    // 🔥 NOUVEAU: Métriques de performance
+    private metrics: WebSocketMetrics = {
+        commandsSent: 0,
+        commandsSucceeded: 0,
+        commandsFailed: 0,
+        averageResponseTime: 0,
+        totalResponseTime: 0,
+        reconnections: 0
+    };
+
+    // 🔥 NOUVEAU: Rate limiting anti-spam
+    private commandTimestamps: number[] = [];
+    private readonly RATE_LIMIT_WINDOW: number = 1000; // 1 seconde
+    private readonly RATE_LIMIT_MAX_COMMANDS: number = 10; // Max 10 commands/sec
+
+    // 🔥 NOUVEAU: Timeout pour commands
+    private readonly COMMAND_TIMEOUT: number = 30000; // 30 secondes
 
     constructor(url: string = '') {
         // Détecter l'URL depuis window.location si non fournie
@@ -143,19 +172,88 @@ export class BidirectionalWebSocket {
         }
     }
 
+    // 🔥 NOUVEAU: Vérifier rate limit avant d'envoyer command
+    private checkRateLimit(): boolean {
+        const now = Date.now();
+        // Supprimer timestamps hors de la fenêtre
+        this.commandTimestamps = this.commandTimestamps.filter(ts => now - ts < this.RATE_LIMIT_WINDOW);
+
+        if (this.commandTimestamps.length >= this.RATE_LIMIT_MAX_COMMANDS) {
+            console.warn(`⚠️ Rate limit atteint: ${this.commandTimestamps.length} commands en ${this.RATE_LIMIT_WINDOW}ms`);
+            return false;
+        }
+
+        this.commandTimestamps.push(now);
+        return true;
+    }
+
     sendCommand(command: string, params: any = {}): Promise<any> {
+        // 🔥 NOUVEAU: Vérifier rate limit
+        if (!this.checkRateLimit()) {
+            return Promise.reject(new Error('Rate limit exceeded: max ' + this.RATE_LIMIT_MAX_COMMANDS + ' commands per second'));
+        }
+
         return new Promise((resolve, reject) => {
             const id = this.commandIdCounter++;
-            this.commandCallbacks.set(id, { resolve, reject });
+            const sentAt = Date.now();
+
+            // 🔥 NOUVEAU: Métriques
+            this.metrics.commandsSent++;
+
+            this.commandCallbacks.set(id, {
+                resolve,
+                reject,
+                sentAt,
+                retries: 0
+            });
+
             const message: WebSocketMessage = {
                 type: 'command',
                 id,
                 command,
                 params,
-                timestamp: Date.now()
+                timestamp: sentAt
             };
             this.sendRaw(JSON.stringify(message));
+
+            // 🔥 NOUVEAU: Timeout automatique
+            setTimeout(() => {
+                const callback = this.commandCallbacks.get(id);
+                if (callback) {
+                    this.commandCallbacks.delete(id);
+                    this.metrics.commandsFailed++;
+                    reject(new Error(`Command '${command}' timeout after ${this.COMMAND_TIMEOUT}ms`));
+                }
+            }, this.COMMAND_TIMEOUT);
         });
+    }
+
+    // 🔥 NOUVEAU: sendCommand avec retry automatique
+    async sendCommandWithRetry(command: string, params: any = {}, maxRetries: number = 3): Promise<any> {
+        let lastError: Error | null = null;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (attempt > 0) {
+                    // Exponential backoff: 1s, 2s, 4s
+                    const delay = Math.pow(2, attempt - 1) * 1000;
+                    console.log(`🔄 Retry ${attempt}/${maxRetries} pour command '${command}' après ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+
+                return await this.sendCommand(command, params);
+            } catch (error) {
+                lastError = error as Error;
+                console.warn(`❌ Attempt ${attempt + 1}/${maxRetries + 1} failed for command '${command}':`, error);
+
+                // Ne pas retry si rate limit ou erreur non-retriable
+                if (error instanceof Error && error.message.includes('Rate limit')) {
+                    throw error;
+                }
+            }
+        }
+
+        throw new Error(`Command '${command}' failed after ${maxRetries + 1} attempts: ${lastError?.message}`);
     }
 
     sendRequest(requestType: string, params: any = {}): Promise<any> {
@@ -176,6 +274,22 @@ export class BidirectionalWebSocket {
     private handleResponse(id: number, result: any, error: string | undefined): void {
         const callback = this.commandCallbacks.get(id);
         if (callback) {
+            // 🔥 NOUVEAU: Calculer temps de réponse pour métriques
+            if (callback.sentAt) {
+                const responseTime = Date.now() - callback.sentAt;
+                this.metrics.totalResponseTime += responseTime;
+
+                if (error) {
+                    this.metrics.commandsFailed++;
+                } else {
+                    this.metrics.commandsSucceeded++;
+                }
+
+                // Calculer moyenne
+                const totalCommands = this.metrics.commandsSucceeded + this.metrics.commandsFailed;
+                this.metrics.averageResponseTime = this.metrics.totalResponseTime / totalCommands;
+            }
+
             if (error) {
                 callback.reject(new Error(error));
             } else {
@@ -183,6 +297,23 @@ export class BidirectionalWebSocket {
             }
             this.commandCallbacks.delete(id);
         }
+    }
+
+    // 🔥 NOUVEAU: Récupérer métriques de performance
+    getMetrics(): WebSocketMetrics {
+        return { ...this.metrics };
+    }
+
+    // 🔥 NOUVEAU: Reset métriques
+    resetMetrics(): void {
+        this.metrics = {
+            commandsSent: 0,
+            commandsSucceeded: 0,
+            commandsFailed: 0,
+            averageResponseTime: 0,
+            totalResponseTime: 0,
+            reconnections: 0
+        };
     }
 
     private handleEvent(event: string, data: any): void {
@@ -229,6 +360,9 @@ export class BidirectionalWebSocket {
         if (this.isReconnecting) return;
 
         this.isReconnecting = true;
+        // 🔥 NOUVEAU: Incrémenter compteur reconnections pour métriques
+        this.metrics.reconnections++;
+
         this.reconnectTimeout = window.setTimeout(() => {
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
@@ -315,6 +449,27 @@ export function sendRequestViaWS(requestType: string, params: any = {}): Promise
         return Promise.reject(new Error('WebSocket non connecté'));
     }
     return wsInstance.sendRequest(requestType, params);
+}
+
+// 🔥 NOUVEAU: Export sendCommandWithRetry pour utilisation directe
+export function sendCommandWithRetryViaWS(command: string, params: any = {}, maxRetries: number = 3): Promise<any> {
+    if (!wsInstance || !wsInstance.connected) {
+        return Promise.reject(new Error('WebSocket non connecté'));
+    }
+    return wsInstance.sendCommandWithRetry(command, params, maxRetries);
+}
+
+// 🔥 NOUVEAU: Récupérer métriques globalement
+export function getWebSocketMetrics(): WebSocketMetrics | null {
+    if (!wsInstance) return null;
+    return wsInstance.getMetrics();
+}
+
+// 🔥 NOUVEAU: Reset métriques globalement
+export function resetWebSocketMetrics(): void {
+    if (wsInstance) {
+        wsInstance.resetMetrics();
+    }
 }
 
 // Export default pour compatibilité
