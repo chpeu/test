@@ -416,3 +416,6 @@ export function sendRequestViaWS(requestType: string, params: any = {}): Promise
 // Export default pour compatibilité
 export default BidirectionalWebSocket;
 
+// Force les exports nommés pour Vite/SvelteKit
+export type { WebSocketMessage, CommandCallback };
+
