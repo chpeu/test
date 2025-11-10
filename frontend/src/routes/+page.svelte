@@ -100,6 +100,13 @@
 			if (data.config && data.config.tp_sl_mode) {
 				tpSlMode = data.config.tp_sl_mode;
 			}
+			// 🔥 BIDIRECTIONNEL: Mettre à jour isScanning si présent dans status
+			if (data.is_scanning !== undefined) {
+				import('$lib/stores/scanner').then(({ isScanning }) => {
+					isScanning.set(data.is_scanning);
+					console.log(`✅ isScanning mis à jour via 'status': ${data.is_scanning}`);
+				});
+			}
 		});
 
 		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Écouter scan_started pour mettre à jour le bouton Start/Stop
