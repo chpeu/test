@@ -22,7 +22,7 @@ export interface CommandCallback {
     reject: (error: Error) => void;
 }
 
-export class BidirectionalWebSocket {
+class BidirectionalWebSocket {
     private baseUrl: string;
     private url: string;
     private ws: WebSocket | null = null;
@@ -413,9 +413,10 @@ export function sendRequestViaWS(requestType: string, params: any = {}): Promise
     return wsInstance.sendRequest(requestType, params);
 }
 
+// Exports nommés explicites pour garantir la compatibilité avec les imports nommés
+export { BidirectionalWebSocket, initWebSocket, getWebSocket, sendCommandViaWS, sendRequestViaWS };
+export type { WebSocketMessage, CommandCallback };
+
 // Export default pour compatibilité
 export default BidirectionalWebSocket;
-
-// Ré-exports nommés explicites pour garantir la compatibilité avec les imports nommés
-export type { WebSocketMessage, CommandCallback };
 
