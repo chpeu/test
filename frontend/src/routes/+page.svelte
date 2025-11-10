@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
-	import type BidirectionalWebSocket from '$lib/utils/websocket';
+	import { initWebSocket, getWebSocket, BidirectionalWebSocket } from '$lib/utils/websocket';
 	import Tabs from '$lib/components/Tabs.svelte';
 	import PositionCard from '$lib/components/PositionCard.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -70,48 +69,21 @@
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
 		try {
 			const ws = initWebSocket();
-			
+
 			// Vérifier que l'instance est correcte
 			if (!ws) {
 				console.error('❌ WebSocket instance est null');
 				return;
 			}
-			
-			// Debug: Vérifier le type de l'instance
-			console.log('🔍 Type de ws:', typeof ws);
-			console.log('🔍 ws.constructor:', ws?.constructor?.name);
-			console.log('🔍 ws instanceof BidirectionalWebSocket:', ws instanceof BidirectionalWebSocket);
-			console.log('🔍 Méthodes disponibles:', Object.getOwnPropertyNames(Object.getPrototypeOf(ws)));
-			console.log('🔍 ws.on existe?', 'on' in ws);
-			console.log('🔍 typeof ws.on:', typeof ws.on);
-			
-			// Vérifier que la méthode on existe
-			if (!('on' in ws) || typeof ws.on !== 'function') {
-				console.error('❌ WebSocket.on n\'est pas une fonction', ws);
-				console.error('Type de ws:', typeof ws);
-				console.error('Méthodes disponibles:', Object.keys(ws || {}));
-				console.error('ws.constructor:', ws?.constructor?.name);
-				// Attendre un peu et réessayer (peut-être que l'instance n'est pas encore complètement initialisée)
-				await new Promise(resolve => setTimeout(resolve, 500));
-				if ('on' in ws && typeof ws.on === 'function') {
-					setupWebSocketListeners(ws);
-				} else {
-					console.error('❌ WebSocket.on toujours non disponible après attente');
-					// Essayer d'utiliser getWebSocket à la place
-					const { getWebSocket } = await import('$lib/utils/websocket');
-					const ws2 = getWebSocket();
-					if (ws2 && 'on' in ws2 && typeof ws2.on === 'function') {
-						console.log('✅ Utilisation de getWebSocket() comme fallback');
-						setupWebSocketListeners(ws2);
-					} else {
-						console.error('❌ Impossible d\'initialiser WebSocket correctement');
-					}
-					return;
-				}
-			} else {
-				// Attendre un peu pour que la connexion soit établie
-				await new Promise(resolve => setTimeout(resolve, 100));
+
+			// Attendre que la connexion soit établie
+			await new Promise(resolve => setTimeout(resolve, 500));
+
+			// Setup listeners
+			if (ws && typeof ws.on === 'function') {
 				setupWebSocketListeners(ws);
+			} else {
+				console.error('❌ WebSocket.on n\'est pas disponible');
 			}
 		} catch (error) {
 			console.error('❌ Erreur initialisation WebSocket:', error);
