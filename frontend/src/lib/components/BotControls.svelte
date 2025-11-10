@@ -1,8 +1,10 @@
 <script>
 	import { isScanning } from '$lib/stores/scanner';
-	import { initWebSocket } from '$lib/utils/websocket';
+	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
+	import { onMount } from 'svelte';
 
 	let loading = false;
+	let rebooting = false;
 
 	async function startBot() {
 		try {
@@ -59,6 +61,52 @@
 			loading = false;
 		}
 	}
+
+	async function rebootBot() {
+		if (!confirm('⚠️ Redémarrer le bot (backend + frontend) ?\n\nCela arrêtera toutes les opérations en cours.')) {
+			return;
+		}
+
+		try {
+			rebooting = true;
+			const ws = initWebSocket();
+
+			if (ws && ws.connected) {
+				await ws.sendCommand('reboot_bot');
+				console.log('🔄 Bot redémarrage en cours...');
+
+				// Afficher un message pendant le redémarrage
+				alert('🔄 Bot en cours de redémarrage...\n\nLa page se rechargera automatiquement dans quelques secondes.');
+
+				// Recharger la page après 5 secondes
+				setTimeout(() => {
+					window.location.reload();
+				}, 5000);
+			} else {
+				alert('❌ WebSocket non connecté. Impossible de redémarrer le bot.');
+			}
+		} catch (err) {
+			console.error('❌ Error rebooting bot:', err);
+			alert('❌ Erreur lors du redémarrage du bot.');
+			rebooting = false;
+		}
+	}
+
+	// Écouter l'événement de redémarrage du bot
+	onMount(() => {
+		const ws = getWebSocket();
+		if (ws) {
+			ws.on('bot_rebooting', (data) => {
+				console.log('🔄 Bot rebooting:', data);
+				rebooting = true;
+
+				// Recharger la page après 3 secondes
+				setTimeout(() => {
+					window.location.reload();
+				}, 3000);
+			});
+		}
+	});
 </script>
 
 <div class="bot-controls">
@@ -74,7 +122,7 @@
 			<button
 				class="btn btn-primary"
 				on:click={startBot}
-				disabled={loading}
+				disabled={loading || rebooting}
 			>
 				{loading ? '⏳ Starting...' : '▶️ Start Scanner'}
 			</button>
@@ -82,11 +130,19 @@
 			<button
 				class="btn btn-danger"
 				on:click={stopBot}
-				disabled={loading}
+				disabled={loading || rebooting}
 			>
 				{loading ? '⏳ Stopping...' : '⏹️ Stop Scanner'}
 			</button>
 		{/if}
+
+		<button
+			class="btn btn-warning"
+			on:click={rebootBot}
+			disabled={loading || rebooting}
+		>
+			{rebooting ? '🔄 Rebooting...' : '🔄 Reboot Bot'}
+		</button>
 	</div>
 
 	<div class="controls-info">
@@ -192,6 +248,16 @@
 	.btn-danger:hover:not(:disabled) {
 		transform: translateY(-2px);
 		box-shadow: 0 6px 20px rgba(255, 68, 68, 0.4);
+	}
+
+	.btn-warning {
+		background: linear-gradient(135deg, #ffaa00 0%, #dd8800 100%);
+		color: #0a0e27;
+	}
+
+	.btn-warning:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 20px rgba(255, 170, 0, 0.4);
 	}
 
 	.controls-info {

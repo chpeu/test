@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from core.websocket_manager import get_websocket_manager
+from core.config_persistence import get_config_persistence
 import time
 
 # 🔥 v7.0: Imports complets
@@ -2350,15 +2351,53 @@ async def handle_client_command(command: str, params: dict):
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
-        
-        return {'updated': updated}
+
+            # 🔥 BIDIRECTIONNEL: Broadcaster les changements à tous les clients
+            if ws_manager:
+                await ws_manager.emit('config_change', {
+                    'changes': updated,
+                    'timestamp': time.time()
+                })
+
+            # 🔥 BUG FIX #1: Sauvegarder la configuration après mise à jour
+            try:
+                config_persistence = get_config_persistence()
+                config_persistence.save(TRADING_CONFIG)
+                logger.debug("💾 Configuration sauvegardée automatiquement")
+            except Exception as e:
+                logger.error(f"❌ Erreur sauvegarde configuration: {e}")
+
+        return {'updated': updated, 'success': True}
     
     elif command == 'get_status':
         status_data = app_state.copy()
         if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
             status_data['active_position'] = status_data['active_position'].to_dict()
         return status_data
-    
+
+    elif command == 'reboot_bot':
+        # 🔥 REBOOT: Redémarrer le bot (backend + frontend via HMR)
+        logger.warning("🔄 Redémarrage du bot demandé...")
+        await add_log('WARNING', 'Redémarrage du bot', 'Redémarrage demandé par l\'utilisateur')
+
+        # Broadcaster aux clients pour qu'ils se préparent
+        if ws_manager:
+            await ws_manager.emit('bot_rebooting', {
+                'message': 'Bot redémarrage dans 2 secondes...',
+                'timestamp': time.time()
+            })
+
+        # Attendre un peu pour que le message soit envoyé
+        await asyncio.sleep(2)
+
+        # Redémarrer le processus Python
+        import os
+        import sys
+        logger.info("🔄 Exécution du redémarrage...")
+        os.execv(sys.executable, ['python'] + sys.argv)
+
+        return {'status': 'rebooting', 'message': 'Bot redémarrage...'}
+
     elif command == 'close_position':
         if position_manager and position_manager.active_position:
             result = await api_close_position()
@@ -2804,10 +2843,25 @@ async def export_trades_csv(
 
 if __name__ == '__main__':
     import uvicorn
-    
+
     # 🔥 PHASE 4: Charger l'historique au démarrage
     load_trade_history()
-    
+
+    # 🔥 BUG FIX #1: Charger la configuration sauvegardée
+    try:
+        from config import TRADING_CONFIG
+        config_persistence = get_config_persistence()
+        saved_config = config_persistence.load()
+
+        if saved_config:
+            # Mettre à jour TRADING_CONFIG avec les valeurs sauvegardées
+            TRADING_CONFIG.update(saved_config)
+            logger.info(f"✅ Configuration chargée: {len(saved_config)} paramètres")
+        else:
+            logger.info("ℹ️ Aucune configuration sauvegardée, utilisation des valeurs par défaut")
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur chargement configuration: {e}")
+
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     

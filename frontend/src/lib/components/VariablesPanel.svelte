@@ -1,6 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
-	import { sendCommandViaWS } from '$lib/utils/websocket';
+	import { sendCommandViaWS, getWebSocket } from '$lib/utils/websocket';
 	// 🔥 REMPLACEMENT: WebSocket natif - plus besoin de getSocket()
 	// import { getSocket } from '$lib/utils/socket';
 
@@ -247,10 +247,33 @@
 		});
 	}
 
-	// 🔥 REMPLACEMENT: WebSocket natif gère déjà les changements de config via websocket.js
-	// Les changements de config sont automatiquement synchronisés via le store logs
-	// Plus besoin d'écouter manuellement les événements Socket.IO
-	// Le composant rechargera automatiquement la config après sauvegarde via saveConfig()
+	// 🔥 BIDIRECTIONNEL: Écouter les changements de config des autres clients
+	onMount(() => {
+		const ws = getWebSocket();
+
+		if (ws) {
+			ws.on('config_change', (data) => {
+				console.log('🔄 Config change received from server:', data);
+
+				// Mettre à jour la config locale avec les changements
+				if (data.changes) {
+					Object.entries(data.changes).forEach(([key, value]) => {
+						if (key in config) {
+							config[key] = value;
+							console.log(`✅ Updated ${key} = ${value}`);
+						}
+					});
+
+					// Force reactive update
+					config = {...config};
+
+					// Afficher un message
+					saveMessage = '🔄 Configuration synchronisée avec le serveur';
+					setTimeout(() => saveMessage = '', 3000);
+				}
+			});
+		}
+	});
 </script>
 
 <div class="variables-panel">
