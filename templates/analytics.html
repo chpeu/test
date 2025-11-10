@@ -7,10 +7,10 @@
     
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    
-    <!-- Socket.IO -->
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    
+
+    <!-- 🔥 MIGRATION: WebSocket natif au lieu de Socket.IO -->
+    <script src="/static/js/websocket_native.js"></script>
+
     <style>
         * {
             margin: 0;
@@ -589,53 +589,65 @@
             window.open(`/api/export?format=csv&data_type=trades&${params}`, '_blank');
         }
         
-        // ==================== SOCKET.IO SYNC ====================
-        
-        // 🔥 FIX: Ajouter SocketIO pour synchronisation temps réel avec session
-        const socket = io();
-        
-        socket.on('connect', () => {
-            console.log('✅ Analytics: Connecté à SocketIO');
-            // 🔥 FIX: Charger données au démarrage après connexion SocketIO
-            loadData();
-        });
-        
-        socket.on('disconnect', () => {
-            console.warn('❌ Analytics: Déconnecté de SocketIO');
-        });
-        
-        // 🔥 FIX: Écouter événements de trading pour mise à jour immédiate
-        socket.on('position_opened', (data) => {
-            console.log('🟢 Analytics: Position ouverte (temps réel)', data);
-            // Recharger données immédiatement
-            loadData();
-        });
-        
-        socket.on('position_closed', (data) => {
-            console.log('🔔 Analytics: Position fermée (temps réel)', data);
-            // Recharger données immédiatement
-            loadData();
-        });
-        
-        socket.on('tp_escalier_level', (data) => {
-            console.log('🎯 Analytics: TP Escalier niveau atteint (temps réel)', data);
-            // Recharger données immédiatement
-            loadData();
-        });
-        
-        // ==================== INITIALIZATION ====================
-        
-        // Si déjà connecté, charger immédiatement (sinon attendre événement 'connect')
-        if (socket.connected) {
-            loadData();
+        // ==================== WEBSOCKET NATIVE SYNC ====================
+
+        // 🔥 MIGRATION: WebSocket natif pour synchronisation temps réel
+        let ws = null;
+
+        function initWebSocket() {
+            if (!window.BidirectionalWebSocket) {
+                console.error('❌ BidirectionalWebSocket non disponible');
+                return;
+            }
+
+            const API_BASE_URL = window.location.origin;
+            ws = new BidirectionalWebSocket(API_BASE_URL);
+
+            // Événement connexion
+            ws.on('connect', () => {
+                console.log('✅ Analytics: WebSocket natif connecté');
+                loadData();
+            });
+
+            // Événement déconnexion
+            ws.on('disconnect', (data) => {
+                console.warn('❌ Analytics: WebSocket déconnecté:', data);
+            });
+
+            // Écouter événements de trading pour mise à jour immédiate
+            ws.on('position_opened', (data) => {
+                console.log('🟢 Analytics: Position ouverte (temps réel)', data);
+                loadData();
+            });
+
+            ws.on('position_closed', (data) => {
+                console.log('🔔 Analytics: Position fermée (temps réel)', data);
+                loadData();
+            });
+
+            ws.on('tp_escalier_level', (data) => {
+                console.log('🎯 Analytics: TP Escalier niveau atteint (temps réel)', data);
+                loadData();
+            });
+
+            // Se connecter
+            ws.connect();
         }
-        
-        // 🔥 FIX: Polling automatique toutes les 15 secondes (backup si SocketIO échoue)
+
+        // ==================== INITIALIZATION ====================
+
+        // Initialiser WebSocket au chargement
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('📊 Analytics - Initialisation WebSocket...');
+            initWebSocket();
+        });
+
+        // Polling automatique toutes les 15 secondes (backup)
         setInterval(() => {
-            if (socket.connected) {
+            if (ws && ws.connected) {
                 loadData();
             }
-        }, 15000); // 🔥 FIX: Rafraîchir toutes les 15 secondes (backup) au lieu de 30s
+        }, 15000);
     </script>
 </body>
 </html>
