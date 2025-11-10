@@ -57,31 +57,49 @@ router = APIRouter(prefix="/api/scanner", tags=["scanner"])
 @router.get("/top-pairs")
 async def get_top_pairs():
     """
-    GET /api/scanner/top-pairs
+    GET /api/scanner/top-pairs - ⚠️ DEPRECATED
     Récupérer les top pairs actuels
+
+    ⚠️ DEPRECATED: Utiliser WebSocket 'top_pairs_update' event à la place (push automatique)
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète, utiliser WebSocket push à la place
+    logger.warning("⚠️ DEPRECATED: GET /api/scanner/top-pairs appelé - Utiliser WebSocket 'top_pairs_update' event (push) à la place")
+
     if not _app_state:
-        return JSONResponse({'pairs': []})
+        response = JSONResponse({'pairs': []})
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket 'top_pairs_update' event"
+        return response
 
     try:
         pairs = _app_state.get('top_pairs', [])
-        return JSONResponse({'pairs': pairs})
+        response = JSONResponse({'pairs': pairs})
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket 'top_pairs_update' event"
+        return response
     except Exception as e:
         logger.error(f"Erreur récupération top pairs: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        response = JSONResponse({'error': str(e)}, status_code=500)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
 @router.post("/start")
 async def start_scanner(request: Request):
     """
-    POST /api/scanner/start
+    POST /api/scanner/start - ⚠️ DEPRECATED
     Démarrer le scanner des top pairs
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'start_scanner' à la place (voir /api/start)
 
     Body JSON optionnel:
     {
         "top_n": 20  # Nombre de paires à scanner (défaut: 20)
     }
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète et duplique /api/start
+    logger.warning("⚠️ DEPRECATED: POST /api/scanner/start appelé - Utiliser WebSocket command 'start_scanner' ou /api/start à la place")
+
     if not _scanner or not _app_state:
         return JSONResponse({'error': 'Scanner not available'}, status_code=503)
 

@@ -52,8 +52,10 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 @router.get("/status")
 async def get_status():
     """
-    GET /api/status
+    GET /api/status - ⚠️ DEPRECATED
     Récupérer l'état global de l'application
+
+    ⚠️ DEPRECATED: Utiliser WebSocket 'status' event à la place
 
     Response:
     {
@@ -65,21 +67,34 @@ async def get_status():
         "trade_history": [...]
     }
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète, utiliser WebSocket à la place
+    logger.warning("⚠️ DEPRECATED: GET /api/status appelé - Utiliser WebSocket 'status' event à la place")
+
     if not _app_state:
-        return JSONResponse({'error': 'App state not available'}, status_code=503)
+        response = JSONResponse({'error': 'App state not available'}, status_code=503)
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket 'status' event"
+        return response
 
     try:
-        return JSONResponse(_app_state)
+        response = JSONResponse(_app_state)
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket 'status' event"
+        return response
     except Exception as e:
         logger.error(f"Erreur récupération statut: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        response = JSONResponse({'error': str(e)}, status_code=500)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
 @router.get("/state")
 async def get_complete_state():
     """
-    GET /api/state
+    GET /api/state - ⚠️ DEPRECATED
     Récupérer l'état complet de l'application
+
+    ⚠️ DEPRECATED: Utiliser WebSocket 'request' type='state' à la place
 
     Inclut:
     - Configuration de trading
@@ -88,6 +103,9 @@ async def get_complete_state():
     - Stats et historique des trades
     - Timestamp de la session
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète, utiliser WebSocket à la place
+    logger.warning("⚠️ DEPRECATED: GET /api/state appelé - Utiliser WebSocket request 'state' à la place")
+
     # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
     # Note: time est déjà importé au niveau du module (ligne 10)
     if not _app_state:
@@ -121,7 +139,7 @@ async def get_complete_state():
 
         from config import TRADING_CONFIG
 
-        return JSONResponse({
+        response = JSONResponse({
             'success': True,
             'config': {
                 'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
@@ -149,6 +167,9 @@ async def get_complete_state():
             'stats': stats_dict,
             'timestamp': time.time()
         })
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket request 'state'"
+        return response
 
     except Exception as e:
         logger.error(f"Erreur récupération état complet: {e}", exc_info=True)
@@ -169,14 +190,19 @@ async def get_complete_state():
 @router.post("/start")
 async def start_scanner():
     """
-    POST /api/start
+    POST /api/start - ⚠️ DEPRECATED
     Démarrer le scanner et le scheduler
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'start_scanner' à la place
 
     Procédure:
     1. Effectuer un scan initial des top pairs si nécessaire
     2. Démarrer le scheduler pour les boucles automatiques
-    3. Émettre événement SocketIO
+    3. Émettre événement WebSocket
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète, utiliser WebSocket à la place
+    logger.warning("⚠️ DEPRECATED: POST /api/start appelé - Utiliser WebSocket command 'start_scanner' à la place")
+
     # 🔥 FIX: Initialiser les instances si nécessaire
     try:
         if not _scheduler or not _app_state:
@@ -216,41 +242,53 @@ async def start_scanner():
                 await _ws_manager.emit('status', status_data)
                 await _ws_manager.emit('scan_started', {'timestamp': time.time()})
 
-            return JSONResponse({
+            response = JSONResponse({
                 'success': True,
                 'status': 'started',
                 'is_scanning': True
             })
+            response.headers["X-Deprecated"] = "true"
+            response.headers["X-Deprecated-Alternative"] = "WebSocket command 'start_scanner'"
+            return response
 
         except Exception as e:
             logger.error(f"Erreur démarrage scanner: {e}", exc_info=True)
-            return JSONResponse({
+            response = JSONResponse({
                 'success': False,
                 'status': 'error',
                 'error': str(e),
                 'is_scanning': False
-            }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
+            }, status_code=200)
+            response.headers["X-Deprecated"] = "true"
+            return response
     except Exception as e:
         logger.error(f"Erreur critique démarrage scanner: {e}", exc_info=True)
-        return JSONResponse({
+        response = JSONResponse({
             'success': False,
             'status': 'error',
             'error': str(e),
             'is_scanning': False
-        }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
+        }, status_code=200)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
 @router.post("/stop")
 async def stop_scanner():
     """
-    POST /api/stop
+    POST /api/stop - ⚠️ DEPRECATED
     Arrêter le scanner et le scheduler
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'stop_scanner' à la place
 
     Procédure:
     1. Arrêter le scheduler (arrête les boucles automatiques)
     2. Mise à jour de l'état is_scanning
-    3. Émettre événement SocketIO
+    3. Émettre événement WebSocket
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète, utiliser WebSocket à la place
+    logger.warning("⚠️ DEPRECATED: POST /api/stop appelé - Utiliser WebSocket command 'stop_scanner' à la place")
+
     # 🔥 FIX: Initialiser les instances si nécessaire
     try:
         if not _scheduler or not _app_state:
@@ -289,25 +327,32 @@ async def stop_scanner():
                 }
                 await _ws_manager.emit('status', status_data)
 
-            return JSONResponse({
+            response = JSONResponse({
                 'success': True,
                 'status': 'stopped',
                 'is_scanning': False
             })
+            response.headers["X-Deprecated"] = "true"
+            response.headers["X-Deprecated-Alternative"] = "WebSocket command 'stop_scanner'"
+            return response
 
         except Exception as e:
             logger.error(f"Erreur arrêt scanner: {e}", exc_info=True)
-            return JSONResponse({
+            response = JSONResponse({
                 'success': False,
                 'status': 'error',
                 'error': str(e),
                 'is_scanning': False
-            }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
+            }, status_code=200)
+            response.headers["X-Deprecated"] = "true"
+            return response
     except Exception as e:
         logger.error(f"Erreur critique arrêt scanner: {e}", exc_info=True)
-        return JSONResponse({
+        response = JSONResponse({
             'success': False,
             'status': 'error',
             'error': str(e),
             'is_scanning': False
-        }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 500
+        }, status_code=200)
+        response.headers["X-Deprecated"] = "true"
+        return response
