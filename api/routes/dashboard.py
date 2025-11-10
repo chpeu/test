@@ -38,17 +38,16 @@ def set_app_state(app_state):
 
 
 def set_websocket_manager(ws_manager):
-    """Injecter l'instance WebSocketManager"""
-    global _ws_manager, _sio
+    """🔥 MIGRATION COMPLÈTE: Injecter l'instance WebSocketManager (WebSocket natif uniquement)"""
+    global _ws_manager
     _ws_manager = ws_manager
-    _sio = ws_manager  # 🔥 LEGACY: Garder _sio pour compatibilité (sera supprimé plus tard)
 
 
 def set_socketio(sio):
-    """Injecter l'instance SocketIO (alias pour compatibilité)"""
-    global _sio, _ws_manager
-    _sio = sio
-    _ws_manager = sio if hasattr(sio, 'emit') else None  # 🔥 LEGACY: Si c'est un ws_manager, l'utiliser
+    """🔥 LEGACY: Alias pour compatibilité (déprécié - utiliser set_websocket_manager)"""
+    global _ws_manager
+    # Si c'est un ws_manager, l'utiliser
+    _ws_manager = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
 
 
 # Créer le router
@@ -228,8 +227,10 @@ async def start_scanner():
                     'stats': _app_state.get('stats', {}),
                     'top_pairs': _app_state.get('top_pairs', [])
                 }
-                await _sio.emit('status', status_data)
-                await _sio.emit('scan_started', {'timestamp': time.time()})
+                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+                if _ws_manager:
+                    await _ws_manager.emit('status', status_data)
+                    await _ws_manager.emit('scan_started', {'timestamp': time.time()})
 
             return JSONResponse({
                 'success': True,
@@ -294,7 +295,7 @@ async def stop_scanner():
             if _app_state:
                 _app_state['is_scanning'] = False
 
-            # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif
+            # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif uniquement
             if _ws_manager:
                 status_data = {
                     'is_scanning': False,
@@ -303,14 +304,6 @@ async def stop_scanner():
                     'top_pairs': _app_state.get('top_pairs', [])
                 }
                 await _ws_manager.emit('status', status_data)
-            elif _sio:  # 🔥 LEGACY: Fallback Socket.IO (sera supprimé)
-                status_data = {
-                    'is_scanning': False,
-                    'active_position': _app_state.get('active_position'),
-                    'stats': _app_state.get('stats', {}),
-                    'top_pairs': _app_state.get('top_pairs', [])
-                }
-                await _sio.emit('status', status_data)
 
             return JSONResponse({
                 'success': True,

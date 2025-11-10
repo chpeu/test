@@ -164,9 +164,9 @@ async def position_check_loop_callback():
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
 
-                # 🔥 FIX: Utiliser emit() au lieu de send_position_closed()
-                if _sio:
-                    await _sio.emit('position_closed', result)
+                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+                if _ws_manager:
+                    await _ws_manager.emit('position_closed', result)
 
     except Exception as e:
         logger.error(f"❌ Erreur position_check_loop_callback: {e}")
@@ -236,20 +236,18 @@ async def _emit_position_update(position, current_price: float):
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
         }
 
-        # 🔥 FIX: Utiliser emit() au lieu de send_position_update()
-        if _sio:
-            await _sio.emit('position_update', update_data)
+        # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+        if _ws_manager:
+            await _ws_manager.emit('position_update', update_data)
         # 🔥 FIX: Émettre aussi status pour synchronisation temps réel complète
-        if _app_state:
+        if _app_state and _ws_manager:
             status_data = {
                 'is_scanning': _app_state.get('is_scanning', False),
                 'active_position': update_data,
                 'stats': _app_state.get('stats', {}),
                 'top_pairs': _app_state.get('top_pairs', [])
             }
-            # 🔥 FIX: Utiliser emit() au lieu de send_status()
-            if _sio:
-                await _sio.emit('status', status_data)
+            await _ws_manager.emit('status', status_data)
 
         logger.debug(
             f"📡 position_update émis: {position.symbol} | "
