@@ -211,13 +211,22 @@ class WebSocketManager:
         """Se connecter au WebSocket"""
         try:
             import websockets
-            
+            import ssl
+
             if DEBUG_ENABLED:
                 logger.info(f"🔌 Connexion WebSocket: {self.url}")
-            
+
+            # Créer contexte SSL pour vérification des certificats
+            ssl_context = None
+            if self.url.startswith('wss://'):
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = True
+                ssl_context.verify_mode = ssl.CERT_REQUIRED
+
             self._ws = await websockets.connect(
                 self.url,
-                ping_interval=WEBSOCKET_CONFIG['ping_interval']
+                ping_interval=WEBSOCKET_CONFIG['ping_interval'],
+                ssl=ssl_context
             )
             
             self._connected = True
