@@ -256,7 +256,8 @@ class HybridPriceProvider:
     
     def is_websocket_connected(self) -> bool:
         """Vérifier si WebSocket est connecté"""
-        return self.use_websocket and self.ws_manager and self.ws_manager.connected
+        # 🔥 FIX: Garantir retour bool (éviter None)
+        return bool(self.use_websocket and self.ws_manager and self.ws_manager.connected)
     
     def set_socketio_callback(self, callback, active_symbol: Optional[str] = None):
         """

@@ -145,11 +145,13 @@ class TestHybridPriceProvider:
     async def test_stop_websocket(self):
         """Test arrêt WebSocket"""
         provider = HybridPriceProvider()
-        provider.ws_manager = AsyncMock()
+        mock_ws_manager = AsyncMock()
+        provider.ws_manager = mock_ws_manager
 
         await provider.stop_websocket()
 
-        provider.ws_manager.disconnect.assert_called_once()
+        # 🔥 FIX: Vérifier disconnect avant que ws_manager soit None
+        mock_ws_manager.disconnect.assert_called_once()
         assert provider.ws_manager is None
 
     @pytest.mark.asyncio
