@@ -15,7 +15,7 @@ _scanner = None
 _analyzer = None
 _price_provider = None
 _app_state = None
-_sio = None
+_ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif uniquement
 
 
 def set_scanner(scanner):
@@ -42,10 +42,12 @@ def set_app_state(app_state):
     _app_state = app_state
 
 
-def set_socketio(sio):
-    """Injecter l'instance SocketIO"""
-    global _sio
-    _sio = sio
+def set_websocket_manager(ws_manager):
+    """🔥 MIGRATION COMPLÈTE: Injecter l'instance WebSocketManager (WebSocket natif uniquement)"""
+    global _ws_manager
+    _ws_manager = ws_manager
+
+# 🔥 CLEANUP: Supprimé set_socketio (Socket.IO obsolète, utiliser set_websocket_manager)
 
 
 # Créer le router
@@ -55,31 +57,49 @@ router = APIRouter(prefix="/api/scanner", tags=["scanner"])
 @router.get("/top-pairs")
 async def get_top_pairs():
     """
-    GET /api/scanner/top-pairs
+    GET /api/scanner/top-pairs - ⚠️ DEPRECATED
     Récupérer les top pairs actuels
+
+    ⚠️ DEPRECATED: Utiliser WebSocket 'top_pairs_update' event à la place (push automatique)
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète, utiliser WebSocket push à la place
+    logger.warning("⚠️ DEPRECATED: GET /api/scanner/top-pairs appelé - Utiliser WebSocket 'top_pairs_update' event (push) à la place")
+
     if not _app_state:
-        return JSONResponse({'pairs': []})
+        response = JSONResponse({'pairs': []})
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket 'top_pairs_update' event"
+        return response
 
     try:
         pairs = _app_state.get('top_pairs', [])
-        return JSONResponse({'pairs': pairs})
+        response = JSONResponse({'pairs': pairs})
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket 'top_pairs_update' event"
+        return response
     except Exception as e:
         logger.error(f"Erreur récupération top pairs: {e}")
-        return JSONResponse({'error': str(e)}, status_code=500)
+        response = JSONResponse({'error': str(e)}, status_code=500)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
 @router.post("/start")
 async def start_scanner(request: Request):
     """
-    POST /api/scanner/start
+    POST /api/scanner/start - ⚠️ DEPRECATED
     Démarrer le scanner des top pairs
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'start_scanner' à la place (voir /api/start)
 
     Body JSON optionnel:
     {
         "top_n": 20  # Nombre de paires à scanner (défaut: 20)
     }
     """
+    # 🔥 DEPRECATED: Cet endpoint est obsolète et duplique /api/start
+    logger.warning("⚠️ DEPRECATED: POST /api/scanner/start appelé - Utiliser WebSocket command 'start_scanner' ou /api/start à la place")
+
     if not _scanner or not _app_state:
         return JSONResponse({'error': 'Scanner not available'}, status_code=503)
 
@@ -107,13 +127,16 @@ async def start_scanner(request: Request):
             _app_state['top_pairs'] = pairs
             _app_state['scanner_running'] = True
 
-        # Émettre l'événement via SocketIO si disponible
-        if _sio:
-            await _sio.emit('scanner_started', {
+        # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+        if _ws_manager:
+            await _ws_manager.emit('scanner_started', {
                 'status': 'success',
                 'top_n': top_n,
                 'pairs_found': len(pairs)
             })
+            # 🔥 NOUVEAU: Événements sessions pour GlobalStats
+            await _ws_manager.emit('session_started', {'timestamp': time.time()})
+            await _ws_manager.emit('sessions_update', {'timestamp': time.time()})
 
         logger.info(f"✅ Scanner démarré: {len(pairs)} paires trouvées")
 

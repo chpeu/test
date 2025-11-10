@@ -42,7 +42,8 @@ export const sessionsError = writable(null);
 // ============================================================================
 
 /**
- * Charger toutes les sessions depuis l'API
+ * Charger toutes les sessions via WebSocket
+ * 🔥 MIGRATION: Remplace fetch('/api/sessions') par WebSocket command
  */
 export async function loadSessions() {
 	if (!browser) return;
@@ -51,8 +52,15 @@ export async function loadSessions() {
 	sessionsError.set(null);
 
 	try {
-		const res = await fetch('/api/sessions');
-		const data = await res.json();
+		// 🔥 MIGRATION WebSocket: Utiliser command au lieu de fetch
+		const { getWebSocket } = await import('$lib/utils/websocket');
+		const ws = getWebSocket();
+
+		if (!ws || !ws.connected) {
+			throw new Error('WebSocket non connecté');
+		}
+
+		const data = await ws.sendCommand('get_sessions');
 
 		if (data.error) {
 			throw new Error(data.error);
@@ -75,14 +83,28 @@ export async function loadSessions() {
 }
 
 /**
- * Charger les stats globales
+ * Charger les stats globales via WebSocket
+ * 🔥 MIGRATION: Remplace fetch('/api/sessions/stats/global') par WebSocket command
  */
 export async function loadGlobalStats() {
 	if (!browser) return;
 
 	try {
-		const res = await fetch('/api/sessions/stats/global');
-		const data = await res.json();
+		// 🔥 MIGRATION WebSocket: Utiliser command au lieu de fetch
+		const { getWebSocket } = await import('$lib/utils/websocket');
+		const ws = getWebSocket();
+
+		if (!ws || !ws.connected) {
+			// Fallback: utiliser REST si WebSocket non connecté (rétrocompatibilité)
+			const res = await fetch('/api/sessions/stats/global');
+			const data = await res.json();
+			if (!data.error) {
+				globalStats.set(data);
+			}
+			return;
+		}
+
+		const data = await ws.sendCommand('get_sessions_stats');
 
 		if (!data.error) {
 			globalStats.set(data);
@@ -305,10 +327,5 @@ function getActiveSessionId() {
 	return id;
 }
 
-// Auto-refresh sessions toutes les 10 secondes
-if (browser) {
-	setInterval(() => {
-		loadSessions();
-		loadGlobalStats();
-	}, 10000);
-}
+// 🔥 BIDIRECTIONNEL: Plus de polling REST - Utiliser WebSocket pour mises à jour temps réel
+// Les mises à jour seront déclenchées par les événements WebSocket dans les composants

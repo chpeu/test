@@ -6,6 +6,9 @@ aiohttp==3.9.1
 python-dateutil==2.8.2
 fastapi==0.104.1
 uvicorn==0.24.0
+# 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
+# python-socketio==5.11.0  # ❌ SUPPRIMÉ - Migration vers WebSocket natif
+# python-engineio==4.9.0   # ❌ SUPPRIMÉ - Migration vers WebSocket natif
 tenacity==8.2.3
 pybreaker==1.0.1
 websockets==12.0

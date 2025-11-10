@@ -77,6 +77,9 @@ class WebSocketManager:
         try:
             if websocket in self.active_connections:
                 await websocket.send_text(json.dumps(message))
+        except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
+            # 🔥 FIX: Déconnexions normales - nettoyer silencieusement
+            await self.disconnect(websocket)
         except Exception as e:
             logger.error(f"❌ Erreur envoi message WebSocket: {e}")
             await self.disconnect(websocket)
@@ -89,23 +92,45 @@ class WebSocketManager:
         # 🔥 OPTIMISATION: Créer le message JSON une seule fois
         message_json = json.dumps(message)
         
+        # 🔥 FIX: Créer une copie de la liste pour éviter les modifications pendant l'itération
+        connections_to_send = list(self.active_connections)
+        if not connections_to_send:
+            return
+        
         # 🔥 OPTIMISATION: Envoyer à tous les clients en parallèle avec asyncio.gather
         async def send_to_connection(connection):
             try:
+                # 🔥 FIX: Vérifier que la connexion est toujours active
+                if connection not in self.active_connections:
+                    return None
                 await connection.send_text(message_json)
                 return None  # Succès
+            except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
+                # 🔥 FIX: Ignorer les erreurs de déconnexion normales
+                return connection  # Échec - retourner connexion à nettoyer
             except Exception as e:
-                logger.warning(f"⚠️ Erreur broadcast WebSocket: {e}")
+                # 🔥 FIX: Logger seulement les erreurs inattendues
+                logger.debug(f"⚠️ Erreur broadcast WebSocket: {e}")
                 return connection  # Échec - retourner connexion à nettoyer
         
         # Exécuter tous les envois en parallèle
         results = await asyncio.gather(
-            *[send_to_connection(conn) for conn in list(self.active_connections)],
+            *[send_to_connection(conn) for conn in connections_to_send],
             return_exceptions=True
         )
         
-        # Nettoyer les connexions déconnectées
-        disconnected = [conn for conn in results if conn is not None and not isinstance(conn, Exception)]
+        # 🔥 FIX: Nettoyer les connexions déconnectées (filtrer les exceptions et None)
+        disconnected = []
+        for i, result in enumerate(results):
+            if result is not None and not isinstance(result, Exception):
+                # C'est une connexion à nettoyer
+                if i < len(connections_to_send):
+                    disconnected.append(connections_to_send[i])
+            elif isinstance(result, Exception):
+                # Exception levée - nettoyer la connexion correspondante
+                if i < len(connections_to_send):
+                    disconnected.append(connections_to_send[i])
+        
         if disconnected:
             async with self._lock:
                 for conn in disconnected:

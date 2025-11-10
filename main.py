@@ -747,7 +747,7 @@ async def scanner_loop_callback():
                                             # 🔥 FIX: Configurer callback pour suivre position active
                                             # Le WebSocket met à jour le cache en temps réel
                                             # La boucle de check à 0.5s récupère le prix du cache et émet position_update
-                                            price_provider.set_socketio_callback(None, symbol)
+                                            # 🔥 CLEANUP: Supprimé set_socketio_callback (Socket.IO obsolète)
                                             logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
                                             logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
@@ -987,9 +987,7 @@ async def position_check_loop_callback():
                         app_state['trade_history'] = app_state['trade_history'][-1000:]
                     save_trade_history()
                 
-                # 🔥 FIX: Désactiver callback WebSocket si position fermée
-                if price_provider:
-                    price_provider.set_socketio_callback(None, None)
+                # 🔥 CLEANUP: Supprimé set_socketio_callback (Socket.IO obsolète)
                 
                 # 🔥 FIX: Log pour debug
                 logger.info(
@@ -1123,7 +1121,7 @@ def init_instances():
         notification_manager = create_notification_manager(
             telegram_bot_token=TELEGRAM_BOT_TOKEN,
             telegram_chat_id=TELEGRAM_CHAT_ID,
-            socketio_callback=websocket_callback,  # 🔥 MIGRATION COMPLÈTE: Utiliser websocket_callback
+            websocket_callback=websocket_callback,  # 🔥 MIGRATION COMPLÈTE: WebSocket natif uniquement
             enable_batching=NOTIFICATION_BATCHING_ENABLED,
             instance_port=port  # 🔥 NOUVEAU: Passer instance_port
         )
@@ -1274,45 +1272,64 @@ async def api_status():
     return JSONResponse(app_state)
 
 
-# 🔥 FIX: Endpoints sessions pour compatibilité frontend Svelte
+# 🔥 DEPRECATED: Endpoints sessions - Utiliser WebSocket commands à la place
 @app.get("/api/sessions")
 async def api_get_sessions():
-    """Liste des sessions (compatibilité frontend Svelte)"""
+    """
+    GET /api/sessions - ⚠️ DEPRECATED
+    Liste des sessions (compatibilité frontend Svelte)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_sessions' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/sessions appelé - Utiliser WebSocket command 'get_sessions' à la place")
+
     import time
     import sys
     try:
         init_instances()
     except Exception as e:
         logger.error(f"❌ Erreur init_instances dans /api/sessions: {e}", exc_info=True)
-    
+
     try:
         current_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-        return JSONResponse({
+        response = JSONResponse({
             'sessions': [{
-                'id': session_id or f"live_{int(time.time())}",
+                'session_id': session_id or f"live_{int(time.time())}",
                 'status': 'running' if app_state.get('is_scanning') else 'stopped',
                 'port': current_port,
                 'started_at': time.time()
             }] if session_id else []
         })
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_sessions'"
+        return response
     except Exception as e:
         logger.error(f"❌ Erreur /api/sessions: {e}", exc_info=True)
-        return JSONResponse({
+        response = JSONResponse({
             'sessions': [],
             'error': str(e)
-        }, status_code=200)  # Retourner 200 avec sessions vide
+        }, status_code=200)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
 @app.get("/api/sessions/stats/global")
 async def api_get_sessions_stats_global():
-    """Stats globales des sessions (compatibilité frontend Svelte)"""
+    """
+    GET /api/sessions/stats/global - ⚠️ DEPRECATED
+    Stats globales des sessions (compatibilité frontend Svelte)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_sessions_stats' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/sessions/stats/global appelé - Utiliser WebSocket command 'get_sessions_stats' à la place")
+
     import time
-    
+
     try:
         init_instances()
     except Exception as e:
         logger.error(f"❌ Erreur init_instances dans /api/sessions/stats/global: {e}", exc_info=True)
-    
+
     try:
         # Calculer stats depuis app_state ou analytics_db
         stats_dict = {
@@ -1321,7 +1338,7 @@ async def api_get_sessions_stats_global():
             'losses': 0,
             'winrate': 0.0
         }
-        
+
         if analytics_db:
             try:
                 trades = analytics_db.get_trades(limit=10000)
@@ -1338,7 +1355,7 @@ async def api_get_sessions_stats_global():
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats globales: {e}")
-        
+
         # Fallback: utiliser app_state['trade_history']
         if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
             try:
@@ -1356,15 +1373,18 @@ async def api_get_sessions_stats_global():
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats app_state: {e}")
-        
-        return JSONResponse({
+
+        response = JSONResponse({
             'total_sessions': 1,
             'active_sessions': 1 if app_state.get('is_scanning') else 0,
             'global_stats': stats_dict
         })
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_sessions_stats'"
+        return response
     except Exception as e:
         logger.error(f"❌ Erreur /api/sessions/stats/global: {e}", exc_info=True)
-        return JSONResponse({
+        response = JSONResponse({
             'total_sessions': 0,
             'active_sessions': 0,
             'global_stats': {
@@ -1374,14 +1394,15 @@ async def api_get_sessions_stats_global():
                 'winrate': 0.0
             },
             'error': str(e)
-        }, status_code=200)  # Retourner 200 avec stats vides
+        }, status_code=200)
+        response.headers["X-Deprecated"] = "true"
+        return response
 
 
-@app.get("/api/state")
-async def api_get_complete_state():
-    """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
+# 🔥 NOUVEAU: Fonction helper pour get_state (utilisée par REST et WebSocket)
+async def _get_complete_state_data():
+    """Helper function pour récupérer l'état complet (partagé entre REST et WebSocket)"""
     import time
-    logger.info("🔍 /api/state appelé - Début de la fonction")
     
     # 🔥 FIX: Retourner réponse minimale immédiatement - TOUJOURS retourner 200
     try:
@@ -1542,29 +1563,22 @@ async def api_get_complete_state():
             except Exception as e:
                 logger.error(f"❌ Erreur filtrage trades par session: {e}")
         
-        return JSONResponse({
+        return {
             'success': True,
-            'session_id': session_id or f"live_{int(time.time())}",  # 🔥 FIX: Fallback si session_id None
+            'session_id': session_id or f"live_{int(time.time())}",
             'config': {
-                # Seuils configurables
                 'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                 'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                 'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
                 'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
-                # Trend timeframe
                 'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
-                # Capital
                 'account_size': TRADING_CONFIG.get('account_size', 1000.0),
                 'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
-                # Confluence
                 'use_confluence': TRADING_CONFIG.get('use_confluence', False),
-                # TP/SL Mode
                 'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                 'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
                 'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-                # Volume multiplier
                 'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-                # Min score
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
             },
             'scanner': {
@@ -1576,14 +1590,14 @@ async def api_get_complete_state():
                 'data': active_position_dict
             },
             'stats': stats_dict,
-            'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
+            'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],
             'timestamp': time.time()
-        })
+        }
     except Exception as e:
-        logger.error(f"❌ Erreur /api/state: {e}", exc_info=True)
-        # 🔥 FIX: Retourner réponse minimale au lieu de 503
+        logger.error(f"❌ Erreur _get_complete_state_data: {e}", exc_info=True)
+        # Retourner réponse minimale
         import time
-        return JSONResponse({
+        return {
             'success': False,
             'error': str(e),
             'session_id': session_id or f"live_{int(time.time())}",
@@ -1593,12 +1607,34 @@ async def api_get_complete_state():
             'stats': {'total_trades': 0, 'wins': 0, 'losses': 0, 'winrate': 0.0},
             'trades': [],
             'timestamp': time.time()
-        }, status_code=200)  # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
+        }
+
+
+@app.get("/api/state")
+async def api_get_complete_state():
+    """
+    GET /api/state - ⚠️ DEPRECATED
+    État complet de l'application (config + UI + position + stats + etc.)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_state' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/state appelé - Utiliser WebSocket command 'get_state' à la place")
+    logger.info("🔍 /api/state appelé - Début de la fonction")
+
+    state_data = await _get_complete_state_data()
+    response = JSONResponse(state_data)
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_state'"
+    return response
 
 
 @app.post("/api/start")
 async def api_start():
-    """Démarrer le scanner et le scheduler"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'start_scanner' à la place
+    Conservé pour compatibilité uniquement
+    Démarrer le scanner et le scheduler
+    """
     init_instances()
 
     # 🔥 JOUR 3: Si pas de top_pairs, faire un scan initial
@@ -1630,12 +1666,20 @@ async def api_start():
         logger.info("Scanner démarré (sans scheduler)")
         await ws_manager.emit('status', {'is_scanning': True})
 
+    # 🔥 NOUVEAU: Émettre événements sessions pour GlobalStats
+    await ws_manager.emit('session_started', {'timestamp': time.time()})
+    await ws_manager.emit('sessions_update', {'timestamp': time.time()})
+
     return JSONResponse({'status': 'started'})
 
 
 @app.post("/api/stop")
 async def api_stop():
-    """Arrêter le scanner et le scheduler"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'stop_scanner' à la place
+    Conservé pour compatibilité uniquement
+    Arrêter le scanner et le scheduler
+    """
     init_instances()
 
     # 🔥 JOUR 3: Arrêter le scheduler
@@ -1645,6 +1689,11 @@ async def api_stop():
 
     app_state['is_scanning'] = False
     await ws_manager.emit('status', {'is_scanning': False})
+
+    # 🔥 NOUVEAU: Émettre événements sessions pour GlobalStats
+    await ws_manager.emit('session_stopped', {'timestamp': time.time()})
+    await ws_manager.emit('sessions_update', {'timestamp': time.time()})
+
     return JSONResponse({'status': 'stopped'})
 
 
@@ -1658,7 +1707,11 @@ async def api_get_top_pairs():
 
 @app.post("/api/scanner/start")
 async def api_scanner_start(request: Request):
-    """Démarrer scanner scalability"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'start_scanner' à la place
+    Conservé pour compatibilité uniquement
+    Démarrer scanner scalability
+    """
     if app_state['is_scanning']:
         return JSONResponse({'error': 'Déjà en cours'}, status_code=400)
 
@@ -1996,7 +2049,11 @@ async def api_check_position():
 
 @app.post("/api/position/close")
 async def api_close_position():
-    """Clôturer position manuellement"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'close_position' à la place
+    Conservé pour compatibilité uniquement
+    Clôturer position manuellement
+    """
     init_instances()
     
     # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
@@ -2033,10 +2090,9 @@ async def api_close_position():
                     app_state['trade_history'] = app_state['trade_history'][-1000:]
                 save_trade_history()
             
-            # 🔥 FIX: Désactiver callback WebSocket si position fermée
-            if price_provider:
-                price_provider.set_socketio_callback(None, None)
-            
+            # 🔥 CLEANUP: Code set_socketio_callback supprimé (Socket.IO obsolète)
+            # Plus de callback WebSocket à désactiver (migration complète vers WebSocket natif)
+
             logger.info(
                 f"🔒 Position fermée manuellement avec lock: "
                 f"app_state['active_position']=None, "
@@ -2548,7 +2604,127 @@ async def handle_client_command(command: str, params: dict):
         config_change = validated_params.change
         await add_log('INFO', f'Config modifiée: {config_key}', str(config_change))
         return {'status': 'logged', 'key': config_key, 'change': config_change}
-    
+
+    elif command == 'get_sessions':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/sessions
+        try:
+            init_instances()
+        except Exception as e:
+            logger.error(f"❌ Erreur init_instances dans get_sessions: {e}", exc_info=True)
+
+        try:
+            import sys
+            current_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+            return {
+                'sessions': [{
+                    'session_id': session_id or f"live_{int(time.time())}",
+                    'status': 'running' if app_state.get('is_scanning') else 'stopped',
+                    'port': current_port,
+                    'started_at': time.time()
+                }] if session_id else []
+            }
+        except Exception as e:
+            logger.error(f"❌ Erreur get_sessions: {e}", exc_info=True)
+            return {'sessions': [], 'error': str(e)}
+
+    elif command == 'get_sessions_stats':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/sessions/stats/global
+        try:
+            init_instances()
+        except Exception as e:
+            logger.error(f"❌ Erreur init_instances dans get_sessions_stats: {e}", exc_info=True)
+
+        try:
+            # Calculer stats depuis app_state ou analytics_db
+            stats_dict = {
+                'total_trades': 0,
+                'wins': 0,
+                'losses': 0,
+                'winrate': 0.0
+            }
+
+            if analytics_db:
+                try:
+                    trades = analytics_db.get_trades(limit=10000)
+                    if trades:
+                        total = len(trades)
+                        wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                        losses = total - wins
+                        winrate = (wins / total * 100) if total > 0 else 0.0
+                        stats_dict = {
+                            'total_trades': total,
+                            'wins': wins,
+                            'losses': losses,
+                            'winrate': winrate
+                        }
+                except Exception as e:
+                    logger.error(f"❌ Erreur récupération stats globales: {e}")
+
+            # Fallback: utiliser app_state['trade_history']
+            if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
+                try:
+                    trades = app_state['trade_history']
+                    if trades:
+                        total = len(trades)
+                        wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                        losses = total - wins
+                        winrate = (wins / total * 100) if total > 0 else 0.0
+                        stats_dict = {
+                            'total_trades': total,
+                            'wins': wins,
+                            'losses': losses,
+                            'winrate': winrate
+                        }
+                except Exception as e:
+                    logger.error(f"❌ Erreur récupération stats app_state: {e}")
+
+            return {
+                'total_sessions': 1,
+                'active_sessions': 1 if app_state.get('is_scanning') else 0,
+                'global_stats': stats_dict
+            }
+        except Exception as e:
+            logger.error(f"❌ Erreur get_sessions_stats: {e}", exc_info=True)
+            return {
+                'total_sessions': 0,
+                'active_sessions': 0,
+                'global_stats': {
+                    'total_trades': 0,
+                    'wins': 0,
+                    'losses': 0,
+                    'winrate': 0.0
+                },
+                'error': str(e)
+            }
+
+    elif command == 'get_config':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/config
+        from config import TRADING_CONFIG
+        return {
+            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+            'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+            'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+            'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+            'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+            'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+            'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+            'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
+            'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
+            'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+            'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+            'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+            'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+            'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+            'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+            'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
+        }
+
+    elif command == 'get_state':
+        # 🔥 MIGRATION WebSocket: Remplace GET /api/state
+        return await _get_complete_state_data()
+
     else:
         raise ValueError(f'Commande inconnue: {command}')
 
@@ -2557,31 +2733,38 @@ async def handle_client_command(command: str, params: dict):
 
 @app.get("/api/config")
 async def api_get_config():
-    """Récupérer la configuration actuelle (tous les paramètres)"""
+    """
+    GET /api/config - ⚠️ DEPRECATED
+    Récupérer la configuration actuelle (tous les paramètres)
+
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'get_config' à la place
+    """
+    logger.warning("⚠️ DEPRECATED: GET /api/config appelé - Utiliser WebSocket command 'get_config' à la place")
+
     from config import TRADING_CONFIG
-    return JSONResponse({
-        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # 🔥 Valeur mise à jour
-        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # 🔥 PHASE 6: Score minimum
+    response = JSONResponse({
+        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
         'use_confluence': TRADING_CONFIG.get('use_confluence', False),
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-        # 🔥 4 seuils configurables - Valeurs mises à jour
         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
         'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
         'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-        # 🔥 Seuils ATR optimal - Valeurs mises à jour
         'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
         'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
         'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
         'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-        # 🔥 Trend timeframe
         'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
         'account_size': TRADING_CONFIG.get('account_size', 1000.0),
         'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
     })
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-Deprecated-Alternative"] = "WebSocket command 'get_config'"
+    return response
 
 
 @app.get("/api/metrics/conditions")
@@ -2594,7 +2777,10 @@ async def get_condition_metrics():
 
 @app.post("/api/log/config")
 async def api_log_config(request: Request):
-    """🔥 FIX: Endpoint pour logger les changements de config (compatibilité frontend Svelte)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'log_config' à la place
+    Conservé pour compatibilité uniquement
+    """
     try:
         data = await request.json() if hasattr(request, 'json') else {}
         data = data if isinstance(data, dict) else {}
@@ -2610,9 +2796,13 @@ async def api_log_config(request: Request):
         return JSONResponse({'error': str(e)}, status_code=500)
 
 @app.post("/api/config")
-@app.post("/api/config/update")  # 🔥 FIX: Alias pour compatibilité frontend Svelte
+@app.post("/api/config/update")  # ⚠️ DEPRECATED: Utiliser WebSocket command 'update_config' à la place
 async def api_update_config(request: Request):
-    """Modifier la configuration à la volée (tous les paramètres)"""
+    """
+    ⚠️ DEPRECATED: Utiliser WebSocket command 'update_config' à la place
+    Conservé pour compatibilité uniquement
+    Modifier la configuration à la volée (tous les paramètres)
+    """
     from config import TRADING_CONFIG
     
     try:
@@ -2738,9 +2928,48 @@ async def api_update_config(request: Request):
             TRADING_CONFIG['risk_per_trade'] = val
             updated['risk_per_trade'] = val
         
+        # 🔥 BIDIRECTIONNEL: Paramètres ATR (atr_mult_tp, atr_mult_sl, atr_min, atr_max)
+        if 'atr_mult_tp' in data:
+            val = float(data['atr_mult_tp'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0x
+            TRADING_CONFIG['atr_mult_tp'] = val
+            updated['atr_mult_tp'] = val
+            init_instances()
+            if position_config:
+                position_config.atr_mult_tp = val
+        
+        if 'atr_mult_sl' in data:
+            val = float(data['atr_mult_sl'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0x
+            TRADING_CONFIG['atr_mult_sl'] = val
+            updated['atr_mult_sl'] = val
+            if position_config:
+                position_config.atr_mult_sl = val
+        
+        if 'atr_min' in data:
+            val = float(data['atr_min'])
+            val = max(0.01, min(5.0, val))  # Clamp 0.01-5.0%
+            TRADING_CONFIG['atr_min'] = val
+            updated['atr_min'] = val
+            if position_config:
+                position_config.atr_min = val
+        
+        if 'atr_max' in data:
+            val = float(data['atr_max'])
+            val = max(0.1, min(10.0, val))  # Clamp 0.1-10.0%
+            TRADING_CONFIG['atr_max'] = val
+            updated['atr_max'] = val
+            if position_config:
+                position_config.atr_max = val
+        
         if updated:
             logger.info(f"✅ Configuration mise à jour: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
+            # 🔥 BIDIRECTIONNEL: Émettre événement de mise à jour de config pour synchroniser le frontend
+            await ws_manager.emit('config_updated', {
+                'updated': updated,
+                'timestamp': time.time()
+            })
             return JSONResponse({'status': 'updated', 'updated': updated})
         else:
             return JSONResponse({'status': 'no_changes', 'message': 'Aucun paramètre valide fourni'})
@@ -2753,7 +2982,7 @@ async def api_update_config(request: Request):
 # Helper functions
 
 async def add_log(level, message, detail=''):
-    """Ajouter un log et envoyer via WebSocket (SocketIO + WebSocket natif)"""
+    """Ajouter un log et envoyer via WebSocket natif uniquement"""
     from datetime import datetime
     
     entry = {
