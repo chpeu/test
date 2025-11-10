@@ -1526,7 +1526,11 @@ async def api_start():
         app_state['is_scanning'] = True
         logger.info("Scanner démarré (sans scheduler)")
         await ws_manager.emit('status', {'is_scanning': True})
-    
+
+    # 🔥 NOUVEAU: Émettre événements sessions pour GlobalStats
+    await ws_manager.emit('session_started', {'timestamp': time.time()})
+    await ws_manager.emit('sessions_update', {'timestamp': time.time()})
+
     return JSONResponse({'status': 'started'})
 
 
@@ -1538,14 +1542,19 @@ async def api_stop():
     Arrêter le scanner et le scheduler
     """
     init_instances()
-    
+
     # 🔥 JOUR 3: Arrêter le scheduler
     if scheduler:
         await scheduler.stop_async()
         logger.info("Scanner arrêté")
-    
+
     app_state['is_scanning'] = False
     await ws_manager.emit('status', {'is_scanning': False})
+
+    # 🔥 NOUVEAU: Émettre événements sessions pour GlobalStats
+    await ws_manager.emit('session_stopped', {'timestamp': time.time()})
+    await ws_manager.emit('sessions_update', {'timestamp': time.time()})
+
     return JSONResponse({'status': 'stopped'})
 
 

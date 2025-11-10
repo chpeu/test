@@ -241,6 +241,9 @@ async def start_scanner():
                 }
                 await _ws_manager.emit('status', status_data)
                 await _ws_manager.emit('scan_started', {'timestamp': time.time()})
+                # 🔥 NOUVEAU: Événements sessions pour GlobalStats
+                await _ws_manager.emit('session_started', {'timestamp': time.time()})
+                await _ws_manager.emit('sessions_update', {'timestamp': time.time()})
 
             response = JSONResponse({
                 'success': True,
@@ -326,6 +329,9 @@ async def stop_scanner():
                     'top_pairs': _app_state.get('top_pairs', [])
                 }
                 await _ws_manager.emit('status', status_data)
+                # 🔥 NOUVEAU: Événements sessions pour GlobalStats
+                await _ws_manager.emit('session_stopped', {'timestamp': time.time()})
+                await _ws_manager.emit('sessions_update', {'timestamp': time.time()})
 
             response = JSONResponse({
                 'success': True,

@@ -134,6 +134,9 @@ async def start_scanner(request: Request):
                 'top_n': top_n,
                 'pairs_found': len(pairs)
             })
+            # 🔥 NOUVEAU: Événements sessions pour GlobalStats
+            await _ws_manager.emit('session_started', {'timestamp': time.time()})
+            await _ws_manager.emit('sessions_update', {'timestamp': time.time()})
 
         logger.info(f"✅ Scanner démarré: {len(pairs)} paires trouvées")
 
