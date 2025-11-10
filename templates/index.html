@@ -683,6 +683,14 @@
             ws.on('status', function(status) {
                 if (status.is_scanning !== undefined) {
                     isScanning = status.is_scanning;
+
+                    // Update tradingState based on is_scanning
+                    if (isScanning && tradingState !== 'IN_POSITION') {
+                        tradingState = 'SCANNING';
+                    } else if (!isScanning && tradingState !== 'IN_POSITION') {
+                        tradingState = 'PAUSED';
+                    }
+
                     updateStateDisplay();
                 }
             });
@@ -1516,6 +1524,32 @@
             } else {
                 stateEl.textContent = 'PAUSED';
                 stateEl.style.color = '#888';
+            }
+
+            // Also update scanner buttons based on state
+            updateScannerButtons();
+        }
+
+        // Update scanner button visibility based on isScanning state
+        function updateScannerButtons() {
+            var btn = document.getElementById('scanPairsBtn');
+            var stopBtn = document.getElementById('stopBtn');
+
+            if (isScanning || tradingState === 'SCANNING' || tradingState === 'IN_POSITION') {
+                // Scanner is running - show STOP button, hide START button
+                if (stopBtn) stopBtn.style.display = 'inline-block';
+                if (btn) {
+                    btn.style.display = 'none';
+                    btn.disabled = false;
+                }
+            } else {
+                // Scanner is stopped - show START button, hide STOP button
+                if (stopBtn) stopBtn.style.display = 'none';
+                if (btn) {
+                    btn.style.display = 'inline-block';
+                    btn.disabled = false;
+                    btn.textContent = '🚀 DÉMARRER SCANNER';
+                }
             }
         }
         
@@ -4336,25 +4370,17 @@
                 
                 // Mode parallèle: scanner toutes les paires allPairs
                 if (!selectMultiPairs()) {
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.textContent = '🚀 DÉMARRER SCANNER';
-                    }
+                    // Reset state on failure
+                    isScanning = false;
+                    tradingState = 'PAUSED';
+                    updateScannerButtons();
                     return;
                 }
                 
                 isScanning = true;
                 tradingState = 'SCANNING';
-                updateStateDisplay();
-                
-                // Afficher bouton STOP et masquer bouton DÉMARRER
-                if (stopBtn) {
-                    stopBtn.style.display = 'inline-block';
-                }
-                if (btn) {
-                    btn.style.display = 'none';
-                }
-                
+                updateStateDisplay(); // This now also calls updateScannerButtons()
+
                 // Le scanner tourne maintenant côté serveur via scheduler
                 // On garde le countdown pour l'UI
                 countdownValue = 45;
@@ -4374,11 +4400,11 @@
             } catch(error) {
                 debugLog('❌ Erreur démarrage complet', error.message);
                 showError('Erreur: ' + error.message);
-                
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = '🚀 DÉMARRER SCANNER';
-                }
+
+                // Reset state on error
+                isScanning = false;
+                tradingState = 'PAUSED';
+                updateScannerButtons();
             }
         }
         
@@ -4411,11 +4437,8 @@
                 
                 isScanning = true;
                 tradingState = 'SCANNING';
-                updateStateDisplay();
-                
-                document.getElementById('stopBtn').style.display = 'inline-block';
-                document.querySelector('.btn-primary').style.display = 'none';
-                
+                updateStateDisplay(); // This now also calls updateScannerButtons()
+
                 // Le scanner tourne maintenant côté serveur via scheduler
                 // On garde le countdown pour l'UI
                 countdownValue = 45;
@@ -4453,25 +4476,14 @@
             
             isScanning = false;
             tradingState = 'PAUSED';
-            updateStateDisplay();
-            
+            updateStateDisplay(); // This now also calls updateScannerButtons()
+
             clearInterval(scanInterval);
             clearInterval(countdownInterval);
             clearInterval(positionCheckInterval);
             clearInterval(refreshScalabilityScannerInterval);
             clearTimeout(resumeScanTimeout);
-            
-            var btn = document.getElementById('scanPairsBtn');
-            var stopBtn = document.getElementById('stopBtn');
-            
-            if (stopBtn) {
-                stopBtn.style.display = 'none';
-            }
-            if (btn) {
-                btn.style.display = 'inline-block';
-                btn.disabled = false;
-                btn.textContent = '🚀 DÉMARRER SCANNER';
-            }
+
             document.getElementById('countdown').textContent = '--';
             
             if (activePosition) closePosition('MANUAL');
