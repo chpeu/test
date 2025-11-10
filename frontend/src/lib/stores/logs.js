@@ -56,7 +56,9 @@ export function addConfigLog(configLogEntry) {
 		const newLogs = [...$logs, {
 			...configLogEntry,
 			timestamp: configLogEntry.timestamp || new Date().toISOString(),
-			id: `${Date.now()}-${Math.random()}`
+			id: `${Date.now()}-${Math.random()}`,
+			// 🔥 BIDIRECTIONNEL: Indicateur pour savoir si la modif est synchronisée automatiquement
+			isBidirectional: configLogEntry.isBidirectional ?? false
 		}];
 
 		// Keep only last MAX_CONFIG_LOGS

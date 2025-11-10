@@ -118,6 +118,50 @@
 			});
 		});
 
+		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Position ouverte
+		ws.on('position_opened', (data: any) => {
+			console.log('💰 Position ouverte (temps réel)', data);
+			import('$lib/stores/position').then(({ setActivePosition }) => {
+				setActivePosition(data.position || data);
+			});
+		});
+
+		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Position mise à jour (0.5s)
+		ws.on('position_update', (data: any) => {
+			import('$lib/stores/position').then(({ updatePosition }) => {
+				updatePosition(data.position || data);
+			});
+		});
+
+		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Position fermée
+		ws.on('position_closed', (data: any) => {
+			console.log('✅ Position fermée (temps réel)', data);
+			import('$lib/stores/position').then(({ clearActivePosition }) => {
+				clearActivePosition();
+			});
+			// Ajouter le trade à l'historique
+			if (data.trade) {
+				import('$lib/stores/trades').then(({ addTrade }) => {
+					addTrade(data.trade);
+				});
+			}
+		});
+
+		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Top pairs update (toutes les 90s)
+		ws.on('top_pairs_update', (data: any) => {
+			console.log('📊 Top pairs mis à jour (temps réel)', data);
+			import('$lib/stores/scanner').then(({ updateTopPairs }) => {
+				updateTopPairs(data.pairs || data.top_pairs || []);
+			});
+		});
+
+		// 🔥 BIDIRECTIONNEL TEMPS RÉEL: Logs console backend
+		ws.on('log', (entry: any) => {
+			import('$lib/stores/logs').then(({ addLog }) => {
+				addLog(entry);
+			});
+		});
+
 		// 🔥 BIDIRECTIONNEL: Écouter les changements de config
 		ws.on('config_change', (data: any) => {
 			console.log('🔄 +page: Config change reçu du serveur:', data);

@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS, getWebSocket } from '$lib/utils/websocket';
+	import { addConfigLog } from '$lib/stores/logs';
 	// 🔥 REMPLACEMENT: WebSocket natif - plus besoin de getSocket()
 	// import { getSocket } from '$lib/utils/socket';
 
@@ -218,6 +219,14 @@
 	}
 
 	async function logConfigChange(key, change) {
+		// 🔥 BIDIRECTIONNEL: Ajouter au store local avec flag manuel (pas bidirectionnel)
+		addConfigLog({
+			key,
+			change,
+			timestamp: new Date().toISOString(),
+			isBidirectional: false  // Modification manuelle depuis le frontend
+		});
+
 		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif
 		try {
 			await sendCommandViaWS('log_config', {
@@ -259,8 +268,17 @@
 				if (data.changes) {
 					Object.entries(data.changes).forEach(([key, value]) => {
 						if (key in config) {
+							const oldValue = config[key];
 							config[key] = value;
 							console.log(`✅ Updated ${key} = ${value}`);
+
+							// 🔥 BIDIRECTIONNEL: Logger le changement avec flag bidirectionnel
+							addConfigLog({
+								key,
+								change: `${oldValue} → ${value}`,
+								timestamp: data.timestamp || new Date().toISOString(),
+								isBidirectional: true  // Synchronisation bidirectionnelle automatique
+							});
 						}
 					});
 

@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { isScanning } from '$lib/stores/scanner';
 
 	let loading = false;
@@ -51,10 +52,11 @@
 
 		try {
 			rebooting = true;
-			const ws = initWebSocket();
+			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
 
 			if (ws && ws.connected) {
-				await ws.sendCommand('reboot_bot');
+				await sendCommandViaWS('reboot_bot', {});
 				console.log('🔄 Bot redémarrage en cours...');
 
 				// Afficher un message pendant le redémarrage
@@ -75,7 +77,8 @@
 	}
 
 	// Écouter l'événement de redémarrage du bot
-	onMount(() => {
+	onMount(async () => {
+		const { getWebSocket } = await import('$lib/utils/websocket');
 		const ws = getWebSocket();
 		if (ws) {
 			ws.on('bot_rebooting', (data) => {

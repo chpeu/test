@@ -148,6 +148,9 @@
 			{:else}
 				{#each $recentConfigLogs as log (log.id)}
 					<div class="config-entry">
+						<span class="config-icon" class:bidirectional={log.isBidirectional} title={log.isBidirectional ? 'Synchronisé bidirectionnellement (temps réel)' : 'Modification manuelle (non synchronisée)'}>
+							{log.isBidirectional ? '🔄' : '📤'}
+						</span>
 						<span class="config-time">{formatTime(log.timestamp)}</span>
 						<span class="config-key">{log.key}</span>
 						<span class="config-arrow">→</span>
@@ -375,6 +378,31 @@
 
 	.config-entry:hover {
 		background: rgba(0, 255, 136, 0.1);
+	}
+
+	.config-icon {
+		flex-shrink: 0;
+		font-size: 16px;
+		transition: all 0.3s;
+		cursor: help;
+		opacity: 0.7;
+	}
+
+	.config-icon.bidirectional {
+		opacity: 1;
+		animation: spin 3s linear infinite;
+	}
+
+	@keyframes spin {
+		0%, 90% {
+			transform: rotate(0deg);
+		}
+		95% {
+			transform: rotate(180deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
 	}
 
 	.config-time {
