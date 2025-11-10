@@ -233,16 +233,20 @@ export class BidirectionalWebSocket {
 
     private startHeartbeat(): void {
         this.stopHeartbeat(); // S'assurer qu'il n'y a qu'un seul intervalle
+        const PING_INTERVAL = 10000; // 10 secondes
+        const PONG_TIMEOUT = 20000; // 20 secondes (2x ping interval)
+        
         this.pingInterval = window.setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                 this.sendRaw(JSON.stringify({ type: 'ping' }));
-                // Si pas de pong en retour, considérer comme déconnecté
-                if (Date.now() - this.lastPing > (this.pingInterval as number) * 2) {
+                // 🔥 FIX: Vérifier si pas de pong reçu depuis PONG_TIMEOUT ms
+                const timeSinceLastPong = Date.now() - this.lastPing;
+                if (timeSinceLastPong > PONG_TIMEOUT) {
                     console.warn('⚠️ Pas de pong reçu, reconnexion forcée.');
                     this.ws.close(); // Force la reconnexion via onclose
                 }
             }
-        }, 10000); // Envoyer un ping toutes les 10 secondes
+        }, PING_INTERVAL);
     }
 
     private stopHeartbeat(): void {
