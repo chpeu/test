@@ -1,7 +1,7 @@
 <script>
 	import { settings, updateSetting, resetSettings, exportSettings, importSettings } from '$lib/stores/settings';
 	import { onMount } from 'svelte';
-	import { sendCommandViaWS } from '$lib/utils/websocket';
+	import { sendCommandViaWS, getWebSocket } from '$lib/utils/websocket';
 
 	let fileInput;
 	let showResetConfirm = false;
@@ -11,6 +11,27 @@
 	// ✅ Charger la config depuis le backend au démarrage
 	onMount(async () => {
 		await loadBackendConfig();
+
+		// 🔥 BIDIRECTIONNEL: Écouter les changements de config du backend
+		const ws = getWebSocket();
+		if (ws) {
+			ws.on('config_change', (data) => {
+				console.log('🔄 SettingsPanel: Config change reçu du serveur:', data);
+
+				if (data.changes) {
+					// Synchroniser avec les changements du backend
+					if (data.changes.sl_percent !== undefined) {
+						updateSetting('stopLossPercent', data.changes.sl_percent);
+					}
+					if (data.changes.tp_percent !== undefined) {
+						updateSetting('takeProfitPercent', data.changes.tp_percent);
+					}
+					if (data.changes.trailing_trigger_pnl !== undefined) {
+						updateSetting('trailingStopPercent', data.changes.trailing_trigger_pnl);
+					}
+				}
+			});
+		}
 	});
 
 	async function loadBackendConfig() {
