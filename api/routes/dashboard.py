@@ -4,10 +4,12 @@ Routes API pour le dashboard - Gestion du statut et du contrôle de l'applicatio
 
 import asyncio
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Security
 from fastapi.responses import JSONResponse
 from typing import Optional, Dict, Any
 import time
+
+from api.auth import verify_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -171,10 +173,12 @@ async def get_complete_state():
 
 
 @router.post("/start")
-async def start_scanner():
+async def start_scanner(user: dict = Security(verify_api_key)):
     """
     POST /api/start
     Démarrer le scanner et le scheduler
+
+    Nécessite authentification (X-API-Key header)
 
     Procédure:
     1. Effectuer un scan initial des top pairs si nécessaire
@@ -245,10 +249,12 @@ async def start_scanner():
 
 
 @router.post("/stop")
-async def stop_scanner():
+async def stop_scanner(user: dict = Security(verify_api_key)):
     """
     POST /api/stop
     Arrêter le scanner et le scheduler
+
+    Nécessite authentification (X-API-Key header)
 
     Procédure:
     1. Arrêter le scheduler (arrête les boucles automatiques)

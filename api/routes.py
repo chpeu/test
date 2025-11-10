@@ -18,7 +18,7 @@ Features:
 - Documentation OpenAPI
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, Security
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Literal
@@ -33,6 +33,7 @@ import os
 import aiohttp
 
 from core.analytics_database import AnalyticsDatabase
+from api.auth import verify_api_key, verify_api_key_optional
 
 logger = logging.getLogger(__name__)
 
@@ -154,15 +155,24 @@ def rate_limit(func):
 
 class TradeFilter(BaseModel):
     """Filtres pour GET /api/trades"""
-    symbol: Optional[str] = None
+    symbol: Optional[str] = Field(None, regex=r'^[A-Z]{2,10}/[A-Z]{2,10}:[A-Z]{2,10}$|^[A-Z]{2,10}USDT$')
     direction: Optional[Literal['LONG', 'SHORT']] = None
-    exit_reason: Optional[str] = None
+    exit_reason: Optional[str] = Field(None, max_length=100)
     trading_mode: Optional[Literal['LIVE', 'PAPER', 'BACKTEST']] = None
     is_backtest: Optional[bool] = None
-    start_date: Optional[str] = None  # YYYY-MM-DD
-    end_date: Optional[str] = None
+    start_date: Optional[str] = Field(None, regex=r'^\d{4}-\d{2}-\d{2}$')
+    end_date: Optional[str] = Field(None, regex=r'^\d{4}-\d{2}-\d{2}$')
     limit: int = Field(default=100, ge=1, le=1000)
     offset: int = Field(default=0, ge=0)
+
+    @validator('start_date', 'end_date')
+    def validate_dates(cls, v):
+        if v:
+            try:
+                datetime.strptime(v, '%Y-%m-%d')
+            except ValueError:
+                raise ValueError('Date must be YYYY-MM-DD format')
+        return v
 
 
 class BacktestRequest(BaseModel):
@@ -194,13 +204,22 @@ class OptimizeRequest(BaseModel):
 
 class SetupFilter(BaseModel):
     """Filtres pour GET /api/setups"""
-    symbol: Optional[str] = None
+    symbol: Optional[str] = Field(None, regex=r'^[A-Z]{2,10}/[A-Z]{2,10}:[A-Z]{2,10}$|^[A-Z]{2,10}USDT$')
     direction: Optional[Literal['LONG', 'SHORT']] = None
     is_validated: Optional[bool] = None  # True=validated, False=rejected
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    start_date: Optional[str] = Field(None, regex=r'^\d{4}-\d{2}-\d{2}$')
+    end_date: Optional[str] = Field(None, regex=r'^\d{4}-\d{2}-\d{2}$')
     limit: int = Field(default=100, ge=1, le=1000)
     offset: int = Field(default=0, ge=0)
+
+    @validator('start_date', 'end_date')
+    def validate_dates(cls, v):
+        if v:
+            try:
+                datetime.strptime(v, '%Y-%m-%d')
+            except ValueError:
+                raise ValueError('Date must be YYYY-MM-DD format')
+        return v
 
 
 class ExportRequest(BaseModel):
@@ -707,9 +726,11 @@ async def delete_trade(
 # ==================== SETTINGS API ====================
 
 @router.get("/settings")
-async def get_settings():
+async def get_settings(user: dict = Security(verify_api_key)):
     """
     Récupérer paramètres Telegram (depuis .env ou variables d'environnement)
+
+    Nécessite authentification (X-API-Key header)
     """
     try:
         from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
@@ -722,12 +743,15 @@ async def get_settings():
             TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
             TELEGRAM_NOTIFY_SETUP_REJECTED
         )
-        
+
+        # Masquer le token pour la sécurité
+        bot_token_masked = '***REDACTED***' if TELEGRAM_BOT_TOKEN else ''
+
         return {
             'success': True,
             'settings': {
                 'telegram': {
-                    'bot_token': TELEGRAM_BOT_TOKEN if TELEGRAM_BOT_TOKEN else '',
+                    'bot_token': bot_token_masked,
                     'chat_id': str(TELEGRAM_CHAT_ID) if TELEGRAM_CHAT_ID else '',
                     'enabled': TELEGRAM_ENABLED,
                     'notify_types': {
@@ -759,9 +783,11 @@ async def get_settings():
 
 
 @router.post("/settings")
-async def save_settings(request: Request):
+async def save_settings(request: Request, user: dict = Security(verify_api_key)):
     """
     Sauvegarder paramètres Telegram dans fichier .env
+
+    Nécessite authentification (X-API-Key header)
     """
     try:
         data = await request.json()

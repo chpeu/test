@@ -133,6 +133,34 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(LoggingMiddleware)
 
+# 🔒 Security Middleware: Ajout des headers de sécurité
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+
+        # Content Security Policy
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self' ws: wss:; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        )
+
+        # Autres headers de sécurité
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # 🔥 CLEANUP: Fichiers statiques supprimés - Frontend Svelte gère l'interface
 # Plus besoin de servir des fichiers statiques, le frontend Svelte est indépendant
 
@@ -1063,6 +1091,14 @@ def init_instances():
         # 🔥 FIX: Injecter ws_manager dans position_check_loop
         try:
             from core.callbacks.position_check_loop import set_websocket_manager
+            if set_websocket_manager:
+                set_websocket_manager(ws_manager)
+        except ImportError:
+            pass  # Callback module optionnel
+
+        # 🔥 FIX BUG #14: Injecter ws_manager dans scalability_refresh
+        try:
+            from core.callbacks.scalability_refresh import set_websocket_manager
             if set_websocket_manager:
                 set_websocket_manager(ws_manager)
         except ImportError:

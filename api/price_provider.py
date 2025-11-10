@@ -86,12 +86,26 @@ class HybridPriceProvider:
                     "timestamp": time.time()
                 }
                 
-                # 🔥 FIX: Mise à jour directe du cache (thread-safe)
-                # Le cache dict est thread-safe pour les opérations simples en Python
-                # On évite le lock async car on est dans un callback synchrone
-                self.price_cache[ccxt_symbol] = ticker_info
-                if len(self.message_buffer) < self.message_buffer.maxlen:
-                    self.message_buffer.append(ticker_info)
+                # 🔥 FIX: Mise à jour thread-safe via asyncio task
+                # Utiliser _update_cache pour garantir la cohérence avec le lock
+                try:
+                    # 🔥 FIX: Utiliser get_running_loop() au lieu de get_event_loop() (déprécié)
+                    loop = asyncio.get_running_loop()
+                    # 🔥 FIX: Stocker la tâche pour éviter garbage collection
+                    task = asyncio.create_task(self._update_cache(ccxt_symbol, ticker_info))
+                    # Note: On ne garde pas de référence car c'est un fire-and-forget
+                    # et la tâche se termine rapidement
+                except RuntimeError:
+                    # Pas de boucle événements active, créer une temporairement
+                    # 🔥 FIX: Utiliser asyncio.run() pour créer une boucle temporaire
+                    # Mais attention, cela ne devrait jamais arriver car le callback
+                    # est appelé depuis WebSocketManager qui est déjà dans un contexte async
+                    if DEBUG_ENABLED:
+                        logger.warning("⚠️ Callback appelé hors boucle événements, mise à jour directe du cache")
+                    # Mise à jour directe sans lock (dernier recours)
+                    self.price_cache[ccxt_symbol] = ticker_info
+                    if len(self.message_buffer) < self.message_buffer.maxlen:
+                        self.message_buffer.append(ticker_info)
                 
                 # 🔥 FIX: Émettre prix en temps réel via SocketIO si position active
                 # WebSocket émet à chaque tick, donc latence minimale pour scalping (< 100ms)
@@ -242,7 +256,8 @@ class HybridPriceProvider:
     
     def is_websocket_connected(self) -> bool:
         """Vérifier si WebSocket est connecté"""
-        return self.use_websocket and self.ws_manager and self.ws_manager.connected
+        # 🔥 FIX: Garantir retour bool (éviter None)
+        return bool(self.use_websocket and self.ws_manager and self.ws_manager.connected)
     
     def set_socketio_callback(self, callback, active_symbol: Optional[str] = None):
         """

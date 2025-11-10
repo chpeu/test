@@ -1,32 +1,50 @@
 /**
  * 📊 DASHBOARD CHARTS - JavaScript
- * Gestion graphiques Chart.js + temps réel via SocketIO
+ * Gestion graphiques Chart.js + temps réel via WebSocket natif
  */
 
-// ==================== SOCKET.IO CONNECTION ====================
+// ==================== WEBSOCKET NATIVE CONNECTION ====================
 
-const socket = io();
+// WebSocket natif (initialisé dans dashboard_charts.html)
+let ws = null;
 
-socket.on('connect', () => {
-    console.log('✅ Connected to Socket.IO');
-    updateConnectionStatus(true);
-    // 🔥 FIX: Charger données au démarrage après connexion SocketIO
-    loadInitialData();
-});
+function initWebSocket() {
+    if (!window.BidirectionalWebSocket) {
+        console.error('❌ BidirectionalWebSocket non disponible');
+        return;
+    }
 
-socket.on('disconnect', () => {
-    console.warn('❌ Disconnected from Socket.IO');
-    updateConnectionStatus(false);
-});
+    const API_BASE_URL = window.location.origin;
+    ws = new BidirectionalWebSocket(API_BASE_URL);
+
+    // Événement connexion
+    ws.on('connect', () => {
+        console.log('✅ WebSocket natif connecté');
+        updateConnectionStatus(true);
+        // Charger données au démarrage après connexion
+        loadInitialData();
+    });
+
+    // Événement déconnexion
+    ws.on('disconnect', (data) => {
+        console.warn('❌ WebSocket déconnecté:', data);
+        updateConnectionStatus(false);
+    });
+
+    // Se connecter
+    ws.connect();
+}
 
 function updateConnectionStatus(connected) {
     const statusElement = document.getElementById('connectionStatus');
-    if (connected) {
-        statusElement.textContent = '🟢 Connecté';
-        statusElement.className = 'connected';
-    } else {
-        statusElement.textContent = '🔴 Déconnecté';
-        statusElement.className = 'disconnected';
+    if (statusElement) {
+        if (connected) {
+            statusElement.textContent = '🟢 Connecté';
+            statusElement.className = 'connected';
+        } else {
+            statusElement.textContent = '🔴 Déconnecté';
+            statusElement.className = 'disconnected';
+        }
     }
 }
 
@@ -398,46 +416,67 @@ function updateExitReasonChart(trades) {
 
 // ==================== REAL-TIME UPDATES ====================
 
-socket.on('position_opened', (data) => {
-    console.log('🟢 Position ouverte (temps réel):', data);
-    
-    // Recharger données pour mettre à jour stats et graphiques
-    loadInitialData();
-});
+// ==================== WEBSOCKET EVENT HANDLERS ====================
 
-socket.on('position_closed', (data) => {
-    console.log('🔔 Position fermée (temps réel):', data);
-    
-    // Recharger données pour mettre à jour stats et graphiques
-    loadInitialData();
-});
+// Écouter événements WebSocket (enregistrés après initialisation)
+function setupWebSocketEventHandlers() {
+    if (!ws) return;
 
-socket.on('tp_escalier_level', (data) => {
-    console.log('🎯 TP Escalier niveau atteint (temps réel):', data);
-    
-    // Recharger données pour mettre à jour stats
-    loadInitialData();
-});
+    ws.on('position_opened', (data) => {
+        console.log('🟢 Position ouverte (temps réel):', data);
+        loadInitialData();
+    });
 
-socket.on('stats_update', (data) => {
-    console.log('📊 Stats update (temps réel):', data);
-    updateStats(data);
-});
+    ws.on('position_closed', (data) => {
+        console.log('🔔 Position fermée (temps réel):', data);
+        loadInitialData();
+    });
+
+    ws.on('tp_escalier_level', (data) => {
+        console.log('🎯 TP Escalier niveau atteint (temps réel):', data);
+        loadInitialData();
+    });
+
+    ws.on('stats_update', (data) => {
+        console.log('📊 Stats update (temps réel):', data);
+        updateStats(data);
+    });
+
+    ws.on('status', (data) => {
+        console.log('📊 Status update:', data);
+        // Mettre à jour stats si présentes
+        if (data.stats) {
+            updateStats(data.stats);
+        }
+    });
+}
 
 // ==================== INITIALIZATION ====================
 
-// Si déjà connecté, charger immédiatement (sinon attendre événement 'connect')
-if (socket.connected) {
-    loadInitialData();
-}
+// Initialiser WebSocket au chargement
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('📊 Dashboard Charts - Initialisation...');
+    initWebSocket();
+    setupWebSocketEventHandlers();
+});
 
-// Refresh périodique (toutes les 30s - backup si SocketIO échoue)
-// SocketIO gère les mises à jour temps réel via position_opened/closed/tp_escalier_level
-setInterval(() => {
-    if (socket.connected) {
+// Refresh périodique (toutes les 30s - backup)
+// WebSocket gère les mises à jour temps réel
+const refreshInterval = setInterval(() => {
+    if (ws && ws.connected) {
         loadInitialData();
     }
-}, 30000);  // 🔥 FIX: Rafraîchir toutes les 30 secondes (backup) au lieu de 60s
+}, 30000);
 
-console.log('📊 Dashboard Charts initialisé');
+// Cleanup lors de la fermeture/navigation
+window.addEventListener('beforeunload', () => {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+    if (ws) {
+        ws.disconnect();
+    }
+});
+
+console.log('📊 Dashboard Charts chargé');
 
