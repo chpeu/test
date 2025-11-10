@@ -6,7 +6,7 @@
 
 // Force les exports nommés pour Vite/SvelteKit - Tous les exports doivent être au niveau racine
 
-interface WebSocketMessage {
+export interface WebSocketMessage {
     type: string;
     event?: string;
     command?: string;
@@ -19,7 +19,7 @@ interface WebSocketMessage {
     timestamp?: number;
 }
 
-interface CommandCallback {
+export interface CommandCallback {
     resolve: (data: any) => void;
     reject: (error: Error) => void;
 }
@@ -409,7 +409,7 @@ export function sendCommandViaWS(command: string, params: any = {}): Promise<any
     return wsInstance.sendCommand(command, params);
 }
 
-function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
+export function sendRequestViaWS(requestType: string, params: any = {}): Promise<any> {
     if (!wsInstance || !wsInstance.connected) {
         return Promise.reject(new Error('WebSocket non connecté'));
     }
