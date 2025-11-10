@@ -2215,10 +2215,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             }, websocket)
         
         except WebSocketDisconnect:
-        await ws_manager.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"Erreur WebSocket: {e}")
-        await ws_manager.disconnect(websocket)
+            await ws_manager.disconnect(websocket)
+        except Exception as e:
+            logger.error(f"Erreur WebSocket: {e}")
+            await ws_manager.disconnect(websocket)
 
 
 # 🔥 Fonction : Traiter commandes du client
