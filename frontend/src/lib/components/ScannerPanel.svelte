@@ -92,8 +92,8 @@
 
 	.pairs-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-		gap: 8px;
+		grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+		gap: 6px;
 		max-height: 600px;
 		overflow-y: auto;
 	}
@@ -101,8 +101,8 @@
 	.pair-card {
 		background: #0a0e27;
 		border: 1px solid #2a3a6b;
-		border-radius: 6px;
-		padding: 8px;
+		border-radius: 4px;
+		padding: 6px;
 		transition: all 0.3s;
 		position: relative;
 		overflow: hidden;

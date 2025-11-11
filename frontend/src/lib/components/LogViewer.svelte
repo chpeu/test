@@ -90,6 +90,37 @@
 		return text.replace(/\x1b\[\d+m/g, '').replace(/\[\d+m/g, '');
 	}
 
+	// 🔥 FIX: Convertir les codes ANSI en spans HTML avec couleurs
+	function ansiToHtml(text) {
+		if (!text) return '';
+		// Codes ANSI de base
+		const ansiCodes = {
+			'\x1b[31m': '<span style="color: #ff4444;">',  // RED
+			'\x1b[91m': '<span style="color: #ff6666; font-weight: bold;">',  // BRIGHT RED
+			'\x1b[33m': '<span style="color: #ffaa00;">',  // YELLOW
+			'\x1b[32m': '<span style="color: #00ff88;">',  // GREEN
+			'\x1b[36m': '<span style="color: #00aaff;">',  // CYAN
+			'\x1b[0m': '</span>',  // RESET
+			'\x1b[1m': '<span style="font-weight: bold;">',  // BOLD
+		};
+		
+		let html = text;
+		// Remplacer les codes ANSI par des spans HTML
+		html = html.replace(/\x1b\[(\d+)m/g, (match, code) => {
+			const codeNum = parseInt(code);
+			if (codeNum === 0) return '</span>';
+			if (codeNum === 1) return '<span style="font-weight: bold;">';
+			if (codeNum === 31) return '<span style="color: #ff4444;">';
+			if (codeNum === 91) return '<span style="color: #ff6666; font-weight: bold;">';
+			if (codeNum === 33) return '<span style="color: #ffaa00;">';
+			if (codeNum === 32) return '<span style="color: #00ff88;">';
+			if (codeNum === 36) return '<span style="color: #00aaff;">';
+			return '';
+		});
+		
+		return html;
+	}
+
 	// 🔥 FIX: Extraire les emojis et couleurs des logs backend
 	function parseLogMessage(message) {
 		if (!message) return { icon: '', text: message };
@@ -193,12 +224,17 @@
 				</div>
 			{:else}
 				{#each $regularLogs as log (log.id)}
-					{@const parsed = parseLogMessage(stripAnsiCodes(log.message))}
+					{@const parsed = parseLogMessage(log.message || '')}
+					{@const hasAnsi = log.message && (log.message.includes('\x1b[') || log.message.includes('[32m'))}
 					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}">
 						<span class="log-time">{formatTime(log.timestamp)}</span>
 						<span class="log-icon">{parsed.icon}</span>
 						<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
-						<span class="log-message">{parsed.text}</span>
+						{#if hasAnsi}
+							<span class="log-message" {@html ansiToHtml(log.message)}></span>
+						{:else}
+							<span class="log-message">{parsed.text || log.message}</span>
+						{/if}
 					</div>
 				{/each}
 			{/if}

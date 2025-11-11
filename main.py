@@ -19,6 +19,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from core.websocket_manager import get_websocket_manager
 import time
+# 🔥 FIX: Import colorama pour les couleurs dans les logs
+try:
+    import colorama
+    colorama.init()  # Initialiser colorama
+except ImportError:
+    colorama = None
 
 # 🔥 v7.0: Imports complets
 try:
@@ -2888,14 +2894,47 @@ async def api_update_config(request: Request):
 # Helper functions
 
 async def add_log(level, message, detail=''):
-    """Ajouter un log et envoyer via WebSocket natif uniquement"""
+    """Ajouter un log et envoyer via WebSocket natif uniquement avec couleurs ANSI"""
     from datetime import datetime
+    
+    # 🔥 FIX: Utiliser colorama si disponible, sinon codes ANSI bruts
+    if colorama:
+        from colorama import Fore, Style
+        reset_code = Style.RESET_ALL
+    else:
+        # Codes ANSI bruts si colorama n'est pas disponible
+        class Fore:
+            RED = '\x1b[31m'
+            YELLOW = '\x1b[33m'
+            GREEN = '\x1b[32m'
+            CYAN = '\x1b[36m'
+        class Style:
+            BRIGHT = '\x1b[1m'
+            RESET_ALL = '\x1b[0m'
+        reset_code = Style.RESET_ALL
+    
+    # 🔥 FIX: Ajouter couleurs ANSI selon le niveau
+    color_codes = {
+        'ERROR': Fore.RED,
+        'CRITICAL': Fore.RED + Style.BRIGHT,
+        'WARNING': Fore.YELLOW,
+        'INFO': Fore.GREEN,
+        'DEBUG': Fore.CYAN
+    }
+    reset_code = Style.RESET_ALL
+    color = color_codes.get(level, '')
+    
+    # Message avec couleur ANSI
+    colored_message = f"{color}{message}{reset_code}"
+    if detail:
+        colored_message += f" {detail}"
     
     entry = {
         'timestamp': datetime.now().strftime('%H:%M:%S'),
         'level': level,
-        'message': message,
-        'detail': detail
+        'message': colored_message,  # 🔥 FIX: Message avec couleurs ANSI
+        'detail': detail,
+        'raw_message': message  # Message sans couleur pour recherche
     }
     app_state['logs'].append(entry)
     
@@ -2903,10 +2942,11 @@ async def add_log(level, message, detail=''):
     if len(app_state['logs']) > 1000:
         app_state['logs'] = app_state['logs'][-1000:]
     
-    # 🔥 MIGRATION COMPLÈTE: Envoyer uniquement via WebSocket natif
+    # 🔥 MIGRATION COMPLÈTE: Envoyer uniquement via WebSocket natif avec couleurs
     await ws_manager.emit('log', entry)
     
-    logger.info(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}")
+    # Logger avec couleur dans la console backend
+    logger.info(f"{color}[{entry['timestamp']}] {entry['level']}: {message}{reset_code}")
 
 
 # Main entry point

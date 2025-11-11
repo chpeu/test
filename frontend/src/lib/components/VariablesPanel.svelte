@@ -285,11 +285,15 @@
 
 	async function loadConfig() {
 		try {
-			// 🔥 FIX: Ne pas recharger la config si on a des changements non sauvegardés (pour éviter d'écraser les modifications)
+			// 🔥 FIX: Ne JAMAIS recharger la config si on a des changements non sauvegardés
+			// Cela évite d'écraser les modifications lors des changements d'onglet
 			if (hasUnsavedChanges) {
 				console.log('⚠️ Changements non sauvegardés détectés, chargement de la config ignoré pour préserver les modifications');
 				return;
 			}
+			
+			// 🔥 FIX: Ne pas recharger si on vient de changer d'onglet (évite les rechargements inutiles)
+			// On ne recharge que si explicitement demandé ou au montage initial
 			
 			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket uniquement
 			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');

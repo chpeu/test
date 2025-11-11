@@ -6,6 +6,7 @@ REFACTORISÉ avec architecture modulaire
 """
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -104,7 +105,9 @@ class Position:
             'tp_escalier_enabled': self.tp_escalier_enabled,
             'tp_escalier_current_level': self.tp_escalier_current_level,
             'tp_escalier_size_remaining': self.tp_escalier_size_remaining,
-            'tp_escalier_profits': self.tp_escalier_profits
+            'tp_escalier_profits': self.tp_escalier_profits,
+            'tp_escalier_levels': json.dumps(self.tp_escalier_levels) if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else None,  # 🔥 FIX: Ajouter niveaux TP escalier (JSON string)
+            'current_price': getattr(self, 'current_price', None)  # 🔥 FIX: Ajouter prix actuel si disponible
         }
 
 
@@ -738,6 +741,10 @@ class PositionManager:
         opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
         closed_at = datetime.now().isoformat()
         
+        # 🔥 FIX: Calculer slippage en pourcentage et USDT
+        slippage_pct = (slippage / self.active_position.size * 100) if self.active_position.size > 0 else 0.0
+        slippage_usdt = slippage
+        
         result = {
             'symbol': self.active_position.symbol,
             'direction': self.active_position.direction,
@@ -747,9 +754,11 @@ class PositionManager:
             'pnl_pct': round(pnl_data['pnl_pct'], 2),
             'pnl_usdt': round(net_pnl_usdt, 4),
             'gross_pnl_pct': round(pnl_data['pnl_pct'], 2),
+            'slippage': round(slippage_pct, 4),  # 🔥 FIX: Slippage en pourcentage
+            'slippage_pct': round(slippage_pct, 4),  # Alias
+            'slippage_usdt': round(slippage_usdt, 4),  # 🔥 FIX: Slippage en USDT
             'gross_pnl_usdt': round(pnl_data['pnl_usdt_gross'], 4),
             'fees': round(pnl_data['fees'], 4),  # 🔥 FIX: Plus de précision pour les fees (devrait être 0.0000 pour paires 0% fee)
-            'slippage': round(slippage, 2),  # 🔥 FIX: Slippage en % (déjà en % depuis _estimate_slippage)
             'total_costs': round(total_costs, 2),
             'total_costs_usdt': round(total_costs, 4),
             'net_pnl': round(net_pnl_pct, 2),
