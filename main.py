@@ -1325,8 +1325,7 @@ async def api_get_sessions_stats_global():
                 trades = analytics_db.get_trades(limit=10000)
                 if trades:
                     total = len(trades)
-                    # 🔥 FIX: Utiliser net_pnl_usdt pour déterminer les wins (après slippage et fees)
-                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) > 0)
+                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
                     losses = total - wins
                     winrate = (wins / total * 100) if total > 0 else 0.0
                     stats_dict = {

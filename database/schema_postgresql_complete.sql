@@ -260,14 +260,14 @@ CREATE TABLE scan_logs (
     PRIMARY KEY (id, timestamp)
 ) PARTITION BY RANGE (timestamp);
 
--- Partitions par mois (exemple pour 2025)
-CREATE TABLE scan_logs_2025_01 PARTITION OF scan_logs
-    FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
-CREATE TABLE scan_logs_2025_02 PARTITION OF scan_logs
-    FOR VALUES FROM ('2025-02-01') TO ('2025-03-01');
-CREATE TABLE scan_logs_2025_03 PARTITION OF scan_logs
-    FOR VALUES FROM ('2025-03-01') TO ('2025-04-01');
--- ... Continuer pour chaque mois
+-- Partitions par mois (3 mois : novembre 2025, décembre 2025, janvier 2026)
+CREATE TABLE scan_logs_2025_11 PARTITION OF scan_logs
+    FOR VALUES FROM ('2025-11-01') TO ('2025-12-01');
+CREATE TABLE scan_logs_2025_12 PARTITION OF scan_logs
+    FOR VALUES FROM ('2025-12-01') TO ('2026-01-01');
+CREATE TABLE scan_logs_2026_01 PARTITION OF scan_logs
+    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+-- Note: Pour ajouter d'autres mois, utiliser la fonction create_monthly_partition()
 
 -- Index pour performance (créés sur chaque partition automatiquement)
 CREATE INDEX idx_scan_timestamp ON scan_logs(timestamp DESC);
@@ -443,9 +443,7 @@ CREATE TABLE trades (
     -- Scalability data au entry
     -- ========================================
     
-    entry_spread_pct FLOAT,
     entry_book_depth FLOAT,
-    entry_balance_score FLOAT,
     entry_bid_vol FLOAT,
     entry_ask_vol FLOAT,
     entry_orderbook_imbalance FLOAT,
@@ -748,14 +746,14 @@ RETURNS TABLE (
 BEGIN
     RETURN QUERY
     SELECT 
-        (SELECT COUNT(*) FROM scan_logs),
-        (SELECT COUNT(*) FROM opportunities),
-        (SELECT COUNT(*) FROM trades WHERE timestamp_exit IS NOT NULL),
-        (SELECT ROUND((COUNT(*) FILTER (WHERE win = TRUE)::FLOAT / 
-                      NULLIF(COUNT(*), 0) * 100)::numeric, 2) 
+        (SELECT COUNT(*) FROM scan_logs)::BIGINT,
+        (SELECT COUNT(*) FROM opportunities)::BIGINT,
+        (SELECT COALESCE(COUNT(*), 0) FROM trades WHERE timestamp_exit IS NOT NULL)::BIGINT,
+        (SELECT COALESCE(ROUND((COUNT(*) FILTER (WHERE win = TRUE)::FLOAT / 
+                      NULLIF(COUNT(*), 0) * 100)::numeric, 2)::FLOAT, 0.0) 
          FROM trades WHERE win IS NOT NULL),
-        (SELECT ROUND(SUM(net_pnl_usdt)::numeric, 4) FROM trades),
-        (SELECT ROUND(AVG(net_pnl_pct)::numeric, 4) FROM trades WHERE net_pnl_pct IS NOT NULL);
+        (SELECT COALESCE(ROUND(SUM(net_pnl_usdt)::numeric, 4)::FLOAT, 0.0) FROM trades),
+        (SELECT COALESCE(ROUND(AVG(net_pnl_pct)::numeric, 4)::FLOAT, 0.0) FROM trades WHERE net_pnl_pct IS NOT NULL);
 END;
 $$ LANGUAGE plpgsql;
 

@@ -233,26 +233,50 @@ async def _scan_top_pairs():
                         if pair.get('symbol') == symbol:
                             # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
                             spread_value = pair.get('spread', 0)
-                            # 🔥 FIX: Vérifier si spread est NaN ou invalide (ne devrait plus arriver avec le fix du scanner)
+                            book_depth = pair.get('bookDepth', 0)
+                            balance_score = pair.get('balanceScore', 1.0)
+                            bid_vol = pair.get('bidVol', 0)
+                            ask_vol = pair.get('askVol', 0)
+                            
+                            # Vérifier si spread est NaN ou invalide
                             if isinstance(spread_value, float) and (spread_value != spread_value or spread_value == float('nan')):
-                                logger.warning(f"⚠️ Spread NaN détecté pour {symbol} (ne devrait pas arriver avec filtre scanner)")
                                 spread_value = 0
-
+                            
+                            # 🔥 FIX: Si spread ou depth sont à 0, essayer de récupérer depuis best_setup
+                            if spread_value == 0 and best_setup.get('spread_pct'):
+                                spread_value = best_setup.get('spread_pct', 0)
+                                logger.info(f"💹 Utilisation spread depuis best_setup: {spread_value}%")
+                            
+                            # 🔥 FIX: Si depth est à 0, calculer depuis bid_vol + ask_vol
+                            if book_depth == 0 and (bid_vol > 0 or ask_vol > 0):
+                                book_depth = bid_vol + ask_vol
+                                logger.info(f"💹 Calcul depth depuis volumes: {book_depth}")
+                            
                             scalability_data = {
                                 'spread_pct': spread_value,
-                                'depth': pair.get('bookDepth', 0),
-                                'balance': pair.get('balanceScore', 1.0),
-                                'bid_vol': pair.get('bidVol'),
-                                'ask_vol': pair.get('askVol')
+                                'depth': book_depth,
+                                'balance': balance_score,
+                                'bid_vol': bid_vol,
+                                'ask_vol': ask_vol
                             }
-
-                            # 🔥 FIX: Logger les données de scalabilité pour diagnostic
-                            logger.info(f"💹 Scalability data pour {symbol}: spread={spread_value:.4f}%, depth={scalability_data['depth']:.2f}, balance={scalability_data['balance']:.2f}")
+                            
+                            logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
                             break
-
-                # 🔥 FIX: Logger si scalability_data n'a pas été trouvé
-                if not scalability_data:
-                    logger.warning(f"⚠️ Scalability data non trouvé pour {symbol} dans top_pairs")
+                    
+                    # 🔥 FIX: Si scalability_data est toujours None ou invalide, essayer depuis best_setup
+                    if not scalability_data or (scalability_data.get('spread_pct', 0) == 0 and scalability_data.get('depth', 0) == 0):
+                        logger.warning(f"💹 Données scalabilité manquantes dans top_pairs pour {symbol}, tentative depuis best_setup")
+                        if best_setup.get('spread_pct'):
+                            scalability_data = {
+                                'spread_pct': best_setup.get('spread_pct', 0),
+                                'depth': best_setup.get('orderbook_depth', 0) or (best_setup.get('bid_vol', 0) + best_setup.get('ask_vol', 0)),
+                                'balance': best_setup.get('orderbook_balance', 1.0),
+                                'bid_vol': best_setup.get('bid_vol'),
+                                'ask_vol': best_setup.get('ask_vol')
+                            }
+                            logger.info(f"💹 Données scalabilité depuis best_setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
+                else:
+                    logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 

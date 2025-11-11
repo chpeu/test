@@ -143,17 +143,17 @@
 									return formatPercent(slippageValue);
 								})()}%
 							</td>
-							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (net_pnl_pct inclut déjà slippage et fees) -->
-							<td class="pnl-net" class:positive={(trade.net_pnl_pct || trade.net_pnl || 0) >= 0} class:negative={(trade.net_pnl_pct || trade.net_pnl || 0) < 0} data-debug-name="trade.net_pnl_pct">
-								{(trade.net_pnl_pct || trade.net_pnl || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || trade.net_pnl || 0)}%
+							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
+							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0} data-debug-name="trade.net_pnl_pct">
+								{((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0 ? '+' : ''}{formatPercent((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0))}%
 							</td>
 							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
 							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt">
 								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
 							</td>
-							<!-- 🔥 FIX: PnL Total USDT (net_pnl_usdt inclut déjà slippage et fees) -->
-							<td class="pnl-total-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.pnl_total_usdt">
-								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
+							<!-- 🔥 FIX: PnL Total USDT (incluant slippage) -->
+							<td class="pnl-total-usdt" class:positive={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0} class:negative={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) < 0} data-debug-name="trade.pnl_total_usdt">
+								{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0 ? '+' : ''}{formatUSDT((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0))} USDT
 							</td>
 							<!-- 🔥 FIX: Duration (calculée si manquante) -->
 							<td class="duration" data-debug-name="trade.duration">
