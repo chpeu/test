@@ -233,10 +233,11 @@ async def _scan_top_pairs():
                         if pair.get('symbol') == symbol:
                             # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
                             spread_value = pair.get('spread', 0)
-                            # Vérifier si spread est NaN ou invalide
+                            # 🔥 FIX: Vérifier si spread est NaN ou invalide (ne devrait plus arriver avec le fix du scanner)
                             if isinstance(spread_value, float) and (spread_value != spread_value or spread_value == float('nan')):
+                                logger.warning(f"⚠️ Spread NaN détecté pour {symbol} (ne devrait pas arriver avec filtre scanner)")
                                 spread_value = 0
-                            
+
                             scalability_data = {
                                 'spread_pct': spread_value,
                                 'depth': pair.get('bookDepth', 0),
@@ -244,7 +245,14 @@ async def _scan_top_pairs():
                                 'bid_vol': pair.get('bidVol'),
                                 'ask_vol': pair.get('askVol')
                             }
+
+                            # 🔥 FIX: Logger les données de scalabilité pour diagnostic
+                            logger.info(f"💹 Scalability data pour {symbol}: spread={spread_value:.4f}%, depth={scalability_data['depth']:.2f}, balance={scalability_data['balance']:.2f}")
                             break
+
+                # 🔥 FIX: Logger si scalability_data n'a pas été trouvé
+                if not scalability_data:
+                    logger.warning(f"⚠️ Scalability data non trouvé pour {symbol} dans top_pairs")
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 

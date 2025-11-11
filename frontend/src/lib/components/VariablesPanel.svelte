@@ -584,10 +584,9 @@
 						viewMode = data.updated.tp_sl_mode;
 					}
 					
-					// 🔥 FIX: Rafraîchir completeConfig si on est dans l'onglet "Variables en cours"
-					if (activeSubTab === 'current') {
-						loadCompleteConfig();
-					}
+					// 🔥 FIX: Toujours rafraîchir completeConfig (même si pas sur l'onglet 'current')
+					// pour que les changements soient visibles quand l'utilisateur revient sur cet onglet
+					loadCompleteConfig();
 				}
 			});
 		}
