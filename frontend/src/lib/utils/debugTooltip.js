@@ -6,6 +6,7 @@ import { get } from 'svelte/store';
 import { debugMode } from '$lib/stores/debug';
 
 let tooltipElement = null;
+let currentDebugName = null; // Variable actuellement survolée
 
 /**
  * Créer l'élément tooltip global
@@ -43,6 +44,9 @@ function showTooltip(event, variableName) {
 	const tooltip = createTooltip();
 	if (!tooltip) return;
 	
+	// Stocker la variable actuelle pour la copie
+	currentDebugName = variableName;
+	
 	tooltip.textContent = variableName;
 	tooltip.style.display = 'block';
 	
@@ -71,6 +75,58 @@ function showTooltip(event, variableName) {
 function hideTooltip() {
 	if (tooltipElement) {
 		tooltipElement.style.display = 'none';
+	}
+	// Ne pas réinitialiser currentDebugName ici pour permettre la copie même après avoir quitté l'élément
+}
+
+/**
+ * Copier le nom de la variable dans le presse-papiers
+ */
+async function copyDebugNameToClipboard() {
+	if (!get(debugMode) || !currentDebugName) return;
+	
+	try {
+		await navigator.clipboard.writeText(currentDebugName);
+		
+		// Feedback visuel : modifier temporairement le tooltip
+		if (tooltipElement) {
+			const originalText = tooltipElement.textContent;
+			tooltipElement.textContent = `✓ Copié: ${currentDebugName}`;
+			tooltipElement.style.color = '#00ff88';
+			tooltipElement.style.borderColor = '#00ff88';
+			
+			setTimeout(() => {
+				if (tooltipElement) {
+					tooltipElement.textContent = originalText;
+				}
+			}, 1000);
+		}
+	} catch (err) {
+		console.error('Erreur lors de la copie dans le presse-papiers:', err);
+		// Fallback pour les navigateurs qui ne supportent pas l'API Clipboard
+		try {
+			const textArea = document.createElement('textarea');
+			textArea.value = currentDebugName;
+			textArea.style.position = 'fixed';
+			textArea.style.opacity = '0';
+			document.body.appendChild(textArea);
+			textArea.select();
+			document.execCommand('copy');
+			document.body.removeChild(textArea);
+			
+			// Feedback visuel
+			if (tooltipElement) {
+				const originalText = tooltipElement.textContent;
+				tooltipElement.textContent = `✓ Copié: ${currentDebugName}`;
+				setTimeout(() => {
+					if (tooltipElement) {
+						tooltipElement.textContent = originalText;
+					}
+				}, 1000);
+			}
+		} catch (fallbackErr) {
+			console.error('Erreur lors de la copie (fallback):', fallbackErr);
+		}
 	}
 }
 
@@ -108,6 +164,27 @@ export function initDebugTooltips() {
 		const relatedTarget = event.relatedTarget;
 		if (!relatedTarget || !relatedTarget.closest('[data-debug-name]')) {
 			hideTooltip();
+			// Réinitialiser currentDebugName seulement si on ne survole plus aucun élément avec data-debug-name
+			setTimeout(() => {
+				// Vérifier si on survole toujours un élément avec data-debug-name
+				const hoveredElement = document.elementFromPoint(event.clientX, event.clientY);
+				if (!hoveredElement || !hoveredElement.closest('[data-debug-name]')) {
+					currentDebugName = null;
+				}
+			}, 100);
+		}
+	}, true);
+	
+	// Gestionnaire pour Ctrl+C : copier le nom de la variable
+	document.addEventListener('keydown', (event) => {
+		// Vérifier si Ctrl+C (ou Cmd+C sur Mac) est pressé
+		if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+			// Vérifier que le mode debug est actif et qu'une variable est survolée
+			if (get(debugMode) && currentDebugName) {
+				// Empêcher la copie du texte sélectionné si on est en mode debug
+				event.preventDefault();
+				copyDebugNameToClipboard();
+			}
 		}
 	}, true);
 	
@@ -115,6 +192,7 @@ export function initDebugTooltips() {
 	debugMode.subscribe(isActive => {
 		if (!isActive) {
 			hideTooltip();
+			currentDebugName = null; // Réinitialiser quand le mode debug est désactivé
 		}
 	});
 }
