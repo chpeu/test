@@ -205,6 +205,11 @@
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;
 			backendError = '';
+			// 🔥 FIX: Reset trades au démarrage du bot (nouvelles sessions)
+			const { clearHistory } = await import('$lib/stores/trades');
+			clearHistory();
+			const { resetSessionStats } = await import('$lib/stores/stats');
+			resetSessionStats();
 			// 🔥 FIX: Charger l'état initial quand le WebSocket se connecte
 			try {
 				await loadInitialState();

@@ -15,12 +15,14 @@
 		<div class="pairs-grid">
 			{#each $top20Pairs as pair, i}
 				<div class="pair-card">
-					<div class="pair-rank">#{i + 1}</div>
 					<div class="pair-symbol">{pair.symbol}</div>
 					<div class="pair-metrics">
 						<div class="metric">
 							<span class="metric-label">Score</span>
-							<span class="metric-value score">{formatAdaptive(pair.score, 2, 4)}</span>
+							<div class="score-with-rank">
+								<span class="metric-value score">{formatAdaptive(pair.score, 2, 4)}</span>
+								<div class="pair-rank-inline">#{i + 1}</div>
+							</div>
 						</div>
 						<div class="metric">
 							<span class="metric-label">Price</span>
@@ -93,7 +95,7 @@
 	.pairs-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-		gap: 8px;
+		gap: 4px 5px;
 		max-height: 600px;
 		overflow-y: auto;
 	}
@@ -101,11 +103,12 @@
 	.pair-card {
 		background: #0a0e27;
 		border: 1px solid #2a3a6b;
-		border-radius: 6px;
-		padding: 8px;
+		border-radius: 14px;
+		padding: 5px 4px 5px 6px;
 		transition: all 0.3s;
 		position: relative;
 		overflow: hidden;
+		min-height: fit-content;
 	}
 
 	.pair-card::before {
@@ -113,67 +116,81 @@
 		position: absolute;
 		top: 0;
 		left: 0;
-		width: 4px;
+		width: 3px;
 		height: 100%;
 		background: linear-gradient(180deg, #00ff88 0%, #00cc6a 100%);
 	}
 
 	.pair-card:hover {
-		transform: translateY(-4px);
+		transform: translateY(-2px);
 		border-color: #00ff88;
-		box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
+		box-shadow: 0 2px 12px rgba(0, 255, 136, 0.3);
 	}
 
-	.pair-rank {
-		position: absolute;
-		top: 10px;
-		right: 10px;
+	.score-with-rank {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 3px;
+		flex-wrap: nowrap;
+	}
+
+	.pair-rank-inline {
 		background: rgba(0, 170, 255, 0.2);
 		color: #00aaff;
-		padding: 4px 10px;
-		border-radius: 12px;
-		font-size: 11px;
+		padding: 1px 4px;
+		border-radius: 8px;
+		font-size: 7px;
 		font-weight: bold;
 		font-family: 'Courier New', monospace;
+		line-height: 1.0;
+		flex-shrink: 0;
 	}
 
 	.pair-symbol {
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: bold;
 		color: #fff;
-		margin-bottom: 6px;
+		margin-bottom: 5px;
 		font-family: 'Courier New', monospace;
-		padding-left: 4px;
+		padding-left: 3px;
+		line-height: 1.1;
 	}
 
 	.pair-metrics {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 4px;
+		gap: 2px 3px;
 	}
 
 	.metric {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		overflow: hidden;
 	}
 
 	.metric-label {
-		font-size: 8px;
+		font-size: 9px;
 		color: #888;
 		text-transform: uppercase;
 		font-weight: bold;
+		line-height: 1.1;
 	}
 
 	.metric-value {
-		font-size: 9px;
+		font-size: 10px;
 		font-family: 'Courier New', monospace;
 		font-weight: bold;
+		line-height: 1.2;
+		word-break: break-word;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.metric-value.score {
 		color: #00ff88;
-		font-size: 10px;
+		font-size: 11px;
 	}
 
 	.metric-value.price {
@@ -227,7 +244,7 @@
 
 	@media (min-width: 1201px) {
 		.pairs-grid {
-			grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+			grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
 		}
 	}
 </style>

@@ -6,6 +6,7 @@ REFACTORISÉ avec architecture modulaire
 """
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -80,6 +81,10 @@ class Position:
     tp_escalier_profits: List[Dict] = field(default_factory=list)
 
     pnl_history: List[Dict] = field(default_factory=list)
+    
+    # Price precision from API (for accurate price formatting)
+    price_precision: Optional[int] = None
+    tick_size: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
@@ -104,7 +109,11 @@ class Position:
             'tp_escalier_enabled': self.tp_escalier_enabled,
             'tp_escalier_current_level': self.tp_escalier_current_level,
             'tp_escalier_size_remaining': self.tp_escalier_size_remaining,
-            'tp_escalier_profits': self.tp_escalier_profits
+            'tp_escalier_profits': self.tp_escalier_profits,
+            'tp_escalier_levels': json.dumps(self.tp_escalier_levels) if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else None,  # 🔥 FIX: Ajouter niveaux TP escalier (JSON string)
+            'current_price': getattr(self, 'current_price', None),  # 🔥 FIX: Ajouter prix actuel si disponible
+            'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
+            'tickSize': self.tick_size  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
         }
 
 
@@ -195,9 +204,67 @@ class PositionManager:
         self.api_alert_shown = False
         self.last_price = 0.0
         self.last_price_update = datetime.now().timestamp() * 1000
+        self.market_info_cache: Dict[str, Dict] = {}  # 🔥 FIX: Cache pour informations de marché (précision)
 
         # Initialiser modules spécialisés
         self._init_modules(analytics_db)
+
+    def _get_market_info(self, symbol: str) -> Optional[Dict]:
+        """
+        Récupérer les informations de marché (précision, tickSize) depuis l'API
+        
+        Args:
+            symbol: Symbole de la paire
+            
+        Returns:
+            Dictionnaire avec les informations de marché ou None
+        """
+        # Vérifier le cache d'abord
+        if symbol in self.market_info_cache:
+            return self.market_info_cache[symbol]
+        
+        try:
+            from api.mexc import get_mexc_client
+            import asyncio
+            
+            # Récupérer le client MEXC
+            client = get_mexc_client()
+            
+            # Charger les marchés si pas déjà fait
+            if not hasattr(client, '_markets_loaded'):
+                # Utiliser load_markets pour obtenir toutes les infos de marché
+                try:
+                    # Essayer de récupérer la boucle d'événements actuelle
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Si une boucle est en cours, créer une tâche
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(client.exchange.load_markets())
+                            )
+                            markets = future.result(timeout=10)
+                    except RuntimeError:
+                        # Pas de boucle en cours, utiliser asyncio.run
+                        markets = asyncio.run(client.exchange.load_markets())
+                    
+                    client._markets_loaded = True
+                    client._markets = markets
+                except Exception as e:
+                    logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
+                    return None
+            
+            # Récupérer les informations du marché pour ce symbole
+            if hasattr(client, '_markets') and symbol in client._markets:
+                market_info = client._markets[symbol]
+                # Mettre en cache
+                self.market_info_cache[symbol] = market_info
+                return market_info
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur récupération market info pour {symbol}: {e}")
+        
+        return None
 
     def _init_modules(self, analytics_db):
         """Initialiser tous les modules de gestion"""
@@ -331,6 +398,29 @@ class PositionManager:
                 config=self.tpsl_config
             )
 
+        # 🔥 FIX: Récupérer la précision depuis l'API pour formater correctement les prix
+        price_precision = None
+        tick_size = None
+        try:
+            market_info = self._get_market_info(symbol)
+            if market_info:
+                # Essayer de récupérer pricePrecision (nombre de décimales)
+                price_precision = market_info.get('precision', {}).get('price')
+                if price_precision is None:
+                    # Essayer de récupérer depuis info
+                    price_precision = market_info.get('info', {}).get('pricePrecision')
+                
+                # Essayer de récupérer tickSize
+                tick_size = market_info.get('precision', {}).get('amount')
+                if tick_size is None:
+                    tick_size = market_info.get('info', {}).get('tickSize')
+                if tick_size is None:
+                    # Calculer depuis pricePrecision si disponible
+                    if price_precision is not None:
+                        tick_size = 10 ** (-price_precision)
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de récupérer la précision pour {symbol}: {e}")
+
         # Créer position
         self.active_position = Position(
             symbol=symbol,
@@ -343,7 +433,9 @@ class PositionManager:
             atr5m=atr5m,
             confirmed_by=confirmed_by,
             scalability_data=scalability_data,
-            condition_types=condition_types or []
+            condition_types=condition_types or [],
+            price_precision=price_precision,
+            tick_size=tick_size
         )
 
         # ✅ Initialiser TP Escalier si mode TP_MULTI
@@ -738,6 +830,10 @@ class PositionManager:
         opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
         closed_at = datetime.now().isoformat()
         
+        # 🔥 FIX: Calculer slippage en pourcentage et USDT
+        slippage_pct = (slippage / self.active_position.size * 100) if self.active_position.size > 0 else 0.0
+        slippage_usdt = slippage
+        
         result = {
             'symbol': self.active_position.symbol,
             'direction': self.active_position.direction,
@@ -747,9 +843,11 @@ class PositionManager:
             'pnl_pct': round(pnl_data['pnl_pct'], 2),
             'pnl_usdt': round(net_pnl_usdt, 4),
             'gross_pnl_pct': round(pnl_data['pnl_pct'], 2),
+            'slippage': round(slippage_pct, 4),  # 🔥 FIX: Slippage en pourcentage
+            'slippage_pct': round(slippage_pct, 4),  # Alias
+            'slippage_usdt': round(slippage_usdt, 4),  # 🔥 FIX: Slippage en USDT
             'gross_pnl_usdt': round(pnl_data['pnl_usdt_gross'], 4),
             'fees': round(pnl_data['fees'], 4),  # 🔥 FIX: Plus de précision pour les fees (devrait être 0.0000 pour paires 0% fee)
-            'slippage': round(slippage, 2),  # 🔥 FIX: Slippage en % (déjà en % depuis _estimate_slippage)
             'total_costs': round(total_costs, 2),
             'total_costs_usdt': round(total_costs, 4),
             'net_pnl': round(net_pnl_pct, 2),
@@ -799,6 +897,7 @@ class PositionManager:
             pnl_data={
                 'pnl_pct': pnl_data['pnl_pct'],
                 'net_pnl': net_pnl_usdt,
+                'net_pnl_pct': net_pnl_pct,  # 🔥 FIX: Ajouter net_pnl_pct
                 'fees': pnl_data['fees']
             },
             mode='LIVE'

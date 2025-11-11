@@ -4,29 +4,33 @@
  * Ce fichier est le point d'entrée principal pour garantir la compatibilité Vite/SvelteKit
  */
 
-// Import explicite de tous les exports
+// 🔥 FIX: Import et ré-export explicite pour garantir la résolution correcte
+import type {
+    WebSocketMessage,
+    CommandCallback
+} from './websocket-impl';
+
 import {
     BidirectionalWebSocket,
     initWebSocket,
     getWebSocket,
     sendCommandViaWS,
-    sendRequestViaWS,
-    type WebSocketMessage,
-    type CommandCallback
+    sendRequestViaWS
 } from './websocket-impl';
 
-import BidirectionalWebSocketDefault from './websocket-impl';
-
-// Ré-export explicite de tous les exports nommés
+// Ré-export explicite de tous les exports
 export {
     BidirectionalWebSocket,
     initWebSocket,
     getWebSocket,
     sendCommandViaWS,
-    sendRequestViaWS,
-    type WebSocketMessage,
-    type CommandCallback
+    sendRequestViaWS
 };
 
-// Ré-export du default
-export default BidirectionalWebSocketDefault;
+export type {
+    WebSocketMessage,
+    CommandCallback
+};
+
+// Export default
+export { BidirectionalWebSocket as default };
