@@ -376,6 +376,9 @@ class PositionManager:
         from config import TRADING_CONFIG
         self.tpsl_config.win_streak = self.config.win_streak
         self.tpsl_config.loss_streak = self.config.loss_streak
+        # 🔥 FIX: Mettre à jour paramètres FIXE depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
+        self.tpsl_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
+        self.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
         # ✅ Mettre à jour paramètres ATR depuis TRADING_CONFIG
         self.tpsl_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
         self.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)

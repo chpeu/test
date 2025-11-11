@@ -327,7 +327,12 @@
 						} else if (typeof stateData.config[key] === 'object' && stateData.config[key] !== null) {
 							newConfig[key] = { ...stateData.config[key] };
 						} else {
-							newConfig[key] = stateData.config[key];
+							// 🔥 FIX: Pour les booléens (checkboxes), s'assurer qu'ils sont bien convertis
+							if (typeof stateData.config[key] === 'boolean') {
+								newConfig[key] = stateData.config[key];
+							} else {
+								newConfig[key] = stateData.config[key];
+							}
 						}
 					}
 				});
@@ -554,7 +559,12 @@
 							} else if (typeof data.updated[key] === 'object' && data.updated[key] !== null) {
 								newConfig[key] = { ...data.updated[key] };
 							} else {
-								newConfig[key] = data.updated[key];
+								// 🔥 FIX: Pour les booléens (checkboxes), s'assurer qu'ils sont bien convertis
+								if (typeof data.updated[key] === 'boolean') {
+									newConfig[key] = data.updated[key];
+								} else {
+									newConfig[key] = data.updated[key];
+								}
 							}
 						}
 					});

@@ -69,6 +69,7 @@ logger = logging.getLogger(__name__)
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
 
+
 # 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -184,6 +185,27 @@ ws_manager = get_websocket_manager()
 if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
+
+# 🔥 FIX: Événement de démarrage FastAPI pour réinitialiser le frontend AVANT le scan
+@app.on_event("startup")
+async def startup_event():
+    """Événement de démarrage - réinitialiser le frontend AVANT le scan"""
+    try:
+        # Initialiser les instances si pas déjà fait
+        init_instances()
+        
+        # Attendre un peu pour que les connexions WebSocket soient prêtes
+        await asyncio.sleep(1.0)
+        
+        # 🔥 FIX: Émettre événement de réinitialisation pour synchroniser le frontend IMMÉDIATEMENT
+        if ws_manager:
+            await ws_manager.emit('reset_session', {
+                'timestamp': time.time(),
+                'reason': 'backend_startup'
+            })
+            logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur événement startup: {e}")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -995,7 +1017,7 @@ def init_instances():
             # La DB est déjà initialisée dans __init__ (via _init_database())
             logger.info(f"✅ Analytics DB prête: {ANALYTICS_DB_PATH}")
             
-            # 🔥 FIX: Réinitialiser les stats au démarrage du bot
+            # 🔥 FIX: Réinitialiser les stats au démarrage du bot (AVANT le scan)
             if analytics_db:
                 try:
                     # Vider tous les trades de la base de données pour remettre les stats à zéro
@@ -2073,6 +2095,22 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as e:
             logger.error(f"❌ Erreur envoi logs: {e}")
         
+        # 🔥 FIX: Émettre reset_session à chaque nouvelle connexion pour réinitialiser le frontend
+        # (en plus de l'événement startup, pour les clients qui se connectent après le démarrage)
+        # Toujours émettre pour s'assurer que le frontend est réinitialisé même si connecté après le démarrage
+        try:
+            await ws_manager.send_personal_message({
+                'type': 'event',
+                'event': 'reset_session',
+                'data': {
+                    'timestamp': time.time(),
+                    'reason': 'new_connection'
+                }
+            }, websocket)
+            logger.debug("✅ Événement reset_session envoyé à la nouvelle connexion")
+        except Exception as e:
+            logger.debug(f"⚠️ Erreur envoi reset_session: {e}")
+        
         # Boucle bidirectionnelle : recevoir et traiter messages
         try:
             while True:
@@ -2244,12 +2282,28 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'success': True,
                                 'session_id': session_id or f"live_{int(time.time())}",
                                 'config': {
+                                    # Patterns Techniques
+                                    'use_breakout': TRADING_CONFIG.get('use_breakout', True),
+                                    'use_snr': TRADING_CONFIG.get('use_snr', True),
+                                    'use_wick': TRADING_CONFIG.get('use_wick', True),
+                                    'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+                                    # Patterns de Bougies
+                                    'use_engulfing': TRADING_CONFIG.get('use_engulfing', True),
+                                    'use_hammer': TRADING_CONFIG.get('use_hammer', True),
+                                    'use_shooting_star': TRADING_CONFIG.get('use_shooting_star', True),
+                                    'use_doji': TRADING_CONFIG.get('use_doji', True),
+                                    'use_marubozu': TRADING_CONFIG.get('use_marubozu', True),
+                                    'use_morning_star': TRADING_CONFIG.get('use_morning_star', True),
+                                    'use_evening_star': TRADING_CONFIG.get('use_evening_star', True),
+                                    # Validation Setups
+                                    'use_confluence': TRADING_CONFIG.get('use_confluence', False),
                                     'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
                                     'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
-                                    'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+                                    # TP/SL Configuration
                                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                                     'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
                                     'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                                    # Seuils & Filtres
                                     'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                                     'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                                     'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
@@ -2260,8 +2314,34 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
                                     'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
                                     'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+                                    # Money Management
                                     'account_size': TRADING_CONFIG.get('account_size', 1000.0),
                                     'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+                                    # Mode ATR
+                                    'atr_mult_tp': TRADING_CONFIG.get('atr_mult_tp', 1.5),
+                                    'atr_mult_sl': TRADING_CONFIG.get('atr_mult_sl', 1.0),
+                                    'atr_min': TRADING_CONFIG.get('atr_min', 0.15),
+                                    'atr_max': TRADING_CONFIG.get('atr_max', 1.5),
+                                    # Mode ESCALIER
+                                    'partial_tp_percent': TRADING_CONFIG.get('partial_tp_percent', 50),
+                                    'escalier_level1_pnl': TRADING_CONFIG.get('escalier_level1_pnl', 0.20),
+                                    'escalier_level1_size': TRADING_CONFIG.get('escalier_level1_size', 25),
+                                    'escalier_level2_pnl': TRADING_CONFIG.get('escalier_level2_pnl', 0.35),
+                                    'escalier_level2_size': TRADING_CONFIG.get('escalier_level2_size', 25),
+                                    'escalier_level3_pnl': TRADING_CONFIG.get('escalier_level3_pnl', 0.50),
+                                    'escalier_level3_size': TRADING_CONFIG.get('escalier_level3_size', 25),
+                                    'escalier_level4_pnl': TRADING_CONFIG.get('escalier_level4_pnl', 0.80),
+                                    'escalier_level4_size': TRADING_CONFIG.get('escalier_level4_size', 25),
+                                    # Trailing Stop
+                                    'trailing_enabled': TRADING_CONFIG.get('trailing_enabled', True),
+                                    'trailing_trigger_pnl': TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
+                                    'trailing_atr_multiplier': TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
+                                    'trailing_min_distance': TRADING_CONFIG.get('trailing_min_distance', 0.08),
+                                    'trailing_max_distance': TRADING_CONFIG.get('trailing_max_distance', 0.25),
+                                    # Scanner
+                                    'top_pairs_limit': TRADING_CONFIG.get('top_pairs_limit', 20),
+                                    'balance_score_min': TRADING_CONFIG.get('balance_score_min', 0.0),
+                                    # Autres
                                     'telegram_enabled': TELEGRAM_ENABLED  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
                                 },
                                 'scanner': {
@@ -2670,6 +2750,45 @@ async def handle_client_command(command: str, params: dict):
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
+            
+            # 🔥 FIX: Mettre à jour immédiatement toutes les instances qui utilisent la config
+            # Mettre à jour position_config si nécessaire (sans réinitialiser complètement)
+            if position_config:
+                from config import TRADING_CONFIG
+                # Mettre à jour les valeurs TP/SL si elles ont changé
+                if 'tp_sl_mode' in updated:
+                    tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                    position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI')
+                if 'tp_percent' in updated:
+                    position_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
+                if 'sl_percent' in updated:
+                    position_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
+                if 'atr_mult_tp' in updated:
+                    position_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
+                if 'atr_mult_sl' in updated:
+                    position_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
+                if 'atr_min' in updated:
+                    position_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                if 'atr_max' in updated:
+                    position_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+            
+            # 🔥 FIX: Mettre à jour aussi position_manager.tpsl_config si une position est active
+            if position_manager and position_manager.active_position:
+                from config import TRADING_CONFIG
+                # Mettre à jour les valeurs TP/SL dans tpsl_config pour les prochaines positions
+                if 'tp_percent' in updated:
+                    position_manager.tpsl_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
+                if 'sl_percent' in updated:
+                    position_manager.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
+                if 'atr_mult_tp' in updated:
+                    position_manager.tpsl_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
+                if 'atr_mult_sl' in updated:
+                    position_manager.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
+                if 'atr_min' in updated:
+                    position_manager.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                if 'atr_max' in updated:
+                    position_manager.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+            
             # 🔥 BIDIRECTIONNEL: Émettre événement de mise à jour de config pour synchroniser le frontend
             await ws_manager.emit('config_updated', {
                 'updated': updated,
