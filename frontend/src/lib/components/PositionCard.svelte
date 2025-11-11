@@ -2,7 +2,7 @@
 	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
 	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	// 🔥 FIX: Extraire la précision depuis les données de position
 	$: pricePrecision = $activePosition?.price_precision;
@@ -27,6 +27,50 @@
 		}
 	}
 	
+	// 🔥 NOUVEAU: Compte à rebours dynamique de la durée
+	let liveDuration = '';
+	let durationInterval = null;
+
+	function formatDurationFromSeconds(seconds) {
+		if (!seconds || seconds < 0) return '0s';
+		const hours = Math.floor(seconds / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+		
+		if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+		if (minutes > 0) return `${minutes}m ${secs}s`;
+		return `${secs}s`;
+	}
+
+	function updateLiveDuration() {
+		if (!$activePosition || !$activePosition.opened_at) {
+			liveDuration = '';
+			return;
+		}
+		
+		const now = new Date();
+		const opened = new Date($activePosition.opened_at);
+		const diffMs = now - opened;
+		const diffSec = Math.floor(diffMs / 1000);
+		liveDuration = formatDurationFromSeconds(diffSec);
+	}
+
+	// Réactif: Mettre à jour la durée quand la position change
+	$: if ($activePosition && $activePosition.opened_at) {
+		updateLiveDuration();
+		// Démarrer l'intervalle si pas déjà démarré
+		if (!durationInterval) {
+			durationInterval = setInterval(updateLiveDuration, 1000);
+		}
+	} else {
+		// Arrêter l'intervalle si pas de position
+		if (durationInterval) {
+			clearInterval(durationInterval);
+			durationInterval = null;
+		}
+		liveDuration = '';
+	}
+
 	onMount(async () => {
 		await loadConfig();
 		// Écouter les mises à jour de config
@@ -38,6 +82,13 @@
 					tradingConfig = { ...tradingConfig, ...data.updated };
 				}
 			});
+		}
+	});
+
+	onDestroy(() => {
+		if (durationInterval) {
+			clearInterval(durationInterval);
+			durationInterval = null;
 		}
 	});
 	
@@ -61,7 +112,61 @@
 			return null;
 		}
 		
-		// Mode FIXE ou ATR
+		// Mode FIXE
+		if (tpSlMode === 'FIXE') {
+			// Avant le 1er TP : utiliser break_even_trigger
+			if (!$activePosition.partial_tp_sold) {
+				// Vérifier si TP partiel est configuré
+				if (tradingConfig.partial_tp_percent) {
+					// TP partiel pas encore vendu - utiliser break_even_trigger
+					return {
+						pnl: tradingConfig.break_even_trigger || 0.3,
+						size: tradingConfig.partial_tp_percent || 50
+					};
+				} else {
+					// Pas de TP partiel - utiliser break_even_trigger pour le TP complet
+					return {
+						pnl: tradingConfig.break_even_trigger || 0.3,
+						size: 100
+					};
+				}
+			}
+			
+			// Après le 1er TP : utiliser trailing_distance (dynamique en fonction du prix actuel)
+			// Le trailing stop est actif, donc le prochain TP sera déclenché quand le trailing stop est touché
+			// Le PnL objectif est calculé dynamiquement : PnL actuel - trailing_distance (car le trailing suit le prix)
+			if ($activePosition.current_price && $activePosition.entry) {
+				const currentPnL = $activePosition.direction === 'LONG' 
+					? (($activePosition.current_price - $activePosition.entry) / $activePosition.entry) * 100
+					: (($activePosition.entry - $activePosition.current_price) / $activePosition.entry) * 100;
+				
+				// Le trailing_distance est la distance entre le prix actuel et le trailing stop
+				// Le prochain TP sera déclenché quand le prix revient au trailing stop
+				// Donc le PnL objectif est le PnL actuel moins trailing_distance
+				const trailingDistance = tradingConfig.trailing_distance || 0.1;
+				const targetPnL = Math.max(0, currentPnL - trailingDistance);
+				
+				// Vérifier si position restante après TP partiel
+				const remainingSize = $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null
+					? ($activePosition.size_remaining / $activePosition.size) * 100
+					: 100;
+				
+				return {
+					pnl: targetPnL,
+					size: remainingSize
+				};
+			}
+			
+			// Fallback si pas de prix actuel
+			return {
+				pnl: tradingConfig.trailing_distance || 0.1,
+				size: $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null
+					? ($activePosition.size_remaining / $activePosition.size) * 100
+					: 100
+			};
+		}
+		
+		// Mode ATR ou autres modes
 		// Vérifier si TP partiel déjà vendu
 		if (!$activePosition.partial_tp_sold && tradingConfig.partial_tp_percent) {
 			// TP partiel pas encore vendu
@@ -225,9 +330,10 @@
 			</div>
 		{/if}
 
-		{#if $positionDuration}
+		{#if $activePosition && $activePosition.opened_at}
 			<div class="duration" data-debug-name="positionDuration">
-				Duration: {$positionDuration}
+				<div class="duration-label" data-debug-name="positionDuration.label">⏱️ Durée:</div>
+				<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date() - new Date($activePosition.opened_at)) / 1000))}</div>
 			</div>
 		{/if}
 
@@ -502,10 +608,27 @@
 	}
 
 	.duration {
-		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		margin: 15px 0;
+		padding: 10px;
+		background: rgba(42, 58, 107, 0.3);
+		border-radius: 8px;
 		font-size: 14px;
+	}
+
+	.duration-label {
 		color: #888;
-		margin-bottom: 15px;
+		font-weight: 500;
+	}
+
+	.duration-value {
+		color: #00ff88;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+		font-size: 16px;
 	}
 
 	.signals {

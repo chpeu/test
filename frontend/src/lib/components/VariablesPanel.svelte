@@ -41,6 +41,8 @@
 		tp_percent: 0.6,
 		sl_percent: 0.25,
 		partial_tp_percent: 50,
+		break_even_trigger: 0.3,
+		trailing_distance: 0.15,
 		// Mode ATR
 		atr_mult_tp: 1.5,
 		atr_mult_sl: 1.0,
@@ -339,6 +341,7 @@
 				config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 				viewMode = config.tp_sl_mode || 'FIXE';
 				console.log('✅ Config chargée depuis backend via WebSocket:', config);
+				console.log('✅ break_even_trigger:', config.break_even_trigger, 'trailing_distance:', config.trailing_distance);
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
 				// 🔥 NOUVEAU: Annuler le timer de debounce si en cours
@@ -568,6 +571,13 @@
 							}
 						}
 					});
+					// 🔥 FIX: S'assurer que break_even_trigger et trailing_distance sont bien mis à jour depuis le backend
+					if (data.updated.break_even_trigger !== undefined && data.updated.break_even_trigger !== null) {
+						newConfig.break_even_trigger = data.updated.break_even_trigger;
+					}
+					if (data.updated.trailing_distance !== undefined && data.updated.trailing_distance !== null) {
+						newConfig.trailing_distance = data.updated.trailing_distance;
+					}
 					config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 					
 					if (data.updated.tp_sl_mode) {
@@ -1392,6 +1402,52 @@
 										data-debug-name="config.partial_tp_percent"
 									/>
 									<span class="slider-value" data-debug-name="config.partial_tp_percent">{Number(config.partial_tp_percent).toFixed(0)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item" data-debug-name="config.break_even_trigger">
+								<div class="var-header" data-debug-name="config.break_even_trigger">
+									<label for="break-even-trigger" data-debug-name="config.break_even_trigger">
+										<span class="var-name" data-debug-name="config.break_even_trigger">Break Even Trigger (%)</span>
+										<span class="var-desc" data-debug-name="config.break_even_trigger">% du 1er TP et d'activation du trailing stop</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('break_even_trigger')} title="Réinitialiser" data-debug-name="config.break_even_trigger.reset">⟲</button>
+								</div>
+								<div class="slider-container" data-debug-name="config.break_even_trigger">
+									<input
+										id="break-even-trigger"
+										type="range"
+										step="0.01"
+										min="0.05"
+										max="2"
+										bind:value={config.break_even_trigger}
+										on:change={() => triggerAutoSave('break_even_trigger', `${config.break_even_trigger.toFixed(2)}%`)}
+										data-debug-name="config.break_even_trigger"
+									/>
+									<span class="slider-value" data-debug-name="config.break_even_trigger">{Number(config.break_even_trigger).toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item" data-debug-name="config.trailing_distance">
+								<div class="var-header" data-debug-name="config.trailing_distance">
+									<label for="trailing-distance-fixe" data-debug-name="config.trailing_distance">
+										<span class="var-name" data-debug-name="config.trailing_distance">Trailing Distance (%)</span>
+										<span class="var-desc" data-debug-name="config.trailing_distance">Distance du trailing stop (après 1er TP)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('trailing_distance')} title="Réinitialiser" data-debug-name="config.trailing_distance.reset">⟲</button>
+								</div>
+								<div class="slider-container" data-debug-name="config.trailing_distance">
+									<input
+										id="trailing-distance-fixe"
+										type="range"
+										step="0.01"
+										min="0.05"
+										max="1"
+										bind:value={config.trailing_distance}
+										on:change={() => triggerAutoSave('trailing_distance', `${config.trailing_distance.toFixed(2)}%`)}
+										data-debug-name="config.trailing_distance"
+									/>
+									<span class="slider-value" data-debug-name="config.trailing_distance">{Number(config.trailing_distance).toFixed(2)}%</span>
 								</div>
 							</div>
 						</div>

@@ -121,7 +121,27 @@
 							</td>
 							<!-- 🔥 FIX: Slippage avec formatage adaptatif (calculé si manquant) -->
 							<td class="slippage" data-debug-name="trade.slippage">
-								{formatPercent(trade.slippage || trade.slippage_pct || (trade.slippage_usdt && trade.size ? ((trade.slippage_usdt / trade.size) * 100) : 0) || 0)}%
+								{(() => {
+									// Essayer slippage_pct d'abord (en pourcentage)
+									let slippageValue = trade.slippage_pct;
+									// Sinon essayer slippage (peut être en % ou en décimales)
+									if (slippageValue === undefined || slippageValue === null) {
+										slippageValue = trade.slippage;
+										// Si slippage est < 1, c'est probablement en décimales (0.001 = 0.1%), multiplier par 100
+										if (slippageValue !== undefined && slippageValue !== null && Math.abs(slippageValue) < 1 && slippageValue !== 0) {
+											slippageValue = slippageValue * 100;
+										}
+									}
+									// Sinon calculer depuis slippage_usdt si disponible
+									if ((slippageValue === undefined || slippageValue === null || slippageValue === 0) && trade.slippage_usdt && trade.size) {
+										slippageValue = (trade.slippage_usdt / trade.size) * 100;
+									}
+									// Valeur par défaut
+									if (slippageValue === undefined || slippageValue === null) {
+										slippageValue = 0;
+									}
+									return formatPercent(slippageValue);
+								})()}%
 							</td>
 							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
 							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0} data-debug-name="trade.net_pnl_pct">
@@ -137,9 +157,35 @@
 							</td>
 							<!-- 🔥 FIX: Duration (calculée si manquante) -->
 							<td class="duration" data-debug-name="trade.duration">
-								{trade.duration_seconds ? formatDurationFromSeconds(trade.duration_seconds) : 
-								 (trade.opened_at && trade.closed_at ? formatDuration(trade.opened_at, trade.closed_at) : 
-								  (trade.duration ? formatDurationFromSeconds(trade.duration) : 'N/A'))}
+								{(() => {
+									// Priorité 1: duration_seconds (format backend)
+									if (trade.duration_seconds !== undefined && trade.duration_seconds !== null && trade.duration_seconds !== '') {
+										return formatDurationFromSeconds(Number(trade.duration_seconds));
+									}
+									// Priorité 2: duration (en secondes, format backend)
+									if (trade.duration !== undefined && trade.duration !== null && trade.duration !== '') {
+										const durationNum = typeof trade.duration === 'number' ? trade.duration : Number(trade.duration);
+										if (!isNaN(durationNum) && durationNum > 0) {
+											return formatDurationFromSeconds(durationNum);
+										}
+									}
+									// Priorité 3: Calculer depuis opened_at et closed_at
+									if (trade.opened_at && trade.closed_at) {
+										const calculated = formatDuration(trade.opened_at, trade.closed_at);
+										if (calculated !== 'N/A') {
+											return calculated;
+										}
+									}
+									// Priorité 4: Calculer depuis timestamp et closed_at
+									if (trade.timestamp && trade.closed_at) {
+										const calculated = formatDuration(trade.timestamp, trade.closed_at);
+										if (calculated !== 'N/A') {
+											return calculated;
+										}
+									}
+									// Fallback
+									return 'N/A';
+								})()}
 							</td>
 						</tr>
 					{/each}

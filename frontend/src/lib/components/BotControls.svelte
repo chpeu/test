@@ -1,7 +1,27 @@
 <script>
 	import { isScanning } from '$lib/stores/scanner';
+	import { botPhase, getPhaseMessage } from '$lib/stores/botPhase';
+	import { activePosition } from '$lib/stores/position';
 
 	let loading = false;
+
+	// 🔥 NOUVEAU: Calculer le message de statut dynamique
+	$: statusMessage = (() => {
+		// Priorité 1: Position active
+		if ($activePosition) {
+			return getPhaseMessage('position_active');
+		}
+		// Priorité 2: Phase du bot
+		if ($botPhase && $botPhase !== 'arrêt') {
+			return getPhaseMessage($botPhase);
+		}
+		// Priorité 3: État du scanner
+		if ($isScanning) {
+			return getPhaseMessage('scan_setups');
+		}
+		// Fallback: Arrêt
+		return getPhaseMessage('arrêt');
+	})();
 
 	async function startBot() {
 		try {
@@ -76,11 +96,7 @@
 
 	<div class="controls-info" data-debug-name="botControls.info">
 		<p class="info-text" data-debug-name="botControls.statusText">
-			{#if $isScanning}
-				🔍 Scanner is actively searching for trading opportunities
-			{:else}
-				💤 Scanner is stopped. Click "Start Scanner" to begin
-			{/if}
+			{statusMessage}
 		</p>
 	</div>
 </div>

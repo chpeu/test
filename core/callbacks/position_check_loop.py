@@ -231,6 +231,18 @@ async def _emit_position_update(position, current_price: float):
 
         # 🔥 FIX: Émettre mise à jour au frontend avec toutes les infos
         import json
+        from datetime import datetime
+        # 🔥 NOUVEAU: Ajouter opened_at pour le compte à rebours
+        opened_at = None
+        if hasattr(position, 'start_time') and position.start_time:
+            opened_at = datetime.fromtimestamp(position.start_time).isoformat()
+        elif hasattr(position, 'timestamp') and position.timestamp:
+            # Fallback: utiliser timestamp si start_time n'est pas disponible
+            if isinstance(position.timestamp, (int, float)):
+                opened_at = datetime.fromtimestamp(position.timestamp).isoformat()
+            else:
+                opened_at = position.timestamp
+        
         update_data = {
             'symbol': position.symbol,
             'direction': position.direction,
@@ -241,6 +253,7 @@ async def _emit_position_update(position, current_price: float):
             'pnl': pnl,
             'pnl_usdt': pnl_usdt,
             'size': position.size,
+            'opened_at': opened_at,  # 🔥 NOUVEAU: Ajouté pour le compte à rebours
             'break_even_set': getattr(position, 'break_even_set', False),
             'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),

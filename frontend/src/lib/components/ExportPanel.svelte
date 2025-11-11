@@ -1,5 +1,5 @@
 <script>
-	import { exportToCSV, exportToJSON, exportSummary, exportAnalytics } from '$lib/utils/export';
+	import { exportToCSV, exportToJSON, exportSummary, exportAnalytics, exportSetupAnalysis } from '$lib/utils/export';
 	import { tradeHistory } from '$lib/stores/trades';
 	import { stats } from '$lib/stores/stats';
 	import { formatUSDT } from '$lib/utils/format';
@@ -84,6 +84,24 @@
 				</ul>
 				<button class="export-btn" on:click={exportAnalytics} disabled={tradesCount === 0} data-debug-name="exportBtn.analytics">
 					📥 Export Analytics
+				</button>
+			</div>
+		</div>
+
+		<!-- Setup Analysis Export -->
+		<div class="export-option" data-debug-name="exportOption.setupAnalysis">
+			<div class="option-icon" data-debug-name="exportOption.setupAnalysis.icon">🔬</div>
+			<div class="option-content" data-debug-name="exportOption.setupAnalysis.content">
+				<h3 data-debug-name="exportOption.setupAnalysis.title">Analyse des Setups/Trade</h3>
+				<p data-debug-name="exportOption.setupAnalysis.description">Complete analysis export with all trades, configuration parameters, and TP/SL settings.</p>
+				<ul class="feature-list" data-debug-name="exportOption.setupAnalysis.features">
+					<li>✅ All trades with details</li>
+					<li>✅ Complete configuration</li>
+					<li>✅ TP/SL parameters</li>
+					<li>✅ Thresholds & patterns</li>
+				</ul>
+				<button class="export-btn" on:click={exportSetupAnalysis} disabled={tradesCount === 0} data-debug-name="exportBtn.setupAnalysis">
+					📥 Export Analysis
 				</button>
 			</div>
 		</div>

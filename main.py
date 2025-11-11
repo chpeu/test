@@ -1184,6 +1184,9 @@ def init_instances():
         position_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
         position_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         position_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+        
+        # 🔥 FIX: Configurer use_slippage_calculation depuis TRADING_CONFIG
+        position_config.use_slippage_calculation = TRADING_CONFIG.get('use_slippage_calculation', True)
     
     if not position_manager and PositionManager and position_config:
         position_manager = PositionManager(position_config)
@@ -1191,7 +1194,10 @@ def init_instances():
         # 🔥 ARCHITECTURE V2: Injecter analytics_db, notification_manager, session_id
         if analytics_db:
             position_manager.analytics_db = analytics_db
-            logger.info("💾 Analytics DB injecté dans Position Manager")
+            # 🔥 FIX: Mettre à jour aussi analytics_logger.analytics_db
+            if position_manager.analytics_logger:
+                position_manager.analytics_logger.analytics_db = analytics_db
+            logger.info("💾 Analytics DB injecté dans Position Manager et AnalyticsLogger")
         
         if session_id:
             position_manager.session_id = session_id
@@ -1377,6 +1383,14 @@ async def api_get_complete_state():
     """
     """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
     import time
+    from config import (
+        TELEGRAM_ENABLED,
+        TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+        TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+        TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+        TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+        TELEGRAM_NOTIFY_SETUP_REJECTED
+    )
     logger.info("🔍 /api/state appelé - Début de la fonction")
     
     # 🔥 FIX: Retourner réponse minimale immédiatement - TOUJOURS retourner 200
@@ -1564,6 +1578,16 @@ async def api_get_complete_state():
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
                 # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
                 'telegram_enabled': TELEGRAM_ENABLED,
+                # 🔥 NOUVEAU: Exposer les types de notifications Telegram
+                'telegram_notify_position_opened': TELEGRAM_NOTIFY_POSITION_OPENED,
+                'telegram_notify_position_closed': TELEGRAM_NOTIFY_POSITION_CLOSED,
+                'telegram_notify_tp_escalier': TELEGRAM_NOTIFY_TP_ESCALIER,
+                'telegram_notify_early_invalidation': TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                'telegram_notify_error': TELEGRAM_NOTIFY_ERROR,
+                'telegram_notify_reconnection': TELEGRAM_NOTIFY_RECONNECTION,
+                'telegram_notify_daily_summary': TELEGRAM_NOTIFY_DAILY_SUMMARY,
+                'telegram_notify_recovery_mode': TELEGRAM_NOTIFY_RECOVERY_MODE,
+                'telegram_notify_setup_rejected': TELEGRAM_NOTIFY_SETUP_REJECTED,
             },
             'scanner': {
                 'is_scanning': app_state.get('is_scanning', False),
@@ -2353,7 +2377,14 @@ async def websocket_endpoint(websocket: WebSocket):
                                 trades_history = app_state['trade_history'][:50]
                             
                             # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
-                            from config import TELEGRAM_ENABLED
+                            from config import (
+                                TELEGRAM_ENABLED,
+                                TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+                                TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                                TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+                                TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+                                TELEGRAM_NOTIFY_SETUP_REJECTED
+                            )
                             
                             state_data = {
                                 'success': True,
@@ -2380,6 +2411,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                                     'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
                                     'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                                    'break_even_trigger': TRADING_CONFIG.get('break_even_trigger', 0.3),
+                                    'trailing_distance': TRADING_CONFIG.get('trailing_distance', 0.15),
                                     # Seuils & Filtres
                                     'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                                     'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
@@ -2418,8 +2451,24 @@ async def websocket_endpoint(websocket: WebSocket):
                                     # Scanner
                                     'top_pairs_limit': TRADING_CONFIG.get('top_pairs_limit', 20),
                                     'balance_score_min': TRADING_CONFIG.get('balance_score_min', 0.0),
+                                    # Général
+                                    'use_slippage_calculation': TRADING_CONFIG.get('use_slippage_calculation', True),
+                                    'position_timeout': TRADING_CONFIG.get('position_timeout', 300),
+                                    'check_interval': TRADING_CONFIG.get('check_interval', 0.1),
+                                    'scan_interval': TRADING_CONFIG.get('scan_interval', 45),
+                                    'scalability_interval': TRADING_CONFIG.get('scalability_interval', 90),
                                     # Autres
-                                    'telegram_enabled': TELEGRAM_ENABLED  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
+                                    'telegram_enabled': TELEGRAM_ENABLED,  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
+                                    # 🔥 NOUVEAU: Exposer les types de notifications Telegram
+                                    'telegram_notify_position_opened': TELEGRAM_NOTIFY_POSITION_OPENED,
+                                    'telegram_notify_position_closed': TELEGRAM_NOTIFY_POSITION_CLOSED,
+                                    'telegram_notify_tp_escalier': TELEGRAM_NOTIFY_TP_ESCALIER,
+                                    'telegram_notify_early_invalidation': TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                                    'telegram_notify_error': TELEGRAM_NOTIFY_ERROR,
+                                    'telegram_notify_reconnection': TELEGRAM_NOTIFY_RECONNECTION,
+                                    'telegram_notify_daily_summary': TELEGRAM_NOTIFY_DAILY_SUMMARY,
+                                    'telegram_notify_recovery_mode': TELEGRAM_NOTIFY_RECOVERY_MODE,
+                                    'telegram_notify_setup_rejected': TELEGRAM_NOTIFY_SETUP_REJECTED,
                                 },
                                 'scanner': {
                                     'is_scanning': app_state.get('is_scanning', False),
@@ -2580,6 +2629,26 @@ async def handle_client_command(command: str, params: dict):
             if position_config:
                 position_config.fixed_sl_pct = val
             updated['sl_percent'] = val
+        
+        # 🔥 FIX: break_even_trigger
+        if 'break_even_trigger' in params:
+            val = float(params['break_even_trigger'])
+            val = max(0.05, min(2.0, val))  # Clamp 0.05-2.0%
+            TRADING_CONFIG['break_even_trigger'] = val
+            if position_config:
+                position_config.break_even_trigger = val
+            updated['break_even_trigger'] = val
+            logger.info(f"✅ break_even_trigger mis à jour: {val}%")
+        
+        # 🔥 FIX: trailing_distance
+        if 'trailing_distance' in params:
+            val = float(params['trailing_distance'])
+            val = max(0.05, min(1.0, val))  # Clamp 0.05-1.0%
+            TRADING_CONFIG['trailing_distance'] = val
+            if position_config:
+                position_config.trailing_distance = val
+            updated['trailing_distance'] = val
+            logger.info(f"✅ trailing_distance mis à jour: {val}%")
         
         # 🔥 4 seuils configurables
         if 'snr_threshold' in params:
@@ -2783,6 +2852,17 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['trailing_min_distance'] = val
             updated['trailing_min_distance'] = val
         
+        # 🔥 FIX: use_slippage_calculation
+        if 'use_slippage_calculation' in params:
+            TRADING_CONFIG['use_slippage_calculation'] = bool(params['use_slippage_calculation'])
+            # Mettre à jour position_config et position_manager.config directement
+            if position_config:
+                position_config.use_slippage_calculation = TRADING_CONFIG['use_slippage_calculation']
+            if position_manager:
+                position_manager.config.use_slippage_calculation = TRADING_CONFIG['use_slippage_calculation']
+            updated['use_slippage_calculation'] = TRADING_CONFIG['use_slippage_calculation']
+            logger.info(f"✅ use_slippage_calculation mis à jour: {TRADING_CONFIG['use_slippage_calculation']}")
+        
         if 'trailing_max_distance' in params:
             val = float(params['trailing_max_distance'])
             val = max(0.01, min(5.0, val))  # Clamp 0.01-5.0%
@@ -2944,6 +3024,90 @@ async def handle_client_command(command: str, params: dict):
                 return {'status': 'closed', 'result': result}
         else:
             raise ValueError('Aucune position active')
+    
+    elif command == 'update_telegram_config':
+        # 🔥 NOUVEAU: Mettre à jour la configuration Telegram
+        from config import (
+            TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED,
+            TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+            TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+            TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+            TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+            TELEGRAM_NOTIFY_SETUP_REJECTED
+        )
+        import os
+        updated = {}
+        
+        # Mettre à jour les types de notifications Telegram
+        notify_types = {
+            'TELEGRAM_NOTIFY_POSITION_OPENED': 'TELEGRAM_NOTIFY_POSITION_OPENED',
+            'TELEGRAM_NOTIFY_POSITION_CLOSED': 'TELEGRAM_NOTIFY_POSITION_CLOSED',
+            'TELEGRAM_NOTIFY_TP_ESCALIER': 'TELEGRAM_NOTIFY_TP_ESCALIER',
+            'TELEGRAM_NOTIFY_EARLY_INVALIDATION': 'TELEGRAM_NOTIFY_EARLY_INVALIDATION',
+            'TELEGRAM_NOTIFY_ERROR': 'TELEGRAM_NOTIFY_ERROR',
+            'TELEGRAM_NOTIFY_RECONNECTION': 'TELEGRAM_NOTIFY_RECONNECTION',
+            'TELEGRAM_NOTIFY_DAILY_SUMMARY': 'TELEGRAM_NOTIFY_DAILY_SUMMARY',
+            'TELEGRAM_NOTIFY_RECOVERY_MODE': 'TELEGRAM_NOTIFY_RECOVERY_MODE',
+            'TELEGRAM_NOTIFY_SETUP_REJECTED': 'TELEGRAM_NOTIFY_SETUP_REJECTED'
+        }
+        
+        # Mettre à jour chaque type de notification
+        for key, env_key in notify_types.items():
+            if key in params:
+                value = bool(params[key])
+                os.environ[env_key] = 'true' if value else 'false'
+                updated[key] = value
+                logger.info(f"✅ {key} mis à jour: {value}")
+        
+        # Recharger la config depuis les variables d'environnement
+        from importlib import reload
+        import config
+        reload(config)
+        
+        # Mettre à jour notification_manager si disponible
+        if notification_manager:
+            from config import (
+                TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+                TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+                TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+                TELEGRAM_NOTIFY_SETUP_REJECTED
+            )
+            # 🔥 FIX: Mettre à jour les paramètres avec les nouvelles valeurs depuis params
+            notification_manager.telegram_notify_settings.update({
+                'position_opened': params.get('TELEGRAM_NOTIFY_POSITION_OPENED', TELEGRAM_NOTIFY_POSITION_OPENED),
+                'position_closed': params.get('TELEGRAM_NOTIFY_POSITION_CLOSED', TELEGRAM_NOTIFY_POSITION_CLOSED),
+                'tp_escalier_level': params.get('TELEGRAM_NOTIFY_TP_ESCALIER', TELEGRAM_NOTIFY_TP_ESCALIER),
+                'early_invalidation': params.get('TELEGRAM_NOTIFY_EARLY_INVALIDATION', TELEGRAM_NOTIFY_EARLY_INVALIDATION),
+                'error': params.get('TELEGRAM_NOTIFY_ERROR', TELEGRAM_NOTIFY_ERROR),
+                'reconnection': params.get('TELEGRAM_NOTIFY_RECONNECTION', TELEGRAM_NOTIFY_RECONNECTION),
+                'daily_summary': params.get('TELEGRAM_NOTIFY_DAILY_SUMMARY', TELEGRAM_NOTIFY_DAILY_SUMMARY),
+                'recovery_mode': params.get('TELEGRAM_NOTIFY_RECOVERY_MODE', TELEGRAM_NOTIFY_RECOVERY_MODE),
+                'setup_rejected': params.get('TELEGRAM_NOTIFY_SETUP_REJECTED', TELEGRAM_NOTIFY_SETUP_REJECTED)
+            })
+            logger.info(f"✅ Notification Manager mis à jour: {notification_manager.telegram_notify_settings}")
+        
+        return {'updated': updated, 'success': True}
+    
+    elif command == 'test_telegram':
+        # 🔥 NOUVEAU: Envoyer un message de test Telegram
+        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
+        if not TELEGRAM_ENABLED or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            return {'success': False, 'error': 'Telegram non configuré (vérifiez .env)'}
+        
+        try:
+            if notification_manager and notification_manager.telegram_notifier:
+                test_message = "🧪 **Test de notification Telegram**\n\nCe message confirme que votre configuration Telegram fonctionne correctement ! ✅"
+                success = await notification_manager.telegram_notifier.send_message(test_message)
+                if success:
+                    return {'success': True, 'message': 'Message de test envoyé avec succès'}
+                else:
+                    return {'success': False, 'error': 'Erreur lors de l\'envoi du message'}
+            else:
+                return {'success': False, 'error': 'Notification manager non disponible'}
+        except Exception as e:
+            logger.error(f"❌ Erreur test Telegram: {e}")
+            return {'success': False, 'error': str(e)}
     
     elif command == 'log_config':
         # 🔥 MIGRATION COMPLÈTE: Logger changement de config via WebSocket

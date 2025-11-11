@@ -14,6 +14,7 @@
 	import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
 	import NotificationSettings from '$lib/components/NotificationSettings.svelte';
 	import PnLChart from '$lib/components/PnLChart.svelte';
+	import PnLPercentChart from '$lib/components/PnLPercentChart.svelte';
 	import WinLossChart from '$lib/components/WinLossChart.svelte';
 	import VolumeChart from '$lib/components/VolumeChart.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
@@ -225,6 +226,9 @@
 			if (data) {
 				updatePosition(data);
 			}
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			setBotPhase('position_active');
 		});
 		
 		ws.on('position_closed', async (data: any) => {
@@ -237,6 +241,13 @@
 				// data est directement l'objet trade (result de close_position)
 				addTrade(data);
 			}
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot après fermeture
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			const { isScanning } = await import('$lib/stores/scanner');
+			const { get } = await import('svelte/store');
+			// Si le scanner est actif, repasser au scan des setups, sinon arrêt
+			const scanning = get(isScanning);
+			setBotPhase(scanning ? 'scan_setups' : 'arrêt');
 		});
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de stats
@@ -261,11 +272,33 @@
 		ws.on('scan_started', async (data: any) => {
 			const { startScanning } = await import('$lib/stores/scanner');
 			startScanning();
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			// Déterminer le type de scan depuis data ou utiliser scan_setups par défaut
+			const scanType = data?.type || 'scan_setups';
+			setBotPhase(scanType === 'scalability' ? 'scan_scalability' : 'scan_setups');
 		});
 		
 		ws.on('scan_complete', async (data: any) => {
 			const { stopScanning } = await import('$lib/stores/scanner');
 			stopScanning();
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot après scan
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			const { activePosition } = await import('$lib/stores/position');
+			// Si pas de position active, passer à scan_setups ou arrêt selon le contexte
+			// On laisse la logique réactive dans BotControls gérer cela
+		});
+		
+		// 🔥 NOUVEAU: Écouter les événements de scan de scalabilité
+		ws.on('scalability_scan_started', async (data: any) => {
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			setBotPhase('scan_scalability');
+		});
+		
+		ws.on('scalability_scan_complete', async (data: any) => {
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			// Après le scan de scalabilité, passer au scan des setups
+			setBotPhase('scan_setups');
 		});
 		
 		// 🔥 FIX: Écouter l'événement reset_session depuis le backend (au démarrage, AVANT le scan)
@@ -286,6 +319,16 @@
 			// 🔥 FIX: Charger l'état initial quand le WebSocket se connecte
 			try {
 				await loadInitialState();
+				// 🔥 NOUVEAU: Initialiser la phase du bot selon l'état initial
+				const { setBotPhase } = await import('$lib/stores/botPhase');
+				const { activePosition } = await import('$lib/stores/position');
+				const { get } = await import('svelte/store');
+				const position = get(activePosition);
+				if (position) {
+					setBotPhase('position_active');
+				} else {
+					setBotPhase('arrêt');
+				}
 			} catch (err) {
 				console.error('Error loading initial state on connect:', err);
 			}
@@ -300,6 +343,9 @@
 			// 🔥 FIX: Reset stats session
 			const { resetSessionStats } = await import('$lib/stores/stats');
 			resetSessionStats();
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			setBotPhase('arrêt');
 		});
 	}
 
@@ -535,6 +581,7 @@
 				<div class="tab-content">
 					<div class="charts-grid">
 						<PnLChart />
+						<PnLPercentChart />
 						<WinLossChart />
 					</div>
 				</div>

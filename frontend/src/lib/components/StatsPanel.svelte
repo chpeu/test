@@ -47,7 +47,7 @@
 		{#if $stats.best_trade}
 			<div class="stat-box best" data-debug-name="stats.best_trade">
 				<div class="stat-label" data-debug-name="stats.best_trade">Best Trade</div>
-				<div class="stat-value" data-debug-name="stats.best_trade.pnl_usdt">+{formatUSDT($stats.best_trade.pnl_usdt)} USDT</div>
+				<div class="stat-value" data-debug-name="stats.best_trade.pnl_pct">+{formatPercent($stats.best_trade.net_pnl_pct || $stats.best_trade.pnl_pct || 0)}%</div>
 				<div class="stat-subvalue" data-debug-name="stats.best_trade.symbol">{$stats.best_trade.symbol}</div>
 			</div>
 		{/if}
@@ -55,7 +55,7 @@
 		{#if $stats.worst_trade}
 			<div class="stat-box worst" data-debug-name="stats.worst_trade">
 				<div class="stat-label" data-debug-name="stats.worst_trade">Worst Trade</div>
-				<div class="stat-value" data-debug-name="stats.worst_trade.pnl_usdt">{formatUSDT($stats.worst_trade.pnl_usdt)} USDT</div>
+				<div class="stat-value" data-debug-name="stats.worst_trade.pnl_pct">{formatPercent($stats.worst_trade.net_pnl_pct || $stats.worst_trade.pnl_pct || 0)}%</div>
 				<div class="stat-subvalue" data-debug-name="stats.worst_trade.symbol">{$stats.worst_trade.symbol}</div>
 			</div>
 		{/if}
