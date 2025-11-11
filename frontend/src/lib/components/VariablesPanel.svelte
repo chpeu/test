@@ -285,6 +285,12 @@
 
 	async function loadConfig() {
 		try {
+			// 🔥 FIX: Ne pas recharger la config si on a des changements non sauvegardés (pour éviter d'écraser les modifications)
+			if (hasUnsavedChanges) {
+				console.log('⚠️ Changements non sauvegardés détectés, chargement de la config ignoré pour préserver les modifications');
+				return;
+			}
+			
 			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket uniquement
 			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
@@ -369,10 +375,20 @@
 				}
 				
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde manuelle
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
 			} else {
 				saveMessage = `✅ Configuration sauvegardée via WebSocket`;
 				hasUnsavedChanges = false;
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde manuelle
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
 			}
 		} catch (err) {
 			console.error('❌ Error saving config via WebSocket:', err);
@@ -503,15 +519,21 @@
 					}
 					hasUnsavedChanges = false; // Marquer comme sauvegardé (le backend a mis à jour)
 					
-					// 🔥 FIX: Mettre à jour config de manière réactive pour éviter les changements d'état non désirés
-					// Utiliser une copie pour forcer la réactivité Svelte
-					const updatedConfig = { ...config };
-					Object.keys(data.updated).forEach(key => {
-						if (key in updatedConfig) {
-							updatedConfig[key] = data.updated[key];
+					// 🔥 FIX: Créer un NOUVEL objet pour forcer la réactivité Svelte et éviter les changements d'état non désirés
+					const newConfig = { ...DEFAULTS };
+					// D'abord copier la config actuelle
+					Object.keys(config).forEach(key => {
+						if (config[key] !== undefined && config[key] !== null) {
+							newConfig[key] = config[key];
 						}
 					});
-					config = updatedConfig;
+					// Ensuite appliquer les mises à jour du backend
+					Object.keys(data.updated).forEach(key => {
+						if (key in newConfig) {
+							newConfig[key] = data.updated[key];
+						}
+					});
+					config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 					
 					if (data.updated.tp_sl_mode) {
 						viewMode = data.updated.tp_sl_mode;

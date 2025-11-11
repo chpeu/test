@@ -645,10 +645,13 @@ async def scanner_loop_callback():
                                     await add_log('INFO', 'Position ouverte automatiquement', 
                                         f"{direction} {symbol} @ {entry_price:.6f} | Size: {position_size:.2f} USDT")
                                     
-                                    # 🔥 FIX: Émettre l'événement UNE SEULE FOIS
-                                    await ws_manager.emit('position_opened', position.to_dict())
+                                    # 🔥 FIX: Émettre l'événement UNE SEULE FOIS avec gestion d'erreur pour éviter les déconnexions
+                                    try:
+                                        await ws_manager.emit('position_opened', position.to_dict())
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ Erreur émission position_opened: {e}")
                                     
-                                    # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend
+                                    # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend avec gestion d'erreur
                                     try:
                                         current_price_data = await price_provider.get_price(symbol)
                                         if current_price_data:
@@ -665,22 +668,26 @@ async def scanner_loop_callback():
                                                 current_price=current_price
                                             )
                                             
-                                            await ws_manager.emit('position_update', {
-                                                'symbol': position.symbol,
-                                                'direction': position.direction,
-                                                'entry': position.entry,
-                                                'current_price': current_price,
-                                                'sl': position.sl,
-                                                'tp': position.tp,
-                                                'pnl': pnl,
-                                                'pnl_usdt': pnl_usdt,
-                                                'size': position.size,
-                                                'break_even_set': position.break_even_set,
-                                                'partial_tp_sold': position.partial_tp_sold
-                                            })
-                                            logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                            # 🔥 FIX: Gestion d'erreur pour éviter les déconnexions WebSocket
+                                            try:
+                                                await ws_manager.emit('position_update', {
+                                                    'symbol': position.symbol,
+                                                    'direction': position.direction,
+                                                    'entry': position.entry,
+                                                    'current_price': current_price,
+                                                    'sl': position.sl,
+                                                    'tp': position.tp,
+                                                    'pnl': pnl,
+                                                    'pnl_usdt': pnl_usdt,
+                                                    'size': position.size,
+                                                    'break_even_set': position.break_even_set,
+                                                    'partial_tp_sold': position.partial_tp_sold
+                                                })
+                                                logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                            except Exception as e:
+                                                logger.warning(f"⚠️ Erreur émission position_update: {e}")
                                     except Exception as e:
-                                        logger.warning(f"⚠️ Erreur émission prix initial: {e}")
+                                        logger.warning(f"⚠️ Erreur récupération prix initial: {e}")
                                     
                                     logger.info(
                                         f"🟢 POSITION OUVERTE (Auto): {direction} {symbol} | "
@@ -761,7 +768,12 @@ async def scan_pair_for_setup(symbol: str):
                 is_valid = True
         else:
             # Si analysis est None, c'est que les deux timeframes ont retourné None
-            logger.warning(f"⚠️ {symbol}: Analyse retournée None - Vérifier les erreurs dans analyze_timeframe")
+            # 🔥 FIX: Ajouter plus de détails dans le warning pour debug
+            logger.warning(
+                f"⚠️ {symbol}: Analyse retournée None - "
+                f"Vérifier les erreurs dans analyze_timeframe. "
+                f"Vérifier que le prix est disponible et que les indicateurs peuvent être calculés."
+            )
             is_valid = False
         
         # Envoyer événement pour mettre à jour le compteur
@@ -1492,10 +1504,14 @@ async def api_start():
         scheduler.start()
         logger.info("Scanner démarré")
         await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
+        # 🔥 FIX: Émettre scan_started pour mettre à jour le store frontend
+        await ws_manager.emit('scan_started', {'timestamp': time.time()})
         await ws_manager.emit('status', {'is_scanning': True})
     else:
         app_state['is_scanning'] = True
         logger.info("Scanner démarré (sans scheduler)")
+        # 🔥 FIX: Émettre scan_started pour mettre à jour le store frontend
+        await ws_manager.emit('scan_started', {'timestamp': time.time()})
         await ws_manager.emit('status', {'is_scanning': True})
     
     return JSONResponse({'status': 'started'})
@@ -1514,9 +1530,17 @@ async def api_stop():
     if scheduler:
         await scheduler.stop_async()
         logger.info("Scanner arrêté")
+        await add_log('INFO', 'Scanner arrêté', 'Boucles automatiques désactivées')
+        # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+        await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+        await ws_manager.emit('status', {'is_scanning': False})
+    else:
+        app_state['is_scanning'] = False
+        logger.info("Scanner arrêté (sans scheduler)")
+        # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+        await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+        await ws_manager.emit('status', {'is_scanning': False})
     
-    app_state['is_scanning'] = False
-    await ws_manager.emit('status', {'is_scanning': False})
     return JSONResponse({'status': 'stopped'})
 
 

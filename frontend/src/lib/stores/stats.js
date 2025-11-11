@@ -88,3 +88,8 @@ export function resetStats() {
 		avg_trade_duration: 0
 	});
 }
+
+// 🔥 FIX: Reset des stats de session (alias pour resetStats)
+export function resetSessionStats() {
+	resetStats();
+}
