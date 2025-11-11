@@ -713,7 +713,14 @@ class AnalyticsDatabase:
         params.append(limit)
         
         cursor.execute(query, params)
-        return [dict(row) for row in cursor.fetchall()]
+        trades = []
+        for row in cursor.fetchall():
+            trade = dict(row)
+            # 🔥 FIX: S'assurer que duration_seconds est présent si duration existe
+            if 'duration' in trade and trade.get('duration') is not None and 'duration_seconds' not in trade:
+                trade['duration_seconds'] = trade['duration']
+            trades.append(trade)
+        return trades
     
     def clear_all_trades(self):
         """Vider tous les trades de la base de données (pour réinitialiser les stats au démarrage)"""

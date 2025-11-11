@@ -88,6 +88,10 @@ class Position:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
+        from datetime import datetime
+        # 🔥 FIX: Convertir start_time en opened_at (ISO string) pour le frontend
+        opened_at = datetime.fromtimestamp(self.start_time).isoformat() if self.start_time else None
+        
         return {
             'symbol': self.symbol,
             'direction': self.direction,
@@ -100,6 +104,7 @@ class Position:
             'confirmed_by': self.confirmed_by,
             'timestamp': self.timestamp,
             'start_time': self.start_time,
+            'opened_at': opened_at,  # 🔥 NOUVEAU: Ajouté pour le frontend (compte à rebours)
             'break_even_set': self.break_even_set,
             'partial_tp_sold': self.partial_tp_sold,
             'dynamic_sl': self.dynamic_sl,
@@ -384,9 +389,14 @@ class PositionManager:
         self.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
         self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         self.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+        
+        # 🔥 FIX: Mettre à jour use_atr depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide (identique à TP_MULTI)
+        use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
 
         # Calculer TP/SL selon le mode
-        if self.config.use_atr and atr:
+        if use_atr and atr:
             sl, tp = calculate_atr_levels(
                 entry=entry,
                 atr=atr,
@@ -584,7 +594,11 @@ class PositionManager:
         Returns:
             Slippage estimé en %
         """
+        # 🔥 INFO: Log pour vérifier les paramètres (changer de debug à info pour visibilité)
+        logger.info(f"💹 _estimate_slippage: order_size={order_size}, spread_pct={spread_pct}, depth={depth}, balance_score={balance_score}")
+        
         if spread_pct <= 0 or depth <= 0:
+            logger.warning(f"💹 _estimate_slippage: Retourne 0.0 car spread_pct={spread_pct} ou depth={depth} <= 0")
             return 0.0
 
         # Imbalance factor
@@ -618,6 +632,9 @@ class PositionManager:
         if not self.active_position:
             return None
 
+        # 🔥 FIX: Importer TRADING_CONFIG pour lecture dynamique
+        from config import TRADING_CONFIG
+
         # Calculer temps écoulé et PnL
         elapsed = time.time() - self.active_position.start_time
         pnl = self.pnl_calculator.calculate_pnl_percent(
@@ -649,12 +666,15 @@ class PositionManager:
                 self.active_position.tp_escalier_profits.append(level_result)
                 self.active_position.partial_profit_usdt += level_result['profit_usdt']
 
-        # 3. TP Partiel (si pas TP Escalier)
+        # 3. TP Partiel (si pas TP Escalier) - utiliser break_even_trigger comme seuil du 1er TP
         if not self.active_position.tp_escalier_enabled:
+            # 🔥 FIX: En mode FIXE, utiliser break_even_trigger comme seuil du 1er TP partiel
+            # break_even_trigger détermine le % de profit pour déclencher le 1er TP
+            break_even_trigger = TRADING_CONFIG.get('break_even_trigger', 0.3)
             if self.partial_tp.check_trigger(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
-                trigger_pct=self.config.partial_tp_trigger
+                trigger_pct=break_even_trigger  # Utiliser break_even_trigger au lieu de partial_tp_trigger
             ):
                 partial_result = self.partial_tp.execute_partial_tp(
                     position=self.active_position.to_dict(),
@@ -665,25 +685,92 @@ class PositionManager:
                 self.active_position.size_remaining = partial_result['size_remaining']
                 self.active_position.partial_profit_usdt = partial_result['profit_usdt']
 
-                # Déplacer SL à break-even
+                # Déplacer SL à break-even après le 1er TP
                 new_sl = self.partial_tp.update_sl_after_partial_tp(
                     self.active_position.to_dict()
                 )
                 self.active_position.sl = new_sl
                 self.active_position.break_even_set = True
+                
+                logger.info(
+                    f"💰 1er TP partiel déclenché à {break_even_trigger:.2f}% | "
+                    f"Break-even activé | Trailing stop activé"
+                )
 
-        # 4. Trailing Stop (si PnL > trigger)
-        if self.trailing_stop.should_trigger(pnl):
-            new_sl = self.trailing_stop.update_trailing_stop(
-                position=self.active_position.to_dict(),
-                current_price=current_price,
-                pnl_percent=pnl
-            )
-            if new_sl:
-                self.active_position.sl = new_sl
+        # 4. Trailing Stop (activé après le 1er TP partiel ou si PnL > break_even_trigger)
+        # 🔥 FIX: Le trailing stop est activé après le 1er TP (déclenché par break_even_trigger)
+        # Le trailing stop commence à fonctionner une fois que le PnL dépasse break_even_trigger
+        if self.active_position.partial_tp_sold or pnl >= TRADING_CONFIG.get('break_even_trigger', 0.3):
+            if self.trailing_stop.should_trigger(pnl):
+                # 🔥 FIX: En mode FIXE, utiliser trailing_distance directement depuis TRADING_CONFIG
+                tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                if tp_sl_mode == 'FIXE':
+                    # Mode FIXE : utiliser trailing_distance directement
+                    trailing_distance = TRADING_CONFIG.get('trailing_distance', 0.15)
+                    new_sl = self._update_trailing_stop_fixe(
+                        current_price=current_price,
+                        trailing_distance=trailing_distance
+                    )
+                    if new_sl:
+                        self.active_position.sl = new_sl
+                        self.active_position.dynamic_sl = new_sl
+                else:
+                    # Mode ATR : utiliser distance adaptative
+                    new_sl = self.trailing_stop.update_trailing_stop(
+                        position=self.active_position.to_dict(),
+                        current_price=current_price,
+                        pnl_percent=pnl
+                    )
+                    if new_sl:
+                        self.active_position.sl = new_sl
+                        self.active_position.dynamic_sl = new_sl
 
-        # 5. Vérifier TP/SL
+        # 6. Vérifier TP/SL
         return self._check_levels(current_price)
+
+    def _update_trailing_stop_fixe(
+        self,
+        current_price: float,
+        trailing_distance: float
+    ) -> Optional[float]:
+        """
+        Mettre à jour trailing stop en mode FIXE avec distance fixe
+
+        Args:
+            current_price: Prix actuel
+            trailing_distance: Distance trailing en % (depuis TRADING_CONFIG)
+
+        Returns:
+            Nouveau SL si mis à jour, None sinon
+        """
+        if not self.active_position:
+            return None
+
+        direction = self.active_position.direction
+        current_sl = self.active_position.sl
+
+        if direction == 'LONG':
+            new_sl = current_price * (1 - trailing_distance / 100)
+            # Monter SL uniquement (jamais descendre)
+            if new_sl > current_sl:
+                new_sl = round(new_sl, 8)
+                logger.info(
+                    f"🔄 Trailing SL LONG {self.active_position.symbol} (FIXE): "
+                    f"{current_sl:.8f} → {new_sl:.8f} (-{trailing_distance:.2f}%)"
+                )
+                return new_sl
+        else:  # SHORT
+            new_sl = current_price * (1 + trailing_distance / 100)
+            # Descendre SL uniquement (jamais monter)
+            if new_sl < current_sl:
+                new_sl = round(new_sl, 8)
+                logger.info(
+                    f"🔄 Trailing SL SHORT {self.active_position.symbol} (FIXE): "
+                    f"{current_sl:.8f} → {new_sl:.8f} (+{trailing_distance:.2f}%)"
+                )
+                return new_sl
+
+        return None
 
     def _check_levels(self, current_price: float) -> Optional[str]:
         """Vérifier si TP ou SL est touché"""
@@ -801,23 +888,49 @@ class PositionManager:
         )
 
         # Calculer slippage si applicable
-        slippage = 0.0
+        # 🔥 FIX: _estimate_slippage retourne un pourcentage (%)
+        slippage_pct = 0.0
+        # 🔥 INFO: Log pour vérifier les conditions (changer de debug à info pour visibilité)
+        logger.info(f"💹 Calcul slippage: use_slippage_calculation={self.config.use_slippage_calculation}, "
+                   f"scalability_data={'présent' if self.active_position.scalability_data else 'absent'}")
+        
         if self.config.use_slippage_calculation and self.active_position.scalability_data:
-            slippage = self._estimate_slippage(
+            spread_pct = self.active_position.scalability_data.get('spread_pct', 0.0)
+            depth = self.active_position.scalability_data.get('depth', 0.0)
+            balance = self.active_position.scalability_data.get('balance', 1.0)
+            
+            logger.info(f"💹 Données scalabilité: spread_pct={spread_pct}, depth={depth}, balance={balance}, size={self.active_position.size}")
+            
+            slippage_pct = self._estimate_slippage(
                 order_size=self.active_position.size,
-                spread_pct=self.active_position.scalability_data.get('spread_pct', 0.0),
-                depth=self.active_position.scalability_data.get('depth', 0.0),
-                balance_score=self.active_position.scalability_data.get('balance', 1.0),
+                spread_pct=spread_pct,
+                depth=depth,
+                balance_score=balance,
                 bid_vol=self.active_position.scalability_data.get('bid_vol'),
                 ask_vol=self.active_position.scalability_data.get('ask_vol')
             )
+            logger.info(f"💹 Slippage calculé: {slippage_pct}%")
+        else:
+            if not self.config.use_slippage_calculation:
+                logger.warning("💹 Slippage non calculé: use_slippage_calculation est False")
+            if not self.active_position.scalability_data:
+                logger.warning("💹 Slippage non calculé: scalability_data est absent")
+        
+        # 🔥 FIX: Convertir slippage_pct en USDT pour les calculs
+        slippage_usdt = (slippage_pct / 100) * self.active_position.size if self.active_position.size > 0 else 0.0
 
-        # Calculer coûts totaux
-        total_costs = pnl_data['fees'] + slippage
+        # Calculer coûts totaux (fees en USDT + slippage en USDT)
+        total_costs = pnl_data['fees'] + slippage_usdt
 
         # PnL net
-        net_pnl_pct = pnl_data['pnl_pct']
-        net_pnl_usdt = pnl_data['net_pnl'] - slippage
+        # 🔥 FIX: Calculer net_pnl_pct en tenant compte des coûts (fees + slippage)
+        # Le PnL net en % doit être ajusté pour refléter les coûts réels
+        gross_pnl_pct = pnl_data['pnl_pct']
+        total_costs_pct = (total_costs / self.active_position.size) * 100 if self.active_position.size > 0 else 0
+        net_pnl_pct = gross_pnl_pct - total_costs_pct
+        
+        # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage USDT
+        net_pnl_usdt = pnl_data['net_pnl'] - slippage_usdt
 
         # Taille fermée
         if self.active_position.partial_tp_sold:
@@ -832,10 +945,6 @@ class PositionManager:
         # 🔥 FIX: Ajouter opened_at et closed_at pour l'affichage frontend
         opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
         closed_at = datetime.now().isoformat()
-        
-        # 🔥 FIX: Calculer slippage en pourcentage et USDT
-        slippage_pct = (slippage / self.active_position.size * 100) if self.active_position.size > 0 else 0.0
-        slippage_usdt = slippage
         
         result = {
             'symbol': self.active_position.symbol,
@@ -893,15 +1002,22 @@ class PositionManager:
         position = self.active_position
 
         # Logger dans Analytics DB
+        # 🔥 DEBUG: Log pour vérifier les valeurs avant enregistrement
+        logger.debug(f"💾 Enregistrement trade: net_pnl_pct={net_pnl_pct:.4f}%, net_pnl_usdt={net_pnl_usdt:.4f} USDT, slippage_pct={slippage_pct:.4f}%")
+        
         self.analytics_logger.log_trade(
             position=position.to_dict(),
             exit_price=exit_price,
             reason=reason,
             pnl_data={
                 'pnl_pct': pnl_data['pnl_pct'],
-                'net_pnl': net_pnl_usdt,
-                'net_pnl_pct': net_pnl_pct,  # 🔥 FIX: Ajouter net_pnl_pct
-                'fees': pnl_data['fees']
+                'net_pnl': net_pnl_usdt,  # 🔥 FIX: net_pnl doit être en USDT
+                'net_pnl_pct': net_pnl_pct,  # 🔥 FIX: net_pnl_pct en pourcentage (après déduction des coûts)
+                'fees': pnl_data['fees'],
+                'slippage': slippage_pct,  # 🔥 FIX: Ajouter slippage en pourcentage
+                'slippage_pct': slippage_pct,  # Alias
+                'slippage_usdt': slippage_usdt,  # Slippage en USDT
+                'gross_pnl': pnl_data['pnl_usdt_gross']  # PnL brut en USDT
             },
             mode='LIVE'
         )
@@ -911,7 +1027,8 @@ class PositionManager:
 
         logger.info(
             f"🔴 POSITION FERMÉE: {result['symbol']} | "
-            f"Raison: {reason} | PnL net: {net_pnl_pct:.2f}% ({net_pnl_usdt:.4f} USDT)"
+            f"Raison: {reason} | PnL net: {net_pnl_pct:.2f}% ({net_pnl_usdt:.4f} USDT) | "
+            f"Slippage: {slippage_pct:.4f}% ({slippage_usdt:.4f} USDT)"
         )
 
         return result

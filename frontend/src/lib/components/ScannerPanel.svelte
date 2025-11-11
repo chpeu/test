@@ -12,41 +12,41 @@
 	</div>
 
 	{#if $top20Pairs.length > 0}
-		<div class="pairs-grid">
+		<div class="pairs-grid" data-debug-name="top20Pairs">
 			{#each $top20Pairs as pair, i}
-				<div class="pair-card">
-					<div class="pair-symbol">{pair.symbol}</div>
+				<div class="pair-card" data-debug-name="top20Pairs[{i}]">
+					<div class="pair-symbol" data-debug-name="pair.symbol">{pair.symbol}</div>
 					<div class="pair-metrics">
-						<div class="metric">
-							<span class="metric-label">Score</span>
+						<div class="metric" data-debug-name="pair.score">
+							<span class="metric-label" data-debug-name="pair.score">Score</span>
 							<div class="score-with-rank">
-								<span class="metric-value score">{formatAdaptive(pair.score, 2, 4)}</span>
-								<div class="pair-rank-inline">#{i + 1}</div>
+								<span class="metric-value score" data-debug-name="pair.score">{formatAdaptive(pair.score, 2, 4)}</span>
+								<div class="pair-rank-inline" data-debug-name="pair.rank">#{i + 1}</div>
 							</div>
 						</div>
-						<div class="metric">
-							<span class="metric-label">Price</span>
-							<span class="metric-value price">{formatPrice(pair.price)}</span>
+						<div class="metric" data-debug-name="pair.price">
+							<span class="metric-label" data-debug-name="pair.price">Price</span>
+							<span class="metric-value price" data-debug-name="pair.price">{formatPrice(pair.price)}</span>
 						</div>
-						<div class="metric">
-							<span class="metric-label">Vol5</span>
-							<span class="metric-value vol">{formatPercent(pair.vol5)}%</span>
+						<div class="metric" data-debug-name="pair.vol5">
+							<span class="metric-label" data-debug-name="pair.vol5">Vol5</span>
+							<span class="metric-value vol" data-debug-name="pair.vol5">{formatPercent(pair.vol5)}%</span>
 						</div>
-						<div class="metric">
-							<span class="metric-label">Vol15</span>
-							<span class="metric-value vol">{formatPercent(pair.vol15)}%</span>
+						<div class="metric" data-debug-name="pair.vol15">
+							<span class="metric-label" data-debug-name="pair.vol15">Vol15</span>
+							<span class="metric-value vol" data-debug-name="pair.vol15">{formatPercent(pair.vol15)}%</span>
 						</div>
-						<div class="metric">
-							<span class="metric-label">Spread</span>
-							<span class="metric-value spread">{formatSpread(pair.spread)}%</span>
+						<div class="metric" data-debug-name="pair.spread">
+							<span class="metric-label" data-debug-name="pair.spread">Spread</span>
+							<span class="metric-value spread" data-debug-name="pair.spread">{formatSpread(pair.spread)}%</span>
 						</div>
-						<div class="metric">
-							<span class="metric-label">Depth</span>
-							<span class="metric-value depth">{formatAdaptive(pair.bookDepth, 0, 2)}</span>
+						<div class="metric" data-debug-name="pair.bookDepth">
+							<span class="metric-label" data-debug-name="pair.bookDepth">Depth</span>
+							<span class="metric-value depth" data-debug-name="pair.bookDepth">{formatAdaptive(pair.bookDepth, 0, 2)}</span>
 						</div>
-						<div class="metric">
-							<span class="metric-label">Balance</span>
-							<span class="metric-value balance">{formatAdaptive(pair.balanceScore, 2, 4)}</span>
+						<div class="metric" data-debug-name="pair.balanceScore">
+							<span class="metric-label" data-debug-name="pair.balanceScore">Balance</span>
+							<span class="metric-value balance" data-debug-name="pair.balanceScore">{formatAdaptive(pair.balanceScore, 2, 4)}</span>
 						</div>
 					</div>
 				</div>
@@ -94,7 +94,7 @@
 
 	.pairs-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(100px, 120px));
+		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
 		gap: 4px 5px;
 		max-height: 600px;
 		overflow-y: auto;

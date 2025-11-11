@@ -3,9 +3,10 @@
  * Auto-calculées via derived stores
  */
 import { writable, derived } from 'svelte/store';
+import { tradeHistory } from './trades';
 
-// Stats brutes
-export const stats = writable({
+// Stats brutes (mises à jour par le backend)
+const backendStats = writable({
 	wins: 0,
 	losses: 0,
 	total_trades: 0,
@@ -15,6 +16,57 @@ export const stats = writable({
 	worst_trade: null,
 	avg_trade_duration: 0
 });
+
+// 🔥 FIX: Calculer les stats depuis les trades du frontend pour garantir la cohérence
+// Cela garantit que les stats correspondent exactement aux trades visibles
+export const stats = derived([tradeHistory, backendStats], ([$trades, $backendStats]) => {
+	if ($trades.length === 0) {
+		// Si pas de trades, utiliser les stats du backend (pour les autres métriques)
+		return $backendStats;
+	}
+
+	// Calculer depuis les trades du frontend
+	const total = $trades.length;
+	const wins = $trades.filter(t => (t.net_pnl_usdt || t.pnl_usdt || 0) > 0).length;
+	const losses = total - wins;
+	
+	// Calculer PnL total depuis les trades
+	const total_pnl_usdt = $trades.reduce((sum, t) => sum + (t.net_pnl_usdt || t.pnl_usdt || 0), 0);
+	const total_pnl_pct = $trades.reduce((sum, t) => sum + (t.net_pnl_pct || t.pnl_pct || 0), 0);
+	
+	// Trouver best/worst trade
+	const best_trade = $trades.reduce((best, t) => {
+		const pnl = t.net_pnl_usdt || t.pnl_usdt || 0;
+		const bestPnl = best ? (best.net_pnl_usdt || best.pnl_usdt || 0) : -Infinity;
+		return pnl > bestPnl ? t : best;
+	}, null);
+	
+	const worst_trade = $trades.reduce((worst, t) => {
+		const pnl = t.net_pnl_usdt || t.pnl_usdt || 0;
+		const worstPnl = worst ? (worst.net_pnl_usdt || worst.pnl_usdt || 0) : Infinity;
+		return pnl < worstPnl ? t : worst;
+	}, null);
+	
+	// Calculer durée moyenne
+	const durations = $trades.map(t => t.duration_seconds || 0).filter(d => d > 0);
+	const avg_duration = durations.length > 0 ? durations.reduce((sum, d) => sum + d, 0) / durations.length : 0;
+
+	return {
+		wins,
+		losses,
+		total_trades: total,
+		total_pnl_usdt: round(total_pnl_usdt, 4),
+		total_pnl_pct: round(total_pnl_pct, 4),
+		best_trade,
+		worst_trade,
+		avg_trade_duration: round(avg_duration, 2)
+	};
+});
+
+// Helper pour arrondir
+function round(value, decimals) {
+	return Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);
+}
 
 // Computed: Winrate
 export const winrate = derived(stats, $stats => {
@@ -47,37 +99,15 @@ export const profitFactor = derived(stats, $stats => {
 
 // Actions
 export function updateStats(newStats) {
-	stats.set(newStats);
+	// Mettre à jour backendStats (utilisé comme fallback si pas de trades)
+	backendStats.set(newStats);
 }
 
-export function incrementWin(trade) {
-	stats.update($stats => ({
-		...$stats,
-		wins: $stats.wins + 1,
-		total_trades: $stats.total_trades + 1,
-		total_pnl_usdt: $stats.total_pnl_usdt + (trade.net_pnl_usdt || trade.pnl_usdt || 0),
-		total_pnl_pct: $stats.total_pnl_pct + (trade.net_pnl || trade.net_pnl_pct || trade.pnl_pct || 0),
-		best_trade: !$stats.best_trade || (trade.net_pnl_usdt || trade.pnl_usdt || 0) > ($stats.best_trade.net_pnl_usdt || $stats.best_trade.pnl_usdt || 0)
-			? trade
-			: $stats.best_trade
-	}));
-}
-
-export function incrementLoss(trade) {
-	stats.update($stats => ({
-		...$stats,
-		losses: $stats.losses + 1,
-		total_trades: $stats.total_trades + 1,
-		total_pnl_usdt: $stats.total_pnl_usdt + (trade.net_pnl_usdt || trade.pnl_usdt || 0),
-		total_pnl_pct: $stats.total_pnl_pct + (trade.net_pnl || trade.net_pnl_pct || trade.pnl_pct || 0),
-		worst_trade: !$stats.worst_trade || (trade.net_pnl_usdt || trade.pnl_usdt || 0) < ($stats.worst_trade.net_pnl_usdt || $stats.worst_trade.pnl_usdt || 0)
-			? trade
-			: $stats.worst_trade
-	}));
-}
+// 🔥 REMOVED: incrementWin et incrementLoss ne sont plus nécessaires
+// Les stats sont maintenant calculées automatiquement depuis tradeHistory via le derived store
 
 export function resetStats() {
-	stats.set({
+	backendStats.set({
 		wins: 0,
 		losses: 0,
 		total_trades: 0,

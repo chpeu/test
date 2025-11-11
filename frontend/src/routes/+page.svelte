@@ -14,20 +14,67 @@
 	import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
 	import NotificationSettings from '$lib/components/NotificationSettings.svelte';
 	import PnLChart from '$lib/components/PnLChart.svelte';
+	import PnLPercentChart from '$lib/components/PnLPercentChart.svelte';
 	import WinLossChart from '$lib/components/WinLossChart.svelte';
 	import VolumeChart from '$lib/components/VolumeChart.svelte';
-	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 	import ExportPanel from '$lib/components/ExportPanel.svelte';
 	import SessionSelector from '$lib/components/SessionSelector.svelte';
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
+	import { recentLogs } from '$lib/stores/logs';
+	import { derived } from 'svelte/store';
+	import { debugMode } from '$lib/stores/debug';
+
+	// 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages)
+	let showErrorPopup = false;
+	let lastErrorId: string | null = null;
+	let popupHiddenUntil: number | null = null; // Timestamp jusqu'auquel le popup est caché
+
+	// 🔥 FIX: Erreurs critiques uniquement (pour le popup)
+	const criticalErrorLogs = derived(recentLogs, $logs =>
+		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL')
+	);
+
+	// 🔥 FIX: Détecter les nouvelles erreurs CRITIQUES pour afficher le popup
+	$: if ($criticalErrorLogs.length > 0) {
+		const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1];
+		const now = Date.now();
+		// Vérifier si le popup n'est pas caché temporairement
+		if (latestError && latestError.id !== lastErrorId && (popupHiddenUntil === null || now > popupHiddenUntil)) {
+			lastErrorId = latestError.id;
+			showErrorPopup = true;
+			popupHiddenUntil = null; // Réinitialiser le timer
+		}
+	}
+
+	// 🔥 FIX: Fonction pour acquitter et cacher le popup pendant 5 secondes
+	function acknowledgeError() {
+		showErrorPopup = false;
+		// Cacher le popup pendant 5 secondes
+		popupHiddenUntil = Date.now() + 5000;
+	}
+
+	// 🔥 FIX: Fonction helper pour formater le temps
+	function formatTime(timestamp: string | number): string {
+		if (!timestamp) return '';
+		const date = new Date(timestamp);
+		return date.toLocaleTimeString('en-US', { hour12: false });
+	}
+
+	// 🔥 FIX: Fonction helper pour supprimer les codes ANSI
+	function stripAnsiCodes(text: string): string {
+		if (!text) return '';
+		return text.replace(/\x1b\[\d+m/g, '').replace(/\[\d+m/g, '');
+	}
 
 	let backendConnected = false;
 	let backendError = '';
 	let activeTab = 'dashboard';
 	let tpSlMode = 'FIXE'; // Mode TP/SL actif du bot
+	let tpSlModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	const TP_SL_MODE_SAVE_DELAY = 2500; // 2.5 secondes d'inactivité avant sauvegarde automatique
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -39,25 +86,44 @@
 		{ id: 'settings', label: 'Paramètres', icon: '⚙️' }
 	];
 
-	async function changeTpSlMode() {
-		try {
-			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-			const ws = initWebSocket();
-			const result = await ws.sendCommand('update_config', { tp_sl_mode: tpSlMode });
-			
-			if (result && result.updated) {
-				console.log(`✅ TP/SL Mode changé via WebSocket: ${tpSlMode}`);
-			} else {
-				console.error('⚠️ Erreur changement mode TP/SL: pas de réponse');
-			}
-		} catch (err) {
-			console.error('❌ Erreur changement mode TP/SL:', err);
-			alert(`❌ Erreur: ${err.message || 'Impossible de changer le mode TP/SL. Vérifiez la connexion WebSocket.'}`);
+	// 🔥 FIX: Fonction pour sauvegarder le mode TP/SL avec debounce
+	async function saveTpSlMode() {
+		if (tpSlModeDebounceTimer) {
+			clearTimeout(tpSlModeDebounceTimer);
 		}
+		
+		tpSlModeDebounceTimer = setTimeout(async () => {
+			try {
+				// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+				const ws = initWebSocket();
+				const result = await ws.sendCommand('update_config', { tp_sl_mode: tpSlMode });
+				
+				if (result && result.updated) {
+					console.log(`✅ TP/SL Mode sauvegardé via WebSocket: ${tpSlMode}`);
+					// 🔥 FIX: L'événement config_updated sera émis automatiquement par le backend
+					// VariablesPanel écoutera cet événement et rafraîchira completeConfig
+				} else {
+					console.error('⚠️ Erreur sauvegarde mode TP/SL: pas de réponse');
+				}
+			} catch (err) {
+				console.error('❌ Erreur sauvegarde mode TP/SL:', err);
+			} finally {
+				tpSlModeDebounceTimer = null;
+			}
+		}, TP_SL_MODE_SAVE_DELAY);
+	}
+
+	// 🔥 FIX: Fonction appelée lors du changement de mode (déclenche le debounce)
+	function changeTpSlMode() {
+		saveTpSlMode();
 	}
 
 	// Fetch initial state on mount
 	onMount(async () => {
+		// 🔥 FIX: Initialiser le système de tooltips de debug
+		const { initDebugTooltips } = await import('$lib/utils/debugTooltip');
+		initDebugTooltips();
+		
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
 		try {
 			const ws = initWebSocket();
@@ -160,16 +226,28 @@
 			if (data) {
 				updatePosition(data);
 			}
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			setBotPhase('position_active');
 		});
 		
 		ws.on('position_closed', async (data: any) => {
 			const { clearPosition } = await import('$lib/stores/position');
 			clearPosition();
-			// Recharger l'historique des trades
-			const { setTradeHistory } = await import('$lib/stores/trades');
-			if (data && data.trade) {
-				setTradeHistory([data.trade]);
+			// 🔥 FIX: Ajouter le nouveau trade à l'historique existant au lieu de le remplacer
+			// Le backend envoie directement l'objet trade (result), pas { trade: result }
+			const { addTrade } = await import('$lib/stores/trades');
+			if (data) {
+				// data est directement l'objet trade (result de close_position)
+				addTrade(data);
 			}
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot après fermeture
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			const { isScanning } = await import('$lib/stores/scanner');
+			const { get } = await import('svelte/store');
+			// Si le scanner est actif, repasser au scan des setups, sinon arrêt
+			const scanning = get(isScanning);
+			setBotPhase(scanning ? 'scan_setups' : 'arrêt');
 		});
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de stats
@@ -194,11 +272,33 @@
 		ws.on('scan_started', async (data: any) => {
 			const { startScanning } = await import('$lib/stores/scanner');
 			startScanning();
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			// Déterminer le type de scan depuis data ou utiliser scan_setups par défaut
+			const scanType = data?.type || 'scan_setups';
+			setBotPhase(scanType === 'scalability' ? 'scan_scalability' : 'scan_setups');
 		});
 		
 		ws.on('scan_complete', async (data: any) => {
 			const { stopScanning } = await import('$lib/stores/scanner');
 			stopScanning();
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot après scan
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			const { activePosition } = await import('$lib/stores/position');
+			// Si pas de position active, passer à scan_setups ou arrêt selon le contexte
+			// On laisse la logique réactive dans BotControls gérer cela
+		});
+		
+		// 🔥 NOUVEAU: Écouter les événements de scan de scalabilité
+		ws.on('scalability_scan_started', async (data: any) => {
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			setBotPhase('scan_scalability');
+		});
+		
+		ws.on('scalability_scan_complete', async (data: any) => {
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			// Après le scan de scalabilité, passer au scan des setups
+			setBotPhase('scan_setups');
 		});
 		
 		// 🔥 FIX: Écouter l'événement reset_session depuis le backend (au démarrage, AVANT le scan)
@@ -219,6 +319,16 @@
 			// 🔥 FIX: Charger l'état initial quand le WebSocket se connecte
 			try {
 				await loadInitialState();
+				// 🔥 NOUVEAU: Initialiser la phase du bot selon l'état initial
+				const { setBotPhase } = await import('$lib/stores/botPhase');
+				const { activePosition } = await import('$lib/stores/position');
+				const { get } = await import('svelte/store');
+				const position = get(activePosition);
+				if (position) {
+					setBotPhase('position_active');
+				} else {
+					setBotPhase('arrêt');
+				}
 			} catch (err) {
 				console.error('Error loading initial state on connect:', err);
 			}
@@ -233,6 +343,9 @@
 			// 🔥 FIX: Reset stats session
 			const { resetSessionStats } = await import('$lib/stores/stats');
 			resetSessionStats();
+			// 🔥 NOUVEAU: Mettre à jour la phase du bot
+			const { setBotPhase } = await import('$lib/stores/botPhase');
+			setBotPhase('arrêt');
 		});
 	}
 
@@ -347,21 +460,42 @@
 	}
 </script>
 
+<!-- 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages) -->
+{#if showErrorPopup && $criticalErrorLogs.length > 0}
+	{@const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1]}
+	<div class="error-popup" class:blinking={showErrorPopup}>
+		<div class="error-popup-content">
+			<div class="error-popup-header">
+				<span class="error-icon">🚨</span>
+				<h3>Erreur détectée</h3>
+				<button class="close-popup-btn" on:click={acknowledgeError}>✕</button>
+			</div>
+			<div class="error-popup-message">
+				<span class="error-time">{formatTime(latestError.timestamp)}</span>
+				<span class="error-level">[{latestError.level}]</span>
+				<span class="error-text">{stripAnsiCodes(latestError.message)}</span>
+			</div>
+			<button class="acknowledge-btn" on:click={acknowledgeError}>Acquitter</button>
+		</div>
+	</div>
+{/if}
+
 <svelte:head>
-	<title>Trade Cursor v7.0 - MEXC Smart Scalping Scanner</title>
+	<title>TRADE MEXC - MEXC Smart Scalping Scanner</title>
 </svelte:head>
 
 <div class="app">
-	<header class="header">
-		<div class="header-content">
-			<div class="title-section">
-				<h1>⚡ TRADE CURSOR v7.0</h1>
-				<div class="subtitle">✅ Stats temps réel • ✅ Volume à la volée • ✅ ATR auto • ✅ No timeout<br>📊 Mode FIXE/ATR • 🧩 Clamp ATR • ⚖️ Win/Loss adjust • 🛡️ BE ATR • 💰 Position Sizing • 📊 Volume Quality • 🎯 Confluence • 🔥 Scanner Scalabilité 0% fees • ⚡ SCAN PARALLÈLE • 🎯 Filtre ATR Optimal</div>
-				<span class="mexc-badge">MEXC FUTURES</span>
+	<header class="header" data-debug-name="header">
+		<div class="header-content" data-debug-name="header.content">
+			<ConnectionStatus />
+			<div class="title-section" data-debug-name="header.title">
+				<h1 data-debug-name="header.title.text">TRADE MEXC</h1>
 			</div>
-			<div class="header-controls">
-				<ThemeToggle />
-				<ConnectionStatus />
+			<div class="header-controls" data-debug-name="header.controls">
+				<label class="debug-toggle" data-debug-name="debugMode">
+					<input type="checkbox" bind:checked={$debugMode} data-debug-name="debugMode" />
+					<span data-debug-name="debugMode">🐛 Debug</span>
+				</label>
 			</div>
 		</div>
 	</header>
@@ -379,47 +513,48 @@
 		</div>
 	{/if}
 
-	<main class="main-content">
-		<div class="container">
+	<main class="main-content" data-debug-name="mainContent">
+		<div class="container" data-debug-name="mainContent.container">
 			<Tabs {tabs} bind:activeTab />
 			
 			<!-- Tab Content -->
 			{#if !backendConnected}
-				<div class="tab-content">
-					<div class="loading-state">
-						<div class="loading-spinner">⏳</div>
-						<p>Connexion au backend...</p>
-						<p class="retry-text">Tentative de reconnexion en cours...</p>
+				<div class="tab-content" data-debug-name="mainContent.loading">
+					<div class="loading-state" data-debug-name="backendConnected">
+						<div class="loading-spinner" data-debug-name="loadingState.spinner">⏳</div>
+						<p data-debug-name="loadingState.message">Connexion au backend...</p>
+						<p class="retry-text" data-debug-name="loadingState.retry">Tentative de reconnexion en cours...</p>
 					</div>
 				</div>
 			{:else if activeTab === 'dashboard'}
-				<div class="tab-content">
-					<div class="bot-controls-panel">
+				<div class="tab-content" data-debug-name="mainContent.dashboard">
+					<div class="bot-controls-panel" data-debug-name="dashboard.botControls">
 						<BotControls />
 					</div>
-					<div class="status-panel">
+					<div class="status-panel" data-debug-name="dashboard.stats">
 						<StatsPanel />
 					</div>
 
 					<!-- Sélecteur Mode TP/SL -->
-					<div class="tpsl-mode-selector">
-						<h3>🎯 Mode TP/SL Actif</h3>
-						<div class="mode-selector-content">
-							<label for="tp-sl-mode-dashboard">
-								<span class="mode-label">Sélectionner le mode de Take Profit / Stop Loss:</span>
+					<div class="tpsl-mode-selector" data-debug-name="dashboard.tpSlMode">
+						<h3 data-debug-name="dashboard.tpSlMode.title">🎯 Mode TP/SL Actif</h3>
+						<div class="mode-selector-content" data-debug-name="dashboard.tpSlMode.content">
+							<label for="tp-sl-mode-dashboard" data-debug-name="dashboard.tpSlMode.label">
+								<span class="mode-label" data-debug-name="dashboard.tpSlMode.labelText">Sélectionner le mode de Take Profit / Stop Loss:</span>
 							</label>
 							<select
 								id="tp-sl-mode-dashboard"
 								bind:value={tpSlMode}
 								on:change={changeTpSlMode}
+								data-debug-name="tpSlMode"
 							>
-								<option value="FIXE">FIXE - Pourcentages fixes</option>
-								<option value="ATR">ATR - Basé sur volatilité</option>
-								<option value="ESCALIER">ESCALIER - TP partiel progressif</option>
+								<option value="FIXE" data-debug-name="tpSlMode.FIXE">FIXE - Pourcentages fixes</option>
+								<option value="ATR" data-debug-name="tpSlMode.ATR">ATR - Basé sur volatilité</option>
+								<option value="ESCALIER" data-debug-name="tpSlMode.ESCALIER">ESCALIER - TP partiel progressif</option>
 							</select>
 						</div>
-						<p class="mode-info">
-							Mode actuel: <strong class="mode-value mode-{tpSlMode.toLowerCase()}">{tpSlMode}</strong>
+						<p class="mode-info" data-debug-name="dashboard.tpSlMode.info">
+							Mode actuel: <strong class="mode-value mode-{tpSlMode.toLowerCase()}" data-debug-name="tpSlMode">{tpSlMode}</strong>
 							<br/>
 							<small>Configurez les paramètres de chaque mode dans l'onglet <strong>Variables → TP/SL & Position</strong></small>
 						</p>
@@ -446,6 +581,7 @@
 				<div class="tab-content">
 					<div class="charts-grid">
 						<PnLChart />
+						<PnLPercentChart />
 						<WinLossChart />
 					</div>
 				</div>
@@ -521,13 +657,13 @@
 		margin: 0 auto;
 	}
 
-	/* Header style port 5000 */
+	/* Header style */
 	.header {
-		text-align: center;
 		padding: 15px 0;
 		border-bottom: 2px solid #1e2749;
 		margin-bottom: 15px;
 		background: #0a0e27;
+		position: relative;
 	}
 
 	.header-content {
@@ -535,10 +671,17 @@
 		margin: 0 auto;
 		padding: 0 15px;
 		display: flex;
-		justify-content: space-between;
+		justify-content: center;
 		align-items: center;
-		flex-wrap: wrap;
-		gap: 15px;
+		position: relative;
+	}
+
+	/* ConnectionStatus en haut à gauche */
+	.header-content > :global(.connection-status) {
+		position: absolute;
+		left: 15px;
+		top: 50%;
+		transform: translateY(-50%);
 	}
 
 	.title-section {
@@ -550,32 +693,48 @@
 		font-size: 24px;
 		color: #00ff88;
 		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
-		margin-bottom: 8px;
+		margin: 0;
 		font-weight: bold;
-	}
-
-	.subtitle {
-		color: #888;
-		font-size: 12px;
-		line-height: 1.4;
-		margin-bottom: 8px;
-	}
-
-	.mexc-badge {
-		display: inline-block;
-		background: linear-gradient(135deg, #1e90ff 0%, #00bfff 100%);
-		color: white;
-		padding: 5px 14px;
-		border-radius: 20px;
-		font-size: 11px;
-		font-weight: bold;
-		margin-top: 8px;
 	}
 
 	.header-controls {
+		position: absolute;
+		right: 15px;
+		top: 50%;
+		transform: translateY(-50%);
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: 10px;
+	}
+
+	.debug-toggle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		background: rgba(30, 39, 73, 0.8);
+		border: 1px solid #2a3a6b;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		font-size: 13px;
+		color: var(--text-primary, #fff);
+	}
+
+	.debug-toggle:hover {
+		background: rgba(30, 39, 73, 1);
+		border-color: #00ff88;
+	}
+
+	.debug-toggle input[type="checkbox"] {
+		cursor: pointer;
+		accent-color: #00ff88;
+		width: 16px;
+		height: 16px;
+	}
+
+	.debug-toggle span {
+		user-select: none;
 	}
 
 	/* Backend error banner */
@@ -762,13 +921,21 @@
 			font-size: 20px;
 		}
 
-		.subtitle {
-			font-size: 11px;
-		}
-
 		.header-content {
 			flex-direction: column;
 			text-align: center;
+		}
+
+		.header-content > :global(.connection-status) {
+			position: static;
+			transform: none;
+			margin-bottom: 10px;
+		}
+
+		.header-controls {
+			position: static;
+			transform: none;
+			margin-top: 10px;
 		}
 
 		.charts-grid {
@@ -938,5 +1105,155 @@
 		font-size: 13px;
 		color: #888;
 		margin-top: 10px;
+	}
+
+	/* 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages) */
+	.error-popup {
+		position: fixed;
+		top: 20px;
+		right: 20px;
+		z-index: 10000;
+		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		border: 3px solid #fff;
+		border-radius: 12px;
+		padding: 0;
+		box-shadow: 0 8px 32px rgba(255, 68, 68, 0.6);
+		min-width: 400px;
+		max-width: 600px;
+	}
+
+	.error-popup.blinking {
+		animation: blink 1s ease-in-out infinite;
+	}
+
+	@keyframes blink {
+		0%, 100% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.8;
+			transform: scale(1.02);
+		}
+	}
+
+	.error-popup-content {
+		background: #1e2749;
+		border-radius: 10px;
+		padding: 20px;
+		border: 2px solid #ff4444;
+	}
+
+	.error-popup-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 15px;
+		padding-bottom: 15px;
+		border-bottom: 2px solid rgba(255, 68, 68, 0.3);
+	}
+
+	.error-icon {
+		font-size: 24px;
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.2);
+		}
+	}
+
+	.error-popup-header h3 {
+		flex: 1;
+		margin: 0;
+		color: #fff;
+		font-size: 18px;
+		font-weight: bold;
+	}
+
+	.close-popup-btn {
+		background: rgba(255, 255, 255, 0.2);
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		color: #fff;
+		border-radius: 50%;
+		width: 28px;
+		height: 28px;
+		cursor: pointer;
+		font-size: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s;
+	}
+
+	.close-popup-btn:hover {
+		background: rgba(255, 255, 255, 0.3);
+		transform: scale(1.1);
+	}
+
+	.error-popup-message {
+		margin-bottom: 15px;
+		padding: 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.error-time {
+		font-size: 12px;
+		color: #888;
+		font-family: 'Courier New', monospace;
+	}
+
+	.error-level {
+		font-size: 13px;
+		color: #ff4444;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+	}
+
+	.error-text {
+		font-size: 14px;
+		color: #fff;
+		line-height: 1.5;
+		word-break: break-word;
+	}
+
+	.acknowledge-btn {
+		width: 100%;
+		padding: 12px;
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		border: none;
+		border-radius: 8px;
+		color: #0a0e27;
+		font-weight: bold;
+		font-size: 14px;
+		cursor: pointer;
+		transition: all 0.3s;
+		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+	}
+
+	.acknowledge-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 16px rgba(0, 255, 136, 0.5);
+	}
+
+	.acknowledge-btn:active {
+		transform: translateY(0);
+	}
+
+	/* Mobile */
+	@media (max-width: 768px) {
+		.error-popup {
+			left: 10px;
+			right: 10px;
+			min-width: auto;
+		}
 	}
 </style>
