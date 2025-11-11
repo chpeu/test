@@ -87,13 +87,11 @@ async def global_exception_handler(request, exc):
     # Si c'est une route /api/state, retourner réponse minimale avec 200
     if request.url.path == "/api/state":
         logger.info(f"🔍 Exception handler global appelé pour /api/state - Exception: {type(exc).__name__}: {exc}")
+        # 🔥 FIX: Gestion sécurisée de session_id - éviter globals() check peu fiable
         try:
-            # 🔥 FIX: Gestion sécurisée de session_id
-            try:
-                session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
-            except:
-                session_id_value = f"live_{int(time.time())}"
-        except:
+            session_id_value = session_id if session_id else f"live_{int(time.time())}"
+        except NameError:
+            # session_id n'est pas défini
             session_id_value = f"live_{int(time.time())}"
         
         return JSONResponse({
@@ -217,22 +215,25 @@ def save_trade_history():
     if TRADE_HISTORY_FILE is None:
         TRADE_HISTORY_FILE = get_trade_history_file()
     
+    # 🔥 FIX: Écriture atomique avec fichier temporaire puis rename
+    temp_file = TRADE_HISTORY_FILE + ".tmp"
+    temp_file_created = False
     try:
-        # 🔥 FIX: Écriture atomique avec fichier temporaire puis rename
-        temp_file = TRADE_HISTORY_FILE + ".tmp"
         with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(app_state['trade_history'], f, indent=2, ensure_ascii=False)
+        temp_file_created = True
         # Renommer atomiquement (Windows supporte cette opération)
         if os.path.exists(TRADE_HISTORY_FILE):
             os.replace(temp_file, TRADE_HISTORY_FILE)
         else:
             os.rename(temp_file, TRADE_HISTORY_FILE)
+        temp_file_created = False  # Fichier renommé avec succès
         logger.debug(f"✅ Historique sauvegardé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
     except Exception as e:
         logger.error(f"❌ Erreur sauvegarde historique JSON: {e}")
-        # Nettoyer fichier temporaire en cas d'erreur
-        temp_file = TRADE_HISTORY_FILE + ".tmp"
-        if os.path.exists(temp_file):
+    finally:
+        # Nettoyer fichier temporaire s'il existe encore (en cas d'erreur)
+        if temp_file_created and os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
             except:
@@ -659,7 +660,11 @@ async def scanner_loop_callback():
                                     
                                     # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend avec gestion d'erreur
                                     try:
-                                        current_price_data = await price_provider.get_price(symbol)
+                                        if price_provider:
+                                            current_price_data = await price_provider.get_price(symbol)
+                                        else:
+                                            current_price_data = None
+
                                         if current_price_data:
                                             current_price = current_price_data.get('lastPrice', entry_price) if isinstance(current_price_data, dict) else entry_price
                                             # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
@@ -995,8 +1000,10 @@ def init_instances():
             # La DB est déjà initialisée dans __init__ (via _init_database())
             logger.info(f"✅ Analytics DB prête: {ANALYTICS_DB_PATH}")
             
-            # 🔥 FIX: Réinitialiser les stats au démarrage du bot
-            if analytics_db:
+            # 🔥 FIX: Ne plus vider automatiquement les stats au démarrage
+            # Utiliser la variable d'environnement CLEAR_STATS_ON_STARTUP pour contrôler ce comportement
+            CLEAR_STATS_ON_STARTUP = os.getenv('CLEAR_STATS_ON_STARTUP', 'false').lower() == 'true'
+            if analytics_db and CLEAR_STATS_ON_STARTUP:
                 try:
                     # Vider tous les trades de la base de données pour remettre les stats à zéro
                     analytics_db.clear_all_trades()

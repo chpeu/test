@@ -72,17 +72,17 @@ class PaperTradingManager(AbstractTradingManager):
     
     # ==================== IMPLÉMENTATION ABSTRAITE ====================
     
-    def execute_order(self, order: Dict) -> Dict:
+    async def execute_order(self, order: Dict) -> Dict:
         """
         Exécuter ordre (SIMULATION - pas d'API réelle)
-        
+
         Args:
             order: {
                 'type': 'BUY' ou 'SELL',
                 'symbol': 'BTC/USDT:USDT',
                 'size': 100.0
             }
-        
+
         Returns:
             {
                 'executed': True,
@@ -94,23 +94,23 @@ class PaperTradingManager(AbstractTradingManager):
         symbol = order['symbol']
         order_type = order['type']
         size = order['size']
-        
+
         # Simuler latence si activé
         if self.simulate_latency:
-            time.sleep(self.latency_ms / 1000)
-        
+            await asyncio.sleep(self.latency_ms / 1000)
+
         # Obtenir prix actuel
-        price = self.get_current_price(symbol)
-        
+        price = await self.get_current_price(symbol)
+
         # Appliquer slippage
         adjusted_price = self.apply_fees_slippage(price, order_type)
-        
+
         logger.info(
             f"📝 PAPER ORDER: {order_type} {symbol} | "
             f"Size: {size:.2f} USDT | "
             f"Prix: {price:.6f} → {adjusted_price:.6f} (slippage: {self.config['slippage_pct']:.2f}%)"
         )
-        
+
         return {
             'executed': True,
             'price': adjusted_price,
@@ -119,30 +119,32 @@ class PaperTradingManager(AbstractTradingManager):
             'latency_ms': self.latency_ms if self.simulate_latency else 0
         }
     
-    def get_current_price(self, symbol: str) -> float:
+    async def get_current_price(self, symbol: str) -> float:
         """
         Obtenir prix actuel (depuis price_provider ou cache)
-        
+
         Args:
             symbol: Symbole
-        
+
         Returns:
             Prix actuel
         """
         # Si price_provider disponible, l'utiliser
         if self.price_provider:
             try:
-                price = self.price_provider.get_price(symbol)
-                if price and price > 0:
-                    self.price_cache[symbol] = price
-                    return price
+                price_data = await self.price_provider.get_price(symbol)
+                if price_data:
+                    price = price_data.get('lastPrice', 0) if isinstance(price_data, dict) else price_data
+                    if price and price > 0:
+                        self.price_cache[symbol] = price
+                        return price
             except Exception as e:
                 logger.warning(f"⚠️ Erreur get_price: {e}")
-        
+
         # Fallback: cache
         if symbol in self.price_cache:
             return self.price_cache[symbol]
-        
+
         # Fallback: 0
         logger.error(f"❌ Aucun prix disponible pour {symbol}")
         return 0.0
@@ -217,9 +219,9 @@ class PaperTradingManager(AbstractTradingManager):
             return
         
         position = self.active_position
-        
+
         # Obtenir prix actuel
-        current_price = self.get_current_price(position.symbol)
+        current_price = await self.get_current_price(position.symbol)
         if current_price <= 0:
             logger.warning(f"⚠️ Prix invalide pour {position.symbol}")
             return

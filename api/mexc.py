@@ -106,24 +106,21 @@ class MEXCClient:
             return None
     
     async def close(self):
-        """Ferme les connexions"""
+        """
+        Ferme les connexions - À appeler explicitement avant arrêt du programme
+
+        IMPORTANT: Toujours appeler cette méthode explicitement au lieu de compter sur __del__
+        """
         if self.ws_manager:
             await self.ws_manager.disconnect()
-        await self.session.close()
-        await self.exchange.close()
-    
-    def __del__(self):
-        """Destructeur: ferme les connexions"""
-        if hasattr(self, 'exchange'):
-            try:
-                asyncio.create_task(self.exchange.close())
-            except:
-                pass
-        if hasattr(self, 'session'):
-            try:
-                asyncio.create_task(self.session.close())
-            except:
-                pass
+        if hasattr(self, 'session') and self.session:
+            await self.session.close()
+        if hasattr(self, 'exchange') and self.exchange:
+            await self.exchange.close()
+
+    # 🔥 FIX: Suppression de __del__ car il ne peut pas appeler du code async de manière fiable
+    # Les destructeurs Python s'exécutent hors contexte async, causant des erreurs
+    # Utiliser close() explicitement au lieu de compter sur le garbage collector
 
 
 # Instance globale

@@ -28,16 +28,19 @@ class HybridPriceProvider:
         self.ws_manager: Optional[WebSocketManager] = None
         self.rest_client = get_mexc_client()
         self.use_websocket = True
-        
+
         # Cache des derniers prix reçus
         self.price_cache: Dict[str, Dict] = {}
         self.cache_lock = asyncio.Lock()
-        
+
         # 🔥 v6.6.1 Phase 2A: Buffer pour backpressure (optionnel)
         self.message_buffer = deque(maxlen=100)
-        
+
         # 🔥 FIX: Callback pour émettre prix en temps réel via SocketIO
         self.socketio_emit_callback = None
+
+        # 🔥 FIX: Set pour stocker les background tasks et éviter garbage collection
+        self._background_tasks = set()
         self.active_position_symbol = None
         
     def _handle_mexc_message(self, data: dict):
@@ -93,8 +96,9 @@ class HybridPriceProvider:
                     loop = asyncio.get_running_loop()
                     # 🔥 FIX: Stocker la tâche pour éviter garbage collection
                     task = asyncio.create_task(self._update_cache(ccxt_symbol, ticker_info))
-                    # Note: On ne garde pas de référence car c'est un fire-and-forget
-                    # et la tâche se termine rapidement
+                    # Stocker la référence et nettoyer quand terminé
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                 except RuntimeError:
                     # Pas de boucle événements active, créer une temporairement
                     # 🔥 FIX: Utiliser asyncio.run() pour créer une boucle temporaire

@@ -66,12 +66,13 @@ class WebSocketManager:
         """Diffuser un message à tous les clients connectés (optimisé pour performances maximales)"""
         if not self.active_connections:
             return
-        
+
         # 🔥 OPTIMISATION: Créer le message JSON une seule fois
         message_json = json.dumps(message)
-        
-        # 🔥 FIX: Créer une copie de la liste pour éviter les modifications pendant l'itération
-        connections_to_send = list(self.active_connections)
+
+        # 🔥 FIX: Créer une copie de la liste sous lock pour éviter race conditions
+        async with self._lock:
+            connections_to_send = list(self.active_connections)
         if not connections_to_send:
             return
         

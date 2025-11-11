@@ -121,14 +121,16 @@ class TelegramNotifier:
             # Gérer aussi les groupes/channels (nombres négatifs)
             # chat_id peut être int (depuis config.py) ou string (depuis paramètres)
             if self.chat_id is None:
-                chat_id_num = None
+                logger.warning("⚠️ chat_id est None - impossible d'envoyer la notification")
+                return
             elif isinstance(self.chat_id, int):
                 chat_id_num = self.chat_id  # Déjà un nombre
             else:
                 try:
                     chat_id_num = int(self.chat_id)  # Convertir string en int
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:
                     # Si conversion échoue, utiliser tel quel (peut être un username pour channels)
+                    logger.warning(f"⚠️ Impossible de convertir chat_id '{self.chat_id}' en int: {e}. Utilisation de la valeur brute.")
                     chat_id_num = self.chat_id
             
             payload = {
