@@ -60,11 +60,51 @@ except ImportError as e:
     set_analytics_db = None
 
 # Configuration logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# 🔥 FIX: Formatter coloré pour les logs console
+class ColoredFormatter(logging.Formatter):
+    """Formatter qui ajoute des couleurs ANSI aux logs selon le niveau"""
+
+    # Codes couleurs ANSI
+    COLORS = {
+        'DEBUG': '\033[36m',     # Cyan
+        'INFO': '\033[32m',      # Vert
+        'WARNING': '\033[33m',   # Jaune
+        'ERROR': '\033[31m',     # Rouge
+        'CRITICAL': '\033[91m',  # Rouge vif
+    }
+    RESET = '\033[0m'
+
+    def format(self, record):
+        # Ajouter la couleur au niveau de log
+        levelname = record.levelname
+        if levelname in self.COLORS:
+            record.levelname = f"{self.COLORS[levelname]}{levelname}{self.RESET}"
+
+        # Formatter le message
+        formatted = super().format(record)
+
+        return formatted
+
+# Configuration du logger avec formatter coloré
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Handler pour la console avec couleurs
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+
+# Retirer les handlers existants et ajouter le nôtre
+logger.handlers = []
+logger.addHandler(console_handler)
+
+# Appliquer aux autres loggers
+logging.getLogger('uvicorn').handlers = []
+logging.getLogger('uvicorn').addHandler(console_handler)
+logging.getLogger('uvicorn.error').handlers = []
+logging.getLogger('uvicorn.error').addHandler(console_handler)
+logging.getLogger('uvicorn.access').setLevel(logging.WARNING)  # Réduire verbosité accès
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
@@ -1234,9 +1274,11 @@ async def api_get_sessions_stats_global():
             'total_trades': 0,
             'wins': 0,
             'losses': 0,
-            'winrate': 0.0
+            'winrate': 0.0,
+            'total_pnl': 0.0,
+            'total_pnl_percent': 0.0
         }
-        
+
         if analytics_db:
             try:
                 trades = analytics_db.get_trades(limit=10000)
@@ -1245,15 +1287,21 @@ async def api_get_sessions_stats_global():
                     wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
                     losses = total - wins
                     winrate = (wins / total * 100) if total > 0 else 0.0
+                    # 🔥 FIX: Calculer total_pnl depuis net_pnl_usdt (incluant slippage et fees)
+                    total_pnl = sum(t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) for t in trades)
+                    # Calculer total_pnl_percent (moyenne pondérée)
+                    total_pnl_percent = sum(t.get('net_pnl_percent', t.get('pnl_percent', 0)) for t in trades) / total if total > 0 else 0.0
                     stats_dict = {
                         'total_trades': total,
                         'wins': wins,
                         'losses': losses,
-                        'winrate': winrate
+                        'winrate': winrate,
+                        'total_pnl': total_pnl,
+                        'total_pnl_percent': total_pnl_percent
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats globales: {e}")
-        
+
         # Fallback: utiliser app_state['trade_history']
         if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
             try:
@@ -1263,31 +1311,47 @@ async def api_get_sessions_stats_global():
                     wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
                     losses = total - wins
                     winrate = (wins / total * 100) if total > 0 else 0.0
+                    # 🔥 FIX: Calculer total_pnl depuis net_pnl_usdt (incluant slippage et fees)
+                    total_pnl = sum(t.get('net_pnl_usdt', t.get('netPnlUSDT', t.get('pnl_usdt', 0))) for t in trades)
+                    # Calculer total_pnl_percent (moyenne pondérée)
+                    total_pnl_percent = sum(t.get('net_pnl_percent', t.get('netPnlPercent', t.get('pnl_percent', 0))) for t in trades) / total if total > 0 else 0.0
                     stats_dict = {
                         'total_trades': total,
                         'wins': wins,
                         'losses': losses,
-                        'winrate': winrate
+                        'winrate': winrate,
+                        'total_pnl': total_pnl,
+                        'total_pnl_percent': total_pnl_percent
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats app_state: {e}")
-        
+
+        # 🔥 FIX: Retourner le format attendu par le frontend (sessions.js store)
         return JSONResponse({
             'total_sessions': 1,
-            'active_sessions': 1 if app_state.get('is_scanning') else 0,
-            'global_stats': stats_dict
+            'running_sessions': 1 if app_state.get('is_scanning') else 0,
+            'stopped_sessions': 0 if app_state.get('is_scanning') else 1,
+            'paused_sessions': 0,
+            'total_trades': stats_dict['total_trades'],
+            'total_pnl': stats_dict['total_pnl'],
+            'total_pnl_percent': stats_dict['total_pnl_percent'],
+            'total_wins': stats_dict['wins'],
+            'total_losses': stats_dict['losses'],
+            'win_rate': stats_dict['winrate']
         })
     except Exception as e:
         logger.error(f"❌ Erreur /api/sessions/stats/global: {e}", exc_info=True)
         return JSONResponse({
             'total_sessions': 0,
-            'active_sessions': 0,
-            'global_stats': {
-                'total_trades': 0,
-                'wins': 0,
-                'losses': 0,
-                'winrate': 0.0
-            },
+            'running_sessions': 0,
+            'stopped_sessions': 0,
+            'paused_sessions': 0,
+            'total_trades': 0,
+            'total_pnl': 0.0,
+            'total_pnl_percent': 0.0,
+            'total_wins': 0,
+            'total_losses': 0,
+            'win_rate': 0.0,
             'error': str(e)
         }, status_code=200)  # Retourner 200 avec stats vides
 

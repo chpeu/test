@@ -132,6 +132,81 @@
 			</div>
 		</div>
 
+		<!-- 🔥 NOUVEAU: Informations détaillées sur prochains TP/SL et trailing stop -->
+		<div class="tpsl-info-section">
+			{#if $activePosition.tp_escalier_levels}
+				{@const levels = JSON.parse($activePosition.tp_escalier_levels || '[]')}
+				{@const nextTpLevel = levels.find(l => !l.hit)}
+				{#if nextTpLevel}
+					<div class="info-box next-tp">
+						<div class="info-box-title">📈 Prochain TP</div>
+						<div class="info-box-content">
+							<div class="info-line">
+								<span class="info-line-label">PnL objectif:</span>
+								<span class="info-line-value">+{formatPercent(nextTpLevel.percent)}%</span>
+							</div>
+							<div class="info-line">
+								<span class="info-line-label">Taille:</span>
+								<span class="info-line-value">{formatPercent(nextTpLevel.size_pct * 100)}% de la position</span>
+							</div>
+						</div>
+					</div>
+				{/if}
+			{:else if $activePosition.tp}
+				<div class="info-box next-tp">
+					<div class="info-box-title">📈 Take Profit</div>
+					<div class="info-box-content">
+						<div class="info-line">
+							<span class="info-line-label">PnL objectif:</span>
+							<span class="info-line-value">+{$tpDistance || '?'}%</span>
+						</div>
+						<div class="info-line">
+							<span class="info-line-label">Taille:</span>
+							<span class="info-line-value">100% de la position</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			{#if $activePosition.sl}
+				<div class="info-box next-sl">
+					<div class="info-box-title">📉 Stop Loss</div>
+					<div class="info-box-content">
+						<div class="info-line">
+							<span class="info-line-label">PnL stop:</span>
+							<span class="info-line-value">{$slDistance || '?'}%</span>
+						</div>
+						<div class="info-line">
+							<span class="info-line-label">Taille:</span>
+							<span class="info-line-value">100% de la position restante</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			{#if $activePosition.trailing_active || $activePosition.dynamic_sl}
+				<div class="info-box trailing-info">
+					<div class="info-box-title">🎯 Trailing Stop</div>
+					<div class="info-box-content">
+						<div class="info-line">
+							<span class="info-line-label">Statut:</span>
+							<span class="info-line-value active">✅ Actif</span>
+						</div>
+						<div class="info-line">
+							<span class="info-line-label">SL dynamique:</span>
+							<span class="info-line-value">{formatPriceWithPrecision($activePosition.dynamic_sl)}</span>
+						</div>
+						{#if $activePosition.size_remaining && $activePosition.size}
+							<div class="info-line">
+								<span class="info-line-label">% restant:</span>
+								<span class="info-line-value">{formatPercent(($activePosition.size_remaining / $activePosition.size) * 100)}%</span>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</div>
+
 		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null && $activePosition.size}
 			<div class="position-info">
 				<div class="info-item">
@@ -360,6 +435,97 @@
 		font-size: 11px;
 		color: #ffaa00;
 		font-weight: bold;
+	}
+
+	/* 🔥 NOUVEAU: Styles pour la section d'informations TP/SL détaillées */
+	.tpsl-info-section {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+		gap: 10px;
+		margin-top: 15px;
+		margin-bottom: 15px;
+	}
+
+	.info-box {
+		background: rgba(0, 170, 255, 0.08);
+		border: 1px solid rgba(0, 170, 255, 0.3);
+		border-radius: 8px;
+		padding: 10px;
+	}
+
+	.info-box.next-tp {
+		background: rgba(0, 255, 136, 0.08);
+		border-color: rgba(0, 255, 136, 0.3);
+	}
+
+	.info-box.next-sl {
+		background: rgba(255, 68, 68, 0.08);
+		border-color: rgba(255, 68, 68, 0.3);
+	}
+
+	.info-box.trailing-info {
+		background: rgba(255, 170, 0, 0.08);
+		border-color: rgba(255, 170, 0, 0.3);
+	}
+
+	.info-box-title {
+		font-size: 11px;
+		font-weight: bold;
+		color: #888;
+		text-transform: uppercase;
+		margin-bottom: 8px;
+		letter-spacing: 0.5px;
+	}
+
+	.info-box.next-tp .info-box-title {
+		color: #00ff88;
+	}
+
+	.info-box.next-sl .info-box-title {
+		color: #ff4444;
+	}
+
+	.info-box.trailing-info .info-box-title {
+		color: #ffaa00;
+	}
+
+	.info-box-content {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.info-line {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 11px;
+	}
+
+	.info-line-label {
+		color: #888;
+	}
+
+	.info-line-value {
+		color: #fff;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+	}
+
+	.info-box.next-tp .info-line-value {
+		color: #00ff88;
+	}
+
+	.info-box.next-sl .info-line-value {
+		color: #ff4444;
+	}
+
+	.info-box.trailing-info .info-line-value {
+		color: #ffaa00;
+	}
+
+	.info-line-value.active {
+		color: #00ff88;
 	}
 
 	.position-info {

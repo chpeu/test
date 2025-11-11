@@ -12,9 +12,9 @@
 	let showErrorPopup = false;
 	let lastErrorId = null;
 
-	// 🔥 FIX: Erreurs et warnings pour la section "Erreurs & Warnings"
+	// 🔥 FIX: Erreurs seulement (pas de warnings) pour la section "Erreurs"
 	const errorLogs = derived(recentLogs, $logs =>
-		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL' || log.level === 'WARNING')
+		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL')
 	);
 
 	// 🔥 FIX: Erreurs critiques uniquement (pour le popup)
@@ -178,12 +178,12 @@
 {/if}
 
 <div class="log-viewer">
-	<!-- Section Erreurs/Warnings -->
+	<!-- Section Erreurs -->
 	<div class="errors-section">
 		<div class="log-header">
-			<h3>🚨 Erreurs & Warnings</h3>
+			<h3>🚨 Erreurs</h3>
 			<div class="header-controls">
-				<div class="error-badge">{$errorLogs.length} problèmes</div>
+				<div class="error-badge">{$errorLogs.length} erreurs</div>
 				<button class="export-btn" on:click={exportLogs}>📥 Export</button>
 			</div>
 		</div>
@@ -210,7 +210,7 @@
 				<input type="checkbox" bind:checked={autoScrollErrors} />
 				<span>Auto-scroll</span>
 			</label>
-			<div class="log-count">{$errorLogs.length} erreurs/warnings</div>
+			<div class="log-count">{$errorLogs.length} erreurs</div>
 		</div>
 	</div>
 
