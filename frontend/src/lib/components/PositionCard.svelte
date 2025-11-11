@@ -271,6 +271,13 @@
 			</div>
 		</div>
 
+		{#if $activePosition && $activePosition.opened_at}
+			<div class="duration" data-debug-name="positionDuration">
+				<div class="duration-label" data-debug-name="positionDuration.label">⏱️ Durée:</div>
+				<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date() - new Date($activePosition.opened_at)) / 1000))}</div>
+			</div>
+		{/if}
+
 		<div class="price-grid">
 			<div class="price-box" data-debug-name="activePosition.entry">
 				<div class="price-label" data-debug-name="activePosition.entry">Entry</div>
@@ -330,12 +337,6 @@
 			</div>
 		{/if}
 
-		{#if $activePosition && $activePosition.opened_at}
-			<div class="duration" data-debug-name="positionDuration">
-				<div class="duration-label" data-debug-name="positionDuration.label">⏱️ Durée:</div>
-				<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date() - new Date($activePosition.opened_at)) / 1000))}</div>
-			</div>
-		{/if}
 
 		{#if $activePosition.confirmed_by}
 			<div class="signals" data-debug-name="activePosition.confirmed_by">
