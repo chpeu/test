@@ -201,15 +201,21 @@
 			stopScanning();
 		});
 		
-		ws.on('connect', async () => {
-			console.log('✅ WebSocket connecté');
-			backendConnected = true;
-			backendError = '';
-			// 🔥 FIX: Reset trades au démarrage du bot (nouvelles sessions)
+		// 🔥 FIX: Écouter l'événement reset_session depuis le backend (au démarrage, AVANT le scan)
+		ws.on('reset_session', async (data: any) => {
+			console.log('🔄 Reset session reçu depuis backend:', data);
 			const { clearHistory } = await import('$lib/stores/trades');
 			clearHistory();
 			const { resetSessionStats } = await import('$lib/stores/stats');
 			resetSessionStats();
+			// Note: Les graphiques seront automatiquement réinitialisés via les stores réinitialisés
+		});
+		
+		ws.on('connect', async () => {
+			console.log('✅ WebSocket connecté');
+			backendConnected = true;
+			backendError = '';
+			// 🔥 FIX: Ne plus réinitialiser ici - le backend enverra reset_session au démarrage
 			// 🔥 FIX: Charger l'état initial quand le WebSocket se connecte
 			try {
 				await loadInitialState();
