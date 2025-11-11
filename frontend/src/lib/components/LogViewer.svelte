@@ -229,12 +229,12 @@
 					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}">
 						<span class="log-time">{formatTime(log.timestamp)}</span>
 						<span class="log-icon">{parsed.icon}</span>
-						<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
-						{#if hasAnsi}
-							<span class="log-message" {@html ansiToHtml(log.message)}></span>
-						{:else}
-							<span class="log-message">{parsed.text || log.message}</span>
-						{/if}
+					<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
+					{#if hasAnsi}
+						<span class="log-message">{@html ansiToHtml(log.message)}</span>
+					{:else}
+						<span class="log-message">{parsed.text || log.message}</span>
+					{/if}
 					</div>
 				{/each}
 			{/if}

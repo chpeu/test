@@ -208,3 +208,4 @@ git checkout <commit-hash> -- main.py  # Restaurer une version spécifique
 
 **Conclusion :** Ajouter `main_restored.py` et patterns similaires au `.gitignore` pour éviter qu'ils soient versionnés accidentellement, tout en permettant de les garder localement si nécessaire.
 
+
