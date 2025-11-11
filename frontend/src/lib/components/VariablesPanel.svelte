@@ -305,17 +305,15 @@
 				}
 				hasUnsavedChanges = false; // Marquer comme sauvegardé (on charge depuis le backend)
 				
-				config = {};
-				// D'abord copier les defaults
-				Object.keys(DEFAULTS).forEach(key => {
-					config[key] = DEFAULTS[key];
-				});
+				// 🔥 FIX: Créer un nouvel objet pour forcer la réactivité Svelte et éviter les changements d'état non désirés
+				const newConfig = { ...DEFAULTS };
 				// Ensuite écraser avec les valeurs du backend
 				Object.keys(stateData.config).forEach(key => {
 					if (stateData.config[key] !== undefined && stateData.config[key] !== null) {
-						config[key] = stateData.config[key];
+						newConfig[key] = stateData.config[key];
 					}
 				});
+				config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 				viewMode = config.tp_sl_mode || 'FIXE';
 				console.log('✅ Config chargée depuis backend via WebSocket:', config);
 			} else {
@@ -440,10 +438,20 @@
 				hasUnsavedChanges = false; // Marquer comme sauvegardé
 				console.log('✅ Paramètres sauvegardés automatiquement via WebSocket:', result.updated);
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
 			} else {
 				saveMessage = `✅ Configuration sauvegardée automatiquement`;
 				hasUnsavedChanges = false;
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
 			}
 		} catch (err) {
 			console.error('❌ Error auto-saving config via WebSocket:', err);
@@ -495,11 +503,16 @@
 					}
 					hasUnsavedChanges = false; // Marquer comme sauvegardé (le backend a mis à jour)
 					
+					// 🔥 FIX: Mettre à jour config de manière réactive pour éviter les changements d'état non désirés
+					// Utiliser une copie pour forcer la réactivité Svelte
+					const updatedConfig = { ...config };
 					Object.keys(data.updated).forEach(key => {
-						if (key in config) {
-							config[key] = data.updated[key];
+						if (key in updatedConfig) {
+							updatedConfig[key] = data.updated[key];
 						}
 					});
+					config = updatedConfig;
+					
 					if (data.updated.tp_sl_mode) {
 						viewMode = data.updated.tp_sl_mode;
 					}

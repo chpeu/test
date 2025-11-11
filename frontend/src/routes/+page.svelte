@@ -183,9 +183,10 @@
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour des top pairs
 		ws.on('top_pairs_update', async (data: any) => {
-			// Mettre à jour le store si nécessaire
+			// 🔥 FIX: Mettre à jour le store scanner avec les paires
 			if (data && data.pairs) {
-				// Les top pairs seront affichés dans ScannerPanel
+				const { updateTopPairs } = await import('$lib/stores/scanner');
+				updateTopPairs(data.pairs);
 			}
 		});
 		
@@ -226,10 +227,15 @@
 			// L'état sera mis à jour via WebSocket natif ou le composant BotControls
 		}
 		
-		// 🔥 FIX: Nettoyer les données d'anciennes sessions si aucune position active
-		// Les données seront rechargées via WebSocket natif si nécessaire
-		if (!data.active_position && !data.position?.active) {
-			// Nettoyer la position
+		// 🔥 FIX: Mettre à jour la position active si présente
+		if (data.active_position || data.position?.active) {
+			const { setPosition } = await import('$lib/stores/position');
+			const positionData = data.active_position || data.position;
+			if (positionData) {
+				setPosition(positionData);
+			}
+		} else {
+			// Nettoyer la position si aucune position active
 			const { clearPosition } = await import('$lib/stores/position');
 			clearPosition();
 		}

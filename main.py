@@ -861,7 +861,7 @@ async def position_check_loop_callback():
             # Position fermée
             # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
             async with position_lock:
-                result = position_manager.close_position(close_reason, exit_price=current_price)
+                result = position_manager.close_position(exit_price=current_price, reason=close_reason)
                 app_state['active_position'] = None
                 
                 # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
@@ -1909,7 +1909,7 @@ async def api_close_position():
             price_data = await price_provider.get_price(position_manager.active_position.symbol)
             exit_price = price_data.get('lastPrice') if price_data else None
             
-            result = position_manager.close_position('MANUAL', exit_price=exit_price)
+            result = position_manager.close_position(exit_price=exit_price, reason='MANUAL')
             
             app_state['active_position'] = None
             
