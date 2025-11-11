@@ -711,6 +711,10 @@ class TechnicalAnalyzer:
 
                 best_setup['orderbook_ratio'] = orderbook_check['ratio']
                 best_setup['orderbook_quality'] = orderbook_check['quality']
+                # 🔥 FIX: Stocker aussi bid_value et ask_value pour calculer depth
+                best_setup['orderbook_bid_value'] = orderbook_check.get('bid_value', 0)
+                best_setup['orderbook_ask_value'] = orderbook_check.get('ask_value', 0)
+                best_setup['orderbook_check'] = orderbook_check  # Stocker l'objet complet pour fallback
 
                 # 3. Vérifier manipulation pump & dump
                 ohlcv_data = None

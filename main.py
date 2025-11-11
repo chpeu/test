@@ -627,11 +627,83 @@ async def scanner_loop_callback():
                                     
                                     # Récupérer scalability_data pour slippage
                                     scalability_data = None
-                                    if app_state['top_pairs']:
+                                    logger.info(f"💹 DEBUG: Recherche scalability_data pour {symbol} (main.py)")
+                                    
+                                    if app_state.get('top_pairs'):
+                                        logger.info(f"💹 DEBUG: top_pairs contient {len(app_state['top_pairs'])} paires")
+                                        found_pair = False
                                         for pair in app_state['top_pairs']:
                                             if pair.get('symbol') == symbol:
-                                                scalability_data = pair
+                                                found_pair = True
+                                                # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
+                                                spread_value = pair.get('spread', 0)
+                                                book_depth = pair.get('bookDepth', 0)
+                                                balance_score = pair.get('balanceScore', 1.0)
+                                                bid_vol = pair.get('bidVol', 0)
+                                                ask_vol = pair.get('askVol', 0)
+                                                
+                                                logger.info(f"💹 DEBUG: Données brutes depuis top_pairs: spread={spread_value}, bookDepth={book_depth}, balanceScore={balance_score}, bidVol={bid_vol}, askVol={ask_vol}")
+                                                
+                                                # Vérifier si spread est NaN ou invalide
+                                                if isinstance(spread_value, float) and (spread_value != spread_value or spread_value == float('nan')):
+                                                    logger.warning(f"💹 DEBUG: spread est NaN, remplacement par 0")
+                                                    spread_value = 0
+                                                
+                                                # 🔥 FIX: Si spread ou depth sont à 0, essayer de récupérer depuis setup
+                                                if spread_value == 0 and setup.get('spread_pct'):
+                                                    spread_value = setup.get('spread_pct', 0)
+                                                    logger.info(f"💹 Utilisation spread depuis setup: {spread_value}%")
+                                                
+                                                # 🔥 FIX: Si depth est à 0, calculer depuis bid_vol + ask_vol
+                                                if book_depth == 0 and (bid_vol > 0 or ask_vol > 0):
+                                                    book_depth = bid_vol + ask_vol
+                                                    logger.info(f"💹 Calcul depth depuis volumes: {book_depth}")
+                                                
+                                                scalability_data = {
+                                                    'spread_pct': spread_value,
+                                                    'depth': book_depth,
+                                                    'balance': balance_score,
+                                                    'bid_vol': bid_vol,
+                                                    'ask_vol': ask_vol
+                                                }
+                                                
+                                                logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
                                                 break
+                                        
+                                        if not found_pair:
+                                            logger.warning(f"💹 DEBUG: Paire {symbol} non trouvée dans top_pairs")
+                                        
+                                        # 🔥 FIX: Si scalability_data est toujours None ou invalide, essayer depuis setup
+                                        if not scalability_data or (scalability_data.get('spread_pct', 0) == 0 and scalability_data.get('depth', 0) == 0):
+                                            logger.warning(f"💹 Données scalabilité manquantes/invalides dans top_pairs pour {symbol}, tentative depuis setup")
+                                            logger.info(f"💹 DEBUG: setup keys: {list(setup.keys())[:15]}")
+                                            if setup.get('spread_pct'):
+                                                # Essayer de récupérer depth depuis orderbook_check si disponible
+                                                orderbook_depth = 0
+                                                if 'orderbook_check' in setup:
+                                                    orderbook_check = setup['orderbook_check']
+                                                    bid_value = orderbook_check.get('bid_value', 0)
+                                                    ask_value = orderbook_check.get('ask_value', 0)
+                                                    orderbook_depth = bid_value + ask_value
+                                                    logger.info(f"💹 DEBUG: Depth calculé depuis orderbook_check: {orderbook_depth}")
+                                                elif 'orderbook_bid_value' in setup and 'orderbook_ask_value' in setup:
+                                                    bid_value = setup.get('orderbook_bid_value', 0)
+                                                    ask_value = setup.get('orderbook_ask_value', 0)
+                                                    orderbook_depth = bid_value + ask_value
+                                                    logger.info(f"💹 DEBUG: Depth calculé depuis orderbook_bid/ask_value: {orderbook_depth}")
+                                                
+                                                scalability_data = {
+                                                    'spread_pct': setup.get('spread_pct', 0),
+                                                    'depth': orderbook_depth or setup.get('orderbook_depth', 0) or (setup.get('bid_vol', 0) + setup.get('ask_vol', 0)),
+                                                    'balance': setup.get('orderbook_balance', 1.0) or setup.get('orderbook_check', {}).get('balance', 1.0),
+                                                    'bid_vol': setup.get('bid_vol'),
+                                                    'ask_vol': setup.get('ask_vol')
+                                                }
+                                                logger.info(f"💹 Données scalabilité depuis setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
+                                            else:
+                                                logger.error(f"💹 ERREUR: Impossible de récupérer spread_pct depuis setup pour {symbol}")
+                                    else:
+                                        logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
