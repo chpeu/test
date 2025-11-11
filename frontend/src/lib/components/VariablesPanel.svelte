@@ -312,11 +312,19 @@
 				hasUnsavedChanges = false; // Marquer comme sauvegardé (on charge depuis le backend)
 				
 				// 🔥 FIX: Créer un nouvel objet pour forcer la réactivité Svelte et éviter les changements d'état non désirés
-				const newConfig = { ...DEFAULTS };
+				// IMPORTANT: Copier DEFAULTS en profondeur pour les listes/objets (technical_patterns, candlestick_patterns)
+				const newConfig = JSON.parse(JSON.stringify(DEFAULTS));
 				// Ensuite écraser avec les valeurs du backend
 				Object.keys(stateData.config).forEach(key => {
 					if (stateData.config[key] !== undefined && stateData.config[key] !== null) {
-						newConfig[key] = stateData.config[key];
+						// Pour les listes, copier en profondeur
+						if (Array.isArray(stateData.config[key])) {
+							newConfig[key] = [...stateData.config[key]];
+						} else if (typeof stateData.config[key] === 'object' && stateData.config[key] !== null) {
+							newConfig[key] = { ...stateData.config[key] };
+						} else {
+							newConfig[key] = stateData.config[key];
+						}
 					}
 				});
 				config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
@@ -520,17 +528,30 @@
 					hasUnsavedChanges = false; // Marquer comme sauvegardé (le backend a mis à jour)
 					
 					// 🔥 FIX: Créer un NOUVEL objet pour forcer la réactivité Svelte et éviter les changements d'état non désirés
-					const newConfig = { ...DEFAULTS };
+					// IMPORTANT: Copier DEFAULTS en profondeur pour les listes/objets
+					const newConfig = JSON.parse(JSON.stringify(DEFAULTS));
 					// D'abord copier la config actuelle
 					Object.keys(config).forEach(key => {
 						if (config[key] !== undefined && config[key] !== null) {
-							newConfig[key] = config[key];
+							if (Array.isArray(config[key])) {
+								newConfig[key] = [...config[key]];
+							} else if (typeof config[key] === 'object' && config[key] !== null) {
+								newConfig[key] = { ...config[key] };
+							} else {
+								newConfig[key] = config[key];
+							}
 						}
 					});
 					// Ensuite appliquer les mises à jour du backend
 					Object.keys(data.updated).forEach(key => {
 						if (key in newConfig) {
-							newConfig[key] = data.updated[key];
+							if (Array.isArray(data.updated[key])) {
+								newConfig[key] = [...data.updated[key]];
+							} else if (typeof data.updated[key] === 'object' && data.updated[key] !== null) {
+								newConfig[key] = { ...data.updated[key] };
+							} else {
+								newConfig[key] = data.updated[key];
+							}
 						}
 					});
 					config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité

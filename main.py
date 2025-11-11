@@ -1481,6 +1481,11 @@ async def api_start():
     """
     init_instances()
     
+    # 🔥 FIX: Émettre scan_started IMMÉDIATEMENT au démarrage (avant le scan)
+    await ws_manager.emit('scan_started', {'timestamp': time.time()})
+    await ws_manager.emit('status', {'is_scanning': True})
+    app_state['is_scanning'] = True
+    
     # 🔥 JOUR 3: Si pas de top_pairs, faire un scan initial
     if not app_state['top_pairs']:
         await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
@@ -1504,15 +1509,8 @@ async def api_start():
         scheduler.start()
         logger.info("Scanner démarré")
         await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
-        # 🔥 FIX: Émettre scan_started pour mettre à jour le store frontend
-        await ws_manager.emit('scan_started', {'timestamp': time.time()})
-        await ws_manager.emit('status', {'is_scanning': True})
     else:
-        app_state['is_scanning'] = True
         logger.info("Scanner démarré (sans scheduler)")
-        # 🔥 FIX: Émettre scan_started pour mettre à jour le store frontend
-        await ws_manager.emit('scan_started', {'timestamp': time.time()})
-        await ws_manager.emit('status', {'is_scanning': True})
     
     return JSONResponse({'status': 'started'})
 

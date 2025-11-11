@@ -114,11 +114,14 @@
 			</div>
 		</div>
 
-		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null}
+		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null && $activePosition.size}
 			<div class="position-info">
 				<div class="info-item">
 					<span class="info-label">Position restante:</span>
-					<span class="info-value">{formatPrice($activePosition.size_remaining)} USDT</span>
+					<span class="info-value">
+						{formatPrice($activePosition.size_remaining)} USDT 
+						({formatPercent(($activePosition.size_remaining / $activePosition.size) * 100)}%)
+					</span>
 				</div>
 			</div>
 		{/if}
