@@ -125,23 +125,53 @@
 	}
 
 	function exportLogs() {
-		const allLogs = [...$errorLogs, ...$regularLogs];
-		const csv = [
-			['Timestamp', 'Level', 'Message'].join(','),
-			...allLogs.map(log => [
-				new Date(log.timestamp).toISOString(),
+		import('xlsx').then(XLSX => {
+			const allLogs = [...$errorLogs, ...$regularLogs];
+			
+			// Headers
+			const headers = ['Timestamp', 'Level', 'Message'];
+			
+			// Convert logs to rows
+			const rows = allLogs.map(log => [
+				log.timestamp || new Date().toISOString(),
 				log.level || 'CONFIG',
-				`"${(log.message || log.change || '').replace(/"/g, '""')}"`
-			].join(','))
-		].join('\n');
-
-		const blob = new Blob([csv], { type: 'text/csv' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `logs_${new Date().toISOString().split('T')[0]}.csv`;
-		a.click();
-		URL.revokeObjectURL(url);
+				stripAnsiCodes(log.message || log.change || '')
+			]);
+			
+			// Create workbook and worksheet
+			const wb = XLSX.utils.book_new();
+			const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+			
+			// Set column widths
+			ws['!cols'] = [
+				{ wch: 12 }, // Timestamp
+				{ wch: 10 }, // Level
+				{ wch: 80 }  // Message
+			];
+			
+			// Style header row
+			const headerRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+			for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
+				const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+				if (!ws[cellAddress]) continue;
+				ws[cellAddress].s = {
+					font: { bold: true },
+					fill: { fgColor: { rgb: 'E0E0E0' } },
+					alignment: { horizontal: 'center', vertical: 'center' }
+				};
+			}
+			
+			// Add worksheet to workbook
+			XLSX.utils.book_append_sheet(wb, ws, 'Logs');
+			
+			// Write file
+			const filename = `logs_${new Date().toISOString().split('T')[0]}.xlsx`;
+			XLSX.writeFile(wb, filename);
+			console.log(`✅ Exported: ${filename}`);
+		}).catch(err => {
+			console.error('❌ Erreur export logs:', err);
+			alert('⚠️ Erreur lors de l\'export des logs');
+		});
 	}
 </script>
 

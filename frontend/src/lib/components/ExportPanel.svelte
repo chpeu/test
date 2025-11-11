@@ -20,19 +20,19 @@
 	</div>
 
 	<div class="export-options">
-		<!-- CSV Export -->
+		<!-- Excel Export -->
 		<div class="export-option">
 			<div class="option-icon">📊</div>
 			<div class="option-content">
-				<h3>CSV Spreadsheet</h3>
-				<p>Export all trades to CSV format for Excel, Google Sheets, etc.</p>
+				<h3>Excel Spreadsheet</h3>
+				<p>Export all trades to Excel format (.xlsx) with proper formatting.</p>
 				<ul class="feature-list">
 					<li>✅ All trade details</li>
-					<li>✅ Compatible with Excel</li>
+					<li>✅ Formatted columns and cells</li>
 					<li>✅ Easy to analyze</li>
 				</ul>
 				<button class="export-btn" on:click={exportToCSV} disabled={tradesCount === 0}>
-					📥 Export CSV
+					📥 Export Excel
 				</button>
 			</div>
 		</div>

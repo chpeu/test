@@ -2,9 +2,10 @@ import { get } from 'svelte/store';
 import { tradeHistory } from '$lib/stores/trades';
 import { stats } from '$lib/stores/stats';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 /**
- * Export trades to CSV format
+ * Export trades to Excel format (xlsx)
  */
 export function exportToCSV() {
 	const allTrades = get(tradeHistory);
@@ -32,7 +33,7 @@ export function exportToCSV() {
 		'Score'
 	];
 
-	// Convert trades to CSV rows
+	// Convert trades to rows
 	const rows = allTrades.map(trade => {
 		const date = trade.closed_at || trade.opened_at || new Date().toISOString();
 		const duration = trade.duration_seconds
@@ -46,22 +47,59 @@ export function exportToCSV() {
 			trade.entry || 0,
 			trade.exit || 0,
 			trade.size || 0,
-			(trade.pnl_usdt || 0).toFixed(2),
-			(trade.pnl_percent || 0).toFixed(2),
-			(trade.fees_usdt || 0).toFixed(4),
-			(trade.net_pnl_usdt || 0).toFixed(2),
+			parseFloat((trade.pnl_usdt || 0).toFixed(2)),
+			parseFloat((trade.pnl_percent || 0).toFixed(2)),
+			parseFloat((trade.fees_usdt || 0).toFixed(4)),
+			parseFloat((trade.net_pnl_usdt || 0).toFixed(2)),
 			duration,
 			trade.exit_reason || '',
 			trade.signals ? trade.signals.join(', ') : '',
 			trade.score || 0
-		].join(',');
+		];
 	});
 
-	// Combine headers and rows
-	const csv = [headers.join(','), ...rows].join('\n');
+	// Create workbook and worksheet
+	const wb = XLSX.utils.book_new();
+	const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
-	// Download
-	downloadFile(csv, `trade-cursor-trades-${getDateStamp()}.csv`, 'text/csv');
+	// Set column widths for better readability
+	const colWidths = [
+		{ wch: 18 }, // Date
+		{ wch: 15 }, // Symbol
+		{ wch: 10 }, // Direction
+		{ wch: 12 }, // Entry Price
+		{ wch: 12 }, // Exit Price
+		{ wch: 12 }, // Size (USDT)
+		{ wch: 12 }, // PnL (USDT)
+		{ wch: 10 }, // PnL (%)
+		{ wch: 12 }, // Fees (USDT)
+		{ wch: 14 }, // Net PnL (USDT)
+		{ wch: 14 }, // Duration (min)
+		{ wch: 15 }, // Exit Reason
+		{ wch: 30 }, // Signals
+		{ wch: 8 }   // Score
+	];
+	ws['!cols'] = colWidths;
+
+	// Style header row (bold)
+	const headerRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+	for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
+		const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+		if (!ws[cellAddress]) continue;
+		ws[cellAddress].s = {
+			font: { bold: true },
+			fill: { fgColor: { rgb: 'E0E0E0' } },
+			alignment: { horizontal: 'center', vertical: 'center' }
+		};
+	}
+
+	// Add worksheet to workbook
+	XLSX.utils.book_append_sheet(wb, ws, 'Trades');
+
+	// Write file
+	const filename = `trade-cursor-trades-${getDateStamp()}.xlsx`;
+	XLSX.writeFile(wb, filename);
+	console.log(`✅ Exported: ${filename}`);
 }
 
 /**

@@ -16,7 +16,6 @@
 	import PnLChart from '$lib/components/PnLChart.svelte';
 	import WinLossChart from '$lib/components/WinLossChart.svelte';
 	import VolumeChart from '$lib/components/VolumeChart.svelte';
-	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 	import ExportPanel from '$lib/components/ExportPanel.svelte';
 	import SessionSelector from '$lib/components/SessionSelector.svelte';
@@ -429,20 +428,15 @@
 {/if}
 
 <svelte:head>
-	<title>Trade Cursor v7.0 - MEXC Smart Scalping Scanner</title>
+	<title>TRADE MEXC - MEXC Smart Scalping Scanner</title>
 </svelte:head>
 
 <div class="app">
 	<header class="header">
 		<div class="header-content">
+			<ConnectionStatus />
 			<div class="title-section">
-				<h1>⚡ TRADE CURSOR v7.0</h1>
-				<div class="subtitle">✅ Stats temps réel • ✅ Volume à la volée • ✅ ATR auto • ✅ No timeout<br>📊 Mode FIXE/ATR • 🧩 Clamp ATR • ⚖️ Win/Loss adjust • 🛡️ BE ATR • 💰 Position Sizing • 📊 Volume Quality • 🎯 Confluence • 🔥 Scanner Scalabilité 0% fees • ⚡ SCAN PARALLÈLE • 🎯 Filtre ATR Optimal</div>
-				<span class="mexc-badge">MEXC FUTURES</span>
-			</div>
-			<div class="header-controls">
-				<ThemeToggle />
-				<ConnectionStatus />
+				<h1>TRADE MEXC</h1>
 			</div>
 		</div>
 	</header>
@@ -602,13 +596,13 @@
 		margin: 0 auto;
 	}
 
-	/* Header style port 5000 */
+	/* Header style */
 	.header {
-		text-align: center;
 		padding: 15px 0;
 		border-bottom: 2px solid #1e2749;
 		margin-bottom: 15px;
 		background: #0a0e27;
+		position: relative;
 	}
 
 	.header-content {
@@ -616,10 +610,17 @@
 		margin: 0 auto;
 		padding: 0 15px;
 		display: flex;
-		justify-content: space-between;
+		justify-content: center;
 		align-items: center;
-		flex-wrap: wrap;
-		gap: 15px;
+		position: relative;
+	}
+
+	/* ConnectionStatus en haut à gauche */
+	.header-content > :global(.connection-status) {
+		position: absolute;
+		left: 15px;
+		top: 50%;
+		transform: translateY(-50%);
 	}
 
 	.title-section {
@@ -631,32 +632,8 @@
 		font-size: 24px;
 		color: #00ff88;
 		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
-		margin-bottom: 8px;
+		margin: 0;
 		font-weight: bold;
-	}
-
-	.subtitle {
-		color: #888;
-		font-size: 12px;
-		line-height: 1.4;
-		margin-bottom: 8px;
-	}
-
-	.mexc-badge {
-		display: inline-block;
-		background: linear-gradient(135deg, #1e90ff 0%, #00bfff 100%);
-		color: white;
-		padding: 5px 14px;
-		border-radius: 20px;
-		font-size: 11px;
-		font-weight: bold;
-		margin-top: 8px;
-	}
-
-	.header-controls {
-		display: flex;
-		align-items: center;
-		gap: 12px;
 	}
 
 	/* Backend error banner */
@@ -843,13 +820,15 @@
 			font-size: 20px;
 		}
 
-		.subtitle {
-			font-size: 11px;
-		}
-
 		.header-content {
 			flex-direction: column;
 			text-align: center;
+		}
+
+		.header-content > :global(.connection-status) {
+			position: static;
+			transform: none;
+			margin-bottom: 10px;
 		}
 
 		.charts-grid {
