@@ -78,7 +78,6 @@
 	let completeConfig = null;
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
-	let previousSubTab = 'setups'; // Track previous sub-tab pour détecter les changements
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
 	function autoAdjustEscalierSize(changedLevel) {
@@ -122,31 +121,6 @@
 
 	onMount(async () => {
 		await loadConfig();
-
-		// 🔥 NOUVEAU: Écouter les mises à jour de config depuis le backend (bidirectionnel)
-		const { getWebSocket } = await import('$lib/utils/websocket');
-		const ws = getWebSocket();
-		if (ws) {
-			ws.on('config_updated', async (data: any) => {
-				console.log('🔄 Config mise à jour depuis backend dans VariablesPanel:', data.updated);
-
-				// Mettre à jour les variables locales si elles correspondent
-				if (data.updated) {
-					Object.keys(data.updated).forEach(key => {
-						if (config[key] !== undefined) {
-							config[key] = data.updated[key];
-						}
-					});
-					// Forcer la réactivité
-					config = { ...config };
-				}
-
-				// 🔥 NOUVEAU: Rafraîchir automatiquement l'onglet "Variables en cours" si actif
-				if (activeSubTab === 'current') {
-					await loadCompleteConfig();
-				}
-			});
-		}
 	});
 	
 	// Fonction pour charger la configuration complète
@@ -168,12 +142,9 @@
 		}
 	}
 	
-	// 🔥 MODIFIÉ: Charger la config complète quand on active l'onglet "Variables en cours" (seulement lors du changement d'onglet)
-	$: if (activeSubTab === 'current' && previousSubTab !== 'current' && !loadingCompleteConfig) {
+	// Charger la config complète quand on active l'onglet
+	$: if (activeSubTab === 'current' && !completeConfig && !loadingCompleteConfig) {
 		loadCompleteConfig();
-		previousSubTab = 'current';
-	} else if (activeSubTab !== 'current') {
-		previousSubTab = activeSubTab;
 	}
 	
 	// Fonction pour formater une valeur selon son type
@@ -601,6 +572,11 @@
 					
 					if (data.updated.tp_sl_mode) {
 						viewMode = data.updated.tp_sl_mode;
+					}
+					
+					// 🔥 FIX: Rafraîchir completeConfig si on est dans l'onglet "Variables en cours"
+					if (activeSubTab === 'current') {
+						loadCompleteConfig();
 					}
 				}
 			});

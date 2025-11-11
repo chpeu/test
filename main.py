@@ -60,51 +60,14 @@ except ImportError as e:
     set_analytics_db = None
 
 # Configuration logging
-# 🔥 FIX: Formatter coloré pour les logs console
-class ColoredFormatter(logging.Formatter):
-    """Formatter qui ajoute des couleurs ANSI aux logs selon le niveau"""
-
-    # Codes couleurs ANSI
-    COLORS = {
-        'DEBUG': '\033[36m',     # Cyan
-        'INFO': '\033[32m',      # Vert
-        'WARNING': '\033[33m',   # Jaune
-        'ERROR': '\033[31m',     # Rouge
-        'CRITICAL': '\033[91m',  # Rouge vif
-    }
-    RESET = '\033[0m'
-
-    def format(self, record):
-        # Ajouter la couleur au niveau de log
-        levelname = record.levelname
-        if levelname in self.COLORS:
-            record.levelname = f"{self.COLORS[levelname]}{levelname}{self.RESET}"
-
-        # Formatter le message
-        formatted = super().format(record)
-
-        return formatted
-
-# Configuration du logger avec formatter coloré
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
-# Handler pour la console avec couleurs
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(console_formatter)
-
-# Retirer les handlers existants et ajouter le nôtre
-logger.handlers = []
-logger.addHandler(console_handler)
-
-# Appliquer aux autres loggers
-logging.getLogger('uvicorn').handlers = []
-logging.getLogger('uvicorn').addHandler(console_handler)
-logging.getLogger('uvicorn.error').handlers = []
-logging.getLogger('uvicorn.error').addHandler(console_handler)
-logging.getLogger('uvicorn.access').setLevel(logging.WARNING)  # Réduire verbosité accès
+# 🔥 FIX: Configurer le logger avec WebSocket handler après l'initialisation de ws_manager
+# (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
@@ -462,10 +425,10 @@ async def scanner_loop_callback():
                 f'Analyse {top_n}/{total_available} paires disponibles: {", ".join(symbols_list[:10])}' + 
                 (f'... (+{len(symbols_list)-10} autres)' if len(symbols_list) > 10 else ''))
             
-            # 🔥 WARNING si moins de paires que prévu
-            if total_available < max_pairs:
-                await add_log('WARNING', 'Paires limitées', 
-                    f'Seulement {total_available} paires disponibles (attendu: {max_pairs})')
+            # 🔥 FIX: Ne plus logger de warning si moins de paires que prévu (c'est normal)
+            # if total_available < max_pairs:
+            #     await add_log('WARNING', 'Paires limitées', 
+            #         f'Seulement {total_available} paires disponibles (attendu: {max_pairs})')
             
             # Scanner toutes les paires en parallèle
             scan_tasks = []
@@ -836,12 +799,13 @@ async def scan_pair_for_setup(symbol: str):
                 is_valid = True
         else:
             # Si analysis est None, c'est que les deux timeframes ont retourné None
-            # 🔥 FIX: Ajouter plus de détails dans le warning pour debug
-            logger.warning(
-                f"⚠️ {symbol}: Analyse retournée None - "
-                f"Vérifier les erreurs dans analyze_timeframe. "
-                f"Vérifier que le prix est disponible et que les indicateurs peuvent être calculés."
-            )
+            # 🔥 FIX: Envoyer le warning au frontend via add_log (logger.warning est capturé par WebSocketLogHandler, donc on évite le doublon)
+            # 🔥 FIX: Corriger le message dupliqué (le symbole était répété deux fois)
+            try:
+                await add_log('WARNING', 'Analyse retournée None', 
+                    f"{symbol}: Analyse retournée None - Vérifier les erreurs dans analyze_timeframe. Vérifier que le prix est disponible et que les indicateurs peuvent être calculés.")
+            except Exception as log_err:
+                logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
             is_valid = False
         
         # Envoyer événement pour mettre à jour le compteur
@@ -893,17 +857,73 @@ async def position_check_loop_callback():
             # Calculer PnL pour affichage
             position = position_manager.active_position
             if position:
-                # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
-                pnl = position_manager.pnl_calculator.calculate_pnl_percent(
-                    entry=position.entry,
-                    current_price=current_price,
-                    direction=position.direction
-                )
-                # 🔥 FIX: Calculer PnL USDT avec pnl_calculator (incluant TP partiel automatiquement)
-                pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
-                    position=position.to_dict(),
-                    current_price=current_price
-                )
+                # 🔥 FIX: Vérifier que position est un objet Position et non un dict ou string
+                if isinstance(position, str):
+                    # Si position est une chaîne, essayer de la parser en dict
+                    import json
+                    try:
+                        position_dict = json.loads(position)
+                        # Utiliser les valeurs du dict pour calculer PnL
+                        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                            entry=position_dict.get('entry', 0),
+                            current_price=current_price,
+                            direction=position_dict.get('direction', 'LONG')
+                        )
+                        pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                            position=position_dict,
+                            current_price=current_price
+                        )
+                        # Créer un objet position-like pour le reste du code
+                        class PositionProxy:
+                            def __init__(self, d):
+                                self.symbol = d.get('symbol', '')
+                                self.direction = d.get('direction', 'LONG')
+                                self.entry = d.get('entry', 0)
+                                self.sl = d.get('sl', 0)
+                                self.tp = d.get('tp', 0)
+                                self.size = d.get('size', 0)
+                                self.break_even_set = d.get('break_even_set', False)
+                                self.partial_tp_sold = d.get('partial_tp_sold', False)
+                        position = PositionProxy(position_dict)
+                    except Exception as parse_err:
+                        logger.error(f"❌ Erreur parsing position (string): {parse_err}")
+                        return
+                elif isinstance(position, dict):
+                    # Si position est déjà un dict, utiliser directement
+                    pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                        entry=position.get('entry', 0),
+                        current_price=current_price,
+                        direction=position.get('direction', 'LONG')
+                    )
+                    pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                        position=position,
+                        current_price=current_price
+                    )
+                    # Créer un objet position-like pour le reste du code
+                    class PositionProxy:
+                        def __init__(self, d):
+                            self.symbol = d.get('symbol', '')
+                            self.direction = d.get('direction', 'LONG')
+                            self.entry = d.get('entry', 0)
+                            self.sl = d.get('sl', 0)
+                            self.tp = d.get('tp', 0)
+                            self.size = d.get('size', 0)
+                            self.break_even_set = d.get('break_even_set', False)
+                            self.partial_tp_sold = d.get('partial_tp_sold', False)
+                    position = PositionProxy(position)
+                else:
+                    # Position est un objet Position normal
+                    pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                        entry=position.entry,
+                        current_price=current_price,
+                        direction=position.direction
+                    )
+                    # 🔥 FIX: Calculer PnL USDT avec pnl_calculator (incluant TP partiel automatiquement)
+                    position_dict = position.to_dict() if hasattr(position, 'to_dict') else {}
+                    pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                        position=position_dict,
+                        current_price=current_price
+                    )
                 
                 # 🔥 FIX: Log détaillé pour debug
                 logger.debug(
@@ -1040,6 +1060,23 @@ def init_instances():
     """Initialiser les instances (après import)"""
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
     global analytics_db, notification_manager, session_id
+    
+    # 🔥 FIX: Configurer le logger avec WebSocket handler pour envoyer les logs au frontend
+    try:
+        from utils.logger import WebSocketLogHandler
+        root_logger = logging.getLogger()
+        # Vérifier si le handler WebSocket existe déjà
+        has_ws_handler = any(isinstance(h, WebSocketLogHandler) for h in root_logger.handlers)
+        if not has_ws_handler and ws_manager:
+            ws_handler = WebSocketLogHandler()
+            ws_handler.set_ws_manager(ws_manager)
+            ws_handler.setLevel(logging.INFO)
+            # Ne pas formater (garder le message brut avec emojis)
+            ws_handler.setFormatter(logging.Formatter('%(message)s'))
+            root_logger.addHandler(ws_handler)
+            logger.info("✅ WebSocket log handler configuré")
+    except Exception as e:
+        logger.debug(f"Impossible de configurer WebSocket log handler: {e}")
     
     # 🔥 ARCHITECTURE V2: Initialiser Analytics DB
     if not analytics_db and AnalyticsDatabase:
@@ -1274,11 +1311,9 @@ async def api_get_sessions_stats_global():
             'total_trades': 0,
             'wins': 0,
             'losses': 0,
-            'winrate': 0.0,
-            'total_pnl': 0.0,
-            'total_pnl_percent': 0.0
+            'winrate': 0.0
         }
-
+        
         if analytics_db:
             try:
                 trades = analytics_db.get_trades(limit=10000)
@@ -1287,21 +1322,15 @@ async def api_get_sessions_stats_global():
                     wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
                     losses = total - wins
                     winrate = (wins / total * 100) if total > 0 else 0.0
-                    # 🔥 FIX: Calculer total_pnl depuis net_pnl_usdt (incluant slippage et fees)
-                    total_pnl = sum(t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) for t in trades)
-                    # Calculer total_pnl_percent (moyenne pondérée)
-                    total_pnl_percent = sum(t.get('net_pnl_percent', t.get('pnl_percent', 0)) for t in trades) / total if total > 0 else 0.0
                     stats_dict = {
                         'total_trades': total,
                         'wins': wins,
                         'losses': losses,
-                        'winrate': winrate,
-                        'total_pnl': total_pnl,
-                        'total_pnl_percent': total_pnl_percent
+                        'winrate': winrate
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats globales: {e}")
-
+        
         # Fallback: utiliser app_state['trade_history']
         if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
             try:
@@ -1311,47 +1340,31 @@ async def api_get_sessions_stats_global():
                     wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
                     losses = total - wins
                     winrate = (wins / total * 100) if total > 0 else 0.0
-                    # 🔥 FIX: Calculer total_pnl depuis net_pnl_usdt (incluant slippage et fees)
-                    total_pnl = sum(t.get('net_pnl_usdt', t.get('netPnlUSDT', t.get('pnl_usdt', 0))) for t in trades)
-                    # Calculer total_pnl_percent (moyenne pondérée)
-                    total_pnl_percent = sum(t.get('net_pnl_percent', t.get('netPnlPercent', t.get('pnl_percent', 0))) for t in trades) / total if total > 0 else 0.0
                     stats_dict = {
                         'total_trades': total,
                         'wins': wins,
                         'losses': losses,
-                        'winrate': winrate,
-                        'total_pnl': total_pnl,
-                        'total_pnl_percent': total_pnl_percent
+                        'winrate': winrate
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats app_state: {e}")
-
-        # 🔥 FIX: Retourner le format attendu par le frontend (sessions.js store)
+        
         return JSONResponse({
             'total_sessions': 1,
-            'running_sessions': 1 if app_state.get('is_scanning') else 0,
-            'stopped_sessions': 0 if app_state.get('is_scanning') else 1,
-            'paused_sessions': 0,
-            'total_trades': stats_dict['total_trades'],
-            'total_pnl': stats_dict['total_pnl'],
-            'total_pnl_percent': stats_dict['total_pnl_percent'],
-            'total_wins': stats_dict['wins'],
-            'total_losses': stats_dict['losses'],
-            'win_rate': stats_dict['winrate']
+            'active_sessions': 1 if app_state.get('is_scanning') else 0,
+            'global_stats': stats_dict
         })
     except Exception as e:
         logger.error(f"❌ Erreur /api/sessions/stats/global: {e}", exc_info=True)
         return JSONResponse({
             'total_sessions': 0,
-            'running_sessions': 0,
-            'stopped_sessions': 0,
-            'paused_sessions': 0,
-            'total_trades': 0,
-            'total_pnl': 0.0,
-            'total_pnl_percent': 0.0,
-            'total_wins': 0,
-            'total_losses': 0,
-            'win_rate': 0.0,
+            'active_sessions': 0,
+            'global_stats': {
+                'total_trades': 0,
+                'wins': 0,
+                'losses': 0,
+                'winrate': 0.0
+            },
             'error': str(e)
         }, status_code=200)  # Retourner 200 avec stats vides
 
@@ -2542,12 +2555,17 @@ async def handle_client_command(command: str, params: dict):
         # 🔥 TP/SL Mode
         if 'tp_sl_mode' in params:
             mode = str(params['tp_sl_mode']).upper()
-            if mode in ['FIXE', 'ATR', 'TP_MULTI']:
+            # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide
+            if mode in ['FIXE', 'ATR', 'TP_MULTI', 'ESCALIER']:
                 TRADING_CONFIG['tp_sl_mode'] = mode
-                init_instances()
+                # 🔥 FIX: Ne pas appeler init_instances() car cela réinitialise tout, utiliser directement position_config et position_manager
                 if position_config:
-                    position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
+                    position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
+                # 🔥 FIX: Mettre à jour aussi position_manager.config.use_atr si position_manager existe
+                if position_manager:
+                    position_manager.config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
                 updated['tp_sl_mode'] = mode
+                logger.info(f"✅ Mode TP/SL mis à jour: {mode} (use_atr={position_config.use_atr if position_config else 'N/A'})")
         
         if 'tp_percent' in params:
             val = float(params['tp_percent'])
@@ -2822,7 +2840,11 @@ async def handle_client_command(command: str, params: dict):
                 # Mettre à jour les valeurs TP/SL si elles ont changé
                 if 'tp_sl_mode' in updated:
                     tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                    position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI')
+                    # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide
+                    position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
+                    # 🔥 FIX: Mettre à jour aussi position_manager.config.use_atr si position_manager existe
+                    if position_manager:
+                        position_manager.config.use_atr = position_config.use_atr
                 if 'tp_percent' in updated:
                     position_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
                 if 'sl_percent' in updated:
@@ -3231,15 +3253,17 @@ async def add_log(level, message, detail=''):
     reset_code = Style.RESET_ALL
     color = color_codes.get(level, '')
     
-    # Message avec couleur ANSI
+    # Message avec couleur ANSI et emojis préservés
+    # 🔥 FIX: Préserver les emojis dans le message (✅📊❌⚠️ etc.)
     colored_message = f"{color}{message}{reset_code}"
     if detail:
-        colored_message += f" {detail}"
+        # Ajouter la couleur au détail aussi si nécessaire
+        colored_message += f" {color}{detail}{reset_code}"
     
     entry = {
         'timestamp': datetime.now().strftime('%H:%M:%S'),
         'level': level,
-        'message': colored_message,  # 🔥 FIX: Message avec couleurs ANSI
+        'message': colored_message,  # 🔥 FIX: Message avec couleurs ANSI et emojis
         'detail': detail,
         'raw_message': message  # Message sans couleur pour recherche
     }

@@ -23,11 +23,57 @@
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
+	import { recentLogs } from '$lib/stores/logs';
+	import { derived } from 'svelte/store';
+
+	// 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages)
+	let showErrorPopup = false;
+	let lastErrorId: string | null = null;
+	let popupHiddenUntil: number | null = null; // Timestamp jusqu'auquel le popup est caché
+
+	// 🔥 FIX: Erreurs critiques uniquement (pour le popup)
+	const criticalErrorLogs = derived(recentLogs, $logs =>
+		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL')
+	);
+
+	// 🔥 FIX: Détecter les nouvelles erreurs CRITIQUES pour afficher le popup
+	$: if ($criticalErrorLogs.length > 0) {
+		const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1];
+		const now = Date.now();
+		// Vérifier si le popup n'est pas caché temporairement
+		if (latestError && latestError.id !== lastErrorId && (popupHiddenUntil === null || now > popupHiddenUntil)) {
+			lastErrorId = latestError.id;
+			showErrorPopup = true;
+			popupHiddenUntil = null; // Réinitialiser le timer
+		}
+	}
+
+	// 🔥 FIX: Fonction pour acquitter et cacher le popup pendant 5 secondes
+	function acknowledgeError() {
+		showErrorPopup = false;
+		// Cacher le popup pendant 5 secondes
+		popupHiddenUntil = Date.now() + 5000;
+	}
+
+	// 🔥 FIX: Fonction helper pour formater le temps
+	function formatTime(timestamp: string | number): string {
+		if (!timestamp) return '';
+		const date = new Date(timestamp);
+		return date.toLocaleTimeString('en-US', { hour12: false });
+	}
+
+	// 🔥 FIX: Fonction helper pour supprimer les codes ANSI
+	function stripAnsiCodes(text: string): string {
+		if (!text) return '';
+		return text.replace(/\x1b\[\d+m/g, '').replace(/\[\d+m/g, '');
+	}
 
 	let backendConnected = false;
 	let backendError = '';
 	let activeTab = 'dashboard';
 	let tpSlMode = 'FIXE'; // Mode TP/SL actif du bot
+	let tpSlModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	const TP_SL_MODE_SAVE_DELAY = 2500; // 2.5 secondes d'inactivité avant sauvegarde automatique
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -39,21 +85,36 @@
 		{ id: 'settings', label: 'Paramètres', icon: '⚙️' }
 	];
 
-	async function changeTpSlMode() {
-		try {
-			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-			const ws = initWebSocket();
-			const result = await ws.sendCommand('update_config', { tp_sl_mode: tpSlMode });
-			
-			if (result && result.updated) {
-				console.log(`✅ TP/SL Mode changé via WebSocket: ${tpSlMode}`);
-			} else {
-				console.error('⚠️ Erreur changement mode TP/SL: pas de réponse');
-			}
-		} catch (err) {
-			console.error('❌ Erreur changement mode TP/SL:', err);
-			alert(`❌ Erreur: ${err.message || 'Impossible de changer le mode TP/SL. Vérifiez la connexion WebSocket.'}`);
+	// 🔥 FIX: Fonction pour sauvegarder le mode TP/SL avec debounce
+	async function saveTpSlMode() {
+		if (tpSlModeDebounceTimer) {
+			clearTimeout(tpSlModeDebounceTimer);
 		}
+		
+		tpSlModeDebounceTimer = setTimeout(async () => {
+			try {
+				// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+				const ws = initWebSocket();
+				const result = await ws.sendCommand('update_config', { tp_sl_mode: tpSlMode });
+				
+				if (result && result.updated) {
+					console.log(`✅ TP/SL Mode sauvegardé via WebSocket: ${tpSlMode}`);
+					// 🔥 FIX: L'événement config_updated sera émis automatiquement par le backend
+					// VariablesPanel écoutera cet événement et rafraîchira completeConfig
+				} else {
+					console.error('⚠️ Erreur sauvegarde mode TP/SL: pas de réponse');
+				}
+			} catch (err) {
+				console.error('❌ Erreur sauvegarde mode TP/SL:', err);
+			} finally {
+				tpSlModeDebounceTimer = null;
+			}
+		}, TP_SL_MODE_SAVE_DELAY);
+	}
+
+	// 🔥 FIX: Fonction appelée lors du changement de mode (déclenche le debounce)
+	function changeTpSlMode() {
+		saveTpSlMode();
 	}
 
 	// Fetch initial state on mount
@@ -346,6 +407,26 @@
 		lastTab = activeTab;
 	}
 </script>
+
+<!-- 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages) -->
+{#if showErrorPopup && $criticalErrorLogs.length > 0}
+	{@const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1]}
+	<div class="error-popup" class:blinking={showErrorPopup}>
+		<div class="error-popup-content">
+			<div class="error-popup-header">
+				<span class="error-icon">🚨</span>
+				<h3>Erreur détectée</h3>
+				<button class="close-popup-btn" on:click={acknowledgeError}>✕</button>
+			</div>
+			<div class="error-popup-message">
+				<span class="error-time">{formatTime(latestError.timestamp)}</span>
+				<span class="error-level">[{latestError.level}]</span>
+				<span class="error-text">{stripAnsiCodes(latestError.message)}</span>
+			</div>
+			<button class="acknowledge-btn" on:click={acknowledgeError}>Acquitter</button>
+		</div>
+	</div>
+{/if}
 
 <svelte:head>
 	<title>Trade Cursor v7.0 - MEXC Smart Scalping Scanner</title>
@@ -938,5 +1019,155 @@
 		font-size: 13px;
 		color: #888;
 		margin-top: 10px;
+	}
+
+	/* 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages) */
+	.error-popup {
+		position: fixed;
+		top: 20px;
+		right: 20px;
+		z-index: 10000;
+		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		border: 3px solid #fff;
+		border-radius: 12px;
+		padding: 0;
+		box-shadow: 0 8px 32px rgba(255, 68, 68, 0.6);
+		min-width: 400px;
+		max-width: 600px;
+	}
+
+	.error-popup.blinking {
+		animation: blink 1s ease-in-out infinite;
+	}
+
+	@keyframes blink {
+		0%, 100% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.8;
+			transform: scale(1.02);
+		}
+	}
+
+	.error-popup-content {
+		background: #1e2749;
+		border-radius: 10px;
+		padding: 20px;
+		border: 2px solid #ff4444;
+	}
+
+	.error-popup-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 15px;
+		padding-bottom: 15px;
+		border-bottom: 2px solid rgba(255, 68, 68, 0.3);
+	}
+
+	.error-icon {
+		font-size: 24px;
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.2);
+		}
+	}
+
+	.error-popup-header h3 {
+		flex: 1;
+		margin: 0;
+		color: #fff;
+		font-size: 18px;
+		font-weight: bold;
+	}
+
+	.close-popup-btn {
+		background: rgba(255, 255, 255, 0.2);
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		color: #fff;
+		border-radius: 50%;
+		width: 28px;
+		height: 28px;
+		cursor: pointer;
+		font-size: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s;
+	}
+
+	.close-popup-btn:hover {
+		background: rgba(255, 255, 255, 0.3);
+		transform: scale(1.1);
+	}
+
+	.error-popup-message {
+		margin-bottom: 15px;
+		padding: 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.error-time {
+		font-size: 12px;
+		color: #888;
+		font-family: 'Courier New', monospace;
+	}
+
+	.error-level {
+		font-size: 13px;
+		color: #ff4444;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+	}
+
+	.error-text {
+		font-size: 14px;
+		color: #fff;
+		line-height: 1.5;
+		word-break: break-word;
+	}
+
+	.acknowledge-btn {
+		width: 100%;
+		padding: 12px;
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		border: none;
+		border-radius: 8px;
+		color: #0a0e27;
+		font-weight: bold;
+		font-size: 14px;
+		cursor: pointer;
+		transition: all 0.3s;
+		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+	}
+
+	.acknowledge-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 16px rgba(0, 255, 136, 0.5);
+	}
+
+	.acknowledge-btn:active {
+		transform: translateY(0);
+	}
+
+	/* Mobile */
+	@media (max-width: 768px) {
+		.error-popup {
+			left: 10px;
+			right: 10px;
+			min-width: auto;
+		}
 	}
 </style>

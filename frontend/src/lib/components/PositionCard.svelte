@@ -2,10 +2,90 @@
 	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
 	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
+	import { onMount } from 'svelte';
 
 	// 🔥 FIX: Extraire la précision depuis les données de position
 	$: pricePrecision = $activePosition?.price_precision;
 	$: tickSize = $activePosition?.tickSize || $activePosition?.tick_size;
+	
+	// 🔥 FIX: Récupérer la config pour afficher les bonnes informations TP/SL
+	let tradingConfig = null;
+	
+	async function loadConfig() {
+		try {
+			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+			if (ws && ws.connected) {
+				const response = await sendRequestViaWS('state', {});
+				const stateData = response?.data || response;
+				if (stateData && stateData.config) {
+					tradingConfig = stateData.config;
+				}
+			}
+		} catch (err) {
+			console.error('❌ Error loading config:', err);
+		}
+	}
+	
+	onMount(async () => {
+		await loadConfig();
+		// Écouter les mises à jour de config
+		const { getWebSocket } = await import('$lib/utils/websocket');
+		const ws = getWebSocket();
+		if (ws) {
+			ws.on('config_updated', (data) => {
+				if (data.updated) {
+					tradingConfig = { ...tradingConfig, ...data.updated };
+				}
+			});
+		}
+	});
+	
+	// 🔥 FIX: Calculer les informations de la prochaine clôture
+	$: nextTpInfo = (() => {
+		if (!$activePosition || !tradingConfig) return null;
+		
+		const tpSlMode = tradingConfig.tp_sl_mode || $activePosition.tp_sl_mode || 'FIXE';
+		
+		// Mode TP_MULTI/ESCALIER
+		if (tpSlMode === 'TP_MULTI' || tpSlMode === 'ESCALIER') {
+			const levels = $activePosition.tp_escalier_levels ? JSON.parse($activePosition.tp_escalier_levels) : [];
+			const currentLevel = $activePosition.tp_escalier_current_level || 0;
+			if (currentLevel < levels.length) {
+				const nextLevel = levels[currentLevel];
+				return {
+					pnl: nextLevel.pnl || nextLevel.percent || 0,
+					size: (nextLevel.size_pct || 0) * 100
+				};
+			}
+			return null;
+		}
+		
+		// Mode FIXE ou ATR
+		// Vérifier si TP partiel déjà vendu
+		if (!$activePosition.partial_tp_sold && tradingConfig.partial_tp_percent) {
+			// TP partiel pas encore vendu
+			return {
+				pnl: tradingConfig.tp_percent || 0.6,
+				size: tradingConfig.partial_tp_percent || 50
+			};
+		}
+		
+		// TP complet
+		return {
+			pnl: tradingConfig.tp_percent || 0.6,
+			size: 100
+		};
+	})();
+	
+	$: nextSlInfo = (() => {
+		if (!$activePosition || !tradingConfig) return null;
+		
+		return {
+			pnl: tradingConfig.sl_percent || 0.25,
+			size: 100
+		};
+	})();
 	
 	// 🔥 FIX: Fonction helper pour formater avec précision
 	function formatPriceWithPrecision(price) {
@@ -103,25 +183,26 @@
 
 		<div class="tpsl-grid">
 			<div class="tpsl-box tp">
-				<div class="tpsl-label">TP</div>
+				<div class="tpsl-label">Prochain Take Profit</div>
 				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.tp)}</div>
-				{#if $tpDistance}
-					<div class="tpsl-distance">+{$tpDistance}%</div>
-				{/if}
-				{#if $activePosition.tp_escalier_levels}
-					<div class="tp-levels">
-						{#each JSON.parse($activePosition.tp_escalier_levels || '[]') as level, i}
-							<div class="tp-level" class:hit={level.hit || false}>
-								TP{i + 1}: {formatPriceWithPrecision(level.price)} ({formatPercent(level.percent)}%)
-							</div>
-						{/each}
+				{#if nextTpInfo}
+					<div class="tpsl-info">
+						<div class="tpsl-pnl">PnL objectif: <span class="tpsl-value">+{formatPercent(nextTpInfo.pnl)}%</span></div>
+						<div class="tpsl-size">Taille: <span class="tpsl-value">{nextTpInfo.size}% de la position</span></div>
 					</div>
+				{:else if $tpDistance}
+					<div class="tpsl-distance">+{$tpDistance}%</div>
 				{/if}
 			</div>
 			<div class="tpsl-box sl">
-				<div class="tpsl-label">SL</div>
+				<div class="tpsl-label">Prochain Stop Loss</div>
 				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.sl)}</div>
-				{#if $slDistance}
+				{#if nextSlInfo}
+					<div class="tpsl-info">
+						<div class="tpsl-pnl">PnL stop: <span class="tpsl-value">-{formatPercent(nextSlInfo.pnl)}%</span></div>
+						<div class="tpsl-size">Taille: <span class="tpsl-value">{nextSlInfo.size}% de la position restante</span></div>
+					</div>
+				{:else if $slDistance}
 					<div class="tpsl-distance">{$slDistance}%</div>
 				{/if}
 				{#if $activePosition.dynamic_sl}
@@ -130,81 +211,6 @@
 					</div>
 				{/if}
 			</div>
-		</div>
-
-		<!-- 🔥 NOUVEAU: Informations détaillées sur prochains TP/SL et trailing stop -->
-		<div class="tpsl-info-section">
-			{#if $activePosition.tp_escalier_levels}
-				{@const levels = JSON.parse($activePosition.tp_escalier_levels || '[]')}
-				{@const nextTpLevel = levels.find(l => !l.hit)}
-				{#if nextTpLevel}
-					<div class="info-box next-tp">
-						<div class="info-box-title">📈 Prochain TP</div>
-						<div class="info-box-content">
-							<div class="info-line">
-								<span class="info-line-label">PnL objectif:</span>
-								<span class="info-line-value">+{formatPercent(nextTpLevel.percent)}%</span>
-							</div>
-							<div class="info-line">
-								<span class="info-line-label">Taille:</span>
-								<span class="info-line-value">{formatPercent(nextTpLevel.size_pct * 100)}% de la position</span>
-							</div>
-						</div>
-					</div>
-				{/if}
-			{:else if $activePosition.tp}
-				<div class="info-box next-tp">
-					<div class="info-box-title">📈 Take Profit</div>
-					<div class="info-box-content">
-						<div class="info-line">
-							<span class="info-line-label">PnL objectif:</span>
-							<span class="info-line-value">+{$tpDistance || '?'}%</span>
-						</div>
-						<div class="info-line">
-							<span class="info-line-label">Taille:</span>
-							<span class="info-line-value">100% de la position</span>
-						</div>
-					</div>
-				</div>
-			{/if}
-
-			{#if $activePosition.sl}
-				<div class="info-box next-sl">
-					<div class="info-box-title">📉 Stop Loss</div>
-					<div class="info-box-content">
-						<div class="info-line">
-							<span class="info-line-label">PnL stop:</span>
-							<span class="info-line-value">{$slDistance || '?'}%</span>
-						</div>
-						<div class="info-line">
-							<span class="info-line-label">Taille:</span>
-							<span class="info-line-value">100% de la position restante</span>
-						</div>
-					</div>
-				</div>
-			{/if}
-
-			{#if $activePosition.trailing_active || $activePosition.dynamic_sl}
-				<div class="info-box trailing-info">
-					<div class="info-box-title">🎯 Trailing Stop</div>
-					<div class="info-box-content">
-						<div class="info-line">
-							<span class="info-line-label">Statut:</span>
-							<span class="info-line-value active">✅ Actif</span>
-						</div>
-						<div class="info-line">
-							<span class="info-line-label">SL dynamique:</span>
-							<span class="info-line-value">{formatPriceWithPrecision($activePosition.dynamic_sl)}</span>
-						</div>
-						{#if $activePosition.size_remaining && $activePosition.size}
-							<div class="info-line">
-								<span class="info-line-label">% restant:</span>
-								<span class="info-line-value">{formatPercent(($activePosition.size_remaining / $activePosition.size) * 100)}%</span>
-							</div>
-						{/if}
-					</div>
-				</div>
-			{/if}
 		</div>
 
 		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null && $activePosition.size}
@@ -407,6 +413,36 @@
 		color: #ff4444;
 	}
 
+	.tpsl-info {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.tpsl-pnl, .tpsl-size {
+		font-size: 11px;
+		color: #888;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.tpsl-value {
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+	}
+
+	.tpsl-box.tp .tpsl-value {
+		color: #00ff88;
+	}
+
+	.tpsl-box.sl .tpsl-value {
+		color: #ff4444;
+	}
+
 	.tp-levels {
 		margin-top: 8px;
 		padding-top: 8px;
@@ -435,97 +471,6 @@
 		font-size: 11px;
 		color: #ffaa00;
 		font-weight: bold;
-	}
-
-	/* 🔥 NOUVEAU: Styles pour la section d'informations TP/SL détaillées */
-	.tpsl-info-section {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-		gap: 10px;
-		margin-top: 15px;
-		margin-bottom: 15px;
-	}
-
-	.info-box {
-		background: rgba(0, 170, 255, 0.08);
-		border: 1px solid rgba(0, 170, 255, 0.3);
-		border-radius: 8px;
-		padding: 10px;
-	}
-
-	.info-box.next-tp {
-		background: rgba(0, 255, 136, 0.08);
-		border-color: rgba(0, 255, 136, 0.3);
-	}
-
-	.info-box.next-sl {
-		background: rgba(255, 68, 68, 0.08);
-		border-color: rgba(255, 68, 68, 0.3);
-	}
-
-	.info-box.trailing-info {
-		background: rgba(255, 170, 0, 0.08);
-		border-color: rgba(255, 170, 0, 0.3);
-	}
-
-	.info-box-title {
-		font-size: 11px;
-		font-weight: bold;
-		color: #888;
-		text-transform: uppercase;
-		margin-bottom: 8px;
-		letter-spacing: 0.5px;
-	}
-
-	.info-box.next-tp .info-box-title {
-		color: #00ff88;
-	}
-
-	.info-box.next-sl .info-box-title {
-		color: #ff4444;
-	}
-
-	.info-box.trailing-info .info-box-title {
-		color: #ffaa00;
-	}
-
-	.info-box-content {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.info-line {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		font-size: 11px;
-	}
-
-	.info-line-label {
-		color: #888;
-	}
-
-	.info-line-value {
-		color: #fff;
-		font-weight: bold;
-		font-family: 'Courier New', monospace;
-	}
-
-	.info-box.next-tp .info-line-value {
-		color: #00ff88;
-	}
-
-	.info-box.next-sl .info-line-value {
-		color: #ff4444;
-	}
-
-	.info-box.trailing-info .info-line-value {
-		color: #ffaa00;
-	}
-
-	.info-line-value.active {
-		color: #00ff88;
 	}
 
 	.position-info {

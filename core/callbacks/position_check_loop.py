@@ -308,6 +308,13 @@ async def _emit_stats_update():
                     total_pnl_usdt = sum(t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) for t in trades)
                     total_pnl_pct = sum(t.get('net_pnl_pct', t.get('pnl_pct', 0)) for t in trades)
                     
+                    # 🔥 DEBUG: Log pour vérifier les valeurs
+                    if total > 0:
+                        logger.debug(f"📊 Stats calculées: {total} trades, PnL USDT={total_pnl_usdt:.2f}, PnL %={total_pnl_pct:.2f}")
+                        # Afficher les 3 premiers trades pour debug
+                        for i, t in enumerate(trades[:3]):
+                            logger.debug(f"  Trade {i+1}: net_pnl_usdt={t.get('net_pnl_usdt', 'N/A')}, net_pnl_pct={t.get('net_pnl_pct', 'N/A')}")
+                    
                     # 🔥 FIX: Trouver best/worst trade avec net_pnl_usdt
                     best_trade = max(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
                     worst_trade = min(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
@@ -320,8 +327,9 @@ async def _emit_stats_update():
                         'total_trades': total,
                         'wins': wins,
                         'losses': losses,
-                        'total_pnl_usdt': round(total_pnl_usdt, 2),
-                        'total_pnl_pct': round(total_pnl_pct, 2),
+                        # 🔥 FIX: Arrondir à 4 décimales pour éviter de perdre les petites valeurs (0.00)
+                        'total_pnl_usdt': round(total_pnl_usdt, 4),
+                        'total_pnl_pct': round(total_pnl_pct, 4),
                         'best_trade': best_trade,
                         'worst_trade': worst_trade,
                         'avg_trade_duration': round(avg_duration, 2)

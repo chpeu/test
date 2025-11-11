@@ -4,22 +4,24 @@
 
 	import { formatAdaptive, formatPercent, formatUSDT } from '$lib/utils/format';
 
-	// 🔥 FIX: Calculer le PnL total de la session en cours (net_pnl_usdt inclut déjà slippage et fees)
+	// 🔥 FIX: Calculer le PnL total de la session en cours (identique à StatsPanel)
+	// Utiliser net_pnl_usdt et net_pnl_pct directement (ils incluent déjà slippage et fees)
 	const sessionPnL = derived(sortedTrades, $trades => {
 		const totalPnL = $trades.reduce((sum, trade) => {
-			const pnl = trade.net_pnl_usdt || 0;
-			return sum + pnl;
+			// 🔥 FIX: Utiliser net_pnl_usdt directement (déjà calculé avec slippage et fees déduits)
+			return sum + (trade.net_pnl_usdt || trade.pnl_usdt || 0);
 		}, 0);
 		return totalPnL;
 	});
 
 	const sessionPnLPct = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
+		// 🔥 FIX: Utiliser net_pnl_pct directement (déjà calculé avec slippage et fees déduits)
+		// Somme totale, pas moyenne
 		const totalPnLPct = $trades.reduce((sum, trade) => {
-			const pnlPct = trade.net_pnl_pct || trade.net_pnl || 0;
-			return sum + pnlPct;
+			return sum + (trade.net_pnl_pct || trade.net_pnl || trade.pnl_pct || 0);
 		}, 0);
-		return totalPnLPct / $trades.length; // Moyenne
+		return totalPnLPct; // Total, pas moyenne
 	});
 
 	function formatTime(dateStr) {
@@ -117,19 +119,19 @@
 							</td>
 							<!-- 🔥 FIX: Slippage avec formatage adaptatif (calculé si manquant) -->
 							<td class="slippage">
-							{formatPercent(trade.slippage_pct || trade.slippage || 0)}%
+								{formatPercent(trade.slippage || trade.slippage_pct || (trade.slippage_usdt && trade.size ? ((trade.slippage_usdt / trade.size) * 100) : 0) || 0)}%
 							</td>
 							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
-						<td class="pnl-net" class:positive={(trade.net_pnl_pct || trade.net_pnl || 0) >= 0} class:negative={(trade.net_pnl_pct || trade.net_pnl || 0) < 0}>
-							{(trade.net_pnl_pct || trade.net_pnl || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || trade.net_pnl || 0)}%
+							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0}>
+								{((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0 ? '+' : ''}{formatPercent((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0))}%
 							</td>
 							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
 							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
 								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
 							</td>
 							<!-- 🔥 FIX: PnL Total USDT (incluant slippage) -->
-						<td class="pnl-total-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
-							{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
+							<td class="pnl-total-usdt" class:positive={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0} class:negative={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) < 0}>
+								{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0 ? '+' : ''}{formatUSDT((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0))} USDT
 							</td>
 							<!-- 🔥 FIX: Duration (calculée si manquante) -->
 							<td class="duration">

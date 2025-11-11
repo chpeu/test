@@ -384,9 +384,14 @@ class PositionManager:
         self.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
         self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         self.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+        
+        # 🔥 FIX: Mettre à jour use_atr depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide (identique à TP_MULTI)
+        use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
 
         # Calculer TP/SL selon le mode
-        if self.config.use_atr and atr:
+        if use_atr and atr:
             sl, tp = calculate_atr_levels(
                 entry=entry,
                 atr=atr,
@@ -816,7 +821,13 @@ class PositionManager:
         total_costs = pnl_data['fees'] + slippage
 
         # PnL net
-        net_pnl_pct = pnl_data['pnl_pct']
+        # 🔥 FIX: Calculer net_pnl_pct en tenant compte des coûts (fees + slippage)
+        # Le PnL net en % doit être ajusté pour refléter les coûts réels
+        gross_pnl_pct = pnl_data['pnl_pct']
+        total_costs_pct = (total_costs / self.active_position.size) * 100 if self.active_position.size > 0 else 0
+        net_pnl_pct = gross_pnl_pct - total_costs_pct
+        
+        # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage
         net_pnl_usdt = pnl_data['net_pnl'] - slippage
 
         # Taille fermée
@@ -893,14 +904,17 @@ class PositionManager:
         position = self.active_position
 
         # Logger dans Analytics DB
+        # 🔥 DEBUG: Log pour vérifier les valeurs avant enregistrement
+        logger.debug(f"💾 Enregistrement trade: net_pnl_pct={net_pnl_pct:.4f}%, net_pnl_usdt={net_pnl_usdt:.4f} USDT")
+        
         self.analytics_logger.log_trade(
             position=position.to_dict(),
             exit_price=exit_price,
             reason=reason,
             pnl_data={
                 'pnl_pct': pnl_data['pnl_pct'],
-                'net_pnl': net_pnl_usdt,
-                'net_pnl_pct': net_pnl_pct,  # 🔥 FIX: Ajouter net_pnl_pct
+                'net_pnl': net_pnl_usdt,  # 🔥 FIX: net_pnl doit être en USDT
+                'net_pnl_pct': net_pnl_pct,  # 🔥 FIX: net_pnl_pct en pourcentage (après déduction des coûts)
                 'fees': pnl_data['fees']
             },
             mode='LIVE'
