@@ -994,6 +994,23 @@ def init_instances():
             analytics_db = AnalyticsDatabase(db_path=ANALYTICS_DB_PATH, instance_port=port)
             # La DB est déjà initialisée dans __init__ (via _init_database())
             logger.info(f"✅ Analytics DB prête: {ANALYTICS_DB_PATH}")
+            
+            # 🔥 FIX: Réinitialiser les stats au démarrage du bot
+            if analytics_db:
+                try:
+                    # Vider tous les trades de la base de données pour remettre les stats à zéro
+                    analytics_db.clear_all_trades()
+                    # Réinitialiser aussi app_state['trade_history'] et app_state['stats']
+                    app_state['trade_history'] = []
+                    app_state['stats'] = {
+                        'total_trades': 0,
+                        'wins': 0,
+                        'losses': 0,
+                        'winrate': 0.0
+                    }
+                    logger.info("✅ Stats réinitialisées au démarrage (base de données vidée)")
+                except Exception as e:
+                    logger.warning(f"⚠️ Impossible de réinitialiser les stats: {e}")
         except Exception as e:
             logger.error(f"❌ Erreur init Analytics DB: {e}")
             analytics_db = None
@@ -2296,11 +2313,69 @@ async def handle_client_command(command: str, params: dict):
     """Exécuter une commande du client via WebSocket"""
     
     if command == 'start_scanner':
-        await api_start()
+        # 🔥 FIX: Dupliquer la logique de api_start (pas JSONResponse)
+        init_instances()
+        
+        # Émettre scan_started IMMÉDIATEMENT au démarrage (avant le scan)
+        await ws_manager.emit('scan_started', {'timestamp': time.time()})
+        await ws_manager.emit('status', {'is_scanning': True})
+        app_state['is_scanning'] = True
+        
+        # Si pas de top_pairs, faire un scan initial
+        if not app_state['top_pairs']:
+            await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
+            if scanner:
+                top_pairs = await scanner.scan_top_pairs(20)
+                app_state['top_pairs'] = top_pairs
+                await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+                
+                # Démarrer WebSocket pour les top pairs
+                if price_provider and top_pairs:
+                    symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                    if symbols:
+                        try:
+                            await price_provider.start_websocket(symbols)
+                            await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                        except Exception as e:
+                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+        
+        # Démarrer le scheduler
+        if scheduler:
+            scheduler.start()
+            logger.info("Scanner démarré")
+            await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
+        else:
+            logger.info("Scanner démarré (sans scheduler)")
+        
         return {'status': 'started', 'is_scanning': True}
     
     elif command == 'stop_scanner':
-        await api_stop()
+        # 🔥 FIX: Dupliquer la logique de api_stop (pas JSONResponse)
+        init_instances()
+        
+        # Arrêter le scheduler
+        if scheduler:
+            await scheduler.stop_async()
+            logger.info("Scanner arrêté")
+            await add_log('INFO', 'Scanner arrêté', 'Boucles automatiques désactivées')
+            # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+            await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+            await ws_manager.emit('status', {'is_scanning': False})
+        else:
+            app_state['is_scanning'] = False
+            logger.info("Scanner arrêté (sans scheduler)")
+            # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+            await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+            await ws_manager.emit('status', {'is_scanning': False})
+        
+        # Arrêter WebSocket
+        if price_provider:
+            try:
+                await price_provider.stop_websocket()
+                await add_log('INFO', 'WebSocket arrêté', 'Monitoring des prix désactivé')
+            except Exception as e:
+                logger.warning(f"Erreur arrêt WebSocket: {e}")
+        
         return {'status': 'stopped', 'is_scanning': False}
     
     elif command == 'update_config':
@@ -2611,8 +2686,57 @@ async def handle_client_command(command: str, params: dict):
     
     elif command == 'close_position':
         if position_manager and position_manager.active_position:
-            result = await api_close_position()
-            return {'status': 'closed', 'result': result}
+            # 🔥 FIX: Utiliser la logique de api_close_position directement (pas JSONResponse)
+            init_instances()
+            
+            # Utiliser le lock pour synchroniser la fermeture
+            async with position_lock:
+                # Double-check que la position existe
+                if not position_manager or not position_manager.active_position:
+                    if not app_state.get('active_position'):
+                        raise ValueError('No active position')
+                    else:
+                        app_state['active_position'] = None
+                        raise ValueError('Position state inconsistent')
+                
+                if not price_provider:
+                    raise ValueError('Price provider not available')
+                
+                # Récupérer prix actuel
+                price_data = await price_provider.get_price(position_manager.active_position.symbol)
+                exit_price = price_data.get('lastPrice') if price_data else None
+                
+                # Utiliser exit_price depuis params si fourni
+                if params.get('exit_price'):
+                    exit_price = float(params['exit_price'])
+                
+                result = position_manager.close_position(exit_price=exit_price, reason=params.get('reason', 'MANUAL'))
+                
+                app_state['active_position'] = None
+                
+                # Ajouter à l'historique et sauvegarder
+                if result:
+                    result['timestamp'] = datetime.now().isoformat()
+                    app_state['trade_history'].append(result)
+                    if len(app_state['trade_history']) > 1000:
+                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    save_trade_history()
+                
+                # Désactiver callback WebSocket
+                if price_provider:
+                    price_provider.set_socketio_callback(None, None)
+                
+                await add_log('INFO', 'Position clôturée', params.get('reason', 'MANUAL'))
+                await ws_manager.emit('position_closed', result)
+                
+                # Émettre stats_update après fermeture
+                try:
+                    from core.callbacks.position_check_loop import _emit_stats_update
+                    await _emit_stats_update()
+                except Exception as e:
+                    logger.error(f"❌ Erreur émission stats_update: {e}")
+                
+                return {'status': 'closed', 'result': result}
         else:
             raise ValueError('Aucune position active')
     

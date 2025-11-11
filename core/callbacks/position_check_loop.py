@@ -300,16 +300,17 @@ async def _emit_stats_update():
                 trades = _analytics_db.get_trades(limit=10000)
                 if trades:
                     total = len(trades)
-                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                    # 🔥 FIX: Utiliser net_pnl_usdt au lieu de pnl_usdt
+                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) > 0)
                     losses = total - wins
                     
-                    # Calculer PnL total
-                    total_pnl_usdt = sum(t.get('pnl_usdt', 0) for t in trades)
-                    total_pnl_pct = sum(t.get('pnl_pct', 0) for t in trades)
+                    # 🔥 FIX: Calculer PnL total avec net_pnl_usdt et net_pnl_pct
+                    total_pnl_usdt = sum(t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) for t in trades)
+                    total_pnl_pct = sum(t.get('net_pnl_pct', t.get('pnl_pct', 0)) for t in trades)
                     
-                    # Trouver best/worst trade
-                    best_trade = max(trades, key=lambda t: t.get('pnl_usdt', 0), default=None)
-                    worst_trade = min(trades, key=lambda t: t.get('pnl_usdt', 0), default=None)
+                    # 🔥 FIX: Trouver best/worst trade avec net_pnl_usdt
+                    best_trade = max(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
+                    worst_trade = min(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
                     
                     # Calculer durée moyenne
                     durations = [t.get('duration_seconds', 0) for t in trades if t.get('duration_seconds')]

@@ -12,14 +12,19 @@
 	let showErrorPopup = false;
 	let lastErrorId = null;
 
-	// 🔥 FIX: Seulement les erreurs (pas les warnings)
+	// 🔥 FIX: Erreurs et warnings pour la section "Erreurs & Warnings"
 	const errorLogs = derived(recentLogs, $logs =>
+		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL' || log.level === 'WARNING')
+	);
+
+	// 🔥 FIX: Erreurs critiques uniquement (pour le popup)
+	const criticalErrorLogs = derived(recentLogs, $logs =>
 		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL')
 	);
 
-	// 🔥 FIX: Détecter les nouvelles erreurs pour afficher le popup
-	$: if ($errorLogs.length > 0) {
-		const latestError = $errorLogs[$errorLogs.length - 1];
+	// 🔥 FIX: Détecter les nouvelles erreurs CRITIQUES uniquement pour afficher le popup (pas les warnings)
+	$: if ($criticalErrorLogs.length > 0) {
+		const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1];
 		if (latestError && latestError.id !== lastErrorId) {
 			lastErrorId = latestError.id;
 			showErrorPopup = true;
@@ -30,9 +35,9 @@
 		showErrorPopup = false;
 	}
 
-	// 🔥 FIX: Tous les logs backend (INFO, DEBUG, etc.) avec couleurs
+	// 🔥 FIX: Tous les logs backend (INFO, DEBUG, etc.) avec couleurs (exclure ERROR, CRITICAL et WARNING)
 	const regularLogs = derived(recentLogs, $logs =>
-		$logs.filter(log => log.level !== 'ERROR' && log.level !== 'CRITICAL')
+		$logs.filter(log => log.level !== 'ERROR' && log.level !== 'CRITICAL' && log.level !== 'WARNING')
 	);
 
 	// Auto-scroll to bottom when new logs arrive
@@ -152,9 +157,9 @@
 	}
 </script>
 
-<!-- 🔥 FIX: Popup d'erreur clignotant -->
-{#if showErrorPopup && $errorLogs.length > 0}
-	{@const latestError = $errorLogs[$errorLogs.length - 1]}
+<!-- 🔥 FIX: Popup d'erreur clignotant (seulement pour ERROR et CRITICAL) -->
+{#if showErrorPopup && $criticalErrorLogs.length > 0}
+	{@const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1]}
 	<div class="error-popup" class:blinking={showErrorPopup}>
 		<div class="error-popup-content">
 			<div class="error-popup-header">

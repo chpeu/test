@@ -1,5 +1,5 @@
 <script>
-	import { stats, winrate, winLossRatio } from '$lib/stores/stats';
+	import { stats, winrate } from '$lib/stores/stats';
 	import { formatUSDT, formatPercent } from '$lib/utils/format';
 </script>
 
@@ -29,20 +29,19 @@
 			<div class="stat-value">{$winrate}%</div>
 		</div>
 
-		<div class="stat-box">
-			<div class="stat-label">W/L Ratio</div>
-			<div class="stat-value">{$winLossRatio}</div>
+		<div class="stat-box pnl-pct" class:positive={$stats.total_pnl_pct >= 0} class:negative={$stats.total_pnl_pct < 0}>
+			<div class="stat-label">Total PnL %</div>
+			<div class="stat-value">
+				{formatPercent($stats.total_pnl_pct)}%
+			</div>
 		</div>
 
-				<div class="stat-box pnl" class:positive={$stats.total_pnl_usdt >= 0} class:negative={$stats.total_pnl_usdt < 0}>
-					<div class="stat-label">Total PnL</div>
-					<div class="stat-value">
-						{formatUSDT($stats.total_pnl_usdt)} USDT
-					</div>
-					<div class="stat-subvalue">
-						{formatPercent($stats.total_pnl_pct)}%
-					</div>
-				</div>
+		<div class="stat-box pnl" class:positive={$stats.total_pnl_usdt >= 0} class:negative={$stats.total_pnl_usdt < 0}>
+			<div class="stat-label">Total PnL</div>
+			<div class="stat-value">
+				{formatUSDT($stats.total_pnl_usdt)} USDT
+			</div>
+		</div>
 
 
 		{#if $stats.best_trade}
@@ -147,6 +146,24 @@
 
 	.stat-box.winrate .stat-value {
 		color: #00aaff;
+	}
+
+	.stat-box.pnl-pct.positive {
+		border-color: #00ff88;
+	}
+
+	.stat-box.pnl-pct.positive .stat-value {
+		color: #00ff88;
+		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+	}
+
+	.stat-box.pnl-pct.negative {
+		border-color: #ff4444;
+	}
+
+	.stat-box.pnl-pct.negative .stat-value {
+		color: #ff4444;
+		text-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
 	}
 
 	.stat-box.pnl.positive {

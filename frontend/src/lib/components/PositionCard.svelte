@@ -3,6 +3,24 @@
 	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 
+	// 🔥 FIX: Extraire la précision depuis les données de position
+	$: pricePrecision = $activePosition?.price_precision;
+	$: tickSize = $activePosition?.tickSize || $activePosition?.tick_size;
+	
+	// 🔥 FIX: Fonction helper pour formater avec précision
+	function formatPriceWithPrecision(price) {
+		// Si on a price_precision (nombre de décimales), l'utiliser directement
+		if (pricePrecision !== null && pricePrecision !== undefined) {
+			return formatPrice(price, pricePrecision);
+		}
+		// Si on a tickSize, le passer comme objet pour que formatPrice calcule les décimales
+		if (tickSize !== null && tickSize !== undefined) {
+			return formatPrice(price, { tickSize: tickSize });
+		}
+		// Fallback: utiliser formatPrice sans précision (utilisera le comportement adaptatif)
+		return formatPrice(price);
+	}
+
 	// 🔥 FIX: Fonction pour clôturer la position manuellement
 	async function closePosition() {
 		if (!$activePosition) {
@@ -71,11 +89,11 @@
 		<div class="price-grid">
 			<div class="price-box">
 				<div class="price-label">Entry</div>
-				<div class="price-value">{formatPrice($activePosition.entry)}</div>
+				<div class="price-value">{formatPriceWithPrecision($activePosition.entry)}</div>
 			</div>
 			<div class="price-box">
 				<div class="price-label">Current</div>
-				<div class="price-value">{formatPrice($activePosition.current_price)}</div>
+				<div class="price-value">{formatPriceWithPrecision($activePosition.current_price)}</div>
 			</div>
 			<div class="price-box">
 				<div class="price-label">Size</div>
@@ -86,7 +104,7 @@
 		<div class="tpsl-grid">
 			<div class="tpsl-box tp">
 				<div class="tpsl-label">TP</div>
-				<div class="tpsl-price">{formatPrice($activePosition.tp)}</div>
+				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.tp)}</div>
 				{#if $tpDistance}
 					<div class="tpsl-distance">+{$tpDistance}%</div>
 				{/if}
@@ -94,7 +112,7 @@
 					<div class="tp-levels">
 						{#each JSON.parse($activePosition.tp_escalier_levels || '[]') as level, i}
 							<div class="tp-level" class:hit={level.hit || false}>
-								TP{i + 1}: {formatPrice(level.price)} ({formatPercent(level.percent)}%)
+								TP{i + 1}: {formatPriceWithPrecision(level.price)} ({formatPercent(level.percent)}%)
 							</div>
 						{/each}
 					</div>
@@ -102,13 +120,13 @@
 			</div>
 			<div class="tpsl-box sl">
 				<div class="tpsl-label">SL</div>
-				<div class="tpsl-price">{formatPrice($activePosition.sl)}</div>
+				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.sl)}</div>
 				{#if $slDistance}
 					<div class="tpsl-distance">{$slDistance}%</div>
 				{/if}
 				{#if $activePosition.dynamic_sl}
 					<div class="trailing-stop">
-						Trailing: {formatPrice($activePosition.dynamic_sl)}
+						Trailing: {formatPriceWithPrecision($activePosition.dynamic_sl)}
 					</div>
 				{/if}
 			</div>
