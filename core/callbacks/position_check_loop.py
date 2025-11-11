@@ -231,6 +231,18 @@ async def _emit_position_update(position, current_price: float):
 
         # 🔥 FIX: Émettre mise à jour au frontend avec toutes les infos
         import json
+        from datetime import datetime
+        # 🔥 NOUVEAU: Ajouter opened_at pour le compte à rebours
+        opened_at = None
+        if hasattr(position, 'start_time') and position.start_time:
+            opened_at = datetime.fromtimestamp(position.start_time).isoformat()
+        elif hasattr(position, 'timestamp') and position.timestamp:
+            # Fallback: utiliser timestamp si start_time n'est pas disponible
+            if isinstance(position.timestamp, (int, float)):
+                opened_at = datetime.fromtimestamp(position.timestamp).isoformat()
+            else:
+                opened_at = position.timestamp
+        
         update_data = {
             'symbol': position.symbol,
             'direction': position.direction,
@@ -241,6 +253,7 @@ async def _emit_position_update(position, current_price: float):
             'pnl': pnl,
             'pnl_usdt': pnl_usdt,
             'size': position.size,
+            'opened_at': opened_at,  # 🔥 NOUVEAU: Ajouté pour le compte à rebours
             'break_even_set': getattr(position, 'break_even_set', False),
             'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
@@ -308,6 +321,13 @@ async def _emit_stats_update():
                     total_pnl_usdt = sum(t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) for t in trades)
                     total_pnl_pct = sum(t.get('net_pnl_pct', t.get('pnl_pct', 0)) for t in trades)
                     
+                    # 🔥 DEBUG: Log pour vérifier les valeurs
+                    if total > 0:
+                        logger.debug(f"📊 Stats calculées: {total} trades, PnL USDT={total_pnl_usdt:.2f}, PnL %={total_pnl_pct:.2f}")
+                        # Afficher les 3 premiers trades pour debug
+                        for i, t in enumerate(trades[:3]):
+                            logger.debug(f"  Trade {i+1}: net_pnl_usdt={t.get('net_pnl_usdt', 'N/A')}, net_pnl_pct={t.get('net_pnl_pct', 'N/A')}")
+                    
                     # 🔥 FIX: Trouver best/worst trade avec net_pnl_usdt
                     best_trade = max(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
                     worst_trade = min(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
@@ -320,8 +340,9 @@ async def _emit_stats_update():
                         'total_trades': total,
                         'wins': wins,
                         'losses': losses,
-                        'total_pnl_usdt': round(total_pnl_usdt, 2),
-                        'total_pnl_pct': round(total_pnl_pct, 2),
+                        # 🔥 FIX: Arrondir à 4 décimales pour éviter de perdre les petites valeurs (0.00)
+                        'total_pnl_usdt': round(total_pnl_usdt, 4),
+                        'total_pnl_pct': round(total_pnl_pct, 4),
                         'best_trade': best_trade,
                         'worst_trade': worst_trade,
                         'avg_trade_duration': round(avg_duration, 2)

@@ -672,10 +672,36 @@ class TechnicalAnalyzer:
 
                 if not orderbook_check['valid']:
                     required_str = '≥1.1' if best_setup['direction'] == 'LONG' else '≤0.95'
-                    logger.warning(
-                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
+                    info_msg = (
+                        f"ℹ️ {symbol} - Setup {best_setup['direction']} rejeté : "
                         f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})"
                     )
+                    logger.info(info_msg)
+                    # 🔥 FIX: Envoyer le log au frontend via websocket_manager (INFO au lieu de WARNING)
+                    try:
+                        from core.websocket_manager import get_websocket_manager
+                        from datetime import datetime
+                        import asyncio
+                        ws_mgr = get_websocket_manager()
+                        if ws_mgr:
+                            try:
+                                loop = asyncio.get_running_loop()
+                                async def send_log():
+                                    # Format identique à add_log dans main.py
+                                    entry = {
+                                        'timestamp': datetime.now().strftime('%H:%M:%S'),
+                                        'level': 'INFO',  # 🔥 FIX: INFO au lieu de WARNING
+                                        'message': f"ℹ️ Setup {best_setup['direction']} rejeté",
+                                        'detail': f"{symbol}: Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})",
+                                        'raw_message': f"Setup {best_setup['direction']} rejeté"
+                                    }
+                                    await ws_mgr.emit('log', entry)
+                                loop.create_task(send_log())
+                            except RuntimeError:
+                                # Pas de loop en cours, ignorer (le log est déjà dans logger.info)
+                                pass
+                    except Exception as log_err:
+                        logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
                     return None
 
                 # Bonus si orderbook très favorable

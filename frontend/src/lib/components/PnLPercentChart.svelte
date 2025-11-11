@@ -1,7 +1,8 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import Chart from 'chart.js/auto';
-	import { pnlChartData } from '$lib/stores/trades';
+	import { tradeHistory } from '$lib/stores/trades';
+	import { formatPercent } from '$lib/utils/format';
 
 	let canvas;
 	let chart;
@@ -13,7 +14,7 @@
 			labels: [],
 			datasets: [
 				{
-					label: 'PnL Cumulatif (USDT)',
+					label: 'PnL Cumulatif (%)',
 					data: [],
 					borderColor: '#00ff88',
 					backgroundColor: 'rgba(0, 255, 136, 0.1)',
@@ -62,14 +63,8 @@
 							if (label) {
 								label += ': ';
 							}
-							// 🔥 FIX: Formatage adaptatif pour USDT
 							const value = context.parsed.y;
-							const absValue = Math.abs(value);
-							let decimals = 2;
-							if (absValue < 0.01) decimals = 4;
-							else if (absValue < 1) decimals = 3;
-							else if (absValue >= 10) decimals = 1;
-							label += value.toFixed(decimals).replace(/\.?0+$/, '') + ' USDT';
+							label += formatPercent(value) + '%';
 							return label;
 						}
 					}
@@ -77,7 +72,7 @@
 			},
 			scales: {
 				y: {
-					beginAtZero: true,
+					beginAtZero: false,
 					grid: {
 						color: 'rgba(42, 58, 107, 0.3)'
 					},
@@ -88,13 +83,7 @@
 							family: "'Courier New', monospace"
 						},
 						callback: function (value) {
-							// 🔥 FIX: Formatage adaptatif pour les ticks
-							const absValue = Math.abs(value);
-							let decimals = 2;
-							if (absValue < 0.01) decimals = 4;
-							else if (absValue < 1) decimals = 3;
-							else if (absValue >= 10) decimals = 1;
-							return value.toFixed(decimals).replace(/\.?0+$/, '') + ' $';
+							return formatPercent(value) + '%';
 						}
 					}
 				},
@@ -105,11 +94,11 @@
 					ticks: {
 						color: '#888',
 						font: {
-							size: 10,
+							size: 11,
 							family: "'Courier New', monospace"
 						},
-						maxRotation: 45,
-						minRotation: 45
+						maxRotation: 0,
+						minRotation: 0
 					}
 				}
 			}
@@ -120,34 +109,42 @@
 		// Créer chart
 		chart = new Chart(canvas, chartConfig);
 
-		// Souscrire aux données
-		const unsubscribe = pnlChartData.subscribe((data) => {
+		// Souscrire aux trades pour calculer le PnL cumulatif en %
+		const unsubscribe = tradeHistory.subscribe((trades) => {
 			if (!chart) return;
 			
-			// 🔥 FIX: Nettoyer le graphique si pas de données
-			if (!data || !data.values || data.values.length === 0) {
+			// 🔥 FIX: Nettoyer le graphique si pas de trades
+			if (!trades || trades.length === 0) {
 				chart.data.labels = [];
 				chart.data.datasets[0].data = [];
 				chart.update('none');
 				return;
 			}
 
-			// 🔥 FIX: Vérifier que les données sont valides
-			if (!Array.isArray(data.values) || !Array.isArray(data.labels)) {
-				console.warn('PnLChart: Données invalides', data);
-				return;
-			}
+			// Trier les trades par date de fermeture
+			const sortedTrades = [...trades].sort((a, b) => {
+				const dateA = new Date(a.closed_at || a.opened_at || 0);
+				const dateB = new Date(b.closed_at || b.opened_at || 0);
+				return dateA - dateB;
+			});
 
-			// Calculer PnL cumulatif
-			let cumulative = 0;
-			const cumulativeData = data.values.map((val) => {
-				const numVal = Number(val) || 0;
-				cumulative += numVal;
-				return cumulative;
+			// Calculer PnL cumulatif en %
+			let cumulativePct = 0;
+			const labels = [];
+			const cumulativeData = [];
+
+			sortedTrades.forEach((trade, index) => {
+				// Utiliser net_pnl_pct si disponible, sinon pnl_pct
+				const pnlPct = trade.net_pnl_pct || trade.pnl_pct || 0;
+				cumulativePct += pnlPct;
+				cumulativeData.push(cumulativePct);
+
+				// Créer label simple avec numéro de trade
+				labels.push(`#${index + 1}`);
 			});
 
 			// Mettre à jour chart
-			chart.data.labels = data.labels;
+			chart.data.labels = labels;
 			chart.data.datasets[0].data = cumulativeData;
 
 			// Couleur dynamique (vert si positif, rouge si négatif)
@@ -175,18 +172,18 @@
 	});
 </script>
 
-<div class="pnl-chart-container" data-debug-name="pnlChartContainer">
+<div class="pnl-percent-chart-container" data-debug-name="pnlPercentChartContainer">
 	<div class="chart-header" data-debug-name="chartHeader">
-		<h3 data-debug-name="chartTitle">📈 PnL Curve</h3>
-		<div class="chart-info" data-debug-name="chartInfo">Evolution du PnL cumulatif</div>
+		<h3 data-debug-name="chartTitle">📊 PnL Curve (%)</h3>
+		<div class="chart-info" data-debug-name="chartInfo">Evolution du % profit net cumulatif</div>
 	</div>
 	<div class="chart-wrapper" data-debug-name="chartWrapper">
-		<canvas bind:this={canvas} data-debug-name="pnlChart.canvas"></canvas>
+		<canvas bind:this={canvas} data-debug-name="pnlPercentChart.canvas"></canvas>
 	</div>
 </div>
 
 <style>
-	.pnl-chart-container {
+	.pnl-percent-chart-container {
 		background: #1e2749;
 		border-radius: 12px;
 		padding: 20px;
@@ -211,14 +208,15 @@
 
 	.chart-wrapper {
 		position: relative;
-		height: 300px;
+		height: 450px;
 		width: 100%;
 	}
 
 	/* Mobile */
 	@media (max-width: 768px) {
 		.chart-wrapper {
-			height: 250px;
+			height: 350px;
 		}
 	}
 </style>
+

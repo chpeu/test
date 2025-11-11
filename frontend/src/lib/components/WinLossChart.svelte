@@ -83,28 +83,28 @@
 	});
 </script>
 
-<div class="winloss-chart-container">
-	<div class="chart-header">
-		<h3>🎯 Win/Loss Distribution</h3>
-		<div class="chart-info">Répartition des résultats</div>
+<div class="winloss-chart-container" data-debug-name="winLossChartContainer">
+	<div class="chart-header" data-debug-name="chartHeader">
+		<h3 data-debug-name="chartTitle">🎯 Win/Loss Distribution</h3>
+		<div class="chart-info" data-debug-name="chartInfo">Répartition des résultats</div>
 	</div>
-	<div class="chart-wrapper">
-		<canvas bind:this={canvas}></canvas>
+	<div class="chart-wrapper" data-debug-name="chartWrapper">
+		<canvas bind:this={canvas} data-debug-name="winLossChart.canvas"></canvas>
 	</div>
 
 	<!-- Stats rapides -->
-	<div class="quick-stats">
-		<div class="stat-item win">
-			<div class="stat-value">{$stats.wins}</div>
-			<div class="stat-label">Wins</div>
+	<div class="quick-stats" data-debug-name="quickStats">
+		<div class="stat-item win" data-debug-name="statItem.wins">
+			<div class="stat-value" data-debug-name="stats.wins">{$stats.wins}</div>
+			<div class="stat-label" data-debug-name="statLabel.wins">Wins</div>
 		</div>
-		<div class="stat-item loss">
-			<div class="stat-value">{$stats.losses}</div>
-			<div class="stat-label">Losses</div>
+		<div class="stat-item loss" data-debug-name="statItem.losses">
+			<div class="stat-value" data-debug-name="stats.losses">{$stats.losses}</div>
+			<div class="stat-label" data-debug-name="statLabel.losses">Losses</div>
 		</div>
-		<div class="stat-item total">
-			<div class="stat-value">{$stats.total_trades}</div>
-			<div class="stat-label">Total</div>
+		<div class="stat-item total" data-debug-name="statItem.total">
+			<div class="stat-value" data-debug-name="stats.total_trades">{$stats.total_trades}</div>
+			<div class="stat-label" data-debug-name="statLabel.total">Total</div>
 		</div>
 	</div>
 </div>

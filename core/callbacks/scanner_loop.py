@@ -231,12 +231,18 @@ async def _scan_top_pairs():
                 if _app_state and _app_state.get('top_pairs'):
                     for pair in _app_state['top_pairs']:
                         if pair.get('symbol') == symbol:
+                            # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
+                            spread_value = pair.get('spread', 0)
+                            # Vérifier si spread est NaN ou invalide
+                            if isinstance(spread_value, float) and (spread_value != spread_value or spread_value == float('nan')):
+                                spread_value = 0
+                            
                             scalability_data = {
-                                'spread_pct': pair.get('spread_pct', 0),
-                                'depth': pair.get('depth', 0),
-                                'balance': pair.get('balance', 1.0),
-                                'bid_vol': pair.get('bid_vol'),
-                                'ask_vol': pair.get('ask_vol')
+                                'spread_pct': spread_value,
+                                'depth': pair.get('bookDepth', 0),
+                                'balance': pair.get('balanceScore', 1.0),
+                                'bid_vol': pair.get('bidVol'),
+                                'ask_vol': pair.get('askVol')
                             }
                             break
 

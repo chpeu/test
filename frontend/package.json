@@ -37,6 +37,7 @@
     "@capacitor/push-notifications": "^7.0.3",
     "@tauri-apps/api": "^2.9.0",
     "chart.js": "^4.5.1",
-    "date-fns": "^3.6.0"
+    "date-fns": "^3.6.0",
+    "xlsx": "^0.18.5"
   }
 }

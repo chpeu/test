@@ -11,8 +11,8 @@
 	}
 </script>
 
-<div class="tabs-container">
-	<div class="tabs-header">
+<div class="tabs-container" data-debug-name="tabsContainer">
+	<div class="tabs-header" data-debug-name="tabsHeader">
 		{#each tabs as tab}
 			<button
 				class="tab-button"
@@ -24,9 +24,10 @@
 				role="tab"
 				aria-selected={activeTab === tab.id}
 				type="button"
+				data-debug-name="tabButton.{tab.id}"
 			>
-				<span class="tab-icon">{tab.icon || ''}</span>
-				<span class="tab-label">{tab.label}</span>
+				<span class="tab-icon" data-debug-name="tabIcon.{tab.id}">{tab.icon || ''}</span>
+				<span class="tab-label" data-debug-name="tabLabel.{tab.id}">{tab.label}</span>
 			</button>
 		{/each}
 	</div>
