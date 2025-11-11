@@ -715,6 +715,23 @@ class AnalyticsDatabase:
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
     
+    def clear_all_trades(self):
+        """Vider tous les trades de la base de données (pour réinitialiser les stats au démarrage)"""
+        cursor = self.conn.cursor()
+        try:
+            # Supprimer tous les trades
+            cursor.execute('DELETE FROM trades')
+            # Supprimer aussi les comportements de trades associés
+            cursor.execute('DELETE FROM trade_behavior')
+            # Supprimer les setups validés associés
+            cursor.execute('DELETE FROM setups_validated WHERE trade_id IS NOT NULL')
+            self.conn.commit()
+            logger.info("✅ Tous les trades ont été supprimés de la base de données")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la suppression des trades: {e}")
+            self.conn.rollback()
+            raise
+    
     # ==================== TRADE BEHAVIOR ====================
     
     def insert_trade_behavior(self, behavior: Dict) -> int:

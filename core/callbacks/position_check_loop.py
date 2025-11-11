@@ -229,7 +229,8 @@ async def _emit_position_update(position, current_price: float):
         # Importer config pour récupérer le mode TP/SL
         from config import TRADING_CONFIG
 
-        # Émettre mise à jour au frontend
+        # 🔥 FIX: Émettre mise à jour au frontend avec toutes les infos
+        import json
         update_data = {
             'symbol': position.symbol,
             'direction': position.direction,
@@ -242,7 +243,10 @@ async def _emit_position_update(position, current_price: float):
             'size': position.size,
             'break_even_set': getattr(position, 'break_even_set', False),
             'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
-            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+            'dynamic_sl': getattr(position, 'dynamic_sl', None),  # 🔥 FIX: Trailing stop
+            'size_remaining': getattr(position, 'size_remaining', None),  # 🔥 FIX: Position restante
+            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None  # 🔥 FIX: Niveaux TP escalier
         }
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
@@ -296,16 +300,17 @@ async def _emit_stats_update():
                 trades = _analytics_db.get_trades(limit=10000)
                 if trades:
                     total = len(trades)
-                    wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
+                    # 🔥 FIX: Utiliser net_pnl_usdt au lieu de pnl_usdt
+                    wins = sum(1 for t in trades if t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) > 0)
                     losses = total - wins
                     
-                    # Calculer PnL total
-                    total_pnl_usdt = sum(t.get('pnl_usdt', 0) for t in trades)
-                    total_pnl_pct = sum(t.get('pnl_pct', 0) for t in trades)
+                    # 🔥 FIX: Calculer PnL total avec net_pnl_usdt et net_pnl_pct
+                    total_pnl_usdt = sum(t.get('net_pnl_usdt', t.get('pnl_usdt', 0)) for t in trades)
+                    total_pnl_pct = sum(t.get('net_pnl_pct', t.get('pnl_pct', 0)) for t in trades)
                     
-                    # Trouver best/worst trade
-                    best_trade = max(trades, key=lambda t: t.get('pnl_usdt', 0), default=None)
-                    worst_trade = min(trades, key=lambda t: t.get('pnl_usdt', 0), default=None)
+                    # 🔥 FIX: Trouver best/worst trade avec net_pnl_usdt
+                    best_trade = max(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
+                    worst_trade = min(trades, key=lambda t: t.get('net_pnl_usdt', t.get('pnl_usdt', 0)), default=None)
                     
                     # Calculer durée moyenne
                     durations = [t.get('duration_seconds', 0) for t in trades if t.get('duration_seconds')]

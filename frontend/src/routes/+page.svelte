@@ -149,16 +149,16 @@
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de position
 		ws.on('position_update', async (data: any) => {
-			const { setPosition } = await import('$lib/stores/position');
+			const { updatePosition } = await import('$lib/stores/position');
 			if (data) {
-				setPosition(data);
+				updatePosition(data);
 			}
 		});
 		
 		ws.on('position_opened', async (data: any) => {
-			const { setPosition } = await import('$lib/stores/position');
+			const { updatePosition } = await import('$lib/stores/position');
 			if (data) {
-				setPosition(data);
+				updatePosition(data);
 			}
 		});
 		
@@ -183,27 +183,39 @@
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour des top pairs
 		ws.on('top_pairs_update', async (data: any) => {
-			// Mettre à jour le store si nécessaire
+			// 🔥 FIX: Mettre à jour le store scanner avec les paires
 			if (data && data.pairs) {
-				// Les top pairs seront affichés dans ScannerPanel
+				const { updateTopPairs } = await import('$lib/stores/scanner');
+				updateTopPairs(data.pairs);
 			}
 		});
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les événements de scan
 		ws.on('scan_started', async (data: any) => {
-			const { setIsScanning } = await import('$lib/stores/scanner');
-			setIsScanning(true);
+			const { startScanning } = await import('$lib/stores/scanner');
+			startScanning();
 		});
 		
 		ws.on('scan_complete', async (data: any) => {
-			const { setIsScanning } = await import('$lib/stores/scanner');
-			setIsScanning(false);
+			const { stopScanning } = await import('$lib/stores/scanner');
+			stopScanning();
+		});
+		
+		// 🔥 FIX: Écouter l'événement reset_session depuis le backend (au démarrage, AVANT le scan)
+		ws.on('reset_session', async (data: any) => {
+			console.log('🔄 Reset session reçu depuis backend:', data);
+			const { clearHistory } = await import('$lib/stores/trades');
+			clearHistory();
+			const { resetSessionStats } = await import('$lib/stores/stats');
+			resetSessionStats();
+			// Note: Les graphiques seront automatiquement réinitialisés via les stores réinitialisés
 		});
 		
 		ws.on('connect', async () => {
 			console.log('✅ WebSocket connecté');
 			backendConnected = true;
 			backendError = '';
+			// 🔥 FIX: Ne plus réinitialiser ici - le backend enverra reset_session au démarrage
 			// 🔥 FIX: Charger l'état initial quand le WebSocket se connecte
 			try {
 				await loadInitialState();
@@ -212,9 +224,15 @@
 			}
 		});
 		
-		ws.on('disconnect', () => {
+		ws.on('disconnect', async () => {
 			console.warn('⚠️ WebSocket déconnecté');
 			backendConnected = false;
+			// 🔥 FIX: Reset trades à la fermeture du backend
+			const { clearHistory } = await import('$lib/stores/trades');
+			clearHistory();
+			// 🔥 FIX: Reset stats session
+			const { resetSessionStats } = await import('$lib/stores/stats');
+			resetSessionStats();
 		});
 	}
 
@@ -226,10 +244,15 @@
 			// L'état sera mis à jour via WebSocket natif ou le composant BotControls
 		}
 		
-		// 🔥 FIX: Nettoyer les données d'anciennes sessions si aucune position active
-		// Les données seront rechargées via WebSocket natif si nécessaire
-		if (!data.active_position && !data.position?.active) {
-			// Nettoyer la position
+		// 🔥 FIX: Mettre à jour la position active si présente
+		if (data.active_position || data.position?.active) {
+			const { updatePosition } = await import('$lib/stores/position');
+			const positionData = data.active_position || data.position;
+			if (positionData) {
+				updatePosition(positionData);
+			}
+		} else {
+			// Nettoyer la position si aucune position active
 			const { clearPosition } = await import('$lib/stores/position');
 			clearPosition();
 		}
@@ -305,8 +328,9 @@
 	}
 
 	// 🔥 FIX: Recharger les données quand on change d'onglet (évite pages vides)
+	// 🔥 FIX: Ne pas recharger si on est dans l'onglet Variables avec des changements non sauvegardés
 	let lastTab = activeTab;
-	$: if (activeTab && activeTab !== lastTab && backendConnected) {
+	$: if (activeTab && activeTab !== lastTab && backendConnected && activeTab !== 'variables') {
 		const currentTab = activeTab;
 		lastTab = currentTab; // Mettre à jour immédiatement pour éviter les boucles
 		// Petit délai pour laisser le DOM se mettre à jour
@@ -317,6 +341,9 @@
 				});
 			}
 		}, 100);
+	} else if (activeTab && activeTab !== lastTab) {
+		// Mettre à jour lastTab même si on ne recharge pas
+		lastTab = activeTab;
 	}
 </script>
 

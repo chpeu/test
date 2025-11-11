@@ -69,6 +69,11 @@
 	let activeSubTab = 'setups';
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
 	
+	// 🔥 NOUVEAU: Système de sauvegarde automatique avec debounce
+	let hasUnsavedChanges = false;
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	const AUTO_SAVE_DELAY = 2500; // 2.5 secondes d'inactivité avant sauvegarde automatique
+	
 	// Variables pour l'onglet "Variables en cours"
 	let completeConfig = null;
 	let loadingCompleteConfig = false;
@@ -280,6 +285,16 @@
 
 	async function loadConfig() {
 		try {
+			// 🔥 FIX: Ne JAMAIS recharger la config si on a des changements non sauvegardés
+			// Cela évite d'écraser les modifications lors des changements d'onglet
+			if (hasUnsavedChanges) {
+				console.log('⚠️ Changements non sauvegardés détectés, chargement de la config ignoré pour préserver les modifications');
+				return;
+			}
+			
+			// 🔥 FIX: Ne pas recharger si on vient de changer d'onglet (évite les rechargements inutiles)
+			// On ne recharge que si explicitement demandé ou au montage initial
+			
 			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket uniquement
 			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
@@ -293,21 +308,45 @@
 			
 			if (stateData && stateData.config) {
 				// 🔥 FIX: Ne PAS écraser avec DEFAULTS, utiliser directement data.config
-				config = {};
-				// D'abord copier les defaults
-				Object.keys(DEFAULTS).forEach(key => {
-					config[key] = DEFAULTS[key];
-				});
+				// 🔥 NOUVEAU: Annuler le timer de debounce si en cours (on charge depuis le backend)
+				if (debounceTimer) {
+					clearTimeout(debounceTimer);
+					debounceTimer = null;
+				}
+				hasUnsavedChanges = false; // Marquer comme sauvegardé (on charge depuis le backend)
+				
+				// 🔥 FIX: Créer un nouvel objet pour forcer la réactivité Svelte et éviter les changements d'état non désirés
+				// IMPORTANT: Copier DEFAULTS en profondeur pour les listes/objets (technical_patterns, candlestick_patterns)
+				const newConfig = JSON.parse(JSON.stringify(DEFAULTS));
 				// Ensuite écraser avec les valeurs du backend
 				Object.keys(stateData.config).forEach(key => {
 					if (stateData.config[key] !== undefined && stateData.config[key] !== null) {
-						config[key] = stateData.config[key];
+						// Pour les listes, copier en profondeur
+						if (Array.isArray(stateData.config[key])) {
+							newConfig[key] = [...stateData.config[key]];
+						} else if (typeof stateData.config[key] === 'object' && stateData.config[key] !== null) {
+							newConfig[key] = { ...stateData.config[key] };
+						} else {
+							// 🔥 FIX: Pour les booléens (checkboxes), s'assurer qu'ils sont bien convertis
+							if (typeof stateData.config[key] === 'boolean') {
+								newConfig[key] = stateData.config[key];
+							} else {
+								newConfig[key] = stateData.config[key];
+							}
+						}
 					}
 				});
+				config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 				viewMode = config.tp_sl_mode || 'FIXE';
 				console.log('✅ Config chargée depuis backend via WebSocket:', config);
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
+				// 🔥 NOUVEAU: Annuler le timer de debounce si en cours
+				if (debounceTimer) {
+					clearTimeout(debounceTimer);
+					debounceTimer = null;
+				}
+				hasUnsavedChanges = false; // Pas de changements non sauvegardés au chargement
 				config = { ...DEFAULTS };
 				viewMode = 'FIXE';
 			}
@@ -318,17 +357,33 @@
 		}
 	}
 
+	// 🔥 MODIFIÉ: Sauvegarde manuelle (bouton Save) - annule le debounce et sauvegarde immédiatement
 	async function saveConfig() {
+		// Annuler le timer de debounce si en cours
+		if (debounceTimer) {
+			clearTimeout(debounceTimer);
+			debounceTimer = null;
+		}
+		
+		// Si pas de changements, ne rien faire
+		if (!hasUnsavedChanges && !loading) {
+			saveMessage = 'ℹ️ Aucun changement à sauvegarder';
+			setTimeout(() => (saveMessage = ''), 2000);
+			return;
+		}
+		
 		loading = true;
 		saveMessage = '';
+		
 		try {
-		// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-		const result = await sendCommandViaWS('update_config', config);
-				
+			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
+			const result = await sendCommandViaWS('update_config', config);
+			
 			// 🔥 MIGRATION COMPLÈTE: Résultat de la commande WebSocket
 			if (result && result.updated) {
 				const updatedCount = Object.keys(result.updated).length;
 				saveMessage = `✅ ${updatedCount} paramètre(s) sauvegardé(s) via WebSocket`;
+				hasUnsavedChanges = false; // Marquer comme sauvegardé
 				console.log('✅ Paramètres mis à jour via WebSocket:', result.updated);
 				
 				// Vérifier que min_score_required est bien dans les updates
@@ -337,13 +392,25 @@
 				}
 				
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde manuelle
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
 			} else {
 				saveMessage = `✅ Configuration sauvegardée via WebSocket`;
+				hasUnsavedChanges = false;
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde manuelle
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
 			}
 		} catch (err) {
 			console.error('❌ Error saving config via WebSocket:', err);
 			saveMessage = `❌ Erreur: ${err.message || 'Impossible de sauvegarder. Vérifiez la connexion WebSocket.'}`;
+			// Ne pas marquer comme sauvegardé en cas d'erreur
 			setTimeout(() => (saveMessage = ''), 5000);
 		} finally {
 			loading = false;
@@ -353,17 +420,85 @@
 	function resetDefaults() {
 		if (confirm('Réinitialiser toutes les variables aux valeurs par défaut ?')) {
 			config = { ...DEFAULTS };
-			logConfigChange('ALL', 'Reset to defaults');
+			// 🔥 MODIFIÉ: Utiliser triggerAutoSave au lieu de logConfigChange
+			triggerAutoSave('ALL', 'Reset to defaults');
 		}
 	}
 
-	function resetVariable(key) {
+	function resetVariable(key: string) {
 		const oldValue = config[key];
 		config[key] = DEFAULTS[key];
-		logConfigChange(key, `${oldValue} → ${DEFAULTS[key]}`);
+		// 🔥 MODIFIÉ: Utiliser triggerAutoSave au lieu de logConfigChange
+		triggerAutoSave(key, `${oldValue} → ${DEFAULTS[key]}`);
 	}
 
-	async function logConfigChange(key, change) {
+	// 🔥 NOUVEAU: Fonction générique pour déclencher la sauvegarde automatique avec debounce
+	function triggerAutoSave(key: string, change: any) {
+		// Marquer qu'il y a des changements non sauvegardés
+		hasUnsavedChanges = true;
+		
+		// Logger le changement (pour historique)
+		logConfigChange(key, change).catch(err => {
+			console.error('❌ Error logging config change:', err);
+		});
+		
+		// Annuler le timer précédent s'il existe
+		if (debounceTimer) {
+			clearTimeout(debounceTimer);
+		}
+		
+		// Déclencher un nouveau timer pour la sauvegarde automatique
+		debounceTimer = setTimeout(async () => {
+			await autoSaveConfig();
+		}, AUTO_SAVE_DELAY);
+	}
+	
+	// 🔥 NOUVEAU: Sauvegarde automatique (appelée par le debounce)
+	async function autoSaveConfig() {
+		if (loading || !hasUnsavedChanges) {
+			return; // Déjà en cours de sauvegarde ou rien à sauvegarder
+		}
+		
+		loading = true;
+		saveMessage = '';
+		
+		try {
+			const result = await sendCommandViaWS('update_config', config);
+			
+			if (result && result.updated) {
+				const updatedCount = Object.keys(result.updated).length;
+				saveMessage = `✅ ${updatedCount} paramètre(s) sauvegardé(s) automatiquement`;
+				hasUnsavedChanges = false; // Marquer comme sauvegardé
+				console.log('✅ Paramètres sauvegardés automatiquement via WebSocket:', result.updated);
+				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
+			} else {
+				saveMessage = `✅ Configuration sauvegardée automatiquement`;
+				hasUnsavedChanges = false;
+				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
+				if (activeSubTab === 'current') {
+					await loadCompleteConfig();
+				}
+			}
+		} catch (err) {
+			console.error('❌ Error auto-saving config via WebSocket:', err);
+			saveMessage = `❌ Erreur sauvegarde automatique: ${err.message || 'Vérifiez la connexion WebSocket.'}`;
+			// Ne pas marquer comme sauvegardé en cas d'erreur
+			setTimeout(() => (saveMessage = ''), 5000);
+		} finally {
+			loading = false;
+			debounceTimer = null;
+		}
+	}
+	
+	// Fonction pour logger les changements (pour historique backend)
+	async function logConfigChange(key: string, change: any) {
 		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif uniquement
 		try {
 			await sendCommandViaWS('log_config', {
@@ -393,17 +528,62 @@
 				console.log('🔄 Config mise à jour depuis backend:', data.updated);
 				// Synchroniser la config locale avec les changements du backend
 				if (data.updated) {
-					Object.keys(data.updated).forEach(key => {
-						if (key in config) {
-							config[key] = data.updated[key];
+					// 🔥 FIX: Ne pas déclencher le debounce pour les mises à jour depuis le backend
+					// Annuler le timer de debounce si en cours (le backend a déjà sauvegardé)
+					if (debounceTimer) {
+						clearTimeout(debounceTimer);
+						debounceTimer = null;
+					}
+					hasUnsavedChanges = false; // Marquer comme sauvegardé (le backend a mis à jour)
+					
+					// 🔥 FIX: Créer un NOUVEL objet pour forcer la réactivité Svelte et éviter les changements d'état non désirés
+					// IMPORTANT: Copier DEFAULTS en profondeur pour les listes/objets
+					const newConfig = JSON.parse(JSON.stringify(DEFAULTS));
+					// D'abord copier la config actuelle
+					Object.keys(config).forEach(key => {
+						if (config[key] !== undefined && config[key] !== null) {
+							if (Array.isArray(config[key])) {
+								newConfig[key] = [...config[key]];
+							} else if (typeof config[key] === 'object' && config[key] !== null) {
+								newConfig[key] = { ...config[key] };
+							} else {
+								newConfig[key] = config[key];
+							}
 						}
 					});
+					// Ensuite appliquer les mises à jour du backend
+					Object.keys(data.updated).forEach(key => {
+						if (key in newConfig) {
+							if (Array.isArray(data.updated[key])) {
+								newConfig[key] = [...data.updated[key]];
+							} else if (typeof data.updated[key] === 'object' && data.updated[key] !== null) {
+								newConfig[key] = { ...data.updated[key] };
+							} else {
+								// 🔥 FIX: Pour les booléens (checkboxes), s'assurer qu'ils sont bien convertis
+								if (typeof data.updated[key] === 'boolean') {
+									newConfig[key] = data.updated[key];
+								} else {
+									newConfig[key] = data.updated[key];
+								}
+							}
+						}
+					});
+					config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
+					
 					if (data.updated.tp_sl_mode) {
 						viewMode = data.updated.tp_sl_mode;
 					}
 				}
 			});
 		}
+		
+		// 🔥 NOUVEAU: Nettoyer le timer quand le composant est détruit
+		return () => {
+			if (debounceTimer) {
+				clearTimeout(debounceTimer);
+				debounceTimer = null;
+			}
+		};
 	});
 </script>
 
@@ -411,8 +591,13 @@
 	<div class="panel-header">
 		<h2>🎯 Variables de Trading</h2>
 		<div class="header-actions">
+			{#if hasUnsavedChanges}
+				<span class="unsaved-indicator" title="Modifications non sauvegardées - Sauvegarde automatique dans quelques secondes...">
+					⚠️ Non sauvegardé
+				</span>
+			{/if}
 			<button class="btn-secondary" on:click={resetDefaults}>🔄 Reset All</button>
-			<button class="btn-primary" on:click={saveConfig} disabled={loading}>
+			<button class="btn-primary" on:click={saveConfig} disabled={loading} title={hasUnsavedChanges ? 'Sauvegarder immédiatement (annule la sauvegarde automatique)' : 'Forcer la sauvegarde'}>
 				{loading ? '⏳ Saving...' : '💾 Save'}
 			</button>
 		</div>
@@ -527,6 +712,8 @@
 				</div>
 
 				<div class="variables-list">
+					<!-- 🔥 FIX: Toutes les cases de patterns utilisent le même système de rafraîchissement automatique que confluence -->
+					<!-- Mécanisme: bind:checked + triggerAutoSave + config_updated (WebSocket) -->
 					<!-- 1. Breakout Pattern -->
 					<div class="pattern-group">
 						<div class="pattern-header">
@@ -536,7 +723,7 @@
 										id="use-breakout"
 										type="checkbox"
 										bind:checked={config.use_breakout}
-										on:change={() => logConfigChange('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé')}
+										on:change={() => triggerAutoSave('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">🔼 Breakout Pattern</span>
 									<span class="var-desc">Cassure de niveaux clés (support/résistance)</span>
@@ -563,7 +750,7 @@
 											min="0"
 											max="1"
 											bind:value={config.breakout_threshold}
-											on:change={() => logConfigChange('breakout_threshold', config.breakout_threshold.toFixed(2))}
+											on:change={() => triggerAutoSave('breakout_threshold', config.breakout_threshold.toFixed(2))}
 										/>
 										<span class="slider-value">{Number(config.breakout_threshold).toFixed(2)}</span>
 									</div>
@@ -581,7 +768,7 @@
 										id="use-snr"
 										type="checkbox"
 										bind:checked={config.use_snr}
-										on:change={() => logConfigChange('use_snr', config.use_snr ? 'Activé' : 'Désactivé')}
+										on:change={() => triggerAutoSave('use_snr', config.use_snr ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">📍 SNR Pattern</span>
 									<span class="var-desc">Rebond sur support/résistance</span>
@@ -608,7 +795,7 @@
 											min="0"
 											max="1"
 											bind:value={config.snr_threshold}
-											on:change={() => logConfigChange('snr_threshold', config.snr_threshold.toFixed(2))}
+											on:change={() => triggerAutoSave('snr_threshold', config.snr_threshold.toFixed(2))}
 										/>
 										<span class="slider-value">{Number(config.snr_threshold).toFixed(2)}</span>
 									</div>
@@ -626,7 +813,7 @@
 										id="use-wick"
 										type="checkbox"
 										bind:checked={config.use_wick}
-										on:change={() => logConfigChange('use_wick', config.use_wick ? 'Activé' : 'Désactivé')}
+										on:change={() => triggerAutoSave('use_wick', config.use_wick ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">📏 Wick Pattern</span>
 									<span class="var-desc">Rejet de prix via longues mèches</span>
@@ -653,7 +840,7 @@
 											min="0"
 											max="10"
 											bind:value={config.wick_ratio_max}
-											on:change={() => logConfigChange('wick_ratio_max', config.wick_ratio_max.toFixed(1))}
+											on:change={() => triggerAutoSave('wick_ratio_max', config.wick_ratio_max.toFixed(1))}
 										/>
 										<span class="slider-value">{Number(config.wick_ratio_max).toFixed(1)}</span>
 									</div>
@@ -671,7 +858,7 @@
 										id="use-divergence"
 										type="checkbox"
 										bind:checked={config.use_divergence}
-										on:change={() => logConfigChange('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé')}
+										on:change={() => triggerAutoSave('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé')}
 									/>
 									<span class="var-name">🔀 Divergence Pattern</span>
 									<span class="var-desc">Divergence DI+ vs DI-</span>
@@ -698,7 +885,7 @@
 											min="0"
 											max="20"
 											bind:value={config.di_gap_min}
-											on:change={() => logConfigChange('di_gap_min', config.di_gap_min.toFixed(1))}
+											on:change={() => triggerAutoSave('di_gap_min', config.di_gap_min.toFixed(1))}
 										/>
 										<span class="slider-value">{Number(config.di_gap_min).toFixed(1)}</span>
 									</div>
@@ -720,7 +907,7 @@
 											min="0"
 											max="100"
 											bind:value={config.di_gap_adx_threshold}
-											on:change={() => logConfigChange('di_gap_adx_threshold', config.di_gap_adx_threshold.toFixed(0))}
+											on:change={() => triggerAutoSave('di_gap_adx_threshold', config.di_gap_adx_threshold.toFixed(0))}
 										/>
 										<span class="slider-value">{Number(config.di_gap_adx_threshold).toFixed(0)}</span>
 									</div>
@@ -736,6 +923,8 @@
 				<h3>🕯️ Patterns de Bougies</h3>
 				<p class="section-subtitle">Patterns de chandeliers détectés automatiquement (1 à 3 bougies)</p>
 
+				<!-- 🔥 FIX: Toutes les cases de bougies utilisent le même système de rafraîchissement automatique que confluence -->
+				<!-- Mécanisme: bind:checked + triggerAutoSave + config_updated (WebSocket) -->
 				<div class="variables-list candlestick-patterns">
 					<div class="variable-item checkbox">
 						<label for="use-engulfing">
@@ -743,7 +932,7 @@
 								id="use-engulfing"
 								type="checkbox"
 								bind:checked={config.use_engulfing}
-								on:change={() => logConfigChange('use_engulfing', config.use_engulfing ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_engulfing', config.use_engulfing ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Engulfing</span>
 							<span class="var-desc">Bougie engloutissante (bullish/bearish)</span>
@@ -757,7 +946,7 @@
 								id="use-hammer"
 								type="checkbox"
 								bind:checked={config.use_hammer}
-								on:change={() => logConfigChange('use_hammer', config.use_hammer ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_hammer', config.use_hammer ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Hammer</span>
 							<span class="var-desc">Marteau (reversal haussier)</span>
@@ -771,7 +960,7 @@
 								id="use-shooting-star"
 								type="checkbox"
 								bind:checked={config.use_shooting_star}
-								on:change={() => logConfigChange('use_shooting_star', config.use_shooting_star ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_shooting_star', config.use_shooting_star ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Shooting Star</span>
 							<span class="var-desc">Étoile filante (reversal baissier)</span>
@@ -785,7 +974,7 @@
 								id="use-doji"
 								type="checkbox"
 								bind:checked={config.use_doji}
-								on:change={() => logConfigChange('use_doji', config.use_doji ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_doji', config.use_doji ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Doji</span>
 							<span class="var-desc">Doji, Dragonfly, Gravestone (indécision)</span>
@@ -799,7 +988,7 @@
 								id="use-marubozu"
 								type="checkbox"
 								bind:checked={config.use_marubozu}
-								on:change={() => logConfigChange('use_marubozu', config.use_marubozu ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_marubozu', config.use_marubozu ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Marubozu</span>
 							<span class="var-desc">Bougie pleine (momentum fort)</span>
@@ -813,7 +1002,7 @@
 								id="use-morning-star"
 								type="checkbox"
 								bind:checked={config.use_morning_star}
-								on:change={() => logConfigChange('use_morning_star', config.use_morning_star ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_morning_star', config.use_morning_star ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Morning Star</span>
 							<span class="var-desc">Étoile du matin (3 bougies, reversal haussier)</span>
@@ -827,7 +1016,7 @@
 								id="use-evening-star"
 								type="checkbox"
 								bind:checked={config.use_evening_star}
-								on:change={() => logConfigChange('use_evening_star', config.use_evening_star ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_evening_star', config.use_evening_star ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Evening Star</span>
 							<span class="var-desc">Étoile du soir (3 bougies, reversal baissier)</span>
@@ -849,7 +1038,7 @@
 								id="use-confluence"
 								type="checkbox"
 								bind:checked={config.use_confluence}
-								on:change={() => logConfigChange('use_confluence', config.use_confluence ? 'Activé' : 'Désactivé')}
+								on:change={() => triggerAutoSave('use_confluence', config.use_confluence ? 'Activé' : 'Désactivé')}
 							/>
 							<span class="var-name">Use Confluence</span>
 							<span class="var-desc">Exiger confirmation sur TOUS les timeframes (1m + 5m)</span>
@@ -873,7 +1062,7 @@
 								min="0.5"
 								max="2"
 								bind:value={config.volume_multiplier}
-								on:change={() => logConfigChange('volume_multiplier', config.volume_multiplier.toFixed(2))}
+								on:change={() => triggerAutoSave('volume_multiplier', config.volume_multiplier.toFixed(2))}
 							/>
 							<span class="slider-value">{Number(config.volume_multiplier).toFixed(2)}×</span>
 						</div>
@@ -895,7 +1084,7 @@
 								min="0"
 								max="20"
 								bind:value={config.min_score_required}
-								on:change={() => logConfigChange('min_score_required', config.min_score_required.toFixed(1))}
+								on:change={() => triggerAutoSave('min_score_required', config.min_score_required.toFixed(1))}
 							/>
 							<span class="slider-value">{Number(config.min_score_required).toFixed(1)} pts</span>
 						</div>
@@ -920,7 +1109,7 @@
 						<select
 							id="trend-timeframe"
 							bind:value={config.trend_timeframe}
-							on:change={() => logConfigChange('trend_timeframe', config.trend_timeframe)}
+							on:change={() => triggerAutoSave('trend_timeframe', config.trend_timeframe)}
 						>
 							<option value="5m">5 minutes</option>
 							<option value="15m">15 minutes</option>
@@ -945,7 +1134,7 @@
 								min="0.01"
 								max="1"
 								bind:value={config.optimal_atr_min_1m}
-								on:change={() => logConfigChange('optimal_atr_min_1m', config.optimal_atr_min_1m.toFixed(2) + '%')}
+								on:change={() => triggerAutoSave('optimal_atr_min_1m', config.optimal_atr_min_1m.toFixed(2) + '%')}
 							/>
 							<span class="slider-value">{Number(config.optimal_atr_min_1m).toFixed(2)}%</span>
 						</div>
@@ -967,7 +1156,7 @@
 								min="0.1"
 								max="5"
 								bind:value={config.optimal_atr_max_1m}
-								on:change={() => logConfigChange('optimal_atr_max_1m', config.optimal_atr_max_1m.toFixed(2) + '%')}
+								on:change={() => triggerAutoSave('optimal_atr_max_1m', config.optimal_atr_max_1m.toFixed(2) + '%')}
 							/>
 							<span class="slider-value">{Number(config.optimal_atr_max_1m).toFixed(2)}%</span>
 						</div>
@@ -989,7 +1178,7 @@
 								min="0.01"
 								max="1"
 								bind:value={config.optimal_atr_min_5m}
-								on:change={() => logConfigChange('optimal_atr_min_5m', config.optimal_atr_min_5m.toFixed(2) + '%')}
+								on:change={() => triggerAutoSave('optimal_atr_min_5m', config.optimal_atr_min_5m.toFixed(2) + '%')}
 							/>
 							<span class="slider-value">{Number(config.optimal_atr_min_5m).toFixed(2)}%</span>
 						</div>
@@ -1011,7 +1200,7 @@
 								min="0.1"
 								max="5"
 								bind:value={config.optimal_atr_max_5m}
-								on:change={() => logConfigChange('optimal_atr_max_5m', config.optimal_atr_max_5m.toFixed(2) + '%')}
+								on:change={() => triggerAutoSave('optimal_atr_max_5m', config.optimal_atr_max_5m.toFixed(2) + '%')}
 							/>
 							<span class="slider-value">{Number(config.optimal_atr_max_5m).toFixed(2)}%</span>
 						</div>
@@ -1040,7 +1229,7 @@
 								min="100"
 								max="100000"
 								bind:value={config.account_size}
-								on:change={() => logConfigChange('account_size', `${config.account_size} USDT`)}
+								on:change={() => triggerAutoSave('account_size', `${config.account_size} USDT`)}
 							/>
 							<span class="slider-value">{Number(config.account_size).toFixed(0)} USDT</span>
 						</div>
@@ -1062,7 +1251,7 @@
 								min="0.1"
 								max="10"
 								bind:value={config.risk_per_trade}
-								on:change={() => logConfigChange('risk_per_trade', `${config.risk_per_trade.toFixed(1)}%`)}
+								on:change={() => triggerAutoSave('risk_per_trade', `${config.risk_per_trade.toFixed(1)}%`)}
 							/>
 							<span class="slider-value">{Number(config.risk_per_trade).toFixed(1)}%</span>
 						</div>
@@ -1121,7 +1310,7 @@
 										min="0.05"
 										max="5"
 										bind:value={config.tp_percent}
-										on:change={() => logConfigChange('tp_percent', `${config.tp_percent.toFixed(2)}%`)}
+										on:change={() => triggerAutoSave('tp_percent', `${config.tp_percent.toFixed(2)}%`)}
 									/>
 									<span class="slider-value">{Number(config.tp_percent).toFixed(2)}%</span>
 								</div>
@@ -1143,7 +1332,7 @@
 										min="0.05"
 										max="5"
 										bind:value={config.sl_percent}
-										on:change={() => logConfigChange('sl_percent', `${config.sl_percent.toFixed(2)}%`)}
+										on:change={() => triggerAutoSave('sl_percent', `${config.sl_percent.toFixed(2)}%`)}
 									/>
 									<span class="slider-value">{Number(config.sl_percent).toFixed(2)}%</span>
 								</div>
@@ -1165,7 +1354,7 @@
 										min="0"
 										max="100"
 										bind:value={config.partial_tp_percent}
-										on:change={() => logConfigChange('partial_tp_percent', `${config.partial_tp_percent}%`)}
+										on:change={() => triggerAutoSave('partial_tp_percent', `${config.partial_tp_percent}%`)}
 									/>
 									<span class="slider-value">{Number(config.partial_tp_percent).toFixed(0)}%</span>
 								</div>
@@ -1192,7 +1381,7 @@
 										min="0.5"
 										max="5"
 										bind:value={config.atr_mult_tp}
-										on:change={() => logConfigChange('atr_mult_tp', `${config.atr_mult_tp.toFixed(1)}x`)}
+										on:change={() => triggerAutoSave('atr_mult_tp', `${config.atr_mult_tp.toFixed(1)}x`)}
 									/>
 									<span class="slider-value">{Number(config.atr_mult_tp).toFixed(1)}x ATR</span>
 								</div>
@@ -1214,7 +1403,7 @@
 										min="0.5"
 										max="3"
 										bind:value={config.atr_mult_sl}
-										on:change={() => logConfigChange('atr_mult_sl', `${config.atr_mult_sl.toFixed(1)}x`)}
+										on:change={() => triggerAutoSave('atr_mult_sl', `${config.atr_mult_sl.toFixed(1)}x`)}
 									/>
 									<span class="slider-value">{Number(config.atr_mult_sl).toFixed(1)}x ATR</span>
 								</div>
@@ -1236,7 +1425,7 @@
 										min="0.05"
 										max="1"
 										bind:value={config.atr_min}
-										on:change={() => logConfigChange('atr_min', `${config.atr_min.toFixed(2)}%`)}
+										on:change={() => triggerAutoSave('atr_min', `${config.atr_min.toFixed(2)}%`)}
 									/>
 									<span class="slider-value">{Number(config.atr_min).toFixed(2)}%</span>
 								</div>
@@ -1258,7 +1447,7 @@
 										min="0.5"
 										max="5"
 										bind:value={config.atr_max}
-										on:change={() => logConfigChange('atr_max', `${config.atr_max.toFixed(2)}%`)}
+										on:change={() => triggerAutoSave('atr_max', `${config.atr_max.toFixed(2)}%`)}
 									/>
 									<span class="slider-value">{Number(config.atr_max).toFixed(2)}%</span>
 								</div>
@@ -1514,7 +1703,7 @@
 									id="trailing-enabled"
 									type="checkbox"
 									bind:checked={config.trailing_enabled}
-									on:change={() => logConfigChange('trailing_enabled', config.trailing_enabled ? 'Activé' : 'Désactivé')}
+									on:change={() => triggerAutoSave('trailing_enabled', config.trailing_enabled ? 'Activé' : 'Désactivé')}
 								/>
 								<span class="var-name">Trailing Stop Enabled</span>
 								<span class="var-desc">Activer le trailing stop adaptatif</span>
@@ -1539,7 +1728,7 @@
 								min="0.1"
 								max="3"
 								bind:value={config.trailing_trigger_pnl}
-								on:change={() => logConfigChange('trailing_trigger_pnl', `${config.trailing_trigger_pnl.toFixed(2)}%`)}
+								on:change={() => triggerAutoSave('trailing_trigger_pnl', `${config.trailing_trigger_pnl.toFixed(2)}%`)}
 							/>
 							<span class="slider-value">{Number(config.trailing_trigger_pnl).toFixed(2)}%</span>
 						</div>
@@ -1561,7 +1750,7 @@
 								min="0.1"
 								max="2"
 								bind:value={config.trailing_atr_multiplier}
-								on:change={() => logConfigChange('trailing_atr_multiplier', `${config.trailing_atr_multiplier.toFixed(1)}x`)}
+								on:change={() => triggerAutoSave('trailing_atr_multiplier', `${config.trailing_atr_multiplier.toFixed(1)}x`)}
 							/>
 							<span class="slider-value">{Number(config.trailing_atr_multiplier).toFixed(1)}x</span>
 						</div>
@@ -1583,7 +1772,7 @@
 								min="0.05"
 								max="0.5"
 								bind:value={config.trailing_min_distance}
-								on:change={() => logConfigChange('trailing_min_distance', `${config.trailing_min_distance.toFixed(2)}%`)}
+								on:change={() => triggerAutoSave('trailing_min_distance', `${config.trailing_min_distance.toFixed(2)}%`)}
 							/>
 							<span class="slider-value">{Number(config.trailing_min_distance).toFixed(2)}%</span>
 						</div>
@@ -1605,7 +1794,7 @@
 								min="0.1"
 								max="2"
 								bind:value={config.trailing_max_distance}
-								on:change={() => logConfigChange('trailing_max_distance', `${config.trailing_max_distance.toFixed(2)}%`)}
+								on:change={() => triggerAutoSave('trailing_max_distance', `${config.trailing_max_distance.toFixed(2)}%`)}
 							/>
 							<span class="slider-value">{Number(config.trailing_max_distance).toFixed(2)}%</span>
 						</div>
@@ -1788,6 +1977,28 @@
 	.header-actions {
 		display: flex;
 		gap: 10px;
+		align-items: center;
+	}
+
+	.unsaved-indicator {
+		padding: 8px 16px;
+		background: rgba(255, 193, 7, 0.2);
+		border: 1px solid rgba(255, 193, 7, 0.5);
+		border-radius: 6px;
+		color: #ffc107;
+		font-size: 13px;
+		font-weight: bold;
+		animation: pulse 2s infinite;
+		cursor: help;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.7;
+		}
 	}
 
 	.btn-primary,

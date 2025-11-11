@@ -9,14 +9,35 @@
 	let autoScroll = true;
 	let autoScrollErrors = true;
 	let autoScrollConfig = true;
+	let showErrorPopup = false;
+	let lastErrorId = null;
 
-	// Séparer les erreurs/warnings des autres logs
+	// 🔥 FIX: Erreurs et warnings pour la section "Erreurs & Warnings"
 	const errorLogs = derived(recentLogs, $logs =>
-		$logs.filter(log => log.level === 'ERROR' || log.level === 'WARNING' || log.level === 'CRITICAL')
+		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL' || log.level === 'WARNING')
 	);
 
+	// 🔥 FIX: Erreurs critiques uniquement (pour le popup)
+	const criticalErrorLogs = derived(recentLogs, $logs =>
+		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL')
+	);
+
+	// 🔥 FIX: Détecter les nouvelles erreurs CRITIQUES uniquement pour afficher le popup (pas les warnings)
+	$: if ($criticalErrorLogs.length > 0) {
+		const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1];
+		if (latestError && latestError.id !== lastErrorId) {
+			lastErrorId = latestError.id;
+			showErrorPopup = true;
+		}
+	}
+
+	function acknowledgeError() {
+		showErrorPopup = false;
+	}
+
+	// 🔥 FIX: Tous les logs backend (INFO, DEBUG, etc.) avec couleurs (exclure ERROR, CRITICAL et WARNING)
 	const regularLogs = derived(recentLogs, $logs =>
-		$logs.filter(log => log.level !== 'ERROR' && log.level !== 'WARNING' && log.level !== 'CRITICAL')
+		$logs.filter(log => log.level !== 'ERROR' && log.level !== 'CRITICAL' && log.level !== 'WARNING')
 	);
 
 	// Auto-scroll to bottom when new logs arrive
@@ -74,8 +95,49 @@
 		return text.replace(/\x1b\[\d+m/g, '').replace(/\[\d+m/g, '');
 	}
 
+	// 🔥 FIX: Convertir les codes ANSI en spans HTML avec couleurs
+	function ansiToHtml(text) {
+		if (!text) return '';
+		// Codes ANSI de base
+		const ansiCodes = {
+			'\x1b[31m': '<span style="color: #ff4444;">',  // RED
+			'\x1b[91m': '<span style="color: #ff6666; font-weight: bold;">',  // BRIGHT RED
+			'\x1b[33m': '<span style="color: #ffaa00;">',  // YELLOW
+			'\x1b[32m': '<span style="color: #00ff88;">',  // GREEN
+			'\x1b[36m': '<span style="color: #00aaff;">',  // CYAN
+			'\x1b[0m': '</span>',  // RESET
+			'\x1b[1m': '<span style="font-weight: bold;">',  // BOLD
+		};
+		
+		let html = text;
+		// Remplacer les codes ANSI par des spans HTML
+		html = html.replace(/\x1b\[(\d+)m/g, (match, code) => {
+			const codeNum = parseInt(code);
+			if (codeNum === 0) return '</span>';
+			if (codeNum === 1) return '<span style="font-weight: bold;">';
+			if (codeNum === 31) return '<span style="color: #ff4444;">';
+			if (codeNum === 91) return '<span style="color: #ff6666; font-weight: bold;">';
+			if (codeNum === 33) return '<span style="color: #ffaa00;">';
+			if (codeNum === 32) return '<span style="color: #00ff88;">';
+			if (codeNum === 36) return '<span style="color: #00aaff;">';
+			return '';
+		});
+		
+		return html;
+	}
+
+	// 🔥 FIX: Extraire les emojis et couleurs des logs backend
+	function parseLogMessage(message) {
+		if (!message) return { icon: '', text: message };
+		// Extraire les emojis au début du message
+		const emojiMatch = message.match(/^([\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}])+/u);
+		const icon = emojiMatch ? emojiMatch[0] : '';
+		const text = emojiMatch ? message.slice(emojiMatch[0].length).trim() : message;
+		return { icon, text };
+	}
+
 	function exportLogs() {
-		const allLogs = [...$errorLogs, ...$regularLogs, ...$recentConfigLogs];
+		const allLogs = [...$errorLogs, ...$regularLogs];
 		const csv = [
 			['Timestamp', 'Level', 'Message'].join(','),
 			...allLogs.map(log => [
@@ -94,6 +156,26 @@
 		URL.revokeObjectURL(url);
 	}
 </script>
+
+<!-- 🔥 FIX: Popup d'erreur clignotant (seulement pour ERROR et CRITICAL) -->
+{#if showErrorPopup && $criticalErrorLogs.length > 0}
+	{@const latestError = $criticalErrorLogs[$criticalErrorLogs.length - 1]}
+	<div class="error-popup" class:blinking={showErrorPopup}>
+		<div class="error-popup-content">
+			<div class="error-popup-header">
+				<span class="error-icon">🚨</span>
+				<h3>Erreur détectée</h3>
+				<button class="close-popup-btn" on:click={acknowledgeError}>✕</button>
+			</div>
+			<div class="error-popup-message">
+				<span class="error-time">{formatTime(latestError.timestamp)}</span>
+				<span class="error-level">[{latestError.level}]</span>
+				<span class="error-text">{stripAnsiCodes(latestError.message)}</span>
+			</div>
+			<button class="acknowledge-btn" on:click={acknowledgeError}>Acquitter</button>
+		</div>
+	</div>
+{/if}
 
 <div class="log-viewer">
 	<!-- Section Erreurs/Warnings -->
@@ -132,41 +214,7 @@
 		</div>
 	</div>
 
-	<!-- Section Config Changes -->
-	<div class="config-section">
-		<div class="log-header">
-			<h3>⚙️ Modifications Config</h3>
-			<div class="config-badge">{$configChangesCount} changements</div>
-		</div>
-
-		<div class="log-container config" bind:this={configContainer} on:scroll={() => handleScroll(configContainer, 'config')}>
-			{#if $recentConfigLogs.length === 0}
-				<div class="no-logs">
-					<div class="no-logs-icon">⚙️</div>
-					<div class="no-logs-text">Aucune modification</div>
-				</div>
-			{:else}
-				{#each $recentConfigLogs as log (log.id)}
-					<div class="config-entry">
-						<span class="config-time">{formatTime(log.timestamp)}</span>
-						<span class="config-key">{log.key}</span>
-						<span class="config-arrow">→</span>
-						<span class="config-change">{log.change}</span>
-					</div>
-				{/each}
-			{/if}
-		</div>
-
-		<div class="log-footer">
-			<label class="auto-scroll-toggle">
-				<input type="checkbox" bind:checked={autoScrollConfig} />
-				<span>Auto-scroll</span>
-			</label>
-			<div class="log-count">{$configChangesCount} modifications</div>
-		</div>
-	</div>
-
-	<!-- Section Logs Standards -->
+	<!-- Section Logs Backend -->
 	<div class="logs-section">
 		<div class="log-header">
 			<h3>📝 Logs Backend</h3>
@@ -181,10 +229,17 @@
 				</div>
 			{:else}
 				{#each $regularLogs as log (log.id)}
+					{@const parsed = parseLogMessage(log.message || '')}
+					{@const hasAnsi = log.message && (log.message.includes('\x1b[') || log.message.includes('[32m'))}
 					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}">
 						<span class="log-time">{formatTime(log.timestamp)}</span>
-						<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
-						<span class="log-message">{stripAnsiCodes(log.message)}</span>
+						<span class="log-icon">{parsed.icon}</span>
+					<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
+					{#if hasAnsi}
+						<span class="log-message">{@html ansiToHtml(log.message)}</span>
+					{:else}
+						<span class="log-message">{parsed.text || log.message}</span>
+					{/if}
 					</div>
 				{/each}
 			{/if}
@@ -208,7 +263,6 @@
 	}
 
 	.errors-section,
-	.config-section,
 	.logs-section {
 		background: #1e2749;
 		border-radius: 12px;
@@ -216,6 +270,10 @@
 		display: flex;
 		flex-direction: column;
 		max-height: 400px;
+	}
+
+	.logs-section {
+		max-height: 600px;
 	}
 
 	.log-header {
@@ -349,6 +407,13 @@
 		flex-shrink: 0;
 	}
 
+	.log-icon {
+		font-size: 14px;
+		flex-shrink: 0;
+		width: 20px;
+		text-align: center;
+	}
+
 	.log-level {
 		font-weight: bold;
 		flex-shrink: 0;
@@ -442,8 +507,140 @@
 		color: #888;
 	}
 
+	/* 🔥 FIX: Popup d'erreur clignotant */
+	.error-popup {
+		position: fixed;
+		top: 20px;
+		right: 20px;
+		z-index: 10000;
+		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		border: 3px solid #fff;
+		border-radius: 12px;
+		padding: 0;
+		box-shadow: 0 8px 32px rgba(255, 68, 68, 0.6);
+		min-width: 400px;
+		max-width: 600px;
+	}
+
+	.error-popup.blinking {
+		animation: blink 1s ease-in-out infinite;
+	}
+
+	@keyframes blink {
+		0%, 100% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.8;
+			transform: scale(1.02);
+		}
+	}
+
+	.error-popup-content {
+		background: #1e2749;
+		border-radius: 10px;
+		padding: 20px;
+		border: 2px solid #ff4444;
+	}
+
+	.error-popup-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 15px;
+		padding-bottom: 15px;
+		border-bottom: 2px solid rgba(255, 68, 68, 0.3);
+	}
+
+	.error-icon {
+		font-size: 32px;
+	}
+
+	.error-popup-header h3 {
+		flex: 1;
+		color: #ff4444;
+		font-size: 20px;
+		font-weight: bold;
+		margin: 0;
+		text-transform: uppercase;
+	}
+
+	.close-popup-btn {
+		background: rgba(255, 68, 68, 0.2);
+		border: 1px solid #ff4444;
+		color: #ff4444;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		cursor: pointer;
+		font-size: 18px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.3s;
+	}
+
+	.close-popup-btn:hover {
+		background: rgba(255, 68, 68, 0.4);
+		transform: scale(1.1);
+	}
+
+	.error-popup-message {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-bottom: 15px;
+		padding: 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		font-family: 'Courier New', monospace;
+	}
+
+	.error-time {
+		color: #888;
+		font-size: 11px;
+	}
+
+	.error-level {
+		color: #ff4444;
+		font-weight: bold;
+		font-size: 12px;
+	}
+
+	.error-text {
+		color: #fff;
+		font-size: 13px;
+		line-height: 1.5;
+	}
+
+	.acknowledge-btn {
+		width: 100%;
+		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		border: 2px solid #fff;
+		color: #fff;
+		padding: 12px 24px;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: bold;
+		cursor: pointer;
+		text-transform: uppercase;
+		transition: all 0.3s;
+	}
+
+	.acknowledge-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 20px rgba(255, 68, 68, 0.5);
+	}
+
 	/* Mobile */
 	@media (max-width: 768px) {
+		.error-popup {
+			left: 10px;
+			right: 10px;
+			min-width: auto;
+		}
+
 		.errors-section,
 		.config-section,
 		.logs-section {

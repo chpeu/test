@@ -80,7 +80,7 @@ class AnalyticsLogger:
                 # PnL (obligatoires NOT NULL)
                 'gross_pnl_pct': pnl_data.get('pnl_pct', 0),
                 'gross_pnl_usdt': pnl_data.get('gross_pnl', pnl_data.get('net_pnl', 0)),
-                'net_pnl_pct': pnl_data.get('pnl_pct', 0),
+                'net_pnl_pct': pnl_data.get('net_pnl_pct', pnl_data.get('pnl_pct', 0)),  # 🔥 FIX: Utiliser net_pnl_pct si disponible
                 'net_pnl_usdt': pnl_data.get('net_pnl', 0),
 
                 # Coûts

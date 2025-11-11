@@ -19,6 +19,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from core.websocket_manager import get_websocket_manager
 import time
+# 🔥 FIX: Import colorama pour les couleurs dans les logs
+try:
+    import colorama
+    colorama.init()  # Initialiser colorama
+except ImportError:
+    colorama = None
 
 # 🔥 v7.0: Imports complets
 try:
@@ -62,6 +68,7 @@ logger = logging.getLogger(__name__)
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
+
 
 # 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
 from fastapi.exceptions import RequestValidationError
@@ -178,6 +185,27 @@ ws_manager = get_websocket_manager()
 if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
+
+# 🔥 FIX: Événement de démarrage FastAPI pour réinitialiser le frontend AVANT le scan
+@app.on_event("startup")
+async def startup_event():
+    """Événement de démarrage - réinitialiser le frontend AVANT le scan"""
+    try:
+        # Initialiser les instances si pas déjà fait
+        init_instances()
+        
+        # Attendre un peu pour que les connexions WebSocket soient prêtes
+        await asyncio.sleep(1.0)
+        
+        # 🔥 FIX: Émettre événement de réinitialisation pour synchroniser le frontend IMMÉDIATEMENT
+        if ws_manager:
+            await ws_manager.emit('reset_session', {
+                'timestamp': time.time(),
+                'reason': 'backend_startup'
+            })
+            logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur événement startup: {e}")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -645,10 +673,13 @@ async def scanner_loop_callback():
                                     await add_log('INFO', 'Position ouverte automatiquement', 
                                         f"{direction} {symbol} @ {entry_price:.6f} | Size: {position_size:.2f} USDT")
                                     
-                                    # 🔥 FIX: Émettre l'événement UNE SEULE FOIS
-                                    await ws_manager.emit('position_opened', position.to_dict())
+                                    # 🔥 FIX: Émettre l'événement UNE SEULE FOIS avec gestion d'erreur pour éviter les déconnexions
+                                    try:
+                                        await ws_manager.emit('position_opened', position.to_dict())
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ Erreur émission position_opened: {e}")
                                     
-                                    # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend
+                                    # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend avec gestion d'erreur
                                     try:
                                         current_price_data = await price_provider.get_price(symbol)
                                         if current_price_data:
@@ -665,22 +696,26 @@ async def scanner_loop_callback():
                                                 current_price=current_price
                                             )
                                             
-                                            await ws_manager.emit('position_update', {
-                                                'symbol': position.symbol,
-                                                'direction': position.direction,
-                                                'entry': position.entry,
-                                                'current_price': current_price,
-                                                'sl': position.sl,
-                                                'tp': position.tp,
-                                                'pnl': pnl,
-                                                'pnl_usdt': pnl_usdt,
-                                                'size': position.size,
-                                                'break_even_set': position.break_even_set,
-                                                'partial_tp_sold': position.partial_tp_sold
-                                            })
-                                            logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                            # 🔥 FIX: Gestion d'erreur pour éviter les déconnexions WebSocket
+                                            try:
+                                                await ws_manager.emit('position_update', {
+                                                    'symbol': position.symbol,
+                                                    'direction': position.direction,
+                                                    'entry': position.entry,
+                                                    'current_price': current_price,
+                                                    'sl': position.sl,
+                                                    'tp': position.tp,
+                                                    'pnl': pnl,
+                                                    'pnl_usdt': pnl_usdt,
+                                                    'size': position.size,
+                                                    'break_even_set': position.break_even_set,
+                                                    'partial_tp_sold': position.partial_tp_sold
+                                                })
+                                                logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                            except Exception as e:
+                                                logger.warning(f"⚠️ Erreur émission position_update: {e}")
                                     except Exception as e:
-                                        logger.warning(f"⚠️ Erreur émission prix initial: {e}")
+                                        logger.warning(f"⚠️ Erreur récupération prix initial: {e}")
                                     
                                     logger.info(
                                         f"🟢 POSITION OUVERTE (Auto): {direction} {symbol} | "
@@ -761,7 +796,12 @@ async def scan_pair_for_setup(symbol: str):
                 is_valid = True
         else:
             # Si analysis est None, c'est que les deux timeframes ont retourné None
-            logger.warning(f"⚠️ {symbol}: Analyse retournée None - Vérifier les erreurs dans analyze_timeframe")
+            # 🔥 FIX: Ajouter plus de détails dans le warning pour debug
+            logger.warning(
+                f"⚠️ {symbol}: Analyse retournée None - "
+                f"Vérifier les erreurs dans analyze_timeframe. "
+                f"Vérifier que le prix est disponible et que les indicateurs peuvent être calculés."
+            )
             is_valid = False
         
         # Envoyer événement pour mettre à jour le compteur
@@ -861,7 +901,7 @@ async def position_check_loop_callback():
             # Position fermée
             # 🔥 FIX: Utiliser le lock pour synchroniser la fermeture
             async with position_lock:
-                result = position_manager.close_position(close_reason, exit_price=current_price)
+                result = position_manager.close_position(exit_price=current_price, reason=close_reason)
                 app_state['active_position'] = None
                 
                 # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
@@ -976,6 +1016,23 @@ def init_instances():
             analytics_db = AnalyticsDatabase(db_path=ANALYTICS_DB_PATH, instance_port=port)
             # La DB est déjà initialisée dans __init__ (via _init_database())
             logger.info(f"✅ Analytics DB prête: {ANALYTICS_DB_PATH}")
+            
+            # 🔥 FIX: Réinitialiser les stats au démarrage du bot (AVANT le scan)
+            if analytics_db:
+                try:
+                    # Vider tous les trades de la base de données pour remettre les stats à zéro
+                    analytics_db.clear_all_trades()
+                    # Réinitialiser aussi app_state['trade_history'] et app_state['stats']
+                    app_state['trade_history'] = []
+                    app_state['stats'] = {
+                        'total_trades': 0,
+                        'wins': 0,
+                        'losses': 0,
+                        'winrate': 0.0
+                    }
+                    logger.info("✅ Stats réinitialisées au démarrage (base de données vidée)")
+                except Exception as e:
+                    logger.warning(f"⚠️ Impossible de réinitialiser les stats: {e}")
         except Exception as e:
             logger.error(f"❌ Erreur init Analytics DB: {e}")
             analytics_db = None
@@ -1469,6 +1526,11 @@ async def api_start():
     """
     init_instances()
     
+    # 🔥 FIX: Émettre scan_started IMMÉDIATEMENT au démarrage (avant le scan)
+    await ws_manager.emit('scan_started', {'timestamp': time.time()})
+    await ws_manager.emit('status', {'is_scanning': True})
+    app_state['is_scanning'] = True
+    
     # 🔥 JOUR 3: Si pas de top_pairs, faire un scan initial
     if not app_state['top_pairs']:
         await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
@@ -1492,11 +1554,8 @@ async def api_start():
         scheduler.start()
         logger.info("Scanner démarré")
         await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
-        await ws_manager.emit('status', {'is_scanning': True})
     else:
-        app_state['is_scanning'] = True
         logger.info("Scanner démarré (sans scheduler)")
-        await ws_manager.emit('status', {'is_scanning': True})
     
     return JSONResponse({'status': 'started'})
 
@@ -1514,9 +1573,17 @@ async def api_stop():
     if scheduler:
         await scheduler.stop_async()
         logger.info("Scanner arrêté")
+        await add_log('INFO', 'Scanner arrêté', 'Boucles automatiques désactivées')
+        # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+        await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+        await ws_manager.emit('status', {'is_scanning': False})
+    else:
+        app_state['is_scanning'] = False
+        logger.info("Scanner arrêté (sans scheduler)")
+        # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+        await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+        await ws_manager.emit('status', {'is_scanning': False})
     
-    app_state['is_scanning'] = False
-    await ws_manager.emit('status', {'is_scanning': False})
     return JSONResponse({'status': 'stopped'})
 
 
@@ -1909,7 +1976,7 @@ async def api_close_position():
             price_data = await price_provider.get_price(position_manager.active_position.symbol)
             exit_price = price_data.get('lastPrice') if price_data else None
             
-            result = position_manager.close_position('MANUAL', exit_price=exit_price)
+            result = position_manager.close_position(exit_price=exit_price, reason='MANUAL')
             
             app_state['active_position'] = None
             
@@ -2027,6 +2094,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     break  # Arrêter si erreur
         except Exception as e:
             logger.error(f"❌ Erreur envoi logs: {e}")
+        
+        # 🔥 FIX: Émettre reset_session à chaque nouvelle connexion pour réinitialiser le frontend
+        # (en plus de l'événement startup, pour les clients qui se connectent après le démarrage)
+        # Toujours émettre pour s'assurer que le frontend est réinitialisé même si connecté après le démarrage
+        try:
+            await ws_manager.send_personal_message({
+                'type': 'event',
+                'event': 'reset_session',
+                'data': {
+                    'timestamp': time.time(),
+                    'reason': 'new_connection'
+                }
+            }, websocket)
+            logger.debug("✅ Événement reset_session envoyé à la nouvelle connexion")
+        except Exception as e:
+            logger.debug(f"⚠️ Erreur envoi reset_session: {e}")
         
         # Boucle bidirectionnelle : recevoir et traiter messages
         try:
@@ -2199,12 +2282,28 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'success': True,
                                 'session_id': session_id or f"live_{int(time.time())}",
                                 'config': {
+                                    # Patterns Techniques
+                                    'use_breakout': TRADING_CONFIG.get('use_breakout', True),
+                                    'use_snr': TRADING_CONFIG.get('use_snr', True),
+                                    'use_wick': TRADING_CONFIG.get('use_wick', True),
+                                    'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+                                    # Patterns de Bougies
+                                    'use_engulfing': TRADING_CONFIG.get('use_engulfing', True),
+                                    'use_hammer': TRADING_CONFIG.get('use_hammer', True),
+                                    'use_shooting_star': TRADING_CONFIG.get('use_shooting_star', True),
+                                    'use_doji': TRADING_CONFIG.get('use_doji', True),
+                                    'use_marubozu': TRADING_CONFIG.get('use_marubozu', True),
+                                    'use_morning_star': TRADING_CONFIG.get('use_morning_star', True),
+                                    'use_evening_star': TRADING_CONFIG.get('use_evening_star', True),
+                                    # Validation Setups
+                                    'use_confluence': TRADING_CONFIG.get('use_confluence', False),
                                     'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
                                     'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
-                                    'use_confluence': TRADING_CONFIG.get('use_confluence', False),
+                                    # TP/SL Configuration
                                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                                     'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
                                     'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                                    # Seuils & Filtres
                                     'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                                     'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                                     'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
@@ -2215,8 +2314,34 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
                                     'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
                                     'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+                                    # Money Management
                                     'account_size': TRADING_CONFIG.get('account_size', 1000.0),
                                     'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+                                    # Mode ATR
+                                    'atr_mult_tp': TRADING_CONFIG.get('atr_mult_tp', 1.5),
+                                    'atr_mult_sl': TRADING_CONFIG.get('atr_mult_sl', 1.0),
+                                    'atr_min': TRADING_CONFIG.get('atr_min', 0.15),
+                                    'atr_max': TRADING_CONFIG.get('atr_max', 1.5),
+                                    # Mode ESCALIER
+                                    'partial_tp_percent': TRADING_CONFIG.get('partial_tp_percent', 50),
+                                    'escalier_level1_pnl': TRADING_CONFIG.get('escalier_level1_pnl', 0.20),
+                                    'escalier_level1_size': TRADING_CONFIG.get('escalier_level1_size', 25),
+                                    'escalier_level2_pnl': TRADING_CONFIG.get('escalier_level2_pnl', 0.35),
+                                    'escalier_level2_size': TRADING_CONFIG.get('escalier_level2_size', 25),
+                                    'escalier_level3_pnl': TRADING_CONFIG.get('escalier_level3_pnl', 0.50),
+                                    'escalier_level3_size': TRADING_CONFIG.get('escalier_level3_size', 25),
+                                    'escalier_level4_pnl': TRADING_CONFIG.get('escalier_level4_pnl', 0.80),
+                                    'escalier_level4_size': TRADING_CONFIG.get('escalier_level4_size', 25),
+                                    # Trailing Stop
+                                    'trailing_enabled': TRADING_CONFIG.get('trailing_enabled', True),
+                                    'trailing_trigger_pnl': TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
+                                    'trailing_atr_multiplier': TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
+                                    'trailing_min_distance': TRADING_CONFIG.get('trailing_min_distance', 0.08),
+                                    'trailing_max_distance': TRADING_CONFIG.get('trailing_max_distance', 0.25),
+                                    # Scanner
+                                    'top_pairs_limit': TRADING_CONFIG.get('top_pairs_limit', 20),
+                                    'balance_score_min': TRADING_CONFIG.get('balance_score_min', 0.0),
+                                    # Autres
                                     'telegram_enabled': TELEGRAM_ENABLED  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
                                 },
                                 'scanner': {
@@ -2268,11 +2393,69 @@ async def handle_client_command(command: str, params: dict):
     """Exécuter une commande du client via WebSocket"""
     
     if command == 'start_scanner':
-        await api_start()
+        # 🔥 FIX: Dupliquer la logique de api_start (pas JSONResponse)
+        init_instances()
+        
+        # Émettre scan_started IMMÉDIATEMENT au démarrage (avant le scan)
+        await ws_manager.emit('scan_started', {'timestamp': time.time()})
+        await ws_manager.emit('status', {'is_scanning': True})
+        app_state['is_scanning'] = True
+        
+        # Si pas de top_pairs, faire un scan initial
+        if not app_state['top_pairs']:
+            await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
+            if scanner:
+                top_pairs = await scanner.scan_top_pairs(20)
+                app_state['top_pairs'] = top_pairs
+                await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+                
+                # Démarrer WebSocket pour les top pairs
+                if price_provider and top_pairs:
+                    symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                    if symbols:
+                        try:
+                            await price_provider.start_websocket(symbols)
+                            await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                        except Exception as e:
+                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+        
+        # Démarrer le scheduler
+        if scheduler:
+            scheduler.start()
+            logger.info("Scanner démarré")
+            await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
+        else:
+            logger.info("Scanner démarré (sans scheduler)")
+        
         return {'status': 'started', 'is_scanning': True}
     
     elif command == 'stop_scanner':
-        await api_stop()
+        # 🔥 FIX: Dupliquer la logique de api_stop (pas JSONResponse)
+        init_instances()
+        
+        # Arrêter le scheduler
+        if scheduler:
+            await scheduler.stop_async()
+            logger.info("Scanner arrêté")
+            await add_log('INFO', 'Scanner arrêté', 'Boucles automatiques désactivées')
+            # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+            await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+            await ws_manager.emit('status', {'is_scanning': False})
+        else:
+            app_state['is_scanning'] = False
+            logger.info("Scanner arrêté (sans scheduler)")
+            # 🔥 FIX: Émettre scan_complete pour mettre à jour le store frontend
+            await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+            await ws_manager.emit('status', {'is_scanning': False})
+        
+        # Arrêter WebSocket
+        if price_provider:
+            try:
+                await price_provider.stop_websocket()
+                await add_log('INFO', 'WebSocket arrêté', 'Monitoring des prix désactivé')
+            except Exception as e:
+                logger.warning(f"Erreur arrêt WebSocket: {e}")
+        
         return {'status': 'stopped', 'is_scanning': False}
     
     elif command == 'update_config':
@@ -2567,6 +2750,45 @@ async def handle_client_command(command: str, params: dict):
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
+            
+            # 🔥 FIX: Mettre à jour immédiatement toutes les instances qui utilisent la config
+            # Mettre à jour position_config si nécessaire (sans réinitialiser complètement)
+            if position_config:
+                from config import TRADING_CONFIG
+                # Mettre à jour les valeurs TP/SL si elles ont changé
+                if 'tp_sl_mode' in updated:
+                    tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                    position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI')
+                if 'tp_percent' in updated:
+                    position_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
+                if 'sl_percent' in updated:
+                    position_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
+                if 'atr_mult_tp' in updated:
+                    position_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
+                if 'atr_mult_sl' in updated:
+                    position_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
+                if 'atr_min' in updated:
+                    position_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                if 'atr_max' in updated:
+                    position_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+            
+            # 🔥 FIX: Mettre à jour aussi position_manager.tpsl_config si une position est active
+            if position_manager and position_manager.active_position:
+                from config import TRADING_CONFIG
+                # Mettre à jour les valeurs TP/SL dans tpsl_config pour les prochaines positions
+                if 'tp_percent' in updated:
+                    position_manager.tpsl_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
+                if 'sl_percent' in updated:
+                    position_manager.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
+                if 'atr_mult_tp' in updated:
+                    position_manager.tpsl_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
+                if 'atr_mult_sl' in updated:
+                    position_manager.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
+                if 'atr_min' in updated:
+                    position_manager.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                if 'atr_max' in updated:
+                    position_manager.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+            
             # 🔥 BIDIRECTIONNEL: Émettre événement de mise à jour de config pour synchroniser le frontend
             await ws_manager.emit('config_updated', {
                 'updated': updated,
@@ -2583,8 +2805,57 @@ async def handle_client_command(command: str, params: dict):
     
     elif command == 'close_position':
         if position_manager and position_manager.active_position:
-            result = await api_close_position()
-            return {'status': 'closed', 'result': result}
+            # 🔥 FIX: Utiliser la logique de api_close_position directement (pas JSONResponse)
+            init_instances()
+            
+            # Utiliser le lock pour synchroniser la fermeture
+            async with position_lock:
+                # Double-check que la position existe
+                if not position_manager or not position_manager.active_position:
+                    if not app_state.get('active_position'):
+                        raise ValueError('No active position')
+                    else:
+                        app_state['active_position'] = None
+                        raise ValueError('Position state inconsistent')
+                
+                if not price_provider:
+                    raise ValueError('Price provider not available')
+                
+                # Récupérer prix actuel
+                price_data = await price_provider.get_price(position_manager.active_position.symbol)
+                exit_price = price_data.get('lastPrice') if price_data else None
+                
+                # Utiliser exit_price depuis params si fourni
+                if params.get('exit_price'):
+                    exit_price = float(params['exit_price'])
+                
+                result = position_manager.close_position(exit_price=exit_price, reason=params.get('reason', 'MANUAL'))
+                
+                app_state['active_position'] = None
+                
+                # Ajouter à l'historique et sauvegarder
+                if result:
+                    result['timestamp'] = datetime.now().isoformat()
+                    app_state['trade_history'].append(result)
+                    if len(app_state['trade_history']) > 1000:
+                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    save_trade_history()
+                
+                # Désactiver callback WebSocket
+                if price_provider:
+                    price_provider.set_socketio_callback(None, None)
+                
+                await add_log('INFO', 'Position clôturée', params.get('reason', 'MANUAL'))
+                await ws_manager.emit('position_closed', result)
+                
+                # Émettre stats_update après fermeture
+                try:
+                    from core.callbacks.position_check_loop import _emit_stats_update
+                    await _emit_stats_update()
+                except Exception as e:
+                    logger.error(f"❌ Erreur émission stats_update: {e}")
+                
+                return {'status': 'closed', 'result': result}
         else:
             raise ValueError('Aucune position active')
     
@@ -2866,14 +3137,47 @@ async def api_update_config(request: Request):
 # Helper functions
 
 async def add_log(level, message, detail=''):
-    """Ajouter un log et envoyer via WebSocket natif uniquement"""
+    """Ajouter un log et envoyer via WebSocket natif uniquement avec couleurs ANSI"""
     from datetime import datetime
+    
+    # 🔥 FIX: Utiliser colorama si disponible, sinon codes ANSI bruts
+    if colorama:
+        from colorama import Fore, Style
+        reset_code = Style.RESET_ALL
+    else:
+        # Codes ANSI bruts si colorama n'est pas disponible
+        class Fore:
+            RED = '\x1b[31m'
+            YELLOW = '\x1b[33m'
+            GREEN = '\x1b[32m'
+            CYAN = '\x1b[36m'
+        class Style:
+            BRIGHT = '\x1b[1m'
+            RESET_ALL = '\x1b[0m'
+        reset_code = Style.RESET_ALL
+    
+    # 🔥 FIX: Ajouter couleurs ANSI selon le niveau
+    color_codes = {
+        'ERROR': Fore.RED,
+        'CRITICAL': Fore.RED + Style.BRIGHT,
+        'WARNING': Fore.YELLOW,
+        'INFO': Fore.GREEN,
+        'DEBUG': Fore.CYAN
+    }
+    reset_code = Style.RESET_ALL
+    color = color_codes.get(level, '')
+    
+    # Message avec couleur ANSI
+    colored_message = f"{color}{message}{reset_code}"
+    if detail:
+        colored_message += f" {detail}"
     
     entry = {
         'timestamp': datetime.now().strftime('%H:%M:%S'),
         'level': level,
-        'message': message,
-        'detail': detail
+        'message': colored_message,  # 🔥 FIX: Message avec couleurs ANSI
+        'detail': detail,
+        'raw_message': message  # Message sans couleur pour recherche
     }
     app_state['logs'].append(entry)
     
@@ -2881,10 +3185,11 @@ async def add_log(level, message, detail=''):
     if len(app_state['logs']) > 1000:
         app_state['logs'] = app_state['logs'][-1000:]
     
-    # 🔥 MIGRATION COMPLÈTE: Envoyer uniquement via WebSocket natif
+    # 🔥 MIGRATION COMPLÈTE: Envoyer uniquement via WebSocket natif avec couleurs
     await ws_manager.emit('log', entry)
     
-    logger.info(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}")
+    # Logger avec couleur dans la console backend
+    logger.info(f"{color}[{entry['timestamp']}] {entry['level']}: {message}{reset_code}")
 
 
 # Main entry point

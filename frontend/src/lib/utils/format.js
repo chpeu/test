@@ -42,20 +42,102 @@ export function formatSpread(spread) {
 }
 
 /**
- * Format a price with adaptive decimals based on value
+ * Calculate number of decimal places from tickSize
+ * @param {number} tickSize - The tick size (e.g., 0.01, 0.0001, 0.000001)
+ * @returns {number} Number of decimal places
+ */
+function getDecimalsFromTickSize(tickSize) {
+	if (!tickSize || tickSize <= 0) return null;
+	
+	// Convert to string to handle scientific notation
+	const str = tickSize.toString();
+	
+	// If in scientific notation (e.g., 1e-8)
+	if (str.includes('e') || str.includes('E')) {
+		const parts = str.toLowerCase().split('e');
+		const exponent = parseInt(parts[1]);
+		if (exponent < 0) {
+			// Pour un tickSize de 1e-8, on veut 8 décimales
+			return Math.abs(exponent);
+		}
+	}
+	
+	// Count decimal places from decimal notation
+	if (str.includes('.')) {
+		const decimalPart = str.split('.')[1];
+		// Compter toutes les décimales, y compris les zéros
+		// Exemple: 0.00000001 -> 8 décimales
+		return decimalPart.length;
+	}
+	
+	// Si pas de point décimal, essayer de calculer depuis la valeur
+	// Pour un tickSize très petit, calculer le nombre de décimales nécessaires
+	if (tickSize < 1) {
+		// Multiplier par 10 jusqu'à obtenir un entier >= 1
+		let decimals = 0;
+		let value = tickSize;
+		while (value < 1 && decimals < 20) {
+			value *= 10;
+			decimals++;
+		}
+		return decimals;
+	}
+	
+	return 0;
+}
+
+/**
+ * Format a price with adaptive decimals based on value or precision from API
  * @param {number} price - The price to format
+ * @param {number|object} precision - Optional: number of decimals, or object with {pricePrecision, tickSize}
  * @returns {string} Formatted price
  */
-export function formatPrice(price) {
+export function formatPrice(price, precision = null) {
 	if (price === null || price === undefined || isNaN(price)) {
 		return '0.00';
 	}
 
 	const num = Number(price);
+	
+	// If precision is provided, use it
+	if (precision !== null && precision !== undefined) {
+		let decimals;
+		
+		// If precision is an object with pricePrecision or tickSize
+		if (typeof precision === 'object') {
+			if (precision.pricePrecision !== undefined && precision.pricePrecision !== null) {
+				decimals = precision.pricePrecision;
+			} else if (precision.tickSize !== undefined && precision.tickSize !== null) {
+				decimals = getDecimalsFromTickSize(precision.tickSize);
+			} else if (precision.decimals !== undefined && precision.decimals !== null) {
+				decimals = precision.decimals;
+			}
+		} else if (typeof precision === 'number') {
+			decimals = precision;
+		}
+		
+		// Use the calculated decimals if available
+		if (decimals !== null && decimals !== undefined && decimals >= 0) {
+			return num.toFixed(decimals);
+		}
+	}
 
-	// For very small prices (< 0.01), use more decimals
+	// Fallback: adaptive decimals based on value (comportement similaire au backend)
+	// Pour les très petits prix, utiliser plus de décimales (jusqu'à 10 comme le backend)
 	if (num < 0.01 && num > 0) {
-		return num.toFixed(6);
+		// Formater avec 10 décimales puis supprimer les zéros de fin
+		let formatted = num.toFixed(10);
+		// Supprimer les zéros de fin mais garder au moins 6 décimales
+		formatted = formatted.replace(/0+$/, '');
+		if (formatted.endsWith('.')) {
+			formatted = formatted.slice(0, -1);
+		}
+		// S'assurer qu'on a au moins 6 décimales pour les très petits prix
+		const decimalPart = formatted.includes('.') ? formatted.split('.')[1] : '';
+		if (decimalPart.length < 6) {
+			return num.toFixed(6);
+		}
+		return formatted;
 	}
 
 	// For small prices (< 1), use 4 decimals

@@ -3,10 +3,40 @@
 	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 
+	// 🔥 FIX: Extraire la précision depuis les données de position
+	$: pricePrecision = $activePosition?.price_precision;
+	$: tickSize = $activePosition?.tickSize || $activePosition?.tick_size;
+	
+	// 🔥 FIX: Fonction helper pour formater avec précision
+	function formatPriceWithPrecision(price) {
+		// Si on a price_precision (nombre de décimales), l'utiliser directement
+		if (pricePrecision !== null && pricePrecision !== undefined) {
+			return formatPrice(price, pricePrecision);
+		}
+		// Si on a tickSize, le passer comme objet pour que formatPrice calcule les décimales
+		if (tickSize !== null && tickSize !== undefined) {
+			return formatPrice(price, { tickSize: tickSize });
+		}
+		// Fallback: utiliser formatPrice sans précision (utilisera le comportement adaptatif)
+		return formatPrice(price);
+	}
+
 	// 🔥 FIX: Fonction pour clôturer la position manuellement
 	async function closePosition() {
+		if (!$activePosition) {
+			alert('❌ Aucune position active à clôturer');
+			return;
+		}
+
 		if (!confirm('Êtes-vous sûr de vouloir clôturer cette position manuellement ?')) {
 			return;
+		}
+
+		// 🔥 FIX: Récupérer le prix actuel avant de clôturer
+		let exitPrice = $activePosition.current_price;
+		if (!exitPrice || exitPrice <= 0) {
+			// Si pas de prix, utiliser le prix d'entrée comme fallback
+			exitPrice = $activePosition.entry;
 		}
 
 		// 🔥 FIX: Mise à jour optimiste immédiate pour feedback instantané
@@ -16,7 +46,7 @@
 			// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
 			const result = await sendCommandViaWS('close_position', {
 				reason: 'MANUAL',
-				exit_price: $activePosition.current_price
+				exit_price: exitPrice
 			});
 			
 			if (result && result.status === 'closed') {
@@ -59,11 +89,11 @@
 		<div class="price-grid">
 			<div class="price-box">
 				<div class="price-label">Entry</div>
-				<div class="price-value">{formatPrice($activePosition.entry)}</div>
+				<div class="price-value">{formatPriceWithPrecision($activePosition.entry)}</div>
 			</div>
 			<div class="price-box">
 				<div class="price-label">Current</div>
-				<div class="price-value">{formatPrice($activePosition.current_price)}</div>
+				<div class="price-value">{formatPriceWithPrecision($activePosition.current_price)}</div>
 			</div>
 			<div class="price-box">
 				<div class="price-label">Size</div>
@@ -74,19 +104,45 @@
 		<div class="tpsl-grid">
 			<div class="tpsl-box tp">
 				<div class="tpsl-label">TP</div>
-				<div class="tpsl-price">{formatPrice($activePosition.tp)}</div>
+				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.tp)}</div>
 				{#if $tpDistance}
 					<div class="tpsl-distance">+{$tpDistance}%</div>
+				{/if}
+				{#if $activePosition.tp_escalier_levels}
+					<div class="tp-levels">
+						{#each JSON.parse($activePosition.tp_escalier_levels || '[]') as level, i}
+							<div class="tp-level" class:hit={level.hit || false}>
+								TP{i + 1}: {formatPriceWithPrecision(level.price)} ({formatPercent(level.percent)}%)
+							</div>
+						{/each}
+					</div>
 				{/if}
 			</div>
 			<div class="tpsl-box sl">
 				<div class="tpsl-label">SL</div>
-				<div class="tpsl-price">{formatPrice($activePosition.sl)}</div>
+				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.sl)}</div>
 				{#if $slDistance}
 					<div class="tpsl-distance">{$slDistance}%</div>
 				{/if}
+				{#if $activePosition.dynamic_sl}
+					<div class="trailing-stop">
+						Trailing: {formatPriceWithPrecision($activePosition.dynamic_sl)}
+					</div>
+				{/if}
 			</div>
 		</div>
+
+		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null && $activePosition.size}
+			<div class="position-info">
+				<div class="info-item">
+					<span class="info-label">Position restante:</span>
+					<span class="info-value">
+						{formatPrice($activePosition.size_remaining)} USDT 
+						({formatPercent(($activePosition.size_remaining / $activePosition.size) * 100)}%)
+					</span>
+				</div>
+			</div>
+		{/if}
 
 		{#if $positionDuration}
 			<div class="duration">
@@ -274,6 +330,64 @@
 
 	.tpsl-box.sl .tpsl-distance {
 		color: #ff4444;
+	}
+
+	.tp-levels {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px solid rgba(0, 255, 136, 0.2);
+	}
+
+	.tp-level {
+		font-size: 10px;
+		color: #888;
+		margin-top: 4px;
+		padding: 2px 4px;
+		border-radius: 4px;
+		background: rgba(0, 255, 136, 0.05);
+	}
+
+	.tp-level.hit {
+		color: #00ff88;
+		background: rgba(0, 255, 136, 0.15);
+		font-weight: bold;
+	}
+
+	.trailing-stop {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px solid rgba(255, 68, 68, 0.2);
+		font-size: 11px;
+		color: #ffaa00;
+		font-weight: bold;
+	}
+
+	.position-info {
+		background: rgba(0, 170, 255, 0.1);
+		padding: 12px;
+		border-radius: 8px;
+		border: 1px solid #00aaff;
+		margin-bottom: 15px;
+	}
+
+	.info-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.info-label {
+		font-size: 12px;
+		color: #888;
+		text-transform: uppercase;
+		font-weight: bold;
+	}
+
+	.info-value {
+		font-size: 14px;
+		color: #00aaff;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
 	}
 
 	.duration {
