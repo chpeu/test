@@ -806,9 +806,10 @@ class PositionManager:
         )
 
         # Calculer slippage si applicable
-        slippage = 0.0
+        # 🔥 FIX: _estimate_slippage retourne un pourcentage (%)
+        slippage_pct = 0.0
         if self.config.use_slippage_calculation and self.active_position.scalability_data:
-            slippage = self._estimate_slippage(
+            slippage_pct = self._estimate_slippage(
                 order_size=self.active_position.size,
                 spread_pct=self.active_position.scalability_data.get('spread_pct', 0.0),
                 depth=self.active_position.scalability_data.get('depth', 0.0),
@@ -816,9 +817,12 @@ class PositionManager:
                 bid_vol=self.active_position.scalability_data.get('bid_vol'),
                 ask_vol=self.active_position.scalability_data.get('ask_vol')
             )
+        
+        # 🔥 FIX: Convertir slippage_pct en USDT pour les calculs
+        slippage_usdt = (slippage_pct / 100) * self.active_position.size if self.active_position.size > 0 else 0.0
 
-        # Calculer coûts totaux
-        total_costs = pnl_data['fees'] + slippage
+        # Calculer coûts totaux (fees en USDT + slippage en USDT)
+        total_costs = pnl_data['fees'] + slippage_usdt
 
         # PnL net
         # 🔥 FIX: Calculer net_pnl_pct en tenant compte des coûts (fees + slippage)
@@ -827,8 +831,8 @@ class PositionManager:
         total_costs_pct = (total_costs / self.active_position.size) * 100 if self.active_position.size > 0 else 0
         net_pnl_pct = gross_pnl_pct - total_costs_pct
         
-        # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage
-        net_pnl_usdt = pnl_data['net_pnl'] - slippage
+        # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage USDT
+        net_pnl_usdt = pnl_data['net_pnl'] - slippage_usdt
 
         # Taille fermée
         if self.active_position.partial_tp_sold:
@@ -843,10 +847,6 @@ class PositionManager:
         # 🔥 FIX: Ajouter opened_at et closed_at pour l'affichage frontend
         opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
         closed_at = datetime.now().isoformat()
-        
-        # 🔥 FIX: Calculer slippage en pourcentage et USDT
-        slippage_pct = (slippage / self.active_position.size * 100) if self.active_position.size > 0 else 0.0
-        slippage_usdt = slippage
         
         result = {
             'symbol': self.active_position.symbol,

@@ -230,10 +230,12 @@
 		ws.on('position_closed', async (data: any) => {
 			const { clearPosition } = await import('$lib/stores/position');
 			clearPosition();
-			// Recharger l'historique des trades
-			const { setTradeHistory } = await import('$lib/stores/trades');
-			if (data && data.trade) {
-				setTradeHistory([data.trade]);
+			// 🔥 FIX: Ajouter le nouveau trade à l'historique existant au lieu de le remplacer
+			// Le backend envoie directement l'objet trade (result), pas { trade: result }
+			const { addTrade } = await import('$lib/stores/trades');
+			if (data) {
+				// data est directement l'objet trade (result de close_position)
+				addTrade(data);
 			}
 		});
 		

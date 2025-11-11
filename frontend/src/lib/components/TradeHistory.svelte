@@ -4,11 +4,12 @@
 
 	import { formatAdaptive, formatPercent, formatUSDT } from '$lib/utils/format';
 
-	// 🔥 FIX: Calculer le PnL total de la session en cours (identique à StatsPanel)
-	// Utiliser net_pnl_usdt et net_pnl_pct directement (ils incluent déjà slippage et fees)
+	// 🔥 FIX: Calculer le PnL total de la session depuis les trades du frontend
+	// Cela garantit que tous les trades visibles dans le tableau sont inclus dans le calcul
 	const sessionPnL = derived(sortedTrades, $trades => {
+		if ($trades.length === 0) return 0;
+		// Utiliser net_pnl_usdt directement (déjà calculé avec slippage et fees déduits)
 		const totalPnL = $trades.reduce((sum, trade) => {
-			// 🔥 FIX: Utiliser net_pnl_usdt directement (déjà calculé avec slippage et fees déduits)
 			return sum + (trade.net_pnl_usdt || trade.pnl_usdt || 0);
 		}, 0);
 		return totalPnL;
@@ -16,10 +17,11 @@
 
 	const sessionPnLPct = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
-		// 🔥 FIX: Utiliser net_pnl_pct directement (déjà calculé avec slippage et fees déduits)
-		// Somme totale, pas moyenne
+		// Utiliser net_pnl_pct directement (déjà calculé avec slippage et fees déduits)
+		// Somme totale, pas moyenne - doit correspondre exactement à la somme des trades visibles
 		const totalPnLPct = $trades.reduce((sum, trade) => {
-			return sum + (trade.net_pnl_pct || trade.net_pnl || trade.pnl_pct || 0);
+			// Utiliser uniquement net_pnl_pct ou pnl_pct (en pourcentage), pas net_pnl qui est en USDT
+			return sum + (trade.net_pnl_pct || trade.pnl_pct || 0);
 		}, 0);
 		return totalPnLPct; // Total, pas moyenne
 	});
