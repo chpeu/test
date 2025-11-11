@@ -8,81 +8,81 @@
 	$: totalPnL = ($tradeHistory || []).reduce((sum, t) => sum + (t.net_pnl_usdt || 0), 0);
 </script>
 
-<div class="export-panel">
-	<div class="export-header">
-		<h2>📥 Export Trades</h2>
-		<div class="stats-preview">
-			<span class="stat">{tradesCount} trades</span>
-			<span class="stat" class:profit={totalPnL >= 0} class:loss={totalPnL < 0}>
+<div class="export-panel" data-debug-name="exportPanel">
+	<div class="export-header" data-debug-name="exportHeader">
+		<h2 data-debug-name="exportTitle">📥 Export Trades</h2>
+		<div class="stats-preview" data-debug-name="statsPreview">
+			<span class="stat" data-debug-name="tradesCount">{tradesCount} trades</span>
+			<span class="stat" class:profit={totalPnL >= 0} class:loss={totalPnL < 0} data-debug-name="totalPnL">
 				{totalPnL >= 0 ? '+' : ''}{formatUSDT(totalPnL)} USDT
 			</span>
 		</div>
 	</div>
 
-	<div class="export-options">
+	<div class="export-options" data-debug-name="exportOptions">
 		<!-- Excel Export -->
-		<div class="export-option">
-			<div class="option-icon">📊</div>
-			<div class="option-content">
-				<h3>Excel Spreadsheet</h3>
-				<p>Export all trades to Excel format (.xlsx) with proper formatting.</p>
-				<ul class="feature-list">
+		<div class="export-option" data-debug-name="exportOption.excel">
+			<div class="option-icon" data-debug-name="exportOption.excel.icon">📊</div>
+			<div class="option-content" data-debug-name="exportOption.excel.content">
+				<h3 data-debug-name="exportOption.excel.title">Excel Spreadsheet</h3>
+				<p data-debug-name="exportOption.excel.description">Export all trades to Excel format (.xlsx) with proper formatting.</p>
+				<ul class="feature-list" data-debug-name="exportOption.excel.features">
 					<li>✅ All trade details</li>
 					<li>✅ Formatted columns and cells</li>
 					<li>✅ Easy to analyze</li>
 				</ul>
-				<button class="export-btn" on:click={exportToCSV} disabled={tradesCount === 0}>
+				<button class="export-btn" on:click={exportToCSV} disabled={tradesCount === 0} data-debug-name="exportBtn.excel">
 					📥 Export Excel
 				</button>
 			</div>
 		</div>
 
 		<!-- JSON Export -->
-		<div class="export-option">
-			<div class="option-icon">📦</div>
-			<div class="option-content">
-				<h3>JSON Data</h3>
-				<p>Complete export including stats, trades, and metadata.</p>
-				<ul class="feature-list">
+		<div class="export-option" data-debug-name="exportOption.json">
+			<div class="option-icon" data-debug-name="exportOption.json.icon">📦</div>
+			<div class="option-content" data-debug-name="exportOption.json.content">
+				<h3 data-debug-name="exportOption.json.title">JSON Data</h3>
+				<p data-debug-name="exportOption.json.description">Complete export including stats, trades, and metadata.</p>
+				<ul class="feature-list" data-debug-name="exportOption.json.features">
 					<li>✅ Full data structure</li>
 					<li>✅ Includes statistics</li>
 					<li>✅ Programmatic access</li>
 				</ul>
-				<button class="export-btn" on:click={exportToJSON} disabled={tradesCount === 0}>
+				<button class="export-btn" on:click={exportToJSON} disabled={tradesCount === 0} data-debug-name="exportBtn.json">
 					📥 Export JSON
 				</button>
 			</div>
 		</div>
 
 		<!-- Summary Report -->
-		<div class="export-option">
-			<div class="option-icon">📝</div>
-			<div class="option-content">
-				<h3>Summary Report</h3>
-				<p>Human-readable Markdown report with key statistics.</p>
-				<ul class="feature-list">
+		<div class="export-option" data-debug-name="exportOption.summary">
+			<div class="option-icon" data-debug-name="exportOption.summary.icon">📝</div>
+			<div class="option-content" data-debug-name="exportOption.summary.content">
+				<h3 data-debug-name="exportOption.summary.title">Summary Report</h3>
+				<p data-debug-name="exportOption.summary.description">Human-readable Markdown report with key statistics.</p>
+				<ul class="feature-list" data-debug-name="exportOption.summary.features">
 					<li>✅ Performance summary</li>
 					<li>✅ Best/worst trades</li>
 					<li>✅ Markdown format</li>
 				</ul>
-				<button class="export-btn" on:click={exportSummary} disabled={tradesCount === 0}>
+				<button class="export-btn" on:click={exportSummary} disabled={tradesCount === 0} data-debug-name="exportBtn.summary">
 					📥 Export Report
 				</button>
 			</div>
 		</div>
 
 		<!-- Analytics Export -->
-		<div class="export-option">
-			<div class="option-icon">📈</div>
-			<div class="option-content">
-				<h3>Performance Analytics</h3>
-				<p>Advanced analytics with symbol breakdown and time analysis.</p>
-				<ul class="feature-list">
+		<div class="export-option" data-debug-name="exportOption.analytics">
+			<div class="option-icon" data-debug-name="exportOption.analytics.icon">📈</div>
+			<div class="option-content" data-debug-name="exportOption.analytics.content">
+				<h3 data-debug-name="exportOption.analytics.title">Performance Analytics</h3>
+				<p data-debug-name="exportOption.analytics.description">Advanced analytics with symbol breakdown and time analysis.</p>
+				<ul class="feature-list" data-debug-name="exportOption.analytics.features">
 					<li>✅ Per-symbol stats</li>
 					<li>✅ Hourly distribution</li>
 					<li>✅ Daily PnL chart data</li>
 				</ul>
-				<button class="export-btn" on:click={exportAnalytics} disabled={tradesCount === 0}>
+				<button class="export-btn" on:click={exportAnalytics} disabled={tradesCount === 0} data-debug-name="exportBtn.analytics">
 					📥 Export Analytics
 				</button>
 			</div>
@@ -90,10 +90,10 @@
 	</div>
 
 	{#if tradesCount === 0}
-		<div class="empty-state">
-			<span class="empty-icon">📭</span>
-			<p>No trades available to export</p>
-			<p class="hint">Start trading to generate exportable data</p>
+		<div class="empty-state" data-debug-name="emptyState">
+			<span class="empty-icon" data-debug-name="emptyIcon">📭</span>
+			<p data-debug-name="emptyMessage">No trades available to export</p>
+			<p class="hint" data-debug-name="emptyHint">Start trading to generate exportable data</p>
 		</div>
 	{/if}
 </div>

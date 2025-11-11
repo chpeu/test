@@ -59,13 +59,13 @@
 	}
 </script>
 
-<div class="trade-history">
-	<div class="history-header">
-		<h3>📜 Historique des Trades</h3>
-		<div class="header-stats">
-			<div class="total-count">{$sortedTrades.length} trades</div>
+<div class="trade-history" data-debug-name="tradeHistory">
+	<div class="history-header" data-debug-name="tradeHistory.header">
+		<h3 data-debug-name="tradeHistory.title">📜 Historique des Trades</h3>
+		<div class="header-stats" data-debug-name="tradeHistory.stats">
+			<div class="total-count" data-debug-name="sortedTrades.length">{$sortedTrades.length} trades</div>
 			{#if $sortedTrades.length > 0}
-				<div class="session-pnl" class:positive={$sessionPnL >= 0} class:negative={$sessionPnL < 0}>
+				<div class="session-pnl" class:positive={$sessionPnL >= 0} class:negative={$sessionPnL < 0} data-debug-name="sessionPnL">
 					PnL Session: {formatUSDT($sessionPnL)} USDT ({formatPercent($sessionPnLPct)}%)
 				</div>
 			{/if}
@@ -82,59 +82,59 @@
 			<table class="trades-table">
 				<thead>
 					<tr>
-						<th>#</th>
-						<th>Heure</th>
-						<th>Paire</th>
-						<th>Dir</th>
-						<th>Raison</th>
-						<th>PnL Brut %</th>
-						<th>Slippage</th>
-						<th>PnL Net %</th>
-						<th>PnL Net USDT</th>
-						<th>PnL Total USDT</th>
-						<th>Duration</th>
+						<th data-debug-name="tradeHistory.column.index">#</th>
+						<th data-debug-name="tradeHistory.column.time">Heure</th>
+						<th data-debug-name="tradeHistory.column.symbol">Paire</th>
+						<th data-debug-name="tradeHistory.column.direction">Dir</th>
+						<th data-debug-name="tradeHistory.column.reason">Raison</th>
+						<th data-debug-name="tradeHistory.column.pnlGross">PnL Brut %</th>
+						<th data-debug-name="tradeHistory.column.slippage">Slippage</th>
+						<th data-debug-name="tradeHistory.column.pnlNet">PnL Net %</th>
+						<th data-debug-name="tradeHistory.column.pnlUsdt">PnL Net USDT</th>
+						<th data-debug-name="tradeHistory.column.pnlTotalUsdt">PnL Total USDT</th>
+						<th data-debug-name="tradeHistory.column.duration">Duration</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each $sortedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
-						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0}>
-							<td class="index">{index + 1}</td>
-							<td class="time">{formatTime(trade.closed_at || trade.timestamp)}</td>
-							<td class="symbol">{trade.symbol}</td>
-							<td class="direction">
-								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'}>
+						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0} data-debug-name="trade[{index}]">
+							<td class="index" data-debug-name="trade.index">{index + 1}</td>
+							<td class="time" data-debug-name="trade.closed_at">{formatTime(trade.closed_at || trade.timestamp)}</td>
+							<td class="symbol" data-debug-name="trade.symbol">{trade.symbol}</td>
+							<td class="direction" data-debug-name="trade.direction">
+								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'} data-debug-name="trade.direction">
 									{trade.direction}
 								</span>
 							</td>
-							<td class="reason">
+							<td class="reason" data-debug-name="trade.reason">
 								{#if trade.reason === 'MANUAL'}
-									<span class="reason-manual">👤 Manuel</span>
+									<span class="reason-manual" data-debug-name="trade.reason">👤 Manuel</span>
 								{:else}
 									{trade.reason || trade.close_reason || 'N/A'}
 								{/if}
 							</td>
 							<!-- 🔥 FIX: PnL Brut avec formatage adaptatif -->
-							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0}>
+							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0} data-debug-name="trade.gross_pnl_pct">
 								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.gross_pnl_pct || trade.pnl_pct || 0)}%
 							</td>
 							<!-- 🔥 FIX: Slippage avec formatage adaptatif (calculé si manquant) -->
-							<td class="slippage">
+							<td class="slippage" data-debug-name="trade.slippage">
 								{formatPercent(trade.slippage || trade.slippage_pct || (trade.slippage_usdt && trade.size ? ((trade.slippage_usdt / trade.size) * 100) : 0) || 0)}%
 							</td>
 							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
-							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0}>
+							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0} data-debug-name="trade.net_pnl_pct">
 								{((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0 ? '+' : ''}{formatPercent((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0))}%
 							</td>
 							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
-							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
+							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt">
 								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
 							</td>
 							<!-- 🔥 FIX: PnL Total USDT (incluant slippage) -->
-							<td class="pnl-total-usdt" class:positive={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0} class:negative={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) < 0}>
+							<td class="pnl-total-usdt" class:positive={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0} class:negative={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) < 0} data-debug-name="trade.pnl_total_usdt">
 								{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0 ? '+' : ''}{formatUSDT((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0))} USDT
 							</td>
 							<!-- 🔥 FIX: Duration (calculée si manquante) -->
-							<td class="duration">
+							<td class="duration" data-debug-name="trade.duration">
 								{trade.duration_seconds ? formatDurationFromSeconds(trade.duration_seconds) : 
 								 (trade.opened_at && trade.closed_at ? formatDuration(trade.opened_at, trade.closed_at) : 
 								  (trade.duration ? formatDurationFromSeconds(trade.duration) : 'N/A'))}

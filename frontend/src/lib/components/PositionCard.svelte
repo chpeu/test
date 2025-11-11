@@ -142,15 +142,15 @@
 </script>
 
 {#if $activePosition}
-	<div class="position-card">
+	<div class="position-card" data-debug-name="activePosition">
 		<div class="position-header">
-			<div class="symbol">{$activePosition.symbol}</div>
+			<div class="symbol" data-debug-name="activePosition.symbol">{$activePosition.symbol}</div>
 			<div class="header-right">
-				<div class="direction" class:long={$activePosition.direction === 'LONG'} class:short={$activePosition.direction === 'SHORT'}>
+				<div class="direction" class:long={$activePosition.direction === 'LONG'} class:short={$activePosition.direction === 'SHORT'} data-debug-name="activePosition.direction">
 					{$activePosition.direction}
 				</div>
 				{#if $activePosition.tp_sl_mode}
-					<div class="tp-sl-mode">
+					<div class="tp-sl-mode" data-debug-name="activePosition.tp_sl_mode">
 						Mode: {$activePosition.tp_sl_mode}
 					</div>
 				{/if}
@@ -158,55 +158,55 @@
 		</div>
 
 		<div class="pnl-section">
-			<div class="pnl-value" style="color: {$pnlColor}">
+			<div class="pnl-value" style="color: {$pnlColor}" data-debug-name="activePosition.pnl">
 				{formatPercent($activePosition.pnl)}%
 			</div>
-			<div class="pnl-usdt" style="color: {$pnlColor}">
+			<div class="pnl-usdt" style="color: {$pnlColor}" data-debug-name="activePosition.pnl_usdt">
 				{formatUSDT($activePosition.pnl_usdt)} USDT
 			</div>
 		</div>
 
 		<div class="price-grid">
-			<div class="price-box">
-				<div class="price-label">Entry</div>
-				<div class="price-value">{formatPriceWithPrecision($activePosition.entry)}</div>
+			<div class="price-box" data-debug-name="activePosition.entry">
+				<div class="price-label" data-debug-name="activePosition.entry">Entry</div>
+				<div class="price-value" data-debug-name="activePosition.entry">{formatPriceWithPrecision($activePosition.entry)}</div>
 			</div>
-			<div class="price-box">
-				<div class="price-label">Current</div>
-				<div class="price-value">{formatPriceWithPrecision($activePosition.current_price)}</div>
+			<div class="price-box" data-debug-name="activePosition.current_price">
+				<div class="price-label" data-debug-name="activePosition.current_price">Current</div>
+				<div class="price-value" data-debug-name="activePosition.current_price">{formatPriceWithPrecision($activePosition.current_price)}</div>
 			</div>
-			<div class="price-box">
-				<div class="price-label">Size</div>
-				<div class="price-value">{formatPrice($activePosition.size)} USDT</div>
+			<div class="price-box" data-debug-name="activePosition.size">
+				<div class="price-label" data-debug-name="activePosition.size">Size</div>
+				<div class="price-value" data-debug-name="activePosition.size">{formatPrice($activePosition.size)} USDT</div>
 			</div>
 		</div>
 
 		<div class="tpsl-grid">
-			<div class="tpsl-box tp">
-				<div class="tpsl-label">Prochain Take Profit</div>
-				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.tp)}</div>
+			<div class="tpsl-box tp" data-debug-name="activePosition.tp">
+				<div class="tpsl-label" data-debug-name="activePosition.tp">Prochain Take Profit</div>
+				<div class="tpsl-price" data-debug-name="activePosition.tp">{formatPriceWithPrecision($activePosition.tp)}</div>
 				{#if nextTpInfo}
 					<div class="tpsl-info">
-						<div class="tpsl-pnl">PnL objectif: <span class="tpsl-value">+{formatPercent(nextTpInfo.pnl)}%</span></div>
-						<div class="tpsl-size">Taille: <span class="tpsl-value">{nextTpInfo.size}% de la position</span></div>
+						<div class="tpsl-pnl" data-debug-name="nextTpInfo.pnl">PnL objectif: <span class="tpsl-value" data-debug-name="nextTpInfo.pnl">+{formatPercent(nextTpInfo.pnl)}%</span></div>
+						<div class="tpsl-size" data-debug-name="nextTpInfo.size">Taille: <span class="tpsl-value" data-debug-name="nextTpInfo.size">{nextTpInfo.size}% de la position</span></div>
 					</div>
 				{:else if $tpDistance}
-					<div class="tpsl-distance">+{$tpDistance}%</div>
+					<div class="tpsl-distance" data-debug-name="tpDistance">+{$tpDistance}%</div>
 				{/if}
 			</div>
-			<div class="tpsl-box sl">
-				<div class="tpsl-label">Prochain Stop Loss</div>
-				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.sl)}</div>
+			<div class="tpsl-box sl" data-debug-name="activePosition.sl">
+				<div class="tpsl-label" data-debug-name="activePosition.sl">Prochain Stop Loss</div>
+				<div class="tpsl-price" data-debug-name="activePosition.sl">{formatPriceWithPrecision($activePosition.sl)}</div>
 				{#if nextSlInfo}
 					<div class="tpsl-info">
-						<div class="tpsl-pnl">PnL stop: <span class="tpsl-value">-{formatPercent(nextSlInfo.pnl)}%</span></div>
-						<div class="tpsl-size">Taille: <span class="tpsl-value">{nextSlInfo.size}% de la position restante</span></div>
+						<div class="tpsl-pnl" data-debug-name="nextSlInfo.pnl">PnL stop: <span class="tpsl-value" data-debug-name="nextSlInfo.pnl">-{formatPercent(nextSlInfo.pnl)}%</span></div>
+						<div class="tpsl-size" data-debug-name="nextSlInfo.size">Taille: <span class="tpsl-value" data-debug-name="nextSlInfo.size">{nextSlInfo.size}% de la position restante</span></div>
 					</div>
 				{:else if $slDistance}
-					<div class="tpsl-distance">{$slDistance}%</div>
+					<div class="tpsl-distance" data-debug-name="slDistance">{$slDistance}%</div>
 				{/if}
 				{#if $activePosition.dynamic_sl}
-					<div class="trailing-stop">
+					<div class="trailing-stop" data-debug-name="activePosition.dynamic_sl">
 						Trailing: {formatPriceWithPrecision($activePosition.dynamic_sl)}
 					</div>
 				{/if}
@@ -214,10 +214,10 @@
 		</div>
 
 		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null && $activePosition.size}
-			<div class="position-info">
-				<div class="info-item">
-					<span class="info-label">Position restante:</span>
-					<span class="info-value">
+			<div class="position-info" data-debug-name="activePosition.size_remaining">
+				<div class="info-item" data-debug-name="activePosition.size_remaining">
+					<span class="info-label" data-debug-name="activePosition.size_remaining">Position restante:</span>
+					<span class="info-value" data-debug-name="activePosition.size_remaining">
 						{formatPrice($activePosition.size_remaining)} USDT 
 						({formatPercent(($activePosition.size_remaining / $activePosition.size) * 100)}%)
 					</span>
@@ -226,15 +226,15 @@
 		{/if}
 
 		{#if $positionDuration}
-			<div class="duration">
+			<div class="duration" data-debug-name="positionDuration">
 				Duration: {$positionDuration}
 			</div>
 		{/if}
 
 		{#if $activePosition.confirmed_by}
-			<div class="signals">
-				<div class="signals-label">Confirmed by:</div>
-				<div class="signals-list">{$activePosition.confirmed_by}</div>
+			<div class="signals" data-debug-name="activePosition.confirmed_by">
+				<div class="signals-label" data-debug-name="activePosition.confirmed_by">Confirmed by:</div>
+				<div class="signals-list" data-debug-name="activePosition.confirmed_by">{$activePosition.confirmed_by}</div>
 			</div>
 		{/if}
 

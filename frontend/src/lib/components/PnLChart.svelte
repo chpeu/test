@@ -175,13 +175,13 @@
 	});
 </script>
 
-<div class="pnl-chart-container">
-	<div class="chart-header">
-		<h3>📈 PnL Curve</h3>
-		<div class="chart-info">Evolution du PnL cumulatif</div>
+<div class="pnl-chart-container" data-debug-name="pnlChartContainer">
+	<div class="chart-header" data-debug-name="chartHeader">
+		<h3 data-debug-name="chartTitle">📈 PnL Curve</h3>
+		<div class="chart-info" data-debug-name="chartInfo">Evolution du PnL cumulatif</div>
 	</div>
-	<div class="chart-wrapper">
-		<canvas bind:this={canvas}></canvas>
+	<div class="chart-wrapper" data-debug-name="chartWrapper">
+		<canvas bind:this={canvas} data-debug-name="pnlChart.canvas"></canvas>
 	</div>
 </div>
 

@@ -58,46 +58,46 @@
 	});
 </script>
 
-<div class="notification-settings">
-	<div class="settings-header">
-		<div class="title">
-			<span class="icon">🔔</span>
-			<h3>Notifications</h3>
+<div class="notification-settings" data-debug-name="notificationSettings">
+	<div class="settings-header" data-debug-name="settingsHeader">
+		<div class="title" data-debug-name="title">
+			<span class="icon" data-debug-name="icon">🔔</span>
+			<h3 data-debug-name="notificationsTitle">Notifications</h3>
 		</div>
 
 		{#if $notificationPermission === 'granted'}
-			<button class="toggle-btn" class:active={$notificationsEnabled} on:click={handleToggle}>
-				<span class="toggle-icon">{$notificationsEnabled ? '✅' : '⭕'}</span>
-				{$notificationsEnabled ? 'Activées' : 'Désactivées'}
+			<button class="toggle-btn" class:active={$notificationsEnabled} on:click={handleToggle} data-debug-name="toggleBtn">
+				<span class="toggle-icon" data-debug-name="toggleIcon">{$notificationsEnabled ? '✅' : '⭕'}</span>
+				<span data-debug-name="notificationsEnabled">{$notificationsEnabled ? 'Activées' : 'Désactivées'}</span>
 			</button>
 		{/if}
 	</div>
 
 	{#if $notificationPermission === 'default'}
-		<div class="permission-request">
-			<p class="info">
+		<div class="permission-request" data-debug-name="permissionRequest">
+			<p class="info" data-debug-name="permissionRequest.info">
 				Les notifications vous permettent de recevoir des alertes en temps réel pour:
 			</p>
-			<ul class="features-list">
+			<ul class="features-list" data-debug-name="permissionRequest.features">
 				<li>🟢 Positions ouvertes</li>
 				<li>🔴 Positions fermées (TP/SL/TS)</li>
 				<li>🔍 Setups détectés</li>
 				<li>🏆 Milestones (winrate)</li>
 				<li>❌ Erreurs critiques</li>
 			</ul>
-			<button class="request-btn" on:click={handleRequestPermission}>
-				<span class="btn-icon">🔔</span>
-				Activer les notifications
+			<button class="request-btn" on:click={handleRequestPermission} data-debug-name="requestBtn">
+				<span class="btn-icon" data-debug-name="requestBtn.icon">🔔</span>
+				<span data-debug-name="requestBtn.label">Activer les notifications</span>
 			</button>
 		</div>
 	{:else if $notificationPermission === 'denied'}
-		<div class="permission-denied">
-			<p class="warning">❌ Permission refusée</p>
-			<p class="help">
+		<div class="permission-denied" data-debug-name="permissionDenied">
+			<p class="warning" data-debug-name="permissionDenied.warning">❌ Permission refusée</p>
+			<p class="help" data-debug-name="permissionDenied.help">
 				Pour activer les notifications, vous devez autoriser le site dans les paramètres de votre
 				navigateur:
 			</p>
-			<ol class="steps">
+			<ol class="steps" data-debug-name="permissionDenied.steps">
 				<li>Cliquez sur l'icône 🔒 ou ⓘ dans la barre d'adresse</li>
 				<li>Cherchez "Notifications"</li>
 				<li>Sélectionnez "Autoriser"</li>
@@ -105,74 +105,74 @@
 			</ol>
 		</div>
 	{:else}
-		<div class="notification-types">
-			<p class="description">
+		<div class="notification-types" data-debug-name="notificationTypes">
+			<p class="description" data-debug-name="notificationTypes.description">
 				Les notifications sont automatiquement envoyées pour les événements importants :
 			</p>
 
 			<!-- 🔥 FIX: Séparer les différents systèmes de notifications -->
-			<div class="notification-systems">
+			<div class="notification-systems" data-debug-name="notificationSystems">
 				<!-- Système 1: Notifications Navigateur (Browser) -->
-				<div class="system-section">
-					<h4 class="system-title">🌐 Notifications Navigateur</h4>
-					<div class="types-grid">
-						<div class="type-card active">
-							<div class="type-icon">🟢</div>
-							<div class="type-name">Position Ouverte</div>
-							<div class="type-desc">Alerte à l'ouverture d'une position</div>
+				<div class="system-section" data-debug-name="systemSection.browser">
+					<h4 class="system-title" data-debug-name="systemTitle.browser">🌐 Notifications Navigateur</h4>
+					<div class="types-grid" data-debug-name="typesGrid.browser">
+						<div class="type-card active" data-debug-name="typeCard.positionOpen">
+							<div class="type-icon" data-debug-name="typeIcon.positionOpen">🟢</div>
+							<div class="type-name" data-debug-name="typeName.positionOpen">Position Ouverte</div>
+							<div class="type-desc" data-debug-name="typeDesc.positionOpen">Alerte à l'ouverture d'une position</div>
 						</div>
 
-						<div class="type-card active">
-							<div class="type-icon">🔴</div>
-							<div class="type-name">Position Fermée</div>
-							<div class="type-desc">TP, SL ou Trailing Stop</div>
+						<div class="type-card active" data-debug-name="typeCard.positionClose">
+							<div class="type-icon" data-debug-name="typeIcon.positionClose">🔴</div>
+							<div class="type-name" data-debug-name="typeName.positionClose">Position Fermée</div>
+							<div class="type-desc" data-debug-name="typeDesc.positionClose">TP, SL ou Trailing Stop</div>
 						</div>
 
-						<div class="type-card active">
-							<div class="type-icon">🔍</div>
-							<div class="type-name">Setup Détecté</div>
-							<div class="type-desc">Conditions de trading remplies</div>
+						<div class="type-card active" data-debug-name="typeCard.setupDetected">
+							<div class="type-icon" data-debug-name="typeIcon.setupDetected">🔍</div>
+							<div class="type-name" data-debug-name="typeName.setupDetected">Setup Détecté</div>
+							<div class="type-desc" data-debug-name="typeDesc.setupDetected">Conditions de trading remplies</div>
 						</div>
 
-						<div class="type-card active">
-							<div class="type-icon">❌</div>
-							<div class="type-name">Erreurs</div>
-							<div class="type-desc">Erreurs critiques du système</div>
+						<div class="type-card active" data-debug-name="typeCard.errors">
+							<div class="type-icon" data-debug-name="typeIcon.errors">❌</div>
+							<div class="type-name" data-debug-name="typeName.errors">Erreurs</div>
+							<div class="type-desc" data-debug-name="typeDesc.errors">Erreurs critiques du système</div>
 						</div>
 					</div>
 				</div>
 
 				<!-- Système 2: Telegram -->
-				<div class="system-section">
-					<h4 class="system-title">📱 Notifications Telegram</h4>
-					<div class="telegram-config">
-						<p class="telegram-info">
+				<div class="system-section" data-debug-name="systemSection.telegram">
+					<h4 class="system-title" data-debug-name="systemTitle.telegram">📱 Notifications Telegram</h4>
+					<div class="telegram-config" data-debug-name="telegramConfig">
+						<p class="telegram-info" data-debug-name="telegramInfo">
 							Les notifications Telegram sont configurées via le fichier <code>.env</code> à la racine du projet :
 						</p>
-						<div class="telegram-instructions">
-							<ol class="telegram-steps">
+						<div class="telegram-instructions" data-debug-name="telegramInstructions">
+							<ol class="telegram-steps" data-debug-name="telegramSteps">
 								<li>Créez un fichier <code>.env</code> à la racine du projet</li>
 								<li>Ajoutez vos identifiants Telegram :
-									<pre class="env-example">TELEGRAM_BOT_TOKEN=votre_token_ici
+									<pre class="env-example" data-debug-name="envExample">TELEGRAM_BOT_TOKEN=votre_token_ici
 TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 								</li>
 								<li>Redémarrez le backend pour appliquer les changements</li>
 							</ol>
-							<div class="telegram-security">
+							<div class="telegram-security" data-debug-name="telegramSecurity">
 								<strong>🔒 Sécurité :</strong> Le fichier <code>.env</code> est dans <code>.gitignore</code> et ne sera jamais commité sur GitHub.
 							</div>
 						</div>
-						<div class="telegram-status">
-							<span class="status-label">Statut:</span>
-							<span class="status-value">{telegramStatus}</span>
+						<div class="telegram-status" data-debug-name="telegramStatus">
+							<span class="status-label" data-debug-name="statusLabel">Statut:</span>
+							<span class="status-value" data-debug-name="telegramStatus.value">{telegramStatus}</span>
 						</div>
 					</div>
 				</div>
 			</div>
 
-			<div class="notification-note">
-				<div class="note-icon">ℹ️</div>
-				<div class="note-text">
+			<div class="notification-note" data-debug-name="notificationNote">
+				<div class="note-icon" data-debug-name="noteIcon">ℹ️</div>
+				<div class="note-text" data-debug-name="noteText">
 					<strong>Note:</strong> Les notifications sont actives pour tous les événements importants.
 					Vous recevrez également des alertes lorsque votre winrate atteint des seuils significatifs (50%, 60%, 70%).
 				</div>

@@ -592,40 +592,40 @@
 	});
 </script>
 
-<div class="variables-panel">
-	<div class="panel-header">
-		<h2>🎯 Variables de Trading</h2>
-		<div class="header-actions">
+<div class="variables-panel" data-debug-name="variablesPanel">
+	<div class="panel-header" data-debug-name="variablesPanel.header">
+		<h2 data-debug-name="variablesPanel.title">🎯 Variables de Trading</h2>
+		<div class="header-actions" data-debug-name="variablesPanel.actions">
 			{#if hasUnsavedChanges}
-				<span class="unsaved-indicator" title="Modifications non sauvegardées - Sauvegarde automatique dans quelques secondes...">
+				<span class="unsaved-indicator" title="Modifications non sauvegardées - Sauvegarde automatique dans quelques secondes..." data-debug-name="hasUnsavedChanges">
 					⚠️ Non sauvegardé
 				</span>
 			{/if}
-			<button class="btn-secondary" on:click={resetDefaults}>🔄 Reset All</button>
-			<button class="btn-primary" on:click={saveConfig} disabled={loading} title={hasUnsavedChanges ? 'Sauvegarder immédiatement (annule la sauvegarde automatique)' : 'Forcer la sauvegarde'}>
+			<button class="btn-secondary" on:click={resetDefaults} data-debug-name="variablesPanel.resetButton">🔄 Reset All</button>
+			<button class="btn-primary" on:click={saveConfig} disabled={loading} title={hasUnsavedChanges ? 'Sauvegarder immédiatement (annule la sauvegarde automatique)' : 'Forcer la sauvegarde'} data-debug-name="variablesPanel.saveButton">
 				{loading ? '⏳ Saving...' : '💾 Save'}
 			</button>
 		</div>
 	</div>
 
 	{#if saveMessage}
-		<div class="save-message" class:success={saveMessage.includes('✅')} class:error={saveMessage.includes('❌')}>
+		<div class="save-message" class:success={saveMessage.includes('✅')} class:error={saveMessage.includes('❌')} data-debug-name="saveMessage">
 			{saveMessage}
 		</div>
 	{/if}
 
 	<!-- Sous-onglets -->
-	<div class="subtabs">
-		<button class="subtab" class:active={activeSubTab === 'setups'} on:click={() => activeSubTab = 'setups'}>
+	<div class="subtabs" data-debug-name="variablesPanel.subtabs">
+		<button class="subtab" class:active={activeSubTab === 'setups'} on:click={() => activeSubTab = 'setups'} data-debug-name="activeSubTab">
 			📊 Setups & Validation
 		</button>
-		<button class="subtab" class:active={activeSubTab === 'money'} on:click={() => activeSubTab = 'money'}>
+		<button class="subtab" class:active={activeSubTab === 'money'} on:click={() => activeSubTab = 'money'} data-debug-name="activeSubTab">
 			💰 Money Management
 		</button>
-		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'}>
+		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'} data-debug-name="activeSubTab">
 			🎯 TP/SL & Position
 		</button>
-		<button class="subtab" class:active={activeSubTab === 'current'} on:click={() => activeSubTab = 'current'}>
+		<button class="subtab" class:active={activeSubTab === 'current'} on:click={() => activeSubTab = 'current'} data-debug-name="activeSubTab">
 			📋 Variables en cours
 		</button>
 	</div>
@@ -722,32 +722,33 @@
 					<!-- 1. Breakout Pattern -->
 					<div class="pattern-group">
 						<div class="pattern-header">
-							<div class="variable-item checkbox">
-								<label for="use-breakout">
+							<div class="variable-item checkbox" data-debug-name="config.use_breakout">
+								<label for="use-breakout" data-debug-name="config.use_breakout">
 									<input
 										id="use-breakout"
 										type="checkbox"
 										bind:checked={config.use_breakout}
 										on:change={() => triggerAutoSave('use_breakout', config.use_breakout ? 'Activé' : 'Désactivé')}
+										data-debug-name="config.use_breakout"
 									/>
-									<span class="var-name">🔼 Breakout Pattern</span>
-									<span class="var-desc">Cassure de niveaux clés (support/résistance)</span>
+									<span class="var-name" data-debug-name="config.use_breakout">🔼 Breakout Pattern</span>
+									<span class="var-desc" data-debug-name="config.use_breakout">Cassure de niveaux clés (support/résistance)</span>
 								</label>
-								<button class="btn-reset" on:click={() => resetVariable('use_breakout')} title="Réinitialiser">⟲</button>
+								<button class="btn-reset" on:click={() => resetVariable('use_breakout')} title="Réinitialiser" data-debug-name="config.use_breakout.reset">⟲</button>
 							</div>
 						</div>
 
 						{#if config.use_breakout}
 							<div class="pattern-indicators">
-								<div class="variable-item">
-									<div class="var-header">
-										<label for="breakout-threshold">
-											<span class="var-name">Breakout Threshold</span>
-											<span class="var-desc">Seuil de cassure (distance minimale en × ATR)</span>
+								<div class="variable-item" data-debug-name="config.breakout_threshold">
+									<div class="var-header" data-debug-name="config.breakout_threshold">
+										<label for="breakout-threshold" data-debug-name="config.breakout_threshold">
+											<span class="var-name" data-debug-name="config.breakout_threshold">Breakout Threshold</span>
+											<span class="var-desc" data-debug-name="config.breakout_threshold">Seuil de cassure (distance minimale en × ATR)</span>
 										</label>
-										<button class="btn-reset" on:click={() => resetVariable('breakout_threshold')} title="Réinitialiser">⟲</button>
+										<button class="btn-reset" on:click={() => resetVariable('breakout_threshold')} title="Réinitialiser" data-debug-name="config.breakout_threshold.reset">⟲</button>
 									</div>
-									<div class="slider-container">
+									<div class="slider-container" data-debug-name="config.breakout_threshold">
 										<input
 											id="breakout-threshold"
 											type="range"
@@ -756,8 +757,9 @@
 											max="1"
 											bind:value={config.breakout_threshold}
 											on:change={() => triggerAutoSave('breakout_threshold', config.breakout_threshold.toFixed(2))}
+											data-debug-name="config.breakout_threshold"
 										/>
-										<span class="slider-value">{Number(config.breakout_threshold).toFixed(2)}</span>
+										<span class="slider-value" data-debug-name="config.breakout_threshold">{Number(config.breakout_threshold).toFixed(2)}</span>
 									</div>
 								</div>
 							</div>
@@ -767,32 +769,33 @@
 					<!-- 2. SNR Pattern -->
 					<div class="pattern-group">
 						<div class="pattern-header">
-							<div class="variable-item checkbox">
-								<label for="use-snr">
+							<div class="variable-item checkbox" data-debug-name="config.use_snr">
+								<label for="use-snr" data-debug-name="config.use_snr">
 									<input
 										id="use-snr"
 										type="checkbox"
 										bind:checked={config.use_snr}
 										on:change={() => triggerAutoSave('use_snr', config.use_snr ? 'Activé' : 'Désactivé')}
+										data-debug-name="config.use_snr"
 									/>
-									<span class="var-name">📍 SNR Pattern</span>
-									<span class="var-desc">Rebond sur support/résistance</span>
+									<span class="var-name" data-debug-name="config.use_snr">📍 SNR Pattern</span>
+									<span class="var-desc" data-debug-name="config.use_snr">Rebond sur support/résistance</span>
 								</label>
-								<button class="btn-reset" on:click={() => resetVariable('use_snr')} title="Réinitialiser">⟲</button>
+								<button class="btn-reset" on:click={() => resetVariable('use_snr')} title="Réinitialiser" data-debug-name="config.use_snr.reset">⟲</button>
 							</div>
 						</div>
 
 						{#if config.use_snr}
 							<div class="pattern-indicators">
-								<div class="variable-item">
-									<div class="var-header">
-										<label for="snr-threshold">
-											<span class="var-name">SNR Threshold</span>
-											<span class="var-desc">Seuil de support/résistance (distance en × ATR)</span>
+								<div class="variable-item" data-debug-name="config.snr_threshold">
+									<div class="var-header" data-debug-name="config.snr_threshold">
+										<label for="snr-threshold" data-debug-name="config.snr_threshold">
+											<span class="var-name" data-debug-name="config.snr_threshold">SNR Threshold</span>
+											<span class="var-desc" data-debug-name="config.snr_threshold">Seuil de support/résistance (distance en × ATR)</span>
 										</label>
-										<button class="btn-reset" on:click={() => resetVariable('snr_threshold')} title="Réinitialiser">⟲</button>
+										<button class="btn-reset" on:click={() => resetVariable('snr_threshold')} title="Réinitialiser" data-debug-name="config.snr_threshold.reset">⟲</button>
 									</div>
-									<div class="slider-container">
+									<div class="slider-container" data-debug-name="config.snr_threshold">
 										<input
 											id="snr-threshold"
 											type="range"
@@ -801,8 +804,9 @@
 											max="1"
 											bind:value={config.snr_threshold}
 											on:change={() => triggerAutoSave('snr_threshold', config.snr_threshold.toFixed(2))}
+											data-debug-name="config.snr_threshold"
 										/>
-										<span class="slider-value">{Number(config.snr_threshold).toFixed(2)}</span>
+										<span class="slider-value" data-debug-name="config.snr_threshold">{Number(config.snr_threshold).toFixed(2)}</span>
 									</div>
 								</div>
 							</div>
@@ -812,32 +816,33 @@
 					<!-- 3. Wick Pattern -->
 					<div class="pattern-group">
 						<div class="pattern-header">
-							<div class="variable-item checkbox">
-								<label for="use-wick">
+							<div class="variable-item checkbox" data-debug-name="config.use_wick">
+								<label for="use-wick" data-debug-name="config.use_wick">
 									<input
 										id="use-wick"
 										type="checkbox"
 										bind:checked={config.use_wick}
 										on:change={() => triggerAutoSave('use_wick', config.use_wick ? 'Activé' : 'Désactivé')}
+										data-debug-name="config.use_wick"
 									/>
-									<span class="var-name">📏 Wick Pattern</span>
-									<span class="var-desc">Rejet de prix via longues mèches</span>
+									<span class="var-name" data-debug-name="config.use_wick">📏 Wick Pattern</span>
+									<span class="var-desc" data-debug-name="config.use_wick">Rejet de prix via longues mèches</span>
 								</label>
-								<button class="btn-reset" on:click={() => resetVariable('use_wick')} title="Réinitialiser">⟲</button>
+								<button class="btn-reset" on:click={() => resetVariable('use_wick')} title="Réinitialiser" data-debug-name="config.use_wick.reset">⟲</button>
 							</div>
 						</div>
 
 						{#if config.use_wick}
 							<div class="pattern-indicators">
-								<div class="variable-item">
-									<div class="var-header">
-										<label for="wick-ratio">
-											<span class="var-name">Wick Ratio Max</span>
-											<span class="var-desc">Ratio maximum mèche/corps de bougie</span>
+								<div class="variable-item" data-debug-name="config.wick_ratio_max">
+									<div class="var-header" data-debug-name="config.wick_ratio_max">
+										<label for="wick-ratio" data-debug-name="config.wick_ratio_max">
+											<span class="var-name" data-debug-name="config.wick_ratio_max">Wick Ratio Max</span>
+											<span class="var-desc" data-debug-name="config.wick_ratio_max">Ratio maximum mèche/corps de bougie</span>
 										</label>
-										<button class="btn-reset" on:click={() => resetVariable('wick_ratio_max')} title="Réinitialiser">⟲</button>
+										<button class="btn-reset" on:click={() => resetVariable('wick_ratio_max')} title="Réinitialiser" data-debug-name="config.wick_ratio_max.reset">⟲</button>
 									</div>
-									<div class="slider-container">
+									<div class="slider-container" data-debug-name="config.wick_ratio_max">
 										<input
 											id="wick-ratio"
 											type="range"
@@ -846,8 +851,9 @@
 											max="10"
 											bind:value={config.wick_ratio_max}
 											on:change={() => triggerAutoSave('wick_ratio_max', config.wick_ratio_max.toFixed(1))}
+											data-debug-name="config.wick_ratio_max"
 										/>
-										<span class="slider-value">{Number(config.wick_ratio_max).toFixed(1)}</span>
+										<span class="slider-value" data-debug-name="config.wick_ratio_max">{Number(config.wick_ratio_max).toFixed(1)}</span>
 									</div>
 								</div>
 							</div>
@@ -857,32 +863,33 @@
 					<!-- 4. Divergence Pattern -->
 					<div class="pattern-group">
 						<div class="pattern-header">
-							<div class="variable-item checkbox">
-								<label for="use-divergence">
+							<div class="variable-item checkbox" data-debug-name="config.use_divergence">
+								<label for="use-divergence" data-debug-name="config.use_divergence">
 									<input
 										id="use-divergence"
 										type="checkbox"
 										bind:checked={config.use_divergence}
 										on:change={() => triggerAutoSave('use_divergence', config.use_divergence ? 'Activé' : 'Désactivé')}
+										data-debug-name="config.use_divergence"
 									/>
-									<span class="var-name">🔀 Divergence Pattern</span>
-									<span class="var-desc">Divergence DI+ vs DI-</span>
+									<span class="var-name" data-debug-name="config.use_divergence">🔀 Divergence Pattern</span>
+									<span class="var-desc" data-debug-name="config.use_divergence">Divergence DI+ vs DI-</span>
 								</label>
-								<button class="btn-reset" on:click={() => resetVariable('use_divergence')} title="Réinitialiser">⟲</button>
+								<button class="btn-reset" on:click={() => resetVariable('use_divergence')} title="Réinitialiser" data-debug-name="config.use_divergence.reset">⟲</button>
 							</div>
 						</div>
 
 						{#if config.use_divergence}
 							<div class="pattern-indicators">
-								<div class="variable-item">
-									<div class="var-header">
-										<label for="di-gap">
-											<span class="var-name">DI Gap Min</span>
-											<span class="var-desc">Gap minimum entre DI+ et DI-</span>
+								<div class="variable-item" data-debug-name="config.di_gap_min">
+									<div class="var-header" data-debug-name="config.di_gap_min">
+										<label for="di-gap" data-debug-name="config.di_gap_min">
+											<span class="var-name" data-debug-name="config.di_gap_min">DI Gap Min</span>
+											<span class="var-desc" data-debug-name="config.di_gap_min">Gap minimum entre DI+ et DI-</span>
 										</label>
-										<button class="btn-reset" on:click={() => resetVariable('di_gap_min')} title="Réinitialiser">⟲</button>
+										<button class="btn-reset" on:click={() => resetVariable('di_gap_min')} title="Réinitialiser" data-debug-name="config.di_gap_min.reset">⟲</button>
 									</div>
-									<div class="slider-container">
+									<div class="slider-container" data-debug-name="config.di_gap_min">
 										<input
 											id="di-gap"
 											type="range"
@@ -891,20 +898,21 @@
 											max="20"
 											bind:value={config.di_gap_min}
 											on:change={() => triggerAutoSave('di_gap_min', config.di_gap_min.toFixed(1))}
+											data-debug-name="config.di_gap_min"
 										/>
-										<span class="slider-value">{Number(config.di_gap_min).toFixed(1)}</span>
+										<span class="slider-value" data-debug-name="config.di_gap_min">{Number(config.di_gap_min).toFixed(1)}</span>
 									</div>
 								</div>
 
-								<div class="variable-item">
-									<div class="var-header">
-										<label for="di-gap-adx-threshold">
-											<span class="var-name">DI Gap ADX Threshold</span>
-											<span class="var-desc">Seuil ADX pour valider le DI gap</span>
+								<div class="variable-item" data-debug-name="config.di_gap_adx_threshold">
+									<div class="var-header" data-debug-name="config.di_gap_adx_threshold">
+										<label for="di-gap-adx-threshold" data-debug-name="config.di_gap_adx_threshold">
+											<span class="var-name" data-debug-name="config.di_gap_adx_threshold">DI Gap ADX Threshold</span>
+											<span class="var-desc" data-debug-name="config.di_gap_adx_threshold">Seuil ADX pour valider le DI gap</span>
 										</label>
-										<button class="btn-reset" on:click={() => resetVariable('di_gap_adx_threshold')} title="Réinitialiser">⟲</button>
+										<button class="btn-reset" on:click={() => resetVariable('di_gap_adx_threshold')} title="Réinitialiser" data-debug-name="config.di_gap_adx_threshold.reset">⟲</button>
 									</div>
-									<div class="slider-container">
+									<div class="slider-container" data-debug-name="config.di_gap_adx_threshold">
 										<input
 											id="di-gap-adx-threshold"
 											type="range"
@@ -913,8 +921,9 @@
 											max="100"
 											bind:value={config.di_gap_adx_threshold}
 											on:change={() => triggerAutoSave('di_gap_adx_threshold', config.di_gap_adx_threshold.toFixed(0))}
+											data-debug-name="config.di_gap_adx_threshold"
 										/>
-										<span class="slider-value">{Number(config.di_gap_adx_threshold).toFixed(0)}</span>
+										<span class="slider-value" data-debug-name="config.di_gap_adx_threshold">{Number(config.di_gap_adx_threshold).toFixed(0)}</span>
 									</div>
 								</div>
 							</div>
@@ -931,102 +940,109 @@
 				<!-- 🔥 FIX: Toutes les cases de bougies utilisent le même système de rafraîchissement automatique que confluence -->
 				<!-- Mécanisme: bind:checked + triggerAutoSave + config_updated (WebSocket) -->
 				<div class="variables-list candlestick-patterns">
-					<div class="variable-item checkbox">
-						<label for="use-engulfing">
+					<div class="variable-item checkbox" data-debug-name="config.use_engulfing">
+						<label for="use-engulfing" data-debug-name="config.use_engulfing">
 							<input
 								id="use-engulfing"
 								type="checkbox"
 								bind:checked={config.use_engulfing}
 								on:change={() => triggerAutoSave('use_engulfing', config.use_engulfing ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_engulfing"
 							/>
-							<span class="var-name">Engulfing</span>
-							<span class="var-desc">Bougie engloutissante (bullish/bearish)</span>
+							<span class="var-name" data-debug-name="config.use_engulfing">Engulfing</span>
+							<span class="var-desc" data-debug-name="config.use_engulfing">Bougie engloutissante (bullish/bearish)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_engulfing')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_engulfing')} title="Réinitialiser" data-debug-name="config.use_engulfing.reset">⟲</button>
 					</div>
 
-					<div class="variable-item checkbox">
-						<label for="use-hammer">
+					<div class="variable-item checkbox" data-debug-name="config.use_hammer">
+						<label for="use-hammer" data-debug-name="config.use_hammer">
 							<input
 								id="use-hammer"
 								type="checkbox"
 								bind:checked={config.use_hammer}
 								on:change={() => triggerAutoSave('use_hammer', config.use_hammer ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_hammer"
 							/>
-							<span class="var-name">Hammer</span>
-							<span class="var-desc">Marteau (reversal haussier)</span>
+							<span class="var-name" data-debug-name="config.use_hammer">Hammer</span>
+							<span class="var-desc" data-debug-name="config.use_hammer">Marteau (reversal haussier)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_hammer')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_hammer')} title="Réinitialiser" data-debug-name="config.use_hammer.reset">⟲</button>
 					</div>
 
-					<div class="variable-item checkbox">
-						<label for="use-shooting-star">
+					<div class="variable-item checkbox" data-debug-name="config.use_shooting_star">
+						<label for="use-shooting-star" data-debug-name="config.use_shooting_star">
 							<input
 								id="use-shooting-star"
 								type="checkbox"
 								bind:checked={config.use_shooting_star}
 								on:change={() => triggerAutoSave('use_shooting_star', config.use_shooting_star ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_shooting_star"
 							/>
-							<span class="var-name">Shooting Star</span>
-							<span class="var-desc">Étoile filante (reversal baissier)</span>
+							<span class="var-name" data-debug-name="config.use_shooting_star">Shooting Star</span>
+							<span class="var-desc" data-debug-name="config.use_shooting_star">Étoile filante (reversal baissier)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_shooting_star')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_shooting_star')} title="Réinitialiser" data-debug-name="config.use_shooting_star.reset">⟲</button>
 					</div>
 
-					<div class="variable-item checkbox">
-						<label for="use-doji">
+					<div class="variable-item checkbox" data-debug-name="config.use_doji">
+						<label for="use-doji" data-debug-name="config.use_doji">
 							<input
 								id="use-doji"
 								type="checkbox"
 								bind:checked={config.use_doji}
 								on:change={() => triggerAutoSave('use_doji', config.use_doji ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_doji"
 							/>
-							<span class="var-name">Doji</span>
-							<span class="var-desc">Doji, Dragonfly, Gravestone (indécision)</span>
+							<span class="var-name" data-debug-name="config.use_doji">Doji</span>
+							<span class="var-desc" data-debug-name="config.use_doji">Doji, Dragonfly, Gravestone (indécision)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_doji')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_doji')} title="Réinitialiser" data-debug-name="config.use_doji.reset">⟲</button>
 					</div>
 
-					<div class="variable-item checkbox">
-						<label for="use-marubozu">
+					<div class="variable-item checkbox" data-debug-name="config.use_marubozu">
+						<label for="use-marubozu" data-debug-name="config.use_marubozu">
 							<input
 								id="use-marubozu"
 								type="checkbox"
 								bind:checked={config.use_marubozu}
 								on:change={() => triggerAutoSave('use_marubozu', config.use_marubozu ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_marubozu"
 							/>
-							<span class="var-name">Marubozu</span>
-							<span class="var-desc">Bougie pleine (momentum fort)</span>
+							<span class="var-name" data-debug-name="config.use_marubozu">Marubozu</span>
+							<span class="var-desc" data-debug-name="config.use_marubozu">Bougie pleine (momentum fort)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_marubozu')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_marubozu')} title="Réinitialiser" data-debug-name="config.use_marubozu.reset">⟲</button>
 					</div>
 
-					<div class="variable-item checkbox">
-						<label for="use-morning-star">
+					<div class="variable-item checkbox" data-debug-name="config.use_morning_star">
+						<label for="use-morning-star" data-debug-name="config.use_morning_star">
 							<input
 								id="use-morning-star"
 								type="checkbox"
 								bind:checked={config.use_morning_star}
 								on:change={() => triggerAutoSave('use_morning_star', config.use_morning_star ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_morning_star"
 							/>
-							<span class="var-name">Morning Star</span>
-							<span class="var-desc">Étoile du matin (3 bougies, reversal haussier)</span>
+							<span class="var-name" data-debug-name="config.use_morning_star">Morning Star</span>
+							<span class="var-desc" data-debug-name="config.use_morning_star">Étoile du matin (3 bougies, reversal haussier)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_morning_star')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_morning_star')} title="Réinitialiser" data-debug-name="config.use_morning_star.reset">⟲</button>
 					</div>
 
-					<div class="variable-item checkbox">
-						<label for="use-evening-star">
+					<div class="variable-item checkbox" data-debug-name="config.use_evening_star">
+						<label for="use-evening-star" data-debug-name="config.use_evening_star">
 							<input
 								id="use-evening-star"
 								type="checkbox"
 								bind:checked={config.use_evening_star}
 								on:change={() => triggerAutoSave('use_evening_star', config.use_evening_star ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_evening_star"
 							/>
-							<span class="var-name">Evening Star</span>
-							<span class="var-desc">Étoile du soir (3 bougies, reversal baissier)</span>
+							<span class="var-name" data-debug-name="config.use_evening_star">Evening Star</span>
+							<span class="var-desc" data-debug-name="config.use_evening_star">Étoile du soir (3 bougies, reversal baissier)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_evening_star')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_evening_star')} title="Réinitialiser" data-debug-name="config.use_evening_star.reset">⟲</button>
 					</div>
 				</div>
 			</section>
@@ -1037,29 +1053,30 @@
 				<p class="section-subtitle">Critères pour valider un trade (confluence, volume, score minimum)</p>
 
 				<div class="variables-list">
-					<div class="variable-item checkbox">
-						<label for="use-confluence">
+					<div class="variable-item checkbox" data-debug-name="config.use_confluence">
+						<label for="use-confluence" data-debug-name="config.use_confluence">
 							<input
 								id="use-confluence"
 								type="checkbox"
 								bind:checked={config.use_confluence}
 								on:change={() => triggerAutoSave('use_confluence', config.use_confluence ? 'Activé' : 'Désactivé')}
+								data-debug-name="config.use_confluence"
 							/>
-							<span class="var-name">Use Confluence</span>
-							<span class="var-desc">Exiger confirmation sur TOUS les timeframes (1m + 5m)</span>
+							<span class="var-name" data-debug-name="config.use_confluence">Use Confluence</span>
+							<span class="var-desc" data-debug-name="config.use_confluence">Exiger confirmation sur TOUS les timeframes (1m + 5m)</span>
 						</label>
-						<button class="btn-reset" on:click={() => resetVariable('use_confluence')} title="Réinitialiser">⟲</button>
+						<button class="btn-reset" on:click={() => resetVariable('use_confluence')} title="Réinitialiser" data-debug-name="config.use_confluence.reset">⟲</button>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="volume-multiplier">
-								<span class="var-name">Volume Multiplier</span>
-								<span class="var-desc">Volume actuel doit être > moyenne × ce multiplicateur</span>
+					<div class="variable-item" data-debug-name="config.volume_multiplier">
+						<div class="var-header" data-debug-name="config.volume_multiplier">
+							<label for="volume-multiplier" data-debug-name="config.volume_multiplier">
+								<span class="var-name" data-debug-name="config.volume_multiplier">Volume Multiplier</span>
+								<span class="var-desc" data-debug-name="config.volume_multiplier">Volume actuel doit être > moyenne × ce multiplicateur</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('volume_multiplier')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('volume_multiplier')} title="Réinitialiser" data-debug-name="config.volume_multiplier.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.volume_multiplier">
 							<input
 								id="volume-multiplier"
 								type="range"
@@ -1068,20 +1085,21 @@
 								max="2"
 								bind:value={config.volume_multiplier}
 								on:change={() => triggerAutoSave('volume_multiplier', config.volume_multiplier.toFixed(2))}
+								data-debug-name="config.volume_multiplier"
 							/>
-							<span class="slider-value">{Number(config.volume_multiplier).toFixed(2)}×</span>
+							<span class="slider-value" data-debug-name="config.volume_multiplier">{Number(config.volume_multiplier).toFixed(2)}×</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="min-score">
-								<span class="var-name">Min Score Required</span>
-								<span class="var-desc">Score minimum pour valider un setup</span>
+					<div class="variable-item" data-debug-name="config.min_score_required">
+						<div class="var-header" data-debug-name="config.min_score_required">
+							<label for="min-score" data-debug-name="config.min_score_required">
+								<span class="var-name" data-debug-name="config.min_score_required">Min Score Required</span>
+								<span class="var-desc" data-debug-name="config.min_score_required">Score minimum pour valider un setup</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('min_score_required')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('min_score_required')} title="Réinitialiser" data-debug-name="config.min_score_required.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.min_score_required">
 							<input
 								id="min-score"
 								type="range"
@@ -1090,8 +1108,9 @@
 								max="20"
 								bind:value={config.min_score_required}
 								on:change={() => triggerAutoSave('min_score_required', config.min_score_required.toFixed(1))}
+								data-debug-name="config.min_score_required"
 							/>
-							<span class="slider-value">{Number(config.min_score_required).toFixed(1)} pts</span>
+							<span class="slider-value" data-debug-name="config.min_score_required">{Number(config.min_score_required).toFixed(1)} pts</span>
 						</div>
 					</div>
 				</div>
@@ -1103,35 +1122,36 @@
 				<p class="section-subtitle">Configuration des timeframes et plages ATR optimales pour filtrage</p>
 
 				<div class="variables-list">
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="trend-timeframe">
-								<span class="var-name">Trend Timeframe</span>
-								<span class="var-desc">Période pour l'analyse de tendance</span>
+					<div class="variable-item" data-debug-name="config.trend_timeframe">
+						<div class="var-header" data-debug-name="config.trend_timeframe">
+							<label for="trend-timeframe" data-debug-name="config.trend_timeframe">
+								<span class="var-name" data-debug-name="config.trend_timeframe">Trend Timeframe</span>
+								<span class="var-desc" data-debug-name="config.trend_timeframe">Période pour l'analyse de tendance</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('trend_timeframe')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('trend_timeframe')} title="Réinitialiser" data-debug-name="config.trend_timeframe.reset">⟲</button>
 						</div>
 						<select
 							id="trend-timeframe"
 							bind:value={config.trend_timeframe}
 							on:change={() => triggerAutoSave('trend_timeframe', config.trend_timeframe)}
+							data-debug-name="config.trend_timeframe"
 						>
-							<option value="5m">5 minutes</option>
-							<option value="15m">15 minutes</option>
-							<option value="30m">30 minutes</option>
-							<option value="1h">1 heure</option>
+							<option value="5m" data-debug-name="config.trend_timeframe.5m">5 minutes</option>
+							<option value="15m" data-debug-name="config.trend_timeframe.15m">15 minutes</option>
+							<option value="30m" data-debug-name="config.trend_timeframe.30m">30 minutes</option>
+							<option value="1h" data-debug-name="config.trend_timeframe.1h">1 heure</option>
 						</select>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="optimal-atr-min-1m">
-								<span class="var-name">ATR Min 1m (%)</span>
-								<span class="var-desc">ATR minimum pour timeframe 1m</span>
+					<div class="variable-item" data-debug-name="config.optimal_atr_min_1m">
+						<div class="var-header" data-debug-name="config.optimal_atr_min_1m">
+							<label for="optimal-atr-min-1m" data-debug-name="config.optimal_atr_min_1m">
+								<span class="var-name" data-debug-name="config.optimal_atr_min_1m">ATR Min 1m (%)</span>
+								<span class="var-desc" data-debug-name="config.optimal_atr_min_1m">ATR minimum pour timeframe 1m</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_min_1m')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_min_1m')} title="Réinitialiser" data-debug-name="config.optimal_atr_min_1m.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.optimal_atr_min_1m">
 							<input
 								id="optimal-atr-min-1m"
 								type="range"
@@ -1140,20 +1160,21 @@
 								max="1"
 								bind:value={config.optimal_atr_min_1m}
 								on:change={() => triggerAutoSave('optimal_atr_min_1m', config.optimal_atr_min_1m.toFixed(2) + '%')}
+								data-debug-name="config.optimal_atr_min_1m"
 							/>
-							<span class="slider-value">{Number(config.optimal_atr_min_1m).toFixed(2)}%</span>
+							<span class="slider-value" data-debug-name="config.optimal_atr_min_1m">{Number(config.optimal_atr_min_1m).toFixed(2)}%</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="optimal-atr-max-1m">
-								<span class="var-name">ATR Max 1m (%)</span>
-								<span class="var-desc">ATR maximum pour timeframe 1m</span>
+					<div class="variable-item" data-debug-name="config.optimal_atr_max_1m">
+						<div class="var-header" data-debug-name="config.optimal_atr_max_1m">
+							<label for="optimal-atr-max-1m" data-debug-name="config.optimal_atr_max_1m">
+								<span class="var-name" data-debug-name="config.optimal_atr_max_1m">ATR Max 1m (%)</span>
+								<span class="var-desc" data-debug-name="config.optimal_atr_max_1m">ATR maximum pour timeframe 1m</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_max_1m')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_max_1m')} title="Réinitialiser" data-debug-name="config.optimal_atr_max_1m.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.optimal_atr_max_1m">
 							<input
 								id="optimal-atr-max-1m"
 								type="range"
@@ -1162,20 +1183,21 @@
 								max="5"
 								bind:value={config.optimal_atr_max_1m}
 								on:change={() => triggerAutoSave('optimal_atr_max_1m', config.optimal_atr_max_1m.toFixed(2) + '%')}
+								data-debug-name="config.optimal_atr_max_1m"
 							/>
-							<span class="slider-value">{Number(config.optimal_atr_max_1m).toFixed(2)}%</span>
+							<span class="slider-value" data-debug-name="config.optimal_atr_max_1m">{Number(config.optimal_atr_max_1m).toFixed(2)}%</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="optimal-atr-min-5m">
-								<span class="var-name">ATR Min 5m (%)</span>
-								<span class="var-desc">ATR minimum pour timeframe 5m</span>
+					<div class="variable-item" data-debug-name="config.optimal_atr_min_5m">
+						<div class="var-header" data-debug-name="config.optimal_atr_min_5m">
+							<label for="optimal-atr-min-5m" data-debug-name="config.optimal_atr_min_5m">
+								<span class="var-name" data-debug-name="config.optimal_atr_min_5m">ATR Min 5m (%)</span>
+								<span class="var-desc" data-debug-name="config.optimal_atr_min_5m">ATR minimum pour timeframe 5m</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_min_5m')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_min_5m')} title="Réinitialiser" data-debug-name="config.optimal_atr_min_5m.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.optimal_atr_min_5m">
 							<input
 								id="optimal-atr-min-5m"
 								type="range"
@@ -1184,20 +1206,21 @@
 								max="1"
 								bind:value={config.optimal_atr_min_5m}
 								on:change={() => triggerAutoSave('optimal_atr_min_5m', config.optimal_atr_min_5m.toFixed(2) + '%')}
+								data-debug-name="config.optimal_atr_min_5m"
 							/>
-							<span class="slider-value">{Number(config.optimal_atr_min_5m).toFixed(2)}%</span>
+							<span class="slider-value" data-debug-name="config.optimal_atr_min_5m">{Number(config.optimal_atr_min_5m).toFixed(2)}%</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="optimal-atr-max-5m">
-								<span class="var-name">ATR Max 5m (%)</span>
-								<span class="var-desc">ATR maximum pour timeframe 5m</span>
+					<div class="variable-item" data-debug-name="config.optimal_atr_max_5m">
+						<div class="var-header" data-debug-name="config.optimal_atr_max_5m">
+							<label for="optimal-atr-max-5m" data-debug-name="config.optimal_atr_max_5m">
+								<span class="var-name" data-debug-name="config.optimal_atr_max_5m">ATR Max 5m (%)</span>
+								<span class="var-desc" data-debug-name="config.optimal_atr_max_5m">ATR maximum pour timeframe 5m</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_max_5m')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('optimal_atr_max_5m')} title="Réinitialiser" data-debug-name="config.optimal_atr_max_5m.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.optimal_atr_max_5m">
 							<input
 								id="optimal-atr-max-5m"
 								type="range"
@@ -1206,8 +1229,9 @@
 								max="5"
 								bind:value={config.optimal_atr_max_5m}
 								on:change={() => triggerAutoSave('optimal_atr_max_5m', config.optimal_atr_max_5m.toFixed(2) + '%')}
+								data-debug-name="config.optimal_atr_max_5m"
 							/>
-							<span class="slider-value">{Number(config.optimal_atr_max_5m).toFixed(2)}%</span>
+							<span class="slider-value" data-debug-name="config.optimal_atr_max_5m">{Number(config.optimal_atr_max_5m).toFixed(2)}%</span>
 						</div>
 					</div>
 				</div>
@@ -1218,15 +1242,15 @@
 			<section class="variable-section">
 				<h3>💰 Money Management</h3>
 				<div class="variables-list">
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="account-size">
-								<span class="var-name">Account Size (USDT)</span>
-								<span class="var-desc">Taille du compte</span>
+					<div class="variable-item" data-debug-name="config.account_size">
+						<div class="var-header" data-debug-name="config.account_size">
+							<label for="account-size" data-debug-name="config.account_size">
+								<span class="var-name" data-debug-name="config.account_size">Account Size (USDT)</span>
+								<span class="var-desc" data-debug-name="config.account_size">Taille du compte</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('account_size')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('account_size')} title="Réinitialiser" data-debug-name="config.account_size.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.account_size">
 							<input
 								id="account-size"
 								type="range"
@@ -1235,20 +1259,21 @@
 								max="100000"
 								bind:value={config.account_size}
 								on:change={() => triggerAutoSave('account_size', `${config.account_size} USDT`)}
+								data-debug-name="config.account_size"
 							/>
-							<span class="slider-value">{Number(config.account_size).toFixed(0)} USDT</span>
+							<span class="slider-value" data-debug-name="config.account_size">{Number(config.account_size).toFixed(0)} USDT</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="risk-per-trade">
-								<span class="var-name">Risk per Trade (%)</span>
-								<span class="var-desc">Risque par trade</span>
+					<div class="variable-item" data-debug-name="config.risk_per_trade">
+						<div class="var-header" data-debug-name="config.risk_per_trade">
+							<label for="risk-per-trade" data-debug-name="config.risk_per_trade">
+								<span class="var-name" data-debug-name="config.risk_per_trade">Risk per Trade (%)</span>
+								<span class="var-desc" data-debug-name="config.risk_per_trade">Risque par trade</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('risk_per_trade')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('risk_per_trade')} title="Réinitialiser" data-debug-name="config.risk_per_trade.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.risk_per_trade">
 							<input
 								id="risk-per-trade"
 								type="range"
@@ -1257,8 +1282,9 @@
 								max="10"
 								bind:value={config.risk_per_trade}
 								on:change={() => triggerAutoSave('risk_per_trade', `${config.risk_per_trade.toFixed(1)}%`)}
+								data-debug-name="config.risk_per_trade"
 							/>
-							<span class="slider-value">{Number(config.risk_per_trade).toFixed(1)}%</span>
+							<span class="slider-value" data-debug-name="config.risk_per_trade">{Number(config.risk_per_trade).toFixed(1)}%</span>
 						</div>
 					</div>
 				</div>
@@ -1274,40 +1300,41 @@
 					Pour changer le mode actif du bot, utilisez le sélecteur dans l'onglet <strong>Dashboard</strong>.
 				</p>
 				<div class="variables-list">
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="tp-sl-mode-view">
-								<span class="var-name">Afficher Mode</span>
-								<span class="var-desc">Sélectionner le mode à configurer (affichage uniquement)</span>
+					<div class="variable-item" data-debug-name="viewMode">
+						<div class="var-header" data-debug-name="viewMode">
+							<label for="tp-sl-mode-view" data-debug-name="viewMode">
+								<span class="var-name" data-debug-name="viewMode">Afficher Mode</span>
+								<span class="var-desc" data-debug-name="viewMode">Sélectionner le mode à configurer (affichage uniquement)</span>
 							</label>
 						</div>
 						<select
 							id="tp-sl-mode-view"
 							bind:value={viewMode}
+							data-debug-name="viewMode"
 						>
-							<option value="FIXE">FIXE - Pourcentages fixes</option>
-							<option value="ATR">ATR - Basé sur volatilité</option>
-							<option value="ESCALIER">ESCALIER - TP partiel progressif</option>
+							<option value="FIXE" data-debug-name="viewMode.FIXE">FIXE - Pourcentages fixes</option>
+							<option value="ATR" data-debug-name="viewMode.ATR">ATR - Basé sur volatilité</option>
+							<option value="ESCALIER" data-debug-name="viewMode.ESCALIER">ESCALIER - TP partiel progressif</option>
 						</select>
 					</div>
 
-					<div class="active-mode-indicator">
-						<span class="indicator-label">Mode Actif Bot:</span>
-						<span class="indicator-value mode-{config.tp_sl_mode.toLowerCase()}">{config.tp_sl_mode}</span>
+					<div class="active-mode-indicator" data-debug-name="config.tp_sl_mode">
+						<span class="indicator-label" data-debug-name="config.tp_sl_mode">Mode Actif Bot:</span>
+						<span class="indicator-value mode-{config.tp_sl_mode.toLowerCase()}" data-debug-name="config.tp_sl_mode">{config.tp_sl_mode}</span>
 					</div>
 
 					<!-- Mode FIXE -->
 					{#if viewMode === 'FIXE'}
-						<div class="mode-settings">
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="tp-percent">
-										<span class="var-name">TP Percent (%)</span>
-										<span class="var-desc">Take profit final en %</span>
+						<div class="mode-settings" data-debug-name="config.mode.FIXE">
+							<div class="variable-item" data-debug-name="config.tp_percent">
+								<div class="var-header" data-debug-name="config.tp_percent">
+									<label for="tp-percent" data-debug-name="config.tp_percent">
+										<span class="var-name" data-debug-name="config.tp_percent">TP Percent (%)</span>
+										<span class="var-desc" data-debug-name="config.tp_percent">Take profit final en %</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('tp_percent')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('tp_percent')} title="Réinitialiser" data-debug-name="config.tp_percent.reset">⟲</button>
 								</div>
-								<div class="slider-container">
+								<div class="slider-container" data-debug-name="config.tp_percent">
 									<input
 										id="tp-percent"
 										type="range"
@@ -1316,20 +1343,21 @@
 										max="5"
 										bind:value={config.tp_percent}
 										on:change={() => triggerAutoSave('tp_percent', `${config.tp_percent.toFixed(2)}%`)}
+										data-debug-name="config.tp_percent"
 									/>
-									<span class="slider-value">{Number(config.tp_percent).toFixed(2)}%</span>
+									<span class="slider-value" data-debug-name="config.tp_percent">{Number(config.tp_percent).toFixed(2)}%</span>
 								</div>
 							</div>
 
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="sl-percent">
-										<span class="var-name">SL Percent (%)</span>
-										<span class="var-desc">Stop loss en %</span>
+							<div class="variable-item" data-debug-name="config.sl_percent">
+								<div class="var-header" data-debug-name="config.sl_percent">
+									<label for="sl-percent" data-debug-name="config.sl_percent">
+										<span class="var-name" data-debug-name="config.sl_percent">SL Percent (%)</span>
+										<span class="var-desc" data-debug-name="config.sl_percent">Stop loss en %</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('sl_percent')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('sl_percent')} title="Réinitialiser" data-debug-name="config.sl_percent.reset">⟲</button>
 								</div>
-								<div class="slider-container">
+								<div class="slider-container" data-debug-name="config.sl_percent">
 									<input
 										id="sl-percent"
 										type="range"
@@ -1338,20 +1366,21 @@
 										max="5"
 										bind:value={config.sl_percent}
 										on:change={() => triggerAutoSave('sl_percent', `${config.sl_percent.toFixed(2)}%`)}
+										data-debug-name="config.sl_percent"
 									/>
-									<span class="slider-value">{Number(config.sl_percent).toFixed(2)}%</span>
+									<span class="slider-value" data-debug-name="config.sl_percent">{Number(config.sl_percent).toFixed(2)}%</span>
 								</div>
 							</div>
 
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="partial-tp-percent-fixe">
-										<span class="var-name">TP Partiel (%)</span>
-										<span class="var-desc">% de position clôturée au 1er TP</span>
+							<div class="variable-item" data-debug-name="config.partial_tp_percent">
+								<div class="var-header" data-debug-name="config.partial_tp_percent">
+									<label for="partial-tp-percent-fixe" data-debug-name="config.partial_tp_percent">
+										<span class="var-name" data-debug-name="config.partial_tp_percent">TP Partiel (%)</span>
+										<span class="var-desc" data-debug-name="config.partial_tp_percent">% de position clôturée au 1er TP</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('partial_tp_percent')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('partial_tp_percent')} title="Réinitialiser" data-debug-name="config.partial_tp_percent.reset">⟲</button>
 								</div>
-								<div class="slider-container">
+								<div class="slider-container" data-debug-name="config.partial_tp_percent">
 									<input
 										id="partial-tp-percent-fixe"
 										type="range"
@@ -1360,8 +1389,9 @@
 										max="100"
 										bind:value={config.partial_tp_percent}
 										on:change={() => triggerAutoSave('partial_tp_percent', `${config.partial_tp_percent}%`)}
+										data-debug-name="config.partial_tp_percent"
 									/>
-									<span class="slider-value">{Number(config.partial_tp_percent).toFixed(0)}%</span>
+									<span class="slider-value" data-debug-name="config.partial_tp_percent">{Number(config.partial_tp_percent).toFixed(0)}%</span>
 								</div>
 							</div>
 						</div>
@@ -1369,16 +1399,16 @@
 
 					<!-- Mode ATR -->
 					{#if viewMode === 'ATR'}
-						<div class="mode-settings">
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="atr-tp">
-										<span class="var-name">ATR Mult TP</span>
-										<span class="var-desc">Multiplicateur ATR pour TP</span>
+						<div class="mode-settings" data-debug-name="config.mode.ATR">
+							<div class="variable-item" data-debug-name="config.atr_mult_tp">
+								<div class="var-header" data-debug-name="config.atr_mult_tp">
+									<label for="atr-tp" data-debug-name="config.atr_mult_tp">
+										<span class="var-name" data-debug-name="config.atr_mult_tp">ATR Mult TP</span>
+										<span class="var-desc" data-debug-name="config.atr_mult_tp">Multiplicateur ATR pour TP</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('atr_mult_tp')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('atr_mult_tp')} title="Réinitialiser" data-debug-name="config.atr_mult_tp.reset">⟲</button>
 								</div>
-								<div class="slider-container">
+								<div class="slider-container" data-debug-name="config.atr_mult_tp">
 									<input
 										id="atr-tp"
 										type="range"
@@ -1387,20 +1417,21 @@
 										max="5"
 										bind:value={config.atr_mult_tp}
 										on:change={() => triggerAutoSave('atr_mult_tp', `${config.atr_mult_tp.toFixed(1)}x`)}
+										data-debug-name="config.atr_mult_tp"
 									/>
-									<span class="slider-value">{Number(config.atr_mult_tp).toFixed(1)}x ATR</span>
+									<span class="slider-value" data-debug-name="config.atr_mult_tp">{Number(config.atr_mult_tp).toFixed(1)}x ATR</span>
 								</div>
 							</div>
 
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="atr-sl">
-										<span class="var-name">ATR Mult SL</span>
-										<span class="var-desc">Multiplicateur ATR pour SL</span>
+							<div class="variable-item" data-debug-name="config.atr_mult_sl">
+								<div class="var-header" data-debug-name="config.atr_mult_sl">
+									<label for="atr-sl" data-debug-name="config.atr_mult_sl">
+										<span class="var-name" data-debug-name="config.atr_mult_sl">ATR Mult SL</span>
+										<span class="var-desc" data-debug-name="config.atr_mult_sl">Multiplicateur ATR pour SL</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('atr_mult_sl')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('atr_mult_sl')} title="Réinitialiser" data-debug-name="config.atr_mult_sl.reset">⟲</button>
 								</div>
-								<div class="slider-container">
+								<div class="slider-container" data-debug-name="config.atr_mult_sl">
 									<input
 										id="atr-sl"
 										type="range"
@@ -1409,20 +1440,21 @@
 										max="3"
 										bind:value={config.atr_mult_sl}
 										on:change={() => triggerAutoSave('atr_mult_sl', `${config.atr_mult_sl.toFixed(1)}x`)}
+										data-debug-name="config.atr_mult_sl"
 									/>
-									<span class="slider-value">{Number(config.atr_mult_sl).toFixed(1)}x ATR</span>
+									<span class="slider-value" data-debug-name="config.atr_mult_sl">{Number(config.atr_mult_sl).toFixed(1)}x ATR</span>
 								</div>
 							</div>
 
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="atr-min">
-										<span class="var-name">ATR Min (%)</span>
-										<span class="var-desc">ATR minimum (limite basse)</span>
+							<div class="variable-item" data-debug-name="config.atr_min">
+								<div class="var-header" data-debug-name="config.atr_min">
+									<label for="atr-min" data-debug-name="config.atr_min">
+										<span class="var-name" data-debug-name="config.atr_min">ATR Min (%)</span>
+										<span class="var-desc" data-debug-name="config.atr_min">ATR minimum (limite basse)</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('atr_min')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('atr_min')} title="Réinitialiser" data-debug-name="config.atr_min.reset">⟲</button>
 								</div>
-								<div class="slider-container">
+								<div class="slider-container" data-debug-name="config.atr_min">
 									<input
 										id="atr-min"
 										type="range"
@@ -1431,20 +1463,21 @@
 										max="1"
 										bind:value={config.atr_min}
 										on:change={() => triggerAutoSave('atr_min', `${config.atr_min.toFixed(2)}%`)}
+										data-debug-name="config.atr_min"
 									/>
-									<span class="slider-value">{Number(config.atr_min).toFixed(2)}%</span>
+									<span class="slider-value" data-debug-name="config.atr_min">{Number(config.atr_min).toFixed(2)}%</span>
 								</div>
 							</div>
 
-							<div class="variable-item">
-								<div class="var-header">
-									<label for="atr-max">
-										<span class="var-name">ATR Max (%)</span>
-										<span class="var-desc">ATR maximum (limite haute)</span>
+							<div class="variable-item" data-debug-name="config.atr_max">
+								<div class="var-header" data-debug-name="config.atr_max">
+									<label for="atr-max" data-debug-name="config.atr_max">
+										<span class="var-name" data-debug-name="config.atr_max">ATR Max (%)</span>
+										<span class="var-desc" data-debug-name="config.atr_max">ATR maximum (limite haute)</span>
 									</label>
-									<button class="btn-reset" on:click={() => resetVariable('atr_max')} title="Réinitialiser">⟲</button>
+									<button class="btn-reset" on:click={() => resetVariable('atr_max')} title="Réinitialiser" data-debug-name="config.atr_max.reset">⟲</button>
 								</div>
-								<div class="slider-container">
+								<div class="slider-container" data-debug-name="config.atr_max">
 									<input
 										id="atr-max"
 										type="range"
@@ -1453,8 +1486,9 @@
 										max="5"
 										bind:value={config.atr_max}
 										on:change={() => triggerAutoSave('atr_max', `${config.atr_max.toFixed(2)}%`)}
+										data-debug-name="config.atr_max"
 									/>
-									<span class="slider-value">{Number(config.atr_max).toFixed(2)}%</span>
+									<span class="slider-value" data-debug-name="config.atr_max">{Number(config.atr_max).toFixed(2)}%</span>
 								</div>
 							</div>
 						</div>
@@ -1462,25 +1496,25 @@
 
 					<!-- Mode ESCALIER -->
 					{#if viewMode === 'ESCALIER'}
-						<div class="mode-settings">
-							<p class="mode-description">
+						<div class="mode-settings" data-debug-name="config.mode.ESCALIER">
+							<p class="mode-description" data-debug-name="config.mode.ESCALIER.description">
 								Mode Escalier : Vendez votre position en 4 étapes pour sécuriser progressivement vos profits.
 								À chaque niveau, définissez le % de profit (PnL) et la taille de position à clôturer.
 							</p>
 
 							<!-- Niveau 1 -->
-							<div class="escalier-level">
-								<h4>🎯 Niveau 1</h4>
-								<div class="level-inputs">
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l1-pnl">
-												<span class="var-name">PnL Niveau 1 (%)</span>
-												<span class="var-desc">% profit pour déclencher TP1</span>
+							<div class="escalier-level" data-debug-name="config.escalier.level1">
+								<h4 data-debug-name="config.escalier.level1.title">🎯 Niveau 1</h4>
+								<div class="level-inputs" data-debug-name="config.escalier.level1">
+									<div class="variable-item" data-debug-name="config.escalier_level1_pnl">
+										<div class="var-header" data-debug-name="config.escalier_level1_pnl">
+											<label for="escalier-l1-pnl" data-debug-name="config.escalier_level1_pnl">
+												<span class="var-name" data-debug-name="config.escalier_level1_pnl">PnL Niveau 1 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level1_pnl">% profit pour déclencher TP1</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level1_pnl')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level1_pnl')} title="Réinitialiser" data-debug-name="config.escalier_level1_pnl.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level1_pnl">
 											<input
 												id="escalier-l1-pnl"
 												type="range"
@@ -1492,20 +1526,21 @@
 													autoAdjustEscalierPnL(1);
 													logConfigChange('escalier_level1_pnl', `${config.escalier_level1_pnl.toFixed(2)}%`);
 												}}
+												data-debug-name="config.escalier_level1_pnl"
 											/>
-											<span class="slider-value">{Number(config.escalier_level1_pnl).toFixed(2)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level1_pnl">{Number(config.escalier_level1_pnl).toFixed(2)}%</span>
 										</div>
 									</div>
 
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l1-size">
-												<span class="var-name">Taille Niveau 1 (%)</span>
-												<span class="var-desc">% de position à clôturer</span>
+									<div class="variable-item" data-debug-name="config.escalier_level1_size">
+										<div class="var-header" data-debug-name="config.escalier_level1_size">
+											<label for="escalier-l1-size" data-debug-name="config.escalier_level1_size">
+												<span class="var-name" data-debug-name="config.escalier_level1_size">Taille Niveau 1 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level1_size">% de position à clôturer</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level1_size')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level1_size')} title="Réinitialiser" data-debug-name="config.escalier_level1_size.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level1_size">
 											<input
 												id="escalier-l1-size"
 												type="range"
@@ -1517,26 +1552,27 @@
 													autoAdjustEscalierSize(1);
 													logConfigChange('escalier_level1_size', `${config.escalier_level1_size}%`);
 												}}
+												data-debug-name="config.escalier_level1_size"
 											/>
-											<span class="slider-value">{Number(config.escalier_level1_size).toFixed(0)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level1_size">{Number(config.escalier_level1_size).toFixed(0)}%</span>
 										</div>
 									</div>
 								</div>
 							</div>
 
 							<!-- Niveau 2 -->
-							<div class="escalier-level">
-								<h4>🎯 Niveau 2</h4>
-								<div class="level-inputs">
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l2-pnl">
-												<span class="var-name">PnL Niveau 2 (%)</span>
-												<span class="var-desc">% profit pour déclencher TP2</span>
+							<div class="escalier-level" data-debug-name="config.escalier.level2">
+								<h4 data-debug-name="config.escalier.level2.title">🎯 Niveau 2</h4>
+								<div class="level-inputs" data-debug-name="config.escalier.level2">
+									<div class="variable-item" data-debug-name="config.escalier_level2_pnl">
+										<div class="var-header" data-debug-name="config.escalier_level2_pnl">
+											<label for="escalier-l2-pnl" data-debug-name="config.escalier_level2_pnl">
+												<span class="var-name" data-debug-name="config.escalier_level2_pnl">PnL Niveau 2 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level2_pnl">% profit pour déclencher TP2</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level2_pnl')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level2_pnl')} title="Réinitialiser" data-debug-name="config.escalier_level2_pnl.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level2_pnl">
 											<input
 												id="escalier-l2-pnl"
 												type="range"
@@ -1548,20 +1584,21 @@
 													autoAdjustEscalierPnL(2);
 													logConfigChange('escalier_level2_pnl', `${config.escalier_level2_pnl.toFixed(2)}%`);
 												}}
+												data-debug-name="config.escalier_level2_pnl"
 											/>
-											<span class="slider-value">{Number(config.escalier_level2_pnl).toFixed(2)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level2_pnl">{Number(config.escalier_level2_pnl).toFixed(2)}%</span>
 										</div>
 									</div>
 
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l2-size">
-												<span class="var-name">Taille Niveau 2 (%)</span>
-												<span class="var-desc">% de position à clôturer</span>
+									<div class="variable-item" data-debug-name="config.escalier_level2_size">
+										<div class="var-header" data-debug-name="config.escalier_level2_size">
+											<label for="escalier-l2-size" data-debug-name="config.escalier_level2_size">
+												<span class="var-name" data-debug-name="config.escalier_level2_size">Taille Niveau 2 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level2_size">% de position à clôturer</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level2_size')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level2_size')} title="Réinitialiser" data-debug-name="config.escalier_level2_size.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level2_size">
 											<input
 												id="escalier-l2-size"
 												type="range"
@@ -1573,26 +1610,27 @@
 													autoAdjustEscalierSize(2);
 													logConfigChange('escalier_level2_size', `${config.escalier_level2_size}%`);
 												}}
+												data-debug-name="config.escalier_level2_size"
 											/>
-											<span class="slider-value">{Number(config.escalier_level2_size).toFixed(0)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level2_size">{Number(config.escalier_level2_size).toFixed(0)}%</span>
 										</div>
 									</div>
 								</div>
 							</div>
 
 							<!-- Niveau 3 -->
-							<div class="escalier-level">
-								<h4>🎯 Niveau 3</h4>
-								<div class="level-inputs">
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l3-pnl">
-												<span class="var-name">PnL Niveau 3 (%)</span>
-												<span class="var-desc">% profit pour déclencher TP3</span>
+							<div class="escalier-level" data-debug-name="config.escalier.level3">
+								<h4 data-debug-name="config.escalier.level3.title">🎯 Niveau 3</h4>
+								<div class="level-inputs" data-debug-name="config.escalier.level3">
+									<div class="variable-item" data-debug-name="config.escalier_level3_pnl">
+										<div class="var-header" data-debug-name="config.escalier_level3_pnl">
+											<label for="escalier-l3-pnl" data-debug-name="config.escalier_level3_pnl">
+												<span class="var-name" data-debug-name="config.escalier_level3_pnl">PnL Niveau 3 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level3_pnl">% profit pour déclencher TP3</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level3_pnl')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level3_pnl')} title="Réinitialiser" data-debug-name="config.escalier_level3_pnl.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level3_pnl">
 											<input
 												id="escalier-l3-pnl"
 												type="range"
@@ -1604,20 +1642,21 @@
 													autoAdjustEscalierPnL(3);
 													logConfigChange('escalier_level3_pnl', `${config.escalier_level3_pnl.toFixed(2)}%`);
 												}}
+												data-debug-name="config.escalier_level3_pnl"
 											/>
-											<span class="slider-value">{Number(config.escalier_level3_pnl).toFixed(2)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level3_pnl">{Number(config.escalier_level3_pnl).toFixed(2)}%</span>
 										</div>
 									</div>
 
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l3-size">
-												<span class="var-name">Taille Niveau 3 (%)</span>
-												<span class="var-desc">% de position à clôturer</span>
+									<div class="variable-item" data-debug-name="config.escalier_level3_size">
+										<div class="var-header" data-debug-name="config.escalier_level3_size">
+											<label for="escalier-l3-size" data-debug-name="config.escalier_level3_size">
+												<span class="var-name" data-debug-name="config.escalier_level3_size">Taille Niveau 3 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level3_size">% de position à clôturer</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level3_size')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level3_size')} title="Réinitialiser" data-debug-name="config.escalier_level3_size.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level3_size">
 											<input
 												id="escalier-l3-size"
 												type="range"
@@ -1629,26 +1668,27 @@
 													autoAdjustEscalierSize(3);
 													logConfigChange('escalier_level3_size', `${config.escalier_level3_size}%`);
 												}}
+												data-debug-name="config.escalier_level3_size"
 											/>
-											<span class="slider-value">{Number(config.escalier_level3_size).toFixed(0)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level3_size">{Number(config.escalier_level3_size).toFixed(0)}%</span>
 										</div>
 									</div>
 								</div>
 							</div>
 
 							<!-- Niveau 4 -->
-							<div class="escalier-level">
-								<h4>🎯 Niveau 4</h4>
-								<div class="level-inputs">
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l4-pnl">
-												<span class="var-name">PnL Niveau 4 (%)</span>
-												<span class="var-desc">% profit pour déclencher TP4 (final)</span>
+							<div class="escalier-level" data-debug-name="config.escalier.level4">
+								<h4 data-debug-name="config.escalier.level4.title">🎯 Niveau 4</h4>
+								<div class="level-inputs" data-debug-name="config.escalier.level4">
+									<div class="variable-item" data-debug-name="config.escalier_level4_pnl">
+										<div class="var-header" data-debug-name="config.escalier_level4_pnl">
+											<label for="escalier-l4-pnl" data-debug-name="config.escalier_level4_pnl">
+												<span class="var-name" data-debug-name="config.escalier_level4_pnl">PnL Niveau 4 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level4_pnl">% profit pour déclencher TP4 (final)</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level4_pnl')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level4_pnl')} title="Réinitialiser" data-debug-name="config.escalier_level4_pnl.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level4_pnl">
 											<input
 												id="escalier-l4-pnl"
 												type="range"
@@ -1660,20 +1700,21 @@
 													autoAdjustEscalierPnL(4);
 													logConfigChange('escalier_level4_pnl', `${config.escalier_level4_pnl.toFixed(2)}%`);
 												}}
+												data-debug-name="config.escalier_level4_pnl"
 											/>
-											<span class="slider-value">{Number(config.escalier_level4_pnl).toFixed(2)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level4_pnl">{Number(config.escalier_level4_pnl).toFixed(2)}%</span>
 										</div>
 									</div>
 
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="escalier-l4-size">
-												<span class="var-name">Taille Niveau 4 (%)</span>
-												<span class="var-desc">% de position à clôturer</span>
+									<div class="variable-item" data-debug-name="config.escalier_level4_size">
+										<div class="var-header" data-debug-name="config.escalier_level4_size">
+											<label for="escalier-l4-size" data-debug-name="config.escalier_level4_size">
+												<span class="var-name" data-debug-name="config.escalier_level4_size">Taille Niveau 4 (%)</span>
+												<span class="var-desc" data-debug-name="config.escalier_level4_size">% de position à clôturer</span>
 											</label>
-											<button class="btn-reset" on:click={() => resetVariable('escalier_level4_size')} title="Réinitialiser">⟲</button>
+											<button class="btn-reset" on:click={() => resetVariable('escalier_level4_size')} title="Réinitialiser" data-debug-name="config.escalier_level4_size.reset">⟲</button>
 										</div>
-										<div class="slider-container">
+										<div class="slider-container" data-debug-name="config.escalier_level4_size">
 											<input
 												id="escalier-l4-size"
 												type="range"
@@ -1685,8 +1726,9 @@
 													autoAdjustEscalierSize(4);
 													logConfigChange('escalier_level4_size', `${config.escalier_level4_size}%`);
 												}}
+												data-debug-name="config.escalier_level4_size"
 											/>
-											<span class="slider-value">{Number(config.escalier_level4_size).toFixed(0)}%</span>
+											<span class="slider-value" data-debug-name="config.escalier_level4_size">{Number(config.escalier_level4_size).toFixed(0)}%</span>
 										</div>
 									</div>
 								</div>
@@ -1697,35 +1739,36 @@
 			</section>
 
 			<!-- Section Trailing Stop Adaptatif -->
-			<section class="variable-section">
-				<h3>🔄 Trailing Stop Adaptatif</h3>
-				<p class="section-desc">S'applique à tous les modes TP/SL</p>
-				<div class="variables-list">
-					<div class="variable-item checkbox">
-						<div class="var-header">
-							<label for="trailing-enabled">
+			<section class="variable-section" data-debug-name="config.trailing">
+				<h3 data-debug-name="config.trailing.title">🔄 Trailing Stop Adaptatif</h3>
+				<p class="section-desc" data-debug-name="config.trailing.description">S'applique à tous les modes TP/SL</p>
+				<div class="variables-list" data-debug-name="config.trailing">
+					<div class="variable-item checkbox" data-debug-name="config.trailing_enabled">
+						<div class="var-header" data-debug-name="config.trailing_enabled">
+							<label for="trailing-enabled" data-debug-name="config.trailing_enabled">
 								<input
 									id="trailing-enabled"
 									type="checkbox"
 									bind:checked={config.trailing_enabled}
 									on:change={() => triggerAutoSave('trailing_enabled', config.trailing_enabled ? 'Activé' : 'Désactivé')}
+									data-debug-name="config.trailing_enabled"
 								/>
-								<span class="var-name">Trailing Stop Enabled</span>
-								<span class="var-desc">Activer le trailing stop adaptatif</span>
+								<span class="var-name" data-debug-name="config.trailing_enabled">Trailing Stop Enabled</span>
+								<span class="var-desc" data-debug-name="config.trailing_enabled">Activer le trailing stop adaptatif</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('trailing_enabled')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_enabled')} title="Réinitialiser" data-debug-name="config.trailing_enabled.reset">⟲</button>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="trailing-trigger">
-								<span class="var-name">Trigger PnL (%)</span>
-								<span class="var-desc">% profit pour activer le trailing</span>
+					<div class="variable-item" data-debug-name="config.trailing_trigger_pnl">
+						<div class="var-header" data-debug-name="config.trailing_trigger_pnl">
+							<label for="trailing-trigger" data-debug-name="config.trailing_trigger_pnl">
+								<span class="var-name" data-debug-name="config.trailing_trigger_pnl">Trigger PnL (%)</span>
+								<span class="var-desc" data-debug-name="config.trailing_trigger_pnl">% profit pour activer le trailing</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('trailing_trigger_pnl')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_trigger_pnl')} title="Réinitialiser" data-debug-name="config.trailing_trigger_pnl.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.trailing_trigger_pnl">
 							<input
 								id="trailing-trigger"
 								type="range"
@@ -1734,20 +1777,21 @@
 								max="3"
 								bind:value={config.trailing_trigger_pnl}
 								on:change={() => triggerAutoSave('trailing_trigger_pnl', `${config.trailing_trigger_pnl.toFixed(2)}%`)}
+								data-debug-name="config.trailing_trigger_pnl"
 							/>
-							<span class="slider-value">{Number(config.trailing_trigger_pnl).toFixed(2)}%</span>
+							<span class="slider-value" data-debug-name="config.trailing_trigger_pnl">{Number(config.trailing_trigger_pnl).toFixed(2)}%</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="trailing-atr-mult">
-								<span class="var-name">ATR Multiplier</span>
-								<span class="var-desc">Distance = ATR × multiplier</span>
+					<div class="variable-item" data-debug-name="config.trailing_atr_multiplier">
+						<div class="var-header" data-debug-name="config.trailing_atr_multiplier">
+							<label for="trailing-atr-mult" data-debug-name="config.trailing_atr_multiplier">
+								<span class="var-name" data-debug-name="config.trailing_atr_multiplier">ATR Multiplier</span>
+								<span class="var-desc" data-debug-name="config.trailing_atr_multiplier">Distance = ATR × multiplier</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('trailing_atr_multiplier')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_atr_multiplier')} title="Réinitialiser" data-debug-name="config.trailing_atr_multiplier.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.trailing_atr_multiplier">
 							<input
 								id="trailing-atr-mult"
 								type="range"
@@ -1756,20 +1800,21 @@
 								max="2"
 								bind:value={config.trailing_atr_multiplier}
 								on:change={() => triggerAutoSave('trailing_atr_multiplier', `${config.trailing_atr_multiplier.toFixed(1)}x`)}
+								data-debug-name="config.trailing_atr_multiplier"
 							/>
-							<span class="slider-value">{Number(config.trailing_atr_multiplier).toFixed(1)}x</span>
+							<span class="slider-value" data-debug-name="config.trailing_atr_multiplier">{Number(config.trailing_atr_multiplier).toFixed(1)}x</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="trailing-min-dist">
-								<span class="var-name">Min Distance (%)</span>
-								<span class="var-desc">Distance minimum du trailing</span>
+					<div class="variable-item" data-debug-name="config.trailing_min_distance">
+						<div class="var-header" data-debug-name="config.trailing_min_distance">
+							<label for="trailing-min-dist" data-debug-name="config.trailing_min_distance">
+								<span class="var-name" data-debug-name="config.trailing_min_distance">Min Distance (%)</span>
+								<span class="var-desc" data-debug-name="config.trailing_min_distance">Distance minimum du trailing</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('trailing_min_distance')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_min_distance')} title="Réinitialiser" data-debug-name="config.trailing_min_distance.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.trailing_min_distance">
 							<input
 								id="trailing-min-dist"
 								type="range"
@@ -1778,20 +1823,21 @@
 								max="0.5"
 								bind:value={config.trailing_min_distance}
 								on:change={() => triggerAutoSave('trailing_min_distance', `${config.trailing_min_distance.toFixed(2)}%`)}
+								data-debug-name="config.trailing_min_distance"
 							/>
-							<span class="slider-value">{Number(config.trailing_min_distance).toFixed(2)}%</span>
+							<span class="slider-value" data-debug-name="config.trailing_min_distance">{Number(config.trailing_min_distance).toFixed(2)}%</span>
 						</div>
 					</div>
 
-					<div class="variable-item">
-						<div class="var-header">
-							<label for="trailing-max-dist">
-								<span class="var-name">Max Distance (%)</span>
-								<span class="var-desc">Distance maximum du trailing</span>
+					<div class="variable-item" data-debug-name="config.trailing_max_distance">
+						<div class="var-header" data-debug-name="config.trailing_max_distance">
+							<label for="trailing-max-dist" data-debug-name="config.trailing_max_distance">
+								<span class="var-name" data-debug-name="config.trailing_max_distance">Max Distance (%)</span>
+								<span class="var-desc" data-debug-name="config.trailing_max_distance">Distance maximum du trailing</span>
 							</label>
-							<button class="btn-reset" on:click={() => resetVariable('trailing_max_distance')} title="Réinitialiser">⟲</button>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_max_distance')} title="Réinitialiser" data-debug-name="config.trailing_max_distance.reset">⟲</button>
 						</div>
-						<div class="slider-container">
+						<div class="slider-container" data-debug-name="config.trailing_max_distance">
 							<input
 								id="trailing-max-dist"
 								type="range"
@@ -1800,8 +1846,9 @@
 								max="2"
 								bind:value={config.trailing_max_distance}
 								on:change={() => triggerAutoSave('trailing_max_distance', `${config.trailing_max_distance.toFixed(2)}%`)}
+								data-debug-name="config.trailing_max_distance"
 							/>
-							<span class="slider-value">{Number(config.trailing_max_distance).toFixed(2)}%</span>
+							<span class="slider-value" data-debug-name="config.trailing_max_distance">{Number(config.trailing_max_distance).toFixed(2)}%</span>
 						</div>
 					</div>
 				</div>
@@ -1810,37 +1857,37 @@
 
 		<!-- ONGLET VARIABLES EN COURS -->
 		{#if activeSubTab === 'current'}
-			<section class="variable-section current-vars-section">
-				<div class="current-vars-header">
-					<h3>📋 Variables en cours</h3>
-					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig}>
+			<section class="variable-section current-vars-section" data-debug-name="variablesPanel.current">
+				<div class="current-vars-header" data-debug-name="variablesPanel.current.header">
+					<h3 data-debug-name="variablesPanel.current.title">📋 Variables en cours</h3>
+					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig} data-debug-name="variablesPanel.current.refreshButton">
 						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
 					</button>
 				</div>
-				<p class="section-desc">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
+				<p class="section-desc" data-debug-name="variablesPanel.current.description">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
 
 				{#if loadingCompleteConfig}
-					<div class="loading-message">
+					<div class="loading-message" data-debug-name="loadingCompleteConfig">
 						⏳ Chargement de la configuration complète...
 					</div>
 				{:else if completeConfigError}
-					<div class="error-message">
+					<div class="error-message" data-debug-name="completeConfigError">
 						❌ Erreur: {completeConfigError}
 					</div>
 				{:else if completeConfig}
-					<div class="complete-config-container">
+					<div class="complete-config-container" data-debug-name="completeConfig">
 						<!-- TRADING_CONFIG organisé par catégories -->
-						<div class="config-category main-category">
-							<h4 class="category-title">🔧 TRADING_CONFIG</h4>
+						<div class="config-category main-category" data-debug-name="completeConfig.trading_config">
+							<h4 class="category-title" data-debug-name="completeConfig.trading_config.title">🔧 TRADING_CONFIG</h4>
 							{#each Object.entries(organizeTradingConfig(completeConfig.trading_config)) as [categoryName, categoryVars]}
-								<div class="config-subcategory">
-									<h5 class="subcategory-title">{categoryName}</h5>
-									<div class="config-grid">
+								<div class="config-subcategory" data-debug-name="completeConfig.trading_config.{categoryName}">
+									<h5 class="subcategory-title" data-debug-name="completeConfig.trading_config.{categoryName}.title">{categoryName}</h5>
+									<div class="config-grid" data-debug-name="completeConfig.trading_config.{categoryName}">
 										{#each Object.entries(categoryVars) as [key, value]}
 											{#if value !== undefined && value !== null}
-												<div class="config-item">
-													<span class="config-key">{key}:</span>
-													<span class="config-value" title={typeof value === 'object' ? formatFullValue(value) : ''}>
+												<div class="config-item" data-debug-name="completeConfig.trading_config.{categoryName}.{key}">
+													<span class="config-key" data-debug-name="completeConfig.trading_config.{categoryName}.{key}">{key}:</span>
+													<span class="config-value" title={typeof value === 'object' ? formatFullValue(value) : ''} data-debug-name="completeConfig.trading_config.{categoryName}.{key}">
 														{formatValue(value)}
 													</span>
 												</div>
@@ -1865,89 +1912,89 @@
 						</div>
 
 						<!-- RISK_CONFIG -->
-						<div class="config-category">
-							<h4 class="category-title">⚠️ RISK_CONFIG</h4>
-							<div class="config-grid">
+						<div class="config-category" data-debug-name="completeConfig.risk_config">
+							<h4 class="category-title" data-debug-name="completeConfig.risk_config.title">⚠️ RISK_CONFIG</h4>
+							<div class="config-grid" data-debug-name="completeConfig.risk_config">
 								{#each Object.entries(completeConfig.risk_config || {}) as [key, value]}
-									<div class="config-item">
-										<span class="config-key">{key}:</span>
-										<span class="config-value">{formatValue(value)}</span>
+									<div class="config-item" data-debug-name="completeConfig.risk_config.{key}">
+										<span class="config-key" data-debug-name="completeConfig.risk_config.{key}">{key}:</span>
+										<span class="config-value" data-debug-name="completeConfig.risk_config.{key}">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>
 						</div>
 
 						<!-- CONDITION_WEIGHTS -->
-						<div class="config-category">
-							<h4 class="category-title">⚖️ CONDITION_WEIGHTS</h4>
-							<div class="config-grid">
+						<div class="config-category" data-debug-name="completeConfig.condition_weights">
+							<h4 class="category-title" data-debug-name="completeConfig.condition_weights.title">⚖️ CONDITION_WEIGHTS</h4>
+							<div class="config-grid" data-debug-name="completeConfig.condition_weights">
 								{#each Object.entries(completeConfig.condition_weights || {}) as [key, value]}
-									<div class="config-item">
-										<span class="config-key">{key}:</span>
-										<span class="config-value">{formatValue(value)}</span>
+									<div class="config-item" data-debug-name="completeConfig.condition_weights.{key}">
+										<span class="config-key" data-debug-name="completeConfig.condition_weights.{key}">{key}:</span>
+										<span class="config-value" data-debug-name="completeConfig.condition_weights.{key}">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>
 						</div>
 
 						<!-- TREND_BONUS_CONFIG -->
-						<div class="config-category">
-							<h4 class="category-title">📈 TREND_BONUS_CONFIG</h4>
-							<div class="config-grid">
+						<div class="config-category" data-debug-name="completeConfig.trend_bonus_config">
+							<h4 class="category-title" data-debug-name="completeConfig.trend_bonus_config.title">📈 TREND_BONUS_CONFIG</h4>
+							<div class="config-grid" data-debug-name="completeConfig.trend_bonus_config">
 								{#each Object.entries(completeConfig.trend_bonus_config || {}) as [key, value]}
-									<div class="config-item">
-										<span class="config-key">{key}:</span>
-										<span class="config-value">{formatValue(value)}</span>
+									<div class="config-item" data-debug-name="completeConfig.trend_bonus_config.{key}">
+										<span class="config-key" data-debug-name="completeConfig.trend_bonus_config.{key}">{key}:</span>
+										<span class="config-value" data-debug-name="completeConfig.trend_bonus_config.{key}">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>
 						</div>
 
 						<!-- RETRY_CONFIG -->
-						<div class="config-category">
-							<h4 class="category-title">🔄 RETRY_CONFIG</h4>
-							<div class="config-grid">
+						<div class="config-category" data-debug-name="completeConfig.retry_config">
+							<h4 class="category-title" data-debug-name="completeConfig.retry_config.title">🔄 RETRY_CONFIG</h4>
+							<div class="config-grid" data-debug-name="completeConfig.retry_config">
 								{#each Object.entries(completeConfig.retry_config || {}) as [key, value]}
-									<div class="config-item">
-										<span class="config-key">{key}:</span>
-										<span class="config-value">{formatValue(value)}</span>
+									<div class="config-item" data-debug-name="completeConfig.retry_config.{key}">
+										<span class="config-key" data-debug-name="completeConfig.retry_config.{key}">{key}:</span>
+										<span class="config-value" data-debug-name="completeConfig.retry_config.{key}">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>
 						</div>
 
 						<!-- CIRCUIT_BREAKER_CONFIG -->
-						<div class="config-category">
-							<h4 class="category-title">⚡ CIRCUIT_BREAKER_CONFIG</h4>
-							<div class="config-grid">
+						<div class="config-category" data-debug-name="completeConfig.circuit_breaker_config">
+							<h4 class="category-title" data-debug-name="completeConfig.circuit_breaker_config.title">⚡ CIRCUIT_BREAKER_CONFIG</h4>
+							<div class="config-grid" data-debug-name="completeConfig.circuit_breaker_config">
 								{#each Object.entries(completeConfig.circuit_breaker_config || {}) as [key, value]}
-									<div class="config-item">
-										<span class="config-key">{key}:</span>
-										<span class="config-value">{formatValue(value)}</span>
+									<div class="config-item" data-debug-name="completeConfig.circuit_breaker_config.{key}">
+										<span class="config-key" data-debug-name="completeConfig.circuit_breaker_config.{key}">{key}:</span>
+										<span class="config-value" data-debug-name="completeConfig.circuit_breaker_config.{key}">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>
 						</div>
 
 						<!-- WEBSOCKET_CONFIG -->
-						<div class="config-category">
-							<h4 class="category-title">📡 WEBSOCKET_CONFIG</h4>
-							<div class="config-grid">
+						<div class="config-category" data-debug-name="completeConfig.websocket_config">
+							<h4 class="category-title" data-debug-name="completeConfig.websocket_config.title">📡 WEBSOCKET_CONFIG</h4>
+							<div class="config-grid" data-debug-name="completeConfig.websocket_config">
 								{#each Object.entries(completeConfig.websocket_config || {}) as [key, value]}
-									<div class="config-item">
-										<span class="config-key">{key}:</span>
-										<span class="config-value">{formatValue(value)}</span>
+									<div class="config-item" data-debug-name="completeConfig.websocket_config.{key}">
+										<span class="config-key" data-debug-name="completeConfig.websocket_config.{key}">{key}:</span>
+										<span class="config-value" data-debug-name="completeConfig.websocket_config.{key}">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>
 						</div>
 
-						<div class="config-timestamp">
-							<small>Dernière mise à jour: {new Date(completeConfig.timestamp * 1000).toLocaleString('fr-FR')}</small>
+						<div class="config-timestamp" data-debug-name="completeConfig.timestamp">
+							<small data-debug-name="completeConfig.timestamp">Dernière mise à jour: {new Date(completeConfig.timestamp * 1000).toLocaleString('fr-FR')}</small>
 						</div>
 					</div>
 				{:else}
-					<div class="info-message">
+					<div class="info-message" data-debug-name="variablesPanel.current.empty">
 						ℹ️ Cliquez sur "Actualiser" pour charger la configuration complète
 					</div>
 				{/if}

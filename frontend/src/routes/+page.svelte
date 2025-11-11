@@ -24,6 +24,7 @@
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
 	import { recentLogs } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
+	import { debugMode } from '$lib/stores/debug';
 
 	// 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages)
 	let showErrorPopup = false;
@@ -118,6 +119,10 @@
 
 	// Fetch initial state on mount
 	onMount(async () => {
+		// 🔥 FIX: Initialiser le système de tooltips de debug
+		const { initDebugTooltips } = await import('$lib/utils/debugTooltip');
+		initDebugTooltips();
+		
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
 		try {
 			const ws = initWebSocket();
@@ -432,11 +437,17 @@
 </svelte:head>
 
 <div class="app">
-	<header class="header">
-		<div class="header-content">
+	<header class="header" data-debug-name="header">
+		<div class="header-content" data-debug-name="header.content">
 			<ConnectionStatus />
-			<div class="title-section">
-				<h1>TRADE MEXC</h1>
+			<div class="title-section" data-debug-name="header.title">
+				<h1 data-debug-name="header.title.text">TRADE MEXC</h1>
+			</div>
+			<div class="header-controls" data-debug-name="header.controls">
+				<label class="debug-toggle" data-debug-name="debugMode">
+					<input type="checkbox" bind:checked={$debugMode} data-debug-name="debugMode" />
+					<span data-debug-name="debugMode">🐛 Debug</span>
+				</label>
 			</div>
 		</div>
 	</header>
@@ -454,47 +465,48 @@
 		</div>
 	{/if}
 
-	<main class="main-content">
-		<div class="container">
+	<main class="main-content" data-debug-name="mainContent">
+		<div class="container" data-debug-name="mainContent.container">
 			<Tabs {tabs} bind:activeTab />
 			
 			<!-- Tab Content -->
 			{#if !backendConnected}
-				<div class="tab-content">
-					<div class="loading-state">
-						<div class="loading-spinner">⏳</div>
-						<p>Connexion au backend...</p>
-						<p class="retry-text">Tentative de reconnexion en cours...</p>
+				<div class="tab-content" data-debug-name="mainContent.loading">
+					<div class="loading-state" data-debug-name="backendConnected">
+						<div class="loading-spinner" data-debug-name="loadingState.spinner">⏳</div>
+						<p data-debug-name="loadingState.message">Connexion au backend...</p>
+						<p class="retry-text" data-debug-name="loadingState.retry">Tentative de reconnexion en cours...</p>
 					</div>
 				</div>
 			{:else if activeTab === 'dashboard'}
-				<div class="tab-content">
-					<div class="bot-controls-panel">
+				<div class="tab-content" data-debug-name="mainContent.dashboard">
+					<div class="bot-controls-panel" data-debug-name="dashboard.botControls">
 						<BotControls />
 					</div>
-					<div class="status-panel">
+					<div class="status-panel" data-debug-name="dashboard.stats">
 						<StatsPanel />
 					</div>
 
 					<!-- Sélecteur Mode TP/SL -->
-					<div class="tpsl-mode-selector">
-						<h3>🎯 Mode TP/SL Actif</h3>
-						<div class="mode-selector-content">
-							<label for="tp-sl-mode-dashboard">
-								<span class="mode-label">Sélectionner le mode de Take Profit / Stop Loss:</span>
+					<div class="tpsl-mode-selector" data-debug-name="dashboard.tpSlMode">
+						<h3 data-debug-name="dashboard.tpSlMode.title">🎯 Mode TP/SL Actif</h3>
+						<div class="mode-selector-content" data-debug-name="dashboard.tpSlMode.content">
+							<label for="tp-sl-mode-dashboard" data-debug-name="dashboard.tpSlMode.label">
+								<span class="mode-label" data-debug-name="dashboard.tpSlMode.labelText">Sélectionner le mode de Take Profit / Stop Loss:</span>
 							</label>
 							<select
 								id="tp-sl-mode-dashboard"
 								bind:value={tpSlMode}
 								on:change={changeTpSlMode}
+								data-debug-name="tpSlMode"
 							>
-								<option value="FIXE">FIXE - Pourcentages fixes</option>
-								<option value="ATR">ATR - Basé sur volatilité</option>
-								<option value="ESCALIER">ESCALIER - TP partiel progressif</option>
+								<option value="FIXE" data-debug-name="tpSlMode.FIXE">FIXE - Pourcentages fixes</option>
+								<option value="ATR" data-debug-name="tpSlMode.ATR">ATR - Basé sur volatilité</option>
+								<option value="ESCALIER" data-debug-name="tpSlMode.ESCALIER">ESCALIER - TP partiel progressif</option>
 							</select>
 						</div>
-						<p class="mode-info">
-							Mode actuel: <strong class="mode-value mode-{tpSlMode.toLowerCase()}">{tpSlMode}</strong>
+						<p class="mode-info" data-debug-name="dashboard.tpSlMode.info">
+							Mode actuel: <strong class="mode-value mode-{tpSlMode.toLowerCase()}" data-debug-name="tpSlMode">{tpSlMode}</strong>
 							<br/>
 							<small>Configurez les paramètres de chaque mode dans l'onglet <strong>Variables → TP/SL & Position</strong></small>
 						</p>
@@ -634,6 +646,46 @@
 		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
 		margin: 0;
 		font-weight: bold;
+	}
+
+	.header-controls {
+		position: absolute;
+		right: 15px;
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.debug-toggle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		background: rgba(30, 39, 73, 0.8);
+		border: 1px solid #2a3a6b;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		font-size: 13px;
+		color: var(--text-primary, #fff);
+	}
+
+	.debug-toggle:hover {
+		background: rgba(30, 39, 73, 1);
+		border-color: #00ff88;
+	}
+
+	.debug-toggle input[type="checkbox"] {
+		cursor: pointer;
+		accent-color: #00ff88;
+		width: 16px;
+		height: 16px;
+	}
+
+	.debug-toggle span {
+		user-select: none;
 	}
 
 	/* Backend error banner */
@@ -829,6 +881,12 @@
 			position: static;
 			transform: none;
 			margin-bottom: 10px;
+		}
+
+		.header-controls {
+			position: static;
+			transform: none;
+			margin-top: 10px;
 		}
 
 		.charts-grid {

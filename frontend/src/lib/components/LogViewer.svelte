@@ -177,97 +177,97 @@
 
 <!-- 🔥 FIX: Popup d'erreur déplacé dans +page.svelte pour affichage sur toutes les pages -->
 
-<div class="log-viewer">
+<div class="log-viewer" data-debug-name="logViewer">
 	<!-- Section Erreurs/Warnings -->
-	<div class="errors-section">
-		<div class="log-header">
-			<h3>🚨 Erreurs</h3>
-			<div class="header-controls">
-				<div class="error-badge">{$errorLogs.length} erreurs</div>
-				<button class="export-btn" on:click={exportLogs}>📥 Export</button>
+	<div class="errors-section" data-debug-name="logViewer.errors">
+		<div class="log-header" data-debug-name="logViewer.errors.header">
+			<h3 data-debug-name="logViewer.errors.title">🚨 Erreurs</h3>
+			<div class="header-controls" data-debug-name="logViewer.errors.controls">
+				<div class="error-badge" data-debug-name="errorLogs.length">{$errorLogs.length} erreurs</div>
+				<button class="export-btn" on:click={exportLogs} data-debug-name="logViewer.exportButton">📥 Export</button>
 			</div>
 		</div>
 
-		<div class="log-container errors" bind:this={errorContainer} on:scroll={() => handleScroll(errorContainer, 'error')}>
+		<div class="log-container errors" bind:this={errorContainer} on:scroll={() => handleScroll(errorContainer, 'error')} data-debug-name="logViewer.errors.container">
 			{#if $errorLogs.length === 0}
-				<div class="no-logs">
-					<div class="no-logs-icon">✅</div>
-					<div class="no-logs-text">Aucune erreur</div>
+				<div class="no-logs" data-debug-name="logViewer.errors.empty">
+					<div class="no-logs-icon" data-debug-name="logViewer.errors.empty.icon">✅</div>
+					<div class="no-logs-text" data-debug-name="logViewer.errors.empty.text">Aucune erreur</div>
 				</div>
 			{:else}
 				{#each $errorLogs as log (log.id)}
 					{@const parsed = parseLogMessage(log.message || '')}
 					{@const hasAnsi = log.message && (log.message.includes('\x1b[') || log.message.includes('[32m') || log.message.includes('[31m') || log.message.includes('[33m') || log.message.includes('[36m'))}
-					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}">
-						<span class="log-time">{formatTime(log.timestamp)}</span>
+					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}" data-debug-name="errorLogs[{log.id}]">
+						<span class="log-time" data-debug-name="log.timestamp">{formatTime(log.timestamp)}</span>
 						{#if parsed.icon}
-							<span class="log-icon">{parsed.icon}</span>
+							<span class="log-icon" data-debug-name="log.icon">{parsed.icon}</span>
 						{/if}
-						<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
+						<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}" data-debug-name="log.level">[{stripAnsiCodes(log.level)}]</span>
 						{#if hasAnsi}
-							<span class="log-message">{@html ansiToHtml(parsed.fullText || log.message)}</span>
+							<span class="log-message" data-debug-name="log.message">{@html ansiToHtml(parsed.fullText || log.message)}</span>
 						{:else}
-							<span class="log-message">{parsed.text || log.message}</span>
+							<span class="log-message" data-debug-name="log.message">{parsed.text || log.message}</span>
 						{/if}
 						{#if log.detail}
-							<span class="log-detail">{log.detail}</span>
+							<span class="log-detail" data-debug-name="log.detail">{log.detail}</span>
 						{/if}
 					</div>
 				{/each}
 			{/if}
 		</div>
 
-		<div class="log-footer">
-			<label class="auto-scroll-toggle">
-				<input type="checkbox" bind:checked={autoScrollErrors} />
-				<span>Auto-scroll</span>
+		<div class="log-footer" data-debug-name="logViewer.errors.footer">
+			<label class="auto-scroll-toggle" data-debug-name="logViewer.errors.autoScroll">
+				<input type="checkbox" bind:checked={autoScrollErrors} data-debug-name="autoScrollErrors" />
+				<span data-debug-name="autoScrollErrors">Auto-scroll</span>
 			</label>
-			<div class="log-count">{$errorLogs.length} erreurs</div>
+			<div class="log-count" data-debug-name="errorLogs.length">{$errorLogs.length} erreurs</div>
 		</div>
 	</div>
 
 	<!-- Section Logs Backend -->
-	<div class="logs-section">
-		<div class="log-header">
-			<h3>📝 Logs Backend</h3>
-			<div class="info-badge">{$regularLogs.length} entrées</div>
+	<div class="logs-section" data-debug-name="logViewer.backend">
+		<div class="log-header" data-debug-name="logViewer.backend.header">
+			<h3 data-debug-name="logViewer.backend.title">📝 Logs Backend</h3>
+			<div class="info-badge" data-debug-name="regularLogs.length">{$regularLogs.length} entrées</div>
 		</div>
 
-		<div class="log-container" bind:this={logContainer} on:scroll={() => handleScroll(logContainer, 'regular')}>
+		<div class="log-container" bind:this={logContainer} on:scroll={() => handleScroll(logContainer, 'regular')} data-debug-name="logViewer.backend.container">
 			{#if $regularLogs.length === 0}
-				<div class="no-logs">
-					<div class="no-logs-icon">📝</div>
-					<div class="no-logs-text">Aucun log</div>
+				<div class="no-logs" data-debug-name="logViewer.backend.empty">
+					<div class="no-logs-icon" data-debug-name="logViewer.backend.empty.icon">📝</div>
+					<div class="no-logs-text" data-debug-name="logViewer.backend.empty.text">Aucun log</div>
 				</div>
 			{:else}
 				{#each $regularLogs as log (log.id)}
 					{@const parsed = parseLogMessage(log.message || '')}
 					{@const hasAnsi = log.message && (log.message.includes('\x1b[') || log.message.includes('[32m') || log.message.includes('[31m') || log.message.includes('[33m') || log.message.includes('[36m'))}
-					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}">
+					<div class="log-entry" style="border-left-color: {getLogColor(stripAnsiCodes(log.level))}" data-debug-name="regularLogs[{log.id}]">
 						{#if hasAnsi}
 							<!-- 🔥 FIX: Reconstruire le format [HH:MM:SS] LEVEL - message et colorer uniquement timestamp et niveau -->
 							{@const formattedLog = `[${formatTime(log.timestamp)}] ${log.level} - ${parsed.text || log.message}`}
-							<span class="log-message">{@html ansiToHtml(formattedLog)}</span>
+							<span class="log-message" data-debug-name="log.message">{@html ansiToHtml(formattedLog)}</span>
 						{:else}
 							<!-- Si pas de codes ANSI, afficher timestamp, niveau et message séparément -->
-							<span class="log-time">{formatTime(log.timestamp)}</span>
+							<span class="log-time" data-debug-name="log.timestamp">{formatTime(log.timestamp)}</span>
 							{#if parsed.icon}
-								<span class="log-icon">{parsed.icon}</span>
+								<span class="log-icon" data-debug-name="log.icon">{parsed.icon}</span>
 							{/if}
-							<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}">[{stripAnsiCodes(log.level)}]</span>
-							<span class="log-message">{parsed.text || log.message}</span>
+							<span class="log-level" style="color: {getLogColor(stripAnsiCodes(log.level))}" data-debug-name="log.level">[{stripAnsiCodes(log.level)}]</span>
+							<span class="log-message" data-debug-name="log.message">{parsed.text || log.message}</span>
 						{/if}
 					</div>
 				{/each}
 			{/if}
 		</div>
 
-		<div class="log-footer">
-			<label class="auto-scroll-toggle">
-				<input type="checkbox" bind:checked={autoScroll} />
-				<span>Auto-scroll</span>
+		<div class="log-footer" data-debug-name="logViewer.backend.footer">
+			<label class="auto-scroll-toggle" data-debug-name="logViewer.backend.autoScroll">
+				<input type="checkbox" bind:checked={autoScroll} data-debug-name="autoScroll" />
+				<span data-debug-name="autoScroll">Auto-scroll</span>
 			</label>
-			<div class="log-count">{$regularLogs.length} logs</div>
+			<div class="log-count" data-debug-name="regularLogs.length">{$regularLogs.length} logs</div>
 		</div>
 	</div>
 </div>

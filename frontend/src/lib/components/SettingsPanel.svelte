@@ -33,12 +33,12 @@
 	}
 </script>
 
-<div class="settings-panel">
-	<div class="settings-header">
-		<h2>⚙️ Settings</h2>
-		<div class="header-actions">
-			<button class="btn-secondary" on:click={exportSettings}>📥 Export</button>
-			<label class="btn-secondary">
+<div class="settings-panel" data-debug-name="settingsPanel">
+	<div class="settings-header" data-debug-name="settingsPanel.header">
+		<h2 data-debug-name="settingsPanel.title">⚙️ Settings</h2>
+		<div class="header-actions" data-debug-name="settingsPanel.actions">
+			<button class="btn-secondary" on:click={exportSettings} data-debug-name="settingsPanel.exportButton">📥 Export</button>
+			<label class="btn-secondary" data-debug-name="settingsPanel.importButton">
 				📤 Import
 				<input
 					type="file"
@@ -46,12 +46,14 @@
 					bind:this={fileInput}
 					on:change={handleImport}
 					style="display: none"
+					data-debug-name="settingsPanel.importInput"
 				/>
 			</label>
 			<button
 				class="btn-danger"
 				class:confirm={showResetConfirm}
 				on:click={handleReset}
+				data-debug-name="settingsPanel.resetButton"
 			>
 				{showResetConfirm ? '⚠️ Confirm Reset?' : '🔄 Reset'}
 			</button>
@@ -59,15 +61,15 @@
 	</div>
 
 	{#if importError}
-		<div class="error-message">{importError}</div>
+		<div class="error-message" data-debug-name="settingsPanel.importError">{importError}</div>
 	{/if}
 
 	<!-- Trading Settings -->
-	<section class="settings-section">
-		<h3>💰 Trading</h3>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label>
+	<section class="settings-section" data-debug-name="settingsPanel.trading">
+		<h3 data-debug-name="settingsPanel.trading.title">💰 Trading</h3>
+		<div class="settings-grid" data-debug-name="settingsPanel.trading.grid">
+			<div class="setting-item" data-debug-name="settings.maxPositionSize">
+				<label data-debug-name="settings.maxPositionSize">
 					Max Position Size (USDT)
 					<input
 						type="number"
@@ -76,13 +78,14 @@
 						step="10"
 						bind:value={$settings.maxPositionSize}
 						on:change={() => updateSetting('maxPositionSize', $settings.maxPositionSize)}
+						data-debug-name="settings.maxPositionSize"
 					/>
 				</label>
-				<span class="hint">Maximum size per position</span>
+				<span class="hint" data-debug-name="settings.maxPositionSize.hint">Maximum size per position</span>
 			</div>
 
-			<div class="setting-item">
-				<label>
+			<div class="setting-item" data-debug-name="settings.maxDailyLoss">
+				<label data-debug-name="settings.maxDailyLoss">
 					Max Daily Loss (USDT)
 					<input
 						type="number"
@@ -91,13 +94,14 @@
 						step="10"
 						bind:value={$settings.maxDailyLoss}
 						on:change={() => updateSetting('maxDailyLoss', $settings.maxDailyLoss)}
+						data-debug-name="settings.maxDailyLoss"
 					/>
 				</label>
-				<span class="hint">Stop trading if reached</span>
+				<span class="hint" data-debug-name="settings.maxDailyLoss.hint">Stop trading if reached</span>
 			</div>
 
-			<div class="setting-item">
-				<label>
+			<div class="setting-item" data-debug-name="settings.maxDailyTrades">
+				<label data-debug-name="settings.maxDailyTrades">
 					Max Daily Trades
 					<input
 						type="number"
@@ -106,9 +110,10 @@
 						step="1"
 						bind:value={$settings.maxDailyTrades}
 						on:change={() => updateSetting('maxDailyTrades', $settings.maxDailyTrades)}
+						data-debug-name="settings.maxDailyTrades"
 					/>
 				</label>
-				<span class="hint">Maximum trades per day</span>
+				<span class="hint" data-debug-name="settings.maxDailyTrades.hint">Maximum trades per day</span>
 			</div>
 		</div>
 	</section>
