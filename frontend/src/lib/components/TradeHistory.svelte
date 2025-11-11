@@ -117,19 +117,19 @@
 							</td>
 							<!-- 🔥 FIX: Slippage avec formatage adaptatif (calculé si manquant) -->
 							<td class="slippage">
-							{formatPercent(trade.slippage_pct || trade.slippage || 0)}%
+								{formatPercent(trade.slippage_pct || trade.slippage || 0)}%
 							</td>
 							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
-						<td class="pnl-net" class:positive={(trade.net_pnl_pct || trade.net_pnl || 0) >= 0} class:negative={(trade.net_pnl_pct || trade.net_pnl || 0) < 0}>
-							{(trade.net_pnl_pct || trade.net_pnl || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || trade.net_pnl || 0)}%
+							<td class="pnl-net" class:positive={(trade.net_pnl_pct || trade.net_pnl || 0) >= 0} class:negative={(trade.net_pnl_pct || trade.net_pnl || 0) < 0}>
+								{(trade.net_pnl_pct || trade.net_pnl || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || trade.net_pnl || 0)}%
 							</td>
 							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
 							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
 								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
 							</td>
 							<!-- 🔥 FIX: PnL Total USDT (incluant slippage) -->
-						<td class="pnl-total-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
-							{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
+							<td class="pnl-total-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
+								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
 							</td>
 							<!-- 🔥 FIX: Duration (calculée si manquante) -->
 							<td class="duration">
