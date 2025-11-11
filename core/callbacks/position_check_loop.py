@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 _position_manager = None
 _price_provider = None
 _app_state = None
-_sio = None
+_sio = None  # 🔥 MIGRATION: Gardé pour compatibilité, mais utiliser _ws_manager
+_ws_manager = None  # 🔥 FIX BUG #13: Ajouter variable globale pour WebSocket natif
 _position_lock = None
 _analytics_db = None
 
@@ -38,9 +39,15 @@ def set_app_state(app_state):
 
 
 def set_socketio(sio):
-    """Injecter l'instance SocketIO"""
+    """Injecter l'instance SocketIO (legacy - gardé pour compatibilité)"""
     global _sio
     _sio = sio
+
+
+def set_websocket_manager(ws_manager):
+    """🔥 FIX BUG #13: Injecter l'instance WebSocketManager"""
+    global _ws_manager
+    _ws_manager = ws_manager
 
 
 def set_position_lock(lock):

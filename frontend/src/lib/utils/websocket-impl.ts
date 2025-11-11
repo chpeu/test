@@ -84,6 +84,10 @@ export class BidirectionalWebSocket {
             this.connected = true;
             this.reconnectAttempts = 0;
             this.flushQueue();
+            // 🔥 FIX: Mettre à jour le store de connexion
+            import('$lib/stores/connection').then(({ setConnected }) => {
+                setConnected();
+            });
             this.emit('connect', {}); // Émettre un événement de connexion
         };
 
@@ -116,6 +120,14 @@ export class BidirectionalWebSocket {
             this.connected = false;
             console.warn('⚠️ WebSocket déconnecté:', event.code, event.reason);
             this.stopHeartbeat();
+            // 🔥 FIX: Mettre à jour le store de connexion
+            import('$lib/stores/connection').then(({ setDisconnected, setReconnecting }) => {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    setReconnecting();
+                } else {
+                    setDisconnected();
+                }
+            });
             this.emit('disconnect', { code: event.code, reason: event.reason }); // Émettre un événement de déconnexion
             this.scheduleReconnect();
         };
@@ -230,6 +242,10 @@ export class BidirectionalWebSocket {
         if (this.isReconnecting) return;
 
         this.isReconnecting = true;
+        // 🔥 FIX: Mettre à jour le store pour indiquer la reconnexion
+        import('$lib/stores/connection').then(({ setReconnecting }) => {
+            setReconnecting();
+        });
         this.reconnectTimeout = window.setTimeout(() => {
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
@@ -237,6 +253,10 @@ export class BidirectionalWebSocket {
                 this.connect();
             } else {
                 console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
+                // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
+                import('$lib/stores/connection').then(({ setDisconnected }) => {
+                    setDisconnected();
+                });
                 this.emit('error', new Error('Max reconnect attempts reached'));
             }
             this.isReconnecting = false;

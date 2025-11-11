@@ -311,7 +311,7 @@ class BidirectionalWebSocket {
     
     startHeartbeat() {
         // Vérifier connexion toutes les 10 secondes
-        setInterval(() => {
+        this.heartbeatCheckInterval = setInterval(() => {
             if (Date.now() - this.lastPing > 60000) {
                 console.warn('⚠️ Pas de ping depuis 60s, reconnexion...');
                 if (this.ws) {
@@ -320,7 +320,7 @@ class BidirectionalWebSocket {
                 }
             }
         }, 10000);
-        
+
         // Envoyer ping toutes les 30 secondes
         this.pingInterval = setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -328,10 +328,13 @@ class BidirectionalWebSocket {
             }
         }, 30000);
     }
-    
+
     disconnect() {
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
+        }
+        if (this.heartbeatCheckInterval) {
+            clearInterval(this.heartbeatCheckInterval);
         }
         if (this.pingInterval) {
             clearInterval(this.pingInterval);

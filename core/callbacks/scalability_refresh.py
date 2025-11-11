@@ -14,7 +14,8 @@ _scanner = None
 _position_manager = None
 _price_provider = None
 _app_state = None
-_sio = None
+_sio = None  # 🔥 MIGRATION: Gardé pour compatibilité, mais utiliser _ws_manager
+_ws_manager = None  # 🔥 FIX BUG #14: Ajouter variable globale pour WebSocket natif
 
 
 def set_scanner(scanner):
@@ -42,9 +43,15 @@ def set_app_state(app_state):
 
 
 def set_socketio(sio):
-    """Injecter l'instance SocketIO"""
+    """Injecter l'instance SocketIO (legacy - gardé pour compatibilité)"""
     global _sio
     _sio = sio
+
+
+def set_websocket_manager(ws_manager):
+    """🔥 FIX BUG #14: Injecter l'instance WebSocketManager"""
+    global _ws_manager
+    _ws_manager = ws_manager
 
 
 async def scalability_refresh_loop_callback():

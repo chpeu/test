@@ -1,7 +1,26 @@
 <script>
 	import { sortedTrades } from '$lib/stores/trades';
+	import { derived } from 'svelte/store';
 
 	import { formatAdaptive, formatPercent, formatUSDT } from '$lib/utils/format';
+
+	// 🔥 FIX: Calculer le PnL total de la session en cours
+	const sessionPnL = derived(sortedTrades, $trades => {
+		const totalPnL = $trades.reduce((sum, trade) => {
+			const pnl = (trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0);
+			return sum + pnl;
+		}, 0);
+		return totalPnL;
+	});
+
+	const sessionPnLPct = derived(sortedTrades, $trades => {
+		if ($trades.length === 0) return 0;
+		const totalPnLPct = $trades.reduce((sum, trade) => {
+			const pnlPct = (trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0);
+			return sum + pnlPct;
+		}, 0);
+		return totalPnLPct / $trades.length; // Moyenne ou total selon besoin
+	});
 
 	function formatTime(dateStr) {
 		if (!dateStr) return '';
@@ -41,7 +60,14 @@
 <div class="trade-history">
 	<div class="history-header">
 		<h3>📜 Historique des Trades</h3>
-		<div class="total-count">{$sortedTrades.length} trades</div>
+		<div class="header-stats">
+			<div class="total-count">{$sortedTrades.length} trades</div>
+			{#if $sortedTrades.length > 0}
+				<div class="session-pnl" class:positive={$sessionPnL >= 0} class:negative={$sessionPnL < 0}>
+					PnL Session: {formatUSDT($sessionPnL)} USDT ({formatPercent($sessionPnLPct)}%)
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	{#if $sortedTrades.length === 0}
@@ -63,6 +89,8 @@
 						<th>Slippage</th>
 						<th>PnL Net %</th>
 						<th>PnL Net USDT</th>
+						<th>PnL Total USDT</th>
+						<th>Duration</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -87,15 +115,27 @@
 							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0}>
 								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.gross_pnl_pct || trade.pnl_pct || 0)}%
 							</td>
-							<!-- 🔥 FIX: Slippage avec formatage adaptatif -->
-							<td class="slippage">{formatPercent(trade.slippage || 0)}%</td>
-							<!-- 🔥 FIX: PnL Net avec formatage adaptatif -->
-							<td class="pnl-net" class:positive={(trade.net_pnl || trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl || trade.net_pnl_pct || 0) < 0}>
-								{(trade.net_pnl || trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl || trade.net_pnl_pct || 0)}%
+							<!-- 🔥 FIX: Slippage avec formatage adaptatif (calculé si manquant) -->
+							<td class="slippage">
+								{formatPercent(trade.slippage || trade.slippage_pct || (trade.slippage_usdt && trade.size ? ((trade.slippage_usdt / trade.size) * 100) : 0) || 0)}%
+							</td>
+							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
+							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0}>
+								{((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0 ? '+' : ''}{formatPercent((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0))}%
 							</td>
 							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
 							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0}>
 								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{formatUSDT(trade.net_pnl_usdt || 0)} USDT
+							</td>
+							<!-- 🔥 FIX: PnL Total USDT (incluant slippage) -->
+							<td class="pnl-total-usdt" class:positive={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0} class:negative={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) < 0}>
+								{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0 ? '+' : ''}{formatUSDT((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0))} USDT
+							</td>
+							<!-- 🔥 FIX: Duration (calculée si manquante) -->
+							<td class="duration">
+								{trade.duration_seconds ? formatDurationFromSeconds(trade.duration_seconds) : 
+								 (trade.opened_at && trade.closed_at ? formatDuration(trade.opened_at, trade.closed_at) : 
+								  (trade.duration ? formatDurationFromSeconds(trade.duration) : 'N/A'))}
 							</td>
 						</tr>
 					{/each}
@@ -120,6 +160,38 @@
 		margin-bottom: 20px;
 		padding-bottom: 15px;
 		border-bottom: 2px solid #2a3a6b;
+		flex-wrap: wrap;
+		gap: 15px;
+	}
+
+	.header-stats {
+		display: flex;
+		align-items: center;
+		gap: 15px;
+		flex-wrap: wrap;
+	}
+
+	.session-pnl {
+		background: rgba(0, 170, 255, 0.2);
+		color: #00aaff;
+		padding: 6px 14px;
+		border-radius: 12px;
+		font-size: 12px;
+		font-weight: bold;
+		border: 1px solid #00aaff;
+		font-family: 'Courier New', monospace;
+	}
+
+	.session-pnl.positive {
+		background: rgba(0, 255, 136, 0.2);
+		color: #00ff88;
+		border-color: #00ff88;
+	}
+
+	.session-pnl.negative {
+		background: rgba(255, 68, 68, 0.2);
+		color: #ff4444;
+		border-color: #ff4444;
 	}
 
 	.history-header h3 {

@@ -92,15 +92,17 @@
 
 	.pairs-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 16px;
+		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+		gap: 8px;
+		max-height: 600px;
+		overflow-y: auto;
 	}
 
 	.pair-card {
 		background: #0a0e27;
-		border: 2px solid #2a3a6b;
-		border-radius: 10px;
-		padding: 16px;
+		border: 1px solid #2a3a6b;
+		border-radius: 6px;
+		padding: 8px;
 		transition: all 0.3s;
 		position: relative;
 		overflow: hidden;
@@ -136,42 +138,42 @@
 	}
 
 	.pair-symbol {
-		font-size: 18px;
+		font-size: 11px;
 		font-weight: bold;
 		color: #fff;
-		margin-bottom: 14px;
+		margin-bottom: 6px;
 		font-family: 'Courier New', monospace;
-		padding-left: 8px;
+		padding-left: 4px;
 	}
 
 	.pair-metrics {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 10px;
+		gap: 4px;
 	}
 
 	.metric {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 2px;
 	}
 
 	.metric-label {
-		font-size: 11px;
+		font-size: 8px;
 		color: #888;
 		text-transform: uppercase;
 		font-weight: bold;
 	}
 
 	.metric-value {
-		font-size: 13px;
+		font-size: 9px;
 		font-family: 'Courier New', monospace;
 		font-weight: bold;
 	}
 
 	.metric-value.score {
 		color: #00ff88;
-		font-size: 16px;
+		font-size: 10px;
 	}
 
 	.metric-value.price {

@@ -56,6 +56,8 @@ instance/
 # pytest
 .pytest_cache/
 .coverage
+coverage.xml
+coverage.json
 htmlcov/
 
 # mypy
@@ -97,6 +99,15 @@ logs/
 *.tmp
 *.temp
 .cache/
+
+# 🔥 FICHIERS DE RESTAURATION/SAUVEGARDE TEMPORAIRES
+main_restored.py
+main_backup_*.py
+main_original*.py
+*.py.restored
+*.py.backup
+*_restored.py
+*_backup_*.py
 
 
 

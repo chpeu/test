@@ -4,7 +4,7 @@ Routes API pour le scanner - Gestion des top pairs et analyses
 
 import asyncio
 import logging
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request, Query, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Optional, Dict, List, Any
 
@@ -54,21 +54,48 @@ def set_socketio(sio):
     _ws_manager = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
 
 
+# ==================== DEPENDENCY INJECTION ====================
+
+def get_scanner():
+    """Dependency: Récupérer l'instance scanner"""
+    if _scanner is None:
+        raise HTTPException(status_code=503, detail="Scanner not available")
+    return _scanner
+
+
+def get_analyzer():
+    """Dependency: Récupérer l'instance analyzer"""
+    if _analyzer is None:
+        raise HTTPException(status_code=503, detail="Analyzer not available")
+    return _analyzer
+
+
+def get_app_state() -> Dict:
+    """Dependency: Récupérer l'état de l'application"""
+    if _app_state is None:
+        return {}
+    return _app_state
+
+
+def get_ws_manager():
+    """Dependency: Récupérer le WebSocket manager (optionnel)"""
+    return _ws_manager  # Peut être None
+
+
 # Créer le router
 router = APIRouter(prefix="/api/scanner", tags=["scanner"])
 
 
 @router.get("/top-pairs")
-async def get_top_pairs():
+async def get_top_pairs(
+    app_state: Dict = Depends(get_app_state)
+):
     """
     GET /api/scanner/top-pairs
     Récupérer les top pairs actuels
     """
-    if not _app_state:
-        return JSONResponse({'pairs': []})
-
     try:
-        pairs = _app_state.get('top_pairs', [])
+        pairs = app_state.get('top_pairs', [])
         return JSONResponse({'pairs': pairs})
     except Exception as e:
         logger.error(f"Erreur récupération top pairs: {e}")
@@ -76,7 +103,12 @@ async def get_top_pairs():
 
 
 @router.post("/start")
-async def start_scanner(request: Request):
+async def start_scanner(
+    request: Request,
+    scanner = Depends(get_scanner),
+    app_state: Dict = Depends(get_app_state),
+    ws_manager = Depends(get_ws_manager)
+):
     """
     POST /api/scanner/start
     Démarrer le scanner des top pairs
@@ -86,9 +118,6 @@ async def start_scanner(request: Request):
         "top_n": 20  # Nombre de paires à scanner (défaut: 20)
     }
     """
-    if not _scanner or not _app_state:
-        return JSONResponse({'error': 'Scanner not available'}, status_code=503)
-
     try:
         # Parser les données de la requête
         data = {}
@@ -106,16 +135,15 @@ async def start_scanner(request: Request):
         logger.info(f"🔍 Démarrage du scanner pour top {top_n} paires...")
 
         # Lancer le scan (is_scanning est géré par scan_top_pairs())
-        pairs = await _scanner.scan_top_pairs(n=top_n)
+        pairs = await scanner.scan_top_pairs(n=top_n)
 
         # Mettre à jour l'état de l'application
-        if _app_state is not None:
-            _app_state['top_pairs'] = pairs
-            _app_state['scanner_running'] = True
+        app_state['top_pairs'] = pairs
+        app_state['scanner_running'] = True
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-        if _ws_manager:
-            await _ws_manager.emit('scanner_started', {
+        if ws_manager:
+            await ws_manager.emit('scanner_started', {
                 'status': 'success',
                 'top_n': top_n,
                 'pairs_found': len(pairs)
@@ -132,14 +160,15 @@ async def start_scanner(request: Request):
 
     except Exception as e:
         logger.error(f"❌ Erreur démarrage scanner: {e}")
-        if _scanner:
-            _scanner.is_scanning = False
+        if scanner:
+            scanner.is_scanning = False
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
 @router.get("/analyze/{symbol}")
 async def analyze_symbol(
     symbol: str,
+    analyzer = Depends(get_analyzer),
     tf: str = Query('1m', description="Timeframe (1m ou 5m)"),
     use_confluence: Optional[bool] = Query(None, description="True = 1m ET 5m, False = 1m OU 5m"),
     volume_multiplier: Optional[float] = Query(None, description="Multiplicateur de volume 0.1-2.0"),
@@ -156,9 +185,6 @@ async def analyze_symbol(
         volume_multiplier: Multiplicateur de volume (0.1-2.0)
         trend_timeframe: Timeframe pour trend_data (5m, 15m, 30m, 1h)
     """
-    if not _analyzer:
-        return JSONResponse({'error': 'Analyzer not available'}, status_code=503)
-
     try:
         # Récupérer valeurs depuis TRADING_CONFIG si non fournies
         from config import TRADING_CONFIG
@@ -175,6 +201,7 @@ async def analyze_symbol(
 
         return JSONResponse({
             'symbol': symbol,
+            'analyzer': str(type(analyzer).__name__),  # Preuve que DI fonctionne
             'analysis': None,  # À implémenter
             'status': 'pending'
         })
