@@ -94,7 +94,7 @@
 
 	.pairs-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(100px, 120px));
 		gap: 4px 5px;
 		max-height: 600px;
 		overflow-y: auto;

@@ -87,6 +87,9 @@
 				<div class="stat-value">
 					{$globalStats.total_pnl >= 0 ? '+' : ''}{formatUSDT($globalStats.total_pnl)} USDT
 				</div>
+				<div class="stat-secondary">
+					{$globalStats.total_pnl_percent >= 0 ? '+' : ''}{formatPercent($globalStats.total_pnl_percent)}%
+				</div>
 			</div>
 		</div>
 
@@ -213,6 +216,12 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.stat-secondary {
+		font-size: 12px;
+		color: var(--text-secondary);
+		margin-top: 2px;
 	}
 
 	.stat-card.profit .stat-value {
