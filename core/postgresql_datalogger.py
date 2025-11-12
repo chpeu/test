@@ -652,7 +652,7 @@ class PostgreSQLDataLogger:
                     exit_reason, duration_seconds,
                     tp_sl_mode, break_even_set,
                     trailing_stop_activated, partial_tp_executed,
-                    tp_escalier_enabled, tp_escalier_levels_executed,
+                    tp_escalier_levels_executed, tp_escalier_profits,
                     win
                 )
                 VALUES (
@@ -670,6 +670,10 @@ class PostgreSQLDataLogger:
             # Calculer win (True si net_pnl_usdt > 0)
             net_pnl_usdt = trade_data.get('net_pnl_usdt', 0)
             win = net_pnl_usdt > 0 if net_pnl_usdt is not None else None
+            
+            # Calculer tp_escalier_profits (somme des profits)
+            tp_escalier_levels_hit = trade_data.get('tp_escalier_levels_hit', [])
+            tp_escalier_profits = sum(p.get('profit', 0) for p in tp_escalier_levels_hit) if tp_escalier_levels_hit else 0
             
             params = (
                 entry_timestamp, exit_timestamp, session_id, opportunity_id,
@@ -691,8 +695,8 @@ class PostgreSQLDataLogger:
                 trade_data.get('break_even_triggered', False),  # break_even_set
                 trade_data.get('trailing_stop_triggered', False),  # trailing_stop_activated
                 trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
-                trade_data.get('tp_escalier_enabled', False),
-                len(trade_data.get('tp_escalier_levels_hit', [])),  # tp_escalier_levels_executed (count)
+                len(tp_escalier_levels_hit),  # tp_escalier_levels_executed (count)
+                tp_escalier_profits,  # tp_escalier_profits (somme)
                 win
             )
             
