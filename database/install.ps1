@@ -82,3 +82,4 @@ Write-Host "💡 Pour vous connecter :" -ForegroundColor Yellow
 Write-Host "   psql -U postgres -d $dbName" -ForegroundColor White
 Write-Host ""
 
+

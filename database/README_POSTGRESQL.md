@@ -252,3 +252,4 @@ ORDER BY win_rate DESC, avg_pnl DESC;
 **Date** : 2025-01-11  
 **Compatible avec** : Trade Cursor v7.0+
 
+

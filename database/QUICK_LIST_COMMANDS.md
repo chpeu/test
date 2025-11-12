@@ -190,3 +190,4 @@ Une fois que vous avez la liste, vous pouvez :
 
 **Note** : Le script `drop_old_schema.sql` détecte automatiquement tous les objets, donc normalement vous n'avez pas besoin de modifier quoi que ce soit. Mais cette liste peut être utile pour vérifier avant/après.
 
+
