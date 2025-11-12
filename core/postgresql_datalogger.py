@@ -649,7 +649,7 @@ class PostgreSQLDataLogger:
         Args:
             trade_data: Données du trade
             opportunity_id: ID de l'opportunité associée (optionnel)
-            session_id: UUID de la session
+            session_id: UUID de la session (si non-UUID valide, une nouvelle session sera créée)
         
         Returns:
             ID du trade loggé ou None
@@ -657,7 +657,22 @@ class PostgreSQLDataLogger:
         if not self.enabled:
             return None
         
-        if not session_id:
+        # Valider que session_id est un UUID valide, sinon créer une nouvelle session
+        if session_id:
+            # Vérifier si session_id est un UUID valide
+            try:
+                uuid.UUID(session_id)
+                # Si c'est un UUID valide, vérifier qu'il existe dans la base
+                query_check = "SELECT id FROM trading_sessions WHERE id = %s"
+                result = self._execute_query(query_check, (session_id,), fetch=True)
+                if not result:
+                    # UUID valide mais n'existe pas, créer une nouvelle session
+                    session_id = self.get_or_create_session()
+            except (ValueError, AttributeError):
+                # session_id n'est pas un UUID valide (ex: 'live_...'), créer une nouvelle session
+                session_id = self.get_or_create_session()
+        else:
+            # Pas de session_id fourni, créer une nouvelle session
             session_id = self.get_or_create_session()
         
         try:
@@ -668,7 +683,7 @@ class PostgreSQLDataLogger:
                 INSERT INTO trades (
                     timestamp_entry, timestamp_exit, session_id, opportunity_id, scan_log_id, symbol,
                     direction, entry_price, exit_price,
-                    size_usdt, tp_price, sl_price, gross_pnl_usdt, pnl_pct, pnl_usdt,  # pnl_usdt = gross_pnl_usdt (même valeur)
+                    size_usdt, tp_price, sl_price, gross_pnl_usdt, pnl_pct, pnl_usdt,
                     net_pnl_usdt, net_pnl_pct,
                     fees_usdt, slippage_pct, slippage_usdt,
                     exit_reason, duration_seconds,
