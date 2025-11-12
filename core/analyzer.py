@@ -544,6 +544,7 @@ class TechnicalAnalyzer:
             else:
                 final_score = len(conditions) + (trend_score_bonus if trend_score_bonus else 0)
 
+            # 🔥 FIX: Ajouter tous les indicateurs au dictionnaire retourné pour qu'ils soient disponibles dans best_setup
             return {
                 'symbol': symbol,
                 'direction': direction,
@@ -551,6 +552,7 @@ class TechnicalAnalyzer:
                 'sl': round(sl, 6),
                 'tp': round(tp, 6),
                 'rsi': round(rsi, 1),
+                'rsi_prev': round(rsi_prev, 1) if rsi_prev is not None else None,
                 'volumeSpike': round(vol_spike, 1),
                 'signals': conditions,
                 'condition_types': condition_types,
@@ -559,9 +561,36 @@ class TechnicalAnalyzer:
                 'timeframe': timeframe,
                 'volatility': atr / price if price > 0 else 0,
                 'atr': atr,
-                'atr_percent': (atr / price * 100) if price > 0 else 0,
+                'atr_pct': (atr / price * 100) if price > 0 else 0,
+                'atr_percent': (atr / price * 100) if price > 0 else 0,  # Alias pour compatibilité
                 'price': price,
-                'ohlcv': ohlcv
+                'ohlcv': ohlcv,
+                # Indicateurs EMA
+                'ema9': ema9 if ema9 is not None else None,
+                'ema21': ema21 if ema21 is not None else None,
+                # Indicateurs MACD
+                'macd': macd.get('macd') if macd and isinstance(macd, dict) else None,
+                'macd_signal': macd.get('signal') if macd and isinstance(macd, dict) else None,
+                'macd_hist': macd.get('histogram') if macd and isinstance(macd, dict) else None,
+                'macd_hist_prev': macd_prev.get('histogram') if macd_prev and isinstance(macd_prev, dict) else None,
+                # Indicateurs ADX
+                'adx': adx.get('adx') if adx and isinstance(adx, dict) else None,
+                'di_plus': adx.get('diPlus') if adx and isinstance(adx, dict) else None,
+                'di_minus': adx.get('diMinus') if adx and isinstance(adx, dict) else None,
+                # Indicateurs Bollinger Bands
+                'bb_upper': bb.get('upper') if bb and isinstance(bb, dict) else None,
+                'bb_middle': bb.get('middle') if bb and isinstance(bb, dict) else None,
+                'bb_lower': bb.get('lower') if bb and isinstance(bb, dict) else None,
+                'bb_width': bb.get('width') if bb and isinstance(bb, dict) else None,
+                'bb_distance_to_lower': ((price - bb.get('lower')) / bb.get('lower') * 100) if bb and isinstance(bb, dict) and bb.get('lower') and price else None,
+                'bb_distance_to_upper': ((bb.get('upper') - price) / price * 100) if bb and isinstance(bb, dict) and bb.get('upper') and price else None,
+                # Indicateurs Volume
+                'volume': volumes[-1] if volumes else None,
+                'volume_avg': avg_vol if avg_vol else None,
+                'volume_ratio': vol_spike if vol_spike else None,
+                'volume_spike': vol_spike if vol_spike else None,
+                # Pattern
+                'pattern': pattern if pattern else None
             }
 
         except Exception as e:
@@ -1018,6 +1047,87 @@ class TechnicalAnalyzer:
 
                 best_setup['min_score_required'] = min_score_required
                 
+                # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best_setup pour qu'ils soient disponibles dans _last_setup
+                # Construire indicators_1m depuis analysis_1m
+                indicators_1m = {}
+                if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                    indicators_1m = {
+                        'rsi': analysis_1m.get('rsi'),
+                        'rsi_prev': analysis_1m.get('rsi_prev'),
+                        'macd': analysis_1m.get('macd'),
+                        'macd_signal': analysis_1m.get('macd_signal'),
+                        'macd_hist': analysis_1m.get('macd_hist'),
+                        'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                        'adx': analysis_1m.get('adx'),
+                        'di_plus': analysis_1m.get('di_plus'),
+                        'di_minus': analysis_1m.get('di_minus'),
+                        'di_gap': (
+                            analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0)
+                            if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None
+                        ),
+                        'ema9': analysis_1m.get('ema9'),
+                        'ema21': analysis_1m.get('ema21'),
+                        'ema_diff_pct': (
+                            ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) 
+                             / analysis_1m.get('ema21', 1)) * 100
+                            if analysis_1m.get('ema21') else None
+                        ),
+                        'atr': analysis_1m.get('atr'),
+                        'atr_pct': analysis_1m.get('atr_pct'),
+                        'bb_upper': analysis_1m.get('bb_upper'),
+                        'bb_middle': analysis_1m.get('bb_middle'),
+                        'bb_lower': analysis_1m.get('bb_lower'),
+                        'bb_width': analysis_1m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                        'volume': analysis_1m.get('volume'),
+                        'volume_avg': analysis_1m.get('volume_avg'),
+                        'volume_ratio': analysis_1m.get('volumeSpike'),
+                        'volume_spike': analysis_1m.get('volumeSpike'),
+                    }
+                
+                # Construire indicators_5m depuis analysis_5m
+                indicators_5m = {}
+                if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                    indicators_5m = {
+                        'rsi': analysis_5m.get('rsi'),
+                        'rsi_prev': analysis_5m.get('rsi_prev'),
+                        'macd': analysis_5m.get('macd'),
+                        'macd_signal': analysis_5m.get('macd_signal'),
+                        'macd_hist': analysis_5m.get('macd_hist'),
+                        'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                        'adx': analysis_5m.get('adx'),
+                        'di_plus': analysis_5m.get('di_plus'),
+                        'di_minus': analysis_5m.get('di_minus'),
+                        'di_gap': (
+                            analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0)
+                            if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None
+                        ),
+                        'ema9': analysis_5m.get('ema9'),
+                        'ema21': analysis_5m.get('ema21'),
+                        'ema_diff_pct': (
+                            ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) 
+                             / analysis_5m.get('ema21', 1)) * 100
+                            if analysis_5m.get('ema21') else None
+                        ),
+                        'atr': analysis_5m.get('atr'),
+                        'atr_pct': analysis_5m.get('atr_pct'),
+                        'bb_upper': analysis_5m.get('bb_upper'),
+                        'bb_middle': analysis_5m.get('bb_middle'),
+                        'bb_lower': analysis_5m.get('bb_lower'),
+                        'bb_width': analysis_5m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                        'volume': analysis_5m.get('volume'),
+                        'volume_avg': analysis_5m.get('volume_avg'),
+                        'volume_ratio': analysis_5m.get('volumeSpike'),
+                        'volume_spike': analysis_5m.get('volumeSpike'),
+                    }
+                
+                # Ajouter les indicateurs à best_setup
+                best_setup['indicators_1m'] = indicators_1m
+                best_setup['indicators_5m'] = indicators_5m
+                
                 # Stocker scan_uuid pour Point B et C
                 if scan_uuid:
                     best_setup['_scan_uuid'] = scan_uuid
@@ -1103,6 +1213,44 @@ class TechnicalAnalyzer:
                 best['symbol'] = symbol
                 if analysis_1m and analysis_5m:
                     best['atr5m'] = analysis_5m['atr']
+                
+                # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best pour qu'ils soient disponibles dans _last_setup
+                indicators_1m = {}
+                if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                    indicators_1m = {
+                        'rsi': analysis_1m.get('rsi'), 'rsi_prev': analysis_1m.get('rsi_prev'),
+                        'macd': analysis_1m.get('macd'), 'macd_signal': analysis_1m.get('macd_signal'),
+                        'macd_hist': analysis_1m.get('macd_hist'), 'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                        'adx': analysis_1m.get('adx'), 'di_plus': analysis_1m.get('di_plus'),
+                        'di_minus': analysis_1m.get('di_minus'),
+                        'di_gap': (analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0) if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None),
+                        'ema9': analysis_1m.get('ema9'), 'ema21': analysis_1m.get('ema21'),
+                        'ema_diff_pct': (((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) / analysis_1m.get('ema21', 1)) * 100 if analysis_1m.get('ema21') else None),
+                        'atr': analysis_1m.get('atr'), 'atr_pct': analysis_1m.get('atr_pct'),
+                        'bb_upper': analysis_1m.get('bb_upper'), 'bb_middle': analysis_1m.get('bb_middle'), 'bb_lower': analysis_1m.get('bb_lower'),
+                        'bb_width': analysis_1m.get('bb_width'), 'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                        'volume': analysis_1m.get('volume'), 'volume_avg': analysis_1m.get('volume_avg'),
+                        'volume_ratio': analysis_1m.get('volumeSpike'), 'volume_spike': analysis_1m.get('volumeSpike'),
+                    }
+                indicators_5m = {}
+                if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                    indicators_5m = {
+                        'rsi': analysis_5m.get('rsi'), 'rsi_prev': analysis_5m.get('rsi_prev'),
+                        'macd': analysis_5m.get('macd'), 'macd_signal': analysis_5m.get('macd_signal'),
+                        'macd_hist': analysis_5m.get('macd_hist'), 'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                        'adx': analysis_5m.get('adx'), 'di_plus': analysis_5m.get('di_plus'),
+                        'di_minus': analysis_5m.get('di_minus'),
+                        'di_gap': (analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0) if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None),
+                        'ema9': analysis_5m.get('ema9'), 'ema21': analysis_5m.get('ema21'),
+                        'ema_diff_pct': (((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) / analysis_5m.get('ema21', 1)) * 100 if analysis_5m.get('ema21') else None),
+                        'atr': analysis_5m.get('atr'), 'atr_pct': analysis_5m.get('atr_pct'),
+                        'bb_upper': analysis_5m.get('bb_upper'), 'bb_middle': analysis_5m.get('bb_middle'), 'bb_lower': analysis_5m.get('bb_lower'),
+                        'bb_width': analysis_5m.get('bb_width'), 'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                        'volume': analysis_5m.get('volume'), 'volume_avg': analysis_5m.get('volume_avg'),
+                        'volume_ratio': analysis_5m.get('volumeSpike'), 'volume_spike': analysis_5m.get('volumeSpike'),
+                    }
+                best['indicators_1m'] = indicators_1m
+                best['indicators_5m'] = indicators_5m
 
                 logger.info(
                     f"✅ {symbol}: CONFLUENCE RÉUSSIE - {best['direction']} | "
@@ -1126,6 +1274,44 @@ class TechnicalAnalyzer:
                     best['symbol'] = symbol
                     if analysis_1m and analysis_5m and valid_1m and valid_5m:
                         best['atr5m'] = analysis_5m['atr']
+                    
+                    # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best pour qu'ils soient disponibles dans _last_setup
+                    indicators_1m = {}
+                    if valid_1m:
+                        indicators_1m = {
+                            'rsi': analysis_1m.get('rsi'), 'rsi_prev': analysis_1m.get('rsi_prev'),
+                            'macd': analysis_1m.get('macd'), 'macd_signal': analysis_1m.get('macd_signal'),
+                            'macd_hist': analysis_1m.get('macd_hist'), 'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                            'adx': analysis_1m.get('adx'), 'di_plus': analysis_1m.get('di_plus'),
+                            'di_minus': analysis_1m.get('di_minus'),
+                            'di_gap': (analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0) if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None),
+                            'ema9': analysis_1m.get('ema9'), 'ema21': analysis_1m.get('ema21'),
+                            'ema_diff_pct': (((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) / analysis_1m.get('ema21', 1)) * 100 if analysis_1m.get('ema21') else None),
+                            'atr': analysis_1m.get('atr'), 'atr_pct': analysis_1m.get('atr_pct'),
+                            'bb_upper': analysis_1m.get('bb_upper'), 'bb_middle': analysis_1m.get('bb_middle'), 'bb_lower': analysis_1m.get('bb_lower'),
+                            'bb_width': analysis_1m.get('bb_width'), 'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                            'volume': analysis_1m.get('volume'), 'volume_avg': analysis_1m.get('volume_avg'),
+                            'volume_ratio': analysis_1m.get('volumeSpike'), 'volume_spike': analysis_1m.get('volumeSpike'),
+                        }
+                    indicators_5m = {}
+                    if valid_5m:
+                        indicators_5m = {
+                            'rsi': analysis_5m.get('rsi'), 'rsi_prev': analysis_5m.get('rsi_prev'),
+                            'macd': analysis_5m.get('macd'), 'macd_signal': analysis_5m.get('macd_signal'),
+                            'macd_hist': analysis_5m.get('macd_hist'), 'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                            'adx': analysis_5m.get('adx'), 'di_plus': analysis_5m.get('di_plus'),
+                            'di_minus': analysis_5m.get('di_minus'),
+                            'di_gap': (analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0) if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None),
+                            'ema9': analysis_5m.get('ema9'), 'ema21': analysis_5m.get('ema21'),
+                            'ema_diff_pct': (((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) / analysis_5m.get('ema21', 1)) * 100 if analysis_5m.get('ema21') else None),
+                            'atr': analysis_5m.get('atr'), 'atr_pct': analysis_5m.get('atr_pct'),
+                            'bb_upper': analysis_5m.get('bb_upper'), 'bb_middle': analysis_5m.get('bb_middle'), 'bb_lower': analysis_5m.get('bb_lower'),
+                            'bb_width': analysis_5m.get('bb_width'), 'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                            'volume': analysis_5m.get('volume'), 'volume_avg': analysis_5m.get('volume_avg'),
+                            'volume_ratio': analysis_5m.get('volumeSpike'), 'volume_spike': analysis_5m.get('volumeSpike'),
+                        }
+                    best['indicators_1m'] = indicators_1m
+                    best['indicators_5m'] = indicators_5m
 
                     logger.info(
                         f"✅ {symbol}: SETUP (Mode permissif) - {best['direction']} | "

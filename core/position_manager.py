@@ -506,68 +506,90 @@ class PositionManager:
         
         # 🔥 DEBUG: Log pour vérifier le contenu des indicateurs
         if indicators_1m or indicators_5m:
+            indicators_1m_non_null = len([v for v in indicators_1m.values() if v is not None]) if indicators_1m else 0
+            indicators_5m_non_null = len([v for v in indicators_5m.values() if v is not None]) if indicators_5m else 0
             logger.info(f"✅ Indicateurs trouvés: indicators_1m keys: {list(indicators_1m.keys())[:5]}, indicators_5m keys: {list(indicators_5m.keys())[:5]}")
+            logger.info(f"✅ Indicateurs non-null: indicators_1m: {indicators_1m_non_null}/{len(indicators_1m) if indicators_1m else 0}, indicators_5m: {indicators_5m_non_null}/{len(indicators_5m) if indicators_5m else 0}")
+            # 🔥 DEBUG: Vérifier les valeurs spécifiques
+            if indicators_1m:
+                logger.info(f"🔍 DEBUG indicators_1m valeurs: rsi={indicators_1m.get('rsi')}, macd_hist={indicators_1m.get('macd_hist')}, adx={indicators_1m.get('adx')}, ema9={indicators_1m.get('ema9')}, ema21={indicators_1m.get('ema21')}")
         else:
             logger.warning(f"⚠️ Aucun indicateur trouvé dans indicators_1m ou indicators_5m pour {symbol}")
         
+        # 🔥 DEBUG: Vérifier si last_setup contient directement les indicateurs (fallback)
+        if last_setup:
+            logger.info(f"🔍 DEBUG last_setup contient directement: rsi={last_setup.get('rsi')}, macd={last_setup.get('macd')}, adx={last_setup.get('adx')}, ema9={last_setup.get('ema9')}, ema21={last_setup.get('ema21')}")
+        
+        # 🔥 FIX: Utiliser last_setup comme fallback pour tous les indicateurs manquants
+        # Helper function pour obtenir une valeur avec fallback
+        def get_indicator(key_1m=None, key_5m=None, key_setup=None, default=None):
+            """Récupère un indicateur depuis indicators_1m, indicators_5m ou last_setup"""
+            if key_1m and indicators_1m and indicators_1m.get(key_1m) is not None:
+                return indicators_1m.get(key_1m)
+            if key_5m and indicators_5m and indicators_5m.get(key_5m) is not None:
+                return indicators_5m.get(key_5m)
+            if key_setup and last_setup and last_setup.get(key_setup) is not None:
+                return last_setup.get(key_setup)
+            return default
+        
         entry_indicators = {
                     # RSI
-                    'rsi_1m': indicators_1m.get('rsi') or last_setup.get('rsi') if last_setup else None,
-                    'rsi_5m': indicators_5m.get('rsi') if indicators_5m else None,
-                    'rsi_prev_1m': indicators_1m.get('rsi_prev') if indicators_1m else None,
-                    'rsi_prev_5m': indicators_5m.get('rsi_prev') if indicators_5m else None,
+                    'rsi_1m': get_indicator('rsi', None, 'rsi'),
+                    'rsi_5m': get_indicator(None, 'rsi', None),
+                    'rsi_prev_1m': get_indicator('rsi_prev', None, 'rsi_prev'),
+                    'rsi_prev_5m': get_indicator(None, 'rsi_prev', None),
                     # MACD
-                    'macd_1m': indicators_1m.get('macd') if indicators_1m else None,
-                    'macd_signal_1m': indicators_1m.get('macd_signal') if indicators_1m else None,
-                    'macd_hist_1m': indicators_1m.get('macd_hist') or last_setup.get('macd_hist') if last_setup else None,
-                    'macd_hist_prev_1m': indicators_1m.get('macd_hist_prev') if indicators_1m else None,
-                    'macd_5m': indicators_5m.get('macd') if indicators_5m else None,
-                    'macd_signal_5m': indicators_5m.get('macd_signal') if indicators_5m else None,
-                    'macd_hist_5m': indicators_5m.get('macd_hist') if indicators_5m else None,
-                    'macd_hist_prev_5m': indicators_5m.get('macd_hist_prev') if indicators_5m else None,
+                    'macd_1m': get_indicator('macd', None, 'macd'),
+                    'macd_signal_1m': get_indicator('macd_signal', None, 'macd_signal'),
+                    'macd_hist_1m': get_indicator('macd_hist', None, 'macd_hist'),
+                    'macd_hist_prev_1m': get_indicator('macd_hist_prev', None, 'macd_hist_prev'),
+                    'macd_5m': get_indicator(None, 'macd', None),
+                    'macd_signal_5m': get_indicator(None, 'macd_signal', None),
+                    'macd_hist_5m': get_indicator(None, 'macd_hist', None),
+                    'macd_hist_prev_5m': get_indicator(None, 'macd_hist_prev', None),
                     # ADX
-                    'adx_1m': indicators_1m.get('adx') or last_setup.get('adx') if last_setup else None,
-                    'adx_5m': indicators_5m.get('adx') if indicators_5m else None,
-                    'di_plus_1m': indicators_1m.get('di_plus') if indicators_1m else None,
-                    'di_minus_1m': indicators_1m.get('di_minus') if indicators_1m else None,
-                    'di_gap_1m': indicators_1m.get('di_gap') if indicators_1m else None,
-                    'di_plus_5m': indicators_5m.get('di_plus') if indicators_5m else None,
-                    'di_minus_5m': indicators_5m.get('di_minus') if indicators_5m else None,
-                    'di_gap_5m': indicators_5m.get('di_gap') if indicators_5m else None,
+                    'adx_1m': get_indicator('adx', None, 'adx'),
+                    'adx_5m': get_indicator(None, 'adx', None),
+                    'di_plus_1m': get_indicator('di_plus', None, 'di_plus'),
+                    'di_minus_1m': get_indicator('di_minus', None, 'di_minus'),
+                    'di_gap_1m': get_indicator('di_gap', None, 'di_gap'),
+                    'di_plus_5m': get_indicator(None, 'di_plus', None),
+                    'di_minus_5m': get_indicator(None, 'di_minus', None),
+                    'di_gap_5m': get_indicator(None, 'di_gap', None),
                     # EMA
-                    'ema9_1m': indicators_1m.get('ema9') if indicators_1m else None,
-                    'ema21_1m': indicators_1m.get('ema21') if indicators_1m else None,
-                    'ema_diff_pct_1m': indicators_1m.get('ema_diff_pct') if indicators_1m else None,
-                    'ema9_5m': indicators_5m.get('ema9') if indicators_5m else None,
-                    'ema21_5m': indicators_5m.get('ema21') if indicators_5m else None,
-                    'ema_diff_pct_5m': indicators_5m.get('ema_diff_pct') if indicators_5m else None,
+                    'ema9_1m': get_indicator('ema9', None, 'ema9'),
+                    'ema21_1m': get_indicator('ema21', None, 'ema21'),
+                    'ema_diff_pct_1m': get_indicator('ema_diff_pct', None, 'ema_diff_pct'),
+                    'ema9_5m': get_indicator(None, 'ema9', None),
+                    'ema21_5m': get_indicator(None, 'ema21', None),
+                    'ema_diff_pct_5m': get_indicator(None, 'ema_diff_pct', None),
                     # ATR
-                    'atr_1m': indicators_1m.get('atr') if indicators_1m else None,
-                    'atr_pct_1m': (atr / entry * 100) if atr and entry else (indicators_1m.get('atr_pct') or last_setup.get('atr_pct') if last_setup else None),
-                    'atr_5m': indicators_5m.get('atr') if indicators_5m else None,
-                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else (indicators_5m.get('atr_pct') if indicators_5m else None),
+                    'atr_1m': get_indicator('atr', None, 'atr'),
+                    'atr_pct_1m': (atr / entry * 100) if atr and entry else get_indicator('atr_pct', None, 'atr_pct'),
+                    'atr_5m': get_indicator(None, 'atr', None),
+                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else get_indicator(None, 'atr_pct', None),
                     # Bollinger Bands
-                    'bb_upper_1m': indicators_1m.get('bb_upper') if indicators_1m else None,
-                    'bb_middle_1m': indicators_1m.get('bb_middle') if indicators_1m else None,
-                    'bb_lower_1m': indicators_1m.get('bb_lower') if indicators_1m else None,
-                    'bb_width_1m': indicators_1m.get('bb_width') if indicators_1m else None,
-                    'bb_distance_to_lower_1m': indicators_1m.get('bb_distance_to_lower') if indicators_1m else None,
-                    'bb_distance_to_upper_1m': indicators_1m.get('bb_distance_to_upper') if indicators_1m else None,
-                    'bb_upper_5m': indicators_5m.get('bb_upper') if indicators_5m else None,
-                    'bb_middle_5m': indicators_5m.get('bb_middle') if indicators_5m else None,
-                    'bb_lower_5m': indicators_5m.get('bb_lower') if indicators_5m else None,
-                    'bb_width_5m': indicators_5m.get('bb_width') if indicators_5m else None,
-                    'bb_distance_to_lower_5m': indicators_5m.get('bb_distance_to_lower') if indicators_5m else None,
-                    'bb_distance_to_upper_5m': indicators_5m.get('bb_distance_to_upper') if indicators_5m else None,
+                    'bb_upper_1m': get_indicator('bb_upper', None, 'bb_upper'),
+                    'bb_middle_1m': get_indicator('bb_middle', None, 'bb_middle'),
+                    'bb_lower_1m': get_indicator('bb_lower', None, 'bb_lower'),
+                    'bb_width_1m': get_indicator('bb_width', None, 'bb_width'),
+                    'bb_distance_to_lower_1m': get_indicator('bb_distance_to_lower', None, 'bb_distance_to_lower'),
+                    'bb_distance_to_upper_1m': get_indicator('bb_distance_to_upper', None, 'bb_distance_to_upper'),
+                    'bb_upper_5m': get_indicator(None, 'bb_upper', None),
+                    'bb_middle_5m': get_indicator(None, 'bb_middle', None),
+                    'bb_lower_5m': get_indicator(None, 'bb_lower', None),
+                    'bb_width_5m': get_indicator(None, 'bb_width', None),
+                    'bb_distance_to_lower_5m': get_indicator(None, 'bb_distance_to_lower', None),
+                    'bb_distance_to_upper_5m': get_indicator(None, 'bb_distance_to_upper', None),
                     # Volume
-                    'volume_1m': indicators_1m.get('volume') if indicators_1m else None,
-                    'volume_avg_1m': indicators_1m.get('volume_avg') if indicators_1m else None,
-                    'volume_ratio_1m': indicators_1m.get('volume_ratio') or last_setup.get('volumeSpike') if last_setup else None,
-                    'volume_spike_1m': indicators_1m.get('volume_spike') if indicators_1m else None,
-                    'volume_5m': indicators_5m.get('volume') if indicators_5m else None,
-                    'volume_avg_5m': indicators_5m.get('volume_avg') if indicators_5m else None,
-                    'volume_ratio_5m': indicators_5m.get('volume_ratio') if indicators_5m else None,
-                    'volume_spike_5m': indicators_5m.get('volume_spike') if indicators_5m else None,
+                    'volume_1m': get_indicator('volume', None, 'volume'),
+                    'volume_avg_1m': get_indicator('volume_avg', None, 'volume_avg'),
+                    'volume_ratio_1m': get_indicator('volume_ratio', None, 'volumeSpike'),
+                    'volume_spike_1m': get_indicator('volume_spike', None, 'volumeSpike'),
+                    'volume_5m': get_indicator(None, 'volume', None),
+                    'volume_avg_5m': get_indicator(None, 'volume_avg', None),
+                    'volume_ratio_5m': get_indicator(None, 'volume_ratio', None),
+                    'volume_spike_5m': get_indicator(None, 'volume_spike', None),
                     # Score
                     'score': last_setup.get('totalScore') if last_setup else None,
                 }
@@ -583,7 +605,14 @@ class PositionManager:
         self.active_position._entry_indicators = entry_indicators
         self.active_position._entry_conditions = entry_conditions
         self.active_position._entry_scalability = entry_scalability
-        logger.info(f"✅ Indicateurs d'entrée stockés pour {symbol}: {len([v for v in entry_indicators.values() if v is not None])} indicateurs non-null")
+        
+        # 🔥 DEBUG: Compter les indicateurs récupérés
+        entry_indicators_non_null = len([v for v in entry_indicators.values() if v is not None])
+        logger.info(f"✅ Indicateurs d'entrée stockés pour {symbol}: {entry_indicators_non_null}/{len(entry_indicators)} indicateurs non-null")
+        
+        # 🔥 DEBUG: Log quelques indicateurs clés pour vérification
+        if entry_indicators_non_null > 0:
+            logger.info(f"🔍 DEBUG entry_indicators exemples: rsi_1m={entry_indicators.get('rsi_1m')}, macd_hist_1m={entry_indicators.get('macd_hist_1m')}, adx_1m={entry_indicators.get('adx_1m')}, ema9_1m={entry_indicators.get('ema9_1m')}, ema21_1m={entry_indicators.get('ema21_1m')}")
         
         # ========================================
         # ✅ LOG TRADE ENTRY (backend.ml.data_logger - optionnel)

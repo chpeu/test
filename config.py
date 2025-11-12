@@ -102,6 +102,9 @@ TRADING_CONFIG = {
     "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
     
+    # 🔥 FIX: Validation slippage avant ouverture position
+    "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
+    
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
         "enabled": True,

@@ -747,7 +747,71 @@ async def scanner_loop_callback():
                                     # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
                                     position_manager._last_setup_scan_uuid = setup.get('_scan_uuid')
                                     position_manager._last_setup_opportunity_id = setup.get('_opportunity_id')
+                                    
+                                    # 🔥 DEBUG: Vérifier si setup contient les indicateurs avant stockage
+                                    logger.info(f"🔍 DEBUG main.py: setup contient indicators_1m: {'indicators_1m' in setup}, indicators_5m: {'indicators_5m' in setup}")
+                                    if 'indicators_1m' in setup:
+                                        logger.info(f"✅ indicators_1m présent dans setup: {len(setup.get('indicators_1m', {}))} clés")
+                                    if 'indicators_5m' in setup:
+                                        logger.info(f"✅ indicators_5m présent dans setup: {len(setup.get('indicators_5m', {}))} clés")
+                                    
                                     position_manager._last_setup = setup  # Stocker setup complet pour récupérer indicateurs
+                                    
+                                    # 🔥 DEBUG: Vérifier après stockage
+                                    logger.info(f"🔍 DEBUG main.py: _last_setup après stockage contient indicators_1m: {'indicators_1m' in position_manager._last_setup}, indicators_5m: {'indicators_5m' in position_manager._last_setup}")
+                                    
+                                    # 🔥 FIX: Vérifier slippage et SL avant d'ouvrir la position
+                                    setup_price = setup.get('price', entry_price)
+                                    slippage_pct = abs((entry_price - setup_price) / setup_price * 100) if setup_price > 0 else 0
+                                    max_slippage_pct = TRADING_CONFIG.get('max_slippage_pct', 0.5)  # 0.5% par défaut
+                                    
+                                    # Calculer SL pour le prix réel
+                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI') and atr and entry_price:
+                                        calculated_sl = entry_price - (atr * TRADING_CONFIG.get('atr_mult_sl', 1.0)) if direction == 'LONG' else entry_price + (atr * TRADING_CONFIG.get('atr_mult_sl', 1.0))
+                                    else:
+                                        sl_pct = TRADING_CONFIG.get('sl_percent', 0.25) / 100
+                                        calculated_sl = entry_price * (1 - sl_pct) if direction == 'LONG' else entry_price * (1 + sl_pct)
+                                    
+                                    # Vérifier que le prix réel n'est pas déjà en dessous du SL (pour LONG) ou au-dessus du SL (pour SHORT)
+                                    sl_already_hit = False
+                                    if direction == 'LONG':
+                                        if entry_price <= calculated_sl:
+                                            sl_already_hit = True
+                                            logger.warning(
+                                                f"⚠️ {symbol} - Position LONG rejetée : Prix d'entrée ({entry_price:.6f}) "
+                                                f"est déjà en dessous du SL ({calculated_sl:.6f})"
+                                            )
+                                    else:  # SHORT
+                                        if entry_price >= calculated_sl:
+                                            sl_already_hit = True
+                                            logger.warning(
+                                                f"⚠️ {symbol} - Position SHORT rejetée : Prix d'entrée ({entry_price:.6f}) "
+                                                f"est déjà au-dessus du SL ({calculated_sl:.6f})"
+                                            )
+                                    
+                                    # Vérifier slippage
+                                    if slippage_pct > max_slippage_pct:
+                                        logger.warning(
+                                            f"⚠️ {symbol} - Position rejetée : Slippage trop élevé "
+                                            f"({slippage_pct:.3f}% > {max_slippage_pct:.3f}%) | "
+                                            f"Setup: {setup_price:.6f} | Réel: {entry_price:.6f}"
+                                        )
+                                        await add_log('WARNING', 'Slippage trop élevé', 
+                                            f"{symbol}: {slippage_pct:.3f}% > {max_slippage_pct:.3f}%")
+                                        continue
+                                    
+                                    # Rejeter si SL déjà touché
+                                    if sl_already_hit:
+                                        await add_log('WARNING', 'SL déjà touché', 
+                                            f"{symbol}: Prix d'entrée ({entry_price:.6f}) déjà au-delà du SL ({calculated_sl:.6f})")
+                                        continue
+                                    
+                                    # Log validation
+                                    if slippage_pct > 0.1:  # Log si slippage > 0.1%
+                                        logger.info(
+                                            f"⚠️ {symbol} - Slippage détecté : {slippage_pct:.3f}% "
+                                            f"(Setup: {setup_price:.6f} → Réel: {entry_price:.6f})"
+                                        )
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
@@ -899,6 +963,93 @@ async def scan_pair_for_setup(symbol: str):
             active_positions=active_positions,  # 🔥 PHASE 6: Correlation Filter
             position_manager=position_manager  # 🔥 PHASE 6: Recovery Mode
         )
+        
+        # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
+        # pour qu'ils soient disponibles dans _last_setup
+        if analysis and isinstance(analysis, dict):
+            # Extraire les indicateurs depuis analysis si disponibles
+            indicators_1m = analysis.get('indicators_1m', {})
+            indicators_5m = analysis.get('indicators_5m', {})
+            
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
+            
+            # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
+            if not indicators_1m:
+                logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
+                # 🔥 DEBUG: Vérifier quelles données sont disponibles dans analysis
+                available_keys = [k for k in analysis.keys() if k not in ['symbol', 'direction', 'entry', 'sl', 'tp', 'price', 'signals', 'condition_types', 'totalScore', 'reason', 'reject_category']]
+                logger.info(f"🔍 DEBUG analysis keys disponibles pour indicators_1m: {available_keys[:20]}")
+                
+                indicators_1m = {
+                    'rsi': analysis.get('rsi'),
+                    'rsi_prev': analysis.get('rsi_prev'),
+                    'macd': analysis.get('macd'),
+                    'macd_signal': analysis.get('macd_signal'),
+                    'macd_hist': analysis.get('macd_hist'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev'),
+                    'adx': analysis.get('adx'),
+                    'di_plus': analysis.get('di_plus'),
+                    'di_minus': analysis.get('di_minus'),
+                    'di_gap': analysis.get('di_gap'),
+                    'ema9': analysis.get('ema9'),
+                    'ema21': analysis.get('ema21'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct'),
+                    'atr': analysis.get('atr'),
+                    'atr_pct': analysis.get('atr_pct'),
+                    'bb_upper': analysis.get('bb_upper'),
+                    'bb_middle': analysis.get('bb_middle'),
+                    'bb_lower': analysis.get('bb_lower'),
+                    'bb_width': analysis.get('bb_width'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                    'volume': analysis.get('volume'),
+                    'volume_avg': analysis.get('volume_avg'),
+                    'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                    'volume_spike': analysis.get('volume_spike'),
+                }
+                
+                # 🔥 DEBUG: Compter les valeurs non-null
+                indicators_1m_non_null = len([v for v in indicators_1m.values() if v is not None])
+                logger.info(f"🔍 DEBUG indicators_1m construit: {indicators_1m_non_null}/{len(indicators_1m)} valeurs non-null")
+            
+            if not indicators_5m:
+                logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
+                indicators_5m = {
+                    'rsi': analysis.get('rsi_5m'),
+                    'rsi_prev': analysis.get('rsi_prev_5m'),
+                    'macd': analysis.get('macd_5m'),
+                    'macd_signal': analysis.get('macd_signal_5m'),
+                    'macd_hist': analysis.get('macd_hist_5m'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
+                    'adx': analysis.get('adx_5m'),
+                    'di_plus': analysis.get('di_plus_5m'),
+                    'di_minus': analysis.get('di_minus_5m'),
+                    'di_gap': analysis.get('di_gap_5m'),
+                    'ema9': analysis.get('ema9_5m'),
+                    'ema21': analysis.get('ema21_5m'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
+                    'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
+                    'atr_pct': analysis.get('atr_pct_5m'),
+                    'bb_upper': analysis.get('bb_upper_5m'),
+                    'bb_middle': analysis.get('bb_middle_5m'),
+                    'bb_lower': analysis.get('bb_lower_5m'),
+                    'bb_width': analysis.get('bb_width_5m'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
+                    'volume': analysis.get('volume_5m'),
+                    'volume_avg': analysis.get('volume_avg_5m'),
+                    'volume_ratio': analysis.get('volume_ratio_5m'),
+                    'volume_spike': analysis.get('volume_spike_5m'),
+                }
+                
+                # 🔥 DEBUG: Compter les valeurs non-null
+                indicators_5m_non_null = len([v for v in indicators_5m.values() if v is not None])
+                logger.info(f"🔍 DEBUG indicators_5m construit: {indicators_5m_non_null}/{len(indicators_5m)} valeurs non-null")
+            
+            # Ajouter les indicateurs à analysis
+            analysis['indicators_1m'] = indicators_1m
+            analysis['indicators_5m'] = indicators_5m
+            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
         
         # 🔥 FIX: Envoyer événement SocketIO pour mettre à jour le compteur de validation
         # Un setup valide = validé (true), pas de setup = non validé (false)
