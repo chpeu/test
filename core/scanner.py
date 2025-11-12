@@ -120,9 +120,11 @@ class ScalabilityScanner:
         recent_volume = pair.get('recentVolume', 0)
         book_depth = pair.get('bookDepth', 0)
         balance_score = pair.get('balanceScore', 0)
-        
-        # Filtres stricts - 🔥 v6.4.3: Spread max réduit à 0.02%
-        if spread > 0.02 or recent_volume < 100000 or balance_score < TRADING_CONFIG['balance_score_min']:
+
+        # Filtres stricts - 🔥 v6.4.3: Spread entre 0.001% et 0.02%
+        # 🔥 FIX: Vérifier explicitement si spread est NaN car NaN > 0.02 retourne False
+        # 🔥 FIX: Ajouter spread minimum de 0.001% pour éviter slippage nul
+        if math.isnan(spread) or spread <= 0.001 or spread > 0.02 or recent_volume < 100000 or balance_score < TRADING_CONFIG['balance_score_min']:
             return 0.0
         
         # Ratio volatilité/spread (plus élevé = mieux)

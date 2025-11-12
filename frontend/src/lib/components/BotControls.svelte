@@ -1,7 +1,27 @@
 <script>
 	import { isScanning } from '$lib/stores/scanner';
+	import { botPhase, getPhaseMessage } from '$lib/stores/botPhase';
+	import { activePosition } from '$lib/stores/position';
 
 	let loading = false;
+
+	// 🔥 NOUVEAU: Calculer le message de statut dynamique
+	$: statusMessage = (() => {
+		// Priorité 1: Position active
+		if ($activePosition) {
+			return getPhaseMessage('position_active');
+		}
+		// Priorité 2: Phase du bot
+		if ($botPhase && $botPhase !== 'arrêt') {
+			return getPhaseMessage($botPhase);
+		}
+		// Priorité 3: État du scanner
+		if ($isScanning) {
+			return getPhaseMessage('scan_setups');
+		}
+		// Fallback: Arrêt
+		return getPhaseMessage('arrêt');
+	})();
 
 	async function startBot() {
 		try {
@@ -44,20 +64,21 @@
 	}
 </script>
 
-<div class="bot-controls">
-	<div class="controls-header">
-		<h3>🤖 Bot Controls</h3>
-		<div class="bot-status" class:active={$isScanning}>
+<div class="bot-controls" data-debug-name="botControls">
+	<div class="controls-header" data-debug-name="botControls.header">
+		<h3 data-debug-name="botControls.title">🤖 Bot Controls</h3>
+		<div class="bot-status" class:active={$isScanning} data-debug-name="isScanning">
 			{$isScanning ? '🟢 Running' : '🔴 Stopped'}
 		</div>
 	</div>
 
-	<div class="controls-buttons">
+	<div class="controls-buttons" data-debug-name="botControls.buttons">
 		{#if !$isScanning}
 			<button
 				class="btn btn-primary"
 				on:click={startBot}
 				disabled={loading}
+				data-debug-name="botControls.startButton"
 			>
 				{loading ? '⏳ Starting...' : '▶️ Start Scanner'}
 			</button>
@@ -66,19 +87,16 @@
 				class="btn btn-danger"
 				on:click={stopBot}
 				disabled={loading}
+				data-debug-name="botControls.stopButton"
 			>
 				{loading ? '⏳ Stopping...' : '⏹️ Stop Scanner'}
 			</button>
 		{/if}
 	</div>
 
-	<div class="controls-info">
-		<p class="info-text">
-			{#if $isScanning}
-				🔍 Scanner is actively searching for trading opportunities
-			{:else}
-				💤 Scanner is stopped. Click "Start Scanner" to begin
-			{/if}
+	<div class="controls-info" data-debug-name="botControls.info">
+		<p class="info-text" data-debug-name="botControls.statusText">
+			{statusMessage}
 		</p>
 	</div>
 </div>

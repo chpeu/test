@@ -1,1607 +1,1262 @@
-# 📚 DOCUMENTATION COMPLÈTE - TRADE CURSOR v7.0
+# 📚 Documentation Complète - Trade Cursor
 
-**Date**: 2025-11-03  
-**Version**: 7.0 FastAPI  
-**Status**: ✅ Documentation complète
+## Table des Matières
 
----
-
-## 📋 TABLE DES MATIÈRES
-
-1. [Scanner de Scalabilité](#1-scanner-de-scalabilité)
-2. [Conditions de Scalabilité 0% Fee](#2-conditions-de-scalabilité-0-fee)
-3. [Rotation des Scans](#3-rotation-des-scans)
-4. [Scan de Prise de Trade](#4-scan-de-prise-de-trade)
-5. [Modes TP/SL](#5-modes-tpsl)
-6. [Système de Confluence](#6-système-de-confluence)
-7. [Timeframes et Tendances](#7-timeframes-et-tendances)
-8. [Statistiques](#8-statistiques)
-9. [Réglages Disponibles](#9-réglages-disponibles)
-10. [Indicateurs Techniques](#10-indicateurs-techniques)
-11. [Gestion des Positions](#11-gestion-des-positions)
-12. [WebSocket & Prix en Temps Réel](#12-websocket--prix-en-temps-réel)
+1. [Système de Scan des Paires Scalables](#1-système-de-scan-des-paires-scalables)
+2. [Système de Recherche de Setups](#2-système-de-recherche-de-setups)
+3. [Système de Gestion des Positions](#3-système-de-gestion-des-positions)
+4. [Système de Suivi des Positions](#4-système-de-suivi-des-positions)
 
 ---
 
-## 1. SCANNER DE SCALABILITÉ
+## 1. Système de Scan des Paires Scalables
 
-### 🎯 **Objectif**
+### 1.1 Vue d'ensemble
 
-Le scanner de scalabilité identifie les meilleures paires pour le scalping en analysant plusieurs critères :
+Le **ScalabilityScanner** identifie les meilleures paires pour le scalping basé sur plusieurs critères :
 - Volatilité optimale
 - Spread faible
 - Volume élevé
 - Profondeur du carnet d'ordres
 - Balance bid/ask
 
-### 📊 **Processus de Scan**
+### 1.2 Critères de Sélection
 
-#### **Étape 1 : Récupération des Paires 0% Fee**
+#### 1.2.1 Paires 0% Fees
 
-```python
-# Fichier: core/scanner.py - scan_top_pairs()
-
-# Récupère toutes les paires futures USDT
-markets = await self.client.exchange.load_markets()
-futures_pairs = []
-
-for symbol, market in markets.items():
-    if market['type'] == 'swap' and market['quote'] == 'USDT':
-        # Vérifier 0% fees
-        maker_fee = market.get('maker', 0)
-        taker_fee = market.get('taker', 0)
-        if maker_fee == 0 and taker_fee == 0:
-            futures_pairs.append({
-                'symbol': symbol,
-                'maker': maker_fee,
-                'taker': taker_fee
-            })
-```
+**Source** : API MEXC Futures (`client.exchange.load_markets()`)
 
 **Critères** :
-- ✅ Type : `swap` (contrats perpétuels)
-- ✅ Quote : `USDT`
-- ✅ Maker fee : `0%`
-- ✅ Taker fee : `0%`
+- Type : `swap` (futures)
+- Quote : `USDT`
+- Maker fee : `0`
+- Taker fee : `0`
 
-**Résultat typique** : ~115 paires trouvées
+**Méthode** : `scan_top_pairs(n=20)`
 
----
+#### 1.2.2 Informations Récupérées de l'API
 
-#### **Étape 2 : Scan par Batch (5 paires en parallèle)**
+##### A. Données OHLCV (1 minute)
+- **Source** : `client.fetch_ohlcv(symbol, '1m', limit=60)`
+- **Période** : 60 bougies (1 heure)
+- **Données extraites** :
+  - `closes` : Prix de clôture
+  - `volumes` : Volumes
+
+##### B. Données Orderbook
+- **Source** : `client.fetch_order_book(symbol, limit=5)`
+- **Profondeur** : 5 meilleurs niveaux bid/ask
+- **Données calculées** :
+  - `spread` : Spread en % = `((best_ask - best_bid) / mid_price) * 100`
+  - `bookDepth` : Volume total des 5 premiers niveaux = `sum(asks[:5]) + sum(bids[:5])`
+  - `balanceScore` : Score d'équilibre (0-1) = `1 - (abs(bid_ask_ratio - 0.5) * 2)`
+    - `bid_ask_ratio` = `bid_vol / total_vol`
+    - Score = 1 si équilibré, 0 si déséquilibré
+  - `bidVol` : Volume total des bids (5 niveaux)
+  - `askVol` : Volume total des asks (5 niveaux)
+
+##### C. Volatilités Calculées
+- **Vol5** : Volatilité sur 5 bougies (écart-type normalisé en %)
+- **Vol15** : Volatilité sur 15 bougies
+- **Formule** :
+  ```python
+  mean = sum(closes[-period:]) / period
+  variance = sum((v - mean) ** 2 for v in closes[-period:]) / period
+  std = sqrt(variance)
+  volatility = (std / mean) * 100
+  ```
+
+##### D. Volume Récent
+- **Vol5_recent** : Somme des volumes des 5 dernières bougies
+
+### 1.3 Système de Score
+
+#### 1.3.1 Formule de Calcul
 
 ```python
-BATCH_SIZE = 5
-total_batches = math.ceil(len(futures_pairs) / BATCH_SIZE)
-
-for i in range(0, len(futures_pairs), BATCH_SIZE):
-    batch = futures_pairs[i:i + BATCH_SIZE]
-    # Scanner en parallèle
-    results = await asyncio.gather(*[self.scan_pair(p['symbol']) for p in batch])
+score = (volSpreadRatio × log10(volume) × normFactor × balanceBonus)
 ```
 
-**Avantages** :
-- ✅ Rapidité : 5 paires analysées simultanément
-- ✅ Pas de surcharge API
-- ✅ Pause de 0.05s entre batches
+**Composantes** :
+
+1. **volSpreadRatio** :
+   - `vol5 / spread` si `spread > 0` et `vol5 > 0`
+   - Sinon : `0.0`
+   - **Signification** : Ratio volatilité/spread (plus élevé = mieux)
+
+2. **log10(volume)** :
+   - `log10(recent_volume + 1)`
+   - **Signification** : Logarithme du volume récent (normalisation)
+
+3. **normFactor** :
+   - `0.5 × (recent_volume / max_volume) + 0.5 × (book_depth / max_depth)`
+   - **Signification** : Facteur de normalisation combinant volume et profondeur
+
+4. **balanceBonus** :
+   - `balanceScore` (0-1)
+   - **Signification** : Bonus pour équilibre bid/ask
+
+#### 1.3.2 Filtres Stricts
+
+Une paire est **rejetée** (score = 0) si :
+- `spread > 0.02%` (spread maximum)
+- `recent_volume < 100,000` (volume minimum)
+- `balanceScore < balance_score_min` (défaut : 0.7)
+
+**Configuration** :
+```python
+TRADING_CONFIG['balance_score_min'] = 0.7  # Seuil minimum
+```
+
+#### 1.3.3 Normalisation
+
+Avant le calcul des scores :
+1. Trouver `max_volume` parmi toutes les paires valides
+2. Trouver `max_depth` parmi toutes les paires valides
+3. Normaliser chaque paire avec ces valeurs max
+
+#### 1.3.4 Tri et Sélection
+
+1. Filtrer les paires avec `score > 0`
+2. Trier par score décroissant
+3. Retourner les top N (défaut : 20)
+
+**Configuration** :
+```python
+TRADING_CONFIG['top_pairs_limit'] = 20  # Nombre de paires à retourner
+```
+
+### 1.4 Processus de Scan
+
+#### 1.4.1 Scan Initial
+
+**Déclenchement** : Au démarrage du bot ou si `top_pairs` est vide
+
+**Procédure** :
+1. Récupérer toutes les paires futures USDT 0% fees
+2. Scanner par batch de 5 paires en parallèle
+3. Calculer métriques pour chaque paire
+4. Calculer scores et normalisations
+5. Trier et sélectionner top 20
+6. Mettre en cache dans `app_state['top_pairs']`
+7. Démarrer WebSocket pour monitoring prix
+
+**Intervalle** : `TRADING_CONFIG['scalability_interval'] = 90` secondes
+
+#### 1.4.2 Scan Continu
+
+**Déclenchement** : Toutes les 90 secondes (si aucune position active)
+
+**Procédure** :
+1. Utiliser `top_pairs` en cache
+2. Scanner uniquement les top N paires (défaut : 20)
+3. Mettre à jour les métriques
+4. Recalculer scores si nécessaire
+
+### 1.5 Métriques Stockées
+
+Chaque paire dans `top_pairs` contient :
+
+```python
+{
+    'symbol': 'BTC/USDT:USDT',
+    'price': 45000.0,              # Prix actuel
+    'recentVolume': 1500000.0,     # Volume 5 dernières bougies
+    'vol5': 0.45,                  # Volatilité 5 bougies (%)
+    'vol15': 0.52,                 # Volatilité 15 bougies (%)
+    'spread': 0.015,               # Spread (%)
+    'bookDepth': 500000.0,         # Profondeur orderbook
+    'balanceScore': 0.85,           # Score équilibre (0-1)
+    'bidVol': 250000.0,            # Volume bids
+    'askVol': 250000.0,            # Volume asks
+    'score': 12.45,                # Score de scalabilité
+    'maker': 0.0,                  # Maker fee
+    'taker': 0.0                   # Taker fee
+}
+```
 
 ---
 
-#### **Étape 3 : Analyse de Chaque Paire**
+## 2. Système de Recherche de Setups
 
-**Métriques collectées** :
+### 2.1 Vue d'ensemble
 
-1. **Volatilité** :
-   - `vol5` : Volatilité sur 5 périodes (1m)
-   - `vol15` : Volatilité sur 15 périodes (1m)
-   - Calcul : Écart-type normalisé des prix de clôture
+Le **TechnicalAnalyzer** analyse les paires scalables pour détecter des setups de trading LONG ou SHORT basés sur :
+- Indicateurs techniques (EMA, RSI, MACD, ADX, Bollinger)
+- Patterns de bougies
+- Volume et volatilité
+- Filtres de qualité (SNR, Breakout, Wicks, ATR)
+- Système de score pondéré
 
-2. **Volume** :
-   - `recentVolume` : Volume cumulé sur 5 dernières bougies 1m
+### 2.2 Timeframes Analysés
 
-3. **Spread** :
-   - `spread` : Écart bid/ask en %
-   - Calcul : `((best_ask - best_bid) / mid_price) * 100`
+- **1m** : Timeframe principal pour scalping
+- **5m** : Timeframe de confirmation
+- **15m** (ou configurable) : Timeframe pour calculer trend bonus
 
-4. **Profondeur** :
-   - `bookDepth` : Volume total des 5 premiers niveaux (bid + ask)
-   - `bidVol` : Volume bid cumulé
-   - `askVol` : Volume ask cumulé
+**Configuration** :
+```python
+TRADING_CONFIG['trend_timeframe'] = '15m'  # 5m, 15m, 30m, 1h
+```
 
-5. **Balance** :
-   - `balanceScore` : Équilibre bid/ask (0-1)
-   - Calcul : `1 - (abs(bid_ask_ratio - 0.5) * 2)`
-   - `1.0` = parfaitement équilibré
-   - `0.0` = très déséquilibré
+### 2.3 Mode Confluence
 
----
+**Configuration** :
+```python
+TRADING_CONFIG['use_confluence'] = False  # False = 1m OU 5m, True = 1m ET 5m
+```
 
-#### **Étape 4 : Calcul du Score de Scalabilité**
+- **False** : Setup valide si 1m **OU** 5m valide
+- **True** : Setup valide si 1m **ET** 5m valides
+
+### 2.4 Indicateurs Techniques
+
+#### 2.4.1 EMA (Exponential Moving Average)
+
+**Périodes** :
+- EMA 9 : Tendance courte
+- EMA 21 : Tendance moyenne
+
+**Calcul** :
+```python
+k = 2 / (period + 1)
+ema = close * k + ema_prev * (1 - k)
+```
+
+**Conditions** :
+- **LONG** : `EMA9 > EMA21` ET `diff_percent > 0.05%`
+- **SHORT** : `EMA9 < EMA21` ET `diff_percent > 0.05%`
+
+**Poids** : `CONDITION_WEIGHTS['EMAs'] = 2.5` (critique)
+
+#### 2.4.2 RSI (Relative Strength Index)
+
+**Période** : 14
+
+**Calcul** :
+```python
+avg_gain = sum(gains) / period
+avg_loss = sum(losses) / period
+rs = avg_gain / avg_loss
+rsi = 100 - (100 / (1 + rs))
+```
+
+**Conditions LONG** :
+- **RSI Rebound** : `30 ≤ RSI ≤ 40` ET `ADX < 20` ET `RSI > RSI_prev`
+- **RSI Pullback** : `45 ≤ RSI ≤ 55` ET `MACD histogram > 0` ET `ADX > 25` ET `RSI > RSI_prev`
+
+**Conditions SHORT** :
+- **RSI Overbought** : `60 ≤ RSI ≤ 70` ET `ADX < 20` ET `RSI < RSI_prev`
+- **RSI Rejection** : `45 ≤ RSI ≤ 55` ET `MACD histogram < 0` ET `ADX > 25` ET `RSI < RSI_prev`
+
+**Poids** : `CONDITION_WEIGHTS['RSI'] = 1.5` (important)
+
+#### 2.4.3 MACD (Moving Average Convergence Divergence)
+
+**Périodes** :
+- Fast EMA : 3
+- Slow EMA : 10
+- Signal : 16
+
+**Calcul** :
+```python
+macd = EMA_fast - EMA_slow
+signal = EMA(macd_values, signal_period)
+histogram = macd - signal
+```
+
+**Conditions LONG** :
+- `MACD > Signal` OU `histogram > 0`
+- Bonus si `histogram > histogram_prev` (momentum)
+
+**Conditions SHORT** :
+- `MACD < Signal` OU `histogram < 0`
+- Bonus si `histogram < histogram_prev` (momentum)
+
+**Poids** : `CONDITION_WEIGHTS['MACD'] = 2.0` (fort)
+
+#### 2.4.4 ADX (Average Directional Index)
+
+**Période** : 14
+
+**Calcul** :
+```python
++DM = max(high[i] - high[i-1], 0) if up_move > down_move else 0
+-DM = max(low[i-1] - low[i], 0) if down_move > up_move else 0
+TR = max(high - low, abs(high - close_prev), abs(low - close_prev))
+DI+ = 100 * (avg(+DM) / avg(TR))
+DI- = 100 * (avg(-DM) / avg(TR))
+DX = 100 * abs(DI+ - DI-) / (DI+ + DI-)
+ADX = moyenne(DX)
+```
+
+**Conditions LONG** :
+- **ADX + DI Gap** : `ADX > 25` ET `DI+ > DI-` ET `DI_gap > 4.0`
+- **ADX Fort** : `ADX > 30` ET `DI+ > DI-`
+
+**Conditions SHORT** :
+- **ADX + DI Gap** : `ADX > 25` ET `DI- > DI+` ET `DI_gap > 4.0`
+- **ADX Fort** : `ADX > 30` ET `DI- > DI+`
+
+**Configuration** :
+```python
+TRADING_CONFIG['di_gap_min'] = 4.0                    # Gap minimum DI+ - DI-
+TRADING_CONFIG['di_gap_adx_threshold'] = 25           # Seuil ADX pour gap
+```
+
+**Poids** : `CONDITION_WEIGHTS['ADX_DI'] = 2.5` (critique)
+
+#### 2.4.5 Bollinger Bands
+
+**Période** : 20
+**Déviation standard** : 2.0
+
+**Calcul** :
+```python
+SMA = sum(closes[-20:]) / 20
+std = sqrt(sum((val - SMA)²) / 20))
+upper = SMA + (std * 2.0)
+lower = SMA - (std * 2.0)
+width = (upper - lower) / SMA
+```
+
+**Conditions LONG** :
+- `distance_to_lower < threshold`
+- `threshold = max(0.3%, ATR% × 0.5)`
+
+**Conditions SHORT** :
+- `distance_to_upper < threshold`
+- `threshold = max(0.3%, ATR% × 0.5)`
+
+**Poids** : `CONDITION_WEIGHTS['Bollinger'] = 0.8` (moins fiable)
+
+#### 2.4.6 ATR (Average True Range)
+
+**Période** : 14
+
+**Calcul** :
+```python
+TR = max(
+    high - low,
+    abs(high - close_prev),
+    abs(low - close_prev)
+)
+ATR = moyenne(TR sur 14 périodes)
+ATR% = (ATR / price) * 100
+```
+
+**Utilisation** :
+- Filtre ATR optimal (voir section 2.5.4)
+- Calcul TP/SL en mode ATR
+- Trailing stop adaptatif
+
+### 2.5 Filtres de Qualité
+
+#### 2.5.1 Filtre Volume
+
+**Fonction** : `check_volume_filter()`
+
+**Seuil adaptatif** :
+```python
+if ATR% > 1.0:
+    base_min_vol = 1.0
+elif ATR% < 0.3:
+    base_min_vol = 0.6
+else:
+    base_min_vol = 0.8
+
+min_vol_ratio = base_min_vol × volume_multiplier
+min_vol_ratio = clamp(min_vol_ratio, 0.4, 1.5)
+```
+
+**Configuration** :
+```python
+TRADING_CONFIG['volume_multiplier'] = 0.95  # Multiplicateur global (0.1-2.0)
+```
+
+**Rejet si** : `vol_spike < min_vol_ratio`
+
+#### 2.5.2 Filtre SNR (Signal-to-Noise Ratio)
+
+**Fonction** : `check_snr_filter()`
+
+**Calcul** :
+```python
+SNR = abs(price - EMA21) / ATR
+```
+
+**Configuration** :
+```python
+TRADING_CONFIG['use_snr'] = True                    # Activer/désactiver
+TRADING_CONFIG['snr_threshold'] = 0.25             # Seuil minimum
+```
+
+**Rejet si** : `SNR < snr_threshold` (signal trop plat)
+
+#### 2.5.3 Filtre Breakout
+
+**Fonction** : `check_breakout_filter()`
+
+**Calcul** :
+```python
+breakout_threshold = ATR × breakout_mult
+range = [EMA21 - breakout_threshold, EMA21 + breakout_threshold]
+```
+
+**Configuration** :
+```python
+TRADING_CONFIG['use_breakout'] = True               # Activer/désactiver
+TRADING_CONFIG['breakout_threshold'] = 0.35         # Multiplicateur ATR
+```
+
+**Rejet si** : `price` dans `range` (pas de breakout)
+
+#### 2.5.4 Filtre ATR Optimal
+
+**Fonction** : `check_atr_filter()`
+
+**Seuils par timeframe** :
+
+**1m** :
+```python
+TRADING_CONFIG['optimal_atr_min_1m'] = 0.12%        # Minimum
+TRADING_CONFIG['optimal_atr_max_1m'] = 0.75%        # Maximum
+```
+
+**5m** :
+```python
+TRADING_CONFIG['optimal_atr_min_5m'] = 0.22%        # Minimum
+TRADING_CONFIG['optimal_atr_max_5m'] = 1.4%        # Maximum
+```
+
+**Rejet si** : `ATR% < min` OU `ATR% > max`
+
+#### 2.5.5 Filtre Wick Ratio
+
+**Fonction** : `check_wick_filter()`
+
+**Calcul** :
+```python
+body = abs(close - open)
+wick_ratio = (high - low) / body
+```
+
+**Configuration** :
+```python
+TRADING_CONFIG['use_wick'] = True                   # Activer/désactiver
+TRADING_CONFIG['wick_ratio_max'] = 2.8             # Ratio maximum
+```
+
+**Rejet si** : `wick_ratio > wick_ratio_max` (possible manipulation)
+
+### 2.6 Patterns de Bougies
+
+#### 2.6.1 Patterns Simples (1 bougie)
+
+**Détection** : `Indicators.detect_pattern(candle)`
+
+**Patterns LONG** :
+- **ENGULFING_BULLISH** : `open < close` ET `body > range × 0.7`
+- **HAMMER** : `lower_shadow > body × 2` ET `upper_shadow < body × 0.3`
+
+**Patterns SHORT** :
+- **ENGULFING_BEARISH** : `open > close` ET `body > range × 0.7`
+- **SHOOTING_STAR** : `upper_shadow > body × 2` ET `lower_shadow < body × 0.3`
+
+**Configuration** :
+```python
+TRADING_CONFIG['use_engulfing'] = True
+TRADING_CONFIG['use_hammer'] = True
+TRADING_CONFIG['use_shooting_star'] = True
+```
+
+#### 2.6.2 Patterns Multi-Bougies
+
+**Détection** : `Indicators.detect_pattern_multi(candles)`
+
+**Patterns LONG** :
+- **DOJI_DRAGONFLY** : `body < range × 0.1` ET `lower_shadow > range × 0.6`
+- **DOJI** : `body < range × 0.1`
+- **MARUBOZU_BULLISH** : `body > range × 0.95` ET `open < close`
+- **MORNING_STAR** : 3 bougies (rouge → petite → verte forte)
+
+**Patterns SHORT** :
+- **DOJI_GRAVESTONE** : `body < range × 0.1` ET `upper_shadow > range × 0.6`
+- **MARUBOZU_BEARISH** : `body > range × 0.95` ET `open > close`
+- **EVENING_STAR** : 3 bougies (verte → petite → rouge forte)
+
+**Configuration** :
+```python
+TRADING_CONFIG['use_doji'] = True
+TRADING_CONFIG['use_marubozu'] = True
+TRADING_CONFIG['use_morning_star'] = True
+TRADING_CONFIG['use_evening_star'] = True
+```
+
+**Poids** : `CONDITION_WEIGHTS['Pattern'] = 0.8` (moins fiable)
+
+### 2.7 Système de Score Pondéré
+
+#### 2.7.1 Poids des Conditions
+
+**Configuration** : `CONDITION_WEIGHTS`
+
+```python
+CONDITION_WEIGHTS = {
+    'EMAs': 2.5,           # Critique (tendance)
+    'ADX_DI': 2.5,         # Critique (force)
+    'MACD': 2.0,           # Fort (momentum)
+    'RSI': 1.5,            # Important (momentum)
+    'Volume': 1.5,         # Important (confirmation)
+    'Bollinger': 0.8,      # Moins fiable (niveau)
+    'Pattern': 0.8,        # Moins fiable (structure)
+    'Divergence': 1.0      # Bonus
+}
+```
+
+#### 2.7.2 Calcul du Score
 
 **Formule** :
 ```python
-score = (vol_spread_ratio × log10(volume) × norm_factor × balance_bonus)
+base_score = sum(CONDITION_WEIGHTS[type] for type in condition_types)
+final_score = base_score + trend_bonus + divergence_bonus
 ```
 
-**Composants** :
-
-1. **vol_spread_ratio** :
-   ```python
-   vol_spread_ratio = (vol5 / spread) if spread > 0 else 0
-   ```
-   - Plus élevé = mieux (volatilité élevée, spread faible)
-
-2. **log10(volume)** :
-   - Normalise le volume (logarithme base 10)
-   - Évite la domination des très gros volumes
-
-3. **norm_factor** :
-   ```python
-   norm_factor = 0.5 * (recentVolume / max_volume) + 0.5 * (bookDepth / max_depth)
-   ```
-   - Combine volume et profondeur (normalisés)
-
-4. **balance_bonus** :
-   ```python
-   balance_bonus = balanceScore
-   ```
-   - Multiplie par le score de balance
-
-**Filtres stricts** :
-- ❌ Spread > 0.02% → Score = 0
-- ❌ Volume < 100,000 → Score = 0
-- ❌ Balance score < 0.7 → Score = 0
-
----
-
-#### **Étape 5 : Tri et Sélection Top N**
-
+**Activation** :
 ```python
-# Filtrer et trier
-scored_pairs = [p for p in futures_pairs if p.get('score', 0) > 0]
-scored_pairs.sort(key=lambda x: x['score'], reverse=True)
-top_pairs = scored_pairs[:n]  # Top 20 par défaut
+TRADING_CONFIG['use_weighted_scoring'] = True
 ```
 
-**Résultat** : Liste des meilleures paires triée par score décroissant
-
----
-
-### ⏱️ **Durée du Scan**
-
-**Typique** :
-- 115 paires × 5 batches = 23 batches
-- ~40-50 secondes total
-
-**Optimisations** :
-- Scan en parallèle (5 paires simultanées)
-- Pause minimale entre batches (0.05s)
-
----
-
-## 2. CONDITIONS DE SCALABILITÉ 0% FEE
-
-### ✅ **Conditions Requises**
-
-Pour qu'une paire soit considérée comme "scalable", elle doit remplir **TOUTES** ces conditions :
-
-#### **1. Type de Contrat**
-- ✅ Type : `swap` (contrat perpétuel)
-- ✅ Quote : `USDT` (pas USD, USDC, etc.)
-
-#### **2. Frais**
-- ✅ Maker fee : `0%`
-- ✅ Taker fee : `0%`
-
-#### **3. Spread**
-- ✅ Spread ≤ 0.02%
-- ❌ Si spread > 0.02% → Score = 0
-
-#### **4. Volume**
-- ✅ Volume récent (5 bougies 1m) ≥ 100,000
-- ❌ Si volume < 100,000 → Score = 0
-
-#### **5. Balance Bid/Ask**
-- ✅ Balance score ≥ 0.7 (configurable via `balance_score_min`)
-- ❌ Si balance < 0.7 → Score = 0
-
-**Balance score** :
-- `1.0` = Parfaitement équilibré (50% bid, 50% ask)
-- `0.7` = Légèrement déséquilibré (acceptable)
-- `0.0` = Très déséquilibré (rejeté)
-
----
-
-### 📊 **Exemple de Paire Scalable**
-
-```json
-{
-  "symbol": "HBAR/USDT:USDT",
-  "score": 14.53,
-  "spread": 0.015,
-  "recentVolume": 2500000,
-  "vol5": 0.8,
-  "bookDepth": 500000,
-  "balanceScore": 0.85,
-  "bidVol": 240000,
-  "askVol": 260000
-}
-```
-
-**Analyse** :
-- ✅ Spread : 0.015% < 0.02% ✅
-- ✅ Volume : 2,500,000 > 100,000 ✅
-- ✅ Balance : 0.85 > 0.7 ✅
-- ✅ Score : 14.53 (élevé)
-
----
-
-## 3. ROTATION DES SCANS
-
-### 🔄 **Système de Rotation**
-
-Le système utilise un **Scheduler** avec 3 boucles automatiques :
-
-#### **1. Scanner Loop (45 secondes)**
-
-**Fonction** : Scanner les top paires pour détecter des setups de trading
-
-**Fichier** : `core/scheduler.py` + `main.py` (scanner_loop_callback)
-
-**Processus** :
-1. Vérifier si `top_pairs` existe
-2. Si vide → Scanner initial (top 20)
-3. Démarrer WebSocket pour top 30 paires
-4. Scanner top 20 paires en parallèle
-5. Sélectionner le meilleur setup
-6. Attendre 45 secondes
-7. Répéter
+#### 2.7.3 Score Minimum Requis
 
 **Configuration** :
 ```python
-TRADING_CONFIG = {
-    "scan_interval": 45,  # secondes
-}
+TRADING_CONFIG['min_score_required'] = 7.5           # Score de base
+TRADING_CONFIG['min_score_adx_high'] = 7.0           # Si ADX > 30
+TRADING_CONFIG['min_score_adx_low'] = 8.0            # Si ADX < 25
 ```
 
----
+**Logique adaptative** :
+- Si `ADX > 30` : `min_score = 7.0` (tendance forte, moins strict)
+- Si `ADX < 25` : `min_score = 8.0` (tendance faible, plus strict)
+- Sinon : `min_score = 7.5`
 
-#### **2. Position Check Loop (2 secondes)**
+**Note** : Si l'utilisateur modifie `min_score_required` (≠ 7.5), cette valeur est utilisée directement sans ajustement ADX.
 
-**Fonction** : Vérifier l'état de la position active (TP/SL, break-even, trailing)
+#### 2.7.4 Bonus Trend
 
-**Fichier** : `core/scheduler.py` + `main.py` (position_check_loop_callback)
-
-**Processus** :
-1. Récupérer prix actuel (WebSocket prioritaire)
-2. Calculer P&L
-3. Vérifier break-even
-4. Vérifier trailing stop
-5. Vérifier TP/SL
-6. Si TP/SL touché → Fermer position
-7. Attendre 2 secondes
-8. Répéter
+**Calcul** :
+```python
+if direction == 'LONG' and trend == 'BULLISH':
+    trend_bonus = bonus_value / divisor
+elif direction == 'SHORT' and trend == 'BEARISH':
+    trend_bonus = bonus_value / divisor
+```
 
 **Configuration** :
 ```python
-TRADING_CONFIG = {
-    "check_interval": 2,  # secondes
+TREND_BONUS_CONFIG = {
+    'use_direct_score': True,      # Ajouter directement au score
+    'bonus_divisor': 5             # Diviser bonus par 5
 }
 ```
 
----
+**Trend Data** : Calculé sur timeframe configuré (défaut : 15m)
 
-#### **3. Scalability Refresh Loop (90 secondes)**
+#### 2.7.5 Bonus Divergence
 
-**Fonction** : Rafraîchir la liste des top paires scalables
-
-**Fichier** : `core/scheduler.py` + `main.py` (scalability_refresh_loop_callback)
-
-**Processus** :
-1. Scanner toutes les paires 0% fee
-2. Calculer scores de scalabilité
-3. Sélectionner top 20
-4. Mettre à jour `app_state['top_pairs']`
-5. Arrêter WebSocket actuel
-6. Redémarrer WebSocket avec nouvelles top pairs
-7. Attendre 90 secondes
-8. Répéter
+**Détection** :
+- **LONG** : `RSI < RSI_prev` ET `MACD histogram > MACD_prev histogram`
+- **SHORT** : `RSI > RSI_prev` ET `MACD histogram < MACD_prev histogram`
 
 **Configuration** :
 ```python
-TRADING_CONFIG = {
-    "scalability_interval": 90,  # secondes
-}
+TRADING_CONFIG['use_divergence'] = True
 ```
 
----
+**Poids** : `CONDITION_WEIGHTS['Divergence'] = 1.0`
 
-### 📊 **Diagramme de Rotation**
+### 2.8 Filtres de Marché
 
-```
-┌─────────────────────────────────────────┐
-│  Scanner Loop (45s)                     │
-│  ├─ Scan top 20 paires                  │
-│  ├─ Détecter setups                     │
-│  └─ Ouvrir position si setup trouvé     │
-└─────────────────────────────────────────┘
-           ↓
-┌─────────────────────────────────────────┐
-│  Position Check Loop (2s)               │
-│  ├─ Vérifier prix actuel                │
-│  ├─ Calculer P&L                        │
-│  ├─ Break-even / Trailing                │
-│  └─ Fermer si TP/SL touché              │
-└─────────────────────────────────────────┘
-           ↓
-┌─────────────────────────────────────────┐
-│  Scalability Refresh (90s)              │
-│  ├─ Scanner toutes les paires          │
-│  ├─ Calculer scores                     │
-│  ├─ Mettre à jour top 20                │
-│  └─ Redémarrer WebSocket                │
-└─────────────────────────────────────────┘
-```
+#### 2.8.1 Filtre Spread
 
----
+**Fonction** : `check_spread()`
 
-## 4. SCAN DE PRISE DE TRADE
+**Rejet si** : `spread > 0.02%` (déjà filtré par scanner)
 
-### 🔍 **Processus de Détection de Setup**
+#### 2.8.2 Filtre Orderbook Imbalance
 
-Le scan de prise de trade analyse les top paires pour détecter des opportunités LONG ou SHORT.
+**Fonction** : `check_orderbook_imbalance()`
 
----
-
-#### **Étape 1 : Sélection des Paires à Scanner**
-
+**Calcul** :
 ```python
-# Fichier: main.py - scanner_loop_callback()
-
-from config import TRADING_CONFIG
-max_pairs = TRADING_CONFIG.get('top_pairs_limit', 20)
-top_n = min(max_pairs, len(app_state['top_pairs']))
-pairs_to_scan = app_state['top_pairs'][:top_n]
+bid_vol = sum(bids[:5])
+ask_vol = sum(asks[:5])
+ratio = bid_vol / ask_vol if ask_vol > 0 else 0
 ```
 
-**Par défaut** : Top 20 paires scannées en parallèle
+**Rejet si** :
+- **LONG** : `ratio < 1.1` (orderbook défavorable)
+- **SHORT** : `ratio > 0.9` (orderbook défavorable)
 
----
+**Log Level** : INFO (pas WARNING)
 
-#### **Étape 2 : Analyse Parallèle**
+### 2.9 Processus d'Analyse
 
-```python
-# Scanner toutes les paires en parallèle
-scan_tasks = []
-for pair in pairs_to_scan:
-    symbol = pair.get('symbol', '')
-    if symbol:
-        scan_tasks.append(scan_pair_for_setup(symbol))
+#### 2.9.1 Analyse d'une Paire
 
-# Attendre tous les scans
-results = await asyncio.gather(*scan_tasks, return_exceptions=True)
-```
+**Fonction** : `analyze_pair()`
 
-**Avantages** :
-- ✅ 20 paires analysées simultanément
-- ✅ Réduction temps d'attente (vs séquentiel)
-- ✅ Détection plus rapide des opportunités
+**Procédure** :
+1. Récupérer OHLCV 1m et 5m
+2. Calculer indicateurs techniques
+3. Détecter patterns de bougies
+4. Calculer trend data (timeframe configuré)
+5. Générer conditions LONG et SHORT
+6. Appliquer filtres de qualité
+7. Calculer scores pondérés
+8. Appliquer bonus trend et divergence
+9. Vérifier score minimum requis
+10. Retourner setup valide ou raison de rejet
 
----
+#### 2.9.2 Scan des Setups
 
-#### **Étape 3 : Analyse Technique par Timeframe**
+**Déclenchement** : Toutes les 45 secondes (si aucune position active)
 
-Pour chaque paire, 2 timeframes sont analysés :
-
-**1m (1 minute)** :
-- Analyse rapide, setups de scalping
-- Volatilité élevée détectée
-- Signaux courts terme
-
-**5m (5 minutes)** :
-- Analyse plus stable, tendances courtes
-- Moins de bruit, signaux plus fiables
-- Confirmation de tendance
-
-**Fichier** : `core/analyzer.py` - `analyze_timeframe()`
-
----
-
-#### **Étape 4 : Application des Filtres**
-
-**Filtres bloquants** (doivent tous passer) :
-
-1. **Volume** :
-   ```python
-   min_vol_ratio = 0.8 * volume_multiplier  # Adaptatif selon ATR
-   if vol_spike < min_vol_ratio:
-       return None  # ❌ Rejeté
-   ```
-
-2. **Micro-range** :
-   ```python
-   min_range = atr_percent * 0.2
-   if candle_range < min_range:
-       return None  # ❌ Bougie trop plate
-   ```
-
-3. **ATR Optimal** :
-   ```python
-   # 1m
-   if atr_percent < 0.15 or atr_percent > 0.8:
-       return None  # ❌ ATR hors zone optimale
-   
-   # 5m
-   if atr_percent < 0.3 or atr_percent > 1.5:
-       return None  # ❌ ATR hors zone optimale
-   ```
-
-4. **SNR (Signal-to-Noise Ratio)** :
-   ```python
-   snr = abs(price - ema21) / atr
-   if snr < 0.3:
-       return None  # ❌ Signal trop faible
-   ```
-
-5. **Breakout** :
-   ```python
-   breakout_threshold = atr * 0.3
-   if price dans range ±ATR*0.3 autour de EMA21:
-       return None  # ❌ Pas de breakout
-   ```
-
-6. **Wick Ratio** :
-   ```python
-   wick_ratio = (high - low) / body
-   if wick_ratio > 2.5:
-       return None  # ❌ Wicks suspects (manipulation)
-   ```
-
-7. **Volume Quality** :
-   ```python
-   if quality < 75 or not shouldTrade:
-       return None  # ❌ Volume qualité insuffisante
-   ```
-
-8. **Swing Structure** :
-   ```python
-   # LONG: HH ou HL requis
-   # SHORT: LH ou LL requis
-   if not has_swing:
-       return None  # ❌ Pas de structure swing
-   ```
-
----
-
-#### **Étape 5 : Collecte des Conditions**
-
-**Conditions LONG** (7 possibles) :
-
-1. **EMAs** :
-   ```python
-   if ema9 > ema21 and ema_diff_percent > 0.05:
-       conditions.append("EMAs Up")
-   ```
-
-2. **RSI** :
-   ```python
-   # Rebound: RSI 30-40, ADX < 20, RSI ↑
-   # Pullback: RSI 45-55, MACD > 0, ADX > 25, RSI ↑
-   if rsi_rebound or rsi_pullback:
-       conditions.append("RSI Rebound↑" ou "RSI Pullback↑")
-   ```
-
-3. **Volume** :
-   ```python
-   if vol_spike > 1.5:
-       conditions.append("Vol >>1.5x")
-   else:
-       conditions.append("Vol >0.8x")
-   ```
-
-4. **MACD** :
-   ```python
-   # Bullish: MACD > Signal OU Histogram > 0
-   # Momentum: Histogram ↑
-   if macd_bullish and macd_momentum:
-       conditions.append("MACD+↑ (momentum)")
-   ```
-
-5. **Bollinger Bands** :
-   ```python
-   dist_to_lower = ((price - bb_lower) / bb_lower) * 100
-   if dist_to_lower < threshold:
-       conditions.append("BB Lower")
-   ```
-
-6. **ADX + DI Gap** :
-   ```python
-   # ADX > 25 + DI+ > DI- + Gap > 5
-   if adx > 25 and diPlus > diMinus and gap > 5:
-       conditions.append("ADX+ + DI Gap>5")
-   ```
-
-7. **Pattern** :
-   ```python
-   patterns = ['ENGULFING_BULLISH', 'HAMMER', 'DOJI_DRAGONFLY', ...]
-   if pattern in patterns:
-       conditions.append(f"Pattern: {pattern}")
-   ```
-
-**Conditions SHORT** (7 possibles) : Même logique inversée
-
----
-
-#### **Étape 6 : Validation du Setup**
-
-**Tolérance dynamique** :
-
-```python
-min_conditions = 6  # Par défaut
-
-# Ajustement selon ADX
-if adx > 30:
-    min_conditions = 5      # Moins strict si tendance forte
-elif adx >= 25:
-    min_conditions = 5.5    # Intermédiaire
-```
-
-**Bonus** :
-- **Trend bonus** : +0 à +3 conditions selon tendance
-- **Divergence bonus** : +1 condition si divergence RSI/MACD
-
-**Validation** :
-```python
-long_with_bonus = len(long_conditions) + trend_bonus + divergence_bonus
-if long_with_bonus >= min_conditions:
-    direction = 'LONG'
-elif short_with_bonus >= min_conditions:
-    direction = 'SHORT'
-else:
-    return None  # ❌ Pas assez de conditions
-```
-
-**Cohérence EMA/MACD** :
-```python
-# LONG mais MACD très négatif → Rejet
-if direction == 'LONG' and ema9 > ema21 and macd_histogram <= -0.001:
-    return None
-
-# SHORT mais MACD très positif → Rejet
-if direction == 'SHORT' and ema9 < ema21 and macd_histogram >= 0.001:
-    return None
-```
-
----
-
-#### **Étape 7 : Sélection du Meilleur Setup**
-
-```python
-# Trouver le meilleur setup parmi tous les résultats
-best_setup = None
-best_symbol = None
-best_score = 0
-
-for result in results:
-    if result and isinstance(result, dict):
-        score = result.get('totalScore', 0)
-        if score > best_score:
-            best_setup = result
-            best_symbol = symbol
-            best_score = score
-
-# Si setup trouvé, l'émettre
-if best_setup and best_symbol:
-    await sio.emit('setup_detected', {
-        'symbol': best_symbol,
-        'analysis': best_setup
-    })
-```
-
----
-
-### 📊 **Résumé du Scan**
-
-**Logs typiques** :
-```
-[22:25:53] INFO: Scanner loop - Analyse 20/20 paires disponibles
-[22:25:53] 🔍 Analyse HBAR/USDT:USDT...
-[22:25:53] 🔍 Analyse ADA/USDT:USDT...
-...
-[22:25:53] ✅ HBAR/USDT:USDT: Setup trouvé - LONG - Score: 8.5
-[22:25:53] 📡 INFO: Résumé scan - 1 setups valides, 19 sans setup, 0 erreurs
-```
-
----
-
-## 5. MODES TP/SL
-
-Le système supporte **2 modes** de gestion TP/SL :
-
-### 🔧 **Mode FIXE**
+**Procédure** :
+1. Récupérer top N paires depuis `top_pairs`
+2. Analyser en parallèle avec `analyze_pair()`
+3. Compter setups valides, rejets, erreurs
+4. Sélectionner le meilleur setup (premier valide)
+5. Ouvrir position si setup trouvé
 
 **Configuration** :
 ```python
-TRADING_CONFIG = {
-    "tp_sl_mode": "FIXE",
-    "tp_percent": 0.25,      # +0.25%
-    "sl_percent": 0.25,      # -0.25%
-}
+TRADING_CONFIG['scan_interval'] = 45  # Secondes
+```
+
+---
+
+## 3. Système de Gestion des Positions
+
+### 3.1 Vue d'ensemble
+
+Le **PositionManager** gère l'ouverture, le suivi et la fermeture des positions avec :
+- Calcul TP/SL (modes FIXE et ATR)
+- Break-even automatique
+- Trailing stop adaptatif
+- TP partiel
+- TP Escalier (multi-niveaux)
+- Invalidation précoce
+- Calcul PnL avec slippage et fees
+
+### 3.2 Modes TP/SL
+
+#### 3.2.1 Mode FIXE
+
+**Configuration** :
+```python
+TRADING_CONFIG['tp_sl_mode'] = 'FIXE'
+TRADING_CONFIG['tp_percent'] = 0.6%                  # Take Profit
+TRADING_CONFIG['sl_percent'] = 0.25%                 # Stop Loss
+```
+
+**Calcul** :
+- **LONG** :
+  - `SL = entry × (1 - 0.25%)`
+  - `TP = entry × (1 + 0.6%)`
+- **SHORT** :
+  - `SL = entry × (1 + 0.25%)`
+  - `TP = entry × (1 - 0.6%)`
+
+**Précision** :
+- Prix < 0.001 : 10 décimales
+- Prix < 0.01 : 9 décimales
+- Sinon : 8 décimales
+
+#### 3.2.2 Mode ATR
+
+**Configuration** :
+```python
+TRADING_CONFIG['tp_sl_mode'] = 'ATR'
+TRADING_CONFIG['atr_mult_tp'] = 1.5                  # Multiplicateur TP
+TRADING_CONFIG['atr_mult_sl'] = 1.0                  # Multiplicateur SL
+TRADING_CONFIG['atr_min'] = 0.15%                    # ATR minimum
+TRADING_CONFIG['atr_max'] = 1.5%                     # ATR maximum
 ```
 
 **Calcul** :
 ```python
-# LONG
-sl = entry * (1 - 0.25 / 100)  # -0.25%
-tp = entry * (1 + 0.25 / 100)  # +0.25%
+# ATR Blended (70% 1m + 30% 5m)
+atr_blended = (atr_1m × 0.7) + (atr_5m × 0.3)
+atr_percent = (atr_blended / entry) × 100
+atr_percent = clamp(atr_percent, atr_min, atr_max)
 
-# SHORT
-sl = entry * (1 + 0.25 / 100)  # +0.25%
-tp = entry * (1 - 0.25 / 100)  # -0.25%
-```
-
-**Exemple** :
-```
-Entry: 100.000
-LONG:
-  SL: 99.750 (-0.25%)
-  TP: 100.250 (+0.25%)
-  Ratio: 1:1
-```
-
-**Gestion avancée** :
-
-1. **Break-even** :
-   ```python
-   if pnl >= 0.3%:  # +0.3%
-       sl = entry  # SL au prix d'entrée
-   ```
-   - Déclenché à +0.3%
-   - Protection : Position sans risque
-
-2. **TP Partiel** :
-   ```python
-   if pnl >= 0.3% and not partial_tp_sold:
-       # Vendre 50% à +0.3%
-       partial_tp_sold = True
-       size_remaining = size * 0.5
-       sl = entry  # Break-even immédiat
-   ```
-   - 50% vendu à +0.3%
-   - 50% restant protégé au break-even
-
-3. **Trailing Stop** :
-   ```python
-   if partial_tp_sold and pnl > 0.3%:
-       # LONG
-       new_sl = current_price * (1 - 0.15 / 100)  # -0.15%
-       if new_sl > sl:
-           sl = new_sl  # Suit la hausse
-   ```
-   - Distance : 0.15%
-   - Suit le prix après TP partiel
-   - Verrouille les profits
-
----
-
-### 📈 **Mode ATR**
-
-**Configuration** :
-```python
-TRADING_CONFIG = {
-    "tp_sl_mode": "ATR",
-    "atr_mult_tp": 3.0,      # TP = ATR × 3.0
-    "atr_mult_sl": 1.5,      # SL = ATR × 1.5
-    "atr_min": 0.15,         # ATR minimum 0.15%
-    "atr_max": 1.5,          # ATR maximum 1.5%
-}
-```
-
-**Calcul** :
-```python
-# ATR Multi-Timeframe (70% 1m + 30% 5m)
-atr_blended = (atr_1m * 0.7) + (atr_5m * 0.3)
-
-# ATR en pourcentage
-atr_percent = (atr_blended / entry) * 100
-
-# Clamp ATR
-if atr_percent < 0.15:
-    atr_percent = 0.15
-elif atr_percent > 1.5:
-    atr_percent = 1.5
-
-# Multipliers dynamiques selon win/loss streaks
-if win_streak >= 3:
-    tp_mult = 4.0  # Plus agressif
-    sl_mult = 1.2
-elif loss_streak >= 2:
-    tp_mult = 1.5  # Plus prudent
-    sl_mult = 1.2
-
-# Calcul TP/SL
+# TP/SL
 if direction == 'LONG':
-    sl = entry * (1 - atr_percent / 100 * sl_mult)
-    tp = entry * (1 + atr_percent / 100 * tp_mult)
+    SL = entry × (1 - atr_percent% × atr_mult_sl)
+    TP = entry × (1 + atr_percent% × atr_mult_tp)
 else:
-    sl = entry * (1 + atr_percent / 100 * sl_mult)
-    tp = entry * (1 - atr_percent / 100 * tp_mult)
+    SL = entry × (1 + atr_percent% × atr_mult_sl)
+    TP = entry × (1 - atr_percent% × atr_mult_tp)
 ```
 
-**Exemple** :
-```
-Entry: 100.000
-ATR 1m: 0.8%
-ATR 5m: 1.2%
-ATR blended: (0.8 × 0.7) + (1.2 × 0.3) = 0.92%
+**Ajustements Dynamiques** :
+- **Win streak ≥ 3** : Mode agressif
+  - `tp_mult = 4.0`
+  - `sl_mult = 1.2`
+- **Loss streak ≥ 2** : Mode prudent
+  - `tp_mult = 1.5`
+  - `sl_mult = 1.2`
 
-LONG (normal):
-  SL: 100.000 × (1 - 0.92% × 1.5) = 98.620 (-1.38%)
-  TP: 100.000 × (1 + 0.92% × 3.0) = 102.760 (+2.76%)
-  Ratio: 2:1
+### 3.3 Break-Even
 
-LONG (win streak 3+):
-  SL: 98.920 (-1.08%)
-  TP: 103.680 (+3.68%)
-  Ratio: 3.4:1 (plus agressif)
-```
-
-**Gestion avancée** :
-
-1. **Break-even Progressif** :
-   ```python
-   # Phase 1: Lock 50% du profit
-   if pnl >= atr_percent * 0.5:
-       sl = entry + (current_price - entry) * 0.5
-   
-   # Phase 2: BE total
-   if pnl >= atr_percent * 1.0:
-       sl = entry
-   ```
-   - Verrouille progressivement les profits
-   - Plus doux que le mode FIXE
-
-2. **Pas de TP Partiel** (mode ATR)
-   - Position fermée en entier
-   - Break-even progressif seulement
-
----
-
-### 📊 **Comparaison des Modes**
-
-| Critère | Mode FIXE | Mode ATR |
-|---------|-----------|----------|
-| **TP/SL** | Fixes (±0.25%) | Dynamiques (ATR × multi) |
-| **Ratio** | 1:1 | 2:1 (variable) |
-| **Break-even** | +0.3% | Progressif (50% puis 100% ATR) |
-| **TP Partiel** | ✅ Oui (50% à +0.3%) | ❌ Non |
-| **Trailing Stop** | ✅ Oui (0.15%) | ❌ Non |
-| **Adaptation** | ❌ Non | ✅ Oui (volatilité) |
-| **Streaks** | ❌ Non | ✅ Oui (win/loss) |
-
-**Recommandation** :
-- **Scalping agressif** : Mode FIXE (TP partiel + trailing)
-- **Scalping adaptatif** : Mode ATR (s'adapte à la volatilité)
-
----
-
-## 6. SYSTÈME DE CONFLUENCE
-
-### 🎯 **Objectif**
-
-Le système de confluence permet de combiner les analyses 1m et 5m pour améliorer la qualité des setups.
-
----
-
-### 🔧 **Mode Confluence (Strict)**
+#### 3.3.1 Déclenchement
 
 **Configuration** :
 ```python
-TRADING_CONFIG = {
-    "use_confluence": True,  # 1m ET 5m requis
-}
+TRADING_CONFIG['break_even_trigger'] = 0.3%          # Seuil déclenchement
 ```
 
 **Logique** :
-```python
-# Fichier: core/analyzer.py - analyze_pair()
+1. Vérifier si `break_even_set = False` ET `partial_tp_sold = False`
+2. Si `PnL ≥ break_even_trigger` :
+   - `SL = entry` (break-even)
+   - `break_even_set = True`
 
-if use_confluence and analysis_1m and analysis_5m:
-    # 1. Directions doivent être identiques
-    if analysis_1m['direction'] != analysis_5m['direction']:
-        return None  # ❌ Rejeté
-    
-    # 2. Force 5m doit être ≥ 80% de force 1m
-    strength_1m = len(analysis_1m['signals'])
-    strength_5m = len(analysis_5m['signals'])
-    
-    if strength_5m < strength_1m * 0.8:
-        return None  # ❌ 5m trop faible
-    
-    # 3. Retourner le meilleur (1m ou 5m)
-    best = analysis_1m if strength_1m >= strength_5m else analysis_5m
-    best['confirmedBy'] = '1m + 5m confluence'
-    return best
-```
+**Note** : En mode FIXE, `break_even_trigger` est aussi utilisé comme `trigger_pct` pour le TP partiel.
 
-**Exemple** :
-```
-Analysis 1m: LONG (6 conditions)
-Analysis 5m: LONG (5 conditions)
+### 3.4 Trailing Stop
 
-✅ Directions identiques
-✅ 5m ≥ 80% de 1m (5 ≥ 4.8)
-✅ Setup valide → Retourne le meilleur (1m)
-```
-
-**Avantages** :
-- ✅ Confirmation double (1m + 5m)
-- ✅ Moins de faux signaux
-- ✅ Meilleure qualité
-
-**Inconvénients** :
-- ❌ Moins d'opportunités (≈50% moins de trades)
-- ❌ Plus strict
-
----
-
-### 🔧 **Mode Permissif (1m OU 5m)**
+#### 3.4.1 Mode FIXE
 
 **Configuration** :
 ```python
-TRADING_CONFIG = {
-    "use_confluence": False,  # 1m OU 5m suffit
-}
+TRADING_CONFIG['trailing_distance'] = 0.15%          # Distance fixe
 ```
 
 **Logique** :
+1. Activer si `partial_tp_sold = True` OU `PnL ≥ break_even_trigger`
+2. Calculer nouveau SL :
+   - **LONG** : `new_sl = current_price × (1 - trailing_distance%)`
+   - **SHORT** : `new_sl = current_price × (1 + trailing_distance%)`
+3. Mettre à jour uniquement si favorable (SL monte pour LONG, descend pour SHORT)
+
+**Méthode** : `_update_trailing_stop_fixe()`
+
+#### 3.4.2 Mode ATR (Adaptatif)
+
+**Configuration** :
 ```python
-# Sinon, accepter 1m OU 5m
-strength_1m = len(analysis_1m['signals']) if analysis_1m else 0
-strength_5m = len(analysis_5m['signals']) if analysis_5m else 0
-
-if strength_1m > 0 or strength_5m > 0:
-    # Retourner le meilleur (celui avec le plus de conditions)
-    best = analysis_1m if strength_1m > strength_5m else analysis_5m
-    best['confirmedBy'] = f"{best['timeframe']} only ({len(best['signals'])} conds)"
-    return best
-```
-
-**Exemple** :
-```
-Analysis 1m: LONG (6 conditions)
-Analysis 5m: None (pas de setup)
-
-✅ 1m valide → Setup accepté
-✅ confirmedBy: "1m only (6 conds)"
-```
-
-**Avantages** :
-- ✅ Plus d'opportunités (≈2x plus de trades)
-- ✅ Détection plus rapide
-- ✅ Capture les setups courts terme
-
-**Inconvénients** :
-- ❌ Moins de confirmation
-- ❌ Plus de faux signaux possibles
-
----
-
-### 📊 **Recommandation**
-
-**Mode Confluence (True)** :
-- ✅ Winrate élevé recherché
-- ✅ Capital conservateur
-- ✅ Trades moins fréquents OK
-
-**Mode Permissif (False)** :
-- ✅ Plus d'opportunités recherchées
-- ✅ Capital agressif
-- ✅ Trades fréquents souhaités
-
----
-
-## 7. TIMEFRAMES ET TENDANCES
-
-### 📊 **Timeframes Analysés**
-
-#### **1m (1 minute)**
-
-**Utilisation** :
-- Détection rapide des setups
-- Scalping court terme
-- Signaux réactifs
-
-**Caractéristiques** :
-- ATR optimal : 0.15% - 0.8%
-- Volatilité élevée
-- Plus de bruit
-- Setup rapides
-
-**Filtres spécifiques** :
-```python
-optimal_atr_min_1m = 0.15
-optimal_atr_max_1m = 0.8
-```
-
----
-
-#### **5m (5 minutes)**
-
-**Utilisation** :
-- Confirmation de tendance
-- Scalping moyen terme
-- Signaux plus stables
-
-**Caractéristiques** :
-- ATR optimal : 0.3% - 1.5%
-- Moins de bruit
-- Setup plus fiables
-- Tendance plus claire
-
-**Filtres spécifiques** :
-```python
-optimal_atr_min_5m = 0.3
-optimal_atr_max_5m = 1.5
-```
-
----
-
-### 📈 **Trend Data (Optionnel)**
-
-**Fichier** : `core/analyzer.py` - `analyze_timeframe()`
-
-**Utilisation** :
-```python
-# Trend bonus
-if trend_data and temp_direction != 'NEUTRAL':
-    if temp_direction == 'LONG' and trend_data.get('trend') == 'BULLISH':
-        trend_bonus = math.floor(trend_data.get('bonus', 0) / 10)
-    elif temp_direction == 'SHORT' and trend_data.get('trend') == 'BEARISH':
-        trend_bonus = math.floor(trend_data.get('bonus', 0) / 10)
-```
-
-**Bonus** :
-- Si direction setup = direction trend → +0 à +3 conditions
-- Améliore la qualité des setups dans la tendance
-
-**Note** : Actuellement non utilisé dans le code actuel, mais structure prête.
-
----
-
-## 8. STATISTIQUES
-
-### 📊 **Système de Métriques**
-
-**Fichier** : `core/metrics.py`
-
-**Métriques collectées** :
-
-#### **1. Générales**
-```python
-{
-    "uptime_seconds": 12345.67,
-    "total_requests": 1500,
-    "total_errors": 15
+TRADING_CONFIG['trailing_stop'] = {
+    'enabled': True,
+    'trigger_pnl': 0.25%,                            # Déclenchement
+    'atr_multiplier': 0.4,                           # Distance = ATR × 0.4
+    'min_distance': 0.08%,                           # Minimum
+    'max_distance': 0.25%                             # Maximum
 }
 ```
 
-#### **2. Par Endpoint**
+**Calcul** :
 ```python
-{
-    "/api/analyze/{symbol}": {
-        "requests": 500,
-        "successes": 485,
-        "errors": 15,
-        "success_rate": 97.0,
-        "latency_ms": {
-            "min": 45.2,
-            "max": 1200.5,
-            "avg": 125.3,
-            "p50": 98.7,
-            "p95": 450.2,
-            "p99": 800.1
-        }
-    }
-}
+atr_percent = (ATR / entry) × 100
+trailing_distance = atr_percent × atr_multiplier
+trailing_distance = clamp(trailing_distance, min_distance, max_distance)
+
+# LONG
+new_sl = current_price × (1 - trailing_distance%)
+# SHORT
+new_sl = current_price × (1 + trailing_distance%)
 ```
 
-#### **3. WebSocket**
+**Méthode** : `TrailingStopManager.update_trailing_stop()`
+
+### 3.5 TP Partiel
+
+#### 3.5.1 Configuration
+
 ```python
-{
-    "connected": true,
-    "price_updates": 12500,
-    "rest_fallbacks": 45
-}
+TRADING_CONFIG['partial_tp_percent'] = 50%           # % de position vendue
 ```
 
-#### **4. Trading**
+**Note** : En mode FIXE, le TP partiel utilise `break_even_trigger` comme seuil de déclenchement.
+
+#### 3.5.2 Déclenchement
+
+**Mode FIXE** :
+- Seuil : `break_even_trigger` (défaut : 0.3%)
+- Vendre : `partial_tp_percent` (défaut : 50%)
+
+**Mode ATR** :
+- Seuil : `trigger_pnl` (défaut : 0.25%)
+- Vendre : `partial_tp_percent` (défaut : 50%)
+
+#### 3.5.3 Exécution
+
+**Calcul** :
 ```python
-{
-    "setups_detected": 25,
-    "positions_opened": 20,
-    "positions_closed": 18,
-    "trades_wins": 12,
-    "trades_losses": 6,
-    "win_rate": 66.67
-}
+size_sold = size × (partial_tp_percent / 100)
+size_remaining = size × (1 - partial_tp_percent / 100)
+profit_usdt = size_sold × (profit_pct / 100)
 ```
 
-#### **5. Dernières Erreurs**
+**Actions** :
+1. Mettre à jour `partial_tp_sold = True`
+2. Mettre à jour `size_remaining`
+3. Mettre à jour `partial_profit_usdt`
+4. Déplacer SL à break-even si pas déjà fait
+
+**Méthode** : `PartialTPManager.execute_partial_tp()`
+
+### 3.6 TP Escalier (Multi-Level TP)
+
+#### 3.6.1 Configuration
+
+**Format Legacy** :
 ```python
-{
-    "last_errors": [
-        {
-            "timestamp": 1699001234.567,
-            "endpoint": "/api/analyze/BTC/USDT:USDT",
-            "error": "Price not available"
-        }
+TRADING_CONFIG['tp_escalier'] = {
+    'enabled': True,
+    'levels': [
+        {'pnl': 0.20%, 'size_pct': 0.25, 'move_sl': 'entry'},      # 25% à +0.20%
+        {'pnl': 0.35%, 'size_pct': 0.25, 'move_sl': 'breakeven'},  # 25% à +0.35%
+        {'pnl': 0.50%, 'size_pct': 0.25, 'move_sl': 'trailing'},   # 25% à +0.50%
+        {'pnl': 0.80%, 'size_pct': 0.25, 'move_sl': 'trailing'}     # 25% à +0.80%
     ]
 }
 ```
 
----
+**Format Individuel** (pour frontend) :
+```python
+TRADING_CONFIG['escalier_level1_pnl'] = 0.20%
+TRADING_CONFIG['escalier_level1_size'] = 25%
+TRADING_CONFIG['escalier_level2_pnl'] = 0.35%
+TRADING_CONFIG['escalier_level2_size'] = 25%
+TRADING_CONFIG['escalier_level3_pnl'] = 0.50%
+TRADING_CONFIG['escalier_level3_size'] = 25%
+TRADING_CONFIG['escalier_level4_pnl'] = 0.80%
+TRADING_CONFIG['escalier_level4_size'] = 25%
+```
 
-### 📈 **Endpoint de Métriques**
+**Activation** : Automatique si `tp_sl_mode = 'ESCALIER'` ou `'TP_MULTI'`
 
-**Route** : `GET /api/metrics`
+#### 3.6.2 Exécution
 
-**Réponse** :
-```json
-{
-    "general": { ... },
-    "endpoints": { ... },
-    "websocket": { ... },
-    "trading": { ... },
-    "last_errors": [ ... ]
+**Procédure** :
+1. Vérifier si niveau actuel atteint (prix ≥ TP niveau)
+2. Vendre `size_pct` de la position
+3. Calculer profit
+4. Mettre à jour `tp_escalier_current_level`
+5. Mettre à jour `tp_escalier_size_remaining`
+6. Ajouter profit à `tp_escalier_profits`
+7. Déplacer SL selon `move_sl` :
+   - `'entry'` ou `'breakeven'` : `SL = entry`
+   - `'trailing'` : Activer trailing stop
+
+**Méthode** : `TPEscalierManager.check_and_execute_levels()`
+
+### 3.7 Invalidation Précoce
+
+#### 3.7.1 Configuration
+
+```python
+TRADING_CONFIG['early_invalidation'] = {
+    'enabled': True,
+    'delay': 10,                                        # Attendre 10s minimum
+    'threshold_15s': -0.12%,                           # Seuil 10-15s
+    'threshold_30s': -0.08%                            # Seuil 15-30s
 }
 ```
 
-**Utilisation** :
-- Monitoring performance
-- Détection de problèmes
-- Optimisation
-
----
-
-## 9. RÉGLAGES DISPONIBLES
-
-### ⚙️ **Configuration Complète**
-
-**Fichier** : `config.py`
-
-#### **Trading Parameters**
-
-```python
-TRADING_CONFIG = {
-    # Intervalles
-    "scan_interval": 45,              # Scanner loop (secondes)
-    "check_interval": 2,              # Position check (secondes)
-    "scalability_interval": 90,       # Scalability refresh (secondes)
-    
-    # Volume
-    "volume_multiplier": 1.0,         # 0.1 - 2.0
-    "volume_multiplier_range": (0.10, 2.00),
-    
-    # TP/SL Mode
-    "tp_sl_mode": "FIXE",             # "FIXE" ou "ATR"
-    
-    # Mode FIXE
-    "tp_percent": 0.25,               # +0.25%
-    "sl_percent": 0.25,               # -0.25%
-    "break_even_trigger": 0.3,        # +0.3%
-    "trailing_distance": 0.1,         # 0.1%
-    
-    # Mode ATR
-    "atr_mult_tp": 1.5,               # TP = ATR × 1.5
-    "atr_mult_sl": 1.0,               # SL = ATR × 1.0
-    "atr_min": 0.15,                  # ATR minimum 0.15%
-    "atr_max": 1.5,                   # ATR maximum 1.5%
-    
-    # ATR Optimal Filter
-    "optimal_atr_min_1m": 0.15,
-    "optimal_atr_max_1m": 0.8,
-    "optimal_atr_min_5m": 0.3,
-    "optimal_atr_max_5m": 1.5,
-    
-    # Conditions
-    "min_conditions": 6,              # Conditions minimum
-    "dynamic_tolerance_adx_high": 30, # ADX > 30 → 5 conditions
-    "dynamic_tolerance_adx_low": 25,  # ADX < 25 → 6 conditions
-    
-    # Filtres avancés
-    "snr_threshold": 0.3,             # Signal-to-Noise Ratio
-    "breakout_threshold": 0.3,        # Breakout multiplier
-    "wick_ratio_max": 2.5,            # Max wick ratio
-    "di_gap_min": 5,                  # DI gap minimum
-    "di_gap_adx_threshold": 25,       # ADX threshold pour DI gap
-    
-    # Scanner
-    "top_pairs_limit": 20,            # Nombre de paires à scanner
-    "balance_score_min": 0.7,         # Balance score minimum
-    
-    # Confluence
-    "use_confluence": False,          # True = 1m ET 5m, False = 1m OU 5m
-}
-```
-
-#### **Risk Management**
-
-```python
-RISK_CONFIG = {
-    "base_risk": 0.02,                # 2% par défaut
-    "quality_multiplier_perfect": 1.5, # 7 conditions
-    "quality_multiplier_good": 1.2,    # 6 conditions
-    "quality_multiplier_ok": 0.8,     # 5 conditions
-    "quality_multiplier_weak": 0.5,   # <5 conditions
-    "vol_multiplier_high": 0.7,       # ATR > 2.0%
-    "vol_multiplier_low": 1.3,         # ATR < 0.5%
-    "max_risk": 0.05,                 # 5% maximum
-    "min_risk": 0.005,                # 0.5% minimum
-}
-```
-
----
-
-### 🎛️ **Paramètres Modifiables**
-
-#### **Volume Multiplier**
-
-**Range** : 0.1 - 2.0
-
-**Effet** :
-- `0.5` : Plus permissif (2x plus de candidats)
-- `1.0` : Normal
-- `1.5` : Plus strict (moins de candidats)
-
-**Usage** :
-```python
-# Via API
-GET /api/analyze/{symbol}?volume_multiplier=0.8
-```
-
----
-
-#### **Top Pairs Limit**
-
-**Range** : 1 - 50 (recommandé: 20)
-
-**Effet** :
-- `10` : Moins de paires, moins de charge
-- `20` : Équilibré (recommandé)
-- `30` : Plus d'opportunités, plus de charge
-
----
-
-#### **Confluence Mode**
-
-**Options** :
-- `False` : 1m OU 5m (plus d'opportunités)
-- `True` : 1m ET 5m (meilleure qualité)
-
-**Usage** :
-```python
-# Via API
-GET /api/analyze/{symbol}?use_confluence=true
-```
-
----
-
-#### **TP/SL Mode**
-
-**Options** :
-- `"FIXE"` : TP/SL fixes (±0.25%)
-- `"ATR"` : TP/SL dynamiques (ATR × multi)
-
-**Usage** :
-```python
-# Via config.py
-TRADING_CONFIG["tp_sl_mode"] = "ATR"
-```
-
----
-
-## 10. INDICATEURS TECHNIQUES
-
-### 📊 **Indicateurs Utilisés**
-
-**Fichier** : `core/indicators.py`
-
-#### **1. RSI (Relative Strength Index)**
-
-**Période** : 14
-
-**Calcul** :
-```python
-rsi = calculate_rsi(closes, 14)
-rsi_prev = calculate_rsi_previous(closes, 14)
-```
-
-**Usage** :
-- **LONG** : RSI 30-40 (rebound) ou 45-55 (pullback) avec RSI ↑
-- **SHORT** : RSI 60-70 (overbought) ou 45-55 (rejection) avec RSI ↓
-
----
-
-#### **2. ATR (Average True Range)**
-
-**Période** : 14
-
-**Calcul** :
-```python
-atr = calculate_atr(highs, lows, closes, 14)
-```
-
-**Usage** :
-- Filtrage ATR optimal
-- Calcul TP/SL (mode ATR)
-- Normalisation des distances
-
----
-
-#### **3. EMAs (Exponential Moving Averages)**
-
-**Périodes** : 9 et 21
-
-**Calcul** :
-```python
-ema9 = calculate_ema(closes, 9)
-ema21 = calculate_ema(closes, 21)
-```
-
-**Usage** :
-- **LONG** : EMA9 > EMA21 + écart > 0.05%
-- **SHORT** : EMA9 < EMA21 + écart > 0.05%
-- Cohérence avec MACD
-
----
-
-#### **4. MACD (Moving Average Convergence Divergence)**
-
-**Paramètres** : Fast=3, Slow=10, Signal=16
-
-**Calcul** :
-```python
-macd = calculate_macd(closes, 3, 10, 16)
-macd_prev = calculate_macd_previous(closes, 3, 10, 16)
-```
-
-**Composants** :
-- `macd` : Ligne MACD
-- `signal` : Ligne de signal
-- `histogram` : Histogramme (MACD - Signal)
-
-**Usage** :
-- **LONG** : MACD > Signal OU Histogram > 0 + Momentum ↑
-- **SHORT** : MACD < Signal OU Histogram < 0 + Momentum ↓
-- Divergence RSI/MACD
-
----
-
-#### **5. Bollinger Bands**
-
-**Paramètres** : Période=20, Écart-type=2
-
-**Calcul** :
-```python
-bb = calculate_bollinger_bands(closes, 20, 2)
-```
-
-**Composants** :
-- `upper` : Bande supérieure
-- `middle` : Moyenne mobile (20)
-- `lower` : Bande inférieure
-
-**Usage** :
-- **LONG** : Prix proche de `lower` (< threshold)
-- **SHORT** : Prix proche de `upper` (< threshold)
-
----
-
-#### **6. ADX (Average Directional Index)**
-
-**Période** : 14
-
-**Calcul** :
-```python
-adx = calculate_adx(highs, lows, closes, 14)
-```
-
-**Composants** :
-- `adx` : Force de la tendance (0-100)
-- `diPlus` : Directional Indicator +
-- `diMinus` : Directional Indicator -
-
-**Usage** :
-- Tolérance dynamique (ADX > 30 → 5 conditions)
-- **LONG** : ADX > 25 + DI+ > DI- + Gap > 5
-- **SHORT** : ADX > 25 + DI- > DI+ + Gap > 5
-
----
-
-#### **7. Patterns (Chandeliers)**
-
-**Patterns détectés** :
-
-**LONG** :
-- `ENGULFING_BULLISH` : Absorption haussière
-- `HAMMER` : Marteau
-- `DOJI_DRAGONFLY` : Doji libellule
-- `MARUBOZU_BULLISH` : Marubozu haussier
-- `MORNING_STAR` : Étoile du matin
-- `DOJI` : Doji neutre
-
-**SHORT** :
-- `ENGULFING_BEARISH` : Absorption baissière
-- `SHOOTING_STAR` : Étoile filante
-- `DOJI_GRAVESTONE` : Doji pierre tombale
-- `MARUBOZU_BEARISH` : Marubozu baissier
-- `EVENING_STAR` : Étoile du soir
-
-**Détection** :
-- Pattern simple (1 bougie)
-- Pattern multi-bougies (3 bougies)
-
----
-
-## 11. GESTION DES POSITIONS
-
-### 📊 **Cycle de Vie d'une Position**
-
-```
-┌─────────────────┐
-│  Setup Détecté  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Position Ouverte│
-│  Entry: 100.000 │
-│  SL: 99.750     │
-│  TP: 100.250    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Check Loop (2s)│
-│  - Prix actuel  │
-│  - P&L calculé  │
-│  - Break-even?  │
-│  - Trailing?    │
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
-┌────────┐ ┌────────┐
-│   TP   │ │   SL   │
-│ Touché │ │ Touché │
-└───┬────┘ └───┬────┘
-    │          │
-    └────┬─────┘
-         │
-         ▼
-┌─────────────────┐
-│ Position Fermée │
-│ P&L calculé     │
-│ Stats mises     │
-└─────────────────┘
-```
-
----
-
-### 🔧 **Gestion Avancée**
-
-#### **Break-even**
-
-**Mode FIXE** :
-```python
-if pnl >= 0.3%:
-    sl = entry  # Protection immédiate
-```
-
-**Mode ATR** :
-```python
-# Phase 1: Lock 50%
-if pnl >= atr_percent * 0.5:
-    sl = entry + (current_price - entry) * 0.5
-
-# Phase 2: BE total
-if pnl >= atr_percent * 1.0:
-    sl = entry
-```
-
----
-
-#### **TP Partiel (Mode FIXE uniquement)**
-
-```python
-if pnl >= 0.3% and not partial_tp_sold:
-    # Vendre 50%
-    partial_tp_sold = True
-    size_remaining = size * 0.5
-    partial_profit_usdt = size * 0.5 * (pnl / 100)
-    
-    # Break-even immédiat
-    sl = entry
-```
-
-**Avantages** :
-- ✅ Sécurise 50% du profit
-- ✅ 50% restant peut continuer
-- ✅ Protection au break-even
-
----
-
-#### **Trailing Stop**
-
-**Mode FIXE** :
-```python
-if partial_tp_sold and pnl > 0.3%:
-    # LONG
-    new_sl = current_price * (1 - 0.15 / 100)
-    if new_sl > sl:
-        sl = new_sl  # Suit la hausse
-```
-
-**Distance** : 0.15%
-
----
-
-#### **Win/Loss Streaks**
-
-**Usage** (Mode ATR) :
-```python
-if win_streak >= 3:
-    tp_mult = 4.0  # Plus agressif
-    sl_mult = 1.2
-elif loss_streak >= 2:
-    tp_mult = 1.5  # Plus prudent
-    sl_mult = 1.2
-```
-
-**Logique** :
-- Win streak → Augmente TP (plus agressif)
-- Loss streak → Réduit TP (plus prudent)
-
----
-
-### 💰 **Calcul P&L**
-
-**Brut** :
-```python
-pnl_pct = ((exit_price - entry) / entry) * 100
-if direction == 'SHORT':
-    pnl_pct = -pnl_pct
-```
-
-**Avec Position Partielle** :
-```python
-if has_partial_tp:
-    # P&L = TP partiel + fermeture finale
-    pnl_final_usdt = partial_profit_usdt + (size_remaining * pnl_pct / 100)
-else:
-    # Position fermée en entier
-    pnl_final_usdt = size * (pnl_pct / 100)
-```
-
-**Net** (avec frais et slippage) :
-```python
-# Frais: 0% (paires scalables)
-fees = 0
-
-# Slippage estimé
-slippage = estimate_slippage(size, spread, depth, balance)
-
-# Net
-net_pnl_pct = pnl_pct - (fees + slippage)
-net_pnl_usdt = pnl_final_usdt - (total_costs / 100 * size)
-```
-
----
-
-## 12. WEBSOCKET & PRIX EN TEMPS RÉEL
-
-### 🔌 **WebSocket MEXC**
-
-**Fichier** : `api/price_provider.py`
+#### 3.7.2 Seuils Adaptatifs
 
 **Configuration** :
 ```python
-WEBSOCKET_CONFIG = {
-    "url": "wss://contract.mexc.com/edge",
-    "ping_interval": 30,
-    "reconnect_delay": 5,
-    "timeout": 10,
-}
-```
-
----
-
-### 📊 **Fonctionnement**
-
-#### **1. Connexion**
-
-```python
-await price_provider.start_websocket(symbols)
-```
-
-**Symboles** : Max 30 symboles par connexion
-
-**Souscription** :
-```python
-# Format: symbol@ticker
-subscriptions = ["HBAR/USDT:USDT@ticker", "ADA/USDT:USDT@ticker", ...]
-```
-
----
-
-#### **2. Réception des Prix**
-
-```python
-# WebSocket reçoit les mises à jour
-{
-    "c": "HBAR/USDT:USDT@ticker",
-    "d": {
-        "lastPrice": "0.05234",
-        "volume24": "1250000",
-        ...
+TRADING_CONFIG['adaptive_thresholds'] = {
+    'enabled': True,
+    'early_invalidation': {
+        'low_vol_multiplier': 0.7,                     # ATR < 0.3%
+        'high_vol_multiplier': 1.3                     # ATR > 0.8%
     }
 }
 ```
 
-**Cache** : Prix stocké en mémoire avec timestamp
-
----
-
-#### **3. Récupération du Prix**
-
+**Calcul** :
 ```python
-# Priorité: WebSocket > REST
-price = await price_provider.get_price(symbol)
+if elapsed <= 15:
+    base_threshold = threshold_15s
+else:
+    base_threshold = threshold_30s
+
+if ATR% < 0.3:
+    multiplier = low_vol_multiplier  # 0.7 (moins strict)
+elif ATR% > 0.8:
+    multiplier = high_vol_multiplier  # 1.3 (plus strict)
+else:
+    multiplier = 1.0
+
+adaptive_threshold = base_threshold × multiplier
+adaptive_threshold = clamp(adaptive_threshold, -0.15%, -0.05%)
 ```
 
-**Processus** :
-1. Vérifier cache WebSocket (fraîcheur < 2s)
-2. Si cache valide → Retourner prix WebSocket
-3. Sinon → Fallback REST API
+**Fermeture si** : `PnL ≤ adaptive_threshold` ET `10s ≤ elapsed ≤ 30s`
 
-**Avantages** :
-- ✅ Latence minimale (0ms si cache)
-- ✅ Pas de rate limit
-- ✅ Mises à jour en temps réel
+**Méthode** : `EarlyInvalidationChecker.check_invalidation()`
+
+### 3.8 Calcul PnL
+
+#### 3.8.1 PnL Brut
+
+**LONG** :
+```python
+pnl_pct = ((current_price - entry) / entry) × 100
+pnl_usdt = size × (pnl_pct / 100)
+```
+
+**SHORT** :
+```python
+pnl_pct = ((entry - current_price) / entry) × 100
+pnl_usdt = size × (pnl_pct / 100)
+```
+
+#### 3.8.2 Slippage Estimé
+
+**Configuration** :
+```python
+TRADING_CONFIG['use_slippage_calculation'] = True
+```
+
+**Calcul** :
+```python
+# Données depuis scalability_data
+spread_pct = scalability_data['spread_pct']
+depth = scalability_data['depth']
+balance = scalability_data['balance']
+
+# Estimation
+if spread_pct > 0.02:
+    slippage_pct = spread_pct × 1.5
+elif depth < 100000:
+    slippage_pct = spread_pct × 1.2
+else:
+    slippage_pct = spread_pct × 0.8
+
+slippage_pct = clamp(slippage_pct, 0.01, 0.1)
+slippage_usdt = size × (slippage_pct / 100)
+```
+
+**Méthode** : `PositionManager._estimate_slippage()`
+
+#### 3.8.3 Fees
+
+**Configuration** :
+```python
+TRADING_CONFIG['fee_per_trade'] = 0.0004  # 0.04% par trade
+```
+
+**Calcul** :
+```python
+fees_usdt = size × fee_per_trade × 2  # Entrée + sortie
+```
+
+#### 3.8.4 PnL Net
+
+```python
+gross_pnl_usdt = pnl_usdt
+total_costs = fees_usdt + slippage_usdt
+net_pnl_usdt = gross_pnl_usdt - total_costs
+net_pnl_pct = (net_pnl_usdt / size) × 100
+```
+
+### 3.9 Position Sizing
+
+#### 3.9.1 Configuration
+
+```python
+TRADING_CONFIG['account_size'] = 1000.0              # Capital total (USDT)
+TRADING_CONFIG['risk_per_trade'] = 2.0%             # Risque par trade
+```
+
+#### 3.9.2 Calcul Adaptatif
+
+**Base** :
+```python
+base_risk = risk_per_trade / 100  # 2%
+```
+
+**Multiplicateurs Qualité** :
+```python
+TRADING_CONFIG['position_sizing'] = {
+    'base_risk': 0.02,
+    'min_risk': 0.005,                               # 0.5%
+    'max_risk': 0.03,                                # 3%
+    'quality_multipliers': {
+        'excellent': 1.4,                            # Score ≥ 12
+        'good': 1.2,                                 # Score ≥ 10
+        'acceptable': 1.0,                           # Score ≥ 8
+        'weak': 0.8                                  # Score < 8
+    },
+    'streak_multipliers': {
+        'win_streak_3+': 1.1,                       # Win streak ≥ 3
+        'loss_streak_2+': 0.85                      # Loss streak ≥ 2
+    }
+}
+```
+
+**Calcul** :
+```python
+quality_mult = quality_multipliers[quality]
+streak_mult = streak_multipliers[streak] if streak else 1.0
+final_risk = base_risk × quality_mult × streak_mult
+final_risk = clamp(final_risk, min_risk, max_risk)
+
+stop_loss_pct = abs((SL - entry) / entry) × 100
+position_size = (account_size × final_risk) / (stop_loss_pct / 100)
+```
+
+**Méthode** : `PositionManager.calculate_position_size()`
 
 ---
 
-### 📊 **Métriques WebSocket**
+## 4. Système de Suivi des Positions
 
-**Collectées** :
-- `ws_connected` : État connexion
-- `ws_price_count` : Nombre de prix via WebSocket
-- `ws_rest_fallback_count` : Nombre de fallbacks REST
+### 4.1 Vue d'ensemble
 
-**Endpoint** : `GET /api/metrics`
+Le **position_check_loop** vérifie la position active toutes les 0.1 secondes pour :
+- Vérifier TP/SL
+- Mettre à jour trailing stop
+- Exécuter TP partiel/escalier
+- Vérifier invalidation précoce
+- Émettre mises à jour frontend
+
+### 4.2 Intervalle de Vérification
+
+**Configuration** :
+```python
+TRADING_CONFIG['check_interval'] = 0.1  # Secondes (ultra-rapide pour scalping)
+```
+
+### 4.3 Processus de Vérification
+
+#### 4.3.1 Fonction Principale
+
+**Fonction** : `position_check_loop_callback()`
+
+**Procédure** :
+1. Vérifier qu'une position est active
+2. Récupérer prix actuel via WebSocket
+3. Appeler `position_manager.check_position(current_price)`
+4. Si position toujours active : émettre `position_update`
+5. Si position fermée : archiver et nettoyer
+
+#### 4.3.2 Méthode check_position()
+
+**Procédure** :
+1. **Invalidation précoce** (10-30s) :
+   - Vérifier si `PnL ≤ adaptive_threshold`
+   - Retourner `'EARLY_INVALIDATION'` si oui
+2. **Break-even** (avant 1er TP) :
+   - Si `break_even_set = False` ET `PnL ≥ break_even_trigger` :
+     - `SL = entry`
+     - `break_even_set = True`
+3. **TP Partiel** (mode FIXE) :
+   - Si `partial_tp_sold = False` ET `PnL ≥ break_even_trigger` :
+     - Vendre `partial_tp_percent`
+     - Déplacer SL à break-even
+4. **TP Escalier** (si activé) :
+   - Vérifier chaque niveau
+   - Exécuter si prix atteint
+5. **Trailing Stop** :
+   - Si `partial_tp_sold = True` OU `PnL ≥ break_even_trigger` :
+     - Mettre à jour SL selon mode (FIXE ou ATR)
+6. **TP/SL** :
+   - Vérifier si prix atteint TP ou SL
+   - Retourner raison de fermeture si oui
+
+### 4.4 Émission de Mises à Jour
+
+#### 4.4.1 Événement position_update
+
+**Déclenchement** : Toutes les 0.1s si position active
+
+**Données** :
+```python
+{
+    'symbol': 'BTC/USDT:USDT',
+    'direction': 'LONG',
+    'entry': 45000.0,
+    'current_price': 45100.0,
+    'sl': 44887.5,
+    'tp': 45270.0,
+    'pnl': 0.22,                    # %
+    'pnl_usdt': 2.2,                # USDT
+    'size': 1000.0,
+    'opened_at': '2025-01-11T12:00:00',  # ISO format
+    'break_even_set': False,
+    'partial_tp_sold': False,
+    'tp_sl_mode': 'FIXE',
+    'dynamic_sl': None,             # SL dynamique (trailing)
+    'size_remaining': 1000.0,
+    'tp_escalier_levels': '[...]'  # JSON string
+}
+```
+
+#### 4.4.2 Événement stats_update
+
+**Déclenchement** : Après fermeture de position
+
+**Données** :
+```python
+{
+    'total_trades': 10,
+    'wins': 7,
+    'losses': 3,
+    'total_pnl_usdt': 15.5,         # Net PnL (après fees + slippage)
+    'total_pnl_pct': 1.55,          # Net PnL %
+    'best_trade': {...},
+    'worst_trade': {...},
+    'avg_trade_duration': 45.2      # Secondes
+}
+```
+
+**Calcul** :
+- Récupérer trades depuis `analytics_db`
+- Utiliser `net_pnl_usdt` et `net_pnl_pct`
+- Arrondir à 4 décimales
+
+### 4.5 Fermeture de Position
+
+#### 4.5.1 Raisons de Fermeture
+
+- `'TP_HIT'` : Take Profit atteint
+- `'SL_HIT'` : Stop Loss atteint
+- `'EARLY_INVALIDATION'` : Invalidation précoce
+- `'MANUAL'` : Fermeture manuelle
+- `'TIMEOUT'` : Timeout (défaut : 300s)
+
+**Configuration** :
+```python
+TRADING_CONFIG['position_timeout'] = 300  # Secondes
+```
+
+#### 4.5.2 Méthode close_position()
+
+**Procédure** :
+1. Calculer PnL brut
+2. Estimer slippage
+3. Calculer fees
+4. Calculer PnL net
+5. Archiver dans `analytics_db`
+6. Retourner résultat
+
+**Résultat** :
+```python
+{
+    'symbol': 'BTC/USDT:USDT',
+    'direction': 'LONG',
+    'entry': 45000.0,
+    'exit': 45270.0,
+    'size': 1000.0,
+    'pnl_pct': 0.6,
+    'pnl_usdt': 6.0,
+    'slippage_pct': 0.02,
+    'slippage_usdt': 0.2,
+    'fees_usdt': 0.8,
+    'gross_pnl_usdt': 6.0,
+    'net_pnl_usdt': 5.0,
+    'net_pnl_pct': 0.5,
+    'duration_seconds': 45,
+    'reason': 'TP_HIT',
+    'timestamp': 1704974400
+}
+```
 
 ---
 
-## 🎯 **CONCLUSION**
+## 5. Configuration Complète
 
-Cette documentation couvre **toutes** les fonctionnalités du système Trade Cursor v7.0 :
+### 5.1 Variables Principales
 
-✅ Scanner de scalabilité (0% fee, scoring)  
-✅ Rotation des scans (3 boucles automatiques)  
-✅ Scan de prise de trade (analyse technique multi-timeframe)  
-✅ Modes TP/SL (FIXE et ATR avec gestion avancée)  
-✅ Système de confluence (1m ET 5m ou 1m OU 5m)  
-✅ Timeframes et tendances (1m, 5m)  
-✅ Statistiques (métriques complètes)  
-✅ Réglages disponibles (configuration exhaustive)  
-✅ Indicateurs techniques (RSI, ATR, EMA, MACD, BB, ADX, Patterns)  
-✅ Gestion des positions (break-even, TP partiel, trailing)  
-✅ WebSocket & prix temps réel  
+Toutes les variables sont dans `config.py` sous `TRADING_CONFIG`.
 
-**Système prêt pour production** 🚀
+### 5.2 Plages de Configuration
 
+#### 5.2.1 TP/SL FIXE
 
+- `tp_percent` : 0.1% - 5.0% (défaut : 0.6%)
+- `sl_percent` : 0.1% - 2.0% (défaut : 0.25%)
+- `break_even_trigger` : 0.05% - 2.0% (défaut : 0.3%)
+- `trailing_distance` : 0.05% - 1.0% (défaut : 0.15%)
+- `partial_tp_percent` : 10% - 90% (défaut : 50%)
 
+#### 5.2.2 TP/SL ATR
 
+- `atr_mult_tp` : 0.5 - 5.0 (défaut : 1.5)
+- `atr_mult_sl` : 0.5 - 3.0 (défaut : 1.0)
+- `atr_min` : 0.05% - 0.5% (défaut : 0.15%)
+- `atr_max` : 0.5% - 3.0% (défaut : 1.5%)
+
+#### 5.2.3 Filtres
+
+- `snr_threshold` : 0.1 - 1.0 (défaut : 0.25)
+- `breakout_threshold` : 0.1 - 1.0 (défaut : 0.35)
+- `wick_ratio_max` : 1.5 - 5.0 (défaut : 2.8)
+- `di_gap_min` : 2.0 - 10.0 (défaut : 4.0)
+- `volume_multiplier` : 0.1 - 2.0 (défaut : 0.95)
+
+#### 5.2.4 ATR Optimal
+
+- `optimal_atr_min_1m` : 0.05% - 0.3% (défaut : 0.12%)
+- `optimal_atr_max_1m` : 0.3% - 1.5% (défaut : 0.75%)
+- `optimal_atr_min_5m` : 0.1% - 0.5% (défaut : 0.22%)
+- `optimal_atr_max_5m` : 0.5% - 2.5% (défaut : 1.4%)
+
+#### 5.2.5 Scoring
+
+- `min_score_required` : 5.0 - 15.0 (défaut : 7.5)
+- `min_score_adx_high` : 5.0 - 12.0 (défaut : 7.0)
+- `min_score_adx_low` : 6.0 - 15.0 (défaut : 8.0)
+
+#### 5.2.6 Trailing Stop
+
+- `trigger_pnl` : 0.1% - 1.0% (défaut : 0.25%)
+- `atr_multiplier` : 0.1 - 1.0 (défaut : 0.4)
+- `min_distance` : 0.05% - 0.3% (défaut : 0.08%)
+- `max_distance` : 0.1% - 0.5% (défaut : 0.25%)
+
+#### 5.2.7 Early Invalidation
+
+- `threshold_15s` : -0.2% - -0.05% (défaut : -0.12%)
+- `threshold_30s` : -0.15% - -0.03% (défaut : -0.08%)
+
+---
+
+## 6. Notes Techniques
+
+### 6.1 Précision des Prix
+
+- Prix < 0.001 : 10 décimales
+- Prix < 0.01 : 9 décimales
+- Sinon : 8 décimales
+
+### 6.2 WebSocket
+
+- **URL** : `wss://contract.mexc.com/edge`
+- **Ping** : Toutes les 30s
+- **Reconnect** : Délai 5s
+- **Timeout** : 10s
+
+### 6.3 Base de Données
+
+- **Path** : `data/analytics.db`
+- **Tables** : `trades`, `trade_behavior`, `setups_validated`
+
+### 6.4 Logs
+
+- **Format** : `[HH:MM:SS] LEVEL - Message`
+- **Couleurs** : ANSI (via colorama)
+- **Emojis** : ✅ 📊 ❌ ⚠️ ℹ️ 🔍 💰 🛡️ 🔄
+
+---
+
+**Documentation générée le** : 2025-01-11  
+**Version** : Trade Cursor v7.0

@@ -34,83 +34,86 @@
 	});
 </script>
 
-<div class="global-stats">
-	<div class="stats-header">
-		<h3>🌍 Global Stats</h3>
+<div class="global-stats" data-debug-name="globalStats">
+	<div class="stats-header" data-debug-name="statsHeader">
+		<h3 data-debug-name="globalStatsTitle">🌍 Global Stats</h3>
 	</div>
 
-	<div class="stats-grid">
-		<div class="stat-card">
-			<div class="stat-icon">📂</div>
-			<div class="stat-content">
-				<div class="stat-label">Total Sessions</div>
-				<div class="stat-value">{$globalStats.total_sessions}</div>
+	<div class="stats-grid" data-debug-name="statsGrid">
+		<div class="stat-card" data-debug-name="statCard.totalSessions">
+			<div class="stat-icon" data-debug-name="statIcon.totalSessions">📂</div>
+			<div class="stat-content" data-debug-name="statContent.totalSessions">
+				<div class="stat-label" data-debug-name="statLabel.totalSessions">Total Sessions</div>
+				<div class="stat-value" data-debug-name="globalStats.total_sessions">{$globalStats.total_sessions}</div>
 			</div>
 		</div>
 
-		<div class="stat-card running">
-			<div class="stat-icon">🟢</div>
-			<div class="stat-content">
-				<div class="stat-label">Running</div>
-				<div class="stat-value">{$globalStats.running_sessions}</div>
+		<div class="stat-card running" data-debug-name="statCard.running">
+			<div class="stat-icon" data-debug-name="statIcon.running">🟢</div>
+			<div class="stat-content" data-debug-name="statContent.running">
+				<div class="stat-label" data-debug-name="statLabel.running">Running</div>
+				<div class="stat-value" data-debug-name="globalStats.running_sessions">{$globalStats.running_sessions}</div>
 			</div>
 		</div>
 
-		<div class="stat-card paused">
-			<div class="stat-icon">🟡</div>
-			<div class="stat-content">
-				<div class="stat-label">Paused</div>
-				<div class="stat-value">{$globalStats.paused_sessions}</div>
+		<div class="stat-card paused" data-debug-name="statCard.paused">
+			<div class="stat-icon" data-debug-name="statIcon.paused">🟡</div>
+			<div class="stat-content" data-debug-name="statContent.paused">
+				<div class="stat-label" data-debug-name="statLabel.paused">Paused</div>
+				<div class="stat-value" data-debug-name="globalStats.paused_sessions">{$globalStats.paused_sessions}</div>
 			</div>
 		</div>
 
-		<div class="stat-card stopped">
-			<div class="stat-icon">⚫</div>
-			<div class="stat-content">
-				<div class="stat-label">Stopped</div>
-				<div class="stat-value">{$globalStats.stopped_sessions}</div>
+		<div class="stat-card stopped" data-debug-name="statCard.stopped">
+			<div class="stat-icon" data-debug-name="statIcon.stopped">⚫</div>
+			<div class="stat-content" data-debug-name="statContent.stopped">
+				<div class="stat-label" data-debug-name="statLabel.stopped">Stopped</div>
+				<div class="stat-value" data-debug-name="globalStats.stopped_sessions">{$globalStats.stopped_sessions}</div>
 			</div>
 		</div>
 
-		<div class="stat-card">
-			<div class="stat-icon">📊</div>
-			<div class="stat-content">
-				<div class="stat-label">Total Trades</div>
-				<div class="stat-value">{$globalStats.total_trades}</div>
+		<div class="stat-card" data-debug-name="statCard.totalTrades">
+			<div class="stat-icon" data-debug-name="statIcon.totalTrades">📊</div>
+			<div class="stat-content" data-debug-name="statContent.totalTrades">
+				<div class="stat-label" data-debug-name="statLabel.totalTrades">Total Trades</div>
+				<div class="stat-value" data-debug-name="globalStats.total_trades">{$globalStats.total_trades}</div>
 			</div>
 		</div>
 
-		<div class="stat-card" class:profit={$globalStats.total_pnl >= 0} class:loss={$globalStats.total_pnl < 0}>
-			<div class="stat-icon">{$globalStats.total_pnl >= 0 ? '💰' : '📉'}</div>
-			<div class="stat-content">
-				<div class="stat-label">Total PnL</div>
-				<div class="stat-value">
+		<div class="stat-card" class:profit={$globalStats.total_pnl >= 0} class:loss={$globalStats.total_pnl < 0} data-debug-name="statCard.totalPnL">
+			<div class="stat-icon" data-debug-name="statIcon.totalPnL">{$globalStats.total_pnl >= 0 ? '💰' : '📉'}</div>
+			<div class="stat-content" data-debug-name="statContent.totalPnL">
+				<div class="stat-label" data-debug-name="statLabel.totalPnL">Total PnL</div>
+				<div class="stat-value" data-debug-name="globalStats.total_pnl">
 					{$globalStats.total_pnl >= 0 ? '+' : ''}{formatUSDT($globalStats.total_pnl)} USDT
+				</div>
+				<div class="stat-secondary" data-debug-name="globalStats.total_pnl_percent">
+					{$globalStats.total_pnl_percent >= 0 ? '+' : ''}{formatPercent($globalStats.total_pnl_percent)}%
 				</div>
 			</div>
 		</div>
 
-		<div class="stat-card">
-			<div class="stat-icon">🏆</div>
-			<div class="stat-content">
-				<div class="stat-label">Wins</div>
-				<div class="stat-value">{$globalStats.total_wins}</div>
+		<div class="stat-card" data-debug-name="statCard.totalWins">
+			<div class="stat-icon" data-debug-name="statIcon.totalWins">🏆</div>
+			<div class="stat-content" data-debug-name="statContent.totalWins">
+				<div class="stat-label" data-debug-name="statLabel.totalWins">Wins</div>
+				<div class="stat-value" data-debug-name="globalStats.total_wins">{$globalStats.total_wins}</div>
 			</div>
 		</div>
 
-		<div class="stat-card">
-			<div class="stat-icon">❌</div>
-			<div class="stat-content">
-				<div class="stat-label">Losses</div>
-				<div class="stat-value">{$globalStats.total_losses}</div>
+		<div class="stat-card" data-debug-name="statCard.totalLosses">
+			<div class="stat-icon" data-debug-name="statIcon.totalLosses">❌</div>
+			<div class="stat-content" data-debug-name="statContent.totalLosses">
+				<div class="stat-label" data-debug-name="statLabel.totalLosses">Losses</div>
+				<div class="stat-value" data-debug-name="globalStats.total_losses">{$globalStats.total_losses}</div>
 			</div>
 		</div>
 
-		<div class="stat-card winrate">
-			<div class="stat-icon">📈</div>
-			<div class="stat-content">
-				<div class="stat-label">Win Rate</div>
-				<div class="stat-value">{formatPercent($globalStats.win_rate)}%</div>
+		<div class="stat-card winrate" data-debug-name="statCard.winRate">
+			<div class="stat-icon" data-debug-name="statIcon.winRate">📈</div>
+			<div class="stat-content" data-debug-name="statContent.winRate">
+				<div class="stat-label" data-debug-name="statLabel.winRate">Win Rate</div>
+				<div class="stat-value" data-debug-name="globalStats.win_rate">{formatPercent($globalStats.win_rate)}%</div>
 			</div>
 		</div>
 	</div>
@@ -213,6 +216,12 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.stat-secondary {
+		font-size: 12px;
+		color: var(--text-secondary);
+		margin-top: 2px;
 	}
 
 	.stat-card.profit .stat-value {

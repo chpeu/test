@@ -4,6 +4,10 @@ Trade Cursor v7.0 - Application FastAPI (async natif)
 Interface HTML identique à v5.1 avec backend Python
 """
 
+# ⚠️ IMPORTANT : Charger .env AVANT tout autre import
+from dotenv import load_dotenv
+load_dotenv()
+
 import sys
 import asyncio
 import logging
@@ -65,6 +69,9 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# 🔥 FIX: Configurer le logger avec WebSocket handler après l'initialisation de ws_manager
+# (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
 # Initialisation FastAPI
 app = FastAPI(title="Trade Cursor v7.0")
@@ -191,6 +198,17 @@ if set_websocket_manager_routes:
 async def startup_event():
     """Événement de démarrage - réinitialiser le frontend AVANT le scan"""
     try:
+        # ✅ Initialiser DataLogger
+        try:
+            from backend.ml.data_logger import DataLogger
+            data_logger = DataLogger()
+            await data_logger.initialize()
+            app.state.data_logger = data_logger
+            logger.info("✅ DataLogger initialisé")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur initialisation DataLogger: {e}")
+            app.state.data_logger = None
+        
         # Initialiser les instances si pas déjà fait
         init_instances()
         
@@ -206,6 +224,30 @@ async def startup_event():
             logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
     except Exception as e:
         logger.warning(f"⚠️ Erreur événement startup: {e}")
+
+# ✅ Événement de shutdown pour arrêter DataLogger proprement
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Événement de shutdown - arrêter DataLogger proprement"""
+    try:
+        if hasattr(app.state, 'data_logger') and app.state.data_logger:
+            try:
+                await app.state.data_logger.shutdown()
+                logger.info("✅ DataLogger arrêté proprement")
+            except Exception as e:
+                logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+        
+        # 🔥 PHASE 3: Fermer PostgreSQL DataLogger proprement
+        try:
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger:
+                pg_datalogger.close()
+                logger.info("✅ PostgreSQL DataLogger fermé proprement")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur événement shutdown: {e}")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -422,10 +464,10 @@ async def scanner_loop_callback():
                 f'Analyse {top_n}/{total_available} paires disponibles: {", ".join(symbols_list[:10])}' + 
                 (f'... (+{len(symbols_list)-10} autres)' if len(symbols_list) > 10 else ''))
             
-            # 🔥 WARNING si moins de paires que prévu
-            if total_available < max_pairs:
-                await add_log('WARNING', 'Paires limitées', 
-                    f'Seulement {total_available} paires disponibles (attendu: {max_pairs})')
+            # 🔥 FIX: Ne plus logger de warning si moins de paires que prévu (c'est normal)
+            # if total_available < max_pairs:
+            #     await add_log('WARNING', 'Paires limitées', 
+            #         f'Seulement {total_available} paires disponibles (attendu: {max_pairs})')
             
             # Scanner toutes les paires en parallèle
             scan_tasks = []
@@ -624,11 +666,152 @@ async def scanner_loop_callback():
                                     
                                     # Récupérer scalability_data pour slippage
                                     scalability_data = None
-                                    if app_state['top_pairs']:
+                                    logger.info(f"💹 DEBUG: Recherche scalability_data pour {symbol} (main.py)")
+                                    
+                                    if app_state.get('top_pairs'):
+                                        logger.info(f"💹 DEBUG: top_pairs contient {len(app_state['top_pairs'])} paires")
+                                        found_pair = False
                                         for pair in app_state['top_pairs']:
                                             if pair.get('symbol') == symbol:
-                                                scalability_data = pair
+                                                found_pair = True
+                                                # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
+                                                spread_value = pair.get('spread', 0)
+                                                book_depth = pair.get('bookDepth', 0)
+                                                balance_score = pair.get('balanceScore', 1.0)
+                                                bid_vol = pair.get('bidVol', 0)
+                                                ask_vol = pair.get('askVol', 0)
+                                                
+                                                logger.info(f"💹 DEBUG: Données brutes depuis top_pairs: spread={spread_value}, bookDepth={book_depth}, balanceScore={balance_score}, bidVol={bid_vol}, askVol={ask_vol}")
+                                                
+                                                # Vérifier si spread est NaN ou invalide
+                                                if isinstance(spread_value, float) and (spread_value != spread_value or spread_value == float('nan')):
+                                                    logger.warning(f"💹 DEBUG: spread est NaN, remplacement par 0")
+                                                    spread_value = 0
+                                                
+                                                # 🔥 FIX: Si spread ou depth sont à 0, essayer de récupérer depuis setup
+                                                if spread_value == 0 and setup.get('spread_pct'):
+                                                    spread_value = setup.get('spread_pct', 0)
+                                                    logger.info(f"💹 Utilisation spread depuis setup: {spread_value}%")
+                                                
+                                                # 🔥 FIX: Si depth est à 0, calculer depuis bid_vol + ask_vol
+                                                if book_depth == 0 and (bid_vol > 0 or ask_vol > 0):
+                                                    book_depth = bid_vol + ask_vol
+                                                    logger.info(f"💹 Calcul depth depuis volumes: {book_depth}")
+                                                
+                                                scalability_data = {
+                                                    'spread_pct': spread_value,
+                                                    'depth': book_depth,
+                                                    'balance': balance_score,
+                                                    'bid_vol': bid_vol,
+                                                    'ask_vol': ask_vol
+                                                }
+                                                
+                                                logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
                                                 break
+                                        
+                                        if not found_pair:
+                                            logger.warning(f"💹 DEBUG: Paire {symbol} non trouvée dans top_pairs")
+                                        
+                                        # 🔥 FIX: Si scalability_data est toujours None ou invalide, essayer depuis setup
+                                        if not scalability_data or (scalability_data.get('spread_pct', 0) == 0 and scalability_data.get('depth', 0) == 0):
+                                            logger.warning(f"💹 Données scalabilité manquantes/invalides dans top_pairs pour {symbol}, tentative depuis setup")
+                                            logger.info(f"💹 DEBUG: setup keys: {list(setup.keys())[:15]}")
+                                            if setup.get('spread_pct'):
+                                                # Essayer de récupérer depth depuis orderbook_check si disponible
+                                                orderbook_depth = 0
+                                                if 'orderbook_check' in setup:
+                                                    orderbook_check = setup['orderbook_check']
+                                                    bid_value = orderbook_check.get('bid_value', 0)
+                                                    ask_value = orderbook_check.get('ask_value', 0)
+                                                    orderbook_depth = bid_value + ask_value
+                                                    logger.info(f"💹 DEBUG: Depth calculé depuis orderbook_check: {orderbook_depth}")
+                                                elif 'orderbook_bid_value' in setup and 'orderbook_ask_value' in setup:
+                                                    bid_value = setup.get('orderbook_bid_value', 0)
+                                                    ask_value = setup.get('orderbook_ask_value', 0)
+                                                    orderbook_depth = bid_value + ask_value
+                                                    logger.info(f"💹 DEBUG: Depth calculé depuis orderbook_bid/ask_value: {orderbook_depth}")
+                                                
+                                                scalability_data = {
+                                                    'spread_pct': setup.get('spread_pct', 0),
+                                                    'depth': orderbook_depth or setup.get('orderbook_depth', 0) or (setup.get('bid_vol', 0) + setup.get('ask_vol', 0)),
+                                                    'balance': setup.get('orderbook_balance', 1.0) or setup.get('orderbook_check', {}).get('balance', 1.0),
+                                                    'bid_vol': setup.get('bid_vol'),
+                                                    'ask_vol': setup.get('ask_vol')
+                                                }
+                                                logger.info(f"💹 Données scalabilité depuis setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
+                                            else:
+                                                logger.error(f"💹 ERREUR: Impossible de récupérer spread_pct depuis setup pour {symbol}")
+                                    else:
+                                        logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
+                                    
+                                    # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
+                                    position_manager._last_setup_scan_uuid = setup.get('_scan_uuid')
+                                    position_manager._last_setup_opportunity_id = setup.get('_opportunity_id')
+                                    
+                                    # 🔥 DEBUG: Vérifier si setup contient les indicateurs avant stockage
+                                    logger.info(f"🔍 DEBUG main.py: setup contient indicators_1m: {'indicators_1m' in setup}, indicators_5m: {'indicators_5m' in setup}")
+                                    if 'indicators_1m' in setup:
+                                        logger.info(f"✅ indicators_1m présent dans setup: {len(setup.get('indicators_1m', {}))} clés")
+                                    if 'indicators_5m' in setup:
+                                        logger.info(f"✅ indicators_5m présent dans setup: {len(setup.get('indicators_5m', {}))} clés")
+                                    
+                                    position_manager._last_setup = setup  # Stocker setup complet pour récupérer indicateurs
+                                    
+                                    # 🔥 DEBUG: Vérifier après stockage
+                                    logger.info(f"🔍 DEBUG main.py: _last_setup après stockage contient indicators_1m: {'indicators_1m' in position_manager._last_setup}, indicators_5m: {'indicators_5m' in position_manager._last_setup}")
+                                    
+                                    # 🔥 FIX: Vérifier slippage et SL avant d'ouvrir la position
+                                    setup_price = setup.get('price', entry_price)
+                                    slippage_pct = abs((entry_price - setup_price) / setup_price * 100) if setup_price > 0 else 0
+                                    max_slippage_pct = TRADING_CONFIG.get('max_slippage_pct', 0.5)  # 0.5% par défaut
+                                    
+                                    # Calculer SL pour le prix réel
+                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI') and atr and entry_price:
+                                        calculated_sl = entry_price - (atr * TRADING_CONFIG.get('atr_mult_sl', 1.0)) if direction == 'LONG' else entry_price + (atr * TRADING_CONFIG.get('atr_mult_sl', 1.0))
+                                    else:
+                                        sl_pct = TRADING_CONFIG.get('sl_percent', 0.25) / 100
+                                        calculated_sl = entry_price * (1 - sl_pct) if direction == 'LONG' else entry_price * (1 + sl_pct)
+                                    
+                                    # Vérifier que le prix réel n'est pas déjà en dessous du SL (pour LONG) ou au-dessus du SL (pour SHORT)
+                                    sl_already_hit = False
+                                    if direction == 'LONG':
+                                        if entry_price <= calculated_sl:
+                                            sl_already_hit = True
+                                            logger.warning(
+                                                f"⚠️ {symbol} - Position LONG rejetée : Prix d'entrée ({entry_price:.6f}) "
+                                                f"est déjà en dessous du SL ({calculated_sl:.6f})"
+                                            )
+                                    else:  # SHORT
+                                        if entry_price >= calculated_sl:
+                                            sl_already_hit = True
+                                            logger.warning(
+                                                f"⚠️ {symbol} - Position SHORT rejetée : Prix d'entrée ({entry_price:.6f}) "
+                                                f"est déjà au-dessus du SL ({calculated_sl:.6f})"
+                                            )
+                                    
+                                    # Vérifier slippage
+                                    if slippage_pct > max_slippage_pct:
+                                        logger.warning(
+                                            f"⚠️ {symbol} - Position rejetée : Slippage trop élevé "
+                                            f"({slippage_pct:.3f}% > {max_slippage_pct:.3f}%) | "
+                                            f"Setup: {setup_price:.6f} | Réel: {entry_price:.6f}"
+                                        )
+                                        await add_log('WARNING', 'Slippage trop élevé', 
+                                            f"{symbol}: {slippage_pct:.3f}% > {max_slippage_pct:.3f}%")
+                                        continue
+                                    
+                                    # Rejeter si SL déjà touché
+                                    if sl_already_hit:
+                                        await add_log('WARNING', 'SL déjà touché', 
+                                            f"{symbol}: Prix d'entrée ({entry_price:.6f}) déjà au-delà du SL ({calculated_sl:.6f})")
+                                        continue
+                                    
+                                    # Log validation
+                                    if slippage_pct > 0.1:  # Log si slippage > 0.1%
+                                        logger.info(
+                                            f"⚠️ {symbol} - Slippage détecté : {slippage_pct:.3f}% "
+                                            f"(Setup: {setup_price:.6f} → Réel: {entry_price:.6f})"
+                                        )
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
@@ -781,6 +964,93 @@ async def scan_pair_for_setup(symbol: str):
             position_manager=position_manager  # 🔥 PHASE 6: Recovery Mode
         )
         
+        # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
+        # pour qu'ils soient disponibles dans _last_setup
+        if analysis and isinstance(analysis, dict):
+            # Extraire les indicateurs depuis analysis si disponibles
+            indicators_1m = analysis.get('indicators_1m', {})
+            indicators_5m = analysis.get('indicators_5m', {})
+            
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
+            
+            # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
+            if not indicators_1m:
+                logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
+                # 🔥 DEBUG: Vérifier quelles données sont disponibles dans analysis
+                available_keys = [k for k in analysis.keys() if k not in ['symbol', 'direction', 'entry', 'sl', 'tp', 'price', 'signals', 'condition_types', 'totalScore', 'reason', 'reject_category']]
+                logger.info(f"🔍 DEBUG analysis keys disponibles pour indicators_1m: {available_keys[:20]}")
+                
+                indicators_1m = {
+                    'rsi': analysis.get('rsi'),
+                    'rsi_prev': analysis.get('rsi_prev'),
+                    'macd': analysis.get('macd'),
+                    'macd_signal': analysis.get('macd_signal'),
+                    'macd_hist': analysis.get('macd_hist'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev'),
+                    'adx': analysis.get('adx'),
+                    'di_plus': analysis.get('di_plus'),
+                    'di_minus': analysis.get('di_minus'),
+                    'di_gap': analysis.get('di_gap'),
+                    'ema9': analysis.get('ema9'),
+                    'ema21': analysis.get('ema21'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct'),
+                    'atr': analysis.get('atr'),
+                    'atr_pct': analysis.get('atr_pct'),
+                    'bb_upper': analysis.get('bb_upper'),
+                    'bb_middle': analysis.get('bb_middle'),
+                    'bb_lower': analysis.get('bb_lower'),
+                    'bb_width': analysis.get('bb_width'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                    'volume': analysis.get('volume'),
+                    'volume_avg': analysis.get('volume_avg'),
+                    'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                    'volume_spike': analysis.get('volume_spike'),
+                }
+                
+                # 🔥 DEBUG: Compter les valeurs non-null
+                indicators_1m_non_null = len([v for v in indicators_1m.values() if v is not None])
+                logger.info(f"🔍 DEBUG indicators_1m construit: {indicators_1m_non_null}/{len(indicators_1m)} valeurs non-null")
+            
+            if not indicators_5m:
+                logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
+                indicators_5m = {
+                    'rsi': analysis.get('rsi_5m'),
+                    'rsi_prev': analysis.get('rsi_prev_5m'),
+                    'macd': analysis.get('macd_5m'),
+                    'macd_signal': analysis.get('macd_signal_5m'),
+                    'macd_hist': analysis.get('macd_hist_5m'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
+                    'adx': analysis.get('adx_5m'),
+                    'di_plus': analysis.get('di_plus_5m'),
+                    'di_minus': analysis.get('di_minus_5m'),
+                    'di_gap': analysis.get('di_gap_5m'),
+                    'ema9': analysis.get('ema9_5m'),
+                    'ema21': analysis.get('ema21_5m'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
+                    'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
+                    'atr_pct': analysis.get('atr_pct_5m'),
+                    'bb_upper': analysis.get('bb_upper_5m'),
+                    'bb_middle': analysis.get('bb_middle_5m'),
+                    'bb_lower': analysis.get('bb_lower_5m'),
+                    'bb_width': analysis.get('bb_width_5m'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
+                    'volume': analysis.get('volume_5m'),
+                    'volume_avg': analysis.get('volume_avg_5m'),
+                    'volume_ratio': analysis.get('volume_ratio_5m'),
+                    'volume_spike': analysis.get('volume_spike_5m'),
+                }
+                
+                # 🔥 DEBUG: Compter les valeurs non-null
+                indicators_5m_non_null = len([v for v in indicators_5m.values() if v is not None])
+                logger.info(f"🔍 DEBUG indicators_5m construit: {indicators_5m_non_null}/{len(indicators_5m)} valeurs non-null")
+            
+            # Ajouter les indicateurs à analysis
+            analysis['indicators_1m'] = indicators_1m
+            analysis['indicators_5m'] = indicators_5m
+            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
+        
         # 🔥 FIX: Envoyer événement SocketIO pour mettre à jour le compteur de validation
         # Un setup valide = validé (true), pas de setup = non validé (false)
         is_valid = False
@@ -796,12 +1066,13 @@ async def scan_pair_for_setup(symbol: str):
                 is_valid = True
         else:
             # Si analysis est None, c'est que les deux timeframes ont retourné None
-            # 🔥 FIX: Ajouter plus de détails dans le warning pour debug
-            logger.warning(
-                f"⚠️ {symbol}: Analyse retournée None - "
-                f"Vérifier les erreurs dans analyze_timeframe. "
-                f"Vérifier que le prix est disponible et que les indicateurs peuvent être calculés."
-            )
+            # 🔥 FIX: Envoyer le warning au frontend via add_log (logger.warning est capturé par WebSocketLogHandler, donc on évite le doublon)
+            # 🔥 FIX: Corriger le message dupliqué (le symbole était répété deux fois)
+            try:
+                await add_log('WARNING', 'Analyse retournée None', 
+                    f"{symbol}: Analyse retournée None - Vérifier les erreurs dans analyze_timeframe. Vérifier que le prix est disponible et que les indicateurs peuvent être calculés.")
+            except Exception as log_err:
+                logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
             is_valid = False
         
         # Envoyer événement pour mettre à jour le compteur
@@ -853,17 +1124,73 @@ async def position_check_loop_callback():
             # Calculer PnL pour affichage
             position = position_manager.active_position
             if position:
-                # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
-                pnl = position_manager.pnl_calculator.calculate_pnl_percent(
-                    entry=position.entry,
-                    current_price=current_price,
-                    direction=position.direction
-                )
-                # 🔥 FIX: Calculer PnL USDT avec pnl_calculator (incluant TP partiel automatiquement)
-                pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
-                    position=position.to_dict(),
-                    current_price=current_price
-                )
+                # 🔥 FIX: Vérifier que position est un objet Position et non un dict ou string
+                if isinstance(position, str):
+                    # Si position est une chaîne, essayer de la parser en dict
+                    import json
+                    try:
+                        position_dict = json.loads(position)
+                        # Utiliser les valeurs du dict pour calculer PnL
+                        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                            entry=position_dict.get('entry', 0),
+                            current_price=current_price,
+                            direction=position_dict.get('direction', 'LONG')
+                        )
+                        pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                            position=position_dict,
+                            current_price=current_price
+                        )
+                        # Créer un objet position-like pour le reste du code
+                        class PositionProxy:
+                            def __init__(self, d):
+                                self.symbol = d.get('symbol', '')
+                                self.direction = d.get('direction', 'LONG')
+                                self.entry = d.get('entry', 0)
+                                self.sl = d.get('sl', 0)
+                                self.tp = d.get('tp', 0)
+                                self.size = d.get('size', 0)
+                                self.break_even_set = d.get('break_even_set', False)
+                                self.partial_tp_sold = d.get('partial_tp_sold', False)
+                        position = PositionProxy(position_dict)
+                    except Exception as parse_err:
+                        logger.error(f"❌ Erreur parsing position (string): {parse_err}")
+                        return
+                elif isinstance(position, dict):
+                    # Si position est déjà un dict, utiliser directement
+                    pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                        entry=position.get('entry', 0),
+                        current_price=current_price,
+                        direction=position.get('direction', 'LONG')
+                    )
+                    pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                        position=position,
+                        current_price=current_price
+                    )
+                    # Créer un objet position-like pour le reste du code
+                    class PositionProxy:
+                        def __init__(self, d):
+                            self.symbol = d.get('symbol', '')
+                            self.direction = d.get('direction', 'LONG')
+                            self.entry = d.get('entry', 0)
+                            self.sl = d.get('sl', 0)
+                            self.tp = d.get('tp', 0)
+                            self.size = d.get('size', 0)
+                            self.break_even_set = d.get('break_even_set', False)
+                            self.partial_tp_sold = d.get('partial_tp_sold', False)
+                    position = PositionProxy(position)
+                else:
+                    # Position est un objet Position normal
+                    pnl = position_manager.pnl_calculator.calculate_pnl_percent(
+                        entry=position.entry,
+                        current_price=current_price,
+                        direction=position.direction
+                    )
+                    # 🔥 FIX: Calculer PnL USDT avec pnl_calculator (incluant TP partiel automatiquement)
+                    position_dict = position.to_dict() if hasattr(position, 'to_dict') else {}
+                    pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
+                        position=position_dict,
+                        current_price=current_price
+                    )
                 
                 # 🔥 FIX: Log détaillé pour debug
                 logger.debug(
@@ -1001,6 +1328,23 @@ def init_instances():
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
     global analytics_db, notification_manager, session_id
     
+    # 🔥 FIX: Configurer le logger avec WebSocket handler pour envoyer les logs au frontend
+    try:
+        from utils.logger import WebSocketLogHandler
+        root_logger = logging.getLogger()
+        # Vérifier si le handler WebSocket existe déjà
+        has_ws_handler = any(isinstance(h, WebSocketLogHandler) for h in root_logger.handlers)
+        if not has_ws_handler and ws_manager:
+            ws_handler = WebSocketLogHandler()
+            ws_handler.set_ws_manager(ws_manager)
+            ws_handler.setLevel(logging.INFO)
+            # Ne pas formater (garder le message brut avec emojis)
+            ws_handler.setFormatter(logging.Formatter('%(message)s'))
+            root_logger.addHandler(ws_handler)
+            logger.info("✅ WebSocket log handler configuré")
+    except Exception as e:
+        logger.debug(f"Impossible de configurer WebSocket log handler: {e}")
+    
     # 🔥 ARCHITECTURE V2: Initialiser Analytics DB
     if not analytics_db and AnalyticsDatabase:
         from config import ANALYTICS_DB_PATH
@@ -1045,6 +1389,95 @@ def init_instances():
         # Injecter Analytics DB dans API routes
         if set_analytics_db and analytics_db:
             set_analytics_db(analytics_db)
+        
+        # 🔥 PHASE 1: Initialiser PostgreSQL DataLogger si activé
+        pg_datalogger = None
+        try:
+            from core.postgresql_datalogger import PostgreSQLDataLogger
+            from config import (
+                POSTGRES_ENABLED, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
+                POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_MIN_CONN, POSTGRES_MAX_CONN
+            )
+            
+            if POSTGRES_ENABLED:
+                pg_datalogger = PostgreSQLDataLogger(
+                    host=POSTGRES_HOST,
+                    port=POSTGRES_PORT,
+                    database=POSTGRES_DB,
+                    user=POSTGRES_USER,
+                    password=POSTGRES_PASSWORD,
+                    min_conn=POSTGRES_MIN_CONN,
+                    max_conn=POSTGRES_MAX_CONN
+                )
+                
+                if pg_datalogger.enabled:
+                    logger.info("✅ PostgreSQL DataLogger initialisé")
+                    # Injecter dans scanner_loop
+                    from core.callbacks.scanner_loop import set_pg_datalogger
+                    if set_pg_datalogger:
+                        set_pg_datalogger(pg_datalogger)
+                    
+                    # 🔥 PHASE 3: Créer tâche périodique pour logging contexte marché
+                    async def log_market_context_periodic():
+                        """Tâche périodique pour logger le contexte marché"""
+                        while True:
+                            try:
+                                await asyncio.sleep(300)  # Toutes les 5 minutes
+                                if pg_datalogger and pg_datalogger.enabled:
+                                    try:
+                                        # Récupérer prix BTC/ETH
+                                        from api.price_provider import get_price_provider
+                                        price_provider = get_price_provider()
+                                        
+                                        context_data = {
+                                            'btc_price': None,
+                                            'eth_price': None,
+                                            'global_metrics': {},
+                                            'session_stats': {},
+                                            'market_trend': None,
+                                            'market_volatility': None,
+                                            'fear_greed_index': None
+                                        }
+                                        
+                                        if price_provider:
+                                            try:
+                                                btc_price = await price_provider.get_price('BTCUSDT')
+                                                eth_price = await price_provider.get_price('ETHUSDT')
+                                                context_data['btc_price'] = btc_price
+                                                context_data['eth_price'] = eth_price
+                                            except Exception:
+                                                pass
+                                        
+                                        # Récupérer stats session si disponibles
+                                        if hasattr(app_state, 'get'):
+                                            context_data['session_stats'] = {
+                                                'total_trades': app_state.get('total_trades', 0),
+                                                'win_rate': app_state.get('win_rate', 0),
+                                                'total_pnl': app_state.get('total_pnl', 0)
+                                            }
+                                        
+                                        pg_datalogger.log_market_context(context_data)
+                                    except Exception as e:
+                                        logger.debug(f"Erreur logging contexte marché périodique: {e}")
+                            except asyncio.CancelledError:
+                                break
+                            except Exception as e:
+                                logger.warning(f"Erreur tâche contexte marché: {e}")
+                                await asyncio.sleep(60)  # Attendre avant de réessayer
+                    
+                    # Démarrer la tâche périodique
+                    asyncio.create_task(log_market_context_periodic())
+                    logger.info("✅ Tâche périodique contexte marché démarrée")
+                else:
+                    logger.warning("⚠️ PostgreSQL DataLogger désactivé (connexion échouée)")
+                    pg_datalogger = None
+            else:
+                logger.debug("ℹ️ PostgreSQL DataLogger désactivé (POSTGRES_ENABLED=false)")
+        except ImportError as e:
+            logger.debug(f"ℹ️ PostgreSQL DataLogger non disponible: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur initialisation PostgreSQL DataLogger: {e}")
+            pg_datalogger = None
         
         # 🔥 NOUVEAU: Injecter Position Manager, Notification Manager et instance port
         # Récupérer port instance pour multi-instances
@@ -1107,6 +1540,9 @@ def init_instances():
         position_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
         position_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         position_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+        
+        # 🔥 FIX: Configurer use_slippage_calculation depuis TRADING_CONFIG
+        position_config.use_slippage_calculation = TRADING_CONFIG.get('use_slippage_calculation', True)
     
     if not position_manager and PositionManager and position_config:
         position_manager = PositionManager(position_config)
@@ -1114,7 +1550,10 @@ def init_instances():
         # 🔥 ARCHITECTURE V2: Injecter analytics_db, notification_manager, session_id
         if analytics_db:
             position_manager.analytics_db = analytics_db
-            logger.info("💾 Analytics DB injecté dans Position Manager")
+            # 🔥 FIX: Mettre à jour aussi analytics_logger.analytics_db
+            if position_manager.analytics_logger:
+                position_manager.analytics_logger.analytics_db = analytics_db
+            logger.info("💾 Analytics DB injecté dans Position Manager et AnalyticsLogger")
         
         if session_id:
             position_manager.session_id = session_id
@@ -1300,6 +1739,14 @@ async def api_get_complete_state():
     """
     """🔥 NOUVEAU: État complet de l'application (config + UI + position + stats + etc.)"""
     import time
+    from config import (
+        TELEGRAM_ENABLED,
+        TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+        TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+        TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+        TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+        TELEGRAM_NOTIFY_SETUP_REJECTED
+    )
     logger.info("🔍 /api/state appelé - Début de la fonction")
     
     # 🔥 FIX: Retourner réponse minimale immédiatement - TOUJOURS retourner 200
@@ -1487,6 +1934,16 @@ async def api_get_complete_state():
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
                 # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
                 'telegram_enabled': TELEGRAM_ENABLED,
+                # 🔥 NOUVEAU: Exposer les types de notifications Telegram
+                'telegram_notify_position_opened': TELEGRAM_NOTIFY_POSITION_OPENED,
+                'telegram_notify_position_closed': TELEGRAM_NOTIFY_POSITION_CLOSED,
+                'telegram_notify_tp_escalier': TELEGRAM_NOTIFY_TP_ESCALIER,
+                'telegram_notify_early_invalidation': TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                'telegram_notify_error': TELEGRAM_NOTIFY_ERROR,
+                'telegram_notify_reconnection': TELEGRAM_NOTIFY_RECONNECTION,
+                'telegram_notify_daily_summary': TELEGRAM_NOTIFY_DAILY_SUMMARY,
+                'telegram_notify_recovery_mode': TELEGRAM_NOTIFY_RECOVERY_MODE,
+                'telegram_notify_setup_rejected': TELEGRAM_NOTIFY_SETUP_REJECTED,
             },
             'scanner': {
                 'is_scanning': app_state.get('is_scanning', False),
@@ -2276,7 +2733,14 @@ async def websocket_endpoint(websocket: WebSocket):
                                 trades_history = app_state['trade_history'][:50]
                             
                             # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
-                            from config import TELEGRAM_ENABLED
+                            from config import (
+                                TELEGRAM_ENABLED,
+                                TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+                                TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                                TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+                                TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+                                TELEGRAM_NOTIFY_SETUP_REJECTED
+                            )
                             
                             state_data = {
                                 'success': True,
@@ -2303,6 +2767,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                                     'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
                                     'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                                    'break_even_trigger': TRADING_CONFIG.get('break_even_trigger', 0.3),
+                                    'trailing_distance': TRADING_CONFIG.get('trailing_distance', 0.15),
                                     # Seuils & Filtres
                                     'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                                     'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
@@ -2341,8 +2807,24 @@ async def websocket_endpoint(websocket: WebSocket):
                                     # Scanner
                                     'top_pairs_limit': TRADING_CONFIG.get('top_pairs_limit', 20),
                                     'balance_score_min': TRADING_CONFIG.get('balance_score_min', 0.0),
+                                    # Général
+                                    'use_slippage_calculation': TRADING_CONFIG.get('use_slippage_calculation', True),
+                                    'position_timeout': TRADING_CONFIG.get('position_timeout', 300),
+                                    'check_interval': TRADING_CONFIG.get('check_interval', 0.1),
+                                    'scan_interval': TRADING_CONFIG.get('scan_interval', 45),
+                                    'scalability_interval': TRADING_CONFIG.get('scalability_interval', 90),
                                     # Autres
-                                    'telegram_enabled': TELEGRAM_ENABLED  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
+                                    'telegram_enabled': TELEGRAM_ENABLED,  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
+                                    # 🔥 NOUVEAU: Exposer les types de notifications Telegram
+                                    'telegram_notify_position_opened': TELEGRAM_NOTIFY_POSITION_OPENED,
+                                    'telegram_notify_position_closed': TELEGRAM_NOTIFY_POSITION_CLOSED,
+                                    'telegram_notify_tp_escalier': TELEGRAM_NOTIFY_TP_ESCALIER,
+                                    'telegram_notify_early_invalidation': TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                                    'telegram_notify_error': TELEGRAM_NOTIFY_ERROR,
+                                    'telegram_notify_reconnection': TELEGRAM_NOTIFY_RECONNECTION,
+                                    'telegram_notify_daily_summary': TELEGRAM_NOTIFY_DAILY_SUMMARY,
+                                    'telegram_notify_recovery_mode': TELEGRAM_NOTIFY_RECOVERY_MODE,
+                                    'telegram_notify_setup_rejected': TELEGRAM_NOTIFY_SETUP_REJECTED,
                                 },
                                 'scanner': {
                                     'is_scanning': app_state.get('is_scanning', False),
@@ -2478,12 +2960,17 @@ async def handle_client_command(command: str, params: dict):
         # 🔥 TP/SL Mode
         if 'tp_sl_mode' in params:
             mode = str(params['tp_sl_mode']).upper()
-            if mode in ['FIXE', 'ATR', 'TP_MULTI']:
+            # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide
+            if mode in ['FIXE', 'ATR', 'TP_MULTI', 'ESCALIER']:
                 TRADING_CONFIG['tp_sl_mode'] = mode
-                init_instances()
+                # 🔥 FIX: Ne pas appeler init_instances() car cela réinitialise tout, utiliser directement position_config et position_manager
                 if position_config:
-                    position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
+                    position_config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
+                # 🔥 FIX: Mettre à jour aussi position_manager.config.use_atr si position_manager existe
+                if position_manager:
+                    position_manager.config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
                 updated['tp_sl_mode'] = mode
+                logger.info(f"✅ Mode TP/SL mis à jour: {mode} (use_atr={position_config.use_atr if position_config else 'N/A'})")
         
         if 'tp_percent' in params:
             val = float(params['tp_percent'])
@@ -2498,6 +2985,26 @@ async def handle_client_command(command: str, params: dict):
             if position_config:
                 position_config.fixed_sl_pct = val
             updated['sl_percent'] = val
+        
+        # 🔥 FIX: break_even_trigger
+        if 'break_even_trigger' in params:
+            val = float(params['break_even_trigger'])
+            val = max(0.05, min(2.0, val))  # Clamp 0.05-2.0%
+            TRADING_CONFIG['break_even_trigger'] = val
+            if position_config:
+                position_config.break_even_trigger = val
+            updated['break_even_trigger'] = val
+            logger.info(f"✅ break_even_trigger mis à jour: {val}%")
+        
+        # 🔥 FIX: trailing_distance
+        if 'trailing_distance' in params:
+            val = float(params['trailing_distance'])
+            val = max(0.05, min(1.0, val))  # Clamp 0.05-1.0%
+            TRADING_CONFIG['trailing_distance'] = val
+            if position_config:
+                position_config.trailing_distance = val
+            updated['trailing_distance'] = val
+            logger.info(f"✅ trailing_distance mis à jour: {val}%")
         
         # 🔥 4 seuils configurables
         if 'snr_threshold' in params:
@@ -2582,6 +3089,13 @@ async def handle_client_command(command: str, params: dict):
             val = max(1.0, min(20.0, val))  # Clamp 1.0-20.0
             TRADING_CONFIG['min_score_required'] = val
             updated['min_score_required'] = val
+        
+        # 🔥 FIX: Support max_slippage_pct dans update_config WebSocket
+        if 'max_slippage_pct' in params:
+            val = float(params['max_slippage_pct'])
+            val = max(0.0, min(0.20, val))  # Clamp 0.0-0.20%
+            TRADING_CONFIG['max_slippage_pct'] = val
+            updated['max_slippage_pct'] = val
         
         # 🔥 BIDIRECTIONNEL: Patterns Techniques (use_breakout, use_snr, use_wick, use_divergence)
         if 'use_breakout' in params:
@@ -2701,6 +3215,17 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['trailing_min_distance'] = val
             updated['trailing_min_distance'] = val
         
+        # 🔥 FIX: use_slippage_calculation
+        if 'use_slippage_calculation' in params:
+            TRADING_CONFIG['use_slippage_calculation'] = bool(params['use_slippage_calculation'])
+            # Mettre à jour position_config et position_manager.config directement
+            if position_config:
+                position_config.use_slippage_calculation = TRADING_CONFIG['use_slippage_calculation']
+            if position_manager:
+                position_manager.config.use_slippage_calculation = TRADING_CONFIG['use_slippage_calculation']
+            updated['use_slippage_calculation'] = TRADING_CONFIG['use_slippage_calculation']
+            logger.info(f"✅ use_slippage_calculation mis à jour: {TRADING_CONFIG['use_slippage_calculation']}")
+        
         if 'trailing_max_distance' in params:
             val = float(params['trailing_max_distance'])
             val = max(0.01, min(5.0, val))  # Clamp 0.01-5.0%
@@ -2758,7 +3283,11 @@ async def handle_client_command(command: str, params: dict):
                 # Mettre à jour les valeurs TP/SL si elles ont changé
                 if 'tp_sl_mode' in updated:
                     tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                    position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI')
+                    # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide
+                    position_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
+                    # 🔥 FIX: Mettre à jour aussi position_manager.config.use_atr si position_manager existe
+                    if position_manager:
+                        position_manager.config.use_atr = position_config.use_atr
                 if 'tp_percent' in updated:
                     position_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
                 if 'sl_percent' in updated:
@@ -2858,6 +3387,90 @@ async def handle_client_command(command: str, params: dict):
                 return {'status': 'closed', 'result': result}
         else:
             raise ValueError('Aucune position active')
+    
+    elif command == 'update_telegram_config':
+        # 🔥 NOUVEAU: Mettre à jour la configuration Telegram
+        from config import (
+            TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED,
+            TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+            TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+            TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+            TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+            TELEGRAM_NOTIFY_SETUP_REJECTED
+        )
+        import os
+        updated = {}
+        
+        # Mettre à jour les types de notifications Telegram
+        notify_types = {
+            'TELEGRAM_NOTIFY_POSITION_OPENED': 'TELEGRAM_NOTIFY_POSITION_OPENED',
+            'TELEGRAM_NOTIFY_POSITION_CLOSED': 'TELEGRAM_NOTIFY_POSITION_CLOSED',
+            'TELEGRAM_NOTIFY_TP_ESCALIER': 'TELEGRAM_NOTIFY_TP_ESCALIER',
+            'TELEGRAM_NOTIFY_EARLY_INVALIDATION': 'TELEGRAM_NOTIFY_EARLY_INVALIDATION',
+            'TELEGRAM_NOTIFY_ERROR': 'TELEGRAM_NOTIFY_ERROR',
+            'TELEGRAM_NOTIFY_RECONNECTION': 'TELEGRAM_NOTIFY_RECONNECTION',
+            'TELEGRAM_NOTIFY_DAILY_SUMMARY': 'TELEGRAM_NOTIFY_DAILY_SUMMARY',
+            'TELEGRAM_NOTIFY_RECOVERY_MODE': 'TELEGRAM_NOTIFY_RECOVERY_MODE',
+            'TELEGRAM_NOTIFY_SETUP_REJECTED': 'TELEGRAM_NOTIFY_SETUP_REJECTED'
+        }
+        
+        # Mettre à jour chaque type de notification
+        for key, env_key in notify_types.items():
+            if key in params:
+                value = bool(params[key])
+                os.environ[env_key] = 'true' if value else 'false'
+                updated[key] = value
+                logger.info(f"✅ {key} mis à jour: {value}")
+        
+        # Recharger la config depuis les variables d'environnement
+        from importlib import reload
+        import config
+        reload(config)
+        
+        # Mettre à jour notification_manager si disponible
+        if notification_manager:
+            from config import (
+                TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+                TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+                TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+                TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+                TELEGRAM_NOTIFY_SETUP_REJECTED
+            )
+            # 🔥 FIX: Mettre à jour les paramètres avec les nouvelles valeurs depuis params
+            notification_manager.telegram_notify_settings.update({
+                'position_opened': params.get('TELEGRAM_NOTIFY_POSITION_OPENED', TELEGRAM_NOTIFY_POSITION_OPENED),
+                'position_closed': params.get('TELEGRAM_NOTIFY_POSITION_CLOSED', TELEGRAM_NOTIFY_POSITION_CLOSED),
+                'tp_escalier_level': params.get('TELEGRAM_NOTIFY_TP_ESCALIER', TELEGRAM_NOTIFY_TP_ESCALIER),
+                'early_invalidation': params.get('TELEGRAM_NOTIFY_EARLY_INVALIDATION', TELEGRAM_NOTIFY_EARLY_INVALIDATION),
+                'error': params.get('TELEGRAM_NOTIFY_ERROR', TELEGRAM_NOTIFY_ERROR),
+                'reconnection': params.get('TELEGRAM_NOTIFY_RECONNECTION', TELEGRAM_NOTIFY_RECONNECTION),
+                'daily_summary': params.get('TELEGRAM_NOTIFY_DAILY_SUMMARY', TELEGRAM_NOTIFY_DAILY_SUMMARY),
+                'recovery_mode': params.get('TELEGRAM_NOTIFY_RECOVERY_MODE', TELEGRAM_NOTIFY_RECOVERY_MODE),
+                'setup_rejected': params.get('TELEGRAM_NOTIFY_SETUP_REJECTED', TELEGRAM_NOTIFY_SETUP_REJECTED)
+            })
+            logger.info(f"✅ Notification Manager mis à jour: {notification_manager.telegram_notify_settings}")
+        
+        return {'updated': updated, 'success': True}
+    
+    elif command == 'test_telegram':
+        # 🔥 NOUVEAU: Envoyer un message de test Telegram
+        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
+        if not TELEGRAM_ENABLED or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            return {'success': False, 'error': 'Telegram non configuré (vérifiez .env)'}
+        
+        try:
+            if notification_manager and notification_manager.telegram_notifier:
+                test_message = "🧪 **Test de notification Telegram**\n\nCe message confirme que votre configuration Telegram fonctionne correctement ! ✅"
+                success = await notification_manager.telegram_notifier.send_message(test_message)
+                if success:
+                    return {'success': True, 'message': 'Message de test envoyé avec succès'}
+                else:
+                    return {'success': False, 'error': 'Erreur lors de l\'envoi du message'}
+            else:
+                return {'success': False, 'error': 'Notification manager non disponible'}
+        except Exception as e:
+            logger.error(f"❌ Erreur test Telegram: {e}")
+            return {'success': False, 'error': str(e)}
     
     elif command == 'log_config':
         # 🔥 MIGRATION COMPLÈTE: Logger changement de config via WebSocket
@@ -3167,15 +3780,17 @@ async def add_log(level, message, detail=''):
     reset_code = Style.RESET_ALL
     color = color_codes.get(level, '')
     
-    # Message avec couleur ANSI
+    # Message avec couleur ANSI et emojis préservés
+    # 🔥 FIX: Préserver les emojis dans le message (✅📊❌⚠️ etc.)
     colored_message = f"{color}{message}{reset_code}"
     if detail:
-        colored_message += f" {detail}"
+        # Ajouter la couleur au détail aussi si nécessaire
+        colored_message += f" {color}{detail}{reset_code}"
     
     entry = {
         'timestamp': datetime.now().strftime('%H:%M:%S'),
         'level': level,
-        'message': colored_message,  # 🔥 FIX: Message avec couleurs ANSI
+        'message': colored_message,  # 🔥 FIX: Message avec couleurs ANSI et emojis
         'detail': detail,
         'raw_message': message  # Message sans couleur pour recherche
     }

@@ -2,10 +2,199 @@
 	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
 	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
+	import { onMount, onDestroy } from 'svelte';
 
 	// 🔥 FIX: Extraire la précision depuis les données de position
 	$: pricePrecision = $activePosition?.price_precision;
 	$: tickSize = $activePosition?.tickSize || $activePosition?.tick_size;
+	
+	// 🔥 FIX: Récupérer la config pour afficher les bonnes informations TP/SL
+	let tradingConfig = null;
+	
+	async function loadConfig() {
+		try {
+			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+			if (ws && ws.connected) {
+				const response = await sendRequestViaWS('state', {});
+				const stateData = response?.data || response;
+				if (stateData && stateData.config) {
+					tradingConfig = stateData.config;
+				}
+			}
+		} catch (err) {
+			console.error('❌ Error loading config:', err);
+		}
+	}
+	
+	// 🔥 NOUVEAU: Compte à rebours dynamique de la durée
+	let liveDuration = '';
+	let durationInterval = null;
+
+	// 🔥 FIX BUG #6: Support jours pour positions > 24h
+	function formatDurationFromSeconds(seconds) {
+		if (!seconds || seconds < 0) return '0s';
+
+		const days = Math.floor(seconds / 86400);
+		const hours = Math.floor((seconds % 86400) / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+
+		if (days > 0) return `${days}j ${hours}h ${minutes}m`;
+		if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+		if (minutes > 0) return `${minutes}m ${secs}s`;
+		return `${secs}s`;
+	}
+
+	function updateLiveDuration() {
+		if (!$activePosition || !$activePosition.opened_at) {
+			liveDuration = '';
+			return;
+		}
+		
+		const now = new Date();
+		const opened = new Date($activePosition.opened_at);
+		const diffMs = now - opened;
+		const diffSec = Math.floor(diffMs / 1000);
+		liveDuration = formatDurationFromSeconds(diffSec);
+	}
+
+	// Réactif: Mettre à jour la durée quand la position change
+	$: if ($activePosition && $activePosition.opened_at) {
+		updateLiveDuration();
+		// Démarrer l'intervalle si pas déjà démarré
+		if (!durationInterval) {
+			durationInterval = setInterval(updateLiveDuration, 1000);
+		}
+	} else {
+		// Arrêter l'intervalle si pas de position
+		if (durationInterval) {
+			clearInterval(durationInterval);
+			durationInterval = null;
+		}
+		liveDuration = '';
+	}
+
+	onMount(async () => {
+		await loadConfig();
+		// Écouter les mises à jour de config
+		const { getWebSocket } = await import('$lib/utils/websocket');
+		const ws = getWebSocket();
+		if (ws) {
+			ws.on('config_updated', (data) => {
+				if (data.updated) {
+					tradingConfig = { ...tradingConfig, ...data.updated };
+				}
+			});
+		}
+	});
+
+	onDestroy(() => {
+		if (durationInterval) {
+			clearInterval(durationInterval);
+			durationInterval = null;
+		}
+	});
+	
+	// 🔥 FIX: Calculer les informations de la prochaine clôture
+	$: nextTpInfo = (() => {
+		if (!$activePosition || !tradingConfig) return null;
+		
+		const tpSlMode = tradingConfig.tp_sl_mode || $activePosition.tp_sl_mode || 'FIXE';
+		
+		// Mode TP_MULTI/ESCALIER
+		if (tpSlMode === 'TP_MULTI' || tpSlMode === 'ESCALIER') {
+			const levels = $activePosition.tp_escalier_levels ? JSON.parse($activePosition.tp_escalier_levels) : [];
+			const currentLevel = $activePosition.tp_escalier_current_level || 0;
+			if (currentLevel < levels.length) {
+				const nextLevel = levels[currentLevel];
+				return {
+					pnl: nextLevel.pnl || nextLevel.percent || 0,
+					size: (nextLevel.size_pct || 0) * 100
+				};
+			}
+			return null;
+		}
+		
+		// Mode FIXE
+		if (tpSlMode === 'FIXE') {
+			// Avant le 1er TP : utiliser break_even_trigger
+			if (!$activePosition.partial_tp_sold) {
+				// Vérifier si TP partiel est configuré
+				if (tradingConfig.partial_tp_percent) {
+					// TP partiel pas encore vendu - utiliser break_even_trigger
+					return {
+						pnl: tradingConfig.break_even_trigger || 0.3,
+						size: tradingConfig.partial_tp_percent || 50
+					};
+				} else {
+					// Pas de TP partiel - utiliser break_even_trigger pour le TP complet
+					return {
+						pnl: tradingConfig.break_even_trigger || 0.3,
+						size: 100
+					};
+				}
+			}
+			
+			// Après le 1er TP : utiliser trailing_distance (dynamique en fonction du prix actuel)
+			// Le trailing stop est actif, donc le prochain TP sera déclenché quand le trailing stop est touché
+			// Le PnL objectif est calculé dynamiquement : PnL actuel - trailing_distance (car le trailing suit le prix)
+			if ($activePosition.current_price && $activePosition.entry) {
+				const currentPnL = $activePosition.direction === 'LONG' 
+					? (($activePosition.current_price - $activePosition.entry) / $activePosition.entry) * 100
+					: (($activePosition.entry - $activePosition.current_price) / $activePosition.entry) * 100;
+				
+				// Le trailing_distance est la distance entre le prix actuel et le trailing stop
+				// Le prochain TP sera déclenché quand le prix revient au trailing stop
+				// Donc le PnL objectif est le PnL actuel moins trailing_distance
+				const trailingDistance = tradingConfig.trailing_distance || 0.1;
+				const targetPnL = Math.max(0, currentPnL - trailingDistance);
+				
+				// Vérifier si position restante après TP partiel
+				const remainingSize = $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null
+					? ($activePosition.size_remaining / $activePosition.size) * 100
+					: 100;
+				
+				return {
+					pnl: targetPnL,
+					size: remainingSize
+				};
+			}
+			
+			// Fallback si pas de prix actuel
+			return {
+				pnl: tradingConfig.trailing_distance || 0.1,
+				size: $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null
+					? ($activePosition.size_remaining / $activePosition.size) * 100
+					: 100
+			};
+		}
+		
+		// Mode ATR ou autres modes
+		// Vérifier si TP partiel déjà vendu
+		if (!$activePosition.partial_tp_sold && tradingConfig.partial_tp_percent) {
+			// TP partiel pas encore vendu
+			return {
+				pnl: tradingConfig.tp_percent || 0.6,
+				size: tradingConfig.partial_tp_percent || 50
+			};
+		}
+		
+		// TP complet
+		return {
+			pnl: tradingConfig.tp_percent || 0.6,
+			size: 100
+		};
+	})();
+	
+	$: nextSlInfo = (() => {
+		if (!$activePosition || !tradingConfig) return null;
+		
+		return {
+			pnl: tradingConfig.sl_percent || 0.25,
+			size: 100
+		};
+	})();
 	
 	// 🔥 FIX: Fonction helper pour formater avec précision
 	function formatPriceWithPrecision(price) {
@@ -62,15 +251,15 @@
 </script>
 
 {#if $activePosition}
-	<div class="position-card">
+	<div class="position-card" data-debug-name="activePosition">
 		<div class="position-header">
-			<div class="symbol">{$activePosition.symbol}</div>
+			<div class="symbol" data-debug-name="activePosition.symbol">{$activePosition.symbol}</div>
 			<div class="header-right">
-				<div class="direction" class:long={$activePosition.direction === 'LONG'} class:short={$activePosition.direction === 'SHORT'}>
+				<div class="direction" class:long={$activePosition.direction === 'LONG'} class:short={$activePosition.direction === 'SHORT'} data-debug-name="activePosition.direction">
 					{$activePosition.direction}
 				</div>
 				{#if $activePosition.tp_sl_mode}
-					<div class="tp-sl-mode">
+					<div class="tp-sl-mode" data-debug-name="activePosition.tp_sl_mode">
 						Mode: {$activePosition.tp_sl_mode}
 					</div>
 				{/if}
@@ -78,54 +267,55 @@
 		</div>
 
 		<div class="pnl-section">
-			<div class="pnl-value" style="color: {$pnlColor}">
+			<div class="pnl-value" style="color: {$pnlColor}" data-debug-name="activePosition.pnl">
 				{formatPercent($activePosition.pnl)}%
 			</div>
-			<div class="pnl-usdt" style="color: {$pnlColor}">
+			<div class="pnl-usdt" style="color: {$pnlColor}" data-debug-name="activePosition.pnl_usdt">
 				{formatUSDT($activePosition.pnl_usdt)} USDT
 			</div>
 		</div>
 
 		<div class="price-grid">
-			<div class="price-box">
-				<div class="price-label">Entry</div>
-				<div class="price-value">{formatPriceWithPrecision($activePosition.entry)}</div>
+			<div class="price-box" data-debug-name="activePosition.entry">
+				<div class="price-label" data-debug-name="activePosition.entry">Entry</div>
+				<div class="price-value" data-debug-name="activePosition.entry">{formatPriceWithPrecision($activePosition.entry)}</div>
 			</div>
-			<div class="price-box">
-				<div class="price-label">Current</div>
-				<div class="price-value">{formatPriceWithPrecision($activePosition.current_price)}</div>
+			<div class="price-box" data-debug-name="activePosition.current_price">
+				<div class="price-label" data-debug-name="activePosition.current_price">Current</div>
+				<div class="price-value" data-debug-name="activePosition.current_price">{formatPriceWithPrecision($activePosition.current_price)}</div>
 			</div>
-			<div class="price-box">
-				<div class="price-label">Size</div>
-				<div class="price-value">{formatPrice($activePosition.size)} USDT</div>
+			<div class="price-box" data-debug-name="activePosition.size">
+				<div class="price-label" data-debug-name="activePosition.size">Size</div>
+				<div class="price-value" data-debug-name="activePosition.size">{formatPrice($activePosition.size)} USDT</div>
 			</div>
 		</div>
 
 		<div class="tpsl-grid">
-			<div class="tpsl-box tp">
-				<div class="tpsl-label">TP</div>
-				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.tp)}</div>
-				{#if $tpDistance}
-					<div class="tpsl-distance">+{$tpDistance}%</div>
-				{/if}
-				{#if $activePosition.tp_escalier_levels}
-					<div class="tp-levels">
-						{#each JSON.parse($activePosition.tp_escalier_levels || '[]') as level, i}
-							<div class="tp-level" class:hit={level.hit || false}>
-								TP{i + 1}: {formatPriceWithPrecision(level.price)} ({formatPercent(level.percent)}%)
-							</div>
-						{/each}
+			<div class="tpsl-box tp" data-debug-name="activePosition.tp">
+				<div class="tpsl-label" data-debug-name="activePosition.tp">Prochain Take Profit</div>
+				<div class="tpsl-price" data-debug-name="activePosition.tp">{formatPriceWithPrecision($activePosition.tp)}</div>
+				{#if nextTpInfo}
+					<div class="tpsl-info">
+						<div class="tpsl-pnl" data-debug-name="nextTpInfo.pnl">PnL objectif: <span class="tpsl-value" data-debug-name="nextTpInfo.pnl">+{formatPercent(nextTpInfo.pnl)}%</span></div>
+						<div class="tpsl-size" data-debug-name="nextTpInfo.size">Taille: <span class="tpsl-value" data-debug-name="nextTpInfo.size">{nextTpInfo.size}% de la position</span></div>
 					</div>
+				{:else if $tpDistance}
+					<div class="tpsl-distance" data-debug-name="tpDistance">+{$tpDistance}%</div>
 				{/if}
 			</div>
-			<div class="tpsl-box sl">
-				<div class="tpsl-label">SL</div>
-				<div class="tpsl-price">{formatPriceWithPrecision($activePosition.sl)}</div>
-				{#if $slDistance}
-					<div class="tpsl-distance">{$slDistance}%</div>
+			<div class="tpsl-box sl" data-debug-name="activePosition.sl">
+				<div class="tpsl-label" data-debug-name="activePosition.sl">Prochain Stop Loss</div>
+				<div class="tpsl-price" data-debug-name="activePosition.sl">{formatPriceWithPrecision($activePosition.sl)}</div>
+				{#if nextSlInfo}
+					<div class="tpsl-info">
+						<div class="tpsl-pnl" data-debug-name="nextSlInfo.pnl">PnL stop: <span class="tpsl-value" data-debug-name="nextSlInfo.pnl">-{formatPercent(nextSlInfo.pnl)}%</span></div>
+						<div class="tpsl-size" data-debug-name="nextSlInfo.size">Taille: <span class="tpsl-value" data-debug-name="nextSlInfo.size">{nextSlInfo.size}% de la position restante</span></div>
+					</div>
+				{:else if $slDistance}
+					<div class="tpsl-distance" data-debug-name="slDistance">{$slDistance}%</div>
 				{/if}
 				{#if $activePosition.dynamic_sl}
-					<div class="trailing-stop">
+					<div class="trailing-stop" data-debug-name="activePosition.dynamic_sl">
 						Trailing: {formatPriceWithPrecision($activePosition.dynamic_sl)}
 					</div>
 				{/if}
@@ -133,10 +323,10 @@
 		</div>
 
 		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null && $activePosition.size}
-			<div class="position-info">
-				<div class="info-item">
-					<span class="info-label">Position restante:</span>
-					<span class="info-value">
+			<div class="position-info" data-debug-name="activePosition.size_remaining">
+				<div class="info-item" data-debug-name="activePosition.size_remaining">
+					<span class="info-label" data-debug-name="activePosition.size_remaining">Position restante:</span>
+					<span class="info-value" data-debug-name="activePosition.size_remaining">
 						{formatPrice($activePosition.size_remaining)} USDT 
 						({formatPercent(($activePosition.size_remaining / $activePosition.size) * 100)}%)
 					</span>
@@ -144,16 +334,17 @@
 			</div>
 		{/if}
 
-		{#if $positionDuration}
-			<div class="duration">
-				Duration: {$positionDuration}
+		{#if $activePosition && $activePosition.opened_at}
+			<div class="duration" data-debug-name="positionDuration">
+				<div class="duration-label" data-debug-name="positionDuration.label">⏱️ Durée:</div>
+				<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date() - new Date($activePosition.opened_at)) / 1000))}</div>
 			</div>
 		{/if}
 
 		{#if $activePosition.confirmed_by}
-			<div class="signals">
-				<div class="signals-label">Confirmed by:</div>
-				<div class="signals-list">{$activePosition.confirmed_by}</div>
+			<div class="signals" data-debug-name="activePosition.confirmed_by">
+				<div class="signals-label" data-debug-name="activePosition.confirmed_by">Confirmed by:</div>
+				<div class="signals-list" data-debug-name="activePosition.confirmed_by">{$activePosition.confirmed_by}</div>
 			</div>
 		{/if}
 
@@ -332,6 +523,36 @@
 		color: #ff4444;
 	}
 
+	.tpsl-info {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.tpsl-pnl, .tpsl-size {
+		font-size: 11px;
+		color: #888;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.tpsl-value {
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+	}
+
+	.tpsl-box.tp .tpsl-value {
+		color: #00ff88;
+	}
+
+	.tpsl-box.sl .tpsl-value {
+		color: #ff4444;
+	}
+
 	.tp-levels {
 		margin-top: 8px;
 		padding-top: 8px;
@@ -391,10 +612,27 @@
 	}
 
 	.duration {
-		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		margin: 15px 0;
+		padding: 10px;
+		background: rgba(42, 58, 107, 0.3);
+		border-radius: 8px;
 		font-size: 14px;
+	}
+
+	.duration-label {
 		color: #888;
-		margin-bottom: 15px;
+		font-weight: 500;
+	}
+
+	.duration-value {
+		color: #00ff88;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+		font-size: 16px;
 	}
 
 	.signals {

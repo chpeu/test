@@ -19,9 +19,9 @@ export const recentLogs = derived(logs, $logs => $logs.slice(-50));
 // Computed: Last 50 config logs (pour affichage)
 export const recentConfigLogs = derived(configLogs, $logs => $logs.slice(-50));
 
-// Computed: Error and Warning logs (pour section "Erreurs & Warnings")
+// Computed: Error logs only (pour section "Erreurs") - WARNING exclu
 export const errorLogs = derived(logs, $logs =>
-	$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL' || log.level === 'WARNING')
+	$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL')
 );
 
 // Computed: Error count

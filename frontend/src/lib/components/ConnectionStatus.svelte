@@ -2,9 +2,9 @@
 	import { connectionIcon, connectionStatus, connectionColor } from '$lib/stores/connection';
 </script>
 
-<div class="connection-status" style="border-color: {$connectionColor}">
-	<span class="connection-icon">{$connectionIcon}</span>
-	<span class="connection-text" style="color: {$connectionColor}">{$connectionStatus}</span>
+<div class="connection-status" style="border-color: {$connectionColor}" data-debug-name="connectionStatus">
+	<span class="connection-icon" data-debug-name="connectionIcon">{$connectionIcon}</span>
+	<span class="connection-text" style="color: {$connectionColor}" data-debug-name="connectionStatus">{$connectionStatus}</span>
 </div>
 
 <style>

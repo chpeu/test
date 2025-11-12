@@ -35,8 +35,17 @@ async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
         # Récupérer orderbook
         orderbook = await client.fetch_order_book(symbol, limit=5)
 
-        best_bid = orderbook['bids'][0][0] if orderbook['bids'] else 0
-        best_ask = orderbook['asks'][0][0] if orderbook['asks'] else 0
+        # 🔥 FIX: Vérifier que orderbook n'est pas None et contient bids/asks
+        if orderbook is None:
+            # 🔥 FIX: Ne pas logger ici car WebSocketLogHandler capture déjà logger.error et envoie au frontend
+            # Le log sera envoyé automatiquement via WebSocketLogHandler
+            return {'valid': False, 'spread_pct': 999, 'max_allowed': 0.03, 'quality': 'ERROR'}
+        
+        bids = orderbook.get('bids', []) if orderbook else []
+        asks = orderbook.get('asks', []) if orderbook else []
+        
+        best_bid = bids[0][0] if bids and len(bids) > 0 and len(bids[0]) > 0 else 0
+        best_ask = asks[0][0] if asks and len(asks) > 0 and len(asks[0]) > 0 else 0
 
         if best_bid == 0 or best_ask == 0:
             return {'valid': False, 'spread_pct': 999, 'max_allowed': 0.03, 'quality': 'UNKNOWN'}
@@ -80,7 +89,10 @@ async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
         return result
 
     except Exception as e:
-        logger.error(f"❌ Erreur check spread {symbol}: {e}")
+        error_msg = f"❌ Erreur check spread {symbol}: {e}"
+        # 🔥 FIX: logger.error est capturé par WebSocketLogHandler et envoyé au frontend automatiquement
+        # Pas besoin d'envoyer manuellement via websocket_manager.emit (cela créerait un doublon)
+        logger.error(error_msg)
         return {'valid': False, 'spread_pct': 999, 'max_allowed': 0.03, 'quality': 'ERROR'}
 
 
