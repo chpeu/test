@@ -513,6 +513,14 @@ CREATE TABLE trades (
     trailing_stop_activated BOOLEAN DEFAULT FALSE,
     trailing_stop_triggered_at TIMESTAMPTZ,
     
+    -- Early Invalidation (détails)
+    early_invalidation_triggered BOOLEAN DEFAULT FALSE,
+    early_invalidation_triggered_at TIMESTAMPTZ,
+    early_invalidation_threshold FLOAT,  -- Seuil adaptatif utilisé (%)
+    early_invalidation_elapsed FLOAT,  -- Temps écoulé en secondes au moment de l'invalidation
+    early_invalidation_atr_pct FLOAT,  -- ATR en % au moment de l'invalidation
+    early_invalidation_pnl_pct FLOAT,  -- PnL en % au moment de l'invalidation
+    
     -- ========================================
     -- Métriques position
     -- ========================================

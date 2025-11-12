@@ -789,6 +789,7 @@ class PositionManager:
         )
 
         # 1. Early Invalidation (10-30s)
+        early_invalidation_data = None
         if self.early_invalidation.should_check(elapsed):
             invalidation = self.early_invalidation.check_invalidation(
                 position=self.active_position.to_dict(),
@@ -796,6 +797,24 @@ class PositionManager:
                 pnl_percent=pnl
             )
             if invalidation:
+                # Stocker les détails de l'invalidation pour le logging
+                entry = self.active_position.entry
+                atr = self.active_position.atr
+                atr_pct = (atr / entry * 100) if entry > 0 and atr > 0 else None
+                # Calculer le seuil adaptatif utilisé
+                invalidation_threshold = self.early_invalidation.get_adaptive_threshold(
+                    elapsed, atr_pct or 0.5
+                )
+                early_invalidation_data = {
+                    'triggered': True,
+                    'triggered_at': datetime.now().isoformat(),
+                    'threshold': invalidation_threshold,
+                    'elapsed': elapsed,
+                    'atr_pct': atr_pct,
+                    'pnl_pct': pnl
+                }
+                # Stocker dans la position pour le logging
+                self.active_position._early_invalidation_data = early_invalidation_data
                 return invalidation
 
         # 2. TP Escalier - Vérifier niveaux
@@ -1189,6 +1208,13 @@ class PositionManager:
                         'break_even_triggered': self.active_position.break_even_set,
                         'trailing_stop_triggered': (reason == 'TS'),
                         'partial_tp_triggered': self.active_position.partial_tp_sold,
+                        # Early Invalidation
+                        'early_invalidation_triggered': (reason == 'EARLY_INVALIDATION'),
+                        'early_invalidation_triggered_at': getattr(self.active_position, '_early_invalidation_data', {}).get('triggered_at') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_threshold': getattr(self.active_position, '_early_invalidation_data', {}).get('threshold') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_elapsed': getattr(self.active_position, '_early_invalidation_data', {}).get('elapsed') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_atr_pct': getattr(self.active_position, '_early_invalidation_data', {}).get('atr_pct') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_pnl_pct': getattr(self.active_position, '_early_invalidation_data', {}).get('pnl_pct') if reason == 'EARLY_INVALIDATION' else None,
                         'tp_escalier_enabled': self.active_position.tp_escalier_enabled,
                         'tp_escalier_levels_hit': [
                             {'level': i+1, 'profit': p.get('profit', 0)}

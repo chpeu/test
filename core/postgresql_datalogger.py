@@ -654,6 +654,9 @@ class PostgreSQLDataLogger:
                     tp_sl_mode, break_even_set,
                     trailing_stop_activated, partial_tp_executed,
                     tp_escalier_levels_executed, tp_escalier_profits,
+                    early_invalidation_triggered, early_invalidation_triggered_at,
+                    early_invalidation_threshold, early_invalidation_elapsed,
+                    early_invalidation_atr_pct, early_invalidation_pnl_pct,
                     -- Indicateurs d'entrée (pour ML) - RSI
                     entry_rsi_1m, entry_rsi_5m, entry_rsi_prev_1m, entry_rsi_prev_5m,
                     -- Indicateurs d'entrée - MACD
@@ -901,6 +904,13 @@ class PostgreSQLDataLogger:
                 trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
                 len(tp_escalier_levels_hit),  # tp_escalier_levels_executed (count)
                 tp_escalier_profits,  # tp_escalier_profits (somme)
+                # Early Invalidation
+                trade_data.get('early_invalidation_triggered', False),  # early_invalidation_triggered
+                trade_data.get('early_invalidation_triggered_at'),  # early_invalidation_triggered_at
+                trade_data.get('early_invalidation_threshold'),  # early_invalidation_threshold
+                trade_data.get('early_invalidation_elapsed'),  # early_invalidation_elapsed
+                trade_data.get('early_invalidation_atr_pct'),  # early_invalidation_atr_pct
+                trade_data.get('early_invalidation_pnl_pct'),  # early_invalidation_pnl_pct
                 # Indicateurs d'entrée - RSI
                 entry_indicators.get('rsi_1m'), entry_indicators.get('rsi_5m'),
                 entry_indicators.get('rsi_prev_1m'), entry_indicators.get('rsi_prev_5m'),
