@@ -482,6 +482,91 @@ class PositionManager:
             + (f" | TP Escalier: {len(levels_config)} niveaux" if levels_config else "")
         )
 
+        # ========================================
+        # ✅ POINT C : LOG TRADE ENTRY
+        # ========================================
+        try:
+            from backend.ml.data_logger import DataLogger
+            data_logger = DataLogger()
+            
+            if data_logger and data_logger.is_running:
+                # Récupérer scan_uuid, opportunity_id et setup depuis les attributs stockés
+                scan_uuid = getattr(self, '_last_setup_scan_uuid', None)
+                opportunity_id = getattr(self, '_last_setup_opportunity_id', None)
+                last_setup = getattr(self, '_last_setup', None)
+                
+                # Préparer entry_indicators (snapshot au moment de l'entrée)
+                # Récupérer depuis setup si disponible
+                entry_indicators = {
+                    'rsi_1m': last_setup.get('rsi') if last_setup else None,
+                    'rsi_5m': None,  # À récupérer depuis setup si disponible
+                    'macd_hist_1m': last_setup.get('macd_hist') if last_setup else None,
+                    'macd_hist_5m': None,
+                    'adx_1m': last_setup.get('adx') if last_setup else None,
+                    'adx_5m': None,
+                    'atr_pct_1m': (atr / entry * 100) if atr and entry else (last_setup.get('atr_pct') if last_setup else None),
+                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else None,
+                    'score': last_setup.get('totalScore') if last_setup else None,
+                    'volume_ratio_1m': last_setup.get('volumeSpike') if last_setup else None,
+                    'volume_ratio_5m': None
+                }
+                
+                # Conditions matched
+                entry_conditions = condition_types or []
+                
+                # Scalability au moment de l'entrée
+                entry_scalability = scalability_data or {}
+                
+                # Logger l'entrée (non-blocking avec create_task)
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Créer une task non-bloquante
+                        async def log_entry():
+                            trade_id = await data_logger.log_trade_entry(
+                                opportunity_id=opportunity_id,
+                                scan_log_id=scan_uuid,
+                                symbol=symbol,
+                                direction=direction,
+                                entry_price=entry,
+                                size_usdt=size,
+                                tp_price=tp,
+                                sl_price=sl,
+                                tp_sl_mode=TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                                entry_indicators=entry_indicators,
+                                entry_conditions=entry_conditions,
+                                entry_scalability=entry_scalability
+                            )
+                            # Stocker trade_id dans position pour Point D
+                            self.active_position._trade_id = trade_id
+                        loop.create_task(log_entry())
+                    else:
+                        # Pas de loop, créer un nouveau
+                        trade_id = loop.run_until_complete(data_logger.log_trade_entry(
+                            opportunity_id=opportunity_id,
+                            scan_log_id=scan_uuid,
+                            symbol=symbol,
+                            direction=direction,
+                            entry_price=entry,
+                            size_usdt=size,
+                            tp_price=tp,
+                            sl_price=sl,
+                            tp_sl_mode=TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                            entry_indicators=entry_indicators,
+                            entry_conditions=entry_conditions,
+                            entry_scalability=entry_scalability
+                        ))
+                        self.active_position._trade_id = trade_id
+                except RuntimeError:
+                    # Pas de loop disponible, ignorer
+                    pass
+        except Exception as e:
+            logger.debug(f"Erreur log_trade_entry (non-bloquant): {e}")
+        # ========================================
+        # FIN POINT C
+        # ========================================
+
         return self.active_position
 
     def calculate_position_size(
@@ -980,6 +1065,62 @@ class PositionManager:
             'exit_price_source': exit_price_source,
             'exit_price_from_fallback': exit_price_source != "api"
         }
+
+        # ========================================
+        # ✅ POINT D : LOG TRADE EXIT
+        # ========================================
+        try:
+            from backend.ml.data_logger import DataLogger
+            data_logger = DataLogger()
+            
+            if data_logger and data_logger.is_running:
+                trade_id = getattr(self.active_position, '_trade_id', None)
+                
+                if trade_id:
+                    # Logger la sortie (non-blocking avec create_task)
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # Créer une task non-bloquante
+                            async def log_exit():
+                                await data_logger.log_trade_exit(
+                                    trade_id=trade_id,
+                                    exit_price=exit_price,
+                                    exit_reason=reason,
+                                    duration_seconds=float(duration),
+                                    pnl_pct=result['pnl_pct'],
+                                    pnl_usdt=result['pnl_usdt'],
+                                    gross_pnl_usdt=result['gross_pnl_usdt'],
+                                    slippage_pct=result['slippage_pct'],
+                                    slippage_usdt=result['slippage_usdt'],
+                                    fees_usdt=result['fees'],
+                                    net_pnl_usdt=result['net_pnl_usdt'],
+                                    net_pnl_pct=result['net_pnl_pct'],
+                                    win=net_pnl_pct > 0,
+                                    break_even_set=self.active_position.break_even_set,
+                                    partial_tp_executed=self.active_position.partial_tp_sold,
+                                    partial_tp_profit=self.active_position.partial_profit_usdt if self.active_position.partial_tp_sold else None,
+                                    partial_tp_percent=0.5 if self.active_position.partial_tp_sold else None,
+                                    tp_escalier_levels_executed=len(self.active_position.tp_escalier_profits) if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else 0,
+                                    tp_escalier_profits=sum(p.get('profit', 0) for p in self.active_position.tp_escalier_profits) if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else 0,
+                                    trailing_stop_activated=(reason == 'TS'),
+                                    max_favorable_excursion=None,
+                                    max_adverse_excursion=None
+                                )
+                            loop.create_task(log_exit())
+                        else:
+                            # Pas de loop, créer un nouveau (ne devrait pas arriver car close_position est appelé depuis un contexte async)
+                            # On ignore silencieusement car c'est un cas rare
+                            pass
+                    except RuntimeError:
+                        # Pas de loop disponible, ignorer
+                        pass
+        except Exception as e:
+            logger.debug(f"Erreur log_trade_exit (non-bloquant): {e}")
+        # ========================================
+        # FIN POINT D
+        # ========================================
 
         # Mettre à jour streaks
         if net_pnl_pct > 0:

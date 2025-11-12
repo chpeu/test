@@ -4,6 +4,10 @@ Trade Cursor v7.0 - Application FastAPI (async natif)
 Interface HTML identique à v5.1 avec backend Python
 """
 
+# ⚠️ IMPORTANT : Charger .env AVANT tout autre import
+from dotenv import load_dotenv
+load_dotenv()
+
 import sys
 import asyncio
 import logging
@@ -194,6 +198,17 @@ if set_websocket_manager_routes:
 async def startup_event():
     """Événement de démarrage - réinitialiser le frontend AVANT le scan"""
     try:
+        # ✅ Initialiser DataLogger
+        try:
+            from backend.ml.data_logger import DataLogger
+            data_logger = DataLogger()
+            await data_logger.initialize()
+            app.state.data_logger = data_logger
+            logger.info("✅ DataLogger initialisé")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur initialisation DataLogger: {e}")
+            app.state.data_logger = None
+        
         # Initialiser les instances si pas déjà fait
         init_instances()
         
@@ -209,6 +224,20 @@ async def startup_event():
             logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
     except Exception as e:
         logger.warning(f"⚠️ Erreur événement startup: {e}")
+
+# ✅ Événement de shutdown pour arrêter DataLogger proprement
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Événement de shutdown - arrêter DataLogger proprement"""
+    try:
+        if hasattr(app.state, 'data_logger') and app.state.data_logger:
+            try:
+                await app.state.data_logger.shutdown()
+                logger.info("✅ DataLogger arrêté proprement")
+            except Exception as e:
+                logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur événement shutdown: {e}")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -704,6 +733,11 @@ async def scanner_loop_callback():
                                                 logger.error(f"💹 ERREUR: Impossible de récupérer spread_pct depuis setup pour {symbol}")
                                     else:
                                         logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
+                                    
+                                    # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
+                                    position_manager._last_setup_scan_uuid = setup.get('_scan_uuid')
+                                    position_manager._last_setup_opportunity_id = setup.get('_opportunity_id')
+                                    position_manager._last_setup = setup  # Stocker setup complet pour récupérer indicateurs
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions

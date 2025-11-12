@@ -322,6 +322,11 @@ async def _scan_top_pairs():
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 
+                # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
+                _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
+                _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
+                _position_manager._last_setup = best_setup  # Stocker setup complet pour récupérer indicateurs
+
                 # BUG #12 FIX: Fallback atr5m sur atr si absent
                 atr = best_setup.get('atr')
                 atr5m = best_setup.get('atr5m') or atr  # Fallback sur atr si atr5m absent
