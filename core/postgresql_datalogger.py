@@ -768,15 +768,11 @@ class PostgreSQLDataLogger:
             tp_escalier_profits = sum(p.get('profit', 0) for p in tp_escalier_levels_hit) if tp_escalier_levels_hit else 0
             
             # Extraire indicateurs d'entrée
-            entry_indicators = trade_data.get('entry_indicators', {})
+            entry_indicators = trade_data.get('entry_indicators', {}) or {}
             entry_conditions = trade_data.get('entry_conditions', [])
-            if isinstance(entry_conditions, dict):
-                entry_conditions = list(entry_conditions.keys()) if entry_conditions else []
-            elif not isinstance(entry_conditions, list):
-                entry_conditions = [str(entry_conditions)] if entry_conditions else []
             
             # Extraire indicateurs de sortie
-            exit_indicators = trade_data.get('exit_indicators', {})
+            exit_indicators = trade_data.get('exit_indicators', {}) or {}
             
             # Calculer métriques temporelles
             try:
@@ -887,6 +883,8 @@ class PostgreSQLDataLogger:
             
             # Extraire scalability data
             entry_scalability = trade_data.get('entry_scalability', {}) or {}
+            if not isinstance(entry_scalability, dict):
+                entry_scalability = {}
             
             # Calculer slippage_usdt
             slippage_pct = trade_data.get('slippage', 0) or 0
@@ -899,6 +897,15 @@ class PostgreSQLDataLogger:
                 config_snapshot = json.dumps(config_snapshot)
             else:
                 config_snapshot = None
+            
+            # Convertir entry_conditions en liste de strings pour PostgreSQL TEXT[]
+            # (doit être fait avant de créer params)
+            if isinstance(entry_conditions, dict):
+                entry_conditions = [str(k) for k in entry_conditions.keys()] if entry_conditions else []
+            elif isinstance(entry_conditions, list):
+                entry_conditions = [str(c) for c in entry_conditions if c]  # Convertir en strings
+            else:
+                entry_conditions = [str(entry_conditions)] if entry_conditions else []
             
             params = (
                 entry_timestamp, exit_timestamp, session_id, opportunity_id, scan_log_id,
