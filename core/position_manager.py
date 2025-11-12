@@ -561,7 +561,12 @@ class PositionManager:
                             entry_conditions=entry_conditions,
                             entry_scalability=entry_scalability
                         ))
+                        # Stocker trade_id, scan_log_id, entry_indicators, entry_conditions, entry_scalability dans position
                         self.active_position._trade_id = trade_id
+                        self.active_position._scan_log_id = scan_uuid
+                        self.active_position._entry_indicators = entry_indicators
+                        self.active_position._entry_conditions = entry_conditions
+                        self.active_position._entry_scalability = entry_scalability
                 except RuntimeError:
                     # Pas de loop disponible, ignorer
                     pass
