@@ -923,7 +923,7 @@ class PostgreSQLDataLogger:
                 trade_data.get('sl_price'),  # sl_price
                 trade_data.get('gross_pnl_usdt', 0),
                 trade_data.get('gross_pnl_pct', 0),  # pnl_pct (gross)
-                trade_data.get('gross_pnl_usdt', 0),  # pnl_usdt (gross) - DOUBLON À SUPPRIMER
+                trade_data.get('gross_pnl_usdt', 0),  # pnl_usdt (gross) - même valeur que gross_pnl_usdt
                 trade_data.get('net_pnl_usdt', 0),
                 trade_data.get('net_pnl_pct', 0),
                 trade_data.get('fees', 0),  # fees_usdt
