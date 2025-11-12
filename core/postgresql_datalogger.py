@@ -673,7 +673,10 @@ class PostgreSQLDataLogger:
                     fees_usdt, slippage_pct, slippage_usdt,
                     exit_reason, duration_seconds,
                     tp_sl_mode, break_even_set,
-                    trailing_stop_activated, partial_tp_executed,
+                    break_even_triggered_at,
+                    trailing_stop_activated, trailing_stop_triggered_at,
+                    partial_tp_executed, partial_tp_triggered_at,
+                    partial_tp_profit, partial_tp_percent,
                     tp_escalier_levels_executed, tp_escalier_profits,
                     early_invalidation_triggered, early_invalidation_triggered_at,
                     early_invalidation_threshold, early_invalidation_elapsed,
@@ -720,6 +723,7 @@ class PostgreSQLDataLogger:
                     max_favorable_excursion_usdt, max_adverse_excursion_usdt,
                     -- Métriques de qualité
                     risk_reward_ratio,
+                    profit_factor,
                     -- Métriques de performance additionnelles
                     entry_to_max_profit_price_change_pct, entry_to_max_loss_price_change_pct,
                     max_drawdown_pct, max_drawdown_usdt,
@@ -734,8 +738,8 @@ class PostgreSQLDataLogger:
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
@@ -928,8 +932,13 @@ class PostgreSQLDataLogger:
                 trade_data.get('duration_seconds'),
                 trade_data.get('tp_sl_mode'),
                 trade_data.get('break_even_triggered', False),  # break_even_set
+                trade_data.get('break_even_triggered_at'),  # break_even_triggered_at
                 trade_data.get('trailing_stop_triggered', False),  # trailing_stop_activated
+                trade_data.get('trailing_stop_triggered_at'),  # trailing_stop_triggered_at
                 trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
+                trade_data.get('partial_tp_triggered_at'),  # partial_tp_triggered_at
+                trade_data.get('partial_tp_profit'),  # partial_tp_profit
+                trade_data.get('partial_tp_percent'),  # partial_tp_percent
                 len(tp_escalier_levels_hit),  # tp_escalier_levels_executed (count)
                 tp_escalier_profits,  # tp_escalier_profits (somme)
                 # Early Invalidation
@@ -992,6 +1001,7 @@ class PostgreSQLDataLogger:
                 max_favorable_excursion_usdt, max_adverse_excursion_usdt,
                 # Métriques de qualité
                 risk_reward_ratio,
+                None,  # profit_factor (non calculé pour l'instant)
                 # Métriques de performance additionnelles
                 entry_to_max_profit_price_change_pct, entry_to_max_loss_price_change_pct,
                 max_drawdown_pct, max_drawdown_usdt,
