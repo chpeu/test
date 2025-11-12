@@ -654,30 +654,76 @@ class PostgreSQLDataLogger:
                     tp_sl_mode, break_even_set,
                     trailing_stop_activated, partial_tp_executed,
                     tp_escalier_levels_executed, tp_escalier_profits,
-                    -- Indicateurs d'entrée (pour ML)
-                    entry_rsi_1m, entry_rsi_5m,
-                    entry_macd_hist_1m, entry_macd_hist_5m,
+                    -- Indicateurs d'entrée (pour ML) - RSI
+                    entry_rsi_1m, entry_rsi_5m, entry_rsi_prev_1m, entry_rsi_prev_5m,
+                    -- Indicateurs d'entrée - MACD
+                    entry_macd_1m, entry_macd_signal_1m, entry_macd_hist_1m, entry_macd_hist_prev_1m,
+                    entry_macd_5m, entry_macd_signal_5m, entry_macd_hist_5m, entry_macd_hist_prev_5m,
+                    -- Indicateurs d'entrée - ADX
                     entry_adx_1m, entry_adx_5m,
-                    entry_atr_pct_1m, entry_atr_pct_5m,
-                    entry_score, entry_volume_ratio_1m, entry_volume_ratio_5m,
-                    entry_spread_pct, entry_balance_score,
+                    entry_di_plus_1m, entry_di_minus_1m, entry_di_gap_1m,
+                    entry_di_plus_5m, entry_di_minus_5m, entry_di_gap_5m,
+                    -- Indicateurs d'entrée - EMA
+                    entry_ema9_1m, entry_ema21_1m, entry_ema_diff_pct_1m,
+                    entry_ema9_5m, entry_ema21_5m, entry_ema_diff_pct_5m,
+                    -- Indicateurs d'entrée - ATR
+                    entry_atr_1m, entry_atr_pct_1m, entry_atr_5m, entry_atr_pct_5m,
+                    -- Indicateurs d'entrée - Bollinger Bands
+                    entry_bb_upper_1m, entry_bb_middle_1m, entry_bb_lower_1m,
+                    entry_bb_width_1m, entry_bb_distance_to_lower_1m, entry_bb_distance_to_upper_1m,
+                    entry_bb_upper_5m, entry_bb_middle_5m, entry_bb_lower_5m,
+                    entry_bb_width_5m, entry_bb_distance_to_lower_5m, entry_bb_distance_to_upper_5m,
+                    -- Indicateurs d'entrée - Volume
+                    entry_volume_1m, entry_volume_avg_1m, entry_volume_ratio_1m, entry_volume_spike_1m,
+                    entry_volume_5m, entry_volume_avg_5m, entry_volume_ratio_5m, entry_volume_spike_5m,
+                    -- Indicateurs d'entrée - Score et autres
+                    entry_score, entry_spread_pct, entry_balance_score,
                     entry_conditions, entry_condition_count,
+                    -- Métriques temporelles entry
+                    entry_hour_of_day, entry_day_of_week,
+                    -- Indicateurs de sortie
+                    exit_rsi_1m, exit_rsi_5m,
+                    exit_macd_hist_1m, exit_macd_hist_5m,
+                    exit_adx_1m, exit_adx_5m,
+                    exit_atr_pct_1m, exit_atr_pct_5m,
+                    exit_score, exit_volume_ratio_1m, exit_volume_ratio_5m,
+                    exit_spread_pct, exit_balance_score,
+                    entry_to_exit_price_change_pct,
+                    -- Métriques temporelles exit
+                    exit_hour_of_day, exit_day_of_week,
                     -- Métriques de position
                     max_favorable_excursion, max_adverse_excursion,
                     max_favorable_excursion_usdt, max_adverse_excursion_usdt,
                     -- Métriques de qualité
                     risk_reward_ratio,
+                    -- Métriques de performance additionnelles
+                    entry_to_max_profit_price_change_pct, entry_to_max_loss_price_change_pct,
+                    max_drawdown_pct, max_drawdown_usdt,
                     -- Scalability
                     entry_book_depth, entry_bid_vol, entry_ask_vol, entry_orderbook_imbalance,
+                    -- Configuration snapshot
+                    config_snapshot,
                     win
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
                     %s, %s, %s, %s,
                     %s
                 )
@@ -685,8 +731,9 @@ class PostgreSQLDataLogger:
             """
             
             # Utiliser timestamp_entry pour entry et timestamp_exit pour exit
-            entry_timestamp = timestamp_iso
-            exit_timestamp = timestamp_iso if trade_data.get('exit_price') else None
+            # Récupérer timestamp_entry depuis trade_data si disponible, sinon utiliser maintenant
+            entry_timestamp = trade_data.get('timestamp_entry') or timestamp_iso
+            exit_timestamp = trade_data.get('timestamp_exit') or (timestamp_iso if trade_data.get('exit_price') else None)
             
             # Calculer win (True si net_pnl_usdt > 0)
             net_pnl_usdt = trade_data.get('net_pnl_usdt', 0)
@@ -704,10 +751,50 @@ class PostgreSQLDataLogger:
             elif not isinstance(entry_conditions, list):
                 entry_conditions = [str(entry_conditions)] if entry_conditions else []
             
+            # Extraire indicateurs de sortie
+            exit_indicators = trade_data.get('exit_indicators', {})
+            
+            # Calculer métriques temporelles
+            try:
+                if isinstance(entry_timestamp, str):
+                    # Parser timestamp ISO
+                    if entry_timestamp.endswith('Z'):
+                        entry_timestamp = entry_timestamp.replace('Z', '+00:00')
+                    entry_datetime = datetime.fromisoformat(entry_timestamp)
+                elif isinstance(entry_timestamp, datetime):
+                    entry_datetime = entry_timestamp
+                else:
+                    entry_datetime = now
+                entry_hour = entry_datetime.hour
+                entry_day = entry_datetime.weekday()  # 0=Lundi, 6=Dimanche
+            except Exception:
+                entry_hour = now.hour
+                entry_day = now.weekday()
+            
+            try:
+                if exit_timestamp:
+                    if isinstance(exit_timestamp, str):
+                        if exit_timestamp.endswith('Z'):
+                            exit_timestamp = exit_timestamp.replace('Z', '+00:00')
+                        exit_datetime = datetime.fromisoformat(exit_timestamp)
+                    elif isinstance(exit_timestamp, datetime):
+                        exit_datetime = exit_timestamp
+                    else:
+                        exit_datetime = now
+                    exit_hour = exit_datetime.hour
+                    exit_day = exit_datetime.weekday()
+                else:
+                    exit_hour = None
+                    exit_day = None
+            except Exception:
+                exit_hour = None
+                exit_day = None
+            
             # Calculer risk_reward_ratio
             entry_price = trade_data.get('entry_price')
             tp_price = trade_data.get('tp_price')
             sl_price = trade_data.get('sl_price')
+            exit_price = trade_data.get('exit_price')
             risk_reward_ratio = None
             if entry_price and tp_price and sl_price:
                 if trade_data.get('direction') == 'LONG':
@@ -719,21 +806,54 @@ class PostgreSQLDataLogger:
                 if risk > 0:
                     risk_reward_ratio = profit / risk
             
+            # Calculer entry_to_exit_price_change_pct
+            entry_to_exit_price_change_pct = None
+            if entry_price and exit_price:
+                if trade_data.get('direction') == 'LONG':
+                    entry_to_exit_price_change_pct = ((exit_price - entry_price) / entry_price) * 100
+                else:  # SHORT
+                    entry_to_exit_price_change_pct = ((entry_price - exit_price) / entry_price) * 100
+            
             # Calculer max_favorable_excursion et max_adverse_excursion depuis pnl_history
             pnl_history = trade_data.get('pnl_history', []) or []
             max_favorable_excursion = None
             max_adverse_excursion = None
             max_favorable_excursion_usdt = None
             max_adverse_excursion_usdt = None
+            entry_to_max_profit_price_change_pct = None
+            entry_to_max_loss_price_change_pct = None
+            max_drawdown_pct = None
+            max_drawdown_usdt = None
+            
             if pnl_history:
                 pnl_pcts = [p.get('pnl_pct', 0) for p in pnl_history if p.get('pnl_pct') is not None]
                 pnl_usdts = [p.get('pnl_usdt', 0) for p in pnl_history if p.get('pnl_usdt') is not None]
                 if pnl_pcts:
                     max_favorable_excursion = max(pnl_pcts)
                     max_adverse_excursion = min(pnl_pcts)
+                    # Calculer entry_to_max_profit_price_change_pct et entry_to_max_loss_price_change_pct
+                    if entry_price:
+                        if trade_data.get('direction') == 'LONG':
+                            max_profit_price = entry_price * (1 + max_favorable_excursion / 100) if max_favorable_excursion else None
+                            max_loss_price = entry_price * (1 + max_adverse_excursion / 100) if max_adverse_excursion else None
+                        else:  # SHORT
+                            max_profit_price = entry_price * (1 - max_favorable_excursion / 100) if max_favorable_excursion else None
+                            max_loss_price = entry_price * (1 - max_adverse_excursion / 100) if max_adverse_excursion else None
+                        
+                        if max_profit_price:
+                            entry_to_max_profit_price_change_pct = ((max_profit_price - entry_price) / entry_price) * 100
+                        if max_loss_price:
+                            entry_to_max_loss_price_change_pct = ((max_loss_price - entry_price) / entry_price) * 100
+                    
+                    # Calculer max_drawdown (drawdown depuis le profit max)
+                    if max_favorable_excursion and max_adverse_excursion:
+                        max_drawdown_pct = max_favorable_excursion - max_adverse_excursion if max_favorable_excursion > 0 else abs(max_adverse_excursion)
+                
                 if pnl_usdts:
                     max_favorable_excursion_usdt = max(pnl_usdts)
                     max_adverse_excursion_usdt = min(pnl_usdts)
+                    if max_favorable_excursion_usdt and max_adverse_excursion_usdt:
+                        max_drawdown_usdt = max_favorable_excursion_usdt - max_adverse_excursion_usdt if max_favorable_excursion_usdt > 0 else abs(max_adverse_excursion_usdt)
             
             # Fallback sur max_pnl_reached / min_pnl_reached si pnl_history non disponible
             if max_favorable_excursion is None:
@@ -748,6 +868,13 @@ class PostgreSQLDataLogger:
             slippage_pct = trade_data.get('slippage', 0) or 0
             size_usdt = trade_data.get('size_usdt', 0) or 0
             slippage_usdt = (slippage_pct / 100) * size_usdt if slippage_pct and size_usdt else 0
+            
+            # Extraire config_snapshot
+            config_snapshot = trade_data.get('config_snapshot', {})
+            if config_snapshot:
+                config_snapshot = json.dumps(config_snapshot)
+            else:
+                config_snapshot = None
             
             params = (
                 entry_timestamp, exit_timestamp, session_id, opportunity_id, scan_log_id,
@@ -774,27 +901,69 @@ class PostgreSQLDataLogger:
                 trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
                 len(tp_escalier_levels_hit),  # tp_escalier_levels_executed (count)
                 tp_escalier_profits,  # tp_escalier_profits (somme)
-                # Indicateurs d'entrée
+                # Indicateurs d'entrée - RSI
                 entry_indicators.get('rsi_1m'), entry_indicators.get('rsi_5m'),
-                entry_indicators.get('macd_hist_1m'), entry_indicators.get('macd_hist_5m'),
+                entry_indicators.get('rsi_prev_1m'), entry_indicators.get('rsi_prev_5m'),
+                # Indicateurs d'entrée - MACD
+                entry_indicators.get('macd_1m'), entry_indicators.get('macd_signal_1m'),
+                entry_indicators.get('macd_hist_1m'), entry_indicators.get('macd_hist_prev_1m'),
+                entry_indicators.get('macd_5m'), entry_indicators.get('macd_signal_5m'),
+                entry_indicators.get('macd_hist_5m'), entry_indicators.get('macd_hist_prev_5m'),
+                # Indicateurs d'entrée - ADX
                 entry_indicators.get('adx_1m'), entry_indicators.get('adx_5m'),
-                entry_indicators.get('atr_pct_1m'), entry_indicators.get('atr_pct_5m'),
+                entry_indicators.get('di_plus_1m'), entry_indicators.get('di_minus_1m'), entry_indicators.get('di_gap_1m'),
+                entry_indicators.get('di_plus_5m'), entry_indicators.get('di_minus_5m'), entry_indicators.get('di_gap_5m'),
+                # Indicateurs d'entrée - EMA
+                entry_indicators.get('ema9_1m'), entry_indicators.get('ema21_1m'), entry_indicators.get('ema_diff_pct_1m'),
+                entry_indicators.get('ema9_5m'), entry_indicators.get('ema21_5m'), entry_indicators.get('ema_diff_pct_5m'),
+                # Indicateurs d'entrée - ATR
+                entry_indicators.get('atr_1m'), entry_indicators.get('atr_pct_1m'),
+                entry_indicators.get('atr_5m'), entry_indicators.get('atr_pct_5m'),
+                # Indicateurs d'entrée - Bollinger Bands
+                entry_indicators.get('bb_upper_1m'), entry_indicators.get('bb_middle_1m'), entry_indicators.get('bb_lower_1m'),
+                entry_indicators.get('bb_width_1m'), entry_indicators.get('bb_distance_to_lower_1m'), entry_indicators.get('bb_distance_to_upper_1m'),
+                entry_indicators.get('bb_upper_5m'), entry_indicators.get('bb_middle_5m'), entry_indicators.get('bb_lower_5m'),
+                entry_indicators.get('bb_width_5m'), entry_indicators.get('bb_distance_to_lower_5m'), entry_indicators.get('bb_distance_to_upper_5m'),
+                # Indicateurs d'entrée - Volume
+                entry_indicators.get('volume_1m'), entry_indicators.get('volume_avg_1m'),
+                entry_indicators.get('volume_ratio_1m'), entry_indicators.get('volume_spike_1m'),
+                entry_indicators.get('volume_5m'), entry_indicators.get('volume_avg_5m'),
+                entry_indicators.get('volume_ratio_5m'), entry_indicators.get('volume_spike_5m'),
+                # Indicateurs d'entrée - Score et autres
                 entry_indicators.get('score'),  # entry_score
-                entry_indicators.get('volume_ratio_1m'), entry_indicators.get('volume_ratio_5m'),
                 entry_scalability.get('spread_pct'),  # entry_spread_pct
                 entry_scalability.get('balance_score'),  # entry_balance_score
                 entry_conditions,  # entry_conditions (TEXT[])
                 len(entry_conditions),  # entry_condition_count
+                # Métriques temporelles entry
+                entry_hour, entry_day,
+                # Indicateurs de sortie
+                exit_indicators.get('rsi_1m'), exit_indicators.get('rsi_5m'),
+                exit_indicators.get('macd_hist_1m'), exit_indicators.get('macd_hist_5m'),
+                exit_indicators.get('adx_1m'), exit_indicators.get('adx_5m'),
+                exit_indicators.get('atr_pct_1m'), exit_indicators.get('atr_pct_5m'),
+                exit_indicators.get('score'),  # exit_score
+                exit_indicators.get('volume_ratio_1m'), exit_indicators.get('volume_ratio_5m'),
+                exit_indicators.get('spread_pct'),  # exit_spread_pct
+                exit_indicators.get('balance_score'),  # exit_balance_score
+                entry_to_exit_price_change_pct,
+                # Métriques temporelles exit
+                exit_hour, exit_day,
                 # Métriques de position
                 max_favorable_excursion, max_adverse_excursion,
                 max_favorable_excursion_usdt, max_adverse_excursion_usdt,
                 # Métriques de qualité
                 risk_reward_ratio,
+                # Métriques de performance additionnelles
+                entry_to_max_profit_price_change_pct, entry_to_max_loss_price_change_pct,
+                max_drawdown_pct, max_drawdown_usdt,
                 # Scalability
                 entry_scalability.get('book_depth'),  # entry_book_depth
                 entry_scalability.get('bid_vol'),  # entry_bid_vol
                 entry_scalability.get('ask_vol'),  # entry_ask_vol
                 entry_scalability.get('orderbook_imbalance'),  # entry_orderbook_imbalance
+                # Configuration snapshot
+                config_snapshot,
                 win
             )
             

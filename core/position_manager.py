@@ -497,18 +497,69 @@ class PositionManager:
                 
                 # Préparer entry_indicators (snapshot au moment de l'entrée)
                 # Récupérer depuis setup si disponible
+                indicators_1m = last_setup.get('indicators_1m', {}) if last_setup else {}
+                indicators_5m = last_setup.get('indicators_5m', {}) if last_setup else {}
+                
                 entry_indicators = {
-                    'rsi_1m': last_setup.get('rsi') if last_setup else None,
-                    'rsi_5m': None,  # À récupérer depuis setup si disponible
-                    'macd_hist_1m': last_setup.get('macd_hist') if last_setup else None,
-                    'macd_hist_5m': None,
-                    'adx_1m': last_setup.get('adx') if last_setup else None,
-                    'adx_5m': None,
-                    'atr_pct_1m': (atr / entry * 100) if atr and entry else (last_setup.get('atr_pct') if last_setup else None),
-                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else None,
+                    # RSI
+                    'rsi_1m': indicators_1m.get('rsi') or last_setup.get('rsi') if last_setup else None,
+                    'rsi_5m': indicators_5m.get('rsi') if indicators_5m else None,
+                    'rsi_prev_1m': indicators_1m.get('rsi_prev') if indicators_1m else None,
+                    'rsi_prev_5m': indicators_5m.get('rsi_prev') if indicators_5m else None,
+                    # MACD
+                    'macd_1m': indicators_1m.get('macd') if indicators_1m else None,
+                    'macd_signal_1m': indicators_1m.get('macd_signal') if indicators_1m else None,
+                    'macd_hist_1m': indicators_1m.get('macd_hist') or last_setup.get('macd_hist') if last_setup else None,
+                    'macd_hist_prev_1m': indicators_1m.get('macd_hist_prev') if indicators_1m else None,
+                    'macd_5m': indicators_5m.get('macd') if indicators_5m else None,
+                    'macd_signal_5m': indicators_5m.get('macd_signal') if indicators_5m else None,
+                    'macd_hist_5m': indicators_5m.get('macd_hist') if indicators_5m else None,
+                    'macd_hist_prev_5m': indicators_5m.get('macd_hist_prev') if indicators_5m else None,
+                    # ADX
+                    'adx_1m': indicators_1m.get('adx') or last_setup.get('adx') if last_setup else None,
+                    'adx_5m': indicators_5m.get('adx') if indicators_5m else None,
+                    'di_plus_1m': indicators_1m.get('di_plus') if indicators_1m else None,
+                    'di_minus_1m': indicators_1m.get('di_minus') if indicators_1m else None,
+                    'di_gap_1m': indicators_1m.get('di_gap') if indicators_1m else None,
+                    'di_plus_5m': indicators_5m.get('di_plus') if indicators_5m else None,
+                    'di_minus_5m': indicators_5m.get('di_minus') if indicators_5m else None,
+                    'di_gap_5m': indicators_5m.get('di_gap') if indicators_5m else None,
+                    # EMA
+                    'ema9_1m': indicators_1m.get('ema9') if indicators_1m else None,
+                    'ema21_1m': indicators_1m.get('ema21') if indicators_1m else None,
+                    'ema_diff_pct_1m': indicators_1m.get('ema_diff_pct') if indicators_1m else None,
+                    'ema9_5m': indicators_5m.get('ema9') if indicators_5m else None,
+                    'ema21_5m': indicators_5m.get('ema21') if indicators_5m else None,
+                    'ema_diff_pct_5m': indicators_5m.get('ema_diff_pct') if indicators_5m else None,
+                    # ATR
+                    'atr_1m': indicators_1m.get('atr') if indicators_1m else None,
+                    'atr_pct_1m': (atr / entry * 100) if atr and entry else (indicators_1m.get('atr_pct') or last_setup.get('atr_pct') if last_setup else None),
+                    'atr_5m': indicators_5m.get('atr') if indicators_5m else None,
+                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else (indicators_5m.get('atr_pct') if indicators_5m else None),
+                    # Bollinger Bands
+                    'bb_upper_1m': indicators_1m.get('bb_upper') if indicators_1m else None,
+                    'bb_middle_1m': indicators_1m.get('bb_middle') if indicators_1m else None,
+                    'bb_lower_1m': indicators_1m.get('bb_lower') if indicators_1m else None,
+                    'bb_width_1m': indicators_1m.get('bb_width') if indicators_1m else None,
+                    'bb_distance_to_lower_1m': indicators_1m.get('bb_distance_to_lower') if indicators_1m else None,
+                    'bb_distance_to_upper_1m': indicators_1m.get('bb_distance_to_upper') if indicators_1m else None,
+                    'bb_upper_5m': indicators_5m.get('bb_upper') if indicators_5m else None,
+                    'bb_middle_5m': indicators_5m.get('bb_middle') if indicators_5m else None,
+                    'bb_lower_5m': indicators_5m.get('bb_lower') if indicators_5m else None,
+                    'bb_width_5m': indicators_5m.get('bb_width') if indicators_5m else None,
+                    'bb_distance_to_lower_5m': indicators_5m.get('bb_distance_to_lower') if indicators_5m else None,
+                    'bb_distance_to_upper_5m': indicators_5m.get('bb_distance_to_upper') if indicators_5m else None,
+                    # Volume
+                    'volume_1m': indicators_1m.get('volume') if indicators_1m else None,
+                    'volume_avg_1m': indicators_1m.get('volume_avg') if indicators_1m else None,
+                    'volume_ratio_1m': indicators_1m.get('volume_ratio') or last_setup.get('volumeSpike') if last_setup else None,
+                    'volume_spike_1m': indicators_1m.get('volume_spike') if indicators_1m else None,
+                    'volume_5m': indicators_5m.get('volume') if indicators_5m else None,
+                    'volume_avg_5m': indicators_5m.get('volume_avg') if indicators_5m else None,
+                    'volume_ratio_5m': indicators_5m.get('volume_ratio') if indicators_5m else None,
+                    'volume_spike_5m': indicators_5m.get('volume_spike') if indicators_5m else None,
+                    # Score
                     'score': last_setup.get('totalScore') if last_setup else None,
-                    'volume_ratio_1m': last_setup.get('volumeSpike') if last_setup else None,
-                    'volume_ratio_5m': None
                 }
                 
                 # Conditions matched
@@ -1096,6 +1147,25 @@ class PositionManager:
                     entry_conditions = getattr(self.active_position, '_entry_conditions', [])
                     entry_scalability = getattr(self.active_position, '_entry_scalability', {})
                     
+                    # Récupérer timestamps
+                    from config import TRADING_CONFIG
+                    timestamp_entry = None
+                    if hasattr(self.active_position, 'start_time'):
+                        timestamp_entry = datetime.fromtimestamp(self.active_position.start_time).isoformat()
+                    elif hasattr(self.active_position, 'timestamp'):
+                        timestamp_entry = self.active_position.timestamp
+                    else:
+                        timestamp_entry = datetime.now().isoformat()
+                    
+                    timestamp_exit = datetime.now().isoformat()
+                    
+                    # Préparer config_snapshot complet (toutes les variables de configuration)
+                    config_snapshot = TRADING_CONFIG.copy() if TRADING_CONFIG else {}
+                    
+                    # Préparer indicateurs de sortie (vide pour l'instant, sera rempli plus tard si nécessaire)
+                    # TODO: Faire un scan rapide au moment de la fermeture pour récupérer les indicateurs de sortie
+                    exit_indicators = {}
+                    
                     trade_data = {
                         'symbol': self.active_position.symbol,
                         'direction': self.active_position.direction,
@@ -1104,6 +1174,8 @@ class PositionManager:
                         'tp_price': self.active_position.tp,
                         'sl_price': self.active_position.sl,
                         'size_usdt': self.active_position.size,
+                        'timestamp_entry': timestamp_entry,
+                        'timestamp_exit': timestamp_exit,
                         'gross_pnl_usdt': result['gross_pnl_usdt'],
                         'gross_pnl_pct': result['gross_pnl_pct'],
                         'net_pnl_usdt': result['net_pnl_usdt'],
@@ -1113,7 +1185,7 @@ class PositionManager:
                         'total_costs': result['total_costs'],
                         'reason': reason,
                         'duration_seconds': duration,
-                        'tp_sl_mode': getattr(self.config, 'tp_sl_mode', 'FIXE') if hasattr(self, 'config') else 'FIXE',
+                        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                         'break_even_triggered': self.active_position.break_even_set,
                         'trailing_stop_triggered': (reason == 'TS'),
                         'partial_tp_triggered': self.active_position.partial_tp_sold,
@@ -1128,11 +1200,8 @@ class PositionManager:
                         'entry_indicators': entry_indicators,
                         'entry_conditions': entry_conditions,
                         'entry_scalability': entry_scalability,
-                        'exit_indicators': {},  # TODO: Récupérer indicateurs à la sortie
-                        'params_snapshot': {
-                            'tp_sl_mode': getattr(self.config, 'tp_sl_mode', 'FIXE') if hasattr(self, 'config') else 'FIXE',
-                            'use_atr': getattr(self.config, 'use_atr', False) if hasattr(self, 'config') else False,
-                        },
+                        'exit_indicators': exit_indicators,  # Vide pour l'instant, sera rempli plus tard
+                        'config_snapshot': config_snapshot,  # Toutes les variables de configuration
                         'is_backtest': False
                     }
                     
