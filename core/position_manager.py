@@ -1126,6 +1126,8 @@ class PositionManager:
                         logger.debug(f"📊 Trade loggé dans PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur logging PostgreSQL trade: {e}")
+        except Exception as e:
+            logger.debug(f"Erreur initialisation PostgreSQL datalogger (non-bloquant): {e}")
         
         # Logging existant (backend.ml.data_logger)
         try:
