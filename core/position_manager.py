@@ -1069,6 +1069,65 @@ class PositionManager:
         # ========================================
         # ✅ POINT D : LOG TRADE EXIT
         # ========================================
+        
+        # 🔥 PHASE 2: Logger dans PostgreSQL si activé
+        try:
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger and pg_datalogger.enabled:
+                try:
+                    # Préparer les données du trade pour PostgreSQL
+                    trade_data = {
+                        'symbol': self.active_position.symbol,
+                        'direction': self.active_position.direction,
+                        'entry_price': self.active_position.entry,
+                        'exit_price': exit_price,
+                        'size_usdt': self.active_position.size,
+                        'gross_pnl_usdt': result['gross_pnl_usdt'],
+                        'gross_pnl_pct': result['gross_pnl_pct'],
+                        'net_pnl_usdt': result['net_pnl_usdt'],
+                        'net_pnl_pct': result['net_pnl_pct'],
+                        'fees': result['fees'],
+                        'slippage': result['slippage_pct'],
+                        'total_costs': result['total_costs'],
+                        'reason': reason,
+                        'duration_seconds': duration,
+                        'tp_sl_mode': getattr(self.config, 'tp_sl_mode', 'FIXE') if hasattr(self, 'config') else 'FIXE',
+                        'break_even_triggered': self.active_position.break_even_set,
+                        'trailing_stop_triggered': (reason == 'TS'),
+                        'partial_tp_triggered': self.active_position.partial_tp_sold,
+                        'tp_escalier_enabled': self.active_position.tp_escalier_enabled,
+                        'tp_escalier_levels_hit': [
+                            {'level': i+1, 'profit': p.get('profit', 0)}
+                            for i, p in enumerate(self.active_position.tp_escalier_profits)
+                        ] if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else [],
+                        'max_pnl_reached': max([p.get('pnl_pct', 0) for p in self.active_position.pnl_history], default=None) if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history else None,
+                        'min_pnl_reached': min([p.get('pnl_pct', 0) for p in self.active_position.pnl_history], default=None) if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history else None,
+                        'entry_indicators': getattr(self.active_position, '_entry_indicators', {}),
+                        'exit_indicators': {},  # TODO: Récupérer indicateurs à la sortie
+                        'params_snapshot': {
+                            'tp_sl_mode': getattr(self.config, 'tp_sl_mode', 'FIXE') if hasattr(self, 'config') else 'FIXE',
+                            'use_atr': getattr(self.config, 'use_atr', False) if hasattr(self, 'config') else False,
+                        },
+                        'is_backtest': False
+                    }
+                    
+                    # Récupérer opportunity_id si disponible
+                    opportunity_id = getattr(self.active_position, '_opportunity_id', None)
+                    
+                    # Logger le trade
+                    trade_id = pg_datalogger.log_trade(
+                        trade_data=trade_data,
+                        opportunity_id=opportunity_id,
+                        session_id=getattr(self, 'session_id', None)
+                    )
+                    
+                    if trade_id:
+                        logger.debug(f"📊 Trade loggé dans PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur logging PostgreSQL trade: {e}")
+        
+        # Logging existant (backend.ml.data_logger)
         try:
             from backend.ml.data_logger import DataLogger
             data_logger = DataLogger()

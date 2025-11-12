@@ -18,6 +18,7 @@ _app_state = None
 _sio = None  # 🔥 MIGRATION COMPLÈTE: Gardé pour compatibilité, mais utiliser _ws_manager
 _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
+_pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML
 
 
 def set_scanner(scanner):
@@ -65,6 +66,17 @@ def set_scanner_lock(lock):
     """Injecter le lock du scanner"""
     global _scanner_lock
     _scanner_lock = lock
+
+
+def set_pg_datalogger(pg_datalogger):
+    """🔥 PHASE 1: Injecter l'instance PostgreSQLDataLogger"""
+    global _pg_datalogger
+    _pg_datalogger = pg_datalogger
+
+
+def get_pg_datalogger():
+    """🔥 PHASE 2: Récupérer l'instance PostgreSQLDataLogger"""
+    return _pg_datalogger
 
 
 async def scanner_loop_callback():
@@ -253,16 +265,16 @@ async def _scan_top_pairs():
                                 logger.warning(f"💹 DEBUG: spread est NaN, remplacement par 0")
                                 spread_value = 0
                             
-                            # 🔥 FIX BUG #5: Si spread ou depth sont <= 0 (plus robuste que == 0 pour floats)
-                            if spread_value <= 0:
+                            # 🔥 FIX: Si spread ou depth sont à 0, essayer de récupérer depuis best_setup
+                            if spread_value == 0:
                                 if best_setup.get('spread_pct'):
                                     spread_value = best_setup.get('spread_pct', 0)
                                     logger.info(f"💹 Utilisation spread depuis best_setup: {spread_value}%")
                                 else:
-                                    logger.warning(f"💹 DEBUG: spread<=0 et best_setup.spread_pct non disponible")
-
-                            # 🔥 FIX BUG #5: Si depth est <= 0, calculer depuis bid_vol + ask_vol
-                            if book_depth <= 0:
+                                    logger.warning(f"💹 DEBUG: spread=0 et best_setup.spread_pct non disponible")
+                            
+                            # 🔥 FIX: Si depth est à 0, calculer depuis bid_vol + ask_vol
+                            if book_depth == 0:
                                 if bid_vol > 0 or ask_vol > 0:
                                     book_depth = bid_vol + ask_vol
                                     logger.info(f"💹 Calcul depth depuis volumes: {book_depth}")
@@ -283,8 +295,8 @@ async def _scan_top_pairs():
                     if not found_pair:
                         logger.warning(f"💹 DEBUG: Paire {symbol} non trouvée dans top_pairs")
                     
-                    # 🔥 FIX BUG #5: Si scalability_data est toujours None ou invalide, essayer depuis best_setup
-                    if not scalability_data or (scalability_data.get('spread_pct', 0) <= 0 and scalability_data.get('depth', 0) <= 0):
+                    # 🔥 FIX: Si scalability_data est toujours None ou invalide, essayer depuis best_setup
+                    if not scalability_data or (scalability_data.get('spread_pct', 0) == 0 and scalability_data.get('depth', 0) == 0):
                         logger.warning(f"💹 Données scalabilité manquantes/invalides dans top_pairs pour {symbol}, tentative depuis best_setup")
                         logger.info(f"💹 DEBUG: best_setup keys: {list(best_setup.keys())}")
                         if best_setup.get('spread_pct'):
@@ -416,6 +428,82 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             active_positions=[],
             position_manager=_position_manager
         )
+
+        # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé
+        if _pg_datalogger and _pg_datalogger.enabled:
+            try:
+                # Préparer les données du scan pour PostgreSQL
+                scan_data = {
+                    'scan_duration_ms': None,  # TODO: Mesurer durée
+                    'market_data': {
+                        'price': analysis.get('price') if analysis else None,
+                        'spread_pct': analysis.get('spread_pct') if analysis else None,
+                        'book_depth': analysis.get('book_depth') if analysis else None,
+                        'balance_score': analysis.get('balance_score') if analysis else None,
+                        'bid_vol': analysis.get('bid_vol') if analysis else None,
+                        'ask_vol': analysis.get('ask_vol') if analysis else None,
+                        'orderbook_imbalance_ratio': analysis.get('orderbook_imbalance_ratio') if analysis else None,
+                    },
+                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
+                    'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
+                    'filters': analysis.get('filters', {}) if analysis else {},
+                    'scores': {
+                        'score_1m': analysis.get('score_1m') if analysis else None,
+                        'score_5m': analysis.get('score_5m') if analysis else None,
+                        'score_total': analysis.get('score_total') if analysis else None,
+                        'score_long_1m': analysis.get('score_long_1m') if analysis else None,
+                        'score_short_1m': analysis.get('score_short_1m') if analysis else None,
+                        'score_long_5m': analysis.get('score_long_5m') if analysis else None,
+                        'score_short_5m': analysis.get('score_short_5m') if analysis else None,
+                    },
+                    'patterns': {
+                        'pattern_1m': analysis.get('pattern_1m') if analysis else None,
+                        'pattern_multi_1m': analysis.get('pattern_multi_1m') if analysis else None,
+                        'pattern_5m': analysis.get('pattern_5m') if analysis else None,
+                        'pattern_multi_5m': analysis.get('pattern_multi_5m') if analysis else None,
+                    },
+                    'use_confluence': use_confluence,
+                    'confluence_met': analysis.get('confluence_met') if analysis else False,
+                    'timeframes_aligned': analysis.get('timeframes_aligned') if analysis else False,
+                    'trend_timeframe': trend_timeframe,
+                    'trend_direction': trend_data.get('direction') if trend_data else None,
+                    'trend_strength': trend_data.get('strength') if trend_data else None,
+                    'trend_bonus': trend_data.get('bonus') if trend_data else None,
+                    'divergence_detected': analysis.get('divergence_detected') if analysis else False,
+                    'divergence_type': analysis.get('divergence_type') if analysis else None,
+                    'divergence_bonus': analysis.get('divergence_bonus') if analysis else 0,
+                    'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)),
+                    'opportunity_direction': analysis.get('direction') if analysis and 'direction' in analysis else None,
+                    'reject_reason': analysis.get('reason') if analysis and 'reason' in analysis else None,
+                    'reject_reason_category': analysis.get('reject_category') if analysis else None,
+                    'params_snapshot': {
+                        'volume_multiplier': volume_multiplier,
+                        'use_confluence': use_confluence,
+                        'trend_timeframe': trend_timeframe,
+                    }
+                }
+                
+                # Logger le scan
+                scan_id = _pg_datalogger.log_scan(symbol, scan_data)
+                
+                # Si c'est une opportunité, logger aussi dans opportunities
+                if scan_id and scan_data['is_opportunity'] and analysis:
+                    opportunity_data = {
+                        'status': 'PENDING',
+                        'direction': analysis.get('direction'),
+                        'setup_score': analysis.get('score_total'),
+                        'conditions_matched': analysis.get('condition_types', []),
+                        'entry_price': analysis.get('entry') or analysis.get('price'),
+                        'tp_price': analysis.get('tp'),
+                        'sl_price': analysis.get('sl'),
+                        'size_usdt': None,  # Sera calculé lors de l'ouverture
+                        'risk_usdt': None,
+                        'reward_risk_ratio': None,
+                    }
+                    _pg_datalogger.log_opportunity(scan_id, symbol, opportunity_data)
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur logging PostgreSQL pour {symbol}: {e}")
 
         return analysis
 

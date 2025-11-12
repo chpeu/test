@@ -1229,6 +1229,43 @@ def init_instances():
         if set_analytics_db and analytics_db:
             set_analytics_db(analytics_db)
         
+        # 🔥 PHASE 1: Initialiser PostgreSQL DataLogger si activé
+        pg_datalogger = None
+        try:
+            from core.postgresql_datalogger import PostgreSQLDataLogger
+            from config import (
+                POSTGRES_ENABLED, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
+                POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_MIN_CONN, POSTGRES_MAX_CONN
+            )
+            
+            if POSTGRES_ENABLED:
+                pg_datalogger = PostgreSQLDataLogger(
+                    host=POSTGRES_HOST,
+                    port=POSTGRES_PORT,
+                    database=POSTGRES_DB,
+                    user=POSTGRES_USER,
+                    password=POSTGRES_PASSWORD,
+                    min_conn=POSTGRES_MIN_CONN,
+                    max_conn=POSTGRES_MAX_CONN
+                )
+                
+                if pg_datalogger.enabled:
+                    logger.info("✅ PostgreSQL DataLogger initialisé")
+                    # Injecter dans scanner_loop
+                    from core.callbacks.scanner_loop import set_pg_datalogger
+                    if set_pg_datalogger:
+                        set_pg_datalogger(pg_datalogger)
+                else:
+                    logger.warning("⚠️ PostgreSQL DataLogger désactivé (connexion échouée)")
+                    pg_datalogger = None
+            else:
+                logger.debug("ℹ️ PostgreSQL DataLogger désactivé (POSTGRES_ENABLED=false)")
+        except ImportError as e:
+            logger.debug(f"ℹ️ PostgreSQL DataLogger non disponible: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur initialisation PostgreSQL DataLogger: {e}")
+            pg_datalogger = None
+        
         # 🔥 NOUVEAU: Injecter Position Manager, Notification Manager et instance port
         # Récupérer port instance pour multi-instances
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
