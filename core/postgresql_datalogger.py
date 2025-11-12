@@ -1005,6 +1005,16 @@ class PostgreSQLDataLogger:
                 win
             )
             
+            # Vérifier le nombre de paramètres AVANT l'exécution
+            param_count = len(params)
+            placeholder_count = query.count('%s')
+            if param_count != placeholder_count:
+                logger.error(f"❌ Déséquilibre paramètres: {param_count} paramètres pour {placeholder_count} placeholders")
+                logger.error(f"   Symbol: {trade_data.get('symbol')}")
+                logger.error(f"   entry_conditions type: {type(entry_conditions)}, value: {entry_conditions}")
+                # Ne pas logger le trade si déséquilibre
+                return None
+            
             result = self._execute_query(query, params, fetch=True)
             if result:
                 trade_id = result[0][0]
