@@ -206,6 +206,9 @@ async def _scan_top_pairs():
             elif r and isinstance(r, dict):
                 # Setup valide = a 'direction' ET 'entry' (ou 'price')
                 if 'direction' in r and ('entry' in r or 'price' in r):
+                    # 🔥 DEBUG: Vérifier si le setup contient les indicateurs
+                    symbol_check = r.get('symbol', 'UNKNOWN')
+                    logger.info(f"🔍 DEBUG valid_setups.append({symbol_check}): contient indicators_1m: {'indicators_1m' in r}, indicators_5m: {'indicators_5m' in r}")
                     valid_setups.append(r)
                 else:
                     # Rejet
@@ -337,7 +340,18 @@ async def _scan_top_pairs():
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
                 _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
                 _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
+                
+                # 🔥 DEBUG: Vérifier si best_setup contient les indicateurs
+                logger.info(f"🔍 DEBUG best_setup pour {symbol}: contient indicators_1m: {'indicators_1m' in best_setup}, indicators_5m: {'indicators_5m' in best_setup}")
+                if 'indicators_1m' in best_setup:
+                    logger.info(f"✅ indicators_1m présent dans best_setup: {len(best_setup.get('indicators_1m', {}))} clés")
+                if 'indicators_5m' in best_setup:
+                    logger.info(f"✅ indicators_5m présent dans best_setup: {len(best_setup.get('indicators_5m', {}))} clés")
+                
                 _position_manager._last_setup = best_setup  # Stocker setup complet pour récupérer indicateurs
+                
+                # 🔥 DEBUG: Vérifier après stockage
+                logger.info(f"🔍 DEBUG _last_setup après stockage: contient indicators_1m: {'indicators_1m' in _position_manager._last_setup}, indicators_5m: {'indicators_5m' in _position_manager._last_setup}")
 
                 # BUG #12 FIX: Fallback atr5m sur atr si absent
                 atr = best_setup.get('atr')
@@ -403,9 +417,11 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
     4. Logger détails en DEBUG
     """
     if not _analyzer or not symbol:
+        logger.warning(f"⚠️ scan_pair_for_setup({symbol}): _analyzer={_analyzer is not None}, symbol={bool(symbol)}")
         return None
 
     try:
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): DÉBUT - _analyzer: {_analyzer is not None}")
         logger.debug(f"🔎 Analyse setup: {symbol}")
         
         # 🔥 PHASE 3: Mesurer la durée du scan
@@ -423,6 +439,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         trend_data = await _analyzer.calculate_trend_data(symbol, trend_timeframe)
 
         # Analyser la paire
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT analyze_pair")
         analysis = await _analyzer.analyze_pair(
             symbol,
             trend_data=trend_data,
@@ -432,6 +449,95 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             active_positions=[],
             position_manager=_position_manager
         )
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS analyze_pair, analysis: {analysis is not None}, type: {type(analysis)}")
+
+        # 🔥 DEBUG: Vérifier ce que contient analysis
+        if analysis:
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): analysis type: {type(analysis)}, keys: {list(analysis.keys())[:15] if isinstance(analysis, dict) else 'N/A'}")
+        else:
+            logger.warning(f"⚠️ scan_pair_for_setup({symbol}): analysis est None ou False")
+
+        # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
+        # pour qu'ils soient disponibles dans _last_setup
+        if analysis and isinstance(analysis, dict):
+            # Extraire les indicateurs depuis analysis si disponibles
+            # Les indicateurs peuvent être dans analysis directement ou dans des sous-dictionnaires
+            indicators_1m = analysis.get('indicators_1m', {})
+            indicators_5m = analysis.get('indicators_5m', {})
+            
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
+            
+            # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
+            if not indicators_1m:
+                logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
+                # Construire indicators_1m depuis les données disponibles dans analysis
+                indicators_1m = {
+                    'rsi': analysis.get('rsi'),
+                    'rsi_prev': analysis.get('rsi_prev'),
+                    'macd': analysis.get('macd'),
+                    'macd_signal': analysis.get('macd_signal'),
+                    'macd_hist': analysis.get('macd_hist'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev'),
+                    'adx': analysis.get('adx'),
+                    'di_plus': analysis.get('di_plus'),
+                    'di_minus': analysis.get('di_minus'),
+                    'di_gap': analysis.get('di_gap'),
+                    'ema9': analysis.get('ema9'),
+                    'ema21': analysis.get('ema21'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct'),
+                    'atr': analysis.get('atr'),
+                    'atr_pct': analysis.get('atr_pct'),
+                    'bb_upper': analysis.get('bb_upper'),
+                    'bb_middle': analysis.get('bb_middle'),
+                    'bb_lower': analysis.get('bb_lower'),
+                    'bb_width': analysis.get('bb_width'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                    'volume': analysis.get('volume'),
+                    'volume_avg': analysis.get('volume_avg'),
+                    'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                    'volume_spike': analysis.get('volume_spike'),
+                }
+            
+            # Si indicators_5m n'est pas présent, essayer de le construire depuis les données disponibles
+            if not indicators_5m:
+                logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
+                # Pour indicators_5m, on peut utiliser les mêmes données ou des variantes 5m si disponibles
+                indicators_5m = {
+                    'rsi': analysis.get('rsi_5m'),
+                    'rsi_prev': analysis.get('rsi_prev_5m'),
+                    'macd': analysis.get('macd_5m'),
+                    'macd_signal': analysis.get('macd_signal_5m'),
+                    'macd_hist': analysis.get('macd_hist_5m'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
+                    'adx': analysis.get('adx_5m'),
+                    'di_plus': analysis.get('di_plus_5m'),
+                    'di_minus': analysis.get('di_minus_5m'),
+                    'di_gap': analysis.get('di_gap_5m'),
+                    'ema9': analysis.get('ema9_5m'),
+                    'ema21': analysis.get('ema21_5m'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
+                    'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
+                    'atr_pct': analysis.get('atr_pct_5m'),
+                    'bb_upper': analysis.get('bb_upper_5m'),
+                    'bb_middle': analysis.get('bb_middle_5m'),
+                    'bb_lower': analysis.get('bb_lower_5m'),
+                    'bb_width': analysis.get('bb_width_5m'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
+                    'volume': analysis.get('volume_5m'),
+                    'volume_avg': analysis.get('volume_avg_5m'),
+                    'volume_ratio': analysis.get('volume_ratio_5m'),
+                    'volume_spike': analysis.get('volume_spike_5m'),
+                }
+            
+            # Ajouter les indicateurs à analysis
+            analysis['indicators_1m'] = indicators_1m
+            analysis['indicators_5m'] = indicators_5m
+            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
+            logger.info(f"🔍 DEBUG analysis après ajout indicateurs: keys: {list(analysis.keys())[:20]}")
+        else:
+            logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
 
         # 🔥 PHASE 3: Calculer durée du scan
         scan_duration_ms = int((time.time() - scan_start_time) * 1000)
@@ -535,7 +641,11 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     
             except Exception as e:
                 logger.warning(f"⚠️ Erreur logging PostgreSQL pour {symbol}: {e}")
-
+        
+        # 🔥 DEBUG: Vérifier avant return
+        if analysis and isinstance(analysis, dict):
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}) AVANT RETURN: contient indicators_1m: {'indicators_1m' in analysis}, indicators_5m: {'indicators_5m' in analysis}")
+        
         return analysis
 
     except Exception as e:
