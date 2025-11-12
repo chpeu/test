@@ -236,6 +236,16 @@ async def shutdown_event():
                 logger.info("✅ DataLogger arrêté proprement")
             except Exception as e:
                 logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+        
+        # 🔥 PHASE 3: Fermer PostgreSQL DataLogger proprement
+        try:
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger:
+                pg_datalogger.close()
+                logger.info("✅ PostgreSQL DataLogger fermé proprement")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
     except Exception as e:
         logger.warning(f"⚠️ Erreur événement shutdown: {e}")
 
@@ -1255,6 +1265,58 @@ def init_instances():
                     from core.callbacks.scanner_loop import set_pg_datalogger
                     if set_pg_datalogger:
                         set_pg_datalogger(pg_datalogger)
+                    
+                    # 🔥 PHASE 3: Créer tâche périodique pour logging contexte marché
+                    async def log_market_context_periodic():
+                        """Tâche périodique pour logger le contexte marché"""
+                        while True:
+                            try:
+                                await asyncio.sleep(300)  # Toutes les 5 minutes
+                                if pg_datalogger and pg_datalogger.enabled:
+                                    try:
+                                        # Récupérer prix BTC/ETH
+                                        from api.price_provider import get_price_provider
+                                        price_provider = get_price_provider()
+                                        
+                                        context_data = {
+                                            'btc_price': None,
+                                            'eth_price': None,
+                                            'global_metrics': {},
+                                            'session_stats': {},
+                                            'market_trend': None,
+                                            'market_volatility': None,
+                                            'fear_greed_index': None
+                                        }
+                                        
+                                        if price_provider:
+                                            try:
+                                                btc_price = await price_provider.get_price('BTCUSDT')
+                                                eth_price = await price_provider.get_price('ETHUSDT')
+                                                context_data['btc_price'] = btc_price
+                                                context_data['eth_price'] = eth_price
+                                            except Exception:
+                                                pass
+                                        
+                                        # Récupérer stats session si disponibles
+                                        if hasattr(app_state, 'get'):
+                                            context_data['session_stats'] = {
+                                                'total_trades': app_state.get('total_trades', 0),
+                                                'win_rate': app_state.get('win_rate', 0),
+                                                'total_pnl': app_state.get('total_pnl', 0)
+                                            }
+                                        
+                                        pg_datalogger.log_market_context(context_data)
+                                    except Exception as e:
+                                        logger.debug(f"Erreur logging contexte marché périodique: {e}")
+                            except asyncio.CancelledError:
+                                break
+                            except Exception as e:
+                                logger.warning(f"Erreur tâche contexte marché: {e}")
+                                await asyncio.sleep(60)  # Attendre avant de réessayer
+                    
+                    # Démarrer la tâche périodique
+                    asyncio.create_task(log_market_context_periodic())
+                    logger.info("✅ Tâche périodique contexte marché démarrée")
                 else:
                     logger.warning("⚠️ PostgreSQL DataLogger désactivé (connexion échouée)")
                     pg_datalogger = None

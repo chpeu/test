@@ -10,6 +10,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
 import uuid
+from collections import deque
+import threading
 
 try:
     import psycopg2
@@ -41,7 +43,9 @@ class PostgreSQLDataLogger:
         user: Optional[str] = None,
         password: Optional[str] = None,
         min_conn: int = 1,
-        max_conn: int = 5
+        max_conn: int = 5,
+        batch_size: int = 50,
+        batch_flush_interval: float = 5.0
     ):
         """
         Initialiser PostgreSQL DataLogger
@@ -55,6 +59,8 @@ class PostgreSQLDataLogger:
             password: Mot de passe (si connection_string non fourni)
             min_conn: Nombre minimum de connexions dans le pool
             max_conn: Nombre maximum de connexions dans le pool
+            batch_size: Taille du buffer pour batch inserts (défaut: 50)
+            batch_flush_interval: Intervalle en secondes pour flush automatique (défaut: 5.0)
         """
         if not PSYCOPG2_AVAILABLE:
             logger.error("❌ psycopg2 non disponible - PostgreSQL DataLogger désactivé")
@@ -89,6 +95,15 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur connexion PostgreSQL: {e}")
             self.enabled = False
             self.pool = None
+            return
+        
+        # 🔥 PHASE 3: Batch inserts - Buffers pour optimiser les insertions
+        self.batch_size = batch_size
+        self.batch_flush_interval = batch_flush_interval
+        self.scan_buffer: deque = deque(maxlen=batch_size * 2)  # Buffer pour scans
+        self.opportunity_buffer: deque = deque(maxlen=batch_size * 2)  # Buffer pour opportunités
+        self.buffer_lock = threading.Lock()
+        self.last_flush_time = datetime.now()
     
     def _get_connection(self):
         """Obtenir une connexion du pool"""
@@ -190,7 +205,8 @@ class PostgreSQLDataLogger:
         self,
         symbol: str,
         scan_data: Dict[str, Any],
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        use_batch: bool = True
     ) -> Optional[int]:
         """
         Logger un scan dans scan_logs
@@ -199,9 +215,10 @@ class PostgreSQLDataLogger:
             symbol: Symbole de la paire
             scan_data: Données du scan (indicateurs, scores, etc.)
             session_id: UUID de la session (optionnel)
+            use_batch: Si True, utiliser batch insert (défaut: True)
         
         Returns:
-            ID du scan loggé ou None
+            ID du scan loggé ou None (None si batch mode)
         """
         if not self.enabled:
             return None
@@ -210,6 +227,19 @@ class PostgreSQLDataLogger:
         if not session_id:
             session_id = self.get_or_create_session()
         
+        # 🔥 PHASE 3: Utiliser batch insert si activé
+        if use_batch:
+            with self.buffer_lock:
+                self.scan_buffer.append({
+                    'session_id': session_id,
+                    'symbol': symbol,
+                    'scan_data': scan_data
+                })
+            # Flush si buffer plein
+            self._flush_buffers()
+            return None  # Pas d'ID immédiat en mode batch
+        
+        # Mode direct (fallback)
         try:
             # Extraire les données du scan
             indicators_1m = scan_data.get('indicators_1m', {})
@@ -388,7 +418,8 @@ class PostgreSQLDataLogger:
         scan_id: int,
         symbol: str,
         opportunity_data: Dict[str, Any],
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        use_batch: bool = True
     ) -> Optional[int]:
         """
         Logger une opportunité dans opportunities
@@ -398,9 +429,10 @@ class PostgreSQLDataLogger:
             symbol: Symbole de la paire
             opportunity_data: Données de l'opportunité
             session_id: UUID de la session
+            use_batch: Si True, utiliser batch insert (défaut: True)
         
         Returns:
-            ID de l'opportunité loggée ou None
+            ID de l'opportunité loggée ou None (None si batch mode)
         """
         if not self.enabled:
             return None
@@ -408,6 +440,20 @@ class PostgreSQLDataLogger:
         if not session_id:
             session_id = self.get_or_create_session()
         
+        # 🔥 PHASE 3: Utiliser batch insert si activé
+        if use_batch:
+            with self.buffer_lock:
+                self.opportunity_buffer.append({
+                    'scan_id': scan_id,
+                    'session_id': session_id,
+                    'symbol': symbol,
+                    'opportunity_data': opportunity_data
+                })
+            # Flush si buffer plein
+            self._flush_buffers()
+            return None  # Pas d'ID immédiat en mode batch
+        
+        # Mode direct (fallback)
         try:
             query = """
                 INSERT INTO opportunities (
@@ -655,8 +701,275 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur logging trade {trade_data.get('symbol')}: {e}")
             return None
     
+    def _flush_buffers(self, force: bool = False):
+        """
+        🔥 PHASE 3: Flush les buffers vers PostgreSQL
+        
+        Args:
+            force: Si True, flush même si buffer pas plein
+        """
+        if not self.enabled:
+            return
+        
+        now = datetime.now()
+        time_since_flush = (now - self.last_flush_time).total_seconds()
+        should_flush = force or (
+            len(self.scan_buffer) >= self.batch_size or
+            len(self.opportunity_buffer) >= self.batch_size or
+            time_since_flush >= self.batch_flush_interval
+        )
+        
+        if not should_flush:
+            return
+        
+        with self.buffer_lock:
+            # Flush scans
+            if self.scan_buffer:
+                try:
+                    self._batch_insert_scans(list(self.scan_buffer))
+                    self.scan_buffer.clear()
+                except Exception as e:
+                    logger.error(f"❌ Erreur flush scans: {e}")
+            
+            # Flush opportunities
+            if self.opportunity_buffer:
+                try:
+                    self._batch_insert_opportunities(list(self.opportunity_buffer))
+                    self.opportunity_buffer.clear()
+                except Exception as e:
+                    logger.error(f"❌ Erreur flush opportunities: {e}")
+            
+            self.last_flush_time = now
+    
+    def _batch_insert_scans(self, scans: List[Dict[str, Any]]):
+        """
+        🔥 PHASE 3: Insert batch de scans avec execute_values
+        
+        Args:
+            scans: Liste de dicts avec (session_id, symbol, scan_data)
+        """
+        if not scans:
+            return
+        
+        conn = self._get_connection()
+        if not conn:
+            return
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Préparer les valeurs pour execute_values
+            values = []
+            for scan_item in scans:
+                session_id = scan_item['session_id']
+                symbol = scan_item['symbol']
+                scan_data = scan_item['scan_data']
+                
+                indicators_1m = scan_data.get('indicators_1m', {})
+                indicators_5m = scan_data.get('indicators_5m', {})
+                filters = scan_data.get('filters', {})
+                scores = scan_data.get('scores', {})
+                patterns = scan_data.get('patterns', {})
+                market_data = scan_data.get('market_data', {})
+                
+                # Construire tuple de valeurs (même ordre que dans log_scan)
+                value_tuple = (
+                    session_id, symbol, scan_data.get('scan_duration_ms'),
+                    market_data.get('price'), market_data.get('spread_pct'),
+                    market_data.get('book_depth'), market_data.get('balance_score'),
+                    market_data.get('bid_vol'), market_data.get('ask_vol'),
+                    market_data.get('orderbook_imbalance_ratio'),
+                    # 1m indicators
+                    indicators_1m.get('ema9'), indicators_1m.get('ema21'),
+                    indicators_1m.get('ema_diff_pct'),
+                    indicators_1m.get('rsi'), indicators_1m.get('rsi_prev'),
+                    indicators_1m.get('macd'), indicators_1m.get('macd_signal'),
+                    indicators_1m.get('macd_hist'), indicators_1m.get('macd_hist_prev'),
+                    indicators_1m.get('adx'), indicators_1m.get('di_plus'),
+                    indicators_1m.get('di_minus'), indicators_1m.get('di_gap'),
+                    indicators_1m.get('atr'), indicators_1m.get('atr_pct'),
+                    indicators_1m.get('bb_upper'), indicators_1m.get('bb_middle'),
+                    indicators_1m.get('bb_lower'), indicators_1m.get('bb_width'),
+                    indicators_1m.get('bb_distance_to_lower'), indicators_1m.get('bb_distance_to_upper'),
+                    indicators_1m.get('volume'), indicators_1m.get('volume_avg'),
+                    indicators_1m.get('volume_ratio'), indicators_1m.get('volume_spike'),
+                    # 5m indicators
+                    indicators_5m.get('ema9'), indicators_5m.get('ema21'),
+                    indicators_5m.get('ema_diff_pct'),
+                    indicators_5m.get('rsi'), indicators_5m.get('rsi_prev'),
+                    indicators_5m.get('macd'), indicators_5m.get('macd_signal'),
+                    indicators_5m.get('macd_hist'), indicators_5m.get('macd_hist_prev'),
+                    indicators_5m.get('adx'), indicators_5m.get('di_plus'),
+                    indicators_5m.get('di_minus'), indicators_5m.get('di_gap'),
+                    indicators_5m.get('atr'), indicators_5m.get('atr_pct'),
+                    indicators_5m.get('bb_upper'), indicators_5m.get('bb_middle'),
+                    indicators_5m.get('bb_lower'), indicators_5m.get('bb_width'),
+                    indicators_5m.get('bb_distance_to_lower'), indicators_5m.get('bb_distance_to_upper'),
+                    indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
+                    indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
+                    # Filters
+                    filters.get('snr_1m'), filters.get('snr_5m'),
+                    filters.get('snr_passed_1m'), filters.get('snr_passed_5m'),
+                    filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
+                    filters.get('breakout_passed_1m'), filters.get('breakout_passed_5m'),
+                    filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
+                    filters.get('wick_passed_1m'), filters.get('wick_passed_5m'),
+                    filters.get('atr_optimal_passed_1m'), filters.get('atr_optimal_passed_5m'),
+                    filters.get('volume_filter_passed_1m'), filters.get('volume_filter_passed_5m'),
+                    # Confluence
+                    scan_data.get('use_confluence'), scan_data.get('confluence_met'),
+                    scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
+                    scores.get('score_long_1m'), scores.get('score_short_1m'),
+                    scores.get('score_long_5m'), scores.get('score_short_5m'),
+                    scan_data.get('timeframes_aligned'),
+                    # Patterns
+                    patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
+                    patterns.get('pattern_5m'), patterns.get('pattern_multi_5m'),
+                    # Trend
+                    scan_data.get('trend_timeframe', '15m'),
+                    scan_data.get('trend_direction'), scan_data.get('trend_strength'),
+                    scan_data.get('trend_bonus'),
+                    # Divergence
+                    scan_data.get('divergence_detected', False),
+                    scan_data.get('divergence_type'), scan_data.get('divergence_bonus', 0),
+                    # Decision
+                    scan_data.get('is_opportunity', False),
+                    scan_data.get('opportunity_direction'),
+                    scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
+                    # Params
+                    json.dumps(scan_data.get('params_snapshot', {}))
+                )
+                values.append(value_tuple)
+            
+            # Colonnes pour execute_values (même ordre que dans log_scan)
+            columns = (
+                'session_id', 'symbol', 'scan_duration_ms',
+                'price', 'spread_pct', 'book_depth', 'balance_score',
+                'bid_vol', 'ask_vol', 'orderbook_imbalance_ratio',
+                'ema9_1m', 'ema21_1m', 'ema_diff_pct_1m',
+                'rsi_1m', 'rsi_prev_1m',
+                'macd_1m', 'macd_signal_1m', 'macd_hist_1m', 'macd_hist_prev_1m',
+                'adx_1m', 'di_plus_1m', 'di_minus_1m', 'di_gap_1m',
+                'atr_1m', 'atr_pct_1m',
+                'bb_upper_1m', 'bb_middle_1m', 'bb_lower_1m', 'bb_width_1m',
+                'bb_distance_to_lower_1m', 'bb_distance_to_upper_1m',
+                'volume_1m', 'volume_avg_1m', 'volume_ratio_1m', 'volume_spike_1m',
+                'ema9_5m', 'ema21_5m', 'ema_diff_pct_5m',
+                'rsi_5m', 'rsi_prev_5m',
+                'macd_5m', 'macd_signal_5m', 'macd_hist_5m', 'macd_hist_prev_5m',
+                'adx_5m', 'di_plus_5m', 'di_minus_5m', 'di_gap_5m',
+                'atr_5m', 'atr_pct_5m',
+                'bb_upper_5m', 'bb_middle_5m', 'bb_lower_5m', 'bb_width_5m',
+                'bb_distance_to_lower_5m', 'bb_distance_to_upper_5m',
+                'volume_5m', 'volume_avg_5m', 'volume_ratio_5m', 'volume_spike_5m',
+                'snr_1m', 'snr_5m', 'snr_passed_1m', 'snr_passed_5m',
+                'breakout_distance_1m', 'breakout_distance_5m',
+                'breakout_passed_1m', 'breakout_passed_5m',
+                'wick_ratio_1m', 'wick_ratio_5m', 'wick_passed_1m', 'wick_passed_5m',
+                'atr_optimal_passed_1m', 'atr_optimal_passed_5m',
+                'volume_filter_passed_1m', 'volume_filter_passed_5m',
+                'use_confluence', 'confluence_met',
+                'score_1m', 'score_5m', 'score_total',
+                'score_long_1m', 'score_short_1m', 'score_long_5m', 'score_short_5m',
+                'timeframes_aligned',
+                'pattern_1m', 'pattern_multi_1m', 'pattern_5m', 'pattern_multi_5m',
+                'trend_timeframe', 'trend_direction', 'trend_strength', 'trend_bonus',
+                'divergence_detected', 'divergence_type', 'divergence_bonus',
+                'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
+                'params_snapshot'
+            )
+            
+            # Utiliser execute_values pour batch insert
+            execute_values(
+                cursor,
+                f"INSERT INTO scan_logs (timestamp, {', '.join(columns)}) VALUES %s",
+                values,
+                template=f"(NOW(), {', '.join(['%s'] * len(columns))})",
+                page_size=len(values)
+            )
+            
+            conn.commit()
+            cursor.close()
+            logger.debug(f"📊 Batch insert: {len(scans)} scans insérés")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur batch insert scans: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            self._return_connection(conn)
+    
+    def _batch_insert_opportunities(self, opportunities: List[Dict[str, Any]]):
+        """
+        🔥 PHASE 3: Insert batch d'opportunités avec execute_values
+        
+        Args:
+            opportunities: Liste de dicts avec (scan_id, session_id, symbol, opportunity_data)
+        """
+        if not opportunities:
+            return
+        
+        conn = self._get_connection()
+        if not conn:
+            return
+        
+        try:
+            cursor = conn.cursor()
+            
+            values = []
+            for opp_item in opportunities:
+                scan_id = opp_item['scan_id']
+                session_id = opp_item['session_id']
+                symbol = opp_item['symbol']
+                opp_data = opp_item['opportunity_data']
+                
+                value_tuple = (
+                    scan_id, session_id, symbol,
+                    opp_data.get('status', 'PENDING'),
+                    opp_data.get('direction'),
+                    opp_data.get('setup_score'),
+                    opp_data.get('conditions_matched', []),
+                    opp_data.get('entry_price'),
+                    opp_data.get('tp_price'),
+                    opp_data.get('sl_price'),
+                    opp_data.get('size_usdt'),
+                    opp_data.get('risk_usdt'),
+                    opp_data.get('reward_risk_ratio')
+                )
+                values.append(value_tuple)
+            
+            columns = (
+                'scan_log_id', 'session_id', 'symbol',
+                'status', 'direction', 'setup_score',
+                'conditions_matched', 'entry_price', 'tp_price', 'sl_price',
+                'size_usdt', 'risk_usdt', 'reward_risk_ratio'
+            )
+            
+            execute_values(
+                cursor,
+                f"INSERT INTO opportunities (timestamp, {', '.join(columns)}) VALUES %s",
+                values,
+                template=f"(NOW(), {', '.join(['%s'] * len(columns))})",
+                page_size=len(values)
+            )
+            
+            conn.commit()
+            cursor.close()
+            logger.debug(f"📊 Batch insert: {len(opportunities)} opportunités insérées")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur batch insert opportunities: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            self._return_connection(conn)
+    
     def close(self):
-        """Fermer le pool de connexions"""
+        """Fermer le pool de connexions et flush les buffers"""
+        # Flush final des buffers
+        if self.enabled:
+            self._flush_buffers(force=True)
+        
         if self.pool:
             try:
                 self.pool.closeall()

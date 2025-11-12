@@ -407,6 +407,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
 
     try:
         logger.debug(f"🔎 Analyse setup: {symbol}")
+        
+        # 🔥 PHASE 3: Mesurer la durée du scan
+        import time
+        scan_start_time = time.time()
 
         # Récupérer configuration
         from config import TRADING_CONFIG
@@ -429,12 +433,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             position_manager=_position_manager
         )
 
+        # 🔥 PHASE 3: Calculer durée du scan
+        scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+        
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé
         if _pg_datalogger and _pg_datalogger.enabled:
             try:
                 # Préparer les données du scan pour PostgreSQL
                 scan_data = {
-                    'scan_duration_ms': None,  # TODO: Mesurer durée
+                    'scan_duration_ms': scan_duration_ms,
                     'market_data': {
                         'price': analysis.get('price') if analysis else None,
                         'spread_pct': analysis.get('spread_pct') if analysis else None,
@@ -483,11 +490,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     }
                 }
                 
-                # Logger le scan
-                scan_id = _pg_datalogger.log_scan(symbol, scan_data)
+                # Logger le scan (mode batch par défaut)
+                scan_id = _pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
-                if scan_id and scan_data['is_opportunity'] and analysis:
+                # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
+                # avec scan_id=None temporairement (sera mis à jour lors du flush)
+                if scan_data['is_opportunity'] and analysis:
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
@@ -500,7 +509,14 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
                     }
-                    _pg_datalogger.log_opportunity(scan_id, symbol, opportunity_data)
+                    # En mode batch, on passe scan_id=None temporairement
+                    # Le scan_id sera résolu lors du flush batch
+                    _pg_datalogger.log_opportunity(
+                        scan_id or 0,  # 0 = temporaire, sera mis à jour
+                        symbol, 
+                        opportunity_data,
+                        use_batch=True
+                    )
                     
             except Exception as e:
                 logger.warning(f"⚠️ Erreur logging PostgreSQL pour {symbol}: {e}")
@@ -509,4 +525,23 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
 
     except Exception as e:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
+        
+        # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
+        if _pg_datalogger and _pg_datalogger.enabled:
+            try:
+                import traceback
+                error_details = {
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'stack': traceback.format_exc()
+                }
+                _pg_datalogger.log_scan_error(
+                    symbol=symbol,
+                    error_type='SCAN_ERROR',
+                    error_message=str(e),
+                    error_details=error_details
+                )
+            except Exception as log_error:
+                logger.warning(f"⚠️ Erreur logging erreur scan: {log_error}")
+        
         return None
