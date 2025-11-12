@@ -253,16 +253,16 @@ async def _scan_top_pairs():
                                 logger.warning(f"💹 DEBUG: spread est NaN, remplacement par 0")
                                 spread_value = 0
                             
-                            # 🔥 FIX: Si spread ou depth sont à 0, essayer de récupérer depuis best_setup
-                            if spread_value == 0:
+                            # 🔥 FIX BUG #5: Si spread ou depth sont <= 0 (plus robuste que == 0 pour floats)
+                            if spread_value <= 0:
                                 if best_setup.get('spread_pct'):
                                     spread_value = best_setup.get('spread_pct', 0)
                                     logger.info(f"💹 Utilisation spread depuis best_setup: {spread_value}%")
                                 else:
-                                    logger.warning(f"💹 DEBUG: spread=0 et best_setup.spread_pct non disponible")
-                            
-                            # 🔥 FIX: Si depth est à 0, calculer depuis bid_vol + ask_vol
-                            if book_depth == 0:
+                                    logger.warning(f"💹 DEBUG: spread<=0 et best_setup.spread_pct non disponible")
+
+                            # 🔥 FIX BUG #5: Si depth est <= 0, calculer depuis bid_vol + ask_vol
+                            if book_depth <= 0:
                                 if bid_vol > 0 or ask_vol > 0:
                                     book_depth = bid_vol + ask_vol
                                     logger.info(f"💹 Calcul depth depuis volumes: {book_depth}")
@@ -283,8 +283,8 @@ async def _scan_top_pairs():
                     if not found_pair:
                         logger.warning(f"💹 DEBUG: Paire {symbol} non trouvée dans top_pairs")
                     
-                    # 🔥 FIX: Si scalability_data est toujours None ou invalide, essayer depuis best_setup
-                    if not scalability_data or (scalability_data.get('spread_pct', 0) == 0 and scalability_data.get('depth', 0) == 0):
+                    # 🔥 FIX BUG #5: Si scalability_data est toujours None ou invalide, essayer depuis best_setup
+                    if not scalability_data or (scalability_data.get('spread_pct', 0) <= 0 and scalability_data.get('depth', 0) <= 0):
                         logger.warning(f"💹 Données scalabilité manquantes/invalides dans top_pairs pour {symbol}, tentative depuis best_setup")
                         logger.info(f"💹 DEBUG: best_setup keys: {list(best_setup.keys())}")
                         if best_setup.get('spread_pct'):
