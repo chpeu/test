@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Script pour compter exactement les paramètres"""
+"""Comptage exact des paramètres dans log_trade"""
 
 import re
 import sys
@@ -12,43 +12,46 @@ if sys.platform == 'win32':
 with open('core/postgresql_datalogger.py', 'r', encoding='utf-8') as f:
     content = f.read()
 
-# Trouver VALUES
-start = content.find('VALUES (', content.find('INSERT INTO trades'))
-end = content.find('RETURNING id', start)
-values = content[start:end]
-placeholders = values.count('%s')
-print(f"Placeholders %s: {placeholders}")
+# Trouver la section params pour log_trade uniquement
+start = content.find('params = (', content.find('config_snapshot = json.dumps'))
+end = content.find(')\n            \n            # Vérifier', start)
+if end == -1:
+    end = content.find(')\n            \n            result = self._execute_query', start)
+params_section = content[start:end]
 
-# Trouver params tuple
-start_p = content.find('params = (', content.find('config_snapshot = json.dumps'))
-end_p = content.find(')\n            \n            result = self._execute_query', start_p)
-params_section = content[start_p:end_p]
-
-# Compter les paramètres réels (chaque ligne avec une virgule = au moins 1 paramètre)
-lines = params_section.split('\n')
+# Compter les paramètres en analysant chaque ligne
 param_count = 0
-for line in lines:
+lines = params_section.split('\n')
+for i, line in enumerate(lines):
     line = line.strip()
-    if not line or line.startswith('#'):
+    if not line or line.startswith('#') or line.startswith('params'):
         continue
-    # Compter les virgules qui séparent des paramètres
-    # Attention: ne pas compter les virgules dans les appels de fonction
-    # On compte les virgules en fin de ligne ou entre expressions simples
+    
+    # Compter les virgules qui séparent vraiment des paramètres
+    # On compte les virgules en fin de ligne ou entre expressions
     if ',' in line:
         # Séparer par virgule mais attention aux appels de fonction
-        # Compter les virgules qui sont vraiment des séparateurs de paramètres
-        # (pas celles dans .get('key', default))
-        parts = re.split(r',(?![^()]*\))', line)  # Ne pas split sur virgules dans parenthèses
-        param_count += len([p for p in parts if p.strip() and not p.strip().startswith('#')])
+        # On va compter manuellement en cherchant les patterns
+        # Chaque expression avant une virgule = 1 paramètre
+        parts = line.split(',')
+        for part in parts:
+            part = part.strip()
+            if part and not part.startswith('#'):
+                param_count += 1
+                # Afficher les 20 premiers paramètres pour debug
+                if param_count <= 20:
+                    print(f"Param {param_count}: {part}")
     elif line and not line.startswith('#'):
         param_count += 1
+        if param_count <= 20:
+            print(f"Param {param_count}: {line}")
 
-print(f"Paramètres comptés: {param_count}")
-print(f"Différence: {placeholders - param_count}")
+print(f"\nTotal paramètres comptés: {param_count}")
 
-# Afficher les 20 premières lignes de params pour debug
-print("\nPremières lignes de params:")
-for i, line in enumerate(lines[:20]):
-    if line.strip() and not line.strip().startswith('#'):
-        print(f"  {i}: {line.strip()}")
-
+# Compter les placeholders
+start_v = content.find('VALUES (', content.find('INSERT INTO trades'))
+end_v = content.find('RETURNING id', start_v)
+values = content[start_v:end_v]
+placeholders = values.count('%s')
+print(f"Placeholders: {placeholders}")
+print(f"Différence: {param_count - placeholders}")

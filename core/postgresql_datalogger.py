@@ -668,7 +668,7 @@ class PostgreSQLDataLogger:
                 INSERT INTO trades (
                     timestamp_entry, timestamp_exit, session_id, opportunity_id, scan_log_id, symbol,
                     direction, entry_price, exit_price,
-                    size_usdt, tp_price, sl_price, gross_pnl_usdt, pnl_pct, pnl_usdt,
+                    size_usdt, tp_price, sl_price, gross_pnl_usdt, pnl_pct, pnl_usdt,  # pnl_usdt = gross_pnl_usdt (même valeur)
                     net_pnl_usdt, net_pnl_pct,
                     fees_usdt, slippage_pct, slippage_usdt,
                     exit_reason, duration_seconds,
@@ -923,7 +923,7 @@ class PostgreSQLDataLogger:
                 trade_data.get('sl_price'),  # sl_price
                 trade_data.get('gross_pnl_usdt', 0),
                 trade_data.get('gross_pnl_pct', 0),  # pnl_pct (gross)
-                trade_data.get('gross_pnl_usdt', 0),  # pnl_usdt (gross) - même valeur que gross_pnl_usdt
+                trade_data.get('gross_pnl_usdt', 0),  # pnl_usdt (gross) - DOUBLON À SUPPRIMER
                 trade_data.get('net_pnl_usdt', 0),
                 trade_data.get('net_pnl_pct', 0),
                 trade_data.get('fees', 0),  # fees_usdt
