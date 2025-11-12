@@ -1023,6 +1023,9 @@ class PostgreSQLDataLogger:
                 logger.error(f"❌ Déséquilibre paramètres: {param_count} paramètres pour {placeholder_count} placeholders")
                 logger.error(f"   Symbol: {trade_data.get('symbol')}")
                 logger.error(f"   entry_conditions type: {type(entry_conditions)}, value: {entry_conditions}")
+                # Afficher les 20 premiers et derniers paramètres pour debug
+                logger.error(f"   Premiers paramètres (20): {params[:20]}")
+                logger.error(f"   Derniers paramètres (20): {params[-20:]}")
                 # Ne pas logger le trade si déséquilibre
                 return None
             
