@@ -538,8 +538,12 @@ class PositionManager:
                                 entry_conditions=entry_conditions,
                                 entry_scalability=entry_scalability
                             )
-                            # Stocker trade_id dans position pour Point D
+                            # Stocker trade_id, scan_log_id, entry_indicators, entry_conditions, entry_scalability dans position
                             self.active_position._trade_id = trade_id
+                            self.active_position._scan_log_id = scan_uuid
+                            self.active_position._entry_indicators = entry_indicators
+                            self.active_position._entry_conditions = entry_conditions
+                            self.active_position._entry_scalability = entry_scalability
                         loop.create_task(log_entry())
                     else:
                         # Pas de loop, créer un nouveau
@@ -1077,11 +1081,23 @@ class PositionManager:
             if pg_datalogger and pg_datalogger.enabled:
                 try:
                     # Préparer les données du trade pour PostgreSQL
+                    # Récupérer pnl_history pour métriques de position
+                    pnl_history = []
+                    if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history:
+                        pnl_history = self.active_position.pnl_history
+                    
+                    # Récupérer entry_indicators, entry_conditions, entry_scalability
+                    entry_indicators = getattr(self.active_position, '_entry_indicators', {})
+                    entry_conditions = getattr(self.active_position, '_entry_conditions', [])
+                    entry_scalability = getattr(self.active_position, '_entry_scalability', {})
+                    
                     trade_data = {
                         'symbol': self.active_position.symbol,
                         'direction': self.active_position.direction,
                         'entry_price': self.active_position.entry,
                         'exit_price': exit_price,
+                        'tp_price': self.active_position.tp,
+                        'sl_price': self.active_position.sl,
                         'size_usdt': self.active_position.size,
                         'gross_pnl_usdt': result['gross_pnl_usdt'],
                         'gross_pnl_pct': result['gross_pnl_pct'],
@@ -1101,9 +1117,12 @@ class PositionManager:
                             {'level': i+1, 'profit': p.get('profit', 0)}
                             for i, p in enumerate(self.active_position.tp_escalier_profits)
                         ] if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else [],
-                        'max_pnl_reached': max([p.get('pnl_pct', 0) for p in self.active_position.pnl_history], default=None) if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history else None,
-                        'min_pnl_reached': min([p.get('pnl_pct', 0) for p in self.active_position.pnl_history], default=None) if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history else None,
-                        'entry_indicators': getattr(self.active_position, '_entry_indicators', {}),
+                        'max_pnl_reached': max([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None,
+                        'min_pnl_reached': min([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None,
+                        'pnl_history': pnl_history,  # Pour calculer max_favorable_excursion
+                        'entry_indicators': entry_indicators,
+                        'entry_conditions': entry_conditions,
+                        'entry_scalability': entry_scalability,
                         'exit_indicators': {},  # TODO: Récupérer indicateurs à la sortie
                         'params_snapshot': {
                             'tp_sl_mode': getattr(self.config, 'tp_sl_mode', 'FIXE') if hasattr(self, 'config') else 'FIXE',
@@ -1112,13 +1131,15 @@ class PositionManager:
                         'is_backtest': False
                     }
                     
-                    # Récupérer opportunity_id si disponible
+                    # Récupérer opportunity_id et scan_log_id si disponibles
                     opportunity_id = getattr(self.active_position, '_opportunity_id', None)
+                    scan_log_id = getattr(self.active_position, '_scan_log_id', None)
                     
                     # Logger le trade
                     trade_id = pg_datalogger.log_trade(
                         trade_data=trade_data,
                         opportunity_id=opportunity_id,
+                        scan_log_id=scan_log_id,
                         session_id=getattr(self, 'session_id', None)
                     )
                     

@@ -501,7 +501,11 @@ CREATE TABLE market_context (
     -- Métriques de marché
     market_trend VARCHAR(10),  -- BULLISH, BEARISH, NEUTRAL
     market_volatility VARCHAR(10),  -- LOW, MEDIUM, HIGH
-    fear_greed_index FLOAT  -- Si disponible via API externe
+    fear_greed_index FLOAT,  -- Si disponible via API externe
+    
+    -- Données flexibles (JSONB pour extensibilité)
+    global_metrics JSONB,  -- Métriques globales additionnelles
+    session_stats JSONB  -- Stats session additionnelles
 );
 
 -- Index

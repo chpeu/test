@@ -619,6 +619,7 @@ class PostgreSQLDataLogger:
         self,
         trade_data: Dict[str, Any],
         opportunity_id: Optional[int] = None,
+        scan_log_id: Optional[int] = None,
         session_id: Optional[str] = None
     ) -> Optional[int]:
         """
@@ -644,21 +645,41 @@ class PostgreSQLDataLogger:
             
             query = """
                 INSERT INTO trades (
-                    timestamp_entry, timestamp_exit, session_id, opportunity_id, symbol,
+                    timestamp_entry, timestamp_exit, session_id, opportunity_id, scan_log_id, symbol,
                     direction, entry_price, exit_price,
-                    size_usdt, gross_pnl_usdt, pnl_pct, pnl_usdt,
+                    size_usdt, tp_price, sl_price, gross_pnl_usdt, pnl_pct, pnl_usdt,
                     net_pnl_usdt, net_pnl_pct,
-                    fees_usdt, slippage_pct, 
+                    fees_usdt, slippage_pct, slippage_usdt,
                     exit_reason, duration_seconds,
                     tp_sl_mode, break_even_set,
                     trailing_stop_activated, partial_tp_executed,
                     tp_escalier_levels_executed, tp_escalier_profits,
+                    -- Indicateurs d'entrée (pour ML)
+                    entry_rsi_1m, entry_rsi_5m,
+                    entry_macd_hist_1m, entry_macd_hist_5m,
+                    entry_adx_1m, entry_adx_5m,
+                    entry_atr_pct_1m, entry_atr_pct_5m,
+                    entry_score, entry_volume_ratio_1m, entry_volume_ratio_5m,
+                    entry_spread_pct, entry_balance_score,
+                    entry_conditions, entry_condition_count,
+                    -- Métriques de position
+                    max_favorable_excursion, max_adverse_excursion,
+                    max_favorable_excursion_usdt, max_adverse_excursion_usdt,
+                    -- Métriques de qualité
+                    risk_reward_ratio,
+                    -- Scalability
+                    entry_book_depth, entry_bid_vol, entry_ask_vol, entry_orderbook_imbalance,
                     win
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s,
+                    %s, %s, %s, %s,
+                    %s
                 )
                 RETURNING id
             """
@@ -675,13 +696,68 @@ class PostgreSQLDataLogger:
             tp_escalier_levels_hit = trade_data.get('tp_escalier_levels_hit', [])
             tp_escalier_profits = sum(p.get('profit', 0) for p in tp_escalier_levels_hit) if tp_escalier_levels_hit else 0
             
+            # Extraire indicateurs d'entrée
+            entry_indicators = trade_data.get('entry_indicators', {})
+            entry_conditions = trade_data.get('entry_conditions', [])
+            if isinstance(entry_conditions, dict):
+                entry_conditions = list(entry_conditions.keys()) if entry_conditions else []
+            elif not isinstance(entry_conditions, list):
+                entry_conditions = [str(entry_conditions)] if entry_conditions else []
+            
+            # Calculer risk_reward_ratio
+            entry_price = trade_data.get('entry_price')
+            tp_price = trade_data.get('tp_price')
+            sl_price = trade_data.get('sl_price')
+            risk_reward_ratio = None
+            if entry_price and tp_price and sl_price:
+                if trade_data.get('direction') == 'LONG':
+                    profit = tp_price - entry_price
+                    risk = entry_price - sl_price
+                else:  # SHORT
+                    profit = entry_price - tp_price
+                    risk = sl_price - entry_price
+                if risk > 0:
+                    risk_reward_ratio = profit / risk
+            
+            # Calculer max_favorable_excursion et max_adverse_excursion depuis pnl_history
+            pnl_history = trade_data.get('pnl_history', []) or []
+            max_favorable_excursion = None
+            max_adverse_excursion = None
+            max_favorable_excursion_usdt = None
+            max_adverse_excursion_usdt = None
+            if pnl_history:
+                pnl_pcts = [p.get('pnl_pct', 0) for p in pnl_history if p.get('pnl_pct') is not None]
+                pnl_usdts = [p.get('pnl_usdt', 0) for p in pnl_history if p.get('pnl_usdt') is not None]
+                if pnl_pcts:
+                    max_favorable_excursion = max(pnl_pcts)
+                    max_adverse_excursion = min(pnl_pcts)
+                if pnl_usdts:
+                    max_favorable_excursion_usdt = max(pnl_usdts)
+                    max_adverse_excursion_usdt = min(pnl_usdts)
+            
+            # Fallback sur max_pnl_reached / min_pnl_reached si pnl_history non disponible
+            if max_favorable_excursion is None:
+                max_favorable_excursion = trade_data.get('max_pnl_reached')
+            if max_adverse_excursion is None:
+                max_adverse_excursion = trade_data.get('min_pnl_reached')
+            
+            # Extraire scalability data
+            entry_scalability = trade_data.get('entry_scalability', {}) or {}
+            
+            # Calculer slippage_usdt
+            slippage_pct = trade_data.get('slippage', 0) or 0
+            size_usdt = trade_data.get('size_usdt', 0) or 0
+            slippage_usdt = (slippage_pct / 100) * size_usdt if slippage_pct and size_usdt else 0
+            
             params = (
-                entry_timestamp, exit_timestamp, session_id, opportunity_id,
+                entry_timestamp, exit_timestamp, session_id, opportunity_id, scan_log_id,
                 trade_data.get('symbol'),
                 trade_data.get('direction'),
                 trade_data.get('entry_price'),
                 trade_data.get('exit_price'),
                 trade_data.get('size_usdt'),
+                trade_data.get('tp_price'),  # tp_price
+                trade_data.get('sl_price'),  # sl_price
                 trade_data.get('gross_pnl_usdt', 0),
                 trade_data.get('gross_pnl_pct', 0),  # pnl_pct (gross)
                 trade_data.get('gross_pnl_usdt', 0),  # pnl_usdt (gross)
@@ -689,6 +765,7 @@ class PostgreSQLDataLogger:
                 trade_data.get('net_pnl_pct', 0),
                 trade_data.get('fees', 0),  # fees_usdt
                 trade_data.get('slippage', 0),  # slippage_pct
+                slippage_usdt,  # slippage_usdt
                 trade_data.get('reason'),  # exit_reason
                 trade_data.get('duration_seconds'),
                 trade_data.get('tp_sl_mode'),
@@ -697,6 +774,27 @@ class PostgreSQLDataLogger:
                 trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
                 len(tp_escalier_levels_hit),  # tp_escalier_levels_executed (count)
                 tp_escalier_profits,  # tp_escalier_profits (somme)
+                # Indicateurs d'entrée
+                entry_indicators.get('rsi_1m'), entry_indicators.get('rsi_5m'),
+                entry_indicators.get('macd_hist_1m'), entry_indicators.get('macd_hist_5m'),
+                entry_indicators.get('adx_1m'), entry_indicators.get('adx_5m'),
+                entry_indicators.get('atr_pct_1m'), entry_indicators.get('atr_pct_5m'),
+                entry_indicators.get('score'),  # entry_score
+                entry_indicators.get('volume_ratio_1m'), entry_indicators.get('volume_ratio_5m'),
+                entry_scalability.get('spread_pct'),  # entry_spread_pct
+                entry_scalability.get('balance_score'),  # entry_balance_score
+                entry_conditions,  # entry_conditions (TEXT[])
+                len(entry_conditions),  # entry_condition_count
+                # Métriques de position
+                max_favorable_excursion, max_adverse_excursion,
+                max_favorable_excursion_usdt, max_adverse_excursion_usdt,
+                # Métriques de qualité
+                risk_reward_ratio,
+                # Scalability
+                entry_scalability.get('book_depth'),  # entry_book_depth
+                entry_scalability.get('bid_vol'),  # entry_bid_vol
+                entry_scalability.get('ask_vol'),  # entry_ask_vol
+                entry_scalability.get('orderbook_imbalance'),  # entry_orderbook_imbalance
                 win
             )
             
