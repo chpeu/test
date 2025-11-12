@@ -18,6 +18,7 @@ _app_state = None
 _sio = None  # 🔥 MIGRATION COMPLÈTE: Gardé pour compatibilité, mais utiliser _ws_manager
 _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
+_pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML
 
 
 def set_scanner(scanner):
@@ -65,6 +66,17 @@ def set_scanner_lock(lock):
     """Injecter le lock du scanner"""
     global _scanner_lock
     _scanner_lock = lock
+
+
+def set_pg_datalogger(pg_datalogger):
+    """🔥 PHASE 1: Injecter l'instance PostgreSQLDataLogger"""
+    global _pg_datalogger
+    _pg_datalogger = pg_datalogger
+
+
+def get_pg_datalogger():
+    """🔥 PHASE 2: Récupérer l'instance PostgreSQLDataLogger"""
+    return _pg_datalogger
 
 
 async def scanner_loop_callback():
@@ -194,6 +206,9 @@ async def _scan_top_pairs():
             elif r and isinstance(r, dict):
                 # Setup valide = a 'direction' ET 'entry' (ou 'price')
                 if 'direction' in r and ('entry' in r or 'price' in r):
+                    # 🔥 DEBUG: Vérifier si le setup contient les indicateurs
+                    symbol_check = r.get('symbol', 'UNKNOWN')
+                    logger.info(f"🔍 DEBUG valid_setups.append({symbol_check}): contient indicators_1m: {'indicators_1m' in r}, indicators_5m: {'indicators_5m' in r}")
                     valid_setups.append(r)
                 else:
                     # Rejet
@@ -253,16 +268,16 @@ async def _scan_top_pairs():
                                 logger.warning(f"💹 DEBUG: spread est NaN, remplacement par 0")
                                 spread_value = 0
                             
-                            # 🔥 FIX BUG #5: Si spread ou depth sont <= 0 (plus robuste que == 0 pour floats)
-                            if spread_value <= 0:
+                            # 🔥 FIX: Si spread ou depth sont à 0, essayer de récupérer depuis best_setup
+                            if spread_value == 0:
                                 if best_setup.get('spread_pct'):
                                     spread_value = best_setup.get('spread_pct', 0)
                                     logger.info(f"💹 Utilisation spread depuis best_setup: {spread_value}%")
                                 else:
-                                    logger.warning(f"💹 DEBUG: spread<=0 et best_setup.spread_pct non disponible")
-
-                            # 🔥 FIX BUG #5: Si depth est <= 0, calculer depuis bid_vol + ask_vol
-                            if book_depth <= 0:
+                                    logger.warning(f"💹 DEBUG: spread=0 et best_setup.spread_pct non disponible")
+                            
+                            # 🔥 FIX: Si depth est à 0, calculer depuis bid_vol + ask_vol
+                            if book_depth == 0:
                                 if bid_vol > 0 or ask_vol > 0:
                                     book_depth = bid_vol + ask_vol
                                     logger.info(f"💹 Calcul depth depuis volumes: {book_depth}")
@@ -283,8 +298,8 @@ async def _scan_top_pairs():
                     if not found_pair:
                         logger.warning(f"💹 DEBUG: Paire {symbol} non trouvée dans top_pairs")
                     
-                    # 🔥 FIX BUG #5: Si scalability_data est toujours None ou invalide, essayer depuis best_setup
-                    if not scalability_data or (scalability_data.get('spread_pct', 0) <= 0 and scalability_data.get('depth', 0) <= 0):
+                    # 🔥 FIX: Si scalability_data est toujours None ou invalide, essayer depuis best_setup
+                    if not scalability_data or (scalability_data.get('spread_pct', 0) == 0 and scalability_data.get('depth', 0) == 0):
                         logger.warning(f"💹 Données scalabilité manquantes/invalides dans top_pairs pour {symbol}, tentative depuis best_setup")
                         logger.info(f"💹 DEBUG: best_setup keys: {list(best_setup.keys())}")
                         if best_setup.get('spread_pct'):
@@ -325,7 +340,18 @@ async def _scan_top_pairs():
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
                 _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
                 _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
+                
+                # 🔥 DEBUG: Vérifier si best_setup contient les indicateurs
+                logger.info(f"🔍 DEBUG best_setup pour {symbol}: contient indicators_1m: {'indicators_1m' in best_setup}, indicators_5m: {'indicators_5m' in best_setup}")
+                if 'indicators_1m' in best_setup:
+                    logger.info(f"✅ indicators_1m présent dans best_setup: {len(best_setup.get('indicators_1m', {}))} clés")
+                if 'indicators_5m' in best_setup:
+                    logger.info(f"✅ indicators_5m présent dans best_setup: {len(best_setup.get('indicators_5m', {}))} clés")
+                
                 _position_manager._last_setup = best_setup  # Stocker setup complet pour récupérer indicateurs
+                
+                # 🔥 DEBUG: Vérifier après stockage
+                logger.info(f"🔍 DEBUG _last_setup après stockage: contient indicators_1m: {'indicators_1m' in _position_manager._last_setup}, indicators_5m: {'indicators_5m' in _position_manager._last_setup}")
 
                 # BUG #12 FIX: Fallback atr5m sur atr si absent
                 atr = best_setup.get('atr')
@@ -391,10 +417,16 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
     4. Logger détails en DEBUG
     """
     if not _analyzer or not symbol:
+        logger.warning(f"⚠️ scan_pair_for_setup({symbol}): _analyzer={_analyzer is not None}, symbol={bool(symbol)}")
         return None
 
     try:
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): DÉBUT - _analyzer: {_analyzer is not None}")
         logger.debug(f"🔎 Analyse setup: {symbol}")
+        
+        # 🔥 PHASE 3: Mesurer la durée du scan
+        import time
+        scan_start_time = time.time()
 
         # Récupérer configuration
         from config import TRADING_CONFIG
@@ -407,6 +439,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         trend_data = await _analyzer.calculate_trend_data(symbol, trend_timeframe)
 
         # Analyser la paire
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT analyze_pair")
         analysis = await _analyzer.analyze_pair(
             symbol,
             trend_data=trend_data,
@@ -416,9 +449,224 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             active_positions=[],
             position_manager=_position_manager
         )
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS analyze_pair, analysis: {analysis is not None}, type: {type(analysis)}")
 
+        # 🔥 DEBUG: Vérifier ce que contient analysis
+        if analysis:
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): analysis type: {type(analysis)}, keys: {list(analysis.keys())[:15] if isinstance(analysis, dict) else 'N/A'}")
+        else:
+            logger.warning(f"⚠️ scan_pair_for_setup({symbol}): analysis est None ou False")
+
+        # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
+        # pour qu'ils soient disponibles dans _last_setup
+        if analysis and isinstance(analysis, dict):
+            # Extraire les indicateurs depuis analysis si disponibles
+            # Les indicateurs peuvent être dans analysis directement ou dans des sous-dictionnaires
+            indicators_1m = analysis.get('indicators_1m', {})
+            indicators_5m = analysis.get('indicators_5m', {})
+            
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
+            
+            # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
+            if not indicators_1m:
+                logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
+                # Construire indicators_1m depuis les données disponibles dans analysis
+                indicators_1m = {
+                    'rsi': analysis.get('rsi'),
+                    'rsi_prev': analysis.get('rsi_prev'),
+                    'macd': analysis.get('macd'),
+                    'macd_signal': analysis.get('macd_signal'),
+                    'macd_hist': analysis.get('macd_hist'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev'),
+                    'adx': analysis.get('adx'),
+                    'di_plus': analysis.get('di_plus'),
+                    'di_minus': analysis.get('di_minus'),
+                    'di_gap': analysis.get('di_gap'),
+                    'ema9': analysis.get('ema9'),
+                    'ema21': analysis.get('ema21'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct'),
+                    'atr': analysis.get('atr'),
+                    'atr_pct': analysis.get('atr_pct'),
+                    'bb_upper': analysis.get('bb_upper'),
+                    'bb_middle': analysis.get('bb_middle'),
+                    'bb_lower': analysis.get('bb_lower'),
+                    'bb_width': analysis.get('bb_width'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                    'volume': analysis.get('volume'),
+                    'volume_avg': analysis.get('volume_avg'),
+                    'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                    'volume_spike': analysis.get('volume_spike'),
+                }
+            
+            # Si indicators_5m n'est pas présent, essayer de le construire depuis les données disponibles
+            if not indicators_5m:
+                logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
+                # Pour indicators_5m, on peut utiliser les mêmes données ou des variantes 5m si disponibles
+                indicators_5m = {
+                    'rsi': analysis.get('rsi_5m'),
+                    'rsi_prev': analysis.get('rsi_prev_5m'),
+                    'macd': analysis.get('macd_5m'),
+                    'macd_signal': analysis.get('macd_signal_5m'),
+                    'macd_hist': analysis.get('macd_hist_5m'),
+                    'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
+                    'adx': analysis.get('adx_5m'),
+                    'di_plus': analysis.get('di_plus_5m'),
+                    'di_minus': analysis.get('di_minus_5m'),
+                    'di_gap': analysis.get('di_gap_5m'),
+                    'ema9': analysis.get('ema9_5m'),
+                    'ema21': analysis.get('ema21_5m'),
+                    'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
+                    'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
+                    'atr_pct': analysis.get('atr_pct_5m'),
+                    'bb_upper': analysis.get('bb_upper_5m'),
+                    'bb_middle': analysis.get('bb_middle_5m'),
+                    'bb_lower': analysis.get('bb_lower_5m'),
+                    'bb_width': analysis.get('bb_width_5m'),
+                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
+                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
+                    'volume': analysis.get('volume_5m'),
+                    'volume_avg': analysis.get('volume_avg_5m'),
+                    'volume_ratio': analysis.get('volume_ratio_5m'),
+                    'volume_spike': analysis.get('volume_spike_5m'),
+                }
+            
+            # Ajouter les indicateurs à analysis
+            analysis['indicators_1m'] = indicators_1m
+            analysis['indicators_5m'] = indicators_5m
+            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
+            logger.info(f"🔍 DEBUG analysis après ajout indicateurs: keys: {list(analysis.keys())[:20]}")
+        else:
+            logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
+
+        # 🔥 PHASE 3: Calculer durée du scan
+        scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+        
+        # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé
+        if _pg_datalogger and _pg_datalogger.enabled:
+            try:
+                # Préparer les données du scan pour PostgreSQL
+                scan_data = {
+                    'scan_duration_ms': scan_duration_ms,
+                    'market_data': {
+                        'price': analysis.get('price') if analysis else None,
+                        'spread_pct': analysis.get('spread_pct') if analysis else None,
+                        'book_depth': analysis.get('book_depth') if analysis else None,
+                        'balance_score': analysis.get('balance_score') if analysis else None,
+                        'bid_vol': analysis.get('bid_vol') if analysis else None,
+                        'ask_vol': analysis.get('ask_vol') if analysis else None,
+                        'orderbook_imbalance_ratio': analysis.get('orderbook_imbalance_ratio') if analysis else None,
+                    },
+                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
+                    'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
+                    'filters': analysis.get('filters', {}) if analysis else {},
+                    'scores': {
+                        'score_1m': analysis.get('score_1m') if analysis else None,
+                        'score_5m': analysis.get('score_5m') if analysis else None,
+                        'score_total': analysis.get('score_total') if analysis else None,
+                        'score_long_1m': analysis.get('score_long_1m') if analysis else None,
+                        'score_short_1m': analysis.get('score_short_1m') if analysis else None,
+                        'score_long_5m': analysis.get('score_long_5m') if analysis else None,
+                        'score_short_5m': analysis.get('score_short_5m') if analysis else None,
+                    },
+                    'patterns': {
+                        'pattern_1m': analysis.get('pattern_1m') if analysis else None,
+                        'pattern_multi_1m': analysis.get('pattern_multi_1m') if analysis else None,
+                        'pattern_5m': analysis.get('pattern_5m') if analysis else None,
+                        'pattern_multi_5m': analysis.get('pattern_multi_5m') if analysis else None,
+                    },
+                    'use_confluence': use_confluence,
+                    'confluence_met': analysis.get('confluence_met') if analysis else False,
+                    'timeframes_aligned': analysis.get('timeframes_aligned') if analysis else False,
+                    'trend_timeframe': trend_timeframe,
+                    'trend_direction': trend_data.get('direction') if trend_data else None,
+                    'trend_strength': trend_data.get('strength') if trend_data else None,
+                    'trend_bonus': trend_data.get('bonus') if trend_data else None,
+                    'divergence_detected': analysis.get('divergence_detected') if analysis else False,
+                    'divergence_type': analysis.get('divergence_type') if analysis else None,
+                    'divergence_bonus': analysis.get('divergence_bonus') if analysis else 0,
+                    'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)),
+                    'opportunity_direction': analysis.get('direction') if analysis and 'direction' in analysis else None,
+                    'reject_reason': analysis.get('reason') if analysis and 'reason' in analysis else None,
+                    'reject_reason_category': analysis.get('reject_category') if analysis else None,
+                    'params_snapshot': {
+                        'volume_multiplier': volume_multiplier,
+                        'use_confluence': use_confluence,
+                        'trend_timeframe': trend_timeframe,
+                        # Ajouter toutes les variables de TRADING_CONFIG pertinentes pour le scan
+                        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                        'min_conditions': TRADING_CONFIG.get('min_conditions', 6),
+                        'use_weighted_scoring': TRADING_CONFIG.get('use_weighted_scoring', True),
+                        'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+                        'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+                        'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+                        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+                        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+                        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+                        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                        'use_breakout': TRADING_CONFIG.get('use_breakout', True),
+                        'use_snr': TRADING_CONFIG.get('use_snr', True),
+                        'use_wick': TRADING_CONFIG.get('use_wick', True),
+                        'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+                    }
+                }
+                
+                # Logger le scan (mode batch par défaut)
+                scan_id = _pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                
+                # Si c'est une opportunité, logger aussi dans opportunities
+                # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
+                # avec scan_id=None temporairement (sera mis à jour lors du flush)
+                if scan_data['is_opportunity'] and analysis:
+                    opportunity_data = {
+                        'status': 'PENDING',
+                        'direction': analysis.get('direction'),
+                        'setup_score': analysis.get('score_total'),
+                        'conditions_matched': analysis.get('condition_types', []),
+                        'entry_price': analysis.get('entry') or analysis.get('price'),
+                        'tp_price': analysis.get('tp'),
+                        'sl_price': analysis.get('sl'),
+                        'size_usdt': None,  # Sera calculé lors de l'ouverture
+                        'risk_usdt': None,
+                        'reward_risk_ratio': None,
+                    }
+                    # En mode batch, on passe scan_id=None temporairement
+                    # Le scan_id sera résolu lors du flush batch
+                    _pg_datalogger.log_opportunity(
+                        scan_id or 0,  # 0 = temporaire, sera mis à jour
+                        symbol, 
+                        opportunity_data,
+                        use_batch=True
+                    )
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur logging PostgreSQL pour {symbol}: {e}")
+        
+        # 🔥 DEBUG: Vérifier avant return
+        if analysis and isinstance(analysis, dict):
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}) AVANT RETURN: contient indicators_1m: {'indicators_1m' in analysis}, indicators_5m: {'indicators_5m' in analysis}")
+        
         return analysis
 
     except Exception as e:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
+        
+        # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
+        if _pg_datalogger and _pg_datalogger.enabled:
+            try:
+                import traceback
+                error_details = {
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'stack': traceback.format_exc()
+                }
+                _pg_datalogger.log_scan_error(
+                    symbol=symbol,
+                    error_type='SCAN_ERROR',
+                    error_message=str(e),
+                    error_details=error_details
+                )
+            except Exception as log_error:
+                logger.warning(f"⚠️ Erreur logging erreur scan: {log_error}")
+        
         return None

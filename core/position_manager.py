@@ -483,40 +483,116 @@ class PositionManager:
         )
 
         # ========================================
-        # ✅ POINT C : LOG TRADE ENTRY
+        # ✅ POINT C : CAPTURE INDICATEURS D'ENTRÉE (pour PostgreSQL)
+        # ========================================
+        # 🔥 FIX: Capturer les indicateurs TOUJOURS, pas seulement si data_logger.is_running
+        # Récupérer scan_uuid, opportunity_id et setup depuis les attributs stockés
+        scan_uuid = getattr(self, '_last_setup_scan_uuid', None)
+        opportunity_id = getattr(self, '_last_setup_opportunity_id', None)
+        last_setup = getattr(self, '_last_setup', None)
+        
+        # 🔥 DEBUG: Log pour vérifier si _last_setup est disponible
+        if not last_setup:
+            logger.warning(f"⚠️ _last_setup est None pour {symbol} - les indicateurs d'entrée ne seront pas disponibles")
+        else:
+            logger.info(f"✅ _last_setup disponible pour {symbol}, keys: {list(last_setup.keys())[:10]}")
+            if 'indicators_1m' not in last_setup and 'indicators_5m' not in last_setup:
+                logger.warning(f"⚠️ _last_setup ne contient pas 'indicators_1m' ou 'indicators_5m' pour {symbol}")
+        
+        # Préparer entry_indicators (snapshot au moment de l'entrée)
+        # Récupérer depuis setup si disponible
+        indicators_1m = last_setup.get('indicators_1m', {}) if last_setup else {}
+        indicators_5m = last_setup.get('indicators_5m', {}) if last_setup else {}
+        
+        # 🔥 DEBUG: Log pour vérifier le contenu des indicateurs
+        if indicators_1m or indicators_5m:
+            logger.info(f"✅ Indicateurs trouvés: indicators_1m keys: {list(indicators_1m.keys())[:5]}, indicators_5m keys: {list(indicators_5m.keys())[:5]}")
+        else:
+            logger.warning(f"⚠️ Aucun indicateur trouvé dans indicators_1m ou indicators_5m pour {symbol}")
+        
+        entry_indicators = {
+                    # RSI
+                    'rsi_1m': indicators_1m.get('rsi') or last_setup.get('rsi') if last_setup else None,
+                    'rsi_5m': indicators_5m.get('rsi') if indicators_5m else None,
+                    'rsi_prev_1m': indicators_1m.get('rsi_prev') if indicators_1m else None,
+                    'rsi_prev_5m': indicators_5m.get('rsi_prev') if indicators_5m else None,
+                    # MACD
+                    'macd_1m': indicators_1m.get('macd') if indicators_1m else None,
+                    'macd_signal_1m': indicators_1m.get('macd_signal') if indicators_1m else None,
+                    'macd_hist_1m': indicators_1m.get('macd_hist') or last_setup.get('macd_hist') if last_setup else None,
+                    'macd_hist_prev_1m': indicators_1m.get('macd_hist_prev') if indicators_1m else None,
+                    'macd_5m': indicators_5m.get('macd') if indicators_5m else None,
+                    'macd_signal_5m': indicators_5m.get('macd_signal') if indicators_5m else None,
+                    'macd_hist_5m': indicators_5m.get('macd_hist') if indicators_5m else None,
+                    'macd_hist_prev_5m': indicators_5m.get('macd_hist_prev') if indicators_5m else None,
+                    # ADX
+                    'adx_1m': indicators_1m.get('adx') or last_setup.get('adx') if last_setup else None,
+                    'adx_5m': indicators_5m.get('adx') if indicators_5m else None,
+                    'di_plus_1m': indicators_1m.get('di_plus') if indicators_1m else None,
+                    'di_minus_1m': indicators_1m.get('di_minus') if indicators_1m else None,
+                    'di_gap_1m': indicators_1m.get('di_gap') if indicators_1m else None,
+                    'di_plus_5m': indicators_5m.get('di_plus') if indicators_5m else None,
+                    'di_minus_5m': indicators_5m.get('di_minus') if indicators_5m else None,
+                    'di_gap_5m': indicators_5m.get('di_gap') if indicators_5m else None,
+                    # EMA
+                    'ema9_1m': indicators_1m.get('ema9') if indicators_1m else None,
+                    'ema21_1m': indicators_1m.get('ema21') if indicators_1m else None,
+                    'ema_diff_pct_1m': indicators_1m.get('ema_diff_pct') if indicators_1m else None,
+                    'ema9_5m': indicators_5m.get('ema9') if indicators_5m else None,
+                    'ema21_5m': indicators_5m.get('ema21') if indicators_5m else None,
+                    'ema_diff_pct_5m': indicators_5m.get('ema_diff_pct') if indicators_5m else None,
+                    # ATR
+                    'atr_1m': indicators_1m.get('atr') if indicators_1m else None,
+                    'atr_pct_1m': (atr / entry * 100) if atr and entry else (indicators_1m.get('atr_pct') or last_setup.get('atr_pct') if last_setup else None),
+                    'atr_5m': indicators_5m.get('atr') if indicators_5m else None,
+                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else (indicators_5m.get('atr_pct') if indicators_5m else None),
+                    # Bollinger Bands
+                    'bb_upper_1m': indicators_1m.get('bb_upper') if indicators_1m else None,
+                    'bb_middle_1m': indicators_1m.get('bb_middle') if indicators_1m else None,
+                    'bb_lower_1m': indicators_1m.get('bb_lower') if indicators_1m else None,
+                    'bb_width_1m': indicators_1m.get('bb_width') if indicators_1m else None,
+                    'bb_distance_to_lower_1m': indicators_1m.get('bb_distance_to_lower') if indicators_1m else None,
+                    'bb_distance_to_upper_1m': indicators_1m.get('bb_distance_to_upper') if indicators_1m else None,
+                    'bb_upper_5m': indicators_5m.get('bb_upper') if indicators_5m else None,
+                    'bb_middle_5m': indicators_5m.get('bb_middle') if indicators_5m else None,
+                    'bb_lower_5m': indicators_5m.get('bb_lower') if indicators_5m else None,
+                    'bb_width_5m': indicators_5m.get('bb_width') if indicators_5m else None,
+                    'bb_distance_to_lower_5m': indicators_5m.get('bb_distance_to_lower') if indicators_5m else None,
+                    'bb_distance_to_upper_5m': indicators_5m.get('bb_distance_to_upper') if indicators_5m else None,
+                    # Volume
+                    'volume_1m': indicators_1m.get('volume') if indicators_1m else None,
+                    'volume_avg_1m': indicators_1m.get('volume_avg') if indicators_1m else None,
+                    'volume_ratio_1m': indicators_1m.get('volume_ratio') or last_setup.get('volumeSpike') if last_setup else None,
+                    'volume_spike_1m': indicators_1m.get('volume_spike') if indicators_1m else None,
+                    'volume_5m': indicators_5m.get('volume') if indicators_5m else None,
+                    'volume_avg_5m': indicators_5m.get('volume_avg') if indicators_5m else None,
+                    'volume_ratio_5m': indicators_5m.get('volume_ratio') if indicators_5m else None,
+                    'volume_spike_5m': indicators_5m.get('volume_spike') if indicators_5m else None,
+                    # Score
+                    'score': last_setup.get('totalScore') if last_setup else None,
+                }
+                
+        # Conditions matched
+        entry_conditions = condition_types or []
+        
+        # Scalability au moment de l'entrée
+        entry_scalability = scalability_data or {}
+        
+        # 🔥 FIX: TOUJOURS stocker les indicateurs dans la position (pour PostgreSQL)
+        self.active_position._scan_log_id = scan_uuid
+        self.active_position._entry_indicators = entry_indicators
+        self.active_position._entry_conditions = entry_conditions
+        self.active_position._entry_scalability = entry_scalability
+        logger.info(f"✅ Indicateurs d'entrée stockés pour {symbol}: {len([v for v in entry_indicators.values() if v is not None])} indicateurs non-null")
+        
+        # ========================================
+        # ✅ LOG TRADE ENTRY (backend.ml.data_logger - optionnel)
         # ========================================
         try:
             from backend.ml.data_logger import DataLogger
             data_logger = DataLogger()
             
             if data_logger and data_logger.is_running:
-                # Récupérer scan_uuid, opportunity_id et setup depuis les attributs stockés
-                scan_uuid = getattr(self, '_last_setup_scan_uuid', None)
-                opportunity_id = getattr(self, '_last_setup_opportunity_id', None)
-                last_setup = getattr(self, '_last_setup', None)
-                
-                # Préparer entry_indicators (snapshot au moment de l'entrée)
-                # Récupérer depuis setup si disponible
-                entry_indicators = {
-                    'rsi_1m': last_setup.get('rsi') if last_setup else None,
-                    'rsi_5m': None,  # À récupérer depuis setup si disponible
-                    'macd_hist_1m': last_setup.get('macd_hist') if last_setup else None,
-                    'macd_hist_5m': None,
-                    'adx_1m': last_setup.get('adx') if last_setup else None,
-                    'adx_5m': None,
-                    'atr_pct_1m': (atr / entry * 100) if atr and entry else (last_setup.get('atr_pct') if last_setup else None),
-                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else None,
-                    'score': last_setup.get('totalScore') if last_setup else None,
-                    'volume_ratio_1m': last_setup.get('volumeSpike') if last_setup else None,
-                    'volume_ratio_5m': None
-                }
-                
-                # Conditions matched
-                entry_conditions = condition_types or []
-                
-                # Scalability au moment de l'entrée
-                entry_scalability = scalability_data or {}
-                
                 # Logger l'entrée (non-blocking avec create_task)
                 import asyncio
                 try:
@@ -538,8 +614,9 @@ class PositionManager:
                                 entry_conditions=entry_conditions,
                                 entry_scalability=entry_scalability
                             )
-                            # Stocker trade_id dans position pour Point D
-                            self.active_position._trade_id = trade_id
+                            # Stocker trade_id dans position
+                            if trade_id:
+                                self.active_position._trade_id = trade_id
                         loop.create_task(log_entry())
                     else:
                         # Pas de loop, créer un nouveau
@@ -557,7 +634,9 @@ class PositionManager:
                             entry_conditions=entry_conditions,
                             entry_scalability=entry_scalability
                         ))
-                        self.active_position._trade_id = trade_id
+                        # Stocker trade_id dans position
+                        if trade_id:
+                            self.active_position._trade_id = trade_id
                 except RuntimeError:
                     # Pas de loop disponible, ignorer
                     pass
@@ -729,6 +808,7 @@ class PositionManager:
         )
 
         # 1. Early Invalidation (10-30s)
+        early_invalidation_data = None
         if self.early_invalidation.should_check(elapsed):
             invalidation = self.early_invalidation.check_invalidation(
                 position=self.active_position.to_dict(),
@@ -736,6 +816,24 @@ class PositionManager:
                 pnl_percent=pnl
             )
             if invalidation:
+                # Stocker les détails de l'invalidation pour le logging
+                entry = self.active_position.entry
+                atr = self.active_position.atr
+                atr_pct = (atr / entry * 100) if entry > 0 and atr > 0 else None
+                # Calculer le seuil adaptatif utilisé
+                invalidation_threshold = self.early_invalidation.get_adaptive_threshold(
+                    elapsed, atr_pct or 0.5
+                )
+                early_invalidation_data = {
+                    'triggered': True,
+                    'triggered_at': datetime.now().isoformat(),
+                    'threshold': invalidation_threshold,
+                    'elapsed': elapsed,
+                    'atr_pct': atr_pct,
+                    'pnl_pct': pnl
+                }
+                # Stocker dans la position pour le logging
+                self.active_position._early_invalidation_data = early_invalidation_data
                 return invalidation
 
         # 2. TP Escalier - Vérifier niveaux
@@ -1069,6 +1167,183 @@ class PositionManager:
         # ========================================
         # ✅ POINT D : LOG TRADE EXIT
         # ========================================
+        
+        # 🔥 PHASE 2: Logger dans PostgreSQL si activé
+        try:
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger and pg_datalogger.enabled:
+                try:
+                    # Préparer les données du trade pour PostgreSQL
+                    # Récupérer pnl_history pour métriques de position
+                    pnl_history = []
+                    if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history:
+                        pnl_history = self.active_position.pnl_history
+                    
+                    # Récupérer entry_indicators, entry_conditions, entry_scalability
+                    entry_indicators = getattr(self.active_position, '_entry_indicators', {})
+                    entry_conditions = getattr(self.active_position, '_entry_conditions', [])
+                    entry_scalability = getattr(self.active_position, '_entry_scalability', {})
+                    
+                    # 🔥 FIX: Si entry_indicators est vide, essayer de récupérer depuis scan_log_id
+                    if not entry_indicators or all(v is None for v in entry_indicators.values()):
+                        scan_log_id = getattr(self.active_position, '_scan_log_id', None)
+                        if scan_log_id:
+                            logger.warning(f"⚠️ entry_indicators vide pour {self.active_position.symbol}, tentative de récupération depuis scan_log_id={scan_log_id}")
+                            # Essayer de récupérer depuis PostgreSQL si disponible
+                            try:
+                                from core.callbacks.scanner_loop import get_pg_datalogger
+                                pg_datalogger = get_pg_datalogger()
+                                if pg_datalogger and pg_datalogger.enabled:
+                                    # Récupérer les indicateurs depuis scan_logs (colonnes individuelles, pas JSONB)
+                                    query = """
+                                        SELECT 
+                                            rsi_1m, rsi_5m, rsi_prev_1m, rsi_prev_5m,
+                                            macd_1m, macd_signal_1m, macd_hist_1m, macd_hist_prev_1m,
+                                            macd_5m, macd_signal_5m, macd_hist_5m, macd_hist_prev_5m,
+                                            adx_1m, adx_5m,
+                                            di_plus_1m, di_minus_1m, di_gap_1m,
+                                            di_plus_5m, di_minus_5m, di_gap_5m,
+                                            ema9_1m, ema21_1m, ema_diff_pct_1m,
+                                            ema9_5m, ema21_5m, ema_diff_pct_5m,
+                                            atr_1m, atr_pct_1m, atr_5m, atr_pct_5m,
+                                            bb_upper_1m, bb_middle_1m, bb_lower_1m,
+                                            bb_width_1m, bb_distance_to_lower_1m, bb_distance_to_upper_1m,
+                                            bb_upper_5m, bb_middle_5m, bb_lower_5m,
+                                            bb_width_5m, bb_distance_to_lower_5m, bb_distance_to_upper_5m,
+                                            volume_1m, volume_avg_1m, volume_ratio_1m, volume_spike_1m,
+                                            volume_5m, volume_avg_5m, volume_ratio_5m, volume_spike_5m,
+                                            score_total
+                                        FROM scan_logs
+                                        WHERE id = %s
+                                        LIMIT 1
+                                    """
+                                    result = pg_datalogger._execute_query(query, (scan_log_id,), fetch=True)
+                                    if result and result[0]:
+                                        row = result[0]
+                                        # Reconstruire entry_indicators depuis les colonnes individuelles
+                                        entry_indicators = {
+                                            'rsi_1m': row[0], 'rsi_5m': row[1], 'rsi_prev_1m': row[2], 'rsi_prev_5m': row[3],
+                                            'macd_1m': row[4], 'macd_signal_1m': row[5], 'macd_hist_1m': row[6], 'macd_hist_prev_1m': row[7],
+                                            'macd_5m': row[8], 'macd_signal_5m': row[9], 'macd_hist_5m': row[10], 'macd_hist_prev_5m': row[11],
+                                            'adx_1m': row[12], 'adx_5m': row[13],
+                                            'di_plus_1m': row[14], 'di_minus_1m': row[15], 'di_gap_1m': row[16],
+                                            'di_plus_5m': row[17], 'di_minus_5m': row[18], 'di_gap_5m': row[19],
+                                            'ema9_1m': row[20], 'ema21_1m': row[21], 'ema_diff_pct_1m': row[22],
+                                            'ema9_5m': row[23], 'ema21_5m': row[24], 'ema_diff_pct_5m': row[25],
+                                            'atr_1m': row[26], 'atr_pct_1m': row[27], 'atr_5m': row[28], 'atr_pct_5m': row[29],
+                                            'bb_upper_1m': row[30], 'bb_middle_1m': row[31], 'bb_lower_1m': row[32],
+                                            'bb_width_1m': row[33], 'bb_distance_to_lower_1m': row[34], 'bb_distance_to_upper_1m': row[35],
+                                            'bb_upper_5m': row[36], 'bb_middle_5m': row[37], 'bb_lower_5m': row[38],
+                                            'bb_width_5m': row[39], 'bb_distance_to_lower_5m': row[40], 'bb_distance_to_upper_5m': row[41],
+                                            'volume_1m': row[42], 'volume_avg_1m': row[43], 'volume_ratio_1m': row[44], 'volume_spike_1m': row[45],
+                                            'volume_5m': row[46], 'volume_avg_5m': row[47], 'volume_ratio_5m': row[48], 'volume_spike_5m': row[49],
+                                            'score': row[50] if len(row) > 50 else None,
+                                        }
+                                        logger.info(f"✅ Indicateurs récupérés depuis PostgreSQL pour {self.active_position.symbol}")
+                            except Exception as e:
+                                logger.debug(f"Erreur récupération indicateurs depuis PostgreSQL: {e}")
+                    
+                    # Récupérer timestamps
+                    from config import TRADING_CONFIG
+                    timestamp_entry = None
+                    if hasattr(self.active_position, 'start_time'):
+                        timestamp_entry = datetime.fromtimestamp(self.active_position.start_time).isoformat()
+                    elif hasattr(self.active_position, 'timestamp'):
+                        timestamp_entry = self.active_position.timestamp
+                    else:
+                        timestamp_entry = datetime.now().isoformat()
+                    
+                    timestamp_exit = datetime.now().isoformat()
+                    
+                    # Préparer config_snapshot complet (toutes les variables de configuration)
+                    from config import (
+                        TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS,
+                        TREND_BONUS_CONFIG, RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG,
+                        WEBSOCKET_CONFIG
+                    )
+                    config_snapshot = {}
+                    # Copier TRADING_CONFIG
+                    if TRADING_CONFIG:
+                        config_snapshot.update(TRADING_CONFIG.copy())
+                    # Ajouter les variables définies séparément (elles ne sont pas dans TRADING_CONFIG)
+                    config_snapshot['RISK_CONFIG'] = RISK_CONFIG
+                    config_snapshot['CONDITION_WEIGHTS'] = CONDITION_WEIGHTS
+                    config_snapshot['TREND_BONUS_CONFIG'] = TREND_BONUS_CONFIG
+                    config_snapshot['RETRY_CONFIG'] = RETRY_CONFIG
+                    config_snapshot['CIRCUIT_BREAKER_CONFIG'] = CIRCUIT_BREAKER_CONFIG
+                    config_snapshot['WEBSOCKET_CONFIG'] = WEBSOCKET_CONFIG
+                    
+                    # Préparer indicateurs de sortie (vide pour l'instant, sera rempli plus tard si nécessaire)
+                    # TODO: Faire un scan rapide au moment de la fermeture pour récupérer les indicateurs de sortie
+                    exit_indicators = {}
+                    
+                    trade_data = {
+                        'symbol': self.active_position.symbol,
+                        'direction': self.active_position.direction,
+                        'entry_price': self.active_position.entry,
+                        'exit_price': exit_price,
+                        'tp_price': self.active_position.tp,
+                        'sl_price': self.active_position.sl,
+                        'size_usdt': self.active_position.size,
+                        'timestamp_entry': timestamp_entry,
+                        'timestamp_exit': timestamp_exit,
+                        'gross_pnl_usdt': result['gross_pnl_usdt'],
+                        'gross_pnl_pct': result['gross_pnl_pct'],
+                        'net_pnl_usdt': result['net_pnl_usdt'],
+                        'net_pnl_pct': result['net_pnl_pct'],
+                        'fees': result['fees'],
+                        'slippage': result['slippage_pct'],
+                        'total_costs': result['total_costs'],
+                        'reason': reason,
+                        'duration_seconds': duration,
+                        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                        'break_even_triggered': self.active_position.break_even_set,
+                        'trailing_stop_triggered': (reason == 'TS'),
+                        'partial_tp_triggered': self.active_position.partial_tp_sold,
+                        # Early Invalidation
+                        'early_invalidation_triggered': (reason == 'EARLY_INVALIDATION'),
+                        'early_invalidation_triggered_at': getattr(self.active_position, '_early_invalidation_data', {}).get('triggered_at') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_threshold': getattr(self.active_position, '_early_invalidation_data', {}).get('threshold') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_elapsed': getattr(self.active_position, '_early_invalidation_data', {}).get('elapsed') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_atr_pct': getattr(self.active_position, '_early_invalidation_data', {}).get('atr_pct') if reason == 'EARLY_INVALIDATION' else None,
+                        'early_invalidation_pnl_pct': getattr(self.active_position, '_early_invalidation_data', {}).get('pnl_pct') if reason == 'EARLY_INVALIDATION' else None,
+                        'tp_escalier_enabled': self.active_position.tp_escalier_enabled,
+                        'tp_escalier_levels_hit': [
+                            {'level': i+1, 'profit': p.get('profit', 0)}
+                            for i, p in enumerate(self.active_position.tp_escalier_profits)
+                        ] if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else [],
+                        'max_pnl_reached': max([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None,
+                        'min_pnl_reached': min([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None,
+                        'pnl_history': pnl_history,  # Pour calculer max_favorable_excursion
+                        'entry_indicators': entry_indicators,
+                        'entry_conditions': entry_conditions,
+                        'entry_scalability': entry_scalability,
+                        'exit_indicators': exit_indicators,  # Vide pour l'instant, sera rempli plus tard
+                        'config_snapshot': config_snapshot,  # Toutes les variables de configuration
+                        'is_backtest': False
+                    }
+                    
+                    # Récupérer opportunity_id et scan_log_id si disponibles
+                    opportunity_id = getattr(self.active_position, '_opportunity_id', None)
+                    scan_log_id = getattr(self.active_position, '_scan_log_id', None)
+                    
+                    # Logger le trade
+                    trade_id = pg_datalogger.log_trade(
+                        trade_data=trade_data,
+                        opportunity_id=opportunity_id,
+                        scan_log_id=scan_log_id,
+                        session_id=getattr(self, 'session_id', None)
+                    )
+                    
+                    if trade_id:
+                        logger.debug(f"📊 Trade loggé dans PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur logging PostgreSQL trade: {e}")
+        except Exception as e:
+            logger.debug(f"Erreur initialisation PostgreSQL datalogger (non-bloquant): {e}")
+        
+        # Logging existant (backend.ml.data_logger)
         try:
             from backend.ml.data_logger import DataLogger
             data_logger = DataLogger()
