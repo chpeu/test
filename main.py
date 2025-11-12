@@ -3090,6 +3090,13 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['min_score_required'] = val
             updated['min_score_required'] = val
         
+        # 🔥 FIX: Support max_slippage_pct dans update_config WebSocket
+        if 'max_slippage_pct' in params:
+            val = float(params['max_slippage_pct'])
+            val = max(0.0, min(0.20, val))  # Clamp 0.0-0.20%
+            TRADING_CONFIG['max_slippage_pct'] = val
+            updated['max_slippage_pct'] = val
+        
         # 🔥 BIDIRECTIONNEL: Patterns Techniques (use_breakout, use_snr, use_wick, use_divergence)
         if 'use_breakout' in params:
             TRADING_CONFIG['use_breakout'] = bool(params['use_breakout'])

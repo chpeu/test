@@ -487,12 +487,33 @@ class PostgreSQLDataLogger:
                 RETURNING id
             """
             
-            # Convertir conditions_matched en liste si nécessaire
+            # Convertir conditions_matched en liste de strings
             conditions_matched = opportunity_data.get('conditions_matched', [])
             if isinstance(conditions_matched, dict):
-                conditions_matched = list(conditions_matched.keys()) if conditions_matched else []
-            elif not isinstance(conditions_matched, list):
-                conditions_matched = [str(conditions_matched)] if conditions_matched else []
+                # Si c'est un dict, prendre les clés ou les valeurs selon le cas
+                conditions_matched = [str(k) for k in conditions_matched.keys()] if conditions_matched else []
+            elif isinstance(conditions_matched, list):
+                # S'assurer que tous les éléments sont des strings
+                conditions_matched = [str(item) for item in conditions_matched if item is not None]
+            else:
+                # Autre type (str, int, etc.) -> convertir en liste
+                conditions_matched = [str(conditions_matched)] if conditions_matched is not None else []
+            
+            # Extraire et valider les valeurs (s'assurer qu'elles ne sont pas des dicts)
+            entry_price = opportunity_data.get('entry_price') or opportunity_data.get('entry_suggested')
+            tp_price = opportunity_data.get('tp_price') or opportunity_data.get('tp_suggested')
+            sl_price = opportunity_data.get('sl_price') or opportunity_data.get('sl_suggested')
+            tp_sl_mode = opportunity_data.get('tp_sl_mode', 'FIXE')
+            
+            # S'assurer que les prix sont des nombres, pas des dicts
+            if isinstance(entry_price, dict):
+                entry_price = entry_price.get('price') or entry_price.get('value')
+            if isinstance(tp_price, dict):
+                tp_price = tp_price.get('price') or tp_price.get('value')
+            if isinstance(sl_price, dict):
+                sl_price = sl_price.get('price') or sl_price.get('value')
+            if isinstance(tp_sl_mode, dict):
+                tp_sl_mode = tp_sl_mode.get('mode') or 'FIXE'
             
             params = (
                 scan_id, session_id, symbol,
@@ -500,10 +521,10 @@ class PostgreSQLDataLogger:
                 opportunity_data.get('direction'),
                 opportunity_data.get('setup_score'),
                 conditions_matched,  # TEXT[] - liste de strings
-                opportunity_data.get('entry_price'),  # entry_suggested
-                opportunity_data.get('tp_price'),  # tp_suggested
-                opportunity_data.get('sl_price'),  # sl_suggested
-                opportunity_data.get('tp_sl_mode', 'FIXE')  # tp_sl_mode
+                entry_price,  # entry_suggested
+                tp_price,  # tp_suggested
+                sl_price,  # sl_suggested
+                str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -1279,12 +1300,33 @@ class PostgreSQLDataLogger:
                 symbol = opp_item['symbol']
                 opp_data = opp_item['opportunity_data']
                 
-                # Convertir conditions_matched en liste si c'est un dict ou autre
+                # Convertir conditions_matched en liste de strings
                 conditions_matched = opp_data.get('conditions_matched', [])
                 if isinstance(conditions_matched, dict):
-                    conditions_matched = list(conditions_matched.keys()) if conditions_matched else []
-                elif not isinstance(conditions_matched, list):
-                    conditions_matched = [str(conditions_matched)] if conditions_matched else []
+                    # Si c'est un dict, prendre les clés ou les valeurs selon le cas
+                    conditions_matched = [str(k) for k in conditions_matched.keys()] if conditions_matched else []
+                elif isinstance(conditions_matched, list):
+                    # S'assurer que tous les éléments sont des strings
+                    conditions_matched = [str(item) for item in conditions_matched if item is not None]
+                else:
+                    # Autre type (str, int, etc.) -> convertir en liste
+                    conditions_matched = [str(conditions_matched)] if conditions_matched is not None else []
+                
+                # Extraire et valider les valeurs (s'assurer qu'elles ne sont pas des dicts)
+                entry_price = opp_data.get('entry_price') or opp_data.get('entry_suggested')
+                tp_price = opp_data.get('tp_price') or opp_data.get('tp_suggested')
+                sl_price = opp_data.get('sl_price') or opp_data.get('sl_suggested')
+                tp_sl_mode = opp_data.get('tp_sl_mode', 'FIXE')
+                
+                # S'assurer que les prix sont des nombres, pas des dicts
+                if isinstance(entry_price, dict):
+                    entry_price = entry_price.get('price') or entry_price.get('value')
+                if isinstance(tp_price, dict):
+                    tp_price = tp_price.get('price') or tp_price.get('value')
+                if isinstance(sl_price, dict):
+                    sl_price = sl_price.get('price') or sl_price.get('value')
+                if isinstance(tp_sl_mode, dict):
+                    tp_sl_mode = tp_sl_mode.get('mode') or 'FIXE'
                 
                 value_tuple = (
                     scan_id, session_id, symbol,
@@ -1292,10 +1334,10 @@ class PostgreSQLDataLogger:
                     opp_data.get('direction'),
                     opp_data.get('setup_score'),
                     conditions_matched,  # TEXT[] - liste de strings
-                    opp_data.get('entry_price'),  # entry_suggested
-                    opp_data.get('tp_price'),  # tp_suggested
-                    opp_data.get('sl_price'),  # sl_suggested
-                    opp_data.get('tp_sl_mode', 'FIXE')  # tp_sl_mode
+                    entry_price,  # entry_suggested
+                    tp_price,  # tp_suggested
+                    sl_price,  # sl_suggested
+                    str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
                 )
                 values.append(value_tuple)
             

@@ -32,6 +32,7 @@
 		use_confluence: false,
 		volume_multiplier: 0.95,
 		min_score_required: 7.5,
+		max_slippage_pct: 0.03,
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
@@ -197,6 +198,7 @@
 				min_conditions: tradingConfig.min_conditions,
 				use_weighted_scoring: tradingConfig.use_weighted_scoring,
 				min_score_required: tradingConfig.min_score_required,
+				max_slippage_pct: tradingConfig.max_slippage_pct,
 				min_score_adx_high: tradingConfig.min_score_adx_high,
 				min_score_adx_low: tradingConfig.min_score_adx_low,
 				dynamic_tolerance_adx_high: tradingConfig.dynamic_tolerance_adx_high,
@@ -531,14 +533,6 @@
 				console.log('🔄 Config mise à jour depuis backend:', data.updated);
 				// Synchroniser la config locale avec les changements du backend
 				if (data.updated) {
-					// 🔥 FIX BUG #3: Ne pas écraser les modifications de l'utilisateur si en cours d'édition
-					// Si hasUnsavedChanges = true, l'utilisateur a modifié des valeurs qui ne sont pas encore sauvegardées
-					// On ignore les mises à jour du backend pour ne pas perdre les modifications de l'utilisateur
-					if (hasUnsavedChanges && debounceTimer) {
-						console.log('⚠️ Modifications utilisateur en cours - Config backend ignorée pour éviter la perte de données');
-						return; // Ignorer les mises à jour du backend
-					}
-
 					// 🔥 FIX: Ne pas déclencher le debounce pour les mises à jour depuis le backend
 					// Annuler le timer de debounce si en cours (le backend a déjà sauvegardé)
 					if (debounceTimer) {
@@ -1128,6 +1122,29 @@
 								data-debug-name="config.min_score_required"
 							/>
 							<span class="slider-value" data-debug-name="config.min_score_required">{Number(config.min_score_required).toFixed(1)} pts</span>
+						</div>
+					</div>
+
+					<div class="variable-item" data-debug-name="config.max_slippage_pct">
+						<div class="var-header" data-debug-name="config.max_slippage_pct">
+							<label for="max-slippage" data-debug-name="config.max_slippage_pct">
+								<span class="var-name" data-debug-name="config.max_slippage_pct">Max Slippage</span>
+								<span class="var-desc" data-debug-name="config.max_slippage_pct">Slippage maximum accepté avant ouverture de position (0.00% - 0.20%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('max_slippage_pct')} title="Réinitialiser" data-debug-name="config.max_slippage_pct.reset">⟲</button>
+						</div>
+						<div class="slider-container" data-debug-name="config.max_slippage_pct">
+							<input
+								id="max-slippage"
+								type="range"
+								step="0.01"
+								min="0"
+								max="0.20"
+								bind:value={config.max_slippage_pct}
+								on:change={() => triggerAutoSave('max_slippage_pct', config.max_slippage_pct.toFixed(2))}
+								data-debug-name="config.max_slippage_pct"
+							/>
+							<span class="slider-value" data-debug-name="config.max_slippage_pct">{Number(config.max_slippage_pct).toFixed(2)}%</span>
 						</div>
 					</div>
 				</div>
