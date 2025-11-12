@@ -531,6 +531,14 @@
 				console.log('🔄 Config mise à jour depuis backend:', data.updated);
 				// Synchroniser la config locale avec les changements du backend
 				if (data.updated) {
+					// 🔥 FIX BUG #3: Ne pas écraser les modifications de l'utilisateur si en cours d'édition
+					// Si hasUnsavedChanges = true, l'utilisateur a modifié des valeurs qui ne sont pas encore sauvegardées
+					// On ignore les mises à jour du backend pour ne pas perdre les modifications de l'utilisateur
+					if (hasUnsavedChanges && debounceTimer) {
+						console.log('⚠️ Modifications utilisateur en cours - Config backend ignorée pour éviter la perte de données');
+						return; // Ignorer les mises à jour du backend
+					}
+
 					// 🔥 FIX: Ne pas déclencher le debounce pour les mises à jour depuis le backend
 					// Annuler le timer de debounce si en cours (le backend a déjà sauvegardé)
 					if (debounceTimer) {

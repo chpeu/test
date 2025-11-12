@@ -128,8 +128,13 @@ class PnLCalculator:
         # PnL USDT brut (partie non encore vendue)
         pnl_usdt_unrealized = size_remaining * (price_diff / entry)
 
-        # Frais : fees sur taille totale × 2 (entrée + sortie)
-        total_fees = size * (fees_percent / 100) * 2
+        # 🔥 FIX BUG #1: Frais uniquement sur taille fermée (pas sur partie déjà vendue au TP partiel)
+        # Si TP partiel déjà effectué, les fees d'entrée sur la partie vendue ont déjà été payés
+        # On calcule donc fees uniquement sur size_remaining × 2 (entrée + sortie de cette partie)
+        if partial_tp_sold:
+            total_fees = size_remaining * (fees_percent / 100) * 2
+        else:
+            total_fees = size * (fees_percent / 100) * 2
 
         # PnL USDT net
         pnl_usdt_partial = position.get('partial_profit_usdt', 0.0)
