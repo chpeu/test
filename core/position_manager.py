@@ -768,9 +768,11 @@ class PositionManager:
         # Imbalance factor
         imbalance_factor = 1 / balance_score if balance_score > 0 else 1.0
 
-        # Depth factor
-        if bid_vol and ask_vol:
-            depth_factor = order_size / (bid_vol + ask_vol)
+        # 🔥 FIX BUG #2: Depth factor - Vérifier que bid_vol et ask_vol ne sont pas None (pas juste truthy)
+        # Car bid_vol=0 est falsy mais valide
+        if bid_vol is not None and ask_vol is not None:
+            total_vol = bid_vol + ask_vol
+            depth_factor = order_size / total_vol if total_vol > 0 else 0
         else:
             depth_factor = order_size / depth if depth > 0 else 0
 
