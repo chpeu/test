@@ -193,7 +193,28 @@ class PostgreSQLDataLogger:
             ON CONFLICT (id) DO NOTHING
             RETURNING id
         """
-        config_snapshot = json.dumps({})  # TODO: Ajouter config réelle
+        # Préparer config_snapshot complet (toutes les variables de configuration)
+        try:
+            from config import (
+                TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS,
+                TREND_BONUS_CONFIG, RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG,
+                WEBSOCKET_CONFIG
+            )
+            config_snapshot_dict = {}
+            # Copier TRADING_CONFIG
+            if TRADING_CONFIG:
+                config_snapshot_dict.update(TRADING_CONFIG.copy())
+            # Ajouter les variables définies séparément
+            config_snapshot_dict['RISK_CONFIG'] = RISK_CONFIG
+            config_snapshot_dict['CONDITION_WEIGHTS'] = CONDITION_WEIGHTS
+            config_snapshot_dict['TREND_BONUS_CONFIG'] = TREND_BONUS_CONFIG
+            config_snapshot_dict['RETRY_CONFIG'] = RETRY_CONFIG
+            config_snapshot_dict['CIRCUIT_BREAKER_CONFIG'] = CIRCUIT_BREAKER_CONFIG
+            config_snapshot_dict['WEBSOCKET_CONFIG'] = WEBSOCKET_CONFIG
+            config_snapshot = json.dumps(config_snapshot_dict)
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur préparation config_snapshot pour session: {e}")
+            config_snapshot = json.dumps({})
         result = self._execute_query(query, (new_session_id, config_snapshot), fetch=True)
         
         if result:

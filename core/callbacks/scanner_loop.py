@@ -487,6 +487,21 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'volume_multiplier': volume_multiplier,
                         'use_confluence': use_confluence,
                         'trend_timeframe': trend_timeframe,
+                        # Ajouter toutes les variables de TRADING_CONFIG pertinentes pour le scan
+                        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                        'min_conditions': TRADING_CONFIG.get('min_conditions', 6),
+                        'use_weighted_scoring': TRADING_CONFIG.get('use_weighted_scoring', True),
+                        'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
+                        'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
+                        'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
+                        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+                        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+                        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+                        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                        'use_breakout': TRADING_CONFIG.get('use_breakout', True),
+                        'use_snr': TRADING_CONFIG.get('use_snr', True),
+                        'use_wick': TRADING_CONFIG.get('use_wick', True),
+                        'use_divergence': TRADING_CONFIG.get('use_divergence', True),
                     }
                 }
                 

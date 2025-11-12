@@ -1179,7 +1179,22 @@ class PositionManager:
                     timestamp_exit = datetime.now().isoformat()
                     
                     # Préparer config_snapshot complet (toutes les variables de configuration)
-                    config_snapshot = TRADING_CONFIG.copy() if TRADING_CONFIG else {}
+                    from config import (
+                        TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS,
+                        TREND_BONUS_CONFIG, RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG,
+                        WEBSOCKET_CONFIG
+                    )
+                    config_snapshot = {}
+                    # Copier TRADING_CONFIG
+                    if TRADING_CONFIG:
+                        config_snapshot.update(TRADING_CONFIG.copy())
+                    # Ajouter les variables définies séparément (elles ne sont pas dans TRADING_CONFIG)
+                    config_snapshot['RISK_CONFIG'] = RISK_CONFIG
+                    config_snapshot['CONDITION_WEIGHTS'] = CONDITION_WEIGHTS
+                    config_snapshot['TREND_BONUS_CONFIG'] = TREND_BONUS_CONFIG
+                    config_snapshot['RETRY_CONFIG'] = RETRY_CONFIG
+                    config_snapshot['CIRCUIT_BREAKER_CONFIG'] = CIRCUIT_BREAKER_CONFIG
+                    config_snapshot['WEBSOCKET_CONFIG'] = WEBSOCKET_CONFIG
                     
                     # Préparer indicateurs de sortie (vide pour l'instant, sera rempli plus tard si nécessaire)
                     # TODO: Faire un scan rapide au moment de la fermeture pour récupérer les indicateurs de sortie
