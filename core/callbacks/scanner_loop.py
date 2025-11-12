@@ -470,81 +470,145 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
             if not indicators_1m:
                 logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
-                # Construire indicators_1m depuis les données disponibles dans analysis
-                indicators_1m = {
-                    'rsi': analysis.get('rsi'),
-                    'rsi_prev': analysis.get('rsi_prev'),
-                    'macd': analysis.get('macd'),
-                    'macd_signal': analysis.get('macd_signal'),
-                    'macd_hist': analysis.get('macd_hist'),
-                    'macd_hist_prev': analysis.get('macd_hist_prev'),
-                    'adx': analysis.get('adx'),
-                    'di_plus': analysis.get('di_plus'),
-                    'di_minus': analysis.get('di_minus'),
-                    'di_gap': analysis.get('di_gap'),
-                    'ema9': analysis.get('ema9'),
-                    'ema21': analysis.get('ema21'),
-                    'ema_diff_pct': analysis.get('ema_diff_pct'),
-                    'atr': analysis.get('atr'),
-                    'atr_pct': analysis.get('atr_pct'),
-                    'bb_upper': analysis.get('bb_upper'),
-                    'bb_middle': analysis.get('bb_middle'),
-                    'bb_lower': analysis.get('bb_lower'),
-                    'bb_width': analysis.get('bb_width'),
-                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
-                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
-                    'volume': analysis.get('volume'),
-                    'volume_avg': analysis.get('volume_avg'),
-                    'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
-                    'volume_spike': analysis.get('volume_spike'),
-                }
+                # Si analysis contient 'reason' (aucun setup valide), extraire depuis analysis_1m
+                if 'reason' in analysis and 'analysis_1m' in analysis and analysis['analysis_1m']:
+                    analysis_1m = analysis['analysis_1m']
+                    indicators_1m = {
+                        'rsi': analysis_1m.get('rsi'),
+                        'rsi_prev': analysis_1m.get('rsi_prev'),
+                        'macd': analysis_1m.get('macd'),
+                        'macd_signal': analysis_1m.get('macd_signal'),
+                        'macd_hist': analysis_1m.get('macd_hist'),
+                        'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                        'adx': analysis_1m.get('adx'),
+                        'di_plus': analysis_1m.get('di_plus'),
+                        'di_minus': analysis_1m.get('di_minus'),
+                        'di_gap': analysis_1m.get('di_gap'),
+                        'ema9': analysis_1m.get('ema9'),
+                        'ema21': analysis_1m.get('ema21'),
+                        'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
+                        'atr': analysis_1m.get('atr'),
+                        'atr_pct': analysis_1m.get('atr_pct'),
+                        'bb_upper': analysis_1m.get('bb_upper'),
+                        'bb_middle': analysis_1m.get('bb_middle'),
+                        'bb_lower': analysis_1m.get('bb_lower'),
+                        'bb_width': analysis_1m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                        'volume': analysis_1m.get('volume'),
+                        'volume_avg': analysis_1m.get('volume_avg'),
+                        'volume_ratio': analysis_1m.get('volumeSpike'),
+                        'volume_spike': analysis_1m.get('volumeSpike'),
+                    }
+                else:
+                    # Construire indicators_1m depuis les données disponibles dans analysis
+                    indicators_1m = {
+                        'rsi': analysis.get('rsi'),
+                        'rsi_prev': analysis.get('rsi_prev'),
+                        'macd': analysis.get('macd'),
+                        'macd_signal': analysis.get('macd_signal'),
+                        'macd_hist': analysis.get('macd_hist'),
+                        'macd_hist_prev': analysis.get('macd_hist_prev'),
+                        'adx': analysis.get('adx'),
+                        'di_plus': analysis.get('di_plus'),
+                        'di_minus': analysis.get('di_minus'),
+                        'di_gap': analysis.get('di_gap'),
+                        'ema9': analysis.get('ema9'),
+                        'ema21': analysis.get('ema21'),
+                        'ema_diff_pct': analysis.get('ema_diff_pct'),
+                        'atr': analysis.get('atr'),
+                        'atr_pct': analysis.get('atr_pct'),
+                        'bb_upper': analysis.get('bb_upper'),
+                        'bb_middle': analysis.get('bb_middle'),
+                        'bb_lower': analysis.get('bb_lower'),
+                        'bb_width': analysis.get('bb_width'),
+                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                        'volume': analysis.get('volume'),
+                        'volume_avg': analysis.get('volume_avg'),
+                        'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                        'volume_spike': analysis.get('volume_spike'),
+                    }
             
             # Si indicators_5m n'est pas présent, essayer de le construire depuis les données disponibles
             if not indicators_5m:
                 logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
-                # Pour indicators_5m, on peut utiliser les mêmes données ou des variantes 5m si disponibles
-                indicators_5m = {
-                    'rsi': analysis.get('rsi_5m'),
-                    'rsi_prev': analysis.get('rsi_prev_5m'),
-                    'macd': analysis.get('macd_5m'),
-                    'macd_signal': analysis.get('macd_signal_5m'),
-                    'macd_hist': analysis.get('macd_hist_5m'),
-                    'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
-                    'adx': analysis.get('adx_5m'),
-                    'di_plus': analysis.get('di_plus_5m'),
-                    'di_minus': analysis.get('di_minus_5m'),
-                    'di_gap': analysis.get('di_gap_5m'),
-                    'ema9': analysis.get('ema9_5m'),
-                    'ema21': analysis.get('ema21_5m'),
-                    'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
-                    'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
-                    'atr_pct': analysis.get('atr_pct_5m'),
-                    'bb_upper': analysis.get('bb_upper_5m'),
-                    'bb_middle': analysis.get('bb_middle_5m'),
-                    'bb_lower': analysis.get('bb_lower_5m'),
-                    'bb_width': analysis.get('bb_width_5m'),
-                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
-                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
-                    'volume': analysis.get('volume_5m'),
-                    'volume_avg': analysis.get('volume_avg_5m'),
-                    'volume_ratio': analysis.get('volume_ratio_5m'),
-                    'volume_spike': analysis.get('volume_spike_5m'),
-                }
+                # Si analysis contient 'reason' (aucun setup valide), extraire depuis analysis_5m
+                if 'reason' in analysis and 'analysis_5m' in analysis and analysis['analysis_5m']:
+                    analysis_5m = analysis['analysis_5m']
+                    indicators_5m = {
+                        'rsi': analysis_5m.get('rsi'),
+                        'rsi_prev': analysis_5m.get('rsi_prev'),
+                        'macd': analysis_5m.get('macd'),
+                        'macd_signal': analysis_5m.get('macd_signal'),
+                        'macd_hist': analysis_5m.get('macd_hist'),
+                        'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                        'adx': analysis_5m.get('adx'),
+                        'di_plus': analysis_5m.get('di_plus'),
+                        'di_minus': analysis_5m.get('di_minus'),
+                        'di_gap': analysis_5m.get('di_gap'),
+                        'ema9': analysis_5m.get('ema9'),
+                        'ema21': analysis_5m.get('ema21'),
+                        'ema_diff_pct': analysis_5m.get('ema_diff_pct'),
+                        'atr': analysis_5m.get('atr'),
+                        'atr_pct': analysis_5m.get('atr_pct'),
+                        'bb_upper': analysis_5m.get('bb_upper'),
+                        'bb_middle': analysis_5m.get('bb_middle'),
+                        'bb_lower': analysis_5m.get('bb_lower'),
+                        'bb_width': analysis_5m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                        'volume': analysis_5m.get('volume'),
+                        'volume_avg': analysis_5m.get('volume_avg'),
+                        'volume_ratio': analysis_5m.get('volumeSpike'),
+                        'volume_spike': analysis_5m.get('volumeSpike'),
+                    }
+                else:
+                    # Pour indicators_5m, on peut utiliser les mêmes données ou des variantes 5m si disponibles
+                    indicators_5m = {
+                        'rsi': analysis.get('rsi_5m'),
+                        'rsi_prev': analysis.get('rsi_prev_5m'),
+                        'macd': analysis.get('macd_5m'),
+                        'macd_signal': analysis.get('macd_signal_5m'),
+                        'macd_hist': analysis.get('macd_hist_5m'),
+                        'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
+                        'adx': analysis.get('adx_5m'),
+                        'di_plus': analysis.get('di_plus_5m'),
+                        'di_minus': analysis.get('di_minus_5m'),
+                        'di_gap': analysis.get('di_gap_5m'),
+                        'ema9': analysis.get('ema9_5m'),
+                        'ema21': analysis.get('ema21_5m'),
+                        'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
+                        'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
+                        'atr_pct': analysis.get('atr_pct_5m'),
+                        'bb_upper': analysis.get('bb_upper_5m'),
+                        'bb_middle': analysis.get('bb_middle_5m'),
+                        'bb_lower': analysis.get('bb_lower_5m'),
+                        'bb_width': analysis.get('bb_width_5m'),
+                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
+                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
+                        'volume': analysis.get('volume_5m'),
+                        'volume_avg': analysis.get('volume_avg_5m'),
+                        'volume_ratio': analysis.get('volume_ratio_5m'),
+                        'volume_spike': analysis.get('volume_spike_5m'),
+                    }
             
             # Ajouter les indicateurs à analysis
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
             logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
-            logger.info(f"🔍 DEBUG analysis après ajout indicateurs: keys: {list(analysis.keys())[:20]}")
         else:
             logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
 
         # 🔥 PHASE 3: Calculer durée du scan
         scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification _pg_datalogger")
         
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): _pg_datalogger={_pg_datalogger is not None}, enabled={getattr(_pg_datalogger, 'enabled', False) if _pg_datalogger else False}")
         if _pg_datalogger and _pg_datalogger.enabled:
             try:
+                logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
                 # Préparer les données du scan pour PostgreSQL
                 scan_data = {
                     'scan_duration_ms': scan_duration_ms,
@@ -612,7 +676,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 }
                 
                 # Logger le scan (mode batch par défaut)
+                logger.info(f"📝 Appel log_scan() pour {symbol}")
                 scan_id = _pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
@@ -640,11 +706,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     )
                     
             except Exception as e:
-                logger.warning(f"⚠️ Erreur logging PostgreSQL pour {symbol}: {e}")
-        
-        # 🔥 DEBUG: Vérifier avant return
-        if analysis and isinstance(analysis, dict):
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}) AVANT RETURN: contient indicators_1m: {'indicators_1m' in analysis}, indicators_5m: {'indicators_5m' in analysis}")
+                logger.error(f"❌ Erreur logging PostgreSQL pour {symbol}: {e}")
+                import traceback
+                logger.debug(f"Traceback: {traceback.format_exc()}")
         
         return analysis
 
