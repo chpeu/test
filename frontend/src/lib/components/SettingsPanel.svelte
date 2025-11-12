@@ -1,101 +1,11 @@
 <script lang="ts">
 	import { settings, updateSetting, resetSettings, exportSettings, importSettings } from '$lib/stores/settings';
-	import { onMount } from 'svelte';
-	import { sendCommandViaWS, getWebSocket } from '$lib/utils/websocket';
 
 	let fileInput;
 	let showResetConfirm = false;
 	let importError = '';
-	let backendConfig = {};
 
-	// ✅ Charger la config depuis le backend au démarrage
-	onMount(async () => {
-		await loadBackendConfig();
-		
-		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de config depuis le backend
-		const ws = getWebSocket();
-		if (ws) {
-			ws.on('config_updated', (data: any) => {
-				console.log('🔄 Config mise à jour depuis backend dans SettingsPanel:', data.updated);
-				// Synchroniser les paramètres avec les changements du backend
-				if (data.updated) {
-					if (data.updated.sl_percent !== undefined) {
-						updateSetting('stopLossPercent', data.updated.sl_percent);
-					}
-					if (data.updated.tp_percent !== undefined) {
-						updateSetting('takeProfitPercent', data.updated.tp_percent);
-					}
-					if (data.updated.trailing_trigger_pnl !== undefined) {
-						updateSetting('trailingStopPercent', data.updated.trailing_trigger_pnl);
-					}
-					// Mettre à jour backendConfig pour affichage
-					backendConfig = { ...backendConfig, ...data.updated };
-				}
-			});
-		}
-	});
-
-	async function loadBackendConfig() {
-		try {
-			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket pour charger la config (priorité)
-			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
-			const ws = getWebSocket();
-			if (ws && ws.connected) {
-				try {
-					const stateData = await sendRequestViaWS('state', {});
-					if (stateData && stateData.config) {
-						backendConfig = stateData.config;
-						// ✅ Synchroniser les paramètres qui existent dans le backend
-						if (stateData.config.sl_percent !== undefined) {
-							updateSetting('stopLossPercent', stateData.config.sl_percent);
-						}
-						if (stateData.config.tp_percent !== undefined) {
-							updateSetting('takeProfitPercent', stateData.config.tp_percent);
-						}
-						if (stateData.config.trailing_trigger_pnl !== undefined) {
-							updateSetting('trailingStopPercent', stateData.config.trailing_trigger_pnl);
-						}
-						return;
-					}
-				} catch (wsErr) {
-					console.warn('⚠️ Erreur chargement config via WebSocket, fallback REST:', wsErr);
-				}
-			}
-			
-			// 🔥 BIDIRECTIONNEL: Plus de fallback REST - WebSocket uniquement
-		} catch (err) {
-			console.error('Error loading backend config:', err);
-		}
-	}
-
-	// ✅ Synchroniser avec le backend lors des changements
-	async function syncWithBackend(key, value) {
-		updateSetting(key, value);
-		
-		// ✅ Mapper les clés SettingsPanel vers TRADING_CONFIG
-		const configMap = {
-			'stopLossPercent': 'sl_percent',
-			'takeProfitPercent': 'tp_percent',
-			'trailingStopPercent': 'trailing_trigger_pnl'
-		};
-
-		const backendKey = configMap[key];
-		if (backendKey) {
-			try {
-				// 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif au lieu de REST
-				const result = await sendCommandViaWS('update_config', { [backendKey]: value });
-				
-				if (result && result.updated) {
-					console.log(`✅ ${key} synchronisé avec backend via WebSocket: ${backendKey} = ${value}`);
-				} else {
-					console.log(`✅ ${key} synchronisé avec backend via WebSocket: ${backendKey} = ${value}`);
-				}
-			} catch (err) {
-				console.error(`❌ Erreur synchronisation ${key} via WebSocket:`, err);
-				alert(`❌ Erreur: Impossible de synchroniser ${key}. Vérifiez la connexion WebSocket.`);
-			}
-		}
-	}
+	// 🔥 FIX: Plus besoin de charger la config backend, on garde uniquement les paramètres frontend
 
 	function handleImport() {
 		const file = fileInput.files[0];
@@ -105,8 +15,6 @@
 			.then(() => {
 				importError = '';
 				alert('✅ Settings imported successfully!');
-				// ✅ Synchroniser les paramètres importés avec le backend
-				loadBackendConfig();
 			})
 			.catch(err => {
 				importError = `❌ Error: ${err.message}`;
@@ -118,8 +26,6 @@
 			resetSettings();
 			showResetConfirm = false;
 			alert('✅ Settings reset to defaults!');
-			// ✅ Recharger la config backend après reset
-			loadBackendConfig();
 		} else {
 			showResetConfirm = true;
 			setTimeout(() => (showResetConfirm = false), 3000);
@@ -127,12 +33,12 @@
 	}
 </script>
 
-<div class="settings-panel">
-	<div class="settings-header">
-		<h2>⚙️ Settings</h2>
-		<div class="header-actions">
-			<button class="btn-secondary" on:click={exportSettings}>📥 Export</button>
-			<label class="btn-secondary">
+<div class="settings-panel" data-debug-name="settingsPanel">
+	<div class="settings-header" data-debug-name="settingsPanel.header">
+		<h2 data-debug-name="settingsPanel.title">⚙️ Settings</h2>
+		<div class="header-actions" data-debug-name="settingsPanel.actions">
+			<button class="btn-secondary" on:click={exportSettings} data-debug-name="settingsPanel.exportButton">📥 Export</button>
+			<label class="btn-secondary" data-debug-name="settingsPanel.importButton">
 				📤 Import
 				<input
 					type="file"
@@ -140,12 +46,14 @@
 					bind:this={fileInput}
 					on:change={handleImport}
 					style="display: none"
+					data-debug-name="settingsPanel.importInput"
 				/>
 			</label>
 			<button
 				class="btn-danger"
 				class:confirm={showResetConfirm}
 				on:click={handleReset}
+				data-debug-name="settingsPanel.resetButton"
 			>
 				{showResetConfirm ? '⚠️ Confirm Reset?' : '🔄 Reset'}
 			</button>
@@ -153,15 +61,15 @@
 	</div>
 
 	{#if importError}
-		<div class="error-message">{importError}</div>
+		<div class="error-message" data-debug-name="settingsPanel.importError">{importError}</div>
 	{/if}
 
 	<!-- Trading Settings -->
-	<section class="settings-section">
-		<h3>💰 Trading</h3>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label>
+	<section class="settings-section" data-debug-name="settingsPanel.trading">
+		<h3 data-debug-name="settingsPanel.trading.title">💰 Trading</h3>
+		<div class="settings-grid" data-debug-name="settingsPanel.trading.grid">
+			<div class="setting-item" data-debug-name="settings.maxPositionSize">
+				<label data-debug-name="settings.maxPositionSize">
 					Max Position Size (USDT)
 					<input
 						type="number"
@@ -170,58 +78,14 @@
 						step="10"
 						bind:value={$settings.maxPositionSize}
 						on:change={() => updateSetting('maxPositionSize', $settings.maxPositionSize)}
+						data-debug-name="settings.maxPositionSize"
 					/>
 				</label>
-				<span class="hint">Maximum size per position</span>
+				<span class="hint" data-debug-name="settings.maxPositionSize.hint">Maximum size per position</span>
 			</div>
 
-			<div class="setting-item">
-				<label>
-					Stop Loss (%)
-					<input
-						type="number"
-						min="0.1"
-						max="10"
-						step="0.1"
-						bind:value={$settings.stopLossPercent}
-						on:change={() => syncWithBackend('stopLossPercent', $settings.stopLossPercent)}
-					/>
-				</label>
-				<span class="hint">Stop loss percentage (synchronisé avec backend: sl_percent)</span>
-			</div>
-
-			<div class="setting-item">
-				<label>
-					Take Profit (%)
-					<input
-						type="number"
-						min="0.1"
-						max="20"
-						step="0.1"
-						bind:value={$settings.takeProfitPercent}
-						on:change={() => syncWithBackend('takeProfitPercent', $settings.takeProfitPercent)}
-					/>
-				</label>
-				<span class="hint">Take profit percentage (synchronisé avec backend: tp_percent)</span>
-			</div>
-
-			<div class="setting-item">
-				<label>
-					Trailing Stop Trigger (%)
-					<input
-						type="number"
-						min="0.1"
-						max="5"
-						step="0.1"
-						bind:value={$settings.trailingStopPercent}
-						on:change={() => syncWithBackend('trailingStopPercent', $settings.trailingStopPercent)}
-					/>
-				</label>
-				<span class="hint">Trailing stop trigger PnL (synchronisé avec backend: trailing_trigger_pnl)</span>
-			</div>
-
-			<div class="setting-item">
-				<label>
+			<div class="setting-item" data-debug-name="settings.maxDailyLoss">
+				<label data-debug-name="settings.maxDailyLoss">
 					Max Daily Loss (USDT)
 					<input
 						type="number"
@@ -230,13 +94,14 @@
 						step="10"
 						bind:value={$settings.maxDailyLoss}
 						on:change={() => updateSetting('maxDailyLoss', $settings.maxDailyLoss)}
+						data-debug-name="settings.maxDailyLoss"
 					/>
 				</label>
-				<span class="hint">Stop trading if reached</span>
+				<span class="hint" data-debug-name="settings.maxDailyLoss.hint">Stop trading if reached</span>
 			</div>
 
-			<div class="setting-item">
-				<label>
+			<div class="setting-item" data-debug-name="settings.maxDailyTrades">
+				<label data-debug-name="settings.maxDailyTrades">
 					Max Daily Trades
 					<input
 						type="number"
@@ -245,158 +110,10 @@
 						step="1"
 						bind:value={$settings.maxDailyTrades}
 						on:change={() => updateSetting('maxDailyTrades', $settings.maxDailyTrades)}
+						data-debug-name="settings.maxDailyTrades"
 					/>
 				</label>
-				<span class="hint">Maximum trades per day</span>
-			</div>
-		</div>
-	</section>
-
-	<!-- Scanner Settings -->
-	<section class="settings-section">
-		<h3>🔍 Scanner</h3>
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label>
-					Scan Interval (seconds)
-					<input
-						type="number"
-						min="10"
-						max="600"
-						step="10"
-						bind:value={$settings.scanInterval}
-						on:change={() => updateSetting('scanInterval', $settings.scanInterval)}
-					/>
-				</label>
-				<span class="hint">Time between scans</span>
-			</div>
-
-			<div class="setting-item">
-				<label>
-					Min Volume (USDT)
-					<input
-						type="number"
-						min="100000"
-						max="10000000"
-						step="100000"
-						bind:value={$settings.minVolume}
-						on:change={() => updateSetting('minVolume', $settings.minVolume)}
-					/>
-				</label>
-				<span class="hint">Minimum 24h volume</span>
-			</div>
-
-			<div class="setting-item">
-				<label>
-					Max Spread (%)
-					<input
-						type="number"
-						min="0.1"
-						max="2"
-						step="0.1"
-						bind:value={$settings.maxSpread}
-						on:change={() => updateSetting('maxSpread', $settings.maxSpread)}
-					/>
-				</label>
-				<span class="hint">Maximum bid/ask spread</span>
-			</div>
-
-			<div class="setting-item">
-				<label>
-					Top Pairs Count
-					<input
-						type="number"
-						min="5"
-						max="50"
-						step="5"
-						bind:value={$settings.topPairsCount}
-						on:change={() => updateSetting('topPairsCount', $settings.topPairsCount)}
-					/>
-				</label>
-				<span class="hint">Number of pairs to show</span>
-			</div>
-		</div>
-	</section>
-
-	<!-- UI Settings -->
-	<section class="settings-section">
-		<h3>🎨 Interface</h3>
-		<div class="settings-toggles">
-			<label class="toggle-item">
-				<input
-					type="checkbox"
-					bind:checked={$settings.autoRefresh}
-					on:change={() => updateSetting('autoRefresh', $settings.autoRefresh)}
-				/>
-				<span>Auto Refresh</span>
-			</label>
-
-			<label class="toggle-item">
-				<input
-					type="checkbox"
-					bind:checked={$settings.showAdvancedStats}
-					on:change={() => updateSetting('showAdvancedStats', $settings.showAdvancedStats)}
-				/>
-				<span>Show Advanced Stats</span>
-			</label>
-
-			<label class="toggle-item">
-				<input
-					type="checkbox"
-					bind:checked={$settings.compactMode}
-					on:change={() => updateSetting('compactMode', $settings.compactMode)}
-				/>
-				<span>Compact Mode</span>
-			</label>
-
-			<label class="toggle-item">
-				<input
-					type="checkbox"
-					bind:checked={$settings.soundEnabled}
-					on:change={() => updateSetting('soundEnabled', $settings.soundEnabled)}
-				/>
-				<span>Sound Effects</span>
-			</label>
-
-			<label class="toggle-item">
-				<input
-					type="checkbox"
-					bind:checked={$settings.chartAnimations}
-					on:change={() => updateSetting('chartAnimations', $settings.chartAnimations)}
-				/>
-				<span>Chart Animations</span>
-			</label>
-		</div>
-
-		<div class="settings-grid">
-			<div class="setting-item">
-				<label>
-					Refresh Interval (ms)
-					<input
-						type="number"
-						min="1000"
-						max="30000"
-						step="1000"
-						bind:value={$settings.refreshInterval}
-						on:change={() => updateSetting('refreshInterval', $settings.refreshInterval)}
-					/>
-				</label>
-				<span class="hint">UI refresh rate</span>
-			</div>
-
-			<div class="setting-item">
-				<label>
-					Chart Max Trades
-					<input
-						type="number"
-						min="5"
-						max="100"
-						step="5"
-						bind:value={$settings.chartMaxTrades}
-						on:change={() => updateSetting('chartMaxTrades', $settings.chartMaxTrades)}
-					/>
-				</label>
-				<span class="hint">Trades to show in charts</span>
+				<span class="hint" data-debug-name="settings.maxDailyTrades.hint">Maximum trades per day</span>
 			</div>
 		</div>
 	</section>
@@ -535,40 +252,6 @@
 		font-style: italic;
 	}
 
-	.settings-toggles {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 16px;
-		margin-bottom: 20px;
-	}
-
-	.toggle-item {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 12px;
-		background: var(--bg-primary);
-		border-radius: 6px;
-		cursor: pointer;
-		transition: all 0.3s ease;
-	}
-
-	.toggle-item:hover {
-		background: var(--bg-tertiary);
-	}
-
-	.toggle-item input[type='checkbox'] {
-		width: 20px;
-		height: 20px;
-		cursor: pointer;
-		accent-color: var(--accent-green);
-	}
-
-	.toggle-item span {
-		color: var(--text-primary);
-		font-size: 14px;
-	}
-
 	@media (max-width: 768px) {
 		.settings-header {
 			flex-direction: column;
@@ -581,10 +264,6 @@
 		}
 
 		.settings-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.settings-toggles {
 			grid-template-columns: 1fr;
 		}
 	}

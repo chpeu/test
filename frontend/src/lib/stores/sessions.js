@@ -26,6 +26,7 @@ export const globalStats = writable({
 	paused_sessions: 0,
 	total_trades: 0,
 	total_pnl: 0,
+	total_pnl_percent: 0,
 	total_wins: 0,
 	total_losses: 0,
 	win_rate: 0

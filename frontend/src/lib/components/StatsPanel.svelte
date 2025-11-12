@@ -9,54 +9,54 @@
 	</div>
 
 	<div class="stats-grid">
-		<div class="stat-box">
-			<div class="stat-label">Total Trades</div>
-			<div class="stat-value">{$stats.total_trades}</div>
+		<div class="stat-box" data-debug-name="stats.total_trades">
+			<div class="stat-label" data-debug-name="stats.total_trades">Total Trades</div>
+			<div class="stat-value" data-debug-name="stats.total_trades">{$stats.total_trades}</div>
 		</div>
 
-		<div class="stat-box wins">
-			<div class="stat-label">Wins</div>
-			<div class="stat-value">{$stats.wins}</div>
+		<div class="stat-box wins" data-debug-name="stats.wins">
+			<div class="stat-label" data-debug-name="stats.wins">Wins</div>
+			<div class="stat-value" data-debug-name="stats.wins">{$stats.wins}</div>
 		</div>
 
-		<div class="stat-box losses">
-			<div class="stat-label">Losses</div>
-			<div class="stat-value">{$stats.losses}</div>
+		<div class="stat-box losses" data-debug-name="stats.losses">
+			<div class="stat-label" data-debug-name="stats.losses">Losses</div>
+			<div class="stat-value" data-debug-name="stats.losses">{$stats.losses}</div>
 		</div>
 
-		<div class="stat-box winrate">
-			<div class="stat-label">Winrate</div>
-			<div class="stat-value">{$winrate}%</div>
+		<div class="stat-box winrate" data-debug-name="winrate">
+			<div class="stat-label" data-debug-name="winrate">Winrate</div>
+			<div class="stat-value" data-debug-name="winrate">{$winrate}%</div>
 		</div>
 
-		<div class="stat-box pnl-pct" class:positive={$stats.total_pnl_pct >= 0} class:negative={$stats.total_pnl_pct < 0}>
-			<div class="stat-label">Total PnL %</div>
-			<div class="stat-value">
+		<div class="stat-box pnl-pct" class:positive={$stats.total_pnl_pct >= 0} class:negative={$stats.total_pnl_pct < 0} data-debug-name="stats.total_pnl_pct">
+			<div class="stat-label" data-debug-name="stats.total_pnl_pct">Total PnL %</div>
+			<div class="stat-value" data-debug-name="stats.total_pnl_pct">
 				{formatPercent($stats.total_pnl_pct)}%
 			</div>
 		</div>
 
-		<div class="stat-box pnl" class:positive={$stats.total_pnl_usdt >= 0} class:negative={$stats.total_pnl_usdt < 0}>
-			<div class="stat-label">Total PnL</div>
-			<div class="stat-value">
+		<div class="stat-box pnl" class:positive={$stats.total_pnl_usdt >= 0} class:negative={$stats.total_pnl_usdt < 0} data-debug-name="stats.total_pnl_usdt">
+			<div class="stat-label" data-debug-name="stats.total_pnl_usdt">Total PnL</div>
+			<div class="stat-value" data-debug-name="stats.total_pnl_usdt">
 				{formatUSDT($stats.total_pnl_usdt)} USDT
 			</div>
 		</div>
 
 
 		{#if $stats.best_trade}
-			<div class="stat-box best">
-				<div class="stat-label">Best Trade</div>
-				<div class="stat-value">+{formatUSDT($stats.best_trade.pnl_usdt)} USDT</div>
-				<div class="stat-subvalue">{$stats.best_trade.symbol}</div>
+			<div class="stat-box best" data-debug-name="stats.best_trade">
+				<div class="stat-label" data-debug-name="stats.best_trade">Best Trade</div>
+				<div class="stat-value" data-debug-name="stats.best_trade.pnl_pct">+{formatPercent($stats.best_trade.net_pnl_pct || $stats.best_trade.pnl_pct || 0)}%</div>
+				<div class="stat-subvalue" data-debug-name="stats.best_trade.symbol">{$stats.best_trade.symbol}</div>
 			</div>
 		{/if}
 
 		{#if $stats.worst_trade}
-			<div class="stat-box worst">
-				<div class="stat-label">Worst Trade</div>
-				<div class="stat-value">{formatUSDT($stats.worst_trade.pnl_usdt)} USDT</div>
-				<div class="stat-subvalue">{$stats.worst_trade.symbol}</div>
+			<div class="stat-box worst" data-debug-name="stats.worst_trade">
+				<div class="stat-label" data-debug-name="stats.worst_trade">Worst Trade</div>
+				<div class="stat-value" data-debug-name="stats.worst_trade.pnl_pct">{formatPercent($stats.worst_trade.net_pnl_pct || $stats.worst_trade.pnl_pct || 0)}%</div>
+				<div class="stat-subvalue" data-debug-name="stats.worst_trade.symbol">{$stats.worst_trade.symbol}</div>
 			</div>
 		{/if}
 	</div>

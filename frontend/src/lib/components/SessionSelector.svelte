@@ -109,17 +109,17 @@
 	}
 </script>
 
-<div class="session-selector">
-	<div class="selector-header">
-		<h3>📂 Sessions</h3>
-		<button class="btn-create" on:click={() => (showCreateModal = true)}>➕ New</button>
+<div class="session-selector" data-debug-name="sessionSelector">
+	<div class="selector-header" data-debug-name="selectorHeader">
+		<h3 data-debug-name="sessionsTitle">📂 Sessions</h3>
+		<button class="btn-create" on:click={() => (showCreateModal = true)} data-debug-name="btnCreate">➕ New</button>
 	</div>
 
 	{#if $sessionsError}
-		<div class="error-banner">⚠️ {$sessionsError}</div>
+		<div class="error-banner" data-debug-name="sessionsError">⚠️ {$sessionsError}</div>
 	{/if}
 
-	<div class="session-list">
+	<div class="session-list" data-debug-name="sessionList">
 		{#if $sessions && $sessions.length > 0}
 			{#each $sessions as session (session.session_id)}
 				<div
@@ -129,21 +129,23 @@
 					tabindex="0"
 					on:click={() => handleSelectSession(session.session_id)}
 					on:keydown={(e) => e.key === 'Enter' && handleSelectSession(session.session_id)}
+					data-debug-name="sessionItem.{session.session_id}"
 				>
-					<div class="session-main">
-						<div class="session-info">
-							<span class="session-status" style="color: {getStatusColor(session.status)}">
+					<div class="session-main" data-debug-name="sessionMain">
+						<div class="session-info" data-debug-name="sessionInfo">
+							<span class="session-status" style="color: {getStatusColor(session.status)}" data-debug-name="session.status">
 								{getStatusIcon(session.status)}
 							</span>
-							<span class="session-name">{session.name}</span>
+							<span class="session-name" data-debug-name="session.name">{session.name}</span>
 						</div>
 
-						<div class="session-controls" role="group" on:click|stopPropagation>
+						<div class="session-controls" role="group" on:click|stopPropagation data-debug-name="sessionControls">
 							{#if session.status === 'stopped'}
 								<button
 									class="control-btn start"
 									on:click={() => handleStart(session.session_id)}
 									title="Start"
+									data-debug-name="controlBtn.start"
 								>
 									▶️
 								</button>
@@ -154,6 +156,7 @@
 									class="control-btn pause"
 									on:click={() => handlePause(session.session_id)}
 									title="Pause"
+									data-debug-name="controlBtn.pause"
 								>
 									⏸️
 								</button>
@@ -161,6 +164,7 @@
 									class="control-btn stop"
 									on:click={() => handleStop(session.session_id)}
 									title="Stop"
+									data-debug-name="controlBtn.stop"
 								>
 									⏹️
 								</button>
@@ -171,6 +175,7 @@
 									class="control-btn resume"
 									on:click={() => handleResume(session.session_id)}
 									title="Resume"
+									data-debug-name="controlBtn.resume"
 								>
 									▶️
 								</button>
@@ -178,6 +183,7 @@
 									class="control-btn stop"
 									on:click={() => handleStop(session.session_id)}
 									title="Stop"
+									data-debug-name="controlBtn.stop"
 								>
 									⏹️
 								</button>
@@ -188,6 +194,7 @@
 									class="control-btn delete"
 									on:click={() => handleDelete(session.session_id)}
 									title="Delete"
+									data-debug-name="controlBtn.delete"
 								>
 									🗑️
 								</button>
@@ -195,24 +202,24 @@
 						</div>
 					</div>
 
-					<div class="session-stats">
-						<span class="stat">{session.stats?.trades || 0} trades</span>
-						<span class="stat" class:profit={session.stats?.pnl >= 0} class:loss={session.stats?.pnl < 0}>
+					<div class="session-stats" data-debug-name="sessionStats">
+						<span class="stat" data-debug-name="session.stats.trades">{session.stats?.trades || 0} trades</span>
+						<span class="stat" class:profit={session.stats?.pnl >= 0} class:loss={session.stats?.pnl < 0} data-debug-name="session.stats.pnl">
 							{formatUSDT(session.stats?.pnl || 0)} USDT
 						</span>
 					</div>
 
-					<div class="session-details">
-						<span class="detail">Pairs: {session.pairs?.join(', ') || 'N/A'}</span>
-						<span class="detail">Strategy: {session.strategy || 'N/A'}</span>
+					<div class="session-details" data-debug-name="sessionDetails">
+						<span class="detail" data-debug-name="session.pairs">Pairs: {session.pairs?.join(', ') || 'N/A'}</span>
+						<span class="detail" data-debug-name="session.strategy">Strategy: {session.strategy || 'N/A'}</span>
 					</div>
 				</div>
 			{/each}
 		{:else}
-			<div class="empty-state">
-				<span class="empty-icon">📭</span>
-				<p>No sessions yet</p>
-				<p class="hint">Create a session to get started</p>
+			<div class="empty-state" data-debug-name="emptyState">
+				<span class="empty-icon" data-debug-name="emptyIcon">📭</span>
+				<p data-debug-name="emptyMessage">No sessions yet</p>
+				<p class="hint" data-debug-name="emptyHint">Create a session to get started</p>
 			</div>
 		{/if}
 	</div>
@@ -228,42 +235,45 @@
 					showCreateModal = false;
 				}
 			}}
+			data-debug-name="createModal.overlay"
 		>
-			<div class="modal-content" role="dialog" on:click|stopPropagation>
-				<h3>Create New Session</h3>
+			<div class="modal-content" role="dialog" on:click|stopPropagation data-debug-name="createModal.content">
+				<h3 data-debug-name="createModal.title">Create New Session</h3>
 
-				<div class="form-group">
-					<label for="session-name">Session Name</label>
+				<div class="form-group" data-debug-name="formGroup.name">
+					<label for="session-name" data-debug-name="label.sessionName">Session Name</label>
 					<input
 						id="session-name"
 						type="text"
 						placeholder="e.g., BTC Scalping"
 						bind:value={newSessionName}
+						data-debug-name="input.sessionName"
 					/>
 				</div>
 
-				<div class="form-group">
-					<label for="session-pairs">Trading Pairs (comma-separated)</label>
+				<div class="form-group" data-debug-name="formGroup.pairs">
+					<label for="session-pairs" data-debug-name="label.sessionPairs">Trading Pairs (comma-separated)</label>
 					<input
 						id="session-pairs"
 						type="text"
 						placeholder="e.g., BTC/USDT, ETH/USDT, SOL/USDT"
 						bind:value={newSessionPairs}
+						data-debug-name="input.sessionPairs"
 					/>
 				</div>
 
-				<div class="form-group">
-					<label for="session-strategy">Strategy</label>
-					<select id="session-strategy" bind:value={newSessionStrategy}>
-						<option value="scalping">Scalping</option>
-						<option value="swing">Swing Trading</option>
-						<option value="momentum">Momentum</option>
+				<div class="form-group" data-debug-name="formGroup.strategy">
+					<label for="session-strategy" data-debug-name="label.sessionStrategy">Strategy</label>
+					<select id="session-strategy" bind:value={newSessionStrategy} data-debug-name="select.sessionStrategy">
+						<option value="scalping" data-debug-name="option.scalping">Scalping</option>
+						<option value="swing" data-debug-name="option.swing">Swing Trading</option>
+						<option value="momentum" data-debug-name="option.momentum">Momentum</option>
 					</select>
 				</div>
 
-				<div class="modal-actions">
-					<button class="btn-primary" on:click={handleCreate}>Create</button>
-					<button class="btn-secondary" on:click={() => (showCreateModal = false)}>
+				<div class="modal-actions" data-debug-name="modalActions">
+					<button class="btn-primary" on:click={handleCreate} data-debug-name="btnCreateSession">Create</button>
+					<button class="btn-secondary" on:click={() => (showCreateModal = false)} data-debug-name="btnCancel">
 						Cancel
 					</button>
 				</div>

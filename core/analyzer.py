@@ -598,6 +598,8 @@ class TechnicalAnalyzer:
             Meilleur setup ou None
         """
         try:
+            start_time = time.time()  # Pour calculer scan_duration_ms
+            
             # Toujours calculer trend_data (au lieu d'optionnel)
             if trend_data is None:
                 trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
@@ -608,6 +610,176 @@ class TechnicalAnalyzer:
             # Analyser 1m et 5m
             analysis_1m = await self.analyze_timeframe(symbol, '1m', trend_data, volume_multiplier, return_reason=return_reason)
             analysis_5m = await self.analyze_timeframe(symbol, '5m', trend_data, volume_multiplier, return_reason=return_reason)
+
+            # ========================================
+            # ✅ POINT A : LOG SCAN (NON-BLOCKING)
+            # ========================================
+            scan_duration_ms = (time.time() - start_time) * 1000
+            scan_uuid = None
+            
+            try:
+                from backend.ml.data_logger import DataLogger
+                data_logger = DataLogger()
+                
+                if data_logger and data_logger.is_running:
+                    # Récupérer prix actuel
+                    ticker_data = await self.price_provider.get_price(symbol)
+                    current_price = float(ticker_data.get('lastPrice', 0)) if ticker_data else 0
+                    
+                    # Préparer indicateurs 1m
+                    indicators_1m = {}
+                    if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                        indicators_1m = {
+                            'ema9': analysis_1m.get('ema9'),
+                            'ema21': analysis_1m.get('ema21'),
+                            'ema_diff_pct': (
+                                ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) 
+                                 / analysis_1m.get('ema21', 1)) * 100
+                                if analysis_1m.get('ema21') else None
+                            ),
+                            'rsi': analysis_1m.get('rsi'),
+                            'rsi_prev': analysis_1m.get('rsi_prev'),
+                            'macd': analysis_1m.get('macd'),
+                            'macd_signal': analysis_1m.get('macd_signal'),
+                            'macd_hist': analysis_1m.get('macd_hist'),
+                            'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                            'adx': analysis_1m.get('adx'),
+                            'di_plus': analysis_1m.get('di_plus'),
+                            'di_minus': analysis_1m.get('di_minus'),
+                            'di_gap': (
+                                analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0)
+                                if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None
+                            ),
+                            'atr': analysis_1m.get('atr'),
+                            'atr_pct': analysis_1m.get('atr_pct'),
+                            'bb_upper': analysis_1m.get('bb_upper'),
+                            'bb_middle': analysis_1m.get('bb_middle'),
+                            'bb_lower': analysis_1m.get('bb_lower'),
+                            'bb_width': analysis_1m.get('bb_width'),
+                            'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                            'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                            'volume': analysis_1m.get('volume'),
+                            'volume_avg': analysis_1m.get('volume_avg'),
+                            'volume_ratio': analysis_1m.get('volumeSpike'),
+                            'volume_spike': analysis_1m.get('volumeSpike'),
+                            'pattern': analysis_1m.get('pattern'),
+                            'pattern_multi': analysis_1m.get('pattern_multi')
+                        }
+                    
+                    # Préparer indicateurs 5m
+                    indicators_5m = {}
+                    if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                        indicators_5m = {
+                            'ema9': analysis_5m.get('ema9'),
+                            'ema21': analysis_5m.get('ema21'),
+                            'ema_diff_pct': (
+                                ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) 
+                                 / analysis_5m.get('ema21', 1)) * 100
+                                if analysis_5m.get('ema21') else None
+                            ),
+                            'rsi': analysis_5m.get('rsi'),
+                            'rsi_prev': analysis_5m.get('rsi_prev'),
+                            'macd': analysis_5m.get('macd'),
+                            'macd_signal': analysis_5m.get('macd_signal'),
+                            'macd_hist': analysis_5m.get('macd_hist'),
+                            'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                            'adx': analysis_5m.get('adx'),
+                            'di_plus': analysis_5m.get('di_plus'),
+                            'di_minus': analysis_5m.get('di_minus'),
+                            'di_gap': (
+                                analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0)
+                                if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None
+                            ),
+                            'atr': analysis_5m.get('atr'),
+                            'atr_pct': analysis_5m.get('atr_pct'),
+                            'bb_upper': analysis_5m.get('bb_upper'),
+                            'bb_middle': analysis_5m.get('bb_middle'),
+                            'bb_lower': analysis_5m.get('bb_lower'),
+                            'bb_width': analysis_5m.get('bb_width'),
+                            'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                            'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                            'volume': analysis_5m.get('volume'),
+                            'volume_avg': analysis_5m.get('volume_avg'),
+                            'volume_ratio': analysis_5m.get('volumeSpike'),
+                            'volume_spike': analysis_5m.get('volumeSpike'),
+                            'pattern': analysis_5m.get('pattern'),
+                            'pattern_multi': analysis_5m.get('pattern_multi')
+                        }
+                    
+                    # Récupérer scalability data (sera mis à jour après spread_check)
+                    scalability_data = {
+                        'spread': None,
+                        'bookDepth': None,
+                        'balanceScore': None,
+                        'bidVol': None,
+                        'askVol': None
+                    }
+                    
+                    # Préparer confluence
+                    confluence = {
+                        'use_confluence': use_confluence,
+                        'confluence_met': False,
+                        'score_1m': analysis_1m.get('totalScore') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'score_5m': analysis_5m.get('totalScore') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'score_total': None,
+                        'score_long_1m': None,
+                        'score_short_1m': None,
+                        'score_long_5m': None,
+                        'score_short_5m': None,
+                        'timeframes_aligned': False,
+                        'divergence_detected': False,
+                        'divergence_type': None,
+                        'divergence_bonus': 0
+                    }
+                    
+                    # Préparer filters
+                    filters = {
+                        'snr_1m': analysis_1m.get('snr') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'snr_5m': analysis_5m.get('snr') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
+                    }
+                    
+                    # Logger le scan
+                    scan_uuid = await data_logger.log_scan(
+                        symbol=symbol,
+                        price=current_price,
+                        indicators_1m=indicators_1m,
+                        indicators_5m=indicators_5m,
+                        confluence=confluence,
+                        scalability_data=scalability_data,
+                        trend_data={
+                            'timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+                            'direction': trend_data.get('trend') if trend_data else None,
+                            'strength': trend_data.get('strength') if trend_data else None,
+                            'bonus': trend_data.get('bonus', 0) if trend_data else 0
+                        },
+                        filters=filters,
+                        params_snapshot=TRADING_CONFIG.copy(),
+                        is_opportunity=False,  # Pas encore décidé
+                        opportunity_direction=None,
+                        reject_reason=None,
+                        reject_reason_category=None,
+                        scan_duration_ms=scan_duration_ms
+                    )
+            except Exception as e:
+                logger.debug(f"Erreur log_scan (non-bloquant): {e}")
+                scan_uuid = None
+            # ========================================
+            # FIN POINT A
+            # ========================================
 
             # LOG DÉTAILLÉ: Résumé des analyses 1m et 5m
             if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
@@ -661,6 +833,10 @@ class TechnicalAnalyzer:
 
                 best_setup['spread_pct'] = spread_check['spread_pct']
                 best_setup['spread_quality'] = spread_check['quality']
+                
+                # ✅ Mettre à jour scalability_data pour le scan logué
+                if 'scalability_data' in locals():
+                    scalability_data['spread'] = spread_check['spread_pct']
 
                 # 2. Vérifier orderbook imbalance
                 orderbook_check = await check_orderbook_imbalance(
@@ -672,10 +848,36 @@ class TechnicalAnalyzer:
 
                 if not orderbook_check['valid']:
                     required_str = '≥1.1' if best_setup['direction'] == 'LONG' else '≤0.95'
-                    logger.warning(
-                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
+                    info_msg = (
+                        f"ℹ️ {symbol} - Setup {best_setup['direction']} rejeté : "
                         f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})"
                     )
+                    logger.info(info_msg)
+                    # 🔥 FIX: Envoyer le log au frontend via websocket_manager (INFO au lieu de WARNING)
+                    try:
+                        from core.websocket_manager import get_websocket_manager
+                        from datetime import datetime
+                        import asyncio
+                        ws_mgr = get_websocket_manager()
+                        if ws_mgr:
+                            try:
+                                loop = asyncio.get_running_loop()
+                                async def send_log():
+                                    # Format identique à add_log dans main.py
+                                    entry = {
+                                        'timestamp': datetime.now().strftime('%H:%M:%S'),
+                                        'level': 'INFO',  # 🔥 FIX: INFO au lieu de WARNING
+                                        'message': f"ℹ️ Setup {best_setup['direction']} rejeté",
+                                        'detail': f"{symbol}: Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})",
+                                        'raw_message': f"Setup {best_setup['direction']} rejeté"
+                                    }
+                                    await ws_mgr.emit('log', entry)
+                                loop.create_task(send_log())
+                            except RuntimeError:
+                                # Pas de loop en cours, ignorer (le log est déjà dans logger.info)
+                                pass
+                    except Exception as log_err:
+                        logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
                     return None
 
                 # Bonus si orderbook très favorable
@@ -685,6 +887,21 @@ class TechnicalAnalyzer:
 
                 best_setup['orderbook_ratio'] = orderbook_check['ratio']
                 best_setup['orderbook_quality'] = orderbook_check['quality']
+                # 🔥 FIX: Stocker aussi bid_value et ask_value pour calculer depth
+                best_setup['orderbook_bid_value'] = orderbook_check.get('bid_value', 0)
+                best_setup['orderbook_ask_value'] = orderbook_check.get('ask_value', 0)
+                best_setup['orderbook_check'] = orderbook_check  # Stocker l'objet complet pour fallback
+                
+                # ✅ Mettre à jour scalability_data pour le scan logué
+                if 'scalability_data' in locals():
+                    scalability_data['bookDepth'] = orderbook_check.get('bid_value', 0) + orderbook_check.get('ask_value', 0)
+                    scalability_data['bidVol'] = orderbook_check.get('bid_value', 0)
+                    scalability_data['askVol'] = orderbook_check.get('ask_value', 0)
+                    # Calculer balanceScore depuis ratio
+                    ratio = orderbook_check.get('ratio', 1.0)
+                    if ratio > 0:
+                        bid_ask_ratio = ratio / (1 + ratio)  # Convertir ratio en pourcentage bid
+                        scalability_data['balanceScore'] = 1 - (abs(bid_ask_ratio - 0.5) * 2)
 
                 # 3. Vérifier manipulation pump & dump
                 ohlcv_data = None
@@ -800,6 +1017,61 @@ class TechnicalAnalyzer:
                         )
 
                 best_setup['min_score_required'] = min_score_required
+                
+                # Stocker scan_uuid pour Point B et C
+                if scan_uuid:
+                    best_setup['_scan_uuid'] = scan_uuid
+
+                # ========================================
+                # ✅ POINT B : LOG OPPORTUNITY
+                # ========================================
+                try:
+                    from backend.ml.data_logger import DataLogger
+                    data_logger = DataLogger()
+                    
+                    if data_logger and data_logger.is_running and best_setup.get('_scan_uuid'):
+                        # Récupérer scan_uuid
+                        scan_uuid_opp = best_setup.get('_scan_uuid')
+                        
+                        # Préparer conditions matched
+                        conditions_matched = []
+                        if best_setup.get('signals'):
+                            conditions_matched = [s.get('name', str(s)) if isinstance(s, dict) else str(s) for s in best_setup['signals']]
+                        
+                        # Calculer scores
+                        score_long = None
+                        score_short = None
+                        if best_setup.get('direction') == 'LONG':
+                            score_long = best_setup.get('totalScore')
+                        elif best_setup.get('direction') == 'SHORT':
+                            score_short = best_setup.get('totalScore')
+                        
+                        # Logger l'opportunité
+                        opp_id = await data_logger.log_opportunity(
+                            scan_log_id=scan_uuid_opp,
+                            symbol=symbol,
+                            direction=best_setup.get('direction'),
+                            entry_suggested=best_setup.get('entry', best_setup.get('price', 0)),
+                            tp_suggested=best_setup.get('tp', 0),
+                            sl_suggested=best_setup.get('sl', 0),
+                            tp_sl_mode=TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                            setup_score=best_setup.get('totalScore', 0),
+                            setup_reason=best_setup.get('confirmedBy', 'Setup détecté'),
+                            conditions_matched=conditions_matched,
+                            score_long=score_long,
+                            score_short=score_short,
+                            score_min_required=best_setup.get('min_score_required'),
+                            trend_bonus=trend_data.get('bonus', 0) if trend_data else 0,
+                            divergence_bonus=0  # À adapter si vous avez divergence
+                        )
+                        
+                        # Stocker opp_id pour Point C
+                        best_setup['_opportunity_id'] = opp_id
+                except Exception as e:
+                    logger.debug(f"Erreur log_opportunity (non-bloquant): {e}")
+                # ========================================
+                # FIN POINT B
+                # ========================================
 
                 return best_setup
 

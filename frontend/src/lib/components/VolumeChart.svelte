@@ -169,23 +169,23 @@
 	});
 </script>
 
-<div class="volume-chart-container">
-	<div class="chart-header">
-		<h3>📊 Trade Sizes</h3>
-		<div class="chart-info">Position size par trade ({maxTrades} derniers)</div>
+<div class="volume-chart-container" data-debug-name="volumeChartContainer">
+	<div class="chart-header" data-debug-name="chartHeader">
+		<h3 data-debug-name="chartTitle">📊 Trade Sizes</h3>
+		<div class="chart-info" data-debug-name="chartInfo">Position size par trade ({maxTrades} derniers)</div>
 	</div>
-	<div class="chart-wrapper">
-		<canvas bind:this={canvas}></canvas>
+	<div class="chart-wrapper" data-debug-name="chartWrapper">
+		<canvas bind:this={canvas} data-debug-name="volumeChart.canvas"></canvas>
 	</div>
 
 	<!-- Controls -->
-	<div class="chart-controls">
-		<label for="max-trades">Afficher:</label>
-		<select id="max-trades" bind:value={maxTrades}>
-			<option value={5}>5 trades</option>
-			<option value={10}>10 trades</option>
-			<option value={15}>15 trades</option>
-			<option value={20}>20 trades</option>
+	<div class="chart-controls" data-debug-name="chartControls">
+		<label for="max-trades" data-debug-name="label.maxTrades">Afficher:</label>
+		<select id="max-trades" bind:value={maxTrades} data-debug-name="select.maxTrades">
+			<option value={5} data-debug-name="option.maxTrades.5">5 trades</option>
+			<option value={10} data-debug-name="option.maxTrades.10">10 trades</option>
+			<option value={15} data-debug-name="option.maxTrades.15">15 trades</option>
+			<option value={20} data-debug-name="option.maxTrades.20">20 trades</option>
 		</select>
 	</div>
 </div>
