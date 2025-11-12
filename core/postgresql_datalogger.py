@@ -754,7 +754,7 @@ class PostgreSQLDataLogger:
                     %s, %s,
                     %s, %s, %s, %s,
                     %s, %s,
-                    %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -1028,6 +1028,8 @@ class PostgreSQLDataLogger:
                 logger.error(f"   Derniers paramètres (20): {params[-20:]}")
                 # Ne pas logger le trade si déséquilibre
                 return None
+            else:
+                logger.debug(f"✅ Nombre de paramètres OK: {param_count} paramètres pour {placeholder_count} placeholders")
             
             result = self._execute_query(query, params, fetch=True)
             if result:
