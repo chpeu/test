@@ -459,25 +459,30 @@ class PostgreSQLDataLogger:
                 INSERT INTO opportunities (
                     scan_log_id, session_id, symbol, timestamp,
                     status, direction, setup_score,
-                    conditions_matched, entry_price, tp_price, sl_price,
-                    size_usdt, risk_usdt, reward_risk_ratio
+                    conditions_matched, entry_suggested, tp_suggested, sl_suggested,
+                    tp_sl_mode
                 )
-                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
+            
+            # Convertir conditions_matched en liste si nécessaire
+            conditions_matched = opportunity_data.get('conditions_matched', [])
+            if isinstance(conditions_matched, dict):
+                conditions_matched = list(conditions_matched.keys()) if conditions_matched else []
+            elif not isinstance(conditions_matched, list):
+                conditions_matched = [str(conditions_matched)] if conditions_matched else []
             
             params = (
                 scan_id, session_id, symbol,
                 opportunity_data.get('status', 'PENDING'),
                 opportunity_data.get('direction'),
                 opportunity_data.get('setup_score'),
-                opportunity_data.get('conditions_matched', []),
-                opportunity_data.get('entry_price'),
-                opportunity_data.get('tp_price'),
-                opportunity_data.get('sl_price'),
-                opportunity_data.get('size_usdt'),
-                opportunity_data.get('risk_usdt'),
-                opportunity_data.get('reward_risk_ratio')
+                conditions_matched,  # TEXT[] - liste de strings
+                opportunity_data.get('entry_price'),  # entry_suggested
+                opportunity_data.get('tp_price'),  # tp_suggested
+                opportunity_data.get('sl_price'),  # sl_suggested
+                opportunity_data.get('tp_sl_mode', 'FIXE')  # tp_sl_mode
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -641,15 +646,14 @@ class PostgreSQLDataLogger:
                 INSERT INTO trades (
                     timestamp_entry, timestamp_exit, session_id, opportunity_id, symbol,
                     direction, entry_price, exit_price,
-                    size_usdt, gross_pnl_usdt, gross_pnl_pct,
+                    size_usdt, gross_pnl_usdt, pnl_pct, pnl_usdt,
                     net_pnl_usdt, net_pnl_pct,
                     fees_usdt, slippage_pct, 
                     exit_reason, duration_seconds,
                     tp_sl_mode, break_even_set,
                     trailing_stop_activated, partial_tp_executed,
                     tp_escalier_enabled, tp_escalier_levels_executed,
-                    entry_indicators_snapshot, exit_indicators_snapshot,
-                    params_snapshot
+                    win
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
@@ -663,6 +667,10 @@ class PostgreSQLDataLogger:
             entry_timestamp = timestamp_iso
             exit_timestamp = timestamp_iso if trade_data.get('exit_price') else None
             
+            # Calculer win (True si net_pnl_usdt > 0)
+            net_pnl_usdt = trade_data.get('net_pnl_usdt', 0)
+            win = net_pnl_usdt > 0 if net_pnl_usdt is not None else None
+            
             params = (
                 entry_timestamp, exit_timestamp, session_id, opportunity_id,
                 trade_data.get('symbol'),
@@ -671,7 +679,8 @@ class PostgreSQLDataLogger:
                 trade_data.get('exit_price'),
                 trade_data.get('size_usdt'),
                 trade_data.get('gross_pnl_usdt', 0),
-                trade_data.get('gross_pnl_pct', 0),
+                trade_data.get('gross_pnl_pct', 0),  # pnl_pct (gross)
+                trade_data.get('gross_pnl_usdt', 0),  # pnl_usdt (gross)
                 trade_data.get('net_pnl_usdt', 0),
                 trade_data.get('net_pnl_pct', 0),
                 trade_data.get('fees', 0),  # fees_usdt
@@ -684,9 +693,7 @@ class PostgreSQLDataLogger:
                 trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
                 trade_data.get('tp_escalier_enabled', False),
                 len(trade_data.get('tp_escalier_levels_hit', [])),  # tp_escalier_levels_executed (count)
-                json.dumps(trade_data.get('entry_indicators', {})),
-                json.dumps(trade_data.get('exit_indicators', {})),
-                json.dumps(trade_data.get('params_snapshot', {}))
+                win
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -922,26 +929,31 @@ class PostgreSQLDataLogger:
                 symbol = opp_item['symbol']
                 opp_data = opp_item['opportunity_data']
                 
+                # Convertir conditions_matched en liste si c'est un dict ou autre
+                conditions_matched = opp_data.get('conditions_matched', [])
+                if isinstance(conditions_matched, dict):
+                    conditions_matched = list(conditions_matched.keys()) if conditions_matched else []
+                elif not isinstance(conditions_matched, list):
+                    conditions_matched = [str(conditions_matched)] if conditions_matched else []
+                
                 value_tuple = (
                     scan_id, session_id, symbol,
                     opp_data.get('status', 'PENDING'),
                     opp_data.get('direction'),
                     opp_data.get('setup_score'),
-                    opp_data.get('conditions_matched', []),
-                    opp_data.get('entry_price'),
-                    opp_data.get('tp_price'),
-                    opp_data.get('sl_price'),
-                    opp_data.get('size_usdt'),
-                    opp_data.get('risk_usdt'),
-                    opp_data.get('reward_risk_ratio')
+                    conditions_matched,  # TEXT[] - liste de strings
+                    opp_data.get('entry_price'),  # entry_suggested
+                    opp_data.get('tp_price'),  # tp_suggested
+                    opp_data.get('sl_price'),  # sl_suggested
+                    opp_data.get('tp_sl_mode', 'FIXE')  # tp_sl_mode
                 )
                 values.append(value_tuple)
             
             columns = (
                 'scan_log_id', 'session_id', 'symbol',
                 'status', 'direction', 'setup_score',
-                'conditions_matched', 'entry_price', 'tp_price', 'sl_price',
-                'size_usdt', 'risk_usdt', 'reward_risk_ratio'
+                'conditions_matched', 'entry_suggested', 'tp_suggested', 'sl_suggested',
+                'tp_sl_mode'
             )
             
             execute_values(
