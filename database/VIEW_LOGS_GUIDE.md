@@ -86,7 +86,8 @@ LIMIT 20;
 ```sql
 SELECT 
     id,
-    timestamp,
+    timestamp_entry,
+    timestamp_exit,
     symbol,
     direction,
     entry_price,
@@ -96,10 +97,10 @@ SELECT
     gross_pnl_pct,
     net_pnl_usdt,
     net_pnl_pct,
-    reason,
+    exit_reason,
     duration_seconds
 FROM trades
-ORDER BY timestamp DESC
+ORDER BY timestamp_entry DESC
 LIMIT 20;
 ```
 
@@ -254,13 +255,13 @@ for scan in scans:
 # Derniers trades
 cursor.execute("""
     SELECT * FROM trades
-    ORDER BY timestamp DESC
+    ORDER BY timestamp_entry DESC
     LIMIT 10
 """)
 trades = cursor.fetchall()
 
 for trade in trades:
-    print(f"{trade['timestamp']} | {trade['symbol']} | PnL: {trade['net_pnl_usdt']:.2f} USDT ({trade['net_pnl_pct']:.2f}%)")
+    print(f"{trade['timestamp_entry']} | {trade['symbol']} | PnL: {trade['net_pnl_usdt']:.2f} USDT ({trade['net_pnl_pct']:.2f}%)")
 
 cursor.close()
 conn.close()
@@ -352,7 +353,7 @@ FROM scan_logs
 UNION ALL
 SELECT 
     'trades',
-    MAX(timestamp)
+    MAX(timestamp_entry)
 FROM trades
 UNION ALL
 SELECT 

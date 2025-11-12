@@ -639,29 +639,32 @@ class PostgreSQLDataLogger:
             
             query = """
                 INSERT INTO trades (
-                    timestamp, session_id, opportunity_id, symbol,
+                    timestamp_entry, timestamp_exit, session_id, opportunity_id, symbol,
                     direction, entry_price, exit_price,
                     size_usdt, gross_pnl_usdt, gross_pnl_pct,
                     net_pnl_usdt, net_pnl_pct,
-                    fees, slippage, total_costs,
-                    reason, duration_seconds,
-                    tp_sl_mode, break_even_triggered,
-                    trailing_stop_triggered, partial_tp_triggered,
-                    tp_escalier_enabled, tp_escalier_levels_hit,
-                    max_pnl_reached, min_pnl_reached,
+                    fees_usdt, slippage_pct, 
+                    exit_reason, duration_seconds,
+                    tp_sl_mode, break_even_set,
+                    trailing_stop_activated, partial_tp_executed,
+                    tp_escalier_enabled, tp_escalier_levels_executed,
                     entry_indicators_snapshot, exit_indicators_snapshot,
-                    params_snapshot, is_backtest
+                    params_snapshot
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """
             
+            # Utiliser timestamp_entry pour entry et timestamp_exit pour exit
+            entry_timestamp = timestamp_iso
+            exit_timestamp = timestamp_iso if trade_data.get('exit_price') else None
+            
             params = (
-                timestamp_iso, session_id, opportunity_id,
+                entry_timestamp, exit_timestamp, session_id, opportunity_id,
                 trade_data.get('symbol'),
                 trade_data.get('direction'),
                 trade_data.get('entry_price'),
@@ -671,23 +674,19 @@ class PostgreSQLDataLogger:
                 trade_data.get('gross_pnl_pct', 0),
                 trade_data.get('net_pnl_usdt', 0),
                 trade_data.get('net_pnl_pct', 0),
-                trade_data.get('fees', 0),
-                trade_data.get('slippage', 0),
-                trade_data.get('total_costs', 0),
-                trade_data.get('reason'),
+                trade_data.get('fees', 0),  # fees_usdt
+                trade_data.get('slippage', 0),  # slippage_pct
+                trade_data.get('reason'),  # exit_reason
                 trade_data.get('duration_seconds'),
                 trade_data.get('tp_sl_mode'),
-                trade_data.get('break_even_triggered', False),
-                trade_data.get('trailing_stop_triggered', False),
-                trade_data.get('partial_tp_triggered', False),
+                trade_data.get('break_even_triggered', False),  # break_even_set
+                trade_data.get('trailing_stop_triggered', False),  # trailing_stop_activated
+                trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
                 trade_data.get('tp_escalier_enabled', False),
-                trade_data.get('tp_escalier_levels_hit', []),
-                trade_data.get('max_pnl_reached'),
-                trade_data.get('min_pnl_reached'),
+                len(trade_data.get('tp_escalier_levels_hit', [])),  # tp_escalier_levels_executed (count)
                 json.dumps(trade_data.get('entry_indicators', {})),
                 json.dumps(trade_data.get('exit_indicators', {})),
-                json.dumps(trade_data.get('params_snapshot', {})),
-                trade_data.get('is_backtest', False)
+                json.dumps(trade_data.get('params_snapshot', {}))
             )
             
             result = self._execute_query(query, params, fetch=True)
