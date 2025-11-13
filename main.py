@@ -403,6 +403,9 @@ analytics_db = None
 notification_manager = None
 session_id = None  # ID unique de cette session
 
+# 🔥 Simple Logger: Logger ultra-simple sans batch pour debugging
+_simple_logger = None
+
 # 🔥 FIX: Lock pour éviter les ouvertures multiples de positions
 position_lock = asyncio.Lock()
 
@@ -927,6 +930,7 @@ async def scanner_loop_callback():
 
 async def scan_pair_for_setup(symbol: str):
     """Scanner une paire pour trouver un setup"""
+    global _simple_logger  # 🔥 Simple Logger: Accès à la variable globale
     init_instances()
     
     if not analyzer:
@@ -1050,6 +1054,55 @@ async def scan_pair_for_setup(symbol: str):
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
             logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
+        
+        # 🔥 Simple Logger: Logger ultra-simple sans batch pour debugging
+        try:
+            if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
+                logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: enabled={_simple_logger.enabled}")
+                
+                # Récupérer le prix depuis analysis ou price_provider
+                scan_price = None
+                if analysis and isinstance(analysis, dict):
+                    scan_price = analysis.get('price')
+                
+                # Si le prix n'est pas dans analysis, essayer de le récupérer depuis price_provider
+                if scan_price is None and price_provider:
+                    try:
+                        price_result = await price_provider.get_price(symbol)
+                        # Extraire la valeur numérique si c'est un dict
+                        if isinstance(price_result, dict):
+                            scan_price = price_result.get('price') or price_result.get('lastPrice') or price_result.get('close')
+                        else:
+                            scan_price = price_result
+                    except Exception as price_error:
+                        logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {price_error}")
+                
+                # Extraire la valeur numérique si scan_price est un dict
+                if isinstance(scan_price, dict):
+                    scan_price = scan_price.get('price') or scan_price.get('lastPrice') or scan_price.get('close') or scan_price.get('value')
+                
+                # Vérifier que scan_price est un nombre
+                if scan_price is not None and not isinstance(scan_price, (int, float)):
+                    try:
+                        scan_price = float(scan_price)
+                    except (ValueError, TypeError):
+                        logger.warning(f"⚠️ Prix invalide pour {symbol}: {scan_price} (type: {type(scan_price)})")
+                        scan_price = None
+                
+                logger.info(f"📝 Tentative log_scan_simple pour {symbol} (prix: {scan_price})")
+                result = _simple_logger.log_scan_simple(symbol, {
+                    'market_data': {'price': scan_price},
+                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
+                    'scores': {'score_total': analysis.get('score_total') if analysis else None},
+                    'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
+                })
+                logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
+            else:
+                logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
+        except Exception as e:
+            logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
+            import traceback
+            logger.debug(f"Traceback: {traceback.format_exc()}")
         
         # 🔥 FIX: Envoyer événement SocketIO pour mettre à jour le compteur de validation
         # Un setup valide = validé (true), pas de setup = non validé (false)
@@ -1416,90 +1469,99 @@ def init_instances():
                     from core.callbacks.scanner_loop import set_pg_datalogger
                     set_pg_datalogger(pg_datalogger)
                     logger.info("✅ PostgreSQL DataLogger injecté dans scanner_loop")
-                    
-                    # 🔥 PHASE 3: Créer tâche périodique pour logging contexte marché
-                    async def log_market_context_periodic():
-                        """Tâche périodique pour logger le contexte marché"""
-                        while True:
-                            try:
-                                await asyncio.sleep(300)  # Toutes les 5 minutes
-                                if pg_datalogger and pg_datalogger.enabled:
-                                    try:
-                                        # Récupérer prix BTC/ETH
-                                        from api.price_provider import get_price_provider
-                                        price_provider = get_price_provider()
-                                        
-                                        context_data = {
-                                            'btc_price': None,
-                                            'eth_price': None,
-                                            'global_metrics': {},
-                                            'session_stats': {},
-                                            'market_trend': None,
-                                            'market_volatility': None,
-                                            'fear_greed_index': None
-                                        }
-                                        
-                                        if price_provider:
-                                            try:
-                                                btc_price = await price_provider.get_price('BTCUSDT')
-                                                eth_price = await price_provider.get_price('ETHUSDT')
-                                                context_data['btc_price'] = btc_price
-                                                context_data['eth_price'] = eth_price
-                                            except Exception:
-                                                pass
-                                        
-                                        # Récupérer stats session si disponibles
-                                        if hasattr(app_state, 'get'):
-                                            context_data['session_stats'] = {
-                                                'total_trades': app_state.get('total_trades', 0),
-                                                'win_rate': app_state.get('win_rate', 0),
-                                                'total_pnl': app_state.get('total_pnl', 0)
-                                            }
-                                        
-                                        pg_datalogger.log_market_context(context_data)
-                                    except Exception as e:
-                                        logger.debug(f"Erreur logging contexte marché périodique: {e}")
-                            except asyncio.CancelledError:
-                                break
-                            except Exception as e:
-                                logger.warning(f"Erreur tâche contexte marché: {e}")
-                                await asyncio.sleep(60)  # Attendre avant de réessayer
-                    
-                    # Démarrer la tâche périodique
-                    asyncio.create_task(log_market_context_periodic())
-                    logger.info("✅ Tâche périodique contexte marché démarrée")
-                    
-                    # 🔥 PHASE 3: Tâche périodique pour flush forcé des buffers
-                    async def flush_buffers_periodic():
-                        """Tâche périodique pour forcer le flush des buffers toutes les 30 secondes"""
-                        while True:
-                            try:
-                                await asyncio.sleep(30)  # Toutes les 30 secondes
-                                if pg_datalogger and pg_datalogger.enabled:
-                                    try:
-                                        # Forcer le flush même si buffer pas plein
-                                        pg_datalogger._flush_buffers(force=True)
-                                    except Exception as e:
-                                        logger.debug(f"Erreur flush périodique: {e}")
-                            except asyncio.CancelledError:
-                                break
-                            except Exception as e:
-                                logger.warning(f"Erreur tâche flush périodique: {e}")
-                                await asyncio.sleep(30)  # Attendre avant de réessayer
-                    
-                    # Démarrer la tâche de flush périodique
-                    asyncio.create_task(flush_buffers_periodic())
-                    logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
-                else:
-                    logger.warning("⚠️ PostgreSQL DataLogger désactivé (connexion échouée)")
-                    pg_datalogger = None
-            else:
-                logger.debug("ℹ️ PostgreSQL DataLogger désactivé (POSTGRES_ENABLED=false)")
         except ImportError as e:
             logger.debug(f"ℹ️ PostgreSQL DataLogger non disponible: {e}")
         except Exception as e:
             logger.warning(f"⚠️ Erreur initialisation PostgreSQL DataLogger: {e}")
             pg_datalogger = None
+        
+        # 🔥 PHASE 3: Créer tâche périodique pour logging contexte marché
+        if pg_datalogger and pg_datalogger.enabled:
+            async def log_market_context_periodic():
+                """Tâche périodique pour logger le contexte marché"""
+                while True:
+                    try:
+                        await asyncio.sleep(300)  # Toutes les 5 minutes
+                        if pg_datalogger and pg_datalogger.enabled:
+                            try:
+                                # Récupérer prix BTC/ETH
+                                from api.price_provider import get_price_provider
+                                price_provider = get_price_provider()
+                                
+                                context_data = {
+                                    'btc_price': None,
+                                    'eth_price': None,
+                                    'global_metrics': {},
+                                    'session_stats': {},
+                                    'market_trend': None,
+                                    'market_volatility': None,
+                                    'fear_greed_index': None
+                                }
+                                
+                                if price_provider:
+                                    try:
+                                        btc_price = await price_provider.get_price('BTCUSDT')
+                                        eth_price = await price_provider.get_price('ETHUSDT')
+                                        context_data['btc_price'] = btc_price
+                                        context_data['eth_price'] = eth_price
+                                    except Exception:
+                                        pass
+                                
+                                # Récupérer stats session si disponibles
+                                if hasattr(app_state, 'get'):
+                                    context_data['session_stats'] = {
+                                        'total_trades': app_state.get('total_trades', 0),
+                                        'win_rate': app_state.get('win_rate', 0),
+                                        'total_pnl': app_state.get('total_pnl', 0)
+                                    }
+                                
+                                pg_datalogger.log_market_context(context_data)
+                            except Exception as e:
+                                logger.debug(f"Erreur logging contexte marché périodique: {e}")
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        logger.warning(f"Erreur tâche contexte marché: {e}")
+                        await asyncio.sleep(60)  # Attendre avant de réessayer
+            
+            # Démarrer la tâche périodique
+            asyncio.create_task(log_market_context_periodic())
+            logger.info("✅ Tâche périodique contexte marché démarrée")
+            
+            # 🔥 PHASE 3: Tâche périodique pour flush forcé des buffers
+            async def flush_buffers_periodic():
+                """Tâche périodique pour forcer le flush des buffers toutes les 30 secondes"""
+                while True:
+                    try:
+                        await asyncio.sleep(30)  # Toutes les 30 secondes
+                        if pg_datalogger and pg_datalogger.enabled:
+                            try:
+                                # Forcer le flush même si buffer pas plein
+                                pg_datalogger._flush_buffers(force=True)
+                            except Exception as e:
+                                logger.debug(f"Erreur flush périodique: {e}")
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        logger.warning(f"Erreur tâche flush périodique: {e}")
+                        await asyncio.sleep(30)  # Attendre avant de réessayer
+            
+            # Démarrer la tâche de flush périodique
+            asyncio.create_task(flush_buffers_periodic())
+            logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
+        
+        # 🔥 Simple Logger: Initialiser SimplePGLogger pour debugging
+        global _simple_logger
+        try:
+            from core.simple_pg_logger import SimplePGLogger
+            _simple_logger = SimplePGLogger()
+            if _simple_logger.enabled:
+                logger.info("✅ SimplePGLogger connecté")
+            else:
+                logger.warning("⚠️ SimplePGLogger désactivé")
+        except Exception as e:
+            logger.error(f"❌ Erreur initialisation SimplePGLogger: {e}")
+            _simple_logger = None
         
         # 🔥 NOUVEAU: Injecter Position Manager, Notification Manager et instance port
         # Récupérer port instance pour multi-instances
