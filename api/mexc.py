@@ -106,24 +106,38 @@ class MEXCClient:
             return None
     
     async def close(self):
-        """Ferme les connexions"""
-        if self.ws_manager:
-            await self.ws_manager.disconnect()
-        await self.session.close()
-        await self.exchange.close()
-    
+        """Ferme les connexions proprement - DOIT être appelée avant destruction"""
+        try:
+            if self.ws_manager:
+                await self.ws_manager.disconnect()
+        except Exception as e:
+            print(f"Erreur lors de la fermeture WS manager: {e}")
+
+        try:
+            await self.session.close()
+        except Exception as e:
+            print(f"Erreur lors de la fermeture session: {e}")
+
+        try:
+            await self.exchange.close()
+        except Exception as e:
+            print(f"Erreur lors de la fermeture exchange: {e}")
+
     def __del__(self):
-        """Destructeur: ferme les connexions"""
-        if hasattr(self, 'exchange'):
-            try:
-                asyncio.create_task(self.exchange.close())
-            except:
-                pass
-        if hasattr(self, 'session'):
-            try:
-                asyncio.create_task(self.session.close())
-            except:
-                pass
+        """Destructeur: NE PAS utiliser asyncio ici!
+
+        IMPORTANT: Appelez close() explicitement avant la destruction de l'objet.
+        Le destructeur ne peut pas garantir une fermeture propre des ressources async.
+        """
+        # Log un warning si les ressources n'ont pas été fermées
+        if hasattr(self, 'session') and not self.session.closed:
+            import warnings
+            warnings.warn(
+                "MEXCClient détruit sans appeler close(). "
+                "Ressources potentiellement non libérées. "
+                "Appelez await mexc_client.close() avant destruction.",
+                ResourceWarning
+            )
 
 
 # Instance globale

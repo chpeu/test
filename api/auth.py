@@ -4,12 +4,15 @@ Gère les API keys et la vérification des accès
 """
 import os
 import secrets
+import threading
+import logging
 from typing import Dict, Optional
 from fastapi import Header, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 # Schéma de sécurité pour l'API key
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -26,9 +29,19 @@ def load_api_keys() -> Dict[str, dict]:
         default_key = os.getenv("DEFAULT_API_KEY")
         if not default_key:
             default_key = secrets.token_urlsafe(32)
-            print(f"⚠️  ATTENTION: Aucune API key configurée!")
-            print(f"   Clé générée automatiquement: {default_key}")
-            print(f"   Ajoutez DEFAULT_API_KEY={default_key} dans votre .env")
+            logger.warning("⚠️  ATTENTION: Aucune API key configurée!")
+            logger.warning("   Clé générée automatiquement (masquée pour sécurité)")
+            logger.warning(f"   Préfixe de la clé: {default_key[:8]}...")
+            logger.warning(f"   Ajoutez DEFAULT_API_KEY=<votre_clé> dans votre .env")
+            # NE PAS logger la clé complète en production!
+            # Écrire dans un fichier sécurisé uniquement en mode développement
+            if os.getenv("ENVIRONMENT", "development") == "development":
+                try:
+                    with open(".api_key_generated.txt", "w") as f:
+                        f.write(f"DEFAULT_API_KEY={default_key}\n")
+                    logger.info("   Clé sauvegardée dans .api_key_generated.txt (ajoutez ce fichier à .gitignore!)")
+                except Exception as e:
+                    logger.error(f"Erreur lors de la sauvegarde de la clé: {e}")
 
         keys[default_key] = {"name": "default", "roles": ["admin"]}
         return keys
@@ -45,6 +58,7 @@ def load_api_keys() -> Dict[str, dict]:
     return keys
 
 API_KEYS = load_api_keys()
+_api_keys_lock = threading.Lock()
 
 
 async def verify_api_key(api_key: str = Security(api_key_header)) -> dict:
@@ -66,13 +80,14 @@ async def verify_api_key(api_key: str = Security(api_key_header)) -> dict:
             detail="API key manquante. Ajoutez le header X-API-Key"
         )
 
-    if api_key not in API_KEYS:
-        raise HTTPException(
-            status_code=403,
-            detail="API key invalide"
-        )
+    with _api_keys_lock:
+        if api_key not in API_KEYS:
+            raise HTTPException(
+                status_code=403,
+                detail="API key invalide"
+            )
 
-    return API_KEYS[api_key]
+        return API_KEYS[api_key]
 
 
 async def verify_api_key_optional(api_key: str = Security(api_key_header)) -> Optional[dict]:
@@ -88,10 +103,11 @@ async def verify_api_key_optional(api_key: str = Security(api_key_header)) -> Op
     if not api_key:
         return None
 
-    if api_key not in API_KEYS:
-        return None
+    with _api_keys_lock:
+        if api_key not in API_KEYS:
+            return None
 
-    return API_KEYS[api_key]
+        return API_KEYS[api_key]
 
 
 def require_role(required_role: str):
