@@ -4542,10 +4542,12 @@ async def export_datalogger_excel(
             # ===== ONGLET 2: OPPORTUNITIES =====
             ws_opps = wb.create_sheet("Opportunities")
             query_opps = """
-                SELECT 
+                SELECT
                     timestamp, symbol, direction, setup_score,
-                    entry_price, tp_price, sl_price,
-                    conditions_matched, confirmed_by
+                    entry_suggested, tp_suggested, sl_suggested,
+                    tp_sl_mode, setup_reason,
+                    conditions_matched, condition_count,
+                    score_long, score_short, status
                 FROM opportunities
                 WHERE 1=1
             """
