@@ -4443,6 +4443,287 @@ async def export_trades_csv(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+
+@app.get("/api/datalogger/export/excel")
+async def export_datalogger_excel(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    🔥 Export des données du datalogger en Excel (.xlsx)
+    
+    Args:
+        start_date: Date début (YYYY-MM-DD) - optionnel
+        end_date: Date fin (YYYY-MM-DD) - optionnel
+    
+    Returns:
+        Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
+    """
+    try:
+        from core.callbacks.scanner_loop import get_pg_datalogger
+        pg_datalogger = get_pg_datalogger()
+        
+        if not pg_datalogger or not pg_datalogger.enabled:
+            return JSONResponse(
+                {"error": "PostgreSQL DataLogger non disponible"},
+                status_code=503
+            )
+        
+        # Vérifier si openpyxl est installé
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            return JSONResponse(
+                {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
+                status_code=500
+            )
+        
+        conn = pg_datalogger._get_connection()
+        if not conn:
+            return JSONResponse(
+                {"error": "Impossible de se connecter à PostgreSQL"},
+                status_code=503
+            )
+        
+        try:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Créer un workbook Excel
+            wb = Workbook()
+            wb.remove(wb.active)  # Supprimer la feuille par défaut
+            
+            # ===== ONGLET 1: SCANS =====
+            ws_scans = wb.create_sheet("Scans")
+            query_scans = """
+                SELECT 
+                    timestamp, symbol, price, scan_duration_ms,
+                    rsi_1m, rsi_5m, score_total,
+                    is_opportunity, opportunity_direction, reject_reason,
+                    trend_direction, trend_strength
+                FROM scan_logs
+                WHERE 1=1
+            """
+            params = []
+            if start_date:
+                query_scans += " AND timestamp >= %s"
+                params.append(f"{start_date} 00:00:00")
+            if end_date:
+                query_scans += " AND timestamp <= %s"
+                params.append(f"{end_date} 23:59:59")
+            query_scans += " ORDER BY timestamp DESC LIMIT 10000"
+            
+            cursor.execute(query_scans, params)
+            scans = cursor.fetchall()
+            
+            if scans:
+                # En-têtes
+                headers = list(scans[0].keys())
+                ws_scans.append(headers)
+                
+                # Style en-têtes
+                header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                header_font = Font(bold=True, color="FFFFFF")
+                for cell in ws_scans[1]:
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal="center")
+                
+                # Données
+                for row in scans:
+                    ws_scans.append([row.get(h) for h in headers])
+                
+                # Ajuster largeur colonnes
+                for col in range(1, len(headers) + 1):
+                    ws_scans.column_dimensions[get_column_letter(col)].width = 15
+            
+            # ===== ONGLET 2: OPPORTUNITIES =====
+            ws_opps = wb.create_sheet("Opportunities")
+            query_opps = """
+                SELECT 
+                    timestamp, symbol, direction, setup_score,
+                    entry_price, tp_price, sl_price,
+                    conditions_matched, confirmed_by
+                FROM opportunities
+                WHERE 1=1
+            """
+            params_opps = []
+            if start_date:
+                query_opps += " AND timestamp >= %s"
+                params_opps.append(f"{start_date} 00:00:00")
+            if end_date:
+                query_opps += " AND timestamp <= %s"
+                params_opps.append(f"{end_date} 23:59:59")
+            query_opps += " ORDER BY timestamp DESC LIMIT 10000"
+            
+            cursor.execute(query_opps, params_opps)
+            opportunities = cursor.fetchall()
+            
+            if opportunities:
+                headers = list(opportunities[0].keys())
+                ws_opps.append(headers)
+                
+                for cell in ws_opps[1]:
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal="center")
+                
+                for row in opportunities:
+                    ws_opps.append([row.get(h) for h in headers])
+                
+                for col in range(1, len(headers) + 1):
+                    ws_opps.column_dimensions[get_column_letter(col)].width = 15
+            
+            # ===== ONGLET 3: TRADES =====
+            ws_trades = wb.create_sheet("Trades")
+            query_trades = """
+                SELECT 
+                    timestamp_entry, timestamp_exit, symbol, direction,
+                    entry_price, exit_price, size_usdt,
+                    gross_pnl_usdt, net_pnl_usdt, net_pnl_pct,
+                    exit_reason, duration_seconds, win
+                FROM trades
+                WHERE 1=1
+            """
+            params_trades = []
+            if start_date:
+                query_trades += " AND timestamp_entry >= %s"
+                params_trades.append(f"{start_date} 00:00:00")
+            if end_date:
+                query_trades += " AND timestamp_entry <= %s"
+                params_trades.append(f"{end_date} 23:59:59")
+            query_trades += " ORDER BY timestamp_entry DESC LIMIT 10000"
+            
+            cursor.execute(query_trades, params_trades)
+            trades = cursor.fetchall()
+            
+            if trades:
+                headers = list(trades[0].keys())
+                ws_trades.append(headers)
+                
+                for cell in ws_trades[1]:
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal="center")
+                
+                for row in trades:
+                    ws_trades.append([row.get(h) for h in headers])
+                
+                for col in range(1, len(headers) + 1):
+                    ws_trades.column_dimensions[get_column_letter(col)].width = 15
+            
+            cursor.close()
+            pg_datalogger._return_connection(conn)
+            
+            # Sauvegarder dans un buffer
+            from io import BytesIO
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+            
+            filename = f"datalogger_export_{start_date}_{end_date}.xlsx" if (start_date and end_date) else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            
+            return StreamingResponse(
+                output,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+            
+        except Exception as e:
+            pg_datalogger._return_connection(conn)
+            logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
+            return JSONResponse(
+                {"error": f"Erreur export Excel: {str(e)}"},
+                status_code=500
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
+        return JSONResponse(
+            {"error": f"Erreur export Excel: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.delete("/api/datalogger/reset")
+async def reset_datalogger_db():
+    """
+    🔥 Reset complet de la base de données PostgreSQL du datalogger
+    
+    ATTENTION: Cette opération supprime TOUTES les données (scans, opportunities, trades, etc.)
+    
+    Returns:
+        Message de confirmation
+    """
+    try:
+        from core.callbacks.scanner_loop import get_pg_datalogger
+        pg_datalogger = get_pg_datalogger()
+        
+        if not pg_datalogger or not pg_datalogger.enabled:
+            return JSONResponse(
+                {"error": "PostgreSQL DataLogger non disponible"},
+                status_code=503
+            )
+        
+        conn = pg_datalogger._get_connection()
+        if not conn:
+            return JSONResponse(
+                {"error": "Impossible de se connecter à PostgreSQL"},
+                status_code=503
+            )
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Supprimer toutes les données (dans l'ordre pour respecter les contraintes FK)
+            tables = [
+                'trades',
+                'opportunities',
+                'scan_logs',
+                'scan_errors',
+                'market_context',
+                'config_snapshots',
+                'trading_sessions'
+            ]
+            
+            deleted_counts = {}
+            for table in tables:
+                cursor.execute(f"DELETE FROM {table}")
+                deleted_counts[table] = cursor.rowcount
+            
+            conn.commit()
+            cursor.close()
+            pg_datalogger._return_connection(conn)
+            
+            total_deleted = sum(deleted_counts.values())
+            logger.warning(f"🗑️  Base de données PostgreSQL resetée: {total_deleted} enregistrements supprimés")
+            
+            return JSONResponse({
+                "success": True,
+                "message": f"Base de données resetée avec succès",
+                "deleted": deleted_counts,
+                "total_deleted": total_deleted
+            })
+            
+        except Exception as e:
+            conn.rollback()
+            pg_datalogger._return_connection(conn)
+            logger.error(f"❌ Erreur reset DB: {e}", exc_info=True)
+            return JSONResponse(
+                {"error": f"Erreur reset DB: {str(e)}"},
+                status_code=500
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur reset DB: {e}", exc_info=True)
+        return JSONResponse(
+            {"error": f"Erreur reset DB: {str(e)}"},
+            status_code=500
+        )
+
+
 if __name__ == '__main__':
     import uvicorn
     
@@ -4466,6 +4747,8 @@ if __name__ == '__main__':
     logger.info(f"❌ API Setups rejetés        → http://localhost:{port}/api/setups/rejected")
     logger.info(f"✅ API Setups validés        → http://localhost:{port}/api/setups/validated")
     logger.info(f"📥 API Export (CSV/JSON)     → http://localhost:{port}/api/export?format=csv")
+    logger.info(f"📊 API Export Excel (XLSX)   → http://localhost:{port}/api/datalogger/export/excel")
+    logger.info(f"🗑️  API Reset DB             → DELETE http://localhost:{port}/api/datalogger/reset")
     logger.info(f"🔄 API Backtest              → POST http://localhost:{port}/api/backtest")
     logger.info(f"🤖 API ML Optimize           → POST http://localhost:{port}/api/optimize")
     logger.info("=" * 70)
