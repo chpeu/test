@@ -4489,8 +4489,17 @@ async def export_datalogger_excel(
         
         try:
             from psycopg2.extras import RealDictCursor
+            from datetime import datetime as dt
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
+
+            # 🔥 FIX: Helper pour convertir datetime avec timezone en datetime sans timezone
+            # Excel ne supporte pas les timezones dans les datetimes
+            def strip_timezone(value):
+                """Convertir datetime timezone-aware en timezone-naive pour Excel"""
+                if isinstance(value, dt) and value.tzinfo is not None:
+                    return value.replace(tzinfo=None)
+                return value
+
             # Créer un workbook Excel
             wb = Workbook()
             wb.remove(wb.active)  # Supprimer la feuille par défaut
@@ -4531,9 +4540,9 @@ async def export_datalogger_excel(
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
                 
-                # Données
+                # Données (🔥 FIX: strip timezone pour Excel)
                 for row in scans:
-                    ws_scans.append([row.get(h) for h in headers])
+                    ws_scans.append([strip_timezone(row.get(h)) for h in headers])
                 
                 # Ajuster largeur colonnes
                 for col in range(1, len(headers) + 1):
@@ -4571,9 +4580,10 @@ async def export_datalogger_excel(
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
-                
+
+                # 🔥 FIX: strip timezone pour Excel
                 for row in opportunities:
-                    ws_opps.append([row.get(h) for h in headers])
+                    ws_opps.append([strip_timezone(row.get(h)) for h in headers])
                 
                 for col in range(1, len(headers) + 1):
                     ws_opps.column_dimensions[get_column_letter(col)].width = 15
@@ -4604,14 +4614,15 @@ async def export_datalogger_excel(
             if trades:
                 headers = list(trades[0].keys())
                 ws_trades.append(headers)
-                
+
                 for cell in ws_trades[1]:
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
-                
+
+                # 🔥 FIX: strip timezone pour Excel
                 for row in trades:
-                    ws_trades.append([row.get(h) for h in headers])
+                    ws_trades.append([strip_timezone(row.get(h)) for h in headers])
                 
                 for col in range(1, len(headers) + 1):
                     ws_trades.column_dimensions[get_column_letter(col)].width = 15
