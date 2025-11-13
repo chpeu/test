@@ -358,6 +358,37 @@ class PostgreSQLDataLogger:
         if not session_id:
             session_id = self.get_or_create_session()
         
+        # 🔥 FIX: Vérifier le prix AVANT d'ajouter au buffer (pour éviter les scans invalides)
+        market_data = scan_data.get('market_data', {})
+        price = market_data.get('price')
+        if price is None:
+            # Fallback 1: Depuis scan_data directement
+            price = scan_data.get('price')
+        if price is None:
+            # Fallback 2: Depuis analysis_1m ou analysis_5m si disponible
+            analysis_1m = scan_data.get('analysis_1m', {})
+            if isinstance(analysis_1m, dict):
+                price = analysis_1m.get('price')
+            if price is None:
+                analysis_5m = scan_data.get('analysis_5m', {})
+                if isinstance(analysis_5m, dict):
+                    price = analysis_5m.get('price')
+        # Extraire la valeur numérique si c'est un dict
+        if isinstance(price, dict):
+            price = price.get('price') or price.get('lastPrice') or price.get('close') or price.get('value')
+        # Vérifier que price est un nombre
+        if price is not None and not isinstance(price, (int, float)):
+            try:
+                price = float(price)
+            except (ValueError, TypeError):
+                logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan (batch): {price} (type: {type(price)})")
+                price = None
+        
+        # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
+        if price is None:
+            logger.error(f"❌ Prix manquant pour {symbol} dans log_scan (batch), scan non ajouté au buffer")
+            return None
+        
         # 🔥 PHASE 3: Utiliser batch insert si activé
         if use_batch:
             with self.buffer_lock:

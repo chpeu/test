@@ -706,7 +706,12 @@ async def scanner_loop_callback():
                                                     'depth': book_depth,
                                                     'balance': balance_score,
                                                     'bid_vol': bid_vol,
-                                                    'ask_vol': ask_vol
+                                                    'ask_vol': ask_vol,
+                                                    # 🔥 FIX: Ajouter les paramètres du scan de scalabilité
+                                                    'recent_volume': pair.get('recentVolume'),
+                                                    'vol5': pair.get('vol5'),
+                                                    'vol15': pair.get('vol15'),
+                                                    'scalability_score': pair.get('score'),
                                                 }
                                                 
                                                 logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
@@ -739,7 +744,12 @@ async def scanner_loop_callback():
                                                     'depth': orderbook_depth or setup.get('orderbook_depth', 0) or (setup.get('bid_vol', 0) + setup.get('ask_vol', 0)),
                                                     'balance': setup.get('orderbook_balance', 1.0) or setup.get('orderbook_check', {}).get('balance', 1.0),
                                                     'bid_vol': setup.get('bid_vol'),
-                                                    'ask_vol': setup.get('ask_vol')
+                                                    'ask_vol': setup.get('ask_vol'),
+                                                    # 🔥 FIX: Ajouter les paramètres du scan de scalabilité depuis setup si disponibles
+                                                    'recent_volume': setup.get('recent_volume') or setup.get('recentVolume'),
+                                                    'vol5': setup.get('vol5'),
+                                                    'vol15': setup.get('vol15'),
+                                                    'scalability_score': setup.get('scalability_score') or setup.get('score'),
                                                 }
                                                 logger.info(f"💹 Données scalabilité depuis setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                                             else:
