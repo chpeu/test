@@ -1262,6 +1262,11 @@ async def scan_pair_for_setup(symbol: str):
                     # Ajouter aussi totalScore directement si disponible
                     if 'totalScore' in analysis:
                         scan_data_dict['totalScore'] = analysis.get('totalScore')
+                    # Ajouter long_score et short_score si disponibles (pour les fallbacks dans SimplePGLogger)
+                    if 'long_score' in analysis:
+                        scan_data_dict['long_score'] = analysis.get('long_score')
+                    if 'short_score' in analysis:
+                        scan_data_dict['short_score'] = analysis.get('short_score')
                 result = _simple_logger.log_scan_simple(symbol, scan_data_dict)
                 logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
             else:

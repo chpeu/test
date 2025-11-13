@@ -149,10 +149,50 @@ class SimplePGLogger:
                             if score_total is not None:
                                 logger.debug(f"🔍 DEBUG SimplePGLogger {symbol}: score_total récupéré depuis analysis_5m: {score_total}")
             
+            # Fallback 5: Essayer long_score ou short_score depuis scan_data (retournés par analyzer.py pour les rejets)
+            if score_total is None:
+                long_score = scan_data.get('long_score')
+                short_score = scan_data.get('short_score')
+                # Utiliser le score le plus élevé, ou celui qui est disponible
+                if long_score is not None and short_score is not None:
+                    score_total = max(long_score, short_score)
+                elif long_score is not None:
+                    score_total = long_score
+                elif short_score is not None:
+                    score_total = short_score
+                if score_total is not None:
+                    logger.debug(f"🔍 DEBUG SimplePGLogger {symbol}: score_total récupéré depuis long_score/short_score: {score_total}")
+            
+            # Fallback 6: Essayer long_score ou short_score depuis analysis_1m ou analysis_5m
+            if score_total is None:
+                analysis_1m = scan_data.get('analysis_1m', {})
+                analysis_5m = scan_data.get('analysis_5m', {})
+                if isinstance(analysis_1m, dict) and analysis_1m:
+                    long_score = analysis_1m.get('long_score')
+                    short_score = analysis_1m.get('short_score')
+                    if long_score is not None and short_score is not None:
+                        score_total = max(long_score, short_score)
+                    elif long_score is not None:
+                        score_total = long_score
+                    elif short_score is not None:
+                        score_total = short_score
+                if score_total is None and isinstance(analysis_5m, dict) and analysis_5m:
+                    long_score = analysis_5m.get('long_score')
+                    short_score = analysis_5m.get('short_score')
+                    if long_score is not None and short_score is not None:
+                        score_total = max(long_score, short_score)
+                    elif long_score is not None:
+                        score_total = long_score
+                    elif short_score is not None:
+                        score_total = short_score
+                if score_total is not None:
+                    logger.debug(f"🔍 DEBUG SimplePGLogger {symbol}: score_total récupéré depuis long_score/short_score dans analysis_1m/5m: {score_total}")
+            
             # Log de debug si score_total toujours manquant
             if score_total is None:
                 logger.debug(f"⚠️ DEBUG SimplePGLogger {symbol}: score_total non trouvé après tous les fallbacks. "
-                           f"scores keys: {list(scores.keys()) if scores else 'None'}")
+                           f"scores keys: {list(scores.keys()) if scores else 'None'}, "
+                           f"scan_data keys: {list(scan_data.keys())[:15] if scan_data else 'None'}")
             
             params = (
                 symbol,
