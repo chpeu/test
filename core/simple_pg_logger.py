@@ -259,12 +259,21 @@ class SimplePGLogger:
             timeframes_aligned = self._safe_bool(confluence.get('timeframes_aligned'))
 
             # ========================================
-            # Patterns
+            # Patterns (🔥 FIX: peuvent être des listes, convertir en JSON string pour VARCHAR)
             # ========================================
-            pattern_1m = patterns.get('pattern_1m')
-            pattern_multi_1m = patterns.get('pattern_multi_1m')
-            pattern_5m = patterns.get('pattern_5m')
-            pattern_multi_5m = patterns.get('pattern_multi_5m')
+            def _pattern_to_string(value):
+                """Convertir pattern (peut être liste) en string pour VARCHAR(50)"""
+                if value is None:
+                    return None
+                if isinstance(value, list):
+                    # Si c'est une liste, la joindre avec virgules (plus lisible qu'un JSON)
+                    return ', '.join(str(v) for v in value)[:50]  # Tronquer à 50 chars
+                return str(value)[:50]  # Tronquer à 50 chars
+
+            pattern_1m = _pattern_to_string(patterns.get('pattern_1m'))
+            pattern_multi_1m = _pattern_to_string(patterns.get('pattern_multi_1m'))
+            pattern_5m = _pattern_to_string(patterns.get('pattern_5m'))
+            pattern_multi_5m = _pattern_to_string(patterns.get('pattern_multi_5m'))
 
             # ========================================
             # Trend
