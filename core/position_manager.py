@@ -10,7 +10,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 
@@ -491,13 +491,20 @@ class PositionManager:
         opportunity_id = getattr(self, '_last_setup_opportunity_id', None)
         last_setup = getattr(self, '_last_setup', None)
         
-        # 🔥 DEBUG: Log pour vérifier si _last_setup est disponible
+        # 🔥 FIX BUG #4: Monitoring amélioré - Log d'alerte si _last_setup est None
         if not last_setup:
-            logger.warning(f"⚠️ _last_setup est None pour {symbol} - les indicateurs d'entrée ne seront pas disponibles")
+            logger.error(
+                f"❌ BUG #4: _last_setup est None pour {symbol} - "
+                f"Les indicateurs d'entrée ne seront PAS disponibles dans PostgreSQL. "
+                f"Vérifier que scanner_loop.py stocke correctement _last_setup dans position_manager."
+            )
         else:
             logger.info(f"✅ _last_setup disponible pour {symbol}, keys: {list(last_setup.keys())[:10]}")
             if 'indicators_1m' not in last_setup and 'indicators_5m' not in last_setup:
-                logger.warning(f"⚠️ _last_setup ne contient pas 'indicators_1m' ou 'indicators_5m' pour {symbol}")
+                logger.warning(
+                    f"⚠️ BUG #4: _last_setup ne contient pas 'indicators_1m' ou 'indicators_5m' pour {symbol}. "
+                    f"Vérifier que analyzer.py ajoute ces indicateurs au setup retourné."
+                )
         
         # Préparer entry_indicators (snapshot au moment de l'entrée)
         # Récupérer depuis setup si disponible
@@ -797,11 +804,9 @@ class PositionManager:
         # Imbalance factor
         imbalance_factor = 1 / balance_score if balance_score > 0 else 1.0
 
-        # 🔥 FIX BUG #2: Depth factor - Vérifier que bid_vol et ask_vol ne sont pas None (pas juste truthy)
-        # Car bid_vol=0 est falsy mais valide
-        if bid_vol is not None and ask_vol is not None:
-            total_vol = bid_vol + ask_vol
-            depth_factor = order_size / total_vol if total_vol > 0 else 0
+        # Depth factor
+        if bid_vol and ask_vol:
+            depth_factor = order_size / (bid_vol + ask_vol)
         else:
             depth_factor = order_size / depth if depth > 0 else 0
 
@@ -855,9 +860,10 @@ class PositionManager:
                 invalidation_threshold = self.early_invalidation.get_adaptive_threshold(
                     elapsed, atr_pct or 0.5
                 )
+                # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
                 early_invalidation_data = {
                     'triggered': True,
-                    'triggered_at': datetime.now().isoformat(),
+                    'triggered_at': datetime.now(timezone.utc).isoformat(),
                     'threshold': invalidation_threshold,
                     'elapsed': elapsed,
                     'atr_pct': atr_pct,
@@ -1157,8 +1163,9 @@ class PositionManager:
 
         # Construire résultat
         # 🔥 FIX: Ajouter opened_at et closed_at pour l'affichage frontend
+        # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
         opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
-        closed_at = datetime.now().isoformat()
+        closed_at = datetime.now(timezone.utc).isoformat()
         
         result = {
             'symbol': self.active_position.symbol,
@@ -1283,27 +1290,31 @@ class PositionManager:
                     elif hasattr(self.active_position, 'timestamp'):
                         timestamp_entry = self.active_position.timestamp
                     else:
-                        timestamp_entry = datetime.now().isoformat()
+                        # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
+                        timestamp_entry = datetime.now(timezone.utc).isoformat()
                     
-                    timestamp_exit = datetime.now().isoformat()
+                    # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
+                    timestamp_exit = datetime.now(timezone.utc).isoformat()
                     
                     # Préparer config_snapshot complet (toutes les variables de configuration)
+                    # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
                     from config import (
                         TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS,
                         TREND_BONUS_CONFIG, RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG,
                         WEBSOCKET_CONFIG
                     )
+                    from core.postgresql_datalogger import serialize_config_safe
                     config_snapshot = {}
-                    # Copier TRADING_CONFIG
+                    # Copier TRADING_CONFIG avec sérialisation safe
                     if TRADING_CONFIG:
-                        config_snapshot.update(TRADING_CONFIG.copy())
-                    # Ajouter les variables définies séparément (elles ne sont pas dans TRADING_CONFIG)
-                    config_snapshot['RISK_CONFIG'] = RISK_CONFIG
-                    config_snapshot['CONDITION_WEIGHTS'] = CONDITION_WEIGHTS
-                    config_snapshot['TREND_BONUS_CONFIG'] = TREND_BONUS_CONFIG
-                    config_snapshot['RETRY_CONFIG'] = RETRY_CONFIG
-                    config_snapshot['CIRCUIT_BREAKER_CONFIG'] = CIRCUIT_BREAKER_CONFIG
-                    config_snapshot['WEBSOCKET_CONFIG'] = WEBSOCKET_CONFIG
+                        config_snapshot.update(serialize_config_safe(TRADING_CONFIG))
+                    # Ajouter les variables définies séparément avec sérialisation safe
+                    config_snapshot['RISK_CONFIG'] = serialize_config_safe(RISK_CONFIG) if RISK_CONFIG else {}
+                    config_snapshot['CONDITION_WEIGHTS'] = serialize_config_safe(CONDITION_WEIGHTS) if CONDITION_WEIGHTS else {}
+                    config_snapshot['TREND_BONUS_CONFIG'] = serialize_config_safe(TREND_BONUS_CONFIG) if TREND_BONUS_CONFIG else {}
+                    config_snapshot['RETRY_CONFIG'] = serialize_config_safe(RETRY_CONFIG) if RETRY_CONFIG else {}
+                    config_snapshot['CIRCUIT_BREAKER_CONFIG'] = serialize_config_safe(CIRCUIT_BREAKER_CONFIG) if CIRCUIT_BREAKER_CONFIG else {}
+                    config_snapshot['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
                     
                     # Préparer indicateurs de sortie (vide pour l'instant, sera rempli plus tard si nécessaire)
                     # TODO: Faire un scan rapide au moment de la fermeture pour récupérer les indicateurs de sortie

@@ -1414,8 +1414,8 @@ def init_instances():
                     logger.info("✅ PostgreSQL DataLogger initialisé")
                     # Injecter dans scanner_loop
                     from core.callbacks.scanner_loop import set_pg_datalogger
-                    if set_pg_datalogger:
-                        set_pg_datalogger(pg_datalogger)
+                    set_pg_datalogger(pg_datalogger)
+                    logger.info("✅ PostgreSQL DataLogger injecté dans scanner_loop")
                     
                     # 🔥 PHASE 3: Créer tâche périodique pour logging contexte marché
                     async def log_market_context_periodic():
@@ -1468,6 +1468,28 @@ def init_instances():
                     # Démarrer la tâche périodique
                     asyncio.create_task(log_market_context_periodic())
                     logger.info("✅ Tâche périodique contexte marché démarrée")
+                    
+                    # 🔥 PHASE 3: Tâche périodique pour flush forcé des buffers
+                    async def flush_buffers_periodic():
+                        """Tâche périodique pour forcer le flush des buffers toutes les 30 secondes"""
+                        while True:
+                            try:
+                                await asyncio.sleep(30)  # Toutes les 30 secondes
+                                if pg_datalogger and pg_datalogger.enabled:
+                                    try:
+                                        # Forcer le flush même si buffer pas plein
+                                        pg_datalogger._flush_buffers(force=True)
+                                    except Exception as e:
+                                        logger.debug(f"Erreur flush périodique: {e}")
+                            except asyncio.CancelledError:
+                                break
+                            except Exception as e:
+                                logger.warning(f"Erreur tâche flush périodique: {e}")
+                                await asyncio.sleep(30)  # Attendre avant de réessayer
+                    
+                    # Démarrer la tâche de flush périodique
+                    asyncio.create_task(flush_buffers_periodic())
+                    logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
                 else:
                     logger.warning("⚠️ PostgreSQL DataLogger désactivé (connexion échouée)")
                     pg_datalogger = None

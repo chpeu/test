@@ -7,7 +7,8 @@ Logging des scans, opportunités et trades vers PostgreSQL pour ML
 import logging
 import os
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone, date
+from decimal import Decimal
 import json
 import uuid
 from collections import deque
@@ -24,6 +25,67 @@ except ImportError:
     logger.warning("⚠️ psycopg2 non installé - PostgreSQL DataLogger désactivé")
 
 logger = logging.getLogger(__name__)
+
+
+def serialize_config_safe(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    🔥 FIX BUG #1: Convertir config en JSON-safe dict
+    
+    Gère les types non-JSON sérialisables :
+    - Fonctions → string
+    - datetime/date → ISO format
+    - Decimal → float
+    - Objets custom → string ou dict si possible
+    
+    Args:
+        config: Dictionnaire de configuration
+        
+    Returns:
+        Dictionnaire JSON-safe
+    """
+    if not config:
+        return {}
+    
+    serialized = {}
+    for key, value in config.items():
+        try:
+            # Test rapide de sérialisabilité
+            json.dumps(value)
+            serialized[key] = value
+        except (TypeError, ValueError):
+            # Gestion par type non-sérialisable
+            if callable(value):
+                # Fonction → string avec nom
+                func_name = getattr(value, '__name__', 'unknown')
+                serialized[key] = f"<function:{func_name}>"
+                logger.debug(f"🔧 Config key '{key}': fonction convertie en string: {func_name}")
+            elif isinstance(value, (datetime, date)):
+                # datetime/date → ISO format
+                serialized[key] = value.isoformat()
+                logger.debug(f"🔧 Config key '{key}': datetime converti en ISO: {value.isoformat()}")
+            elif isinstance(value, Decimal):
+                # Decimal → float
+                serialized[key] = float(value)
+                logger.debug(f"🔧 Config key '{key}': Decimal converti en float: {float(value)}")
+            elif hasattr(value, '__dict__'):
+                # Objet custom → essayer de sérialiser __dict__ récursivement
+                try:
+                    serialized[key] = serialize_config_safe(value.__dict__)
+                    logger.debug(f"🔧 Config key '{key}': objet {type(value).__name__} converti récursivement")
+                except Exception as e:
+                    # Si échec, convertir en string
+                    serialized[key] = f"<{type(value).__name__}>"
+                    logger.warning(f"⚠️ Config key '{key}': objet {type(value).__name__} non sérialisable, converti en string: {e}")
+            elif isinstance(value, (set, frozenset)):
+                # Set → list
+                serialized[key] = list(value)
+                logger.debug(f"🔧 Config key '{key}': set converti en list")
+            else:
+                # Dernier recours : convertir en string
+                serialized[key] = str(value)
+                logger.warning(f"⚠️ Config key '{key}': type {type(value).__name__} non sérialisable, converti en string: {str(value)[:50]}")
+    
+    return serialized
 
 
 class PostgreSQLDataLogger:
@@ -44,8 +106,8 @@ class PostgreSQLDataLogger:
         password: Optional[str] = None,
         min_conn: int = 1,
         max_conn: int = 5,
-        batch_size: int = 50,
-        batch_flush_interval: float = 5.0
+        batch_size: int = 10,
+        batch_flush_interval: float = 2.0
     ):
         """
         Initialiser PostgreSQL DataLogger
@@ -59,13 +121,12 @@ class PostgreSQLDataLogger:
             password: Mot de passe (si connection_string non fourni)
             min_conn: Nombre minimum de connexions dans le pool
             max_conn: Nombre maximum de connexions dans le pool
-            batch_size: Taille du buffer pour batch inserts (défaut: 50)
-            batch_flush_interval: Intervalle en secondes pour flush automatique (défaut: 5.0)
+            batch_size: Taille du buffer pour batch inserts (défaut: 10, réduit de 50 pour flush plus fréquent)
+            batch_flush_interval: Intervalle en secondes pour flush automatique (défaut: 2.0, réduit de 5.0 pour flush plus fréquent)
         """
         if not PSYCOPG2_AVAILABLE:
             logger.error("❌ psycopg2 non disponible - PostgreSQL DataLogger désactivé")
             self.enabled = False
-            self.pool = None  # 🔥 FIX: Initialiser pool à None pour les tests
             return
         
         self.enabled = True
@@ -104,7 +165,8 @@ class PostgreSQLDataLogger:
         self.scan_buffer: deque = deque(maxlen=batch_size * 2)  # Buffer pour scans
         self.opportunity_buffer: deque = deque(maxlen=batch_size * 2)  # Buffer pour opportunités
         self.buffer_lock = threading.Lock()
-        self.last_flush_time = datetime.now()
+        # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
+        self.last_flush_time = datetime.now(timezone.utc)
     
     def _get_connection(self):
         """Obtenir une connexion du pool"""
@@ -195,6 +257,7 @@ class PostgreSQLDataLogger:
             RETURNING id
         """
         # Préparer config_snapshot complet (toutes les variables de configuration)
+        # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
         try:
             from config import (
                 TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS,
@@ -202,19 +265,20 @@ class PostgreSQLDataLogger:
                 WEBSOCKET_CONFIG
             )
             config_snapshot_dict = {}
-            # Copier TRADING_CONFIG
+            # Copier TRADING_CONFIG avec sérialisation safe
             if TRADING_CONFIG:
-                config_snapshot_dict.update(TRADING_CONFIG.copy())
-            # Ajouter les variables définies séparément
-            config_snapshot_dict['RISK_CONFIG'] = RISK_CONFIG
-            config_snapshot_dict['CONDITION_WEIGHTS'] = CONDITION_WEIGHTS
-            config_snapshot_dict['TREND_BONUS_CONFIG'] = TREND_BONUS_CONFIG
-            config_snapshot_dict['RETRY_CONFIG'] = RETRY_CONFIG
-            config_snapshot_dict['CIRCUIT_BREAKER_CONFIG'] = CIRCUIT_BREAKER_CONFIG
-            config_snapshot_dict['WEBSOCKET_CONFIG'] = WEBSOCKET_CONFIG
+                config_snapshot_dict.update(serialize_config_safe(TRADING_CONFIG))
+            # Ajouter les variables définies séparément avec sérialisation safe
+            config_snapshot_dict['RISK_CONFIG'] = serialize_config_safe(RISK_CONFIG) if RISK_CONFIG else {}
+            config_snapshot_dict['CONDITION_WEIGHTS'] = serialize_config_safe(CONDITION_WEIGHTS) if CONDITION_WEIGHTS else {}
+            config_snapshot_dict['TREND_BONUS_CONFIG'] = serialize_config_safe(TREND_BONUS_CONFIG) if TREND_BONUS_CONFIG else {}
+            config_snapshot_dict['RETRY_CONFIG'] = serialize_config_safe(RETRY_CONFIG) if RETRY_CONFIG else {}
+            config_snapshot_dict['CIRCUIT_BREAKER_CONFIG'] = serialize_config_safe(CIRCUIT_BREAKER_CONFIG) if CIRCUIT_BREAKER_CONFIG else {}
+            config_snapshot_dict['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
+            # Maintenant json.dumps() est safe
             config_snapshot = json.dumps(config_snapshot_dict)
         except Exception as e:
-            logger.warning(f"⚠️ Erreur préparation config_snapshot pour session: {e}")
+            logger.error(f"❌ Erreur préparation config_snapshot pour session: {e}", exc_info=True)
             config_snapshot = json.dumps({})
         result = self._execute_query(query, (new_session_id, config_snapshot), fetch=True)
         
@@ -243,6 +307,7 @@ class PostgreSQLDataLogger:
             ID du scan loggé ou None (None si batch mode)
         """
         if not self.enabled:
+            logger.warning(f"⚠️ PostgreSQL DataLogger désactivé - scan non loggé pour {symbol}")
             return None
         
         # Obtenir ou créer session
@@ -257,6 +322,8 @@ class PostgreSQLDataLogger:
                     'symbol': symbol,
                     'scan_data': scan_data
                 })
+                buffer_size = len(self.scan_buffer)
+            logger.info(f"📝 Scan ajouté au buffer pour {symbol} (buffer size: {buffer_size}/{self.batch_size})")
             # Flush si buffer plein
             self._flush_buffers()
             return None  # Pas d'ID immédiat en mode batch
@@ -633,7 +700,8 @@ class PostgreSQLDataLogger:
                 RETURNING id
             """
             
-            now = datetime.now()
+            # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
+            now = datetime.now(timezone.utc)
             params = (
                 session_id,
                 now.hour,
@@ -698,7 +766,8 @@ class PostgreSQLDataLogger:
             session_id = self.get_or_create_session()
         
         try:
-            now = datetime.now()
+            # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
+            now = datetime.now(timezone.utc)
             timestamp_iso = now.isoformat()
             
             query = """
@@ -934,9 +1003,15 @@ class PostgreSQLDataLogger:
             slippage_usdt = (slippage_pct / 100) * size_usdt if slippage_pct and size_usdt else 0
             
             # Extraire config_snapshot
+            # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
             config_snapshot = trade_data.get('config_snapshot', {})
             if config_snapshot:
-                config_snapshot = json.dumps(config_snapshot)
+                try:
+                    config_snapshot_safe = serialize_config_safe(config_snapshot)
+                    config_snapshot = json.dumps(config_snapshot_safe)
+                except Exception as e:
+                    logger.error(f"❌ Erreur sérialisation config_snapshot pour trade: {e}", exc_info=True)
+                    config_snapshot = None
             else:
                 config_snapshot = None
             
@@ -1089,7 +1164,8 @@ class PostgreSQLDataLogger:
         if not self.enabled:
             return
         
-        now = datetime.now()
+        # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
+        now = datetime.now(timezone.utc)
         time_since_flush = (now - self.last_flush_time).total_seconds()
         should_flush = force or (
             len(self.scan_buffer) >= self.batch_size or
@@ -1101,21 +1177,31 @@ class PostgreSQLDataLogger:
             return
         
         with self.buffer_lock:
+            scans_count = len(self.scan_buffer)
+            opportunities_count = len(self.opportunity_buffer)
+            
             # Flush scans
             if self.scan_buffer:
                 try:
+                    logger.info(f"🔄 Flush {scans_count} scan(s) vers PostgreSQL (force={force})")
                     self._batch_insert_scans(list(self.scan_buffer))
                     self.scan_buffer.clear()
+                    logger.info(f"✅ {scans_count} scan(s) flushés avec succès")
                 except Exception as e:
                     logger.error(f"❌ Erreur flush scans: {e}")
             
             # Flush opportunities
             if self.opportunity_buffer:
                 try:
+                    logger.info(f"🔄 Flush {opportunities_count} opportunité(s) vers PostgreSQL (force={force})")
                     self._batch_insert_opportunities(list(self.opportunity_buffer))
                     self.opportunity_buffer.clear()
+                    logger.info(f"✅ {opportunities_count} opportunité(s) flushées avec succès")
                 except Exception as e:
                     logger.error(f"❌ Erreur flush opportunities: {e}")
+            
+            if scans_count > 0 or opportunities_count > 0:
+                logger.info(f"📊 Flush buffers: {scans_count} scan(s), {opportunities_count} opportunité(s)")
             
             self.last_flush_time = now
     
@@ -1370,9 +1456,20 @@ class PostgreSQLDataLogger:
     
     def close(self):
         """Fermer le pool de connexions et flush les buffers"""
+        if not self.enabled:
+            return
+        
         # Flush final des buffers
-        if self.enabled:
-            self._flush_buffers(force=True)
+        logger.info("🔄 Flush final des buffers PostgreSQL...")
+        scans_before = len(self.scan_buffer)
+        opportunities_before = len(self.opportunity_buffer)
+        
+        self._flush_buffers(force=True)
+        
+        if scans_before > 0 or opportunities_before > 0:
+            logger.info(f"✅ Flush final terminé: {scans_before} scan(s) et {opportunities_before} opportunité(s) flushés")
+        else:
+            logger.info("✅ Flush final terminé: aucun élément en attente")
         
         if self.pool:
             try:
