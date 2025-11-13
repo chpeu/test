@@ -6,6 +6,7 @@ Exécuté toutes les 45 secondes pour scanner les setups
 import asyncio
 import logging
 from typing import Optional, Dict, Any
+from core.postgresql_datalogger import PostgreSQLDataLogger
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,8 @@ _app_state = None
 _sio = None  # 🔥 MIGRATION COMPLÈTE: Gardé pour compatibilité, mais utiliser _ws_manager
 _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
-_pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML
+_pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML (injection)
+_pg_datalogger_instance = None  # 🔥 Force Initialization: Instance créée automatiquement
 
 
 def set_scanner(scanner):
@@ -75,8 +77,23 @@ def set_pg_datalogger(pg_datalogger):
 
 
 def get_pg_datalogger():
-    """🔥 PHASE 2: Récupérer l'instance PostgreSQLDataLogger"""
-    return _pg_datalogger
+    """🔥 Force Initialization: Récupérer ou créer l'instance PostgreSQLDataLogger"""
+    global _pg_datalogger_instance
+    
+    # Si une instance a été injectée, l'utiliser en priorité
+    if _pg_datalogger is not None:
+        return _pg_datalogger
+    
+    # Sinon, créer une instance si elle n'existe pas
+    if _pg_datalogger_instance is None:
+        try:
+            _pg_datalogger_instance = PostgreSQLDataLogger()
+            logger.info("✅ PostgreSQL DataLogger créé (Force Initialization)")
+        except Exception as e:
+            logger.error(f"❌ Erreur création PostgreSQL DataLogger: {e}")
+            return None
+    
+    return _pg_datalogger_instance
 
 
 async def scanner_loop_callback():
@@ -606,17 +623,21 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         # 🔥 PHASE 3: Calculer durée du scan
         try:
             scan_duration_ms = int((time.time() - scan_start_time) * 1000)
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification _pg_datalogger")
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification pg_datalogger")
         except Exception as e:
             logger.error(f"❌ Erreur calcul scan_duration_ms pour {symbol}: {e}")
             scan_duration_ms = 0
         
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé
+        # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire
+        pg_datalogger = get_pg_datalogger()
+        
         try:
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): _pg_datalogger={_pg_datalogger is not None}, enabled={getattr(_pg_datalogger, 'enabled', False) if _pg_datalogger else False}")
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): pg_datalogger={pg_datalogger is not None}, enabled={getattr(pg_datalogger, 'enabled', False) if pg_datalogger else False}")
         except Exception as e:
-            logger.error(f"❌ Erreur log _pg_datalogger pour {symbol}: {e}")
-        if _pg_datalogger and _pg_datalogger.enabled:
+            logger.error(f"❌ Erreur log pg_datalogger pour {symbol}: {e}")
+        
+        if pg_datalogger and pg_datalogger.enabled:
             try:
                 logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
                 # Préparer les données du scan pour PostgreSQL
@@ -687,7 +708,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 
                 # Logger le scan (mode batch par défaut)
                 logger.info(f"📝 Appel log_scan() pour {symbol}")
-                scan_id = _pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
                 logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
@@ -708,7 +729,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     }
                     # En mode batch, on passe scan_id=None temporairement
                     # Le scan_id sera résolu lors du flush batch
-                    _pg_datalogger.log_opportunity(
+                    pg_datalogger.log_opportunity(
                         scan_id or 0,  # 0 = temporaire, sera mis à jour
                         symbol, 
                         opportunity_data,
@@ -726,7 +747,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
         
         # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
-        if _pg_datalogger and _pg_datalogger.enabled:
+        # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire
+        pg_datalogger = get_pg_datalogger()
+        
+        if pg_datalogger and pg_datalogger.enabled:
             try:
                 import traceback
                 error_details = {
@@ -734,7 +758,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'error_message': str(e),
                     'stack': traceback.format_exc()
                 }
-                _pg_datalogger.log_scan_error(
+                pg_datalogger.log_scan_error(
                     symbol=symbol,
                     error_type='SCAN_ERROR',
                     error_message=str(e),
