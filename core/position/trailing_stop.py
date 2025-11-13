@@ -71,8 +71,8 @@ class TrailingStopManager:
         if not self.config.enabled:
             return None
 
-        # Vérifier déclenchement
-        if pnl_percent <= self.config.trigger_pnl:
+        # Vérifier déclenchement (cohérent avec should_trigger qui utilise >)
+        if pnl_percent < self.config.trigger_pnl:
             return None
 
         # Calculer ATR en pourcentage

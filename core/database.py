@@ -34,7 +34,11 @@ class TradeDatabase:
     
     def _init_database(self):
         """Initialiser base de données et tables"""
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(
+            self.db_path,
+            check_same_thread=False,
+            timeout=10.0  # Timeout 10 secondes pour éviter blocages
+        )
         self.conn.row_factory = sqlite3.Row  # Retourner dict
         
         cursor = self.conn.cursor()
@@ -114,21 +118,31 @@ class TradeDatabase:
     def get_all_trades(self, limit: Optional[int] = None, offset: int = 0) -> List[Dict]:
         """Récupérer tous les trades"""
         cursor = self.conn.cursor()
-        
+
         query = 'SELECT * FROM trades ORDER BY timestamp DESC'
+        params = []
         if limit:
-            query += f' LIMIT {limit} OFFSET {offset}'
-        
-        cursor.execute(query)
+            query += ' LIMIT ? OFFSET ?'
+            params = [limit, offset]
+
+        cursor.execute(query, params) if params else cursor.execute(query)
         rows = cursor.fetchall()
         
         trades = []
         for row in rows:
             trade = dict(row)
-            trade['condition_types'] = json.loads(trade.get('condition_types', '[]'))
-            trade['metadata'] = json.loads(trade.get('metadata', '{}'))
+            try:
+                trade['condition_types'] = json.loads(trade.get('condition_types', '[]'))
+            except json.JSONDecodeError:
+                logger.warning(f"JSON invalide pour condition_types: {trade.get('condition_types')}")
+                trade['condition_types'] = []
+            try:
+                trade['metadata'] = json.loads(trade.get('metadata', '{}'))
+            except json.JSONDecodeError:
+                logger.warning(f"JSON invalide pour metadata: {trade.get('metadata')}")
+                trade['metadata'] = {}
             trades.append(trade)
-        
+
         return trades
     
     def get_trades_by_date_range(self, start_date: str, end_date: str) -> List[Dict]:
@@ -146,10 +160,18 @@ class TradeDatabase:
         trades = []
         for row in rows:
             trade = dict(row)
-            trade['condition_types'] = json.loads(trade.get('condition_types', '[]'))
-            trade['metadata'] = json.loads(trade.get('metadata', '{}'))
+            try:
+                trade['condition_types'] = json.loads(trade.get('condition_types', '[]'))
+            except json.JSONDecodeError:
+                logger.warning(f"JSON invalide pour condition_types: {trade.get('condition_types')}")
+                trade['condition_types'] = []
+            try:
+                trade['metadata'] = json.loads(trade.get('metadata', '{}'))
+            except json.JSONDecodeError:
+                logger.warning(f"JSON invalide pour metadata: {trade.get('metadata')}")
+                trade['metadata'] = {}
             trades.append(trade)
-        
+
         return trades
     
     def get_trades_by_symbol(self, symbol: str, limit: int = 100) -> List[Dict]:
@@ -168,10 +190,18 @@ class TradeDatabase:
         trades = []
         for row in rows:
             trade = dict(row)
-            trade['condition_types'] = json.loads(trade.get('condition_types', '[]'))
-            trade['metadata'] = json.loads(trade.get('metadata', '{}'))
+            try:
+                trade['condition_types'] = json.loads(trade.get('condition_types', '[]'))
+            except json.JSONDecodeError:
+                logger.warning(f"JSON invalide pour condition_types: {trade.get('condition_types')}")
+                trade['condition_types'] = []
+            try:
+                trade['metadata'] = json.loads(trade.get('metadata', '{}'))
+            except json.JSONDecodeError:
+                logger.warning(f"JSON invalide pour metadata: {trade.get('metadata')}")
+                trade['metadata'] = {}
             trades.append(trade)
-        
+
         return trades
     
     def get_statistics(self) -> Dict:
@@ -198,4 +228,13 @@ class TradeDatabase:
         """Fermer connexion"""
         if self.conn:
             self.conn.close()
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - garantit fermeture connexion"""
+        self.close()
+        return False
 

@@ -566,7 +566,16 @@ class TechnicalAnalyzer:
                 if not has_swing:
                     reason = f"Pas de structure swing: {direction} requis (HH/HL pour LONG, LH/LL pour SHORT)"
                     if return_reason:
-                        return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe, 'direction': direction}
+                        # 🔥 FIX: Retourner les indicateurs même si la structure swing est absente
+                        result_dict = build_indicators_dict(reason)
+                        result_dict.update({
+                            'symbol': symbol,
+                            'timeframe': timeframe,
+                            'direction': direction,
+                            'long_score': long_score if use_weighted else None,
+                            'short_score': short_score if use_weighted else None
+                        })
+                        return result_dict
                     if DEBUG_ENABLED:
                         logger.debug(f"{symbol} {timeframe}: {reason}")
                     return None
@@ -625,6 +634,8 @@ class TechnicalAnalyzer:
                 'signals': conditions,
                 'condition_types': condition_types,
                 'totalScore': final_score,
+                'long_score': long_score if use_weighted else None,  # 🔥 FIX: Ajouter long_score pour les fallbacks
+                'short_score': short_score if use_weighted else None,  # 🔥 FIX: Ajouter short_score pour les fallbacks
                 'min_score_required': min_score_required,
                 'timeframe': timeframe,
                 'volatility': atr / price if price > 0 else 0,
@@ -926,7 +937,80 @@ class TechnicalAnalyzer:
                         f"⚠️ {symbol} - Setup rejeté : Spread trop élevé "
                         f"({spread_check['spread_pct']:.3f}% > {spread_check['max_allowed']:.3f}%)"
                     )
-                    return None
+                    # 🔥 FIX: Retourner un dict avec les indicateurs et un reason au lieu de None
+                    # pour permettre le logging des indicateurs même si le setup est rejeté
+                    # Construire indicators_1m et indicators_5m depuis analysis_1m et analysis_5m
+                    indicators_1m_reject = {}
+                    indicators_5m_reject = {}
+                    if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                        indicators_1m_reject = {
+                            'rsi': analysis_1m.get('rsi'),
+                            'rsi_prev': analysis_1m.get('rsi_prev'),
+                            'macd': analysis_1m.get('macd'),
+                            'macd_signal': analysis_1m.get('macd_signal'),
+                            'macd_hist': analysis_1m.get('macd_hist'),
+                            'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                            'adx': analysis_1m.get('adx'),
+                            'di_plus': analysis_1m.get('di_plus'),
+                            'di_minus': analysis_1m.get('di_minus'),
+                            'di_gap': analysis_1m.get('di_gap'),
+                            'ema9': analysis_1m.get('ema9'),
+                            'ema21': analysis_1m.get('ema21'),
+                            'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
+                            'atr': analysis_1m.get('atr'),
+                            'atr_pct': analysis_1m.get('atr_pct'),
+                            'bb_upper': analysis_1m.get('bb_upper'),
+                            'bb_middle': analysis_1m.get('bb_middle'),
+                            'bb_lower': analysis_1m.get('bb_lower'),
+                            'bb_width': analysis_1m.get('bb_width'),
+                            'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                            'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                            'volume': analysis_1m.get('volume'),
+                            'volume_avg': analysis_1m.get('volume_avg'),
+                            'volume_ratio': analysis_1m.get('volumeSpike'),
+                            'volume_spike': analysis_1m.get('volumeSpike'),
+                        }
+                    if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                        indicators_5m_reject = {
+                            'rsi': analysis_5m.get('rsi'),
+                            'rsi_prev': analysis_5m.get('rsi_prev'),
+                            'macd': analysis_5m.get('macd'),
+                            'macd_signal': analysis_5m.get('macd_signal'),
+                            'macd_hist': analysis_5m.get('macd_hist'),
+                            'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                            'adx': analysis_5m.get('adx'),
+                            'di_plus': analysis_5m.get('di_plus'),
+                            'di_minus': analysis_5m.get('di_minus'),
+                            'di_gap': analysis_5m.get('di_gap'),
+                            'ema9': analysis_5m.get('ema9'),
+                            'ema21': analysis_5m.get('ema21'),
+                            'ema_diff_pct': analysis_5m.get('ema_diff_pct'),
+                            'atr': analysis_5m.get('atr'),
+                            'atr_pct': analysis_5m.get('atr_pct'),
+                            'bb_upper': analysis_5m.get('bb_upper'),
+                            'bb_middle': analysis_5m.get('bb_middle'),
+                            'bb_lower': analysis_5m.get('bb_lower'),
+                            'bb_width': analysis_5m.get('bb_width'),
+                            'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                            'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                            'volume': analysis_5m.get('volume'),
+                            'volume_avg': analysis_5m.get('volume_avg'),
+                            'volume_ratio': analysis_5m.get('volumeSpike'),
+                            'volume_spike': analysis_5m.get('volumeSpike'),
+                        }
+                    return {
+                        'reason': f"Spread trop élevé ({spread_check['spread_pct']:.3f}% > {spread_check['max_allowed']:.3f}%)",
+                        'reject_category': 'spread',
+                        'analysis_1m': analysis_1m,
+                        'analysis_5m': analysis_5m,
+                        'indicators_1m': indicators_1m_reject,
+                        'indicators_5m': indicators_5m_reject,
+                        'totalScore': best_setup.get('totalScore'),
+                        'long_score': best_setup.get('long_score'),
+                        'short_score': best_setup.get('short_score'),
+                        'price': best_setup.get('price'),
+                        'symbol': symbol
+                    }
 
                 best_setup['spread_pct'] = spread_check['spread_pct']
                 best_setup['spread_quality'] = spread_check['quality']
@@ -975,7 +1059,80 @@ class TechnicalAnalyzer:
                                 pass
                     except Exception as log_err:
                         logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
-                    return None
+                    # 🔥 FIX: Retourner un dict avec les indicateurs et un reason au lieu de None
+                    # pour permettre le logging des indicateurs même si le setup est rejeté
+                    # Construire indicators_1m et indicators_5m depuis analysis_1m et analysis_5m
+                    indicators_1m_reject = {}
+                    indicators_5m_reject = {}
+                    if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                        indicators_1m_reject = {
+                            'rsi': analysis_1m.get('rsi'),
+                            'rsi_prev': analysis_1m.get('rsi_prev'),
+                            'macd': analysis_1m.get('macd'),
+                            'macd_signal': analysis_1m.get('macd_signal'),
+                            'macd_hist': analysis_1m.get('macd_hist'),
+                            'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                            'adx': analysis_1m.get('adx'),
+                            'di_plus': analysis_1m.get('di_plus'),
+                            'di_minus': analysis_1m.get('di_minus'),
+                            'di_gap': analysis_1m.get('di_gap'),
+                            'ema9': analysis_1m.get('ema9'),
+                            'ema21': analysis_1m.get('ema21'),
+                            'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
+                            'atr': analysis_1m.get('atr'),
+                            'atr_pct': analysis_1m.get('atr_pct'),
+                            'bb_upper': analysis_1m.get('bb_upper'),
+                            'bb_middle': analysis_1m.get('bb_middle'),
+                            'bb_lower': analysis_1m.get('bb_lower'),
+                            'bb_width': analysis_1m.get('bb_width'),
+                            'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                            'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                            'volume': analysis_1m.get('volume'),
+                            'volume_avg': analysis_1m.get('volume_avg'),
+                            'volume_ratio': analysis_1m.get('volumeSpike'),
+                            'volume_spike': analysis_1m.get('volumeSpike'),
+                        }
+                    if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                        indicators_5m_reject = {
+                            'rsi': analysis_5m.get('rsi'),
+                            'rsi_prev': analysis_5m.get('rsi_prev'),
+                            'macd': analysis_5m.get('macd'),
+                            'macd_signal': analysis_5m.get('macd_signal'),
+                            'macd_hist': analysis_5m.get('macd_hist'),
+                            'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                            'adx': analysis_5m.get('adx'),
+                            'di_plus': analysis_5m.get('di_plus'),
+                            'di_minus': analysis_5m.get('di_minus'),
+                            'di_gap': analysis_5m.get('di_gap'),
+                            'ema9': analysis_5m.get('ema9'),
+                            'ema21': analysis_5m.get('ema21'),
+                            'ema_diff_pct': analysis_5m.get('ema_diff_pct'),
+                            'atr': analysis_5m.get('atr'),
+                            'atr_pct': analysis_5m.get('atr_pct'),
+                            'bb_upper': analysis_5m.get('bb_upper'),
+                            'bb_middle': analysis_5m.get('bb_middle'),
+                            'bb_lower': analysis_5m.get('bb_lower'),
+                            'bb_width': analysis_5m.get('bb_width'),
+                            'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                            'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                            'volume': analysis_5m.get('volume'),
+                            'volume_avg': analysis_5m.get('volume_avg'),
+                            'volume_ratio': analysis_5m.get('volumeSpike'),
+                            'volume_spike': analysis_5m.get('volumeSpike'),
+                        }
+                    return {
+                        'reason': f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})",
+                        'reject_category': 'orderbook',
+                        'analysis_1m': analysis_1m,
+                        'analysis_5m': analysis_5m,
+                        'indicators_1m': indicators_1m_reject,
+                        'indicators_5m': indicators_5m_reject,
+                        'totalScore': best_setup.get('totalScore'),
+                        'long_score': best_setup.get('long_score'),
+                        'short_score': best_setup.get('short_score'),
+                        'price': best_setup.get('price'),
+                        'symbol': symbol
+                    }
 
                 # Bonus si orderbook très favorable
                 if orderbook_check['quality'] == 'EXCELLENT':
@@ -1116,9 +1273,9 @@ class TechnicalAnalyzer:
                 best_setup['min_score_required'] = min_score_required
                 
                 # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best_setup pour qu'ils soient disponibles dans _last_setup
-                # Construire indicators_1m depuis analysis_1m
+                # Construire indicators_1m depuis analysis_1m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                 indicators_1m = {}
-                if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                if analysis_1m and isinstance(analysis_1m, dict):
                     indicators_1m = {
                         'rsi': analysis_1m.get('rsi'),
                         'rsi_prev': analysis_1m.get('rsi_prev'),
@@ -1154,9 +1311,9 @@ class TechnicalAnalyzer:
                         'volume_spike': analysis_1m.get('volumeSpike'),
                     }
                 
-                # Construire indicators_5m depuis analysis_5m
+                # Construire indicators_5m depuis analysis_5m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                 indicators_5m = {}
-                if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                if analysis_5m and isinstance(analysis_5m, dict):
                     indicators_5m = {
                         'rsi': analysis_5m.get('rsi'),
                         'rsi_prev': analysis_5m.get('rsi_prev'),
@@ -1283,8 +1440,9 @@ class TechnicalAnalyzer:
                     best['atr5m'] = analysis_5m['atr']
                 
                 # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best pour qu'ils soient disponibles dans _last_setup
+                # Construire indicators_1m depuis analysis_1m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                 indicators_1m = {}
-                if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                if analysis_1m and isinstance(analysis_1m, dict):
                     indicators_1m = {
                         'rsi': analysis_1m.get('rsi'), 'rsi_prev': analysis_1m.get('rsi_prev'),
                         'macd': analysis_1m.get('macd'), 'macd_signal': analysis_1m.get('macd_signal'),
@@ -1300,8 +1458,9 @@ class TechnicalAnalyzer:
                         'volume': analysis_1m.get('volume'), 'volume_avg': analysis_1m.get('volume_avg'),
                         'volume_ratio': analysis_1m.get('volumeSpike'), 'volume_spike': analysis_1m.get('volumeSpike'),
                     }
+                # Construire indicators_5m depuis analysis_5m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                 indicators_5m = {}
-                if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                if analysis_5m and isinstance(analysis_5m, dict):
                     indicators_5m = {
                         'rsi': analysis_5m.get('rsi'), 'rsi_prev': analysis_5m.get('rsi_prev'),
                         'macd': analysis_5m.get('macd'), 'macd_signal': analysis_5m.get('macd_signal'),
@@ -1344,8 +1503,9 @@ class TechnicalAnalyzer:
                         best['atr5m'] = analysis_5m['atr']
                     
                     # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best pour qu'ils soient disponibles dans _last_setup
+                    # Construire indicators_1m depuis analysis_1m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                     indicators_1m = {}
-                    if valid_1m:
+                    if analysis_1m and isinstance(analysis_1m, dict):
                         indicators_1m = {
                             'rsi': analysis_1m.get('rsi'), 'rsi_prev': analysis_1m.get('rsi_prev'),
                             'macd': analysis_1m.get('macd'), 'macd_signal': analysis_1m.get('macd_signal'),
@@ -1361,8 +1521,9 @@ class TechnicalAnalyzer:
                             'volume': analysis_1m.get('volume'), 'volume_avg': analysis_1m.get('volume_avg'),
                             'volume_ratio': analysis_1m.get('volumeSpike'), 'volume_spike': analysis_1m.get('volumeSpike'),
                         }
+                    # Construire indicators_5m depuis analysis_5m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                     indicators_5m = {}
-                    if valid_5m:
+                    if analysis_5m and isinstance(analysis_5m, dict):
                         indicators_5m = {
                             'rsi': analysis_5m.get('rsi'), 'rsi_prev': analysis_5m.get('rsi_prev'),
                             'macd': analysis_5m.get('macd'), 'macd_signal': analysis_5m.get('macd_signal'),
@@ -1402,11 +1563,55 @@ class TechnicalAnalyzer:
             elif not analysis_5m:
                 reasons.append("5m: None (pas de setup)")
 
-            if return_reason:
-                reason = f"Aucun timeframe valide. " + " | ".join(reasons) if reasons else "Aucune raison spécifique"
-                return {'reason': reason, 'symbol': symbol, 'timeframe': '1m+5m'}
-
-            return None
+            # 🔥 FIX: Toujours retourner un dict avec analysis_1m et analysis_5m pour que scanner_loop.py puisse construire les indicateurs
+            reason = f"Aucun timeframe valide. " + " | ".join(reasons) if reasons else "Aucune raison spécifique"
+            result = {
+                'reason': reason,
+                'symbol': symbol,
+                'timeframe': '1m+5m',
+                'analysis_1m': analysis_1m if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'analysis_5m': analysis_5m if analysis_5m and isinstance(analysis_5m, dict) else None
+            }
+            
+            # Construire indicators_1m et indicators_5m même si aucun setup n'est valide
+            indicators_1m = {}
+            if analysis_1m and isinstance(analysis_1m, dict):
+                indicators_1m = {
+                    'rsi': analysis_1m.get('rsi'), 'rsi_prev': analysis_1m.get('rsi_prev'),
+                    'macd': analysis_1m.get('macd'), 'macd_signal': analysis_1m.get('macd_signal'),
+                    'macd_hist': analysis_1m.get('macd_hist'), 'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                    'adx': analysis_1m.get('adx'), 'di_plus': analysis_1m.get('di_plus'),
+                    'di_minus': analysis_1m.get('di_minus'),
+                    'di_gap': (analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0) if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None),
+                    'ema9': analysis_1m.get('ema9'), 'ema21': analysis_1m.get('ema21'),
+                    'ema_diff_pct': (((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) / analysis_1m.get('ema21', 1)) * 100 if analysis_1m.get('ema21') else None),
+                    'atr': analysis_1m.get('atr'), 'atr_pct': analysis_1m.get('atr_pct'),
+                    'bb_upper': analysis_1m.get('bb_upper'), 'bb_middle': analysis_1m.get('bb_middle'), 'bb_lower': analysis_1m.get('bb_lower'),
+                    'bb_width': analysis_1m.get('bb_width'), 'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                    'volume': analysis_1m.get('volume'), 'volume_avg': analysis_1m.get('volume_avg'),
+                    'volume_ratio': analysis_1m.get('volumeSpike'), 'volume_spike': analysis_1m.get('volumeSpike'),
+                }
+            indicators_5m = {}
+            if analysis_5m and isinstance(analysis_5m, dict):
+                indicators_5m = {
+                    'rsi': analysis_5m.get('rsi'), 'rsi_prev': analysis_5m.get('rsi_prev'),
+                    'macd': analysis_5m.get('macd'), 'macd_signal': analysis_5m.get('macd_signal'),
+                    'macd_hist': analysis_5m.get('macd_hist'), 'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                    'adx': analysis_5m.get('adx'), 'di_plus': analysis_5m.get('di_plus'),
+                    'di_minus': analysis_5m.get('di_minus'),
+                    'di_gap': (analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0) if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None),
+                    'ema9': analysis_5m.get('ema9'), 'ema21': analysis_5m.get('ema21'),
+                    'ema_diff_pct': (((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) / analysis_5m.get('ema21', 1)) * 100 if analysis_5m.get('ema21') else None),
+                    'atr': analysis_5m.get('atr'), 'atr_pct': analysis_5m.get('atr_pct'),
+                    'bb_upper': analysis_5m.get('bb_upper'), 'bb_middle': analysis_5m.get('bb_middle'), 'bb_lower': analysis_5m.get('bb_lower'),
+                    'bb_width': analysis_5m.get('bb_width'), 'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                    'volume': analysis_5m.get('volume'), 'volume_avg': analysis_5m.get('volume_avg'),
+                    'volume_ratio': analysis_5m.get('volumeSpike'), 'volume_spike': analysis_5m.get('volumeSpike'),
+                }
+            result['indicators_1m'] = indicators_1m
+            result['indicators_5m'] = indicators_5m
+            
+            return result
 
         except Exception as e:
             if DEBUG_ENABLED:

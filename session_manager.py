@@ -9,6 +9,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import asyncio
 import logging
+import random
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,31 @@ class SessionManager:
         self.running_tasks: Dict[str, asyncio.Task] = {}
         logger.info("SessionManager initialized")
 
+    def _validate_session_id(self, session_id: str) -> bool:
+        """Valider le format du session_id"""
+        if not session_id or not isinstance(session_id, str):
+            return False
+        # Accepter alphanumériques, tirets et underscores
+        return bool(re.match(r'^[a-zA-Z0-9_-]+$', session_id)) and len(session_id) <= 100
+
+    def _handle_task_done(self, session_id: str, task: asyncio.Task):
+        """Callback appelé quand une task se termine (succès ou erreur)"""
+        try:
+            exception = task.exception()
+            if exception and not isinstance(exception, asyncio.CancelledError):
+                logger.error(f"Session {session_id} crashed with error: {exception}", exc_info=exception)
+                # Mettre à jour le statut de la session
+                if session_id in self.sessions:
+                    self.sessions[session_id].status = 'stopped'
+        except asyncio.CancelledError:
+            logger.info(f"Session {session_id} was cancelled")
+        except Exception as e:
+            logger.error(f"Error in task done callback: {e}", exc_info=True)
+        finally:
+            # Nettoyer la tâche de la liste
+            if session_id in self.running_tasks:
+                del self.running_tasks[session_id]
+
     def create_session(
         self,
         session_id: str,
@@ -50,6 +77,16 @@ class SessionManager:
         config: dict = None
     ) -> BotSession:
         """Créer une nouvelle session"""
+
+        # Validation des entrées
+        if not self._validate_session_id(session_id):
+            raise ValueError(f"Invalid session_id format: {session_id}")
+
+        if not name or not isinstance(name, str) or len(name) > 200:
+            raise ValueError(f"Invalid name: must be non-empty string, max 200 chars")
+
+        if not pairs or not isinstance(pairs, list):
+            raise ValueError(f"Invalid pairs: must be non-empty list")
 
         if session_id in self.sessions:
             raise ValueError(f"Session {session_id} already exists")
@@ -80,8 +117,9 @@ class SessionManager:
 
         session = self.sessions[session_id]
 
-        # Créer une task asyncio pour cette session
+        # Créer une task asyncio pour cette session avec callback d'erreur
         task = asyncio.create_task(self._run_session(session))
+        task.add_done_callback(lambda t: self._handle_task_done(session_id, t))
         self.running_tasks[session_id] = task
         session.status = 'running'
 
@@ -148,7 +186,6 @@ class SessionManager:
                 if session.status == 'running':
                     session.stats['trades'] += 1
                     # PnL aléatoire entre -10 et +20
-                    import random
                     pnl = random.uniform(-10, 20)
                     session.stats['pnl'] += pnl
 

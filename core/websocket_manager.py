@@ -46,7 +46,8 @@ class WebSocketManager:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
             # 🔥 OPTIMISATION: Nettoyer aussi des rooms en une seule passe
-            for room_connections in self.rooms.values():
+            # Créer une copie pour éviter RuntimeError si dict modifié pendant itération
+            for room_connections in list(self.rooms.values()):
                 room_connections.discard(websocket)
         logger.info(f"❌ WebSocket déconnecté (total: {len(self.active_connections)})")
     
@@ -115,7 +116,8 @@ class WebSocketManager:
                     self.active_connections.discard(conn)
                     self.connection_data.pop(conn, None)
                     # Nettoyer aussi des rooms
-                    for room_connections in self.rooms.values():
+                    # Créer une copie pour éviter RuntimeError si dict modifié pendant itération
+                    for room_connections in list(self.rooms.values()):
                         room_connections.discard(conn)
     
     async def emit(self, event: str, data: any = None):

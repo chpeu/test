@@ -13,17 +13,19 @@ export const pnlColor = derived(activePosition, $pos => {
 	return $pos.pnl >= 0 ? '#00ff88' : '#ff4444';
 });
 
-// Computed: SL distance
+// Computed: SL distance (toujours positif, indique la distance en %)
 export const slDistance = derived(activePosition, $pos => {
 	if (!$pos || !$pos.sl || !$pos.current_price) return null;
-	const distance = (($pos.sl - $pos.current_price) / $pos.current_price) * 100;
+	// 🔥 FIX BUG: Calcul absolu de la distance, pas de signe négatif
+	const distance = Math.abs((($pos.sl - $pos.current_price) / $pos.current_price) * 100);
 	return distance.toFixed(2);
 });
 
-// Computed: TP distance
+// Computed: TP distance (toujours positif, indique la distance en %)
 export const tpDistance = derived(activePosition, $pos => {
 	if (!$pos || !$pos.tp || !$pos.current_price) return null;
-	const distance = (($pos.tp - $pos.current_price) / $pos.current_price) * 100;
+	// 🔥 FIX BUG: Calcul absolu de la distance, pas de signe négatif
+	const distance = Math.abs((($pos.tp - $pos.current_price) / $pos.current_price) * 100);
 	return distance.toFixed(2);
 });
 

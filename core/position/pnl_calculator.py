@@ -68,11 +68,12 @@ class PnLCalculator:
 
         if partial_tp_sold:
             size_remaining = position.get('size_remaining')
-            if size_remaining is not None:
+            if size_remaining is not None and size_remaining > 0:
                 size_to_consider = size_remaining
             else:
-                # Fallback : 50% restants
-                size_to_consider = size * 0.5
+                # Fallback : utiliser la taille complète si size_remaining non fourni
+                logger.warning(f"size_remaining manquant pour position avec partial_tp_sold, utilisation de size complet")
+                size_to_consider = size
 
         # Calculer PnL USDT non réalisé
         if direction == 'LONG':
@@ -110,10 +111,32 @@ class PnLCalculator:
         direction = position.get('direction', 'LONG')
         size = position.get('size', 0)
 
+        # Validation des entrées pour éviter division par zéro
+        if entry <= 0:
+            logger.error(f"Entry invalide ({entry}) dans calculate_realized_pnl")
+            return {
+                'pnl_pct': 0.0,
+                'pnl_usdt_gross': 0.0,
+                'fees': 0.0,
+                'net_pnl': 0.0
+            }
+
+        if size <= 0:
+            logger.error(f"Size invalide ({size}) dans calculate_realized_pnl")
+            return {
+                'pnl_pct': 0.0,
+                'pnl_usdt_gross': 0.0,
+                'fees': 0.0,
+                'net_pnl': 0.0
+            }
+
         # Taille à clôturer
         partial_tp_sold = position.get('partial_tp_sold', False)
         if partial_tp_sold:
-            size_remaining = position.get('size_remaining', size * 0.5)
+            size_remaining = position.get('size_remaining')
+            if size_remaining is None or size_remaining <= 0:
+                logger.warning(f"size_remaining manquant ou invalide pour position avec partial_tp_sold, utilisation de size complet")
+                size_remaining = size
         else:
             size_remaining = size
 
