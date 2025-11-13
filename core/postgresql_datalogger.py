@@ -27,6 +27,50 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _extract_numeric_value(value: Any) -> Optional[float]:
+    """
+    🔥 FIX: Extraire une valeur numérique depuis un dict ou autre type
+    
+    Args:
+        value: Valeur à extraire (peut être dict, float, int, str, None)
+        
+    Returns:
+        float ou None
+    """
+    if value is None:
+        return None
+    
+    # Si c'est déjà un nombre
+    if isinstance(value, (int, float)):
+        return float(value)
+    
+    # Si c'est un dict, essayer d'extraire une valeur numérique
+    if isinstance(value, dict):
+        # Essayer plusieurs clés communes
+        for key in ['value', 'price', 'score', 'rsi', 'macd', 'adx', 'atr', 'volume', 'spread', 'balance', 'depth', 'vol5', 'vol15']:
+            if key in value:
+                nested_value = value[key]
+                if isinstance(nested_value, (int, float)):
+                    return float(nested_value)
+                elif isinstance(nested_value, str):
+                    try:
+                        return float(nested_value)
+                    except (ValueError, TypeError):
+                        continue
+        # Si aucun champ numérique trouvé, retourner None
+        return None
+    
+    # Si c'est une string, essayer de convertir
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
+    
+    # Autre type non supporté
+    return None
+
+
 def serialize_config_safe(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     🔥 FIX BUG #1: Convertir config en JSON-safe dict
@@ -344,6 +388,7 @@ class PostgreSQLDataLogger:
                     timestamp, session_id, symbol, scan_duration_ms,
                     price, spread_pct, book_depth, balance_score,
                     bid_vol, ask_vol, orderbook_imbalance_ratio,
+                    recent_volume, vol5, vol15, scalability_score,
                     
                     -- Indicateurs 1m
                     ema9_1m, ema21_1m, ema_diff_pct_1m,
@@ -397,6 +442,7 @@ class PostgreSQLDataLogger:
                 VALUES (
                     NOW(), %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
@@ -414,13 +460,48 @@ class PostgreSQLDataLogger:
                 RETURNING id
             """
             
+            # 🔥 FIX: Récupérer le prix avec fallbacks multiples (pour éviter NULL)
+            price = market_data.get('price')
+            if price is None:
+                # Fallback 1: Depuis scan_data directement
+                price = scan_data.get('price')
+            if price is None:
+                # Fallback 2: Depuis analysis_1m ou analysis_5m si disponible
+                analysis_1m = scan_data.get('analysis_1m', {})
+                if isinstance(analysis_1m, dict):
+                    price = analysis_1m.get('price')
+                if price is None:
+                    analysis_5m = scan_data.get('analysis_5m', {})
+                    if isinstance(analysis_5m, dict):
+                        price = analysis_5m.get('price')
+            # Extraire la valeur numérique si c'est un dict
+            if isinstance(price, dict):
+                price = price.get('price') or price.get('lastPrice') or price.get('close') or price.get('value')
+            # Vérifier que price est un nombre
+            if price is not None and not isinstance(price, (int, float)):
+                try:
+                    price = float(price)
+                except (ValueError, TypeError):
+                    logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan: {price} (type: {type(price)})")
+                    price = None
+            
+            # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
+            if price is None:
+                logger.error(f"❌ Prix manquant pour {symbol} dans log_scan, insertion annulée")
+                return None
+            
             # Préparer les paramètres
             params = (
                 session_id, symbol, scan_data.get('scan_duration_ms'),
-                market_data.get('price'), market_data.get('spread_pct'),
+                price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
                 market_data.get('bid_vol'), market_data.get('ask_vol'),
                 market_data.get('orderbook_imbalance_ratio'),
+                # Paramètres du scan de scalabilité
+                market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
+                market_data.get('vol5') or scan_data.get('vol5'),
+                market_data.get('vol15') or scan_data.get('vol15'),
+                market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
                 
                 # 1m
                 indicators_1m.get('ema9'), indicators_1m.get('ema21'),
@@ -847,6 +928,7 @@ class PostgreSQLDataLogger:
                     max_drawdown_pct, max_drawdown_usdt,
                     -- Scalability
                     entry_book_depth, entry_bid_vol, entry_ask_vol, entry_orderbook_imbalance,
+                    entry_recent_volume, entry_vol5, entry_vol15, entry_scalability_score,
                     -- Configuration snapshot
                     config_snapshot,
                     win
@@ -872,7 +954,7 @@ class PostgreSQLDataLogger:
                     %s, %s,
                     %s, %s, %s, %s,
                     %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -883,12 +965,21 @@ class PostgreSQLDataLogger:
             exit_timestamp = trade_data.get('timestamp_exit') or (timestamp_iso if trade_data.get('exit_price') else None)
             
             # Calculer win (True si net_pnl_usdt > 0)
-            net_pnl_usdt = trade_data.get('net_pnl_usdt', 0)
+            net_pnl_usdt_raw = trade_data.get('net_pnl_usdt', 0)
+            net_pnl_usdt = _extract_numeric_value(net_pnl_usdt_raw) if net_pnl_usdt_raw is not None else 0
             win = net_pnl_usdt > 0 if net_pnl_usdt is not None else None
             
             # Calculer tp_escalier_profits (somme des profits)
             tp_escalier_levels_hit = trade_data.get('tp_escalier_levels_hit', [])
-            tp_escalier_profits = sum(p.get('profit', 0) for p in tp_escalier_levels_hit) if tp_escalier_levels_hit else 0
+            # 🔥 FIX: S'assurer que les profits sont des nombres, pas des dicts
+            tp_escalier_profits = 0
+            if tp_escalier_levels_hit:
+                for p in tp_escalier_levels_hit:
+                    if isinstance(p, dict):
+                        profit_value = _extract_numeric_value(p.get('profit', 0))
+                        tp_escalier_profits += profit_value if profit_value is not None else 0
+                    elif isinstance(p, (int, float)):
+                        tp_escalier_profits += float(p)
             
             # Extraire indicateurs d'entrée
             entry_indicators = trade_data.get('entry_indicators', {}) or {}
@@ -896,6 +987,36 @@ class PostgreSQLDataLogger:
             
             # Extraire indicateurs de sortie
             exit_indicators = trade_data.get('exit_indicators', {}) or {}
+            
+            # 🔥 FIX: S'assurer que tous les indicateurs sont des valeurs numériques, pas des dicts
+            # Créer des copies "nettoyées" des indicateurs
+            entry_indicators_clean = {}
+            for key, value in entry_indicators.items():
+                if isinstance(value, dict):
+                    entry_indicators_clean[key] = _extract_numeric_value(value)
+                elif isinstance(value, (int, float)):
+                    entry_indicators_clean[key] = float(value)
+                elif value is None:
+                    entry_indicators_clean[key] = None
+                else:
+                    # Essayer de convertir en float
+                    entry_indicators_clean[key] = _extract_numeric_value(value)
+            
+            exit_indicators_clean = {}
+            for key, value in exit_indicators.items():
+                if isinstance(value, dict):
+                    exit_indicators_clean[key] = _extract_numeric_value(value)
+                elif isinstance(value, (int, float)):
+                    exit_indicators_clean[key] = float(value)
+                elif value is None:
+                    exit_indicators_clean[key] = None
+                else:
+                    # Essayer de convertir en float
+                    exit_indicators_clean[key] = _extract_numeric_value(value)
+            
+            # Utiliser les indicateurs nettoyés
+            entry_indicators = entry_indicators_clean
+            exit_indicators = exit_indicators_clean
             
             # Calculer métriques temporelles
             try:
@@ -933,11 +1054,18 @@ class PostgreSQLDataLogger:
                 exit_hour = None
                 exit_day = None
             
+            # 🔥 FIX: Extraire et nettoyer les prix AVANT les calculs (peuvent être des dicts)
+            entry_price_raw = trade_data.get('entry_price')
+            tp_price_raw = trade_data.get('tp_price')
+            sl_price_raw = trade_data.get('sl_price')
+            exit_price_raw = trade_data.get('exit_price')
+            
+            entry_price = _extract_numeric_value(entry_price_raw) if entry_price_raw is not None else None
+            tp_price = _extract_numeric_value(tp_price_raw) if tp_price_raw is not None else None
+            sl_price = _extract_numeric_value(sl_price_raw) if sl_price_raw is not None else None
+            exit_price = _extract_numeric_value(exit_price_raw) if exit_price_raw is not None else None
+            
             # Calculer risk_reward_ratio
-            entry_price = trade_data.get('entry_price')
-            tp_price = trade_data.get('tp_price')
-            sl_price = trade_data.get('sl_price')
-            exit_price = trade_data.get('exit_price')
             risk_reward_ratio = None
             if entry_price and tp_price and sl_price:
                 if trade_data.get('direction') == 'LONG':
@@ -1000,19 +1128,39 @@ class PostgreSQLDataLogger:
             
             # Fallback sur max_pnl_reached / min_pnl_reached si pnl_history non disponible
             if max_favorable_excursion is None:
-                max_favorable_excursion = trade_data.get('max_pnl_reached')
+                max_favorable_excursion = _extract_numeric_value(trade_data.get('max_pnl_reached'))
             if max_adverse_excursion is None:
-                max_adverse_excursion = trade_data.get('min_pnl_reached')
+                max_adverse_excursion = _extract_numeric_value(trade_data.get('min_pnl_reached'))
             
             # Extraire scalability data
             entry_scalability = trade_data.get('entry_scalability', {}) or {}
             if not isinstance(entry_scalability, dict):
                 entry_scalability = {}
             
+            # 🔥 FIX: S'assurer que tous les champs de scalability sont des valeurs numériques, pas des dicts
+            entry_scalability_clean = {}
+            for key, value in entry_scalability.items():
+                if isinstance(value, dict):
+                    entry_scalability_clean[key] = _extract_numeric_value(value)
+                elif isinstance(value, (int, float)):
+                    entry_scalability_clean[key] = float(value)
+                elif value is None:
+                    entry_scalability_clean[key] = None
+                else:
+                    # Essayer de convertir en float
+                    entry_scalability_clean[key] = _extract_numeric_value(value)
+            
+            # Utiliser les données de scalabilité nettoyées
+            entry_scalability = entry_scalability_clean
+            
+            # 🔥 FIX: Extraire et nettoyer size_usdt AVANT de calculer slippage_usdt
+            size_usdt_raw = trade_data.get('size_usdt')
+            size_usdt = _extract_numeric_value(size_usdt_raw) if size_usdt_raw is not None else None
+            
             # Calculer slippage_usdt
-            slippage_pct = trade_data.get('slippage', 0) or 0
-            size_usdt = trade_data.get('size_usdt', 0) or 0
-            slippage_usdt = (slippage_pct / 100) * size_usdt if slippage_pct and size_usdt else 0
+            slippage_pct_raw = trade_data.get('slippage', 0) or 0
+            slippage_pct = _extract_numeric_value(slippage_pct_raw) if slippage_pct_raw is not None else 0
+            slippage_usdt = (slippage_pct / 100) * (size_usdt or 0) if slippage_pct and size_usdt else 0
             
             # Extraire config_snapshot
             # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
@@ -1040,21 +1188,21 @@ class PostgreSQLDataLogger:
                 entry_timestamp, exit_timestamp, session_id, opportunity_id, scan_log_id,
                 trade_data.get('symbol'),
                 trade_data.get('direction'),
-                trade_data.get('entry_price'),
-                trade_data.get('exit_price'),
-                trade_data.get('size_usdt'),
-                trade_data.get('tp_price'),  # tp_price
-                trade_data.get('sl_price'),  # sl_price
-                trade_data.get('gross_pnl_usdt', 0),
-                trade_data.get('gross_pnl_pct', 0),  # pnl_pct (gross)
-                trade_data.get('gross_pnl_usdt', 0),  # pnl_usdt (gross) - même valeur que gross_pnl_usdt (redondant mais présent dans le schéma)
-                trade_data.get('net_pnl_usdt', 0),
-                trade_data.get('net_pnl_pct', 0),
-                trade_data.get('fees', 0),  # fees_usdt
-                trade_data.get('slippage', 0),  # slippage_pct
+                entry_price,  # entry_price (nettoyé)
+                exit_price,  # exit_price (nettoyé)
+                size_usdt,  # size_usdt (nettoyé)
+                tp_price,  # tp_price (nettoyé)
+                sl_price,  # sl_price (nettoyé)
+                _extract_numeric_value(trade_data.get('gross_pnl_usdt')) or 0,
+                _extract_numeric_value(trade_data.get('gross_pnl_pct')) or 0,  # pnl_pct (gross)
+                _extract_numeric_value(trade_data.get('gross_pnl_usdt')) or 0,  # pnl_usdt (gross) - même valeur que gross_pnl_usdt (redondant mais présent dans le schéma)
+                _extract_numeric_value(trade_data.get('net_pnl_usdt')) or 0,
+                _extract_numeric_value(trade_data.get('net_pnl_pct')) or 0,
+                _extract_numeric_value(trade_data.get('fees')) or 0,  # fees_usdt
+                _extract_numeric_value(trade_data.get('slippage')) or 0,  # slippage_pct
                 slippage_usdt,  # slippage_usdt
                 trade_data.get('reason'),  # exit_reason
-                trade_data.get('duration_seconds'),
+                _extract_numeric_value(trade_data.get('duration_seconds')),
                 trade_data.get('tp_sl_mode'),
                 trade_data.get('break_even_triggered', False),  # break_even_set
                 trade_data.get('break_even_triggered_at'),  # break_even_triggered_at
@@ -1062,17 +1210,17 @@ class PostgreSQLDataLogger:
                 trade_data.get('trailing_stop_triggered_at'),  # trailing_stop_triggered_at
                 trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
                 trade_data.get('partial_tp_triggered_at'),  # partial_tp_triggered_at
-                trade_data.get('partial_tp_profit'),  # partial_tp_profit
-                trade_data.get('partial_tp_percent'),  # partial_tp_percent
+                _extract_numeric_value(trade_data.get('partial_tp_profit')),  # partial_tp_profit
+                _extract_numeric_value(trade_data.get('partial_tp_percent')),  # partial_tp_percent
                 len(tp_escalier_levels_hit),  # tp_escalier_levels_executed (count)
-                tp_escalier_profits,  # tp_escalier_profits (somme)
+                _extract_numeric_value(tp_escalier_profits) if tp_escalier_profits is not None else 0,  # tp_escalier_profits (somme)
                 # Early Invalidation
                 trade_data.get('early_invalidation_triggered', False),  # early_invalidation_triggered
                 trade_data.get('early_invalidation_triggered_at'),  # early_invalidation_triggered_at
-                trade_data.get('early_invalidation_threshold'),  # early_invalidation_threshold
-                trade_data.get('early_invalidation_elapsed'),  # early_invalidation_elapsed
-                trade_data.get('early_invalidation_atr_pct'),  # early_invalidation_atr_pct
-                trade_data.get('early_invalidation_pnl_pct'),  # early_invalidation_pnl_pct
+                _extract_numeric_value(trade_data.get('early_invalidation_threshold')),  # early_invalidation_threshold
+                _extract_numeric_value(trade_data.get('early_invalidation_elapsed')),  # early_invalidation_elapsed
+                _extract_numeric_value(trade_data.get('early_invalidation_atr_pct')),  # early_invalidation_atr_pct
+                _extract_numeric_value(trade_data.get('early_invalidation_pnl_pct')),  # early_invalidation_pnl_pct
                 # Indicateurs d'entrée - RSI
                 entry_indicators.get('rsi_1m'), entry_indicators.get('rsi_5m'),
                 entry_indicators.get('rsi_prev_1m'), entry_indicators.get('rsi_prev_5m'),
@@ -1102,9 +1250,9 @@ class PostgreSQLDataLogger:
                 entry_indicators.get('volume_5m'), entry_indicators.get('volume_avg_5m'),
                 entry_indicators.get('volume_ratio_5m'), entry_indicators.get('volume_spike_5m'),
                 # Indicateurs d'entrée - Score et autres
-                entry_indicators.get('score'),  # entry_score
-                entry_scalability.get('spread_pct'),  # entry_spread_pct
-                entry_scalability.get('balance_score'),  # entry_balance_score
+                _extract_numeric_value(entry_indicators.get('score')),  # entry_score
+                _extract_numeric_value(entry_scalability.get('spread_pct')),  # entry_spread_pct
+                _extract_numeric_value(entry_scalability.get('balance_score')),  # entry_balance_score
                 entry_conditions,  # entry_conditions (TEXT[])
                 len(entry_conditions),  # entry_condition_count
                 # Métriques temporelles entry
@@ -1114,27 +1262,36 @@ class PostgreSQLDataLogger:
                 exit_indicators.get('macd_hist_1m'), exit_indicators.get('macd_hist_5m'),
                 exit_indicators.get('adx_1m'), exit_indicators.get('adx_5m'),
                 exit_indicators.get('atr_pct_1m'), exit_indicators.get('atr_pct_5m'),
-                exit_indicators.get('score'),  # exit_score
-                exit_indicators.get('volume_ratio_1m'), exit_indicators.get('volume_ratio_5m'),
-                exit_indicators.get('spread_pct'),  # exit_spread_pct
-                exit_indicators.get('balance_score'),  # exit_balance_score
-                entry_to_exit_price_change_pct,
+                _extract_numeric_value(exit_indicators.get('score')),  # exit_score
+                _extract_numeric_value(exit_indicators.get('volume_ratio_1m')), _extract_numeric_value(exit_indicators.get('volume_ratio_5m')),
+                _extract_numeric_value(exit_indicators.get('spread_pct')),  # exit_spread_pct
+                _extract_numeric_value(exit_indicators.get('balance_score')),  # exit_balance_score
+                _extract_numeric_value(entry_to_exit_price_change_pct) if entry_to_exit_price_change_pct is not None else None,
                 # Métriques temporelles exit
                 exit_hour, exit_day,
                 # Métriques de position
-                max_favorable_excursion, max_adverse_excursion,
-                max_favorable_excursion_usdt, max_adverse_excursion_usdt,
+                _extract_numeric_value(max_favorable_excursion) if max_favorable_excursion is not None else None,
+                _extract_numeric_value(max_adverse_excursion) if max_adverse_excursion is not None else None,
+                _extract_numeric_value(max_favorable_excursion_usdt) if max_favorable_excursion_usdt is not None else None,
+                _extract_numeric_value(max_adverse_excursion_usdt) if max_adverse_excursion_usdt is not None else None,
                 # Métriques de qualité
-                risk_reward_ratio,
+                _extract_numeric_value(risk_reward_ratio) if risk_reward_ratio is not None else None,
                 None,  # profit_factor (non calculé pour l'instant)
                 # Métriques de performance additionnelles
-                entry_to_max_profit_price_change_pct, entry_to_max_loss_price_change_pct,
-                max_drawdown_pct, max_drawdown_usdt,
+                _extract_numeric_value(entry_to_max_profit_price_change_pct) if entry_to_max_profit_price_change_pct is not None else None,
+                _extract_numeric_value(entry_to_max_loss_price_change_pct) if entry_to_max_loss_price_change_pct is not None else None,
+                _extract_numeric_value(max_drawdown_pct) if max_drawdown_pct is not None else None,
+                _extract_numeric_value(max_drawdown_usdt) if max_drawdown_usdt is not None else None,
                 # Scalability
-                entry_scalability.get('book_depth'),  # entry_book_depth
-                entry_scalability.get('bid_vol'),  # entry_bid_vol
-                entry_scalability.get('ask_vol'),  # entry_ask_vol
-                entry_scalability.get('orderbook_imbalance'),  # entry_orderbook_imbalance
+                _extract_numeric_value(entry_scalability.get('book_depth')),  # entry_book_depth
+                _extract_numeric_value(entry_scalability.get('bid_vol')),  # entry_bid_vol
+                _extract_numeric_value(entry_scalability.get('ask_vol')),  # entry_ask_vol
+                _extract_numeric_value(entry_scalability.get('orderbook_imbalance')),  # entry_orderbook_imbalance
+                # Paramètres du scan de scalabilité
+                _extract_numeric_value(entry_scalability.get('recent_volume') or entry_scalability.get('recentVolume')),  # entry_recent_volume
+                _extract_numeric_value(entry_scalability.get('vol5')),  # entry_vol5
+                _extract_numeric_value(entry_scalability.get('vol15')),  # entry_vol15
+                _extract_numeric_value(entry_scalability.get('scalability_score') or entry_scalability.get('score')),  # entry_scalability_score
                 # Configuration snapshot
                 config_snapshot,
                 win
@@ -1248,13 +1405,48 @@ class PostgreSQLDataLogger:
                 patterns = scan_data.get('patterns', {})
                 market_data = scan_data.get('market_data', {})
                 
+                # 🔥 FIX: Récupérer le prix avec fallbacks multiples (pour éviter NULL)
+                price = market_data.get('price')
+                if price is None:
+                    # Fallback 1: Depuis scan_data directement
+                    price = scan_data.get('price')
+                if price is None:
+                    # Fallback 2: Depuis analysis_1m ou analysis_5m si disponible
+                    analysis_1m = scan_data.get('analysis_1m', {})
+                    if isinstance(analysis_1m, dict):
+                        price = analysis_1m.get('price')
+                    if price is None:
+                        analysis_5m = scan_data.get('analysis_5m', {})
+                        if isinstance(analysis_5m, dict):
+                            price = analysis_5m.get('price')
+                # Extraire la valeur numérique si c'est un dict
+                if isinstance(price, dict):
+                    price = price.get('price') or price.get('lastPrice') or price.get('close') or price.get('value')
+                # Vérifier que price est un nombre
+                if price is not None and not isinstance(price, (int, float)):
+                    try:
+                        price = float(price)
+                    except (ValueError, TypeError):
+                        logger.warning(f"⚠️ Prix invalide pour {symbol} dans batch: {price} (type: {type(price)})")
+                        price = None
+                
+                # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
+                if price is None:
+                    logger.error(f"❌ Prix manquant pour {symbol} dans batch insert, scan ignoré")
+                    continue
+                
                 # Construire tuple de valeurs (même ordre que dans log_scan)
                 value_tuple = (
                     session_id, symbol, scan_data.get('scan_duration_ms'),
-                    market_data.get('price'), market_data.get('spread_pct'),
+                    price, market_data.get('spread_pct'),
                     market_data.get('book_depth'), market_data.get('balance_score'),
                     market_data.get('bid_vol'), market_data.get('ask_vol'),
                     market_data.get('orderbook_imbalance_ratio'),
+                    # Paramètres du scan de scalabilité
+                    market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
+                    market_data.get('vol5') or scan_data.get('vol5'),
+                    market_data.get('vol15') or scan_data.get('vol15'),
+                    market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
                     # 1m indicators
                     indicators_1m.get('ema9'), indicators_1m.get('ema21'),
                     indicators_1m.get('ema_diff_pct'),
@@ -1322,6 +1514,7 @@ class PostgreSQLDataLogger:
                 'session_id', 'symbol', 'scan_duration_ms',
                 'price', 'spread_pct', 'book_depth', 'balance_score',
                 'bid_vol', 'ask_vol', 'orderbook_imbalance_ratio',
+                'recent_volume', 'vol5', 'vol15', 'scalability_score',
                 'ema9_1m', 'ema21_1m', 'ema_diff_pct_1m',
                 'rsi_1m', 'rsi_prev_1m',
                 'macd_1m', 'macd_signal_1m', 'macd_hist_1m', 'macd_hist_prev_1m',
@@ -1395,8 +1588,30 @@ class PostgreSQLDataLogger:
             values = []
             for opp_item in opportunities:
                 scan_id = opp_item['scan_id']
-                session_id = opp_item['session_id']
                 symbol = opp_item['symbol']
+                
+                # 🔥 FIX: Si scan_id = 0 (temporaire), essayer de le résoudre depuis scan_logs
+                if scan_id == 0 or scan_id is None:
+                    # Chercher le scan_log_id correspondant dans scan_logs
+                    # en utilisant symbol et timestamp récent (dernières 5 minutes)
+                    resolve_query = """
+                        SELECT id FROM scan_logs 
+                        WHERE symbol = %s 
+                          AND is_opportunity = true
+                          AND timestamp > NOW() - INTERVAL '5 minutes'
+                        ORDER BY timestamp DESC 
+                        LIMIT 1
+                    """
+                    cursor.execute(resolve_query, (symbol,))
+                    result = cursor.fetchone()
+                    if result:
+                        scan_id = result[0]
+                        logger.debug(f"✅ scan_id résolu pour {symbol}: {scan_id}")
+                    else:
+                        logger.warning(f"⚠️ Impossible de résoudre scan_id pour {symbol}, utilisation de 0")
+                        scan_id = 0
+                
+                session_id = opp_item['session_id']
                 opp_data = opp_item['opportunity_data']
                 
                 # Convertir conditions_matched en liste de strings
