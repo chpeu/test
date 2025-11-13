@@ -984,33 +984,68 @@ async def scan_pair_for_setup(symbol: str):
                 available_keys = [k for k in analysis.keys() if k not in ['symbol', 'direction', 'entry', 'sl', 'tp', 'price', 'signals', 'condition_types', 'totalScore', 'reason', 'reject_category']]
                 logger.info(f"🔍 DEBUG analysis keys disponibles pour indicators_1m: {available_keys[:20]}")
                 
-                indicators_1m = {
-                    'rsi': analysis.get('rsi'),
-                    'rsi_prev': analysis.get('rsi_prev'),
-                    'macd': analysis.get('macd'),
-                    'macd_signal': analysis.get('macd_signal'),
-                    'macd_hist': analysis.get('macd_hist'),
-                    'macd_hist_prev': analysis.get('macd_hist_prev'),
-                    'adx': analysis.get('adx'),
-                    'di_plus': analysis.get('di_plus'),
-                    'di_minus': analysis.get('di_minus'),
-                    'di_gap': analysis.get('di_gap'),
-                    'ema9': analysis.get('ema9'),
-                    'ema21': analysis.get('ema21'),
-                    'ema_diff_pct': analysis.get('ema_diff_pct'),
-                    'atr': analysis.get('atr'),
-                    'atr_pct': analysis.get('atr_pct'),
-                    'bb_upper': analysis.get('bb_upper'),
-                    'bb_middle': analysis.get('bb_middle'),
-                    'bb_lower': analysis.get('bb_lower'),
-                    'bb_width': analysis.get('bb_width'),
-                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
-                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
-                    'volume': analysis.get('volume'),
-                    'volume_avg': analysis.get('volume_avg'),
-                    'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
-                    'volume_spike': analysis.get('volume_spike'),
-                }
+                # 🔥 PRIORITÉ 1: Vérifier si analysis contient analysis_1m (retourné par analyze_pair quand aucun setup n'est trouvé)
+                analysis_1m = analysis.get('analysis_1m', {})
+                if isinstance(analysis_1m, dict) and analysis_1m:
+                    # Extraire les indicateurs depuis analysis_1m
+                    indicators_1m = {
+                        'rsi': analysis_1m.get('rsi'),
+                        'rsi_prev': analysis_1m.get('rsi_prev'),
+                        'macd': analysis_1m.get('macd'),
+                        'macd_signal': analysis_1m.get('macd_signal'),
+                        'macd_hist': analysis_1m.get('macd_hist'),
+                        'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                        'adx': analysis_1m.get('adx'),
+                        'di_plus': analysis_1m.get('di_plus'),
+                        'di_minus': analysis_1m.get('di_minus'),
+                        'di_gap': analysis_1m.get('di_gap'),
+                        'ema9': analysis_1m.get('ema9'),
+                        'ema21': analysis_1m.get('ema21'),
+                        'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
+                        'atr': analysis_1m.get('atr'),
+                        'atr_pct': analysis_1m.get('atr_pct'),
+                        'bb_upper': analysis_1m.get('bb_upper'),
+                        'bb_middle': analysis_1m.get('bb_middle'),
+                        'bb_lower': analysis_1m.get('bb_lower'),
+                        'bb_width': analysis_1m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                        'volume': analysis_1m.get('volume'),
+                        'volume_avg': analysis_1m.get('volume_avg'),
+                        'volume_ratio': analysis_1m.get('volume_ratio') or analysis_1m.get('volumeSpike'),
+                        'volume_spike': analysis_1m.get('volume_spike'),
+                    }
+                    logger.debug(f"🔍 DEBUG {symbol}: indicators_1m construit depuis analysis_1m")
+                else:
+                    # 🔥 PRIORITÉ 2: Chercher directement dans analysis (pour les setups valides)
+                    indicators_1m = {
+                        'rsi': analysis.get('rsi'),
+                        'rsi_prev': analysis.get('rsi_prev'),
+                        'macd': analysis.get('macd'),
+                        'macd_signal': analysis.get('macd_signal'),
+                        'macd_hist': analysis.get('macd_hist'),
+                        'macd_hist_prev': analysis.get('macd_hist_prev'),
+                        'adx': analysis.get('adx'),
+                        'di_plus': analysis.get('di_plus'),
+                        'di_minus': analysis.get('di_minus'),
+                        'di_gap': analysis.get('di_gap'),
+                        'ema9': analysis.get('ema9'),
+                        'ema21': analysis.get('ema21'),
+                        'ema_diff_pct': analysis.get('ema_diff_pct'),
+                        'atr': analysis.get('atr'),
+                        'atr_pct': analysis.get('atr_pct'),
+                        'bb_upper': analysis.get('bb_upper'),
+                        'bb_middle': analysis.get('bb_middle'),
+                        'bb_lower': analysis.get('bb_lower'),
+                        'bb_width': analysis.get('bb_width'),
+                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                        'volume': analysis.get('volume'),
+                        'volume_avg': analysis.get('volume_avg'),
+                        'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                        'volume_spike': analysis.get('volume_spike'),
+                    }
+                    logger.debug(f"🔍 DEBUG {symbol}: indicators_1m construit depuis analysis directement")
                 
                 # 🔥 DEBUG: Compter les valeurs non-null
                 indicators_1m_non_null = len([v for v in indicators_1m.values() if v is not None])
@@ -1018,33 +1053,69 @@ async def scan_pair_for_setup(symbol: str):
             
             if not indicators_5m:
                 logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
-                indicators_5m = {
-                    'rsi': analysis.get('rsi_5m'),
-                    'rsi_prev': analysis.get('rsi_prev_5m'),
-                    'macd': analysis.get('macd_5m'),
-                    'macd_signal': analysis.get('macd_signal_5m'),
-                    'macd_hist': analysis.get('macd_hist_5m'),
-                    'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
-                    'adx': analysis.get('adx_5m'),
-                    'di_plus': analysis.get('di_plus_5m'),
-                    'di_minus': analysis.get('di_minus_5m'),
-                    'di_gap': analysis.get('di_gap_5m'),
-                    'ema9': analysis.get('ema9_5m'),
-                    'ema21': analysis.get('ema21_5m'),
-                    'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
-                    'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
-                    'atr_pct': analysis.get('atr_pct_5m'),
-                    'bb_upper': analysis.get('bb_upper_5m'),
-                    'bb_middle': analysis.get('bb_middle_5m'),
-                    'bb_lower': analysis.get('bb_lower_5m'),
-                    'bb_width': analysis.get('bb_width_5m'),
-                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
-                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
-                    'volume': analysis.get('volume_5m'),
-                    'volume_avg': analysis.get('volume_avg_5m'),
-                    'volume_ratio': analysis.get('volume_ratio_5m'),
-                    'volume_spike': analysis.get('volume_spike_5m'),
-                }
+                
+                # 🔥 PRIORITÉ 1: Vérifier si analysis contient analysis_5m (retourné par analyze_pair quand aucun setup n'est trouvé)
+                analysis_5m = analysis.get('analysis_5m', {})
+                if isinstance(analysis_5m, dict) and analysis_5m:
+                    # Extraire les indicateurs depuis analysis_5m
+                    indicators_5m = {
+                        'rsi': analysis_5m.get('rsi'),
+                        'rsi_prev': analysis_5m.get('rsi_prev'),
+                        'macd': analysis_5m.get('macd'),
+                        'macd_signal': analysis_5m.get('macd_signal'),
+                        'macd_hist': analysis_5m.get('macd_hist'),
+                        'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                        'adx': analysis_5m.get('adx'),
+                        'di_plus': analysis_5m.get('di_plus'),
+                        'di_minus': analysis_5m.get('di_minus'),
+                        'di_gap': analysis_5m.get('di_gap'),
+                        'ema9': analysis_5m.get('ema9'),
+                        'ema21': analysis_5m.get('ema21'),
+                        'ema_diff_pct': analysis_5m.get('ema_diff_pct'),
+                        'atr': analysis_5m.get('atr'),
+                        'atr_pct': analysis_5m.get('atr_pct'),
+                        'bb_upper': analysis_5m.get('bb_upper'),
+                        'bb_middle': analysis_5m.get('bb_middle'),
+                        'bb_lower': analysis_5m.get('bb_lower'),
+                        'bb_width': analysis_5m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                        'volume': analysis_5m.get('volume'),
+                        'volume_avg': analysis_5m.get('volume_avg'),
+                        'volume_ratio': analysis_5m.get('volume_ratio') or analysis_5m.get('volumeSpike'),
+                        'volume_spike': analysis_5m.get('volume_spike'),
+                    }
+                    logger.debug(f"🔍 DEBUG {symbol}: indicators_5m construit depuis analysis_5m")
+                else:
+                    # 🔥 PRIORITÉ 2: Chercher directement dans analysis (pour les setups valides)
+                    indicators_5m = {
+                        'rsi': analysis.get('rsi_5m'),
+                        'rsi_prev': analysis.get('rsi_prev_5m'),
+                        'macd': analysis.get('macd_5m'),
+                        'macd_signal': analysis.get('macd_signal_5m'),
+                        'macd_hist': analysis.get('macd_hist_5m'),
+                        'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
+                        'adx': analysis.get('adx_5m'),
+                        'di_plus': analysis.get('di_plus_5m'),
+                        'di_minus': analysis.get('di_minus_5m'),
+                        'di_gap': analysis.get('di_gap_5m'),
+                        'ema9': analysis.get('ema9_5m'),
+                        'ema21': analysis.get('ema21_5m'),
+                        'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
+                        'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
+                        'atr_pct': analysis.get('atr_pct_5m'),
+                        'bb_upper': analysis.get('bb_upper_5m'),
+                        'bb_middle': analysis.get('bb_middle_5m'),
+                        'bb_lower': analysis.get('bb_lower_5m'),
+                        'bb_width': analysis.get('bb_width_5m'),
+                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
+                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
+                        'volume': analysis.get('volume_5m'),
+                        'volume_avg': analysis.get('volume_avg_5m'),
+                        'volume_ratio': analysis.get('volume_ratio_5m'),
+                        'volume_spike': analysis.get('volume_spike_5m'),
+                    }
+                    logger.debug(f"🔍 DEBUG {symbol}: indicators_5m construit depuis analysis directement")
                 
                 # 🔥 DEBUG: Compter les valeurs non-null
                 indicators_5m_non_null = len([v for v in indicators_5m.values() if v is not None])
@@ -1089,13 +1160,109 @@ async def scan_pair_for_setup(symbol: str):
                         logger.warning(f"⚠️ Prix invalide pour {symbol}: {scan_price} (type: {type(scan_price)})")
                         scan_price = None
                 
-                logger.info(f"📝 Tentative log_scan_simple pour {symbol} (prix: {scan_price})")
-                result = _simple_logger.log_scan_simple(symbol, {
+                # Construire indicators_1m avec fallbacks
+                indicators_1m = {}
+                score_total = None
+                
+                if analysis:
+                    # Priorité 1: indicators_1m depuis analysis
+                    indicators_1m = analysis.get('indicators_1m', {}) or {}
+                    
+                    # Récupérer score_total avec fallbacks
+                    # Priorité 1: score_total directement
+                    score_total = analysis.get('score_total')
+                    # Priorité 2: totalScore (nom utilisé dans analyzer.py)
+                    if score_total is None:
+                        score_total = analysis.get('totalScore')
+                    # Priorité 3: score (nom alternatif)
+                    if score_total is None:
+                        score_total = analysis.get('score')
+                    
+                    # 🔥 AMÉLIORATION: Récupérer analysis_1m et analysis_5m une seule fois
+                    analysis_1m = analysis.get('analysis_1m', {})
+                    analysis_5m = analysis.get('analysis_5m', {})
+                    
+                    # Fallback 1: Essayer depuis analysis_1m pour score_total
+                    if score_total is None and isinstance(analysis_1m, dict) and analysis_1m:
+                        score_total = analysis_1m.get('score_total') or analysis_1m.get('totalScore') or analysis_1m.get('score')
+                        # Si toujours None, essayer long_score ou short_score (utilisés dans analyzer.py pour les analyses rejetées)
+                        if score_total is None:
+                            # Prendre le maximum entre long_score et short_score, ou le premier non-None
+                            long_score = analysis_1m.get('long_score')
+                            short_score = analysis_1m.get('short_score')
+                            if long_score is not None or short_score is not None:
+                                score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
+                    # Fallback 2: Essayer depuis analysis_5m pour score_total
+                    if score_total is None and isinstance(analysis_5m, dict) and analysis_5m:
+                        score_total = analysis_5m.get('score_total') or analysis_5m.get('totalScore') or analysis_5m.get('score')
+                        # Si toujours None, essayer long_score ou short_score
+                        if score_total is None:
+                            long_score = analysis_5m.get('long_score')
+                            short_score = analysis_5m.get('short_score')
+                            if long_score is not None or short_score is not None:
+                                score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
+                    
+                    # 🔥 AMÉLIORATION: Compléter indicators_1m avec les valeurs de analysis_1m si elles sont None
+                    if isinstance(analysis_1m, dict) and analysis_1m:
+                        # Log de debug pour voir ce qui est dans analysis_1m
+                        rsi_in_analysis_1m = analysis_1m.get('rsi')
+                        logger.debug(f"🔍 DEBUG {symbol}: analysis_1m contient rsi={rsi_in_analysis_1m}, keys: {list(analysis_1m.keys())[:15]}")
+                        
+                        # Liste des indicateurs clés à vérifier
+                        indicator_keys = ['rsi', 'rsi_prev', 'macd', 'macd_signal', 'macd_hist', 'macd_hist_prev',
+                                        'adx', 'di_plus', 'di_minus', 'di_gap', 'ema9', 'ema21', 'ema_diff_pct',
+                                        'atr', 'atr_pct', 'bb_upper', 'bb_middle', 'bb_lower', 'bb_width',
+                                        'bb_distance_to_lower', 'bb_distance_to_upper', 'volume', 'volume_avg',
+                                        'volume_ratio', 'volume_spike']
+                        
+                        rsi_found_count = 0
+                        for key in indicator_keys:
+                            # Si l'indicateur n'existe pas dans indicators_1m ou est None, essayer de le récupérer depuis analysis_1m
+                            if key not in indicators_1m or indicators_1m.get(key) is None:
+                                value = analysis_1m.get(key)
+                                if value is not None:
+                                    indicators_1m[key] = value
+                                    if key == 'rsi':
+                                        rsi_found_count += 1
+                                        logger.info(f"✅ DEBUG {symbol}: RSI récupéré depuis analysis_1m: {value}")
+                        
+                        if rsi_found_count == 0 and rsi_in_analysis_1m is None:
+                            logger.debug(f"⚠️ DEBUG {symbol}: RSI est None dans analysis_1m. analysis_1m contient 'reason': {analysis_1m.get('reason', 'N/A')[:50] if analysis_1m.get('reason') else 'N/A'}")
+                    
+                    # Priorité 3: Essayer depuis analysis directement (champs de haut niveau) si RSI toujours manquant
+                    if not indicators_1m.get('rsi'):
+                        if 'rsi' in analysis and analysis.get('rsi') is not None:
+                            indicators_1m['rsi'] = analysis.get('rsi')
+                            logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi): {indicators_1m.get('rsi')}")
+                        elif 'rsi_1m' in analysis and analysis.get('rsi_1m') is not None:
+                            indicators_1m['rsi'] = analysis.get('rsi_1m')
+                            logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi_1m): {indicators_1m.get('rsi')}")
+                    
+                    # Log de debug si RSI toujours manquant
+                    if not indicators_1m.get('rsi'):
+                        logger.debug(f"⚠️ DEBUG {symbol}: RSI non trouvé. analysis keys: {list(analysis.keys())[:10] if analysis else 'None'}, "
+                                   f"indicators_1m keys: {list(indicators_1m.keys()) if indicators_1m else 'None'}, "
+                                   f"analysis_1m type: {type(analysis.get('analysis_1m'))}, "
+                                   f"analysis_1m rsi: {analysis_1m.get('rsi') if isinstance(analysis_1m, dict) else 'N/A'}")
+                
+                logger.info(f"📝 Tentative log_scan_simple pour {symbol} (prix: {scan_price}, RSI: {indicators_1m.get('rsi', 'N/A')}, Score: {score_total or 'N/A'})")
+                # Construire scan_data avec tous les fallbacks possibles
+                scan_data_dict = {
                     'market_data': {'price': scan_price},
-                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
-                    'scores': {'score_total': analysis.get('score_total') if analysis else None},
+                    'indicators_1m': indicators_1m,
+                    'scores': {'score_total': score_total},
                     'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
-                })
+                }
+                # Ajouter analysis_1m et analysis_5m si disponibles (pour les fallbacks dans SimplePGLogger)
+                if analysis and isinstance(analysis, dict):
+                    if 'analysis_1m' in analysis:
+                        scan_data_dict['analysis_1m'] = analysis.get('analysis_1m')
+                    if 'analysis_5m' in analysis:
+                        scan_data_dict['analysis_5m'] = analysis.get('analysis_5m')
+                    # Ajouter aussi totalScore directement si disponible
+                    if 'totalScore' in analysis:
+                        scan_data_dict['totalScore'] = analysis.get('totalScore')
+                result = _simple_logger.log_scan_simple(symbol, scan_data_dict)
                 logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
             else:
                 logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")

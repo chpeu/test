@@ -572,6 +572,9 @@ class PostgreSQLDataLogger:
             tp_price = opportunity_data.get('tp_price') or opportunity_data.get('tp_suggested')
             sl_price = opportunity_data.get('sl_price') or opportunity_data.get('sl_suggested')
             tp_sl_mode = opportunity_data.get('tp_sl_mode', 'FIXE')
+            setup_score = opportunity_data.get('setup_score')
+            direction = opportunity_data.get('direction')
+            status = opportunity_data.get('status', 'PENDING')
             
             # S'assurer que les prix sont des nombres, pas des dicts
             if isinstance(entry_price, dict):
@@ -582,16 +585,25 @@ class PostgreSQLDataLogger:
                 sl_price = sl_price.get('price') or sl_price.get('value')
             if isinstance(tp_sl_mode, dict):
                 tp_sl_mode = tp_sl_mode.get('mode') or 'FIXE'
+            # S'assurer que setup_score est un nombre, pas un dict
+            if isinstance(setup_score, dict):
+                setup_score = setup_score.get('score') or setup_score.get('value') or setup_score.get('totalScore')
+            # S'assurer que direction est une string, pas un dict
+            if isinstance(direction, dict):
+                direction = direction.get('direction') or direction.get('value') or str(direction)
+            # S'assurer que status est une string, pas un dict
+            if isinstance(status, dict):
+                status = status.get('status') or status.get('value') or 'PENDING'
             
             params = (
                 scan_id, session_id, symbol,
-                opportunity_data.get('status', 'PENDING'),
-                opportunity_data.get('direction'),
-                opportunity_data.get('setup_score'),
+                str(status) if status else 'PENDING',
+                str(direction) if direction else None,
+                float(setup_score) if setup_score is not None and not isinstance(setup_score, dict) else None,
                 conditions_matched,  # TEXT[] - liste de strings
-                entry_price,  # entry_suggested
-                tp_price,  # tp_suggested
-                sl_price,  # sl_suggested
+                float(entry_price) if entry_price is not None and not isinstance(entry_price, dict) else None,  # entry_suggested
+                float(tp_price) if tp_price is not None and not isinstance(tp_price, dict) else None,  # tp_suggested
+                float(sl_price) if sl_price is not None and not isinstance(sl_price, dict) else None,  # sl_suggested
                 str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
             )
             
@@ -1404,6 +1416,9 @@ class PostgreSQLDataLogger:
                 tp_price = opp_data.get('tp_price') or opp_data.get('tp_suggested')
                 sl_price = opp_data.get('sl_price') or opp_data.get('sl_suggested')
                 tp_sl_mode = opp_data.get('tp_sl_mode', 'FIXE')
+                setup_score = opp_data.get('setup_score')
+                direction = opp_data.get('direction')
+                status = opp_data.get('status', 'PENDING')
                 
                 # S'assurer que les prix sont des nombres, pas des dicts
                 if isinstance(entry_price, dict):
@@ -1414,16 +1429,25 @@ class PostgreSQLDataLogger:
                     sl_price = sl_price.get('price') or sl_price.get('value')
                 if isinstance(tp_sl_mode, dict):
                     tp_sl_mode = tp_sl_mode.get('mode') or 'FIXE'
+                # S'assurer que setup_score est un nombre, pas un dict
+                if isinstance(setup_score, dict):
+                    setup_score = setup_score.get('score') or setup_score.get('value') or setup_score.get('totalScore')
+                # S'assurer que direction est une string, pas un dict
+                if isinstance(direction, dict):
+                    direction = direction.get('direction') or direction.get('value') or str(direction)
+                # S'assurer que status est une string, pas un dict
+                if isinstance(status, dict):
+                    status = status.get('status') or status.get('value') or 'PENDING'
                 
                 value_tuple = (
                     scan_id, session_id, symbol,
-                    opp_data.get('status', 'PENDING'),
-                    opp_data.get('direction'),
-                    opp_data.get('setup_score'),
+                    str(status) if status else 'PENDING',
+                    str(direction) if direction else None,
+                    float(setup_score) if setup_score is not None and not isinstance(setup_score, dict) else None,
                     conditions_matched,  # TEXT[] - liste de strings
-                    entry_price,  # entry_suggested
-                    tp_price,  # tp_suggested
-                    sl_price,  # sl_suggested
+                    float(entry_price) if entry_price is not None and not isinstance(entry_price, dict) else None,  # entry_suggested
+                    float(tp_price) if tp_price is not None and not isinstance(tp_price, dict) else None,  # tp_suggested
+                    float(sl_price) if sl_price is not None and not isinstance(sl_price, dict) else None,  # sl_suggested
                     str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
                 )
                 values.append(value_tuple)
