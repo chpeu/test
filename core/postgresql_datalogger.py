@@ -127,6 +127,9 @@ class PostgreSQLDataLogger:
         if not PSYCOPG2_AVAILABLE:
             logger.error("❌ psycopg2 non disponible - PostgreSQL DataLogger désactivé")
             self.enabled = False
+            self.pool = None  # 🔥 FIX: Initialiser pool à None pour les tests
+            self._flush_thread = None
+            self._flush_stop_event = None
             return
         
         self.enabled = True
@@ -167,6 +170,32 @@ class PostgreSQLDataLogger:
         self.buffer_lock = threading.Lock()
         # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
         self.last_flush_time = datetime.now(timezone.utc)
+
+        # 🔥 FIX BUG: Créer un thread de flush périodique pour garantir que les buffers sont flushés
+        # Même si le bot scanne lentement ou s'arrête brutalement
+        self._flush_thread = None
+        self._flush_stop_event = threading.Event()
+        self._start_periodic_flush()
+
+    def _start_periodic_flush(self):
+        """🔥 FIX: Démarrer thread de flush périodique"""
+        if not self.enabled:
+            return
+
+        def periodic_flush():
+            while not self._flush_stop_event.is_set():
+                try:
+                    # Attendre batch_flush_interval secondes
+                    self._flush_stop_event.wait(self.batch_flush_interval)
+                    if not self._flush_stop_event.is_set():
+                        # Flush les buffers
+                        self._flush_buffers()
+                except Exception as e:
+                    logger.error(f"❌ Erreur flush périodique: {e}")
+
+        self._flush_thread = threading.Thread(target=periodic_flush, daemon=True, name="PG-Flush")
+        self._flush_thread.start()
+        logger.debug(f"🔄 Thread de flush périodique démarré (intervalle: {self.batch_flush_interval}s)")
     
     def _get_connection(self):
         """Obtenir une connexion du pool"""
@@ -1458,19 +1487,25 @@ class PostgreSQLDataLogger:
         """Fermer le pool de connexions et flush les buffers"""
         if not self.enabled:
             return
-        
+
+        # 🔥 FIX: Arrêter le thread de flush périodique
+        if self._flush_thread and self._flush_thread.is_alive():
+            self._flush_stop_event.set()
+            self._flush_thread.join(timeout=2.0)  # Attendre max 2 secondes
+            logger.debug("🛑 Thread de flush périodique arrêté")
+
         # Flush final des buffers
         logger.info("🔄 Flush final des buffers PostgreSQL...")
         scans_before = len(self.scan_buffer)
         opportunities_before = len(self.opportunity_buffer)
-        
+
         self._flush_buffers(force=True)
-        
+
         if scans_before > 0 or opportunities_before > 0:
             logger.info(f"✅ Flush final terminé: {scans_before} scan(s) et {opportunities_before} opportunité(s) flushés")
         else:
             logger.info("✅ Flush final terminé: aucun élément en attente")
-        
+
         if self.pool:
             try:
                 self.pool.closeall()
