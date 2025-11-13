@@ -600,12 +600,22 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         else:
             logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
 
+        # 🔥 DEBUG: Vérifier que le code atteint cette section
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT calcul durée scan")
+
         # 🔥 PHASE 3: Calculer durée du scan
-        scan_duration_ms = int((time.time() - scan_start_time) * 1000)
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification _pg_datalogger")
+        try:
+            scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification _pg_datalogger")
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul scan_duration_ms pour {symbol}: {e}")
+            scan_duration_ms = 0
         
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): _pg_datalogger={_pg_datalogger is not None}, enabled={getattr(_pg_datalogger, 'enabled', False) if _pg_datalogger else False}")
+        try:
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): _pg_datalogger={_pg_datalogger is not None}, enabled={getattr(_pg_datalogger, 'enabled', False) if _pg_datalogger else False}")
+        except Exception as e:
+            logger.error(f"❌ Erreur log _pg_datalogger pour {symbol}: {e}")
         if _pg_datalogger and _pg_datalogger.enabled:
             try:
                 logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
