@@ -71,9 +71,9 @@ class PnLCalculator:
             if size_remaining is not None and size_remaining > 0:
                 size_to_consider = size_remaining
             else:
-                # Fallback : utiliser la taille complète si size_remaining non fourni
-                logger.warning(f"size_remaining manquant pour position avec partial_tp_sold, utilisation de size complet")
-                size_to_consider = size
+                # Fallback : utiliser 50% si size_remaining non fourni (assume TP de 50%)
+                logger.warning(f"size_remaining manquant pour position avec partial_tp_sold, fallback 50%")
+                size_to_consider = size * 0.5
 
         # Calculer PnL USDT non réalisé
         if direction == 'LONG':

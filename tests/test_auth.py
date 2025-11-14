@@ -42,12 +42,12 @@ class TestLoadApiKeys:
     def test_load_api_keys_auto_generate(self):
         """Test génération automatique si aucune configuration"""
         with patch.dict(os.environ, {}, clear=True):
-            with patch('builtins.print') as mock_print:
+            with patch('api.auth.logger') as mock_logger:
                 keys = load_api_keys()
 
                 assert len(keys) == 1
-                # Vérifier qu'un avertissement a été affiché
-                assert mock_print.called
+                # Vérifier qu'un avertissement a été loggé
+                assert mock_logger.warning.called
 
                 # Récupérer la clé générée
                 generated_key = list(keys.keys())[0]
