@@ -4011,6 +4011,102 @@ async def export_trades_csv(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+
+@app.get("/api/export/datalogger")
+async def export_datalogger_to_excel(
+    limit: Optional[int] = None,
+    tables: Optional[str] = None,
+    summary_only: bool = False
+):
+    """
+    📊 Exporter le DataLogger PostgreSQL vers Excel
+
+    Exporte toutes les tables du datalogger (config_snapshots, features_engineered, etc.)
+    vers un fichier Excel multi-feuilles.
+
+    Args:
+        limit: Limite du nombre de lignes par table (None = toutes)
+        tables: Tables spécifiques à exporter, séparées par des virgules (None = toutes)
+        summary_only: Si True, retourne seulement un résumé des données disponibles
+
+    Returns:
+        Fichier Excel en téléchargement ou résumé JSON
+    """
+    try:
+        from export_datalogger_to_excel import DataLoggerExporter
+
+        # Créer l'exporteur
+        exporter = DataLoggerExporter()
+
+        # Connecter
+        if not exporter.connect():
+            return JSONResponse(
+                {"error": "Échec de la connexion à PostgreSQL"},
+                status_code=500
+            )
+
+        try:
+            # Mode résumé
+            if summary_only:
+                summary = exporter.export_summary()
+                return JSONResponse({
+                    "status": "success",
+                    "summary": summary
+                })
+
+            # Mode export
+            # Parser les tables si fournies
+            tables_list = None
+            if tables:
+                tables_list = [t.strip() for t in tables.split(',')]
+
+            # Générer le fichier Excel
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = f"/tmp/datalogger_export_{timestamp}.xlsx"
+
+            exporter.export_to_excel(
+                output_file=output_file,
+                limit=limit,
+                tables=tables_list
+            )
+
+            # Lire le fichier
+            with open(output_file, 'rb') as f:
+                excel_data = f.read()
+
+            # Supprimer le fichier temporaire
+            import os
+            os.remove(output_file)
+
+            # Retourner le fichier
+            filename = f"datalogger_export_{timestamp}.xlsx"
+            return StreamingResponse(
+                io.BytesIO(excel_data),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+
+        finally:
+            exporter.disconnect()
+
+    except ImportError as e:
+        logger.error(f"❌ Module export_datalogger_to_excel non disponible: {e}")
+        return JSONResponse(
+            {
+                "error": "Module d'export non disponible",
+                "details": str(e),
+                "install": "pip install pandas openpyxl psycopg2-binary"
+            },
+            status_code=500
+        )
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de l'export datalogger: {e}", exc_info=True)
+        return JSONResponse(
+            {"error": f"Erreur lors de l'export: {str(e)}"},
+            status_code=500
+        )
+
+
 if __name__ == '__main__':
     import uvicorn
     
@@ -4034,6 +4130,7 @@ if __name__ == '__main__':
     logger.info(f"❌ API Setups rejetés        → http://localhost:{port}/api/setups/rejected")
     logger.info(f"✅ API Setups validés        → http://localhost:{port}/api/setups/validated")
     logger.info(f"📥 API Export (CSV/JSON)     → http://localhost:{port}/api/export?format=csv")
+    logger.info(f"📊 API Export DataLogger     → http://localhost:{port}/api/export/datalogger")
     logger.info(f"🔄 API Backtest              → POST http://localhost:{port}/api/backtest")
     logger.info(f"🤖 API ML Optimize           → POST http://localhost:{port}/api/optimize")
     logger.info("=" * 70)
