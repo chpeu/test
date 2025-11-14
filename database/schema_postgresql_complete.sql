@@ -365,23 +365,82 @@ CREATE TABLE trades (
     tp_sl_mode VARCHAR(20),
     
     -- Snapshot indicateurs au moment entry (pour ML)
+    -- RSI
     entry_rsi_1m FLOAT,
     entry_rsi_5m FLOAT,
+    entry_rsi_prev_1m FLOAT,
+    entry_rsi_prev_5m FLOAT,
+    
+    -- MACD
+    entry_macd_1m FLOAT,
+    entry_macd_signal_1m FLOAT,
     entry_macd_hist_1m FLOAT,
+    entry_macd_hist_prev_1m FLOAT,
+    entry_macd_5m FLOAT,
+    entry_macd_signal_5m FLOAT,
     entry_macd_hist_5m FLOAT,
+    entry_macd_hist_prev_5m FLOAT,
+    
+    -- ADX
     entry_adx_1m FLOAT,
     entry_adx_5m FLOAT,
+    entry_di_plus_1m FLOAT,
+    entry_di_minus_1m FLOAT,
+    entry_di_gap_1m FLOAT,
+    entry_di_plus_5m FLOAT,
+    entry_di_minus_5m FLOAT,
+    entry_di_gap_5m FLOAT,
+    
+    -- EMA
+    entry_ema9_1m FLOAT,
+    entry_ema21_1m FLOAT,
+    entry_ema_diff_pct_1m FLOAT,
+    entry_ema9_5m FLOAT,
+    entry_ema21_5m FLOAT,
+    entry_ema_diff_pct_5m FLOAT,
+    
+    -- ATR
+    entry_atr_1m FLOAT,
     entry_atr_pct_1m FLOAT,
+    entry_atr_5m FLOAT,
     entry_atr_pct_5m FLOAT,
-    entry_score FLOAT,
+    
+    -- Bollinger Bands
+    entry_bb_upper_1m FLOAT,
+    entry_bb_middle_1m FLOAT,
+    entry_bb_lower_1m FLOAT,
+    entry_bb_width_1m FLOAT,
+    entry_bb_distance_to_lower_1m FLOAT,
+    entry_bb_distance_to_upper_1m FLOAT,
+    entry_bb_upper_5m FLOAT,
+    entry_bb_middle_5m FLOAT,
+    entry_bb_lower_5m FLOAT,
+    entry_bb_width_5m FLOAT,
+    entry_bb_distance_to_lower_5m FLOAT,
+    entry_bb_distance_to_upper_5m FLOAT,
+    
+    -- Volume
+    entry_volume_1m FLOAT,
+    entry_volume_avg_1m FLOAT,
     entry_volume_ratio_1m FLOAT,
+    entry_volume_spike_1m FLOAT,
+    entry_volume_5m FLOAT,
+    entry_volume_avg_5m FLOAT,
     entry_volume_ratio_5m FLOAT,
+    entry_volume_spike_5m FLOAT,
+    
+    -- Score et autres
+    entry_score FLOAT,
     entry_spread_pct FLOAT,
     entry_balance_score FLOAT,
     
     -- Conditions au entry
     entry_conditions TEXT[],
     entry_condition_count INTEGER,
+    
+    -- Métriques temporelles entry
+    entry_hour_of_day INTEGER,  -- 0-23
+    entry_day_of_week INTEGER,  -- 0-6 (0=Lundi)
     
     -- ========================================
     -- Exit
@@ -390,6 +449,37 @@ CREATE TABLE trades (
     timestamp_exit TIMESTAMPTZ,
     exit_price FLOAT,
     exit_reason VARCHAR(30),  -- TP_HIT, SL_HIT, EARLY_INVALIDATION, MANUAL, TIMEOUT
+    
+    -- Snapshot indicateurs au moment exit (pour ML)
+    -- RSI
+    exit_rsi_1m FLOAT,
+    exit_rsi_5m FLOAT,
+    
+    -- MACD
+    exit_macd_hist_1m FLOAT,
+    exit_macd_hist_5m FLOAT,
+    
+    -- ADX
+    exit_adx_1m FLOAT,
+    exit_adx_5m FLOAT,
+    
+    -- ATR
+    exit_atr_pct_1m FLOAT,
+    exit_atr_pct_5m FLOAT,
+    
+    -- Score et autres
+    exit_score FLOAT,
+    exit_volume_ratio_1m FLOAT,
+    exit_volume_ratio_5m FLOAT,
+    exit_spread_pct FLOAT,
+    exit_balance_score FLOAT,
+    
+    -- Variation de prix
+    entry_to_exit_price_change_pct FLOAT,  -- Variation de prix entre entry et exit
+    
+    -- Métriques temporelles exit
+    exit_hour_of_day INTEGER,  -- 0-23
+    exit_day_of_week INTEGER,  -- 0-6 (0=Lundi)
     
     -- ========================================
     -- Résultats
@@ -423,6 +513,14 @@ CREATE TABLE trades (
     trailing_stop_activated BOOLEAN DEFAULT FALSE,
     trailing_stop_triggered_at TIMESTAMPTZ,
     
+    -- Early Invalidation (détails)
+    early_invalidation_triggered BOOLEAN DEFAULT FALSE,
+    early_invalidation_triggered_at TIMESTAMPTZ,
+    early_invalidation_threshold FLOAT,  -- Seuil adaptatif utilisé (%)
+    early_invalidation_elapsed FLOAT,  -- Temps écoulé en secondes au moment de l'invalidation
+    early_invalidation_atr_pct FLOAT,  -- ATR en % au moment de l'invalidation
+    early_invalidation_pnl_pct FLOAT,  -- PnL en % au moment de l'invalidation
+    
     -- ========================================
     -- Métriques position
     -- ========================================
@@ -439,6 +537,12 @@ CREATE TABLE trades (
     risk_reward_ratio FLOAT,  -- (TP - Entry) / (Entry - SL)
     profit_factor FLOAT,  -- Pour analyse session
     
+    -- Métriques de performance additionnelles
+    entry_to_max_profit_price_change_pct FLOAT,  -- Variation jusqu'au profit max
+    entry_to_max_loss_price_change_pct FLOAT,  -- Variation jusqu'à la perte max
+    max_drawdown_pct FLOAT,  -- Drawdown maximum en %
+    max_drawdown_usdt FLOAT,  -- Drawdown maximum en USDT
+    
     -- ========================================
     -- Scalability data au entry
     -- ========================================
@@ -447,6 +551,12 @@ CREATE TABLE trades (
     entry_bid_vol FLOAT,
     entry_ask_vol FLOAT,
     entry_orderbook_imbalance FLOAT,
+    
+    -- ========================================
+    -- Configuration snapshot (pour ML)
+    -- ========================================
+    -- Snapshot de la configuration utilisée pour ce trade
+    config_snapshot JSONB,  -- Toutes les variables de configuration au moment du trade
     
     -- Métadonnées
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -501,7 +611,11 @@ CREATE TABLE market_context (
     -- Métriques de marché
     market_trend VARCHAR(10),  -- BULLISH, BEARISH, NEUTRAL
     market_volatility VARCHAR(10),  -- LOW, MEDIUM, HIGH
-    fear_greed_index FLOAT  -- Si disponible via API externe
+    fear_greed_index FLOAT,  -- Si disponible via API externe
+    
+    -- Données flexibles (JSONB pour extensibilité)
+    global_metrics JSONB,  -- Métriques globales additionnelles
+    session_stats JSONB  -- Stats session additionnelles
 );
 
 -- Index

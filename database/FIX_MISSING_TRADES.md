@@ -55,3 +55,4 @@ La table `trades` devrait apparaître dans `\dt` et la fonction `get_global_stat
 
 **Note** : Le script crée aussi tous les index et le trigger nécessaires pour la table `trades`.
 
+

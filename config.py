@@ -102,6 +102,9 @@ TRADING_CONFIG = {
     "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
     
+    # 🔥 FIX: Validation slippage avant ouverture position
+    "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
+    
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
         "enabled": True,
@@ -348,4 +351,17 @@ TELEGRAM_NOTIFY_RECONNECTION = os.getenv("TELEGRAM_NOTIFY_RECONNECTION", "true")
 TELEGRAM_NOTIFY_DAILY_SUMMARY = os.getenv("TELEGRAM_NOTIFY_DAILY_SUMMARY", "false").lower() == "true"
 TELEGRAM_NOTIFY_RECOVERY_MODE = os.getenv("TELEGRAM_NOTIFY_RECOVERY_MODE", "true").lower() == "true"
 TELEGRAM_NOTIFY_SETUP_REJECTED = os.getenv("TELEGRAM_NOTIFY_SETUP_REJECTED", "false").lower() == "true"
+
+# ============================================================================
+# PostgreSQL Configuration (pour ML Datalogger)
+# ============================================================================
+POSTGRES_ENABLED = os.getenv('POSTGRES_ENABLED', 'false').lower() == 'true'
+POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'localhost')
+POSTGRES_PORT = int(os.getenv('POSTGRES_PORT', '5432'))
+POSTGRES_DB = os.getenv('POSTGRES_DB', 'trade_cursor_ml')
+POSTGRES_USER = os.getenv('POSTGRES_USER', 'postgres')
+POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
+POSTGRES_USE_SSL = os.getenv('POSTGRES_USE_SSL', 'false').lower() == 'true'
+POSTGRES_MIN_CONN = int(os.getenv('POSTGRES_MIN_CONN', '1'))
+POSTGRES_MAX_CONN = int(os.getenv('POSTGRES_MAX_CONN', '5'))
 

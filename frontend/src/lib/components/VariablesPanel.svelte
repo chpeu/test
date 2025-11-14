@@ -32,6 +32,7 @@
 		use_confluence: false,
 		volume_multiplier: 0.95,
 		min_score_required: 7.5,
+		max_slippage_pct: 0.03,
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
@@ -80,6 +81,10 @@
 	let completeConfig = null;
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
+	
+	// Variables pour export Excel et reset DB
+	let exportingExcel = false;
+	let resettingDB = false;
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
 	function autoAdjustEscalierSize(changedLevel) {
@@ -197,6 +202,7 @@
 				min_conditions: tradingConfig.min_conditions,
 				use_weighted_scoring: tradingConfig.use_weighted_scoring,
 				min_score_required: tradingConfig.min_score_required,
+				max_slippage_pct: tradingConfig.max_slippage_pct,
 				min_score_adx_high: tradingConfig.min_score_adx_high,
 				min_score_adx_low: tradingConfig.min_score_adx_low,
 				dynamic_tolerance_adx_high: tradingConfig.dynamic_tolerance_adx_high,
@@ -500,6 +506,80 @@
 		}
 	}
 	
+	// 🔥 Export Excel du datalogger
+	async function exportExcel() {
+		if (exportingExcel) return;
+		
+		exportingExcel = true;
+		saveMessage = '⏳ Export Excel en cours...';
+		
+		try {
+			const response = await fetch('/api/datalogger/export/excel');
+			
+			if (!response.ok) {
+				const error = await response.json();
+				throw new Error(error.error || 'Erreur export Excel');
+			}
+			
+			// Télécharger le fichier
+			const blob = await response.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `datalogger_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+			
+			saveMessage = '✅ Export Excel réussi !';
+			setTimeout(() => saveMessage = '', 3000);
+		} catch (error: any) {
+			saveMessage = `❌ Erreur export Excel: ${error.message}`;
+			setTimeout(() => saveMessage = '', 5000);
+		} finally {
+			exportingExcel = false;
+		}
+	}
+	
+	// 🔥 Reset de la base de données PostgreSQL
+	async function resetDatabase() {
+		if (resettingDB) return;
+		
+		// Confirmation avant reset
+		if (!confirm('⚠️ ATTENTION: Cette opération va supprimer TOUTES les données de la base PostgreSQL (scans, opportunities, trades, etc.).\n\nÊtes-vous sûr de vouloir continuer ?')) {
+			return;
+		}
+		
+		// Double confirmation
+		if (!confirm('⚠️ DERNIÈRE CONFIRMATION: Toutes les données seront PERDUES de manière irréversible.\n\nConfirmez-vous le reset ?')) {
+			return;
+		}
+		
+		resettingDB = true;
+		saveMessage = '⏳ Reset de la base de données en cours...';
+		
+		try {
+			const response = await fetch('/api/datalogger/reset', {
+				method: 'DELETE'
+			});
+			
+			if (!response.ok) {
+				const error = await response.json();
+				throw new Error(error.error || 'Erreur reset DB');
+			}
+			
+			const result = await response.json();
+			saveMessage = `✅ Base de données resetée: ${result.total_deleted} enregistrements supprimés`;
+			setTimeout(() => saveMessage = '', 5000);
+		} catch (error: any) {
+			saveMessage = `❌ Erreur reset DB: ${error.message}`;
+			setTimeout(() => saveMessage = '', 5000);
+		} finally {
+			resettingDB = false;
+		}
+	}
+	
 	// Fonction pour logger les changements (pour historique backend)
 	async function logConfigChange(key: string, change: any) {
 		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif uniquement
@@ -613,6 +693,12 @@
 			<button class="btn-secondary" on:click={resetDefaults} data-debug-name="variablesPanel.resetButton">🔄 Reset All</button>
 			<button class="btn-primary" on:click={saveConfig} disabled={loading} title={hasUnsavedChanges ? 'Sauvegarder immédiatement (annule la sauvegarde automatique)' : 'Forcer la sauvegarde'} data-debug-name="variablesPanel.saveButton">
 				{loading ? '⏳ Saving...' : '💾 Save'}
+			</button>
+			<button class="btn-export" on:click={exportExcel} disabled={exportingExcel} title="Exporter les données du datalogger en Excel (.xlsx)" data-debug-name="variablesPanel.exportExcelButton">
+				{exportingExcel ? '⏳ Export...' : '📊 Export Excel'}
+			</button>
+			<button class="btn-danger" on:click={resetDatabase} disabled={resettingDB} title="⚠️ ATTENTION: Supprime TOUTES les données de la base PostgreSQL" data-debug-name="variablesPanel.resetDBButton">
+				{resettingDB ? '⏳ Reset...' : '🗑️ Reset DB'}
 			</button>
 		</div>
 	</div>
@@ -1120,6 +1206,29 @@
 								data-debug-name="config.min_score_required"
 							/>
 							<span class="slider-value" data-debug-name="config.min_score_required">{Number(config.min_score_required).toFixed(1)} pts</span>
+						</div>
+					</div>
+
+					<div class="variable-item" data-debug-name="config.max_slippage_pct">
+						<div class="var-header" data-debug-name="config.max_slippage_pct">
+							<label for="max-slippage" data-debug-name="config.max_slippage_pct">
+								<span class="var-name" data-debug-name="config.max_slippage_pct">Max Slippage</span>
+								<span class="var-desc" data-debug-name="config.max_slippage_pct">Slippage maximum accepté avant ouverture de position (0.00% - 0.20%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('max_slippage_pct')} title="Réinitialiser" data-debug-name="config.max_slippage_pct.reset">⟲</button>
+						</div>
+						<div class="slider-container" data-debug-name="config.max_slippage_pct">
+							<input
+								id="max-slippage"
+								type="range"
+								step="0.01"
+								min="0"
+								max="0.20"
+								bind:value={config.max_slippage_pct}
+								on:change={() => triggerAutoSave('max_slippage_pct', config.max_slippage_pct.toFixed(2))}
+								data-debug-name="config.max_slippage_pct"
+							/>
+							<span class="slider-value" data-debug-name="config.max_slippage_pct">{Number(config.max_slippage_pct).toFixed(2)}%</span>
 						</div>
 					</div>
 				</div>
@@ -2144,6 +2253,48 @@
 	.btn-secondary:hover {
 		background: rgba(0, 170, 255, 0.1);
 		transform: translateY(-2px);
+	}
+
+	.btn-export {
+		background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+		color: #fff;
+		border: none;
+		padding: 10px 20px;
+		border-radius: 8px;
+		cursor: pointer;
+		font-weight: 600;
+		transition: all 0.3s ease;
+	}
+
+	.btn-export:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4);
+	}
+
+	.btn-export:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn-danger {
+		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		color: #fff;
+		border: none;
+		padding: 10px 20px;
+		border-radius: 8px;
+		cursor: pointer;
+		font-weight: 600;
+		transition: all 0.3s ease;
+	}
+
+	.btn-danger:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(255, 68, 68, 0.4);
+	}
+
+	.btn-danger:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
 	.save-message {

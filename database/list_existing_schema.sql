@@ -237,3 +237,4 @@ FROM pg_extension;
 \echo '   psql -U postgres -d trade_cursor_ml -f database/list_existing_schema.sql > schema_inventory.txt'
 \echo ''
 
+

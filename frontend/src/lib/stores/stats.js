@@ -88,12 +88,21 @@ export const avgPnl = derived(stats, $stats => {
 	return ($stats.total_pnl_usdt / $stats.total_trades).toFixed(2);
 });
 
-// Computed: Profit Factor
-export const profitFactor = derived(stats, $stats => {
-	if (!$stats.best_trade || !$stats.worst_trade) return null;
-	const grossProfit = $stats.wins * ($stats.best_trade?.pnl_usdt || 0);
-	const grossLoss = Math.abs($stats.losses * ($stats.worst_trade?.pnl_usdt || 0));
-	if (grossLoss === 0) return grossProfit > 0 ? '∞' : '0';
+// Computed: Profit Factor (Somme profits / |Somme pertes|)
+export const profitFactor = derived(tradeHistory, $trades => {
+	if ($trades.length === 0) return '0.00';
+
+	// 🔥 FIX BUG CRITIQUE: Profit Factor = Σ(profits) / |Σ(losses)|
+	// Ancienne formule incorrecte: (wins × best_trade) / (losses × worst_trade)
+	const grossProfit = $trades
+		.filter(t => (t.net_pnl_usdt || t.pnl_usdt || 0) > 0)
+		.reduce((sum, t) => sum + (t.net_pnl_usdt || t.pnl_usdt || 0), 0);
+
+	const grossLoss = Math.abs($trades
+		.filter(t => (t.net_pnl_usdt || t.pnl_usdt || 0) < 0)
+		.reduce((sum, t) => sum + (t.net_pnl_usdt || t.pnl_usdt || 0), 0));
+
+	if (grossLoss === 0) return grossProfit > 0 ? '∞' : '0.00';
 	return (grossProfit / grossLoss).toFixed(2);
 });
 

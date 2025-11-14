@@ -15,6 +15,7 @@ pybreaker==1.0.1
 websockets==12.0
 slowapi==0.1.9
 colorama==0.4.6  # Couleurs dans les logs console
+psycopg2-binary==2.9.9  # PostgreSQL adapter pour datalogger ML
 
 # Testing dependencies
 pytest==7.4.3

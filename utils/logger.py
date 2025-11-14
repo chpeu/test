@@ -77,9 +77,11 @@ class WebSocketLogHandler(logging.Handler):
             except RuntimeError:
                 # Pas de loop en cours, ignorer
                 pass
-        except Exception:
-            # Ne pas bloquer le logging si l'envoi échoue
-            pass
+        except Exception as e:
+            # 🔥 FIX: Ne pas bloquer le logging si l'envoi échoue, mais logger l'erreur
+            # Utiliser print() au lieu de logger pour éviter les boucles infinies
+            import sys
+            print(f"⚠️ Erreur envoi log WebSocket: {e}", file=sys.stderr)
 
 
 class ColoredFormatter(logging.Formatter):

@@ -34,3 +34,4 @@ export function getPhaseMessage(phase) {
 	return phaseMessages[phase] || '❓ Phase inconnue';
 }
 
+
