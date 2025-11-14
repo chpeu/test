@@ -95,12 +95,9 @@ async def global_exception_handler(request, exc):
     # Si c'est une route /api/state, retourner réponse minimale avec 200
     if request.url.path == "/api/state":
         logger.info(f"🔍 Exception handler global appelé pour /api/state - Exception: {type(exc).__name__}: {exc}")
+        # 🔥 FIX: Gestion sécurisée de session_id (try/except imbriqué redondant supprimé)
         try:
-            # 🔥 FIX: Gestion sécurisée de session_id
-            try:
-                session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
-            except:
-                session_id_value = f"live_{int(time.time())}"
+            session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
         except:
             session_id_value = f"live_{int(time.time())}"
         
@@ -212,8 +209,11 @@ async def startup_event():
         # Initialiser les instances si pas déjà fait
         init_instances()
         
-        # Attendre un peu pour que les connexions WebSocket soient prêtes
-        await asyncio.sleep(1.0)
+        # 🔥 FIX: Attendre avec timeout pour que les connexions WebSocket soient prêtes
+        try:
+            await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Timeout lors de l'initialisation WebSocket")
         
         # 🔥 FIX: Émettre événement de réinitialisation pour synchroniser le frontend IMMÉDIATEMENT
         if ws_manager:
@@ -246,6 +246,16 @@ async def shutdown_event():
                 logger.info("✅ PostgreSQL DataLogger fermé proprement")
         except Exception as e:
             logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+        
+        # 🔥 FIX: Fermer le client MEXC proprement pour éviter les warnings "Unclosed client session"
+        try:
+            from api.mexc import get_mexc_client
+            mexc_client = get_mexc_client()
+            if mexc_client:
+                await mexc_client.close()
+                logger.info("✅ MEXC client fermé proprement")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
     except Exception as e:
         logger.warning(f"⚠️ Erreur événement shutdown: {e}")
 
@@ -1525,38 +1535,13 @@ async def position_check_loop_callback():
             # Calculer PnL pour affichage
             position = position_manager.active_position
             if position:
-                # 🔥 FIX: Vérifier que position est un objet Position et non un dict ou string
-                if isinstance(position, str):
-                    # Si position est une chaîne, essayer de la parser en dict
-                    import json
-                    try:
-                        position_dict = json.loads(position)
-                        # Utiliser les valeurs du dict pour calculer PnL
-                        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
-                            entry=position_dict.get('entry', 0),
-                            current_price=current_price,
-                            direction=position_dict.get('direction', 'LONG')
-                        )
-                        pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
-                            position=position_dict,
-                            current_price=current_price
-                        )
-                        # Créer un objet position-like pour le reste du code
-                        class PositionProxy:
-                            def __init__(self, d):
-                                self.symbol = d.get('symbol', '')
-                                self.direction = d.get('direction', 'LONG')
-                                self.entry = d.get('entry', 0)
-                                self.sl = d.get('sl', 0)
-                                self.tp = d.get('tp', 0)
-                                self.size = d.get('size', 0)
-                                self.break_even_set = d.get('break_even_set', False)
-                                self.partial_tp_sold = d.get('partial_tp_sold', False)
-                        position = PositionProxy(position_dict)
-                    except Exception as parse_err:
-                        logger.error(f"❌ Erreur parsing position (string): {parse_err}")
-                        return
-                elif isinstance(position, dict):
+                # 🔥 FIX: Vérifier que position est un objet Position valide
+                # active_position ne doit JAMAIS être une string ou dict - c'est toujours un objet Position
+                if not hasattr(position, 'symbol') or not hasattr(position, 'entry'):
+                    logger.error(f"❌ Position invalide: type={type(position)}, attendu Position object")
+                    return
+                
+                if isinstance(position, dict):
                     # Si position est déjà un dict, utiliser directement
                     pnl = position_manager.pnl_calculator.calculate_pnl_percent(
                         entry=position.get('entry', 0),
@@ -4726,6 +4711,7 @@ async def reset_datalogger_db():
 
 if __name__ == '__main__':
     import uvicorn
+    import socket
     
     # 🔥 PHASE 4: Charger l'historique au démarrage
     load_trade_history()
@@ -4754,5 +4740,40 @@ if __name__ == '__main__':
     logger.info("=" * 70)
     logger.info("")
     
-    # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
-    uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+    # 🔥 FIX: Vérifier que le port est disponible avant de démarrer
+    def is_port_available(port):
+        """Vérifier si le port est disponible"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            result = sock.connect_ex(('127.0.0.1', port))
+            return result != 0  # Port disponible si connexion échoue
+        finally:
+            sock.close()
+    
+    # 🔥 FIX: Essayer le port demandé, puis chercher un port disponible
+    original_port = port
+    max_attempts = 10
+    attempt = 0
+    
+    while not is_port_available(port) and attempt < max_attempts:
+        logger.warning(f"⚠️ Port {port} déjà utilisé, essai du port {port + 1}...")
+        port += 1
+        attempt += 1
+    
+    if not is_port_available(port):
+        logger.error(f"❌ Impossible de trouver un port disponible après {max_attempts} tentatives (à partir du port {original_port})")
+        sys.exit(1)
+    
+    if port != original_port:
+        logger.info(f"✅ Port changé de {original_port} à {port}")
+    
+    try:
+        # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
+        uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+    except OSError as e:
+        logger.error(f"❌ Erreur binding port {port}: {e}")
+        logger.error(f"Vérifiez que le port {port} n'est pas déjà utilisé")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"❌ Erreur démarrage serveur: {e}", exc_info=True)
+        sys.exit(1)

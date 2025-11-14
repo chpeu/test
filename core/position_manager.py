@@ -1146,7 +1146,14 @@ class PositionManager:
         # 🔥 FIX: Calculer net_pnl_pct en tenant compte des coûts (fees + slippage)
         # Le PnL net en % doit être ajusté pour refléter les coûts réels
         gross_pnl_pct = pnl_data['pnl_pct']
-        total_costs_pct = (total_costs / self.active_position.size) * 100 if self.active_position.size > 0 else 0
+        
+        # 🔥 FIX: Gestion robuste de la division par zéro
+        if self.active_position.size > 0:
+            total_costs_pct = (total_costs / self.active_position.size) * 100
+        else:
+            total_costs_pct = 0
+            logger.warning(f"⚠️ Position size est zéro lors du calcul des coûts")
+        
         net_pnl_pct = gross_pnl_pct - total_costs_pct
         
         # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage USDT

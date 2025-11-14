@@ -254,11 +254,28 @@ class WebSocketManager:
             self._running = False
         self._connected = False
 
+        # 🔥 FIX: Annuler et attendre les tâches proprement
         if self._reconnect_task:
             self._reconnect_task.cancel()
+            try:
+                await self._reconnect_task
+            except asyncio.CancelledError:
+                pass
 
         if self._watchdog_task:
             self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+        
+        # 🔥 FIX: Annuler et attendre la tâche de réception
+        if self._receive_task:
+            self._receive_task.cancel()
+            try:
+                await self._receive_task
+            except asyncio.CancelledError:
+                pass
 
         if self._ws:
             await self._ws.close()
@@ -282,11 +299,19 @@ class WebSocketManager:
                 data = json.loads(message)
                 # 🔥 FIX: Le callback peut être sync ou async
                 # Si async, l'appeler directement, sinon via to_thread
-                if asyncio.iscoroutinefunction(self.callback):
-                    await self.callback(data)
-                else:
-                    # Callback synchrone - l'exécuter dans un thread pour ne pas bloquer
-                    await asyncio.to_thread(self.callback, data)
+                try:
+                    if asyncio.iscoroutinefunction(self.callback):
+                        await self.callback(data)
+                    else:
+                        # Callback synchrone - l'exécuter dans un thread pour ne pas bloquer
+                        # ⚠️ IMPORTANT: Le callback synchrone ne doit pas accéder à des données partagées
+                        # sans synchronisation appropriée (locks, queues, etc.)
+                        await asyncio.to_thread(self.callback, data)
+                except Exception as callback_err:
+                    # 🔥 FIX: Capturer les erreurs du callback sans arrêter la boucle
+                    if DEBUG_ENABLED:
+                        logger.error(f"❌ Erreur dans callback WebSocket: {callback_err}")
+                    # Continuer la boucle pour recevoir les prochains messages
                 
             except asyncio.TimeoutError:
                 # Timeout = envoyer ping MEXC

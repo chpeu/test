@@ -234,12 +234,13 @@ class HybridPriceProvider:
         
         try:
             ticker = await self.rest_client.fetch_ticker(symbol)
+            
+            # 🔥 FIX: Vérifier que ticker est un dict AVANT utilisation
+            if not isinstance(ticker, dict):
+                logger.error(f"❌ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol}")
+                return None
+            
             if ticker:
-                # 🔥 FIX: Vérifier que ticker est un dict, pas une liste
-                if not isinstance(ticker, dict):
-                    logger.error(f"❌ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol}")
-                    return None
-                
                 return {
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),

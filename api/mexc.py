@@ -114,16 +114,10 @@ class MEXCClient:
     
     def __del__(self):
         """Destructeur: ferme les connexions"""
-        if hasattr(self, 'exchange'):
-            try:
-                asyncio.create_task(self.exchange.close())
-            except:
-                pass
-        if hasattr(self, 'session'):
-            try:
-                asyncio.create_task(self.session.close())
-            except:
-                pass
+        # 🔥 FIX: Ne pas utiliser asyncio.create_task() dans __del__
+        # Les coroutines ne seront jamais attendues et causeront des warnings
+        # Les ressources seront fermées proprement par la méthode close() async
+        pass
 
 
 # Instance globale
