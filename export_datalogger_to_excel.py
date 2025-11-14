@@ -44,10 +44,11 @@ class DataLoggerExporter:
     """Export PostgreSQL DataLogger to Excel"""
 
     # Liste de toutes les tables à exporter
+    # Note: scan_logs est partitionnée - on interroge la table parente qui agrège toutes les partitions
     TABLES_TO_EXPORT = [
         'trading_sessions',
         'config_snapshots',
-        'scan_logs',
+        'scan_logs',  # Table partitionnée - agrège toutes les partitions automatiquement
         'opportunities',
         'trades',
         'market_context',
