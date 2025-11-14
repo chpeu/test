@@ -4512,11 +4512,37 @@ async def export_datalogger_excel(
             # ===== ONGLET 1: SCANS =====
             ws_scans = wb.create_sheet("Scans")
             query_scans = """
-                SELECT 
-                    timestamp, symbol, price, scan_duration_ms,
-                    rsi_1m, rsi_5m, score_total,
-                    is_opportunity, opportunity_direction, reject_reason,
-                    trend_direction, trend_strength
+                SELECT
+                    id, timestamp, session_id, symbol, scan_duration_ms,
+                    price, spread_pct, book_depth, balance_score, bid_vol, ask_vol, orderbook_imbalance_ratio,
+                    ema9_1m, ema21_1m, ema_diff_pct_1m,
+                    rsi_1m, rsi_prev_1m,
+                    macd_1m, macd_signal_1m, macd_hist_1m, macd_hist_prev_1m,
+                    adx_1m, di_plus_1m, di_minus_1m, di_gap_1m,
+                    atr_1m, atr_pct_1m,
+                    bb_upper_1m, bb_middle_1m, bb_lower_1m, bb_width_1m, bb_distance_to_lower_1m, bb_distance_to_upper_1m,
+                    volume_1m, volume_avg_1m, volume_ratio_1m, volume_spike_1m,
+                    ema9_5m, ema21_5m, ema_diff_pct_5m,
+                    rsi_5m, rsi_prev_5m,
+                    macd_5m, macd_signal_5m, macd_hist_5m, macd_hist_prev_5m,
+                    adx_5m, di_plus_5m, di_minus_5m, di_gap_5m,
+                    atr_5m, atr_pct_5m,
+                    bb_upper_5m, bb_middle_5m, bb_lower_5m, bb_width_5m, bb_distance_to_lower_5m, bb_distance_to_upper_5m,
+                    volume_5m, volume_avg_5m, volume_ratio_5m, volume_spike_5m,
+                    snr_1m, snr_5m, snr_passed_1m, snr_passed_5m,
+                    breakout_distance_1m, breakout_distance_5m, breakout_passed_1m, breakout_passed_5m,
+                    wick_ratio_1m, wick_ratio_5m, wick_passed_1m, wick_passed_5m,
+                    atr_optimal_passed_1m, atr_optimal_passed_5m,
+                    volume_filter_passed_1m, volume_filter_passed_5m,
+                    use_confluence, confluence_met,
+                    score_1m, score_5m, score_total,
+                    score_long_1m, score_short_1m, score_long_5m, score_short_5m,
+                    timeframes_aligned,
+                    pattern_1m, pattern_multi_1m, pattern_5m, pattern_multi_5m,
+                    trend_timeframe, trend_direction, trend_strength, trend_bonus,
+                    divergence_detected, divergence_type, divergence_bonus,
+                    is_opportunity, opportunity_direction, reject_reason, reject_reason_category,
+                    params_snapshot
                 FROM scan_logs
                 WHERE 1=1
             """

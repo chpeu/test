@@ -362,6 +362,7 @@ class SimplePGLogger:
                     %s, %s, %s, %s,
                     %s, %s,
                     %s, %s,
+                    %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
                     %s,
