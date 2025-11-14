@@ -1408,6 +1408,16 @@ class TechnicalAnalyzer:
                 # FIN POINT B
                 # ========================================
 
+                # 🔥 FIX: Enrichir best_setup avec filters et patterns pour SimplePGLogger
+                # Ces données sont nécessaires pour que scanner_loop.py puisse les logger
+                best_setup['filters'] = filters
+                best_setup['pattern_1m'] = indicators_1m.get('pattern')
+                best_setup['pattern_multi_1m'] = indicators_1m.get('pattern_multi')
+                best_setup['pattern_5m'] = indicators_5m.get('pattern')
+                best_setup['pattern_multi_5m'] = indicators_5m.get('pattern_multi')
+                best_setup['indicators_1m'] = indicators_1m
+                best_setup['indicators_5m'] = indicators_5m
+
                 return best_setup
 
             # Confluence ou mode permissif (ancien code pour compatibilité)
