@@ -3214,6 +3214,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'use_confluence': TRADING_CONFIG.get('use_confluence', False),
                                     'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
                                     'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                                    'max_slippage_pct': TRADING_CONFIG.get('max_slippage_pct', 0.03),
                                     # TP/SL Configuration
                                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                                     'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
