@@ -79,6 +79,17 @@ class SimplePGLogger:
             return bool(value)
         return default
 
+    def _safe_string(self, value, max_length=None):
+        """Convertir en string de manière sécurisée (gère dict/list)"""
+        if value is None:
+            return None
+        # Si c'est un dict ou liste, convertir en JSON string
+        if isinstance(value, (dict, list)):
+            return json.dumps(value)[:max_length] if max_length else json.dumps(value)
+        # Convertir en string
+        result = str(value)
+        return result[:max_length] if max_length else result
+
     def _safe_json(self, value):
         """Convertir en JSON string pour PostgreSQL JSONB (gère dicts et arrays)"""
         if value is None:
@@ -276,8 +287,8 @@ class SimplePGLogger:
             # ========================================
             # Trend
             # ========================================
-            trend_timeframe = trend_data.get('timeframe', '15m')
-            trend_direction = trend_data.get('direction')
+            trend_timeframe = self._safe_string(trend_data.get('timeframe', '15m'), max_length=10)
+            trend_direction = self._safe_string(trend_data.get('direction'), max_length=30)
             trend_strength = self._safe_float(trend_data.get('strength'))
             trend_bonus = self._safe_float(trend_data.get('bonus'))
 
@@ -285,16 +296,19 @@ class SimplePGLogger:
             # Divergence
             # ========================================
             divergence_detected = self._safe_bool(divergence.get('detected'))
-            divergence_type = divergence.get('type')
+            divergence_type = self._safe_string(divergence.get('type'), max_length=30)
             divergence_bonus = self._safe_float(divergence.get('bonus'))
 
             # ========================================
             # Décision (LABELS ML)
             # ========================================
             is_opportunity = self._safe_bool(scan_data.get('is_opportunity'))
-            opportunity_direction = scan_data.get('opportunity_direction') or scan_data.get('direction')
-            reject_reason = scan_data.get('reject_reason')
-            reject_reason_category = scan_data.get('reject_reason_category')
+            opportunity_direction = self._safe_string(
+                scan_data.get('opportunity_direction') or scan_data.get('direction'),
+                max_length=10
+            )
+            reject_reason = self._safe_string(scan_data.get('reject_reason'))
+            reject_reason_category = self._safe_string(scan_data.get('reject_reason_category'), max_length=50)
 
             # ========================================
             # Paramètres snapshot (JSONB)
