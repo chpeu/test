@@ -405,6 +405,17 @@ class SimplePGLogger:
                 params_snapshot
             )
 
+            # 🔥 DEBUG: Identifier les dicts dans params
+            for i, param in enumerate(params):
+                if isinstance(param, (dict, list)):
+                    logger.error(f"❌ Param {i} est {type(param).__name__}: {param}")
+                    # Forcer conversion en JSON string
+                    if isinstance(param, dict):
+                        params = list(params)
+                        params[i] = json.dumps(param)
+                        params = tuple(params)
+                        logger.warning(f"⚠️ Param {i} converti en JSON string")
+
             cursor.execute(query, params)
             self.conn.commit()
             cursor.close()
@@ -415,7 +426,15 @@ class SimplePGLogger:
         except Exception as e:
             logger.error(f"❌ Erreur log_scan pour {symbol}: {e}")
             import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback complet:\n{traceback.format_exc()}")
+
+            # Debug: Afficher les types de params
+            logger.error(f"🔍 DEBUG params ({len(params)} total):")
+            for i, param in enumerate(params):
+                if isinstance(param, (dict, list)):
+                    logger.error(f"  ❌ Param [{i}] = {type(param).__name__}: {param}")
+                elif i < 10:  # Afficher les 10 premiers pour debug
+                    logger.debug(f"  ✅ Param [{i}] = {type(param).__name__}: {param}")
 
             # Rollback en cas d'erreur
             try:
