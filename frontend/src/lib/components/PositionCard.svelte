@@ -10,6 +10,20 @@
 	
 	// 🔥 FIX: Récupérer la config pour afficher les bonnes informations TP/SL
 	let tradingConfig = null;
+
+	function normalizeEscalierLevels(rawLevels) {
+		if (!rawLevels) return [];
+		if (Array.isArray(rawLevels)) return rawLevels;
+		if (typeof rawLevels === 'string') {
+			try {
+				return JSON.parse(rawLevels);
+			} catch (err) {
+				console.error('❌ Impossible de parser tp_escalier_levels', err, rawLevels);
+				return [];
+			}
+		}
+		return [];
+	}
 	
 	async function loadConfig() {
 		try {
@@ -104,7 +118,7 @@
 		
 		// Mode TP_MULTI/ESCALIER
 		if (tpSlMode === 'TP_MULTI' || tpSlMode === 'ESCALIER') {
-			const levels = $activePosition.tp_escalier_levels ? JSON.parse($activePosition.tp_escalier_levels) : [];
+			const levels = normalizeEscalierLevels($activePosition.tp_escalier_levels);
 			const currentLevel = $activePosition.tp_escalier_current_level || 0;
 			if (currentLevel < levels.length) {
 				const nextLevel = levels[currentLevel];
