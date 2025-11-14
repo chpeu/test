@@ -1688,7 +1688,7 @@
 												bind:value={config.escalier_level1_pnl}
 												on:change={() => {
 													autoAdjustEscalierPnL(1);
-													logConfigChange('escalier_level1_pnl', `${config.escalier_level1_pnl.toFixed(2)}%`);
+													triggerAutoSave('escalier_level1_pnl', `${config.escalier_level1_pnl.toFixed(2)}%`);
 												}}
 												data-debug-name="config.escalier_level1_pnl"
 											/>
@@ -1714,7 +1714,7 @@
 												bind:value={config.escalier_level1_size}
 												on:change={() => {
 													autoAdjustEscalierSize(1);
-													logConfigChange('escalier_level1_size', `${config.escalier_level1_size}%`);
+													triggerAutoSave('escalier_level1_size', `${config.escalier_level1_size}%`);
 												}}
 												data-debug-name="config.escalier_level1_size"
 											/>
@@ -1746,7 +1746,7 @@
 												bind:value={config.escalier_level2_pnl}
 												on:change={() => {
 													autoAdjustEscalierPnL(2);
-													logConfigChange('escalier_level2_pnl', `${config.escalier_level2_pnl.toFixed(2)}%`);
+													triggerAutoSave('escalier_level2_pnl', `${config.escalier_level2_pnl.toFixed(2)}%`);
 												}}
 												data-debug-name="config.escalier_level2_pnl"
 											/>
@@ -1772,7 +1772,7 @@
 												bind:value={config.escalier_level2_size}
 												on:change={() => {
 													autoAdjustEscalierSize(2);
-													logConfigChange('escalier_level2_size', `${config.escalier_level2_size}%`);
+													triggerAutoSave('escalier_level2_size', `${config.escalier_level2_size}%`);
 												}}
 												data-debug-name="config.escalier_level2_size"
 											/>
@@ -1804,7 +1804,7 @@
 												bind:value={config.escalier_level3_pnl}
 												on:change={() => {
 													autoAdjustEscalierPnL(3);
-													logConfigChange('escalier_level3_pnl', `${config.escalier_level3_pnl.toFixed(2)}%`);
+													triggerAutoSave('escalier_level3_pnl', `${config.escalier_level3_pnl.toFixed(2)}%`);
 												}}
 												data-debug-name="config.escalier_level3_pnl"
 											/>
@@ -1830,7 +1830,7 @@
 												bind:value={config.escalier_level3_size}
 												on:change={() => {
 													autoAdjustEscalierSize(3);
-													logConfigChange('escalier_level3_size', `${config.escalier_level3_size}%`);
+													triggerAutoSave('escalier_level3_size', `${config.escalier_level3_size}%`);
 												}}
 												data-debug-name="config.escalier_level3_size"
 											/>
@@ -1862,7 +1862,7 @@
 												bind:value={config.escalier_level4_pnl}
 												on:change={() => {
 													autoAdjustEscalierPnL(4);
-													logConfigChange('escalier_level4_pnl', `${config.escalier_level4_pnl.toFixed(2)}%`);
+													triggerAutoSave('escalier_level4_pnl', `${config.escalier_level4_pnl.toFixed(2)}%`);
 												}}
 												data-debug-name="config.escalier_level4_pnl"
 											/>
@@ -1888,7 +1888,7 @@
 												bind:value={config.escalier_level4_size}
 												on:change={() => {
 													autoAdjustEscalierSize(4);
-													logConfigChange('escalier_level4_size', `${config.escalier_level4_size}%`);
+													triggerAutoSave('escalier_level4_size', `${config.escalier_level4_size}%`);
 												}}
 												data-debug-name="config.escalier_level4_size"
 											/>

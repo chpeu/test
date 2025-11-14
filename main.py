@@ -95,12 +95,9 @@ async def global_exception_handler(request, exc):
     # Si c'est une route /api/state, retourner réponse minimale avec 200
     if request.url.path == "/api/state":
         logger.info(f"🔍 Exception handler global appelé pour /api/state - Exception: {type(exc).__name__}: {exc}")
+        # 🔥 FIX: Gestion sécurisée de session_id (try/except imbriqué redondant supprimé)
         try:
-            # 🔥 FIX: Gestion sécurisée de session_id
-            try:
-                session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
-            except:
-                session_id_value = f"live_{int(time.time())}"
+            session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
         except:
             session_id_value = f"live_{int(time.time())}"
         
@@ -193,12 +190,13 @@ if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
 
-# 🔥 FIX: Événement de démarrage FastAPI pour réinitialiser le frontend AVANT le scan
-@app.on_event("startup")
-async def startup_event():
-    """Événement de démarrage - réinitialiser le frontend AVANT le scan"""
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    data_logger = None
     try:
-        # ✅ Initialiser DataLogger
         try:
             from backend.ml.data_logger import DataLogger
             data_logger = DataLogger()
@@ -208,46 +206,55 @@ async def startup_event():
         except Exception as e:
             logger.warning(f"⚠️ Erreur initialisation DataLogger: {e}")
             app.state.data_logger = None
-        
-        # Initialiser les instances si pas déjà fait
+
         init_instances()
-        
-        # Attendre un peu pour que les connexions WebSocket soient prêtes
-        await asyncio.sleep(1.0)
-        
-        # 🔥 FIX: Émettre événement de réinitialisation pour synchroniser le frontend IMMÉDIATEMENT
+
+        try:
+            await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Timeout lors de l'initialisation WebSocket")
+
         if ws_manager:
             await ws_manager.emit('reset_session', {
                 'timestamp': time.time(),
                 'reason': 'backend_startup'
             })
             logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur événement startup: {e}")
 
-# ✅ Événement de shutdown pour arrêter DataLogger proprement
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Événement de shutdown - arrêter DataLogger proprement"""
-    try:
-        if hasattr(app.state, 'data_logger') and app.state.data_logger:
-            try:
-                await app.state.data_logger.shutdown()
-                logger.info("✅ DataLogger arrêté proprement")
-            except Exception as e:
-                logger.error(f"❌ Erreur arrêt DataLogger: {e}")
-        
-        # 🔥 PHASE 3: Fermer PostgreSQL DataLogger proprement
+        yield
+
+    finally:
         try:
-            from core.callbacks.scanner_loop import get_pg_datalogger
-            pg_datalogger = get_pg_datalogger()
-            if pg_datalogger:
-                pg_datalogger.close()
-                logger.info("✅ PostgreSQL DataLogger fermé proprement")
+            if hasattr(app.state, 'data_logger') and app.state.data_logger:
+                try:
+                    await app.state.data_logger.shutdown()
+                    logger.info("✅ DataLogger arrêté proprement")
+                except Exception as e:
+                    logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+
+            try:
+                from core.callbacks.scanner_loop import get_pg_datalogger
+                pg_datalogger = get_pg_datalogger()
+                if pg_datalogger:
+                    pg_datalogger.close()
+                    logger.info("✅ PostgreSQL DataLogger fermé proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+
+            try:
+                from api.mexc import get_mexc_client
+                mexc_client = get_mexc_client()
+                if mexc_client:
+                    await mexc_client.close()
+                    logger.info("✅ MEXC client fermé proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
+
         except Exception as e:
-            logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur événement shutdown: {e}")
+            logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
+
+
+app.router.lifespan_context = lifespan
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -382,6 +389,43 @@ app_state = {
     'logs': [],
     'trade_history': []  # 🔥 PHASE 4: Historique des trades
 }
+
+
+async def _run_initial_top_pairs_scan():
+    """Lancer le scan initial sans bloquer la boucle d'événements"""
+    init_instances()
+
+    if app_state.get('top_pairs'):
+        return  # Scan déjà effectué
+
+    if not scanner:
+        logger.warning("⚠️ Impossible de lancer le scan initial: scanner indisponible")
+        return
+
+    try:
+        await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs en arrière-plan...')
+        top_pairs = await scanner.scan_top_pairs(20)
+
+        if not top_pairs:
+            logger.warning("⚠️ Scan initial terminé sans résultats")
+            return
+
+        app_state['top_pairs'] = top_pairs
+
+        if ws_manager:
+            await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+
+        if price_provider:
+            symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            if symbols:
+                try:
+                    await price_provider.start_websocket(symbols)
+                    await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                except Exception as e:
+                    logger.warning(f"Erreur démarrage WebSocket: {e}")
+
+    except Exception as e:
+        logger.error(f"❌ Erreur scan initial en arrière-plan: {e}", exc_info=True)
 
 # 🔥 FIX: Injecter app_state dans le router APRÈS définition
 if api_router and set_app_state:
@@ -1525,38 +1569,13 @@ async def position_check_loop_callback():
             # Calculer PnL pour affichage
             position = position_manager.active_position
             if position:
-                # 🔥 FIX: Vérifier que position est un objet Position et non un dict ou string
-                if isinstance(position, str):
-                    # Si position est une chaîne, essayer de la parser en dict
-                    import json
-                    try:
-                        position_dict = json.loads(position)
-                        # Utiliser les valeurs du dict pour calculer PnL
-                        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
-                            entry=position_dict.get('entry', 0),
-                            current_price=current_price,
-                            direction=position_dict.get('direction', 'LONG')
-                        )
-                        pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
-                            position=position_dict,
-                            current_price=current_price
-                        )
-                        # Créer un objet position-like pour le reste du code
-                        class PositionProxy:
-                            def __init__(self, d):
-                                self.symbol = d.get('symbol', '')
-                                self.direction = d.get('direction', 'LONG')
-                                self.entry = d.get('entry', 0)
-                                self.sl = d.get('sl', 0)
-                                self.tp = d.get('tp', 0)
-                                self.size = d.get('size', 0)
-                                self.break_even_set = d.get('break_even_set', False)
-                                self.partial_tp_sold = d.get('partial_tp_sold', False)
-                        position = PositionProxy(position_dict)
-                    except Exception as parse_err:
-                        logger.error(f"❌ Erreur parsing position (string): {parse_err}")
-                        return
-                elif isinstance(position, dict):
+                # 🔥 FIX: Vérifier que position est un objet Position valide
+                # active_position ne doit JAMAIS être une string ou dict - c'est toujours un objet Position
+                if not hasattr(position, 'symbol') or not hasattr(position, 'entry'):
+                    logger.error(f"❌ Position invalide: type={type(position)}, attendu Position object")
+                    return
+                
+                if isinstance(position, dict):
                     # Si position est déjà un dict, utiliser directement
                     pnl = position_manager.pnl_calculator.calculate_pnl_percent(
                         entry=position.get('entry', 0),
@@ -3195,6 +3214,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'use_confluence': TRADING_CONFIG.get('use_confluence', False),
                                     'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
                                     'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                                    'max_slippage_pct': TRADING_CONFIG.get('max_slippage_pct', 0.03),
                                     # TP/SL Configuration
                                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                                     'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
@@ -3317,21 +3337,7 @@ async def handle_client_command(command: str, params: dict):
         
         # Si pas de top_pairs, faire un scan initial
         if not app_state['top_pairs']:
-            await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
-            if scanner:
-                top_pairs = await scanner.scan_top_pairs(20)
-                app_state['top_pairs'] = top_pairs
-                await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
-                
-                # Démarrer WebSocket pour les top pairs
-                if price_provider and top_pairs:
-                    symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
-                    if symbols:
-                        try:
-                            await price_provider.start_websocket(symbols)
-                            await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
-                        except Exception as e:
-                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+            asyncio.create_task(_run_initial_top_pairs_scan())
         
         # Démarrer le scheduler
         if scheduler:
@@ -4726,6 +4732,7 @@ async def reset_datalogger_db():
 
 if __name__ == '__main__':
     import uvicorn
+    import socket
     
     # 🔥 PHASE 4: Charger l'historique au démarrage
     load_trade_history()
@@ -4754,5 +4761,40 @@ if __name__ == '__main__':
     logger.info("=" * 70)
     logger.info("")
     
-    # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
-    uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+    # 🔥 FIX: Vérifier que le port est disponible avant de démarrer
+    def is_port_available(port):
+        """Vérifier si le port est disponible"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            result = sock.connect_ex(('127.0.0.1', port))
+            return result != 0  # Port disponible si connexion échoue
+        finally:
+            sock.close()
+    
+    # 🔥 FIX: Essayer le port demandé, puis chercher un port disponible
+    original_port = port
+    max_attempts = 10
+    attempt = 0
+    
+    while not is_port_available(port) and attempt < max_attempts:
+        logger.warning(f"⚠️ Port {port} déjà utilisé, essai du port {port + 1}...")
+        port += 1
+        attempt += 1
+    
+    if not is_port_available(port):
+        logger.error(f"❌ Impossible de trouver un port disponible après {max_attempts} tentatives (à partir du port {original_port})")
+        sys.exit(1)
+    
+    if port != original_port:
+        logger.info(f"✅ Port changé de {original_port} à {port}")
+    
+    try:
+        # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
+        uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+    except OSError as e:
+        logger.error(f"❌ Erreur binding port {port}: {e}")
+        logger.error(f"Vérifiez que le port {port} n'est pas déjà utilisé")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"❌ Erreur démarrage serveur: {e}", exc_info=True)
+        sys.exit(1)

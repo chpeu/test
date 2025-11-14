@@ -124,6 +124,13 @@ class HybridPriceProvider:
         async with self.cache_lock:
             self.price_cache[symbol] = data
             self.message_buffer.append(data)
+
+    async def _get_cached_price(self, symbol: str) -> Optional[Dict]:
+        """Récupérer le dernier prix connu dans le cache (même si WS est down)."""
+        async with self.cache_lock:
+            price_data = self.price_cache.get(symbol)
+            # Retourner une copie pour éviter les mutations externes
+            return dict(price_data) if price_data else None
     
     async def start_websocket(self, symbols: list):
         """
@@ -234,12 +241,21 @@ class HybridPriceProvider:
         
         try:
             ticker = await self.rest_client.fetch_ticker(symbol)
+            
+            # 🔥 FIX: Vérifier que ticker est un dict AVANT utilisation
+            if not isinstance(ticker, dict):
+                logger.error(
+                    f"❌ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol}"
+                )
+                cached = await self._get_cached_price(symbol)
+                if cached:
+                    logger.warning(
+                        f"⚠️ Utilisation du dernier prix cache pour {symbol} (timestamp={cached.get('timestamp')})"
+                    )
+                    return cached
+                return None
+            
             if ticker:
-                # 🔥 FIX: Vérifier que ticker est un dict, pas une liste
-                if not isinstance(ticker, dict):
-                    logger.error(f"❌ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol}")
-                    return None
-                
                 return {
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),
@@ -251,6 +267,12 @@ class HybridPriceProvider:
                 logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+            cached = await self._get_cached_price(symbol)
+            if cached:
+                logger.warning(
+                    f"⚠️ REST indisponible pour {symbol}, utilisation du dernier prix cache (timestamp={cached.get('timestamp')})"
+                )
+                return cached
         
         return None
     

@@ -1,6 +1,6 @@
 <script>
 	import { onMount, afterUpdate } from 'svelte';
-	import { recentLogs, errorCount, recentConfigLogs, configChangesCount } from '$lib/stores/logs';
+	import { recentLogs, errorLogs, errorCount, recentConfigLogs, configChangesCount } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 
 	let logContainer;
@@ -9,11 +9,6 @@
 	let autoScroll = true;
 	let autoScrollErrors = true;
 	let autoScrollConfig = true;
-	// 🔥 FIX: Erreurs uniquement pour la section "Erreurs" (WARNING exclu)
-	const errorLogs = derived(recentLogs, $logs =>
-		$logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL')
-	);
-
 	// 🔥 FIX: Tous les logs backend (INFO, DEBUG, etc.) avec couleurs (exclure ERROR, CRITICAL et WARNING)
 	const regularLogs = derived(recentLogs, $logs =>
 		$logs.filter(log => log.level !== 'ERROR' && log.level !== 'CRITICAL' && log.level !== 'WARNING')
