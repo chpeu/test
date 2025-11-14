@@ -30,6 +30,25 @@ def check_tables(password):
         print("=" * 70)
         print()
 
+        # 0. Forcer le flush du datalogger si possible
+        print("🔄 Tentative de forcer le flush du datalogger...")
+        print("-" * 70)
+        try:
+            # Importer et forcer le flush
+            import sys
+            sys.path.insert(0, '.')
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger and pg_datalogger.enabled:
+                print(f"✅ DataLogger trouvé (buffer: {len(pg_datalogger.scan_buffer)} scans)")
+                pg_datalogger._flush_buffers(force=True)
+                print("✅ Flush forcé effectué")
+            else:
+                print("⚠️ DataLogger non disponible ou désactivé")
+        except Exception as e:
+            print(f"⚠️ Impossible de forcer le flush: {e}")
+        print()
+
         # 1. Vérifier toutes les tables
         print("🔍 Tables principales:")
         print("-" * 70)
@@ -119,9 +138,9 @@ def check_tables(password):
         print("-" * 70)
 
         cursor.execute("""
-            SELECT entry_timestamp, symbol, direction, entry_price, exit_price, net_pnl_usdt
+            SELECT timestamp_entry, symbol, direction, entry_price, exit_price, net_pnl_usdt
             FROM trades
-            ORDER BY entry_timestamp DESC
+            ORDER BY timestamp_entry DESC
             LIMIT 5
         """)
 
@@ -129,7 +148,7 @@ def check_tables(password):
 
         if recent_trades:
             for trade in recent_trades:
-                print(f"  {trade['entry_timestamp']} | {trade['symbol']:15s} | {trade['direction']:5s} | Entry: {trade['entry_price']:.2f} | PnL: {trade['net_pnl_usdt']:.2f} USDT")
+                print(f"  {trade['timestamp_entry']} | {trade['symbol']:15s} | {trade['direction']:5s} | Entry: {trade['entry_price']:.2f} | Exit: {trade['exit_price'] or 'N/A'} | PnL: {trade['net_pnl_usdt']:.2f} USDT")
         else:
             print("⚠️ Aucun trade trouvé")
 
