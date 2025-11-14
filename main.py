@@ -1074,7 +1074,64 @@ async def scan_pair_for_setup(symbol: str):
             except Exception as log_err:
                 logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
             is_valid = False
-        
+
+        # 🔥 DATALOGGER: Logger le scan dans PostgreSQL
+        try:
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger and pg_datalogger.enabled:
+                # Préparer les données du scan
+                scan_data = {
+                    'scan_duration_ms': 0,  # TODO: mesurer temps de scan
+                    'market_data': {
+                        'price': analysis.get('price') if analysis else None,
+                        'spread_pct': analysis.get('spread_pct') if analysis else None,
+                        'book_depth': analysis.get('book_depth') if analysis else None,
+                        'balance_score': analysis.get('balance_score') if analysis else None,
+                        'bid_vol': analysis.get('bid_vol') if analysis else None,
+                        'ask_vol': analysis.get('ask_vol') if analysis else None,
+                        'orderbook_imbalance_ratio': analysis.get('orderbook_imbalance_ratio') if analysis else None,
+                    },
+                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
+                    'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
+                    'filters': {},  # TODO: extraire filtres depuis analysis
+                    'scores': {
+                        'score_1m': analysis.get('score_1m') if analysis else None,
+                        'score_5m': analysis.get('score_5m') if analysis else None,
+                        'score_total': analysis.get('totalScore') if analysis else None,
+                        'score_long_1m': None,
+                        'score_short_1m': None,
+                        'score_long_5m': None,
+                        'score_short_5m': None,
+                    },
+                    'patterns': {},  # TODO: extraire patterns
+                    'use_confluence': use_confluence,
+                    'confluence_met': False,
+                    'timeframes_aligned': False,
+                    'trend_timeframe': trend_timeframe,
+                    'trend_direction': trend_data.get('trend') if trend_data else None,
+                    'trend_strength': trend_data.get('strength') if trend_data else None,
+                    'trend_bonus': trend_data.get('bonus') if trend_data else None,
+                    'divergence_detected': False,
+                    'divergence_type': None,
+                    'divergence_bonus': 0,
+                    'is_opportunity': is_valid,
+                    'opportunity_direction': analysis.get('direction') if (is_valid and analysis) else None,
+                    'reject_reason': analysis.get('reason') if (not is_valid and analysis and isinstance(analysis, dict)) else None,
+                    'reject_reason_category': analysis.get('reject_category') if analysis else None,
+                    'params_snapshot': {
+                        'volume_multiplier': volume_multiplier,
+                        'use_confluence': use_confluence,
+                        'trend_timeframe': trend_timeframe,
+                    }
+                }
+
+                # Logger en mode batch
+                pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                logger.debug(f"📊 Scan loggé pour {symbol} (is_opportunity={is_valid})")
+        except Exception as e:
+            logger.debug(f"⚠️ Erreur logging scan (non-bloquant): {e}")
+
         # Envoyer événement pour mettre à jour le compteur
         await ws_manager.emit('volume_validation_update', {
             'symbol': symbol,
