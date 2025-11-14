@@ -190,12 +190,13 @@ if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
 
-# 🔥 FIX: Événement de démarrage FastAPI pour réinitialiser le frontend AVANT le scan
-@app.on_event("startup")
-async def startup_event():
-    """Événement de démarrage - réinitialiser le frontend AVANT le scan"""
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    data_logger = None
     try:
-        # ✅ Initialiser DataLogger
         try:
             from backend.ml.data_logger import DataLogger
             data_logger = DataLogger()
@@ -205,59 +206,55 @@ async def startup_event():
         except Exception as e:
             logger.warning(f"⚠️ Erreur initialisation DataLogger: {e}")
             app.state.data_logger = None
-        
-        # Initialiser les instances si pas déjà fait
+
         init_instances()
-        
-        # 🔥 FIX: Attendre avec timeout pour que les connexions WebSocket soient prêtes
+
         try:
             await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
         except asyncio.TimeoutError:
             logger.warning("⚠️ Timeout lors de l'initialisation WebSocket")
-        
-        # 🔥 FIX: Émettre événement de réinitialisation pour synchroniser le frontend IMMÉDIATEMENT
+
         if ws_manager:
             await ws_manager.emit('reset_session', {
                 'timestamp': time.time(),
                 'reason': 'backend_startup'
             })
             logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur événement startup: {e}")
 
-# ✅ Événement de shutdown pour arrêter DataLogger proprement
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Événement de shutdown - arrêter DataLogger proprement"""
-    try:
-        if hasattr(app.state, 'data_logger') and app.state.data_logger:
+        yield
+
+    finally:
+        try:
+            if hasattr(app.state, 'data_logger') and app.state.data_logger:
+                try:
+                    await app.state.data_logger.shutdown()
+                    logger.info("✅ DataLogger arrêté proprement")
+                except Exception as e:
+                    logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+
             try:
-                await app.state.data_logger.shutdown()
-                logger.info("✅ DataLogger arrêté proprement")
+                from core.callbacks.scanner_loop import get_pg_datalogger
+                pg_datalogger = get_pg_datalogger()
+                if pg_datalogger:
+                    pg_datalogger.close()
+                    logger.info("✅ PostgreSQL DataLogger fermé proprement")
             except Exception as e:
-                logger.error(f"❌ Erreur arrêt DataLogger: {e}")
-        
-        # 🔥 PHASE 3: Fermer PostgreSQL DataLogger proprement
-        try:
-            from core.callbacks.scanner_loop import get_pg_datalogger
-            pg_datalogger = get_pg_datalogger()
-            if pg_datalogger:
-                pg_datalogger.close()
-                logger.info("✅ PostgreSQL DataLogger fermé proprement")
+                logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+
+            try:
+                from api.mexc import get_mexc_client
+                mexc_client = get_mexc_client()
+                if mexc_client:
+                    await mexc_client.close()
+                    logger.info("✅ MEXC client fermé proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
+
         except Exception as e:
-            logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
-        
-        # 🔥 FIX: Fermer le client MEXC proprement pour éviter les warnings "Unclosed client session"
-        try:
-            from api.mexc import get_mexc_client
-            mexc_client = get_mexc_client()
-            if mexc_client:
-                await mexc_client.close()
-                logger.info("✅ MEXC client fermé proprement")
-        except Exception as e:
-            logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur événement shutdown: {e}")
+            logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
+
+
+app.router.lifespan_context = lifespan
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -392,6 +389,43 @@ app_state = {
     'logs': [],
     'trade_history': []  # 🔥 PHASE 4: Historique des trades
 }
+
+
+async def _run_initial_top_pairs_scan():
+    """Lancer le scan initial sans bloquer la boucle d'événements"""
+    init_instances()
+
+    if app_state.get('top_pairs'):
+        return  # Scan déjà effectué
+
+    if not scanner:
+        logger.warning("⚠️ Impossible de lancer le scan initial: scanner indisponible")
+        return
+
+    try:
+        await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs en arrière-plan...')
+        top_pairs = await scanner.scan_top_pairs(20)
+
+        if not top_pairs:
+            logger.warning("⚠️ Scan initial terminé sans résultats")
+            return
+
+        app_state['top_pairs'] = top_pairs
+
+        if ws_manager:
+            await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+
+        if price_provider:
+            symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            if symbols:
+                try:
+                    await price_provider.start_websocket(symbols)
+                    await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                except Exception as e:
+                    logger.warning(f"Erreur démarrage WebSocket: {e}")
+
+    except Exception as e:
+        logger.error(f"❌ Erreur scan initial en arrière-plan: {e}", exc_info=True)
 
 # 🔥 FIX: Injecter app_state dans le router APRÈS définition
 if api_router and set_app_state:
@@ -3302,21 +3336,7 @@ async def handle_client_command(command: str, params: dict):
         
         # Si pas de top_pairs, faire un scan initial
         if not app_state['top_pairs']:
-            await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
-            if scanner:
-                top_pairs = await scanner.scan_top_pairs(20)
-                app_state['top_pairs'] = top_pairs
-                await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
-                
-                # Démarrer WebSocket pour les top pairs
-                if price_provider and top_pairs:
-                    symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
-                    if symbols:
-                        try:
-                            await price_provider.start_websocket(symbols)
-                            await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
-                        except Exception as e:
-                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+            asyncio.create_task(_run_initial_top_pairs_scan())
         
         # Démarrer le scheduler
         if scheduler:
