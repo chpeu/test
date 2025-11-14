@@ -80,19 +80,17 @@ class SimplePGLogger:
         return default
 
     def _safe_json(self, value):
-        """Convertir en JSON pour PostgreSQL (gère dicts et arrays)"""
+        """Convertir en JSON string pour PostgreSQL JSONB (gère dicts et arrays)"""
         if value is None:
             return None
-        if isinstance(value, (dict, list)):
-            return Json(value)
-        # Si c'est déjà une string JSON, la parser puis convertir
+        # Si c'est déjà une string, retourner tel quel
         if isinstance(value, str):
-            try:
-                parsed = json.loads(value)
-                return Json(parsed)
-            except:
-                return Json(value)
-        return Json(value)
+            return value
+        # Convertir dict/list en JSON string
+        if isinstance(value, (dict, list)):
+            return json.dumps(value)
+        # Fallback: convertir en JSON
+        return json.dumps(value)
 
     def log_scan_simple(self, symbol: str, scan_data: Dict[str, Any]) -> bool:
         """Logger un scan complet - Insère TOUTES les colonnes disponibles"""
