@@ -6,6 +6,8 @@ Exécuté toutes les 45 secondes pour scanner les setups
 import asyncio
 import logging
 from typing import Optional, Dict, Any
+from core.postgresql_datalogger import PostgreSQLDataLogger
+from core.simple_pg_logger import SimplePGLogger
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,9 @@ _app_state = None
 _sio = None  # 🔥 MIGRATION COMPLÈTE: Gardé pour compatibilité, mais utiliser _ws_manager
 _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
-_pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML
+_pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML (injection)
+_pg_datalogger_instance = None  # 🔥 Force Initialization: Instance créée automatiquement
+_simple_logger = SimplePGLogger()  # 🔥 Simple Logger: Logger ultra-simple sans batch
 
 
 def set_scanner(scanner):
@@ -75,8 +79,23 @@ def set_pg_datalogger(pg_datalogger):
 
 
 def get_pg_datalogger():
-    """🔥 PHASE 2: Récupérer l'instance PostgreSQLDataLogger"""
-    return _pg_datalogger
+    """🔥 Force Initialization: Récupérer ou créer l'instance PostgreSQLDataLogger"""
+    global _pg_datalogger_instance
+    
+    # Si une instance a été injectée, l'utiliser en priorité
+    if _pg_datalogger is not None:
+        return _pg_datalogger
+    
+    # Sinon, créer une instance si elle n'existe pas
+    if _pg_datalogger_instance is None:
+        try:
+            _pg_datalogger_instance = PostgreSQLDataLogger()
+            logger.info("✅ PostgreSQL DataLogger créé (Force Initialization)")
+        except Exception as e:
+            logger.error(f"❌ Erreur création PostgreSQL DataLogger: {e}")
+            return None
+    
+    return _pg_datalogger_instance
 
 
 async def scanner_loop_callback():
@@ -287,9 +306,18 @@ async def _scan_top_pairs():
                             scalability_data = {
                                 'spread_pct': spread_value,
                                 'depth': book_depth,
+                                'book_depth': book_depth,  # Alias
                                 'balance': balance_score,
+                                'balance_score': balance_score,  # Alias
                                 'bid_vol': bid_vol,
-                                'ask_vol': ask_vol
+                                'ask_vol': ask_vol,
+                                # Paramètres du scan de scalabilité
+                                'recent_volume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),  # Alias
+                                'vol5': pair.get('vol5'),
+                                'vol15': pair.get('vol15'),
+                                'scalability_score': pair.get('score'),
+                                'score': pair.get('score'),  # Alias
                             }
                             
                             logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
@@ -325,9 +353,18 @@ async def _scan_top_pairs():
                             scalability_data = {
                                 'spread_pct': best_setup.get('spread_pct', 0),
                                 'depth': orderbook_depth or best_setup.get('orderbook_depth', 0) or (best_setup.get('bid_vol', 0) + best_setup.get('ask_vol', 0)),
+                                'book_depth': orderbook_depth or best_setup.get('orderbook_depth', 0) or (best_setup.get('bid_vol', 0) + best_setup.get('ask_vol', 0)),  # Alias
                                 'balance': best_setup.get('orderbook_balance', 1.0) or best_setup.get('orderbook_check', {}).get('balance', 1.0),
+                                'balance_score': best_setup.get('orderbook_balance', 1.0) or best_setup.get('orderbook_check', {}).get('balance', 1.0),  # Alias
                                 'bid_vol': best_setup.get('bid_vol'),
-                                'ask_vol': best_setup.get('ask_vol')
+                                'ask_vol': best_setup.get('ask_vol'),
+                                # Paramètres du scan de scalabilité (essayer depuis best_setup ou top_pairs)
+                                'recent_volume': best_setup.get('recent_volume') or best_setup.get('recentVolume'),
+                                'recentVolume': best_setup.get('recent_volume') or best_setup.get('recentVolume'),  # Alias
+                                'vol5': best_setup.get('vol5'),
+                                'vol15': best_setup.get('vol15'),
+                                'scalability_score': best_setup.get('scalability_score') or best_setup.get('score'),
+                                'score': best_setup.get('scalability_score') or best_setup.get('score'),  # Alias
                             }
                             logger.info(f"💹 Données scalabilité depuis best_setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                         else:
@@ -470,93 +507,255 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
             if not indicators_1m:
                 logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
-                # Construire indicators_1m depuis les données disponibles dans analysis
-                indicators_1m = {
-                    'rsi': analysis.get('rsi'),
-                    'rsi_prev': analysis.get('rsi_prev'),
-                    'macd': analysis.get('macd'),
-                    'macd_signal': analysis.get('macd_signal'),
-                    'macd_hist': analysis.get('macd_hist'),
-                    'macd_hist_prev': analysis.get('macd_hist_prev'),
-                    'adx': analysis.get('adx'),
-                    'di_plus': analysis.get('di_plus'),
-                    'di_minus': analysis.get('di_minus'),
-                    'di_gap': analysis.get('di_gap'),
-                    'ema9': analysis.get('ema9'),
-                    'ema21': analysis.get('ema21'),
-                    'ema_diff_pct': analysis.get('ema_diff_pct'),
-                    'atr': analysis.get('atr'),
-                    'atr_pct': analysis.get('atr_pct'),
-                    'bb_upper': analysis.get('bb_upper'),
-                    'bb_middle': analysis.get('bb_middle'),
-                    'bb_lower': analysis.get('bb_lower'),
-                    'bb_width': analysis.get('bb_width'),
-                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
-                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
-                    'volume': analysis.get('volume'),
-                    'volume_avg': analysis.get('volume_avg'),
-                    'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
-                    'volume_spike': analysis.get('volume_spike'),
-                }
+                # Si analysis contient 'reason' (aucun setup valide), extraire depuis analysis_1m
+                if 'reason' in analysis and 'analysis_1m' in analysis and analysis['analysis_1m']:
+                    analysis_1m = analysis['analysis_1m']
+                    indicators_1m = {
+                        'rsi': analysis_1m.get('rsi'),
+                        'rsi_prev': analysis_1m.get('rsi_prev'),
+                        'macd': analysis_1m.get('macd'),
+                        'macd_signal': analysis_1m.get('macd_signal'),
+                        'macd_hist': analysis_1m.get('macd_hist'),
+                        'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                        'adx': analysis_1m.get('adx'),
+                        'di_plus': analysis_1m.get('di_plus'),
+                        'di_minus': analysis_1m.get('di_minus'),
+                        'di_gap': analysis_1m.get('di_gap'),
+                        'ema9': analysis_1m.get('ema9'),
+                        'ema21': analysis_1m.get('ema21'),
+                        'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
+                        'atr': analysis_1m.get('atr'),
+                        'atr_pct': analysis_1m.get('atr_pct'),
+                        'bb_upper': analysis_1m.get('bb_upper'),
+                        'bb_middle': analysis_1m.get('bb_middle'),
+                        'bb_lower': analysis_1m.get('bb_lower'),
+                        'bb_width': analysis_1m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                        'volume': analysis_1m.get('volume'),
+                        'volume_avg': analysis_1m.get('volume_avg'),
+                        'volume_ratio': analysis_1m.get('volumeSpike'),
+                        'volume_spike': analysis_1m.get('volumeSpike'),
+                    }
+                else:
+                    # Construire indicators_1m depuis les données disponibles dans analysis
+                    indicators_1m = {
+                        'rsi': analysis.get('rsi'),
+                        'rsi_prev': analysis.get('rsi_prev'),
+                        'macd': analysis.get('macd'),
+                        'macd_signal': analysis.get('macd_signal'),
+                        'macd_hist': analysis.get('macd_hist'),
+                        'macd_hist_prev': analysis.get('macd_hist_prev'),
+                        'adx': analysis.get('adx'),
+                        'di_plus': analysis.get('di_plus'),
+                        'di_minus': analysis.get('di_minus'),
+                        'di_gap': analysis.get('di_gap'),
+                        'ema9': analysis.get('ema9'),
+                        'ema21': analysis.get('ema21'),
+                        'ema_diff_pct': analysis.get('ema_diff_pct'),
+                        'atr': analysis.get('atr'),
+                        'atr_pct': analysis.get('atr_pct'),
+                        'bb_upper': analysis.get('bb_upper'),
+                        'bb_middle': analysis.get('bb_middle'),
+                        'bb_lower': analysis.get('bb_lower'),
+                        'bb_width': analysis.get('bb_width'),
+                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                        'volume': analysis.get('volume'),
+                        'volume_avg': analysis.get('volume_avg'),
+                        'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                        'volume_spike': analysis.get('volume_spike'),
+                    }
             
             # Si indicators_5m n'est pas présent, essayer de le construire depuis les données disponibles
             if not indicators_5m:
                 logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
-                # Pour indicators_5m, on peut utiliser les mêmes données ou des variantes 5m si disponibles
-                indicators_5m = {
-                    'rsi': analysis.get('rsi_5m'),
-                    'rsi_prev': analysis.get('rsi_prev_5m'),
-                    'macd': analysis.get('macd_5m'),
-                    'macd_signal': analysis.get('macd_signal_5m'),
-                    'macd_hist': analysis.get('macd_hist_5m'),
-                    'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
-                    'adx': analysis.get('adx_5m'),
-                    'di_plus': analysis.get('di_plus_5m'),
-                    'di_minus': analysis.get('di_minus_5m'),
-                    'di_gap': analysis.get('di_gap_5m'),
-                    'ema9': analysis.get('ema9_5m'),
-                    'ema21': analysis.get('ema21_5m'),
-                    'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
-                    'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
-                    'atr_pct': analysis.get('atr_pct_5m'),
-                    'bb_upper': analysis.get('bb_upper_5m'),
-                    'bb_middle': analysis.get('bb_middle_5m'),
-                    'bb_lower': analysis.get('bb_lower_5m'),
-                    'bb_width': analysis.get('bb_width_5m'),
-                    'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
-                    'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
-                    'volume': analysis.get('volume_5m'),
-                    'volume_avg': analysis.get('volume_avg_5m'),
-                    'volume_ratio': analysis.get('volume_ratio_5m'),
-                    'volume_spike': analysis.get('volume_spike_5m'),
-                }
+                # Si analysis contient 'reason' (aucun setup valide), extraire depuis analysis_5m
+                if 'reason' in analysis and 'analysis_5m' in analysis and analysis['analysis_5m']:
+                    analysis_5m = analysis['analysis_5m']
+                    indicators_5m = {
+                        'rsi': analysis_5m.get('rsi'),
+                        'rsi_prev': analysis_5m.get('rsi_prev'),
+                        'macd': analysis_5m.get('macd'),
+                        'macd_signal': analysis_5m.get('macd_signal'),
+                        'macd_hist': analysis_5m.get('macd_hist'),
+                        'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                        'adx': analysis_5m.get('adx'),
+                        'di_plus': analysis_5m.get('di_plus'),
+                        'di_minus': analysis_5m.get('di_minus'),
+                        'di_gap': analysis_5m.get('di_gap'),
+                        'ema9': analysis_5m.get('ema9'),
+                        'ema21': analysis_5m.get('ema21'),
+                        'ema_diff_pct': analysis_5m.get('ema_diff_pct'),
+                        'atr': analysis_5m.get('atr'),
+                        'atr_pct': analysis_5m.get('atr_pct'),
+                        'bb_upper': analysis_5m.get('bb_upper'),
+                        'bb_middle': analysis_5m.get('bb_middle'),
+                        'bb_lower': analysis_5m.get('bb_lower'),
+                        'bb_width': analysis_5m.get('bb_width'),
+                        'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                        'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                        'volume': analysis_5m.get('volume'),
+                        'volume_avg': analysis_5m.get('volume_avg'),
+                        'volume_ratio': analysis_5m.get('volumeSpike'),
+                        'volume_spike': analysis_5m.get('volumeSpike'),
+                    }
+                else:
+                    # Pour indicators_5m, on peut utiliser les mêmes données ou des variantes 5m si disponibles
+                    indicators_5m = {
+                        'rsi': analysis.get('rsi_5m'),
+                        'rsi_prev': analysis.get('rsi_prev_5m'),
+                        'macd': analysis.get('macd_5m'),
+                        'macd_signal': analysis.get('macd_signal_5m'),
+                        'macd_hist': analysis.get('macd_hist_5m'),
+                        'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
+                        'adx': analysis.get('adx_5m'),
+                        'di_plus': analysis.get('di_plus_5m'),
+                        'di_minus': analysis.get('di_minus_5m'),
+                        'di_gap': analysis.get('di_gap_5m'),
+                        'ema9': analysis.get('ema9_5m'),
+                        'ema21': analysis.get('ema21_5m'),
+                        'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
+                        'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
+                        'atr_pct': analysis.get('atr_pct_5m'),
+                        'bb_upper': analysis.get('bb_upper_5m'),
+                        'bb_middle': analysis.get('bb_middle_5m'),
+                        'bb_lower': analysis.get('bb_lower_5m'),
+                        'bb_width': analysis.get('bb_width_5m'),
+                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
+                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
+                        'volume': analysis.get('volume_5m'),
+                        'volume_avg': analysis.get('volume_avg_5m'),
+                        'volume_ratio': analysis.get('volume_ratio_5m'),
+                        'volume_spike': analysis.get('volume_spike_5m'),
+                    }
             
             # Ajouter les indicateurs à analysis
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
             logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
-            logger.info(f"🔍 DEBUG analysis après ajout indicateurs: keys: {list(analysis.keys())[:20]}")
         else:
             logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
 
+        # 🔥 DEBUG: Vérifier que le code atteint cette section AVANT Simple Logger
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT Simple Logger, analysis type: {type(analysis)}")
+
+        # 🔥 Simple Logger: Logger ultra-simple sans batch
+        try:
+            # Vérifier que _simple_logger est défini et accessible
+            try:
+                logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: _simple_logger existe, enabled={getattr(_simple_logger, 'enabled', 'ATTRIBUT_MANQUANT')}")
+            except NameError:
+                logger.error(f"❌ _simple_logger n'est pas défini pour {symbol}")
+                _simple_logger = None
+            except Exception as e:
+                logger.error(f"❌ Erreur accès _simple_logger pour {symbol}: {e}")
+                _simple_logger = None
+            
+            if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
+                logger.info(f"📝 Tentative log_scan_simple pour {symbol}")
+                result = _simple_logger.log_scan_simple(symbol, {
+                    'market_data': {'price': analysis.get('price') if analysis else None},
+                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
+                    'scores': {'score_total': analysis.get('score_total') if analysis else None},
+                    'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
+                })
+                logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
+            else:
+                logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
+        except Exception as e:
+            logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
+            import traceback
+            logger.debug(f"Traceback: {traceback.format_exc()}")
+
+        # 🔥 DEBUG: Vérifier que le code atteint cette section
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT calcul durée scan")
+
         # 🔥 PHASE 3: Calculer durée du scan
-        scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+        try:
+            scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification pg_datalogger")
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul scan_duration_ms pour {symbol}: {e}")
+            scan_duration_ms = 0
         
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé
-        if _pg_datalogger and _pg_datalogger.enabled:
+        # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire
+        pg_datalogger = get_pg_datalogger()
+        
+        try:
+            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): pg_datalogger={pg_datalogger is not None}, enabled={getattr(pg_datalogger, 'enabled', False) if pg_datalogger else False}")
+        except Exception as e:
+            logger.error(f"❌ Erreur log pg_datalogger pour {symbol}: {e}")
+        
+        if pg_datalogger and pg_datalogger.enabled:
             try:
+                logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
+                # Récupérer les données du scan de scalabilité depuis top_pairs
+                scalability_data = {}
+                if _app_state and _app_state.get('top_pairs'):
+                    for pair in _app_state['top_pairs']:
+                        if pair.get('symbol') == symbol:
+                            scalability_data = {
+                                'recent_volume': pair.get('recentVolume'),
+                                'vol5': pair.get('vol5'),
+                                'vol15': pair.get('vol15'),
+                                'scalability_score': pair.get('score'),
+                            }
+                            break
+                
                 # Préparer les données du scan pour PostgreSQL
+                # 🔥 FIX: Récupérer le prix avec fallbacks (pour éviter NULL)
+                scan_price = None
+                if analysis and isinstance(analysis, dict):
+                    scan_price = analysis.get('price')
+                
+                # Fallback: Depuis analysis_1m ou analysis_5m si disponible
+                if scan_price is None and analysis:
+                    analysis_1m = analysis.get('analysis_1m', {})
+                    if isinstance(analysis_1m, dict):
+                        scan_price = analysis_1m.get('price')
+                    if scan_price is None:
+                        analysis_5m = analysis.get('analysis_5m', {})
+                        if isinstance(analysis_5m, dict):
+                            scan_price = analysis_5m.get('price')
+                
+                # Extraire la valeur numérique si scan_price est un dict
+                if isinstance(scan_price, dict):
+                    scan_price = scan_price.get('price') or scan_price.get('lastPrice') or scan_price.get('close') or scan_price.get('value')
+                
+                # Vérifier que scan_price est un nombre
+                if scan_price is not None and not isinstance(scan_price, (int, float)):
+                    try:
+                        scan_price = float(scan_price)
+                    except (ValueError, TypeError):
+                        logger.warning(f"⚠️ Prix invalide pour {symbol}: {scan_price} (type: {type(scan_price)})")
+                        scan_price = None
+                
                 scan_data = {
                     'scan_duration_ms': scan_duration_ms,
                     'market_data': {
-                        'price': analysis.get('price') if analysis else None,
+                        'price': scan_price,
                         'spread_pct': analysis.get('spread_pct') if analysis else None,
                         'book_depth': analysis.get('book_depth') if analysis else None,
                         'balance_score': analysis.get('balance_score') if analysis else None,
                         'bid_vol': analysis.get('bid_vol') if analysis else None,
                         'ask_vol': analysis.get('ask_vol') if analysis else None,
                         'orderbook_imbalance_ratio': analysis.get('orderbook_imbalance_ratio') if analysis else None,
+                        # Paramètres du scan de scalabilité
+                        'recent_volume': scalability_data.get('recent_volume'),
+                        'vol5': scalability_data.get('vol5'),
+                        'vol15': scalability_data.get('vol15'),
+                        'scalability_score': scalability_data.get('scalability_score'),
                     },
+                    # Ajouter aussi au niveau racine pour les fallbacks
+                    'price': scan_price,  # 🔥 FIX: Ajouter le prix au niveau racine pour les fallbacks
+                    'recent_volume': scalability_data.get('recent_volume'),
+                    'recentVolume': scalability_data.get('recent_volume'),  # Alias
+                    'vol5': scalability_data.get('vol5'),
+                    'vol15': scalability_data.get('vol15'),
+                    'scalability_score': scalability_data.get('scalability_score'),
+                    'score': scalability_data.get('scalability_score'),  # Alias
                     'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
                     'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
                     'filters': analysis.get('filters', {}) if analysis else {},
@@ -579,8 +778,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'confluence_met': analysis.get('confluence_met') if analysis else False,
                     'timeframes_aligned': analysis.get('timeframes_aligned') if analysis else False,
                     'trend_timeframe': trend_timeframe,
-                    'trend_direction': trend_data.get('direction') if trend_data else None,
-                    'trend_strength': trend_data.get('strength') if trend_data else None,
+                    'trend_direction': trend_data.get('trend') if trend_data else None,  # 'trend' pas 'direction'
+                    'trend_strength': None,  # trend_data.get('strength') est une chaîne ('STRONG', 'MODERATE', 'NONE'), pas un FLOAT
                     'trend_bonus': trend_data.get('bonus') if trend_data else None,
                     'divergence_detected': analysis.get('divergence_detected') if analysis else False,
                     'divergence_type': analysis.get('divergence_type') if analysis else None,
@@ -612,7 +811,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 }
                 
                 # Logger le scan (mode batch par défaut)
-                scan_id = _pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                logger.info(f"📝 Appel log_scan() pour {symbol}")
+                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
@@ -632,7 +833,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     }
                     # En mode batch, on passe scan_id=None temporairement
                     # Le scan_id sera résolu lors du flush batch
-                    _pg_datalogger.log_opportunity(
+                    pg_datalogger.log_opportunity(
                         scan_id or 0,  # 0 = temporaire, sera mis à jour
                         symbol, 
                         opportunity_data,
@@ -640,11 +841,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     )
                     
             except Exception as e:
-                logger.warning(f"⚠️ Erreur logging PostgreSQL pour {symbol}: {e}")
-        
-        # 🔥 DEBUG: Vérifier avant return
-        if analysis and isinstance(analysis, dict):
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}) AVANT RETURN: contient indicators_1m: {'indicators_1m' in analysis}, indicators_5m: {'indicators_5m' in analysis}")
+                logger.error(f"❌ Erreur logging PostgreSQL pour {symbol}: {e}")
+                import traceback
+                logger.debug(f"Traceback: {traceback.format_exc()}")
         
         return analysis
 
@@ -652,7 +851,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
         
         # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
-        if _pg_datalogger and _pg_datalogger.enabled:
+        # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire
+        pg_datalogger = get_pg_datalogger()
+        
+        if pg_datalogger and pg_datalogger.enabled:
             try:
                 import traceback
                 error_details = {
@@ -660,7 +862,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'error_message': str(e),
                     'stack': traceback.format_exc()
                 }
-                _pg_datalogger.log_scan_error(
+                pg_datalogger.log_scan_error(
                     symbol=symbol,
                     error_type='SCAN_ERROR',
                     error_message=str(e),

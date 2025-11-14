@@ -182,9 +182,10 @@ class TestPostgreSQLDataLogger:
             error_message='Connection timeout',
             error_details={'stack': 'traceback...'}
         )
-        
+
         assert error_id is not None
-        cursor.execute.assert_called_once()
+        # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour scan_error)
+        assert cursor.execute.call_count == 2
     
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
@@ -206,9 +207,10 @@ class TestPostgreSQLDataLogger:
         }
         
         context_id = logger.log_market_context(context_data)
-        
+
         assert context_id is not None
-        cursor.execute.assert_called_once()
+        # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour market_context)
+        assert cursor.execute.call_count == 2
     
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
@@ -250,9 +252,10 @@ class TestPostgreSQLDataLogger:
         }
         
         trade_id = logger.log_trade(trade_data)
-        
+
         assert trade_id is not None
-        cursor.execute.assert_called_once()
+        # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour trade)
+        assert cursor.execute.call_count == 2
     
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
