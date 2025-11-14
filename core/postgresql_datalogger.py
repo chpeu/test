@@ -6,7 +6,7 @@ Logging des scans, opportunités et trades vers PostgreSQL pour ML
 
 import logging
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Sequence
 from datetime import datetime, timezone, date
 from decimal import Decimal
 import json
@@ -25,6 +25,22 @@ except ImportError:
     logger.warning("⚠️ psycopg2 non installé - PostgreSQL DataLogger désactivé")
 
 logger = logging.getLogger(__name__)
+
+
+def _summarize_params(params: Optional[Sequence[Any]], limit: int = 5) -> str:
+    """Retourner un aperçu compact des paramètres SQL."""
+    if not params:
+        return "<no-params>"
+    try:
+        iterable = list(params)
+    except TypeError:
+        return f"<{type(params).__name__}>"
+    summary = []
+    for value in iterable[:limit]:
+        summary.append(f"{type(value).__name__}:{str(value)[:30]}")
+    if len(iterable) > limit:
+        summary.append(f"…(+{len(iterable) - limit})")
+    return '[' + ', '.join(summary) + ']'
 
 
 def _extract_numeric_value(value: Any) -> Optional[float]:
@@ -251,6 +267,12 @@ class PostgreSQLDataLogger:
         
         try:
             cursor = conn.cursor()
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "SQL exec: %s | params=%s",
+                    ' '.join(query.strip().splitlines())[:200],
+                    _summarize_params(params)
+                )
             cursor.execute(query, params)
             
             if fetch:
@@ -265,8 +287,12 @@ class PostgreSQLDataLogger:
                 self._return_connection(conn)
                 return True
         except Exception as e:
-            logger.error(f"❌ Erreur exécution requête: {e}")
-            logger.debug(f"Query: {query[:200]}...")
+            logger.error(
+                "❌ Erreur exécution requête: %s | params=%s",
+                e,
+                _summarize_params(params)
+            )
+            logger.debug(f"Query: {query[:400]}...")
             if conn:
                 conn.rollback()
                 self._return_connection(conn)
@@ -484,8 +510,6 @@ class PostgreSQLDataLogger:
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
@@ -689,17 +713,14 @@ class PostgreSQLDataLogger:
             status = opportunity_data.get('status', 'PENDING')
             
             # S'assurer que les prix sont des nombres, pas des dicts
-            if isinstance(entry_price, dict):
-                entry_price = entry_price.get('price') or entry_price.get('value')
-            if isinstance(tp_price, dict):
-                tp_price = tp_price.get('price') or tp_price.get('value')
-            if isinstance(sl_price, dict):
-                sl_price = sl_price.get('price') or sl_price.get('value')
+            entry_price = _extract_numeric_value(entry_price)
+            tp_price = _extract_numeric_value(tp_price)
+            sl_price = _extract_numeric_value(sl_price)
             if isinstance(tp_sl_mode, dict):
                 tp_sl_mode = tp_sl_mode.get('mode') or 'FIXE'
             # S'assurer que setup_score est un nombre, pas un dict
             if isinstance(setup_score, dict):
-                setup_score = setup_score.get('score') or setup_score.get('value') or setup_score.get('totalScore')
+                setup_score = _extract_numeric_value(setup_score)
             # S'assurer que direction est une string, pas un dict
             if isinstance(direction, dict):
                 direction = direction.get('direction') or direction.get('value') or str(direction)
@@ -711,13 +732,20 @@ class PostgreSQLDataLogger:
                 scan_id, session_id, symbol,
                 str(status) if status else 'PENDING',
                 str(direction) if direction else None,
-                float(setup_score) if setup_score is not None and not isinstance(setup_score, dict) else None,
+                float(setup_score) if setup_score is not None else None,
                 conditions_matched,  # TEXT[] - liste de strings
-                float(entry_price) if entry_price is not None and not isinstance(entry_price, dict) else None,  # entry_suggested
-                float(tp_price) if tp_price is not None and not isinstance(tp_price, dict) else None,  # tp_suggested
-                float(sl_price) if sl_price is not None and not isinstance(sl_price, dict) else None,  # sl_suggested
+                float(entry_price) if entry_price is not None else None,  # entry_suggested
+                float(tp_price) if tp_price is not None else None,  # tp_suggested
+                float(sl_price) if sl_price is not None else None,  # sl_suggested
                 str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
             )
+            
+            if any(isinstance(p, dict) for p in params):
+                logger.error(
+                    "⚠️ Paramètre dict détecté dans log_opportunity pour %s | types=%s",
+                    symbol,
+                    [type(p).__name__ for p in params]
+                )
             
             result = self._execute_query(query, params, fetch=True)
             if result:
@@ -728,126 +756,6 @@ class PostgreSQLDataLogger:
             
         except Exception as e:
             logger.error(f"❌ Erreur logging opportunité {symbol}: {e}")
-            return None
-    
-    def log_scan_error(
-        self,
-        symbol: str,
-        error_type: str,
-        error_message: str,
-        error_details: Optional[Dict] = None,
-        session_id: Optional[str] = None
-    ) -> Optional[int]:
-        """
-        Logger une erreur de scan dans scan_errors
-        
-        Args:
-            symbol: Symbole de la paire
-            error_type: Type d'erreur (API_ERROR, TIMEOUT, etc.)
-            error_message: Message d'erreur
-            error_details: Détails supplémentaires (optionnel)
-            session_id: UUID de la session
-        
-        Returns:
-            ID de l'erreur loggée ou None
-        """
-        if not self.enabled:
-            return None
-        
-        if not session_id:
-            session_id = self.get_or_create_session()
-        
-        try:
-            query = """
-                INSERT INTO scan_errors (
-                    timestamp, session_id, symbol,
-                    error_type, error_message, error_stack, scan_context
-                )
-                VALUES (NOW(), %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """
-            
-            # Extraire stack trace si disponible
-            error_stack = None
-            if error_details:
-                error_stack = error_details.get('stack') or error_details.get('error_stack')
-            
-            params = (
-                session_id, symbol,
-                error_type, error_message,
-                error_stack,
-                json.dumps(error_details or {})
-            )
-            
-            result = self._execute_query(query, params, fetch=True)
-            if result:
-                error_id = result[0][0]
-                logger.debug(f"📊 Erreur loggée: {symbol} - {error_type} (ID: {error_id})")
-                return error_id
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur logging erreur scan {symbol}: {e}")
-            return None
-    
-    def log_market_context(
-        self,
-        context_data: Dict[str, Any],
-        session_id: Optional[str] = None
-    ) -> Optional[int]:
-        """
-        Logger le contexte marché dans market_context
-        
-        Args:
-            context_data: Données du contexte marché
-            session_id: UUID de la session
-        
-        Returns:
-            ID du contexte loggé ou None
-        """
-        if not self.enabled:
-            return None
-        
-        if not session_id:
-            session_id = self.get_or_create_session()
-        
-        try:
-            query = """
-                INSERT INTO market_context (
-                    timestamp, session_id,
-                    hour_of_day, day_of_week,
-                    btc_price, eth_price,
-                    global_metrics, session_stats,
-                    market_trend, market_volatility, fear_greed_index
-                )
-                VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """
-            
-            # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
-            now = datetime.now(timezone.utc)
-            params = (
-                session_id,
-                now.hour,
-                now.weekday(),
-                context_data.get('btc_price'),
-                context_data.get('eth_price'),
-                json.dumps(context_data.get('global_metrics', {})),
-                json.dumps(context_data.get('session_stats', {})),
-                context_data.get('market_trend'),
-                context_data.get('market_volatility'),
-                context_data.get('fear_greed_index')
-            )
-            
-            result = self._execute_query(query, params, fetch=True)
-            if result:
-                context_id = result[0][0]
-                logger.debug(f"📊 Contexte marché loggé (ID: {context_id})")
-                return context_id
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur logging contexte marché: {e}")
             return None
     
     def log_trade(
@@ -1327,6 +1235,13 @@ class PostgreSQLDataLogger:
                 config_snapshot,
                 win
             )
+            
+            if any(isinstance(p, dict) for p in params):
+                logger.error(
+                    "⚠️ Paramètre dict détecté dans log_trade pour %s | types=%s",
+                    trade_data.get('symbol'),
+                    [type(p).__name__ for p in params]
+                )
             
             # Vérifier le nombre de paramètres AVANT l'exécution
             param_count = len(params)
