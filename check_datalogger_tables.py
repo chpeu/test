@@ -96,7 +96,7 @@ def check_tables(password):
         print("-" * 70)
 
         cursor.execute("""
-            SELECT timestamp, symbol, price, rsi_1m, score
+            SELECT timestamp, symbol, price, rsi_1m, score_total, is_opportunity, opportunity_direction
             FROM scan_logs
             ORDER BY timestamp DESC
             LIMIT 5
@@ -106,7 +106,9 @@ def check_tables(password):
 
         if recent_scans:
             for scan in recent_scans:
-                print(f"  {scan['timestamp']} | {scan['symbol']:15s} | Prix: {scan['price']:.2f} | RSI: {scan['rsi_1m']} | Score: {scan['score']}")
+                opp_status = "✅ OPP" if scan['is_opportunity'] else "⚪ SCAN"
+                direction = scan['opportunity_direction'] or 'N/A'
+                print(f"  {opp_status} | {scan['timestamp']} | {scan['symbol']:15s} | Prix: {scan['price']:.2f} | RSI: {scan['rsi_1m']} | Score: {scan['score_total']} | Dir: {direction}")
         else:
             print("⚠️ Aucun scan trouvé dans scan_logs")
 
