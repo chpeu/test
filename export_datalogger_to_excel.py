@@ -128,6 +128,13 @@ class DataLoggerExporter:
 
             logger.info(f"📊 Lecture table: {table_name}")
             df = pd.read_sql_query(query, self.conn)
+
+            # Convertir les colonnes datetime timezone-aware en timezone-naive
+            # (Excel ne supporte pas les timezones)
+            for col in df.columns:
+                if pd.api.types.is_datetime64tz_dtype(df[col]):
+                    df[col] = df[col].dt.tz_localize(None)
+
             logger.info(f"   ✅ {len(df)} lignes récupérées")
             return df
         except Exception as e:
