@@ -54,15 +54,15 @@ class Scheduler:
                 await asyncio.sleep(5)  # Attendre un peu avant de réessayer
     
     async def _position_check_loop(self):
-        """Boucle position check - toutes les 0.1 secondes (optimisé pour scalping ultra-rapide)"""
+        """Boucle position check - toutes les 0.05 secondes (50ms - latence ultra-faible)"""
         while self.is_running:
             try:
                 if self.position_check_callback:
                     await self.position_check_callback()
                 
-                # 🔥 FIX: Réduire à 0.1s pour scalping ultra-rapide (latence minimale)
-                # WebSocket émet déjà en temps réel, mais cette boucle sert de backup
-                await asyncio.sleep(0.1)
+                # 🔥 OPTIMISATION LATENCE: Réduire à 0.05s (50ms) pour scalping ultra-rapide
+                # Synchronisé avec latence WebSocket MEXC (~50ms)
+                await asyncio.sleep(0.05)
             except Exception as e:
                 logger.error(f"Erreur dans position check loop: {e}")
                 await asyncio.sleep(1)  # Attendre un peu avant de réessayer

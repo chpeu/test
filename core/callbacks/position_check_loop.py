@@ -5,6 +5,7 @@ Exécuté toutes les 2 secondes pour vérifier la position active
 
 import asyncio
 import logging
+import time
 from typing import Optional
 from datetime import datetime
 
@@ -62,6 +63,50 @@ def set_analytics_db(analytics_db):
     _analytics_db = analytics_db
 
 
+async def _recover_websocket_stream(symbol: str, reason: str = "manual"):
+    """Tenter de rétablir un flux WebSocket fiable pour le symbole actif."""
+    if not _price_provider or not symbol:
+        return
+
+    try:
+        logger.warning(
+            f"🔄 Tentative récupération WebSocket ({reason}) pour {symbol}"
+        )
+
+        # 1) S'assurer que la connexion prioritaire est active pour le symbole en position
+        if hasattr(_price_provider, 'ensure_priority_connection'):
+            await _price_provider.ensure_priority_connection(symbol)
+
+        # 2) Si le WebSocket principal est connecté, forcer un réabonnement rapide
+        if _price_provider.ws_manager and _price_provider.ws_manager.connected:
+            try:
+                await _price_provider.ws_manager.subscribe_ticker(symbol)
+                logger.info(f"🔁 Réabonnement ticker réussi pour {symbol}")
+                return
+            except Exception as e:
+                logger.error(f"❌ Échec réabonnement WebSocket ({symbol}): {e}")
+
+        # 3) Sinon, redémarrer complètement la connexion avec une liste prioritaire
+        symbols = [symbol]
+        if _app_state and _app_state.get('top_pairs'):
+            top_symbols = [
+                p.get('symbol', '')
+                for p in _app_state['top_pairs'][:30]
+                if p.get('symbol')
+            ]
+            for top_symbol in top_symbols:
+                if top_symbol and top_symbol not in symbols:
+                    symbols.append(top_symbol)
+
+        await _price_provider.start_websocket(symbols)
+        logger.warning(
+            f"✅ WebSocket redémarré ({reason}) avec {symbol} en priorité : {len(symbols)} symboles"
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Impossible de récupérer WebSocket pour {symbol}: {e}")
+
+
 def _update_session_stats(result: dict):
     """
     Mettre à jour les statistiques de session après fermeture d'une position
@@ -107,7 +152,11 @@ async def position_check_loop_callback():
     4. Émettre position_update pour le frontend
     5. Si position fermée: archiver et nettoyer
     """
+    # 🔥 FIX: Log si instances manquantes pour diagnostiquer pourquoi la boucle ne tourne pas
     if not _position_manager or not _price_provider or not _app_state:
+        if not hasattr(position_check_loop_callback, '_logged_missing_instances'):
+            logger.error(f"❌ Instances manquantes: PM={bool(_position_manager)}, PP={bool(_price_provider)}, AS={bool(_app_state)}")
+            position_check_loop_callback._logged_missing_instances = True
         return
 
     try:
@@ -118,20 +167,81 @@ async def position_check_loop_callback():
         # Récupérer la position
         position = _position_manager.active_position
         symbol = position.symbol
+        
+        # 🔥 FIX: Log périodique pour confirmer que la boucle tourne
+        if not hasattr(position_check_loop_callback, '_last_heartbeat'):
+            position_check_loop_callback._last_heartbeat = 0
+        now = time.time()
+        if now - position_check_loop_callback._last_heartbeat >= 10:  # Log toutes les 10s
+            logger.info(f"💓 position_check_loop actif pour {symbol}")
+            position_check_loop_callback._last_heartbeat = now
 
         # Récupérer prix actuel
         current_price_data = await _price_provider.get_price(symbol)
-        if not current_price_data:
-            # 🔥 FIX: Ne pas logger en WARNING si c'est juste temporaire (peut être normal)
-            # Le prix peut être indisponible temporairement sans être une erreur critique
-            logger.debug(f"⚠️ Prix indisponible pour {symbol} (tentative suivante dans {_app_state.get('check_interval', 0.1)}s)")
-            return
+        
+        # 🔥 FIX GEL: Détecter si le prix vient du REST (WebSocket inactif)
+        is_rest_fallback = current_price_data and current_price_data.get('source') in ['rest', 'rest_fallback_stale']
+        
+        if not current_price_data or is_rest_fallback:
+            # 🔥 DEBUG GEL: Compter les échecs consécutifs (pas de prix OU fallback REST)
+            if not hasattr(position_check_loop_callback, '_price_fail_count'):
+                position_check_loop_callback._price_fail_count = {}
+            
+            position_check_loop_callback._price_fail_count[symbol] = \
+                position_check_loop_callback._price_fail_count.get(symbol, 0) + 1
+            
+            fail_count = position_check_loop_callback._price_fail_count[symbol]
 
+            # 🔥 HOTFIX LATENCE: tenter une action immédiate avec cooldown
+            cooldown = 1.0  # secondes entre deux tentatives forcées (réduit de 2s à 1s)
+            if not hasattr(position_check_loop_callback, '_last_ws_action'):
+                position_check_loop_callback._last_ws_action = {}
+            last_action = position_check_loop_callback._last_ws_action.get(symbol, 0)
+            now = time.time()
+            if now - last_action >= cooldown:
+                position_check_loop_callback._last_ws_action[symbol] = now
+                await _recover_websocket_stream(symbol, reason='rest_fallback')
+            
+            # Log WARNING si échec répété (>5 fois = >0.25 seconde)
+            if fail_count % 5 == 0:
+                ws_connected = (_price_provider.ws_manager and _price_provider.ws_manager.connected) if _price_provider else False
+                cache_has_symbol = False
+                if _price_provider and hasattr(_price_provider, 'price_cache'):
+                    async with _price_provider.cache_lock:
+                        cache_has_symbol = symbol in _price_provider.price_cache
+                
+                source = current_price_data.get('source', 'unknown') if current_price_data else 'none'
+                logger.warning(
+                    f"⚠️ WebSocket INACTIF pour {symbol} depuis {fail_count * 2:.1f}s | "
+                    f"Source: {source} | WS connecté: {ws_connected} | Cache: {cache_has_symbol}"
+                )
+                
+                await _recover_websocket_stream(symbol, reason='stale_warning')
+            
+            # 🔥 FIX: Ne pas retourner si on a un prix REST, continuer avec ce prix
+            if not current_price_data:
+                return
+
+        # 🔥 DEBUG GEL: Reset compteur échecs si prix WebSocket obtenu
+        if hasattr(position_check_loop_callback, '_price_fail_count'):
+            if symbol in position_check_loop_callback._price_fail_count:
+                fail_count = position_check_loop_callback._price_fail_count[symbol]
+                source = current_price_data.get('source', 'unknown') if current_price_data else 'none'
+                if fail_count > 0 and source == 'websocket':
+                    logger.info(f"✅ WebSocket récupéré pour {symbol} après {fail_count * 2:.1f}s (source: {source})")
+                    position_check_loop_callback._price_fail_count[symbol] = 0
+        
         current_price = (
             current_price_data.get('lastPrice', 0)
             if isinstance(current_price_data, dict)
             else current_price_data
         )
+        
+        # 🔥 DEBUG GEL: Logger l'âge du prix
+        if isinstance(current_price_data, dict) and 'timestamp' in current_price_data:
+            age = time.time() - current_price_data['timestamp']
+            if age > 2:  # Si prix > 2 secondes
+                logger.warning(f"⚠️ Prix obsolète pour {symbol}: {age:.1f}s")
 
         # Vérifier la position (retourne None ou raison de fermeture)
         close_reason = await _position_manager.check_position(current_price)
@@ -243,13 +353,36 @@ async def _emit_position_update(position, current_price: float):
             else:
                 opened_at = position.timestamp
         
+        # 🔥 FIX PRÉCISION: Arrondir les prix selon price_precision ou tickSize
+        def round_price(price, precision=None, tick_size=None):
+            """Arrondir un prix selon la précision appropriée"""
+            if price is None:
+                return None
+            if tick_size:
+                # Arrondir au multiple de tick_size le plus proche
+                return round(price / tick_size) * tick_size
+            elif precision is not None:
+                return round(price, precision)
+            return price
+        
+        price_precision = getattr(position, 'price_precision', None)
+        tick_size = getattr(position, 'tick_size', getattr(position, 'tickSize', None))
+        
+        # Arrondir tous les prix
+        entry_rounded = round_price(position.entry, price_precision, tick_size)
+        current_price_rounded = round_price(current_price, price_precision, tick_size)
+        sl_rounded = round_price(position.sl, price_precision, tick_size)
+        tp_rounded = round_price(position.tp, price_precision, tick_size)
+        dynamic_sl = getattr(position, 'dynamic_sl', None)
+        dynamic_sl_rounded = round_price(dynamic_sl, price_precision, tick_size) if dynamic_sl else None
+        
         update_data = {
             'symbol': position.symbol,
             'direction': position.direction,
-            'entry': position.entry,
-            'current_price': current_price,
-            'sl': position.sl,
-            'tp': position.tp,
+            'entry': entry_rounded,
+            'current_price': current_price_rounded,
+            'sl': sl_rounded,
+            'tp': tp_rounded,
             'pnl': pnl,
             'pnl_usdt': pnl_usdt,
             'size': position.size,
@@ -257,28 +390,28 @@ async def _emit_position_update(position, current_price: float):
             'break_even_set': getattr(position, 'break_even_set', False),
             'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-            'dynamic_sl': getattr(position, 'dynamic_sl', None),  # 🔥 FIX: Trailing stop
+            'dynamic_sl': dynamic_sl_rounded,  # 🔥 FIX: Trailing stop arrondi
             'size_remaining': getattr(position, 'size_remaining', None),  # 🔥 FIX: Position restante
-            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None  # 🔥 FIX: Niveaux TP escalier
+            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None,  # 🔥 FIX: Niveaux TP escalier
+            'price_precision': getattr(position, 'price_precision', None),
+            'tickSize': getattr(position, 'tick_size', getattr(position, 'tickSize', None))
         }
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
         if _ws_manager:
             await _ws_manager.emit('position_update', update_data)
-        # 🔥 FIX: Émettre aussi status pour synchronisation temps réel complète
-        if _app_state and _ws_manager:
-            status_data = {
-                'is_scanning': _app_state.get('is_scanning', False),
-                'active_position': update_data,
-                'stats': _app_state.get('stats', {}),
-                'top_pairs': _app_state.get('top_pairs', [])
-            }
-            await _ws_manager.emit('status', status_data)
-
-        logger.debug(
-            f"📡 position_update émis: {position.symbol} | "
-            f"Prix: {current_price:.6f} | PnL: {pnl:.2f}%"
-        )
+            # 🔥 DEBUG: Log toutes les 10 émissions (pour éviter spam)
+            if not hasattr(_emit_position_update, '_emit_count'):
+                _emit_position_update._emit_count = 0
+            _emit_position_update._emit_count += 1
+            if _emit_position_update._emit_count % 10 == 0:
+                logger.info(
+                    f"📡 position_update émis ({_emit_position_update._emit_count}x): {position.symbol} | "
+                    f"Prix: {current_price:.6f} | PnL: {pnl:.2f}%"
+                )
+        # 🔥 FIX BUG PRIX FIGÉ: Ne PAS émettre status ici car il peut écraser position_update
+        # Le frontend écoute position_update pour les mises à jour de prix en temps réel
+        # status est émis séparément par d'autres endpoints (scanner, config, etc.)
 
     except Exception as e:
         logger.error(f"❌ Erreur émission position_update: {e}")

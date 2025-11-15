@@ -13,6 +13,9 @@ from config import WEBSOCKET_CONFIG, DEBUG_ENABLED
 
 logger = logging.getLogger(__name__)
 
+STALE_WS_PRICE_SECONDS = 2.0  # Durée max d'un prix WebSocket avant fallback
+MAX_WEBSOCKET_SYMBOLS = 30
+
 
 class HybridPriceProvider:
     """
@@ -39,6 +42,11 @@ class HybridPriceProvider:
         # 🔥 FIX: Callback pour émettre prix en temps réel via SocketIO
         self.socketio_emit_callback = None
         self.active_position_symbol = None
+
+        # 🔥 PRIORITÉ: WebSocket dédié au symbole en position
+        self.priority_ws_manager: Optional[WebSocketManager] = None
+        self.priority_symbol: Optional[str] = None
+        self._priority_lock = asyncio.Lock()
         
     def _handle_mexc_message(self, data: dict):
         """
@@ -131,6 +139,45 @@ class HybridPriceProvider:
             price_data = self.price_cache.get(symbol)
             # Retourner une copie pour éviter les mutations externes
             return dict(price_data) if price_data else None
+
+    async def _stop_priority_websocket(self):
+        """Arrêter le WebSocket prioritaire"""
+        async with self._priority_lock:
+            if self.priority_ws_manager:
+                try:
+                    await self.priority_ws_manager.disconnect()
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur arrêt WebSocket prioritaire: {e}")
+                self.priority_ws_manager = None
+            self.priority_symbol = None
+
+    async def ensure_priority_connection(self, symbol: Optional[str]):
+        """Garantir un flux dédié pour le symbole actif"""
+        async with self._priority_lock:
+            if not symbol:
+                await self._stop_priority_websocket()
+                return
+            if (
+                self.priority_symbol == symbol
+                and self.priority_ws_manager
+                and self.priority_ws_manager.connected
+            ):
+                return
+
+            await self._stop_priority_websocket()
+            self.priority_symbol = symbol
+
+            try:
+                self.priority_ws_manager = WebSocketManager(
+                    url=WEBSOCKET_CONFIG['url'],
+                    callback=self._handle_mexc_message
+                )
+                await self.priority_ws_manager.start()
+                await self.priority_ws_manager.subscribe_ticker(symbol)
+                logger.warning(f"🔥 WebSocket prioritaire démarré pour {symbol}")
+            except Exception as e:
+                logger.error(f"❌ Impossible de démarrer WebSocket prioritaire ({symbol}): {e}")
+                await self._stop_priority_websocket()
     
     async def start_websocket(self, symbols: list):
         """
@@ -139,18 +186,22 @@ class HybridPriceProvider:
         Args:
             symbols: Liste de symboles à monitorer (max 30)
         """
-        if len(symbols) > 30:
-            logger.warning(f"⚠️ Plus de 30 symboles ({len(symbols)}), seulement les 30 premiers seront monitorés")
-            symbols = symbols[:30]
+        if len(symbols) > MAX_WEBSOCKET_SYMBOLS:
+            logger.warning(
+                f"⚠️ Trop de symboles ({len(symbols)}), limitation à {MAX_WEBSOCKET_SYMBOLS}"
+            )
+            symbols = symbols[:MAX_WEBSOCKET_SYMBOLS]
         
         try:
-            # Créer WebSocket Manager
-            self.ws_manager = WebSocketManager(
-                url=WEBSOCKET_CONFIG['url'],
-                callback=self._handle_mexc_message
-            )
+            # 🔥 FIX: Réutiliser le WebSocketManager existant si possible
+            if not self.ws_manager:
+                # Créer WebSocket Manager seulement si inexistant
+                self.ws_manager = WebSocketManager(
+                    url=WEBSOCKET_CONFIG['url'],
+                    callback=self._handle_mexc_message
+                )
             
-            # Connecter
+            # Connecter (ou reconnecter)
             await self.ws_manager.start()
             
             # S'abonner aux symboles
@@ -191,8 +242,12 @@ class HybridPriceProvider:
     async def stop_websocket(self):
         """Arrêter WebSocket"""
         if self.ws_manager:
-            await self.ws_manager.disconnect()
-            self.ws_manager = None
+            try:
+                await self.ws_manager.disconnect()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
+            # 🔥 FIX: Ne pas mettre à None pour permettre la réutilisation
+            # self.ws_manager = None
             logger.info("🔌 WebSocket arrêté")
     
     async def get_price(self, symbol: str) -> Optional[Dict]:
@@ -220,21 +275,28 @@ class HybridPriceProvider:
         if self.use_websocket and self.ws_manager and self.ws_manager.connected:
             async with self.cache_lock:
                 if symbol in self.price_cache:
-                    if metrics:
-                        metrics.ws_price_count += 1
-                    return self.price_cache[symbol]
+                    # 🔥 DEBUG GEL: Vérifier âge du prix en cache
+                    cached_price = self.price_cache[symbol]
+                    age = time.time() - cached_price.get('timestamp', 0)
+                    if age > STALE_WS_PRICE_SECONDS:
+                        logger.warning(f"⚠️ Prix cache obsolète pour {symbol}: {age:.1f}s, fallback REST")
+                        # Marquer comme source REST pour déclencher redémarrage
+                        cached_price['source'] = 'rest_fallback_stale'
+                    else:
+                        if metrics:
+                            metrics.ws_price_count += 1
+                        cached_price['source'] = 'websocket'
+                        return cached_price
             
-            # Pas en cache mais WS connecté → attendre un peu
-            await asyncio.sleep(0.05)
-            async with self.cache_lock:
-                if symbol in self.price_cache:
-                    if metrics:
-                        metrics.ws_price_count += 1
-                    return self.price_cache[symbol]
+            # 🔥 FIX GEL: Pas en cache, NE PAS attendre si position active (latence critique)
+            # Faire fallback REST immédiatement
+            logger.warning(f"⚠️ {symbol} absent du cache WebSocket, fallback REST immédiat")
+        else:
+            # WebSocket non connecté
+            if DEBUG_ENABLED:
+                logger.debug(f"⚠️ WS non connecté, fallback REST pour {symbol}")
         
         # Fallback REST
-        if DEBUG_ENABLED:
-            logger.debug(f"⚠️ WS down ou pas de cache, fallback REST pour {symbol}")
         
         if metrics:
             metrics.ws_rest_fallback_count += 1
@@ -260,7 +322,8 @@ class HybridPriceProvider:
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),
                     "volume24": ticker.get("quoteVolume", 0),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "source": "rest"  # Marquer source REST
                 }
         except Exception as e:
             if DEBUG_ENABLED:

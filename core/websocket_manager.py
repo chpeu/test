@@ -5,8 +5,9 @@ Remplace Socket.IO pour des performances optimales
 import asyncio
 import json
 import logging
-from typing import Dict, Set, Optional
+from collections import UserDict
 from datetime import datetime
+from typing import Any, Dict, Set, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
@@ -50,11 +51,28 @@ class WebSocketManager:
                 room_connections.discard(websocket)
         logger.info(f"❌ WebSocket déconnecté (total: {len(self.active_connections)})")
     
+    def _json_dump(self, payload: dict) -> str:
+        return json.dumps(payload, default=self._json_default, ensure_ascii=False)
+
+    def _json_default(self, obj: Any):  # pragma: no cover - utility
+        if isinstance(obj, UserDict):
+            return dict(obj)
+        if isinstance(obj, set):
+            return list(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump()
+        try:
+            return dict(obj)
+        except Exception:
+            return str(obj)
+
     async def send_personal_message(self, message: dict, websocket: WebSocket):
         """Envoyer un message à un WebSocket spécifique"""
         try:
             if websocket in self.active_connections:
-                await websocket.send_text(json.dumps(message))
+                await websocket.send_text(self._json_dump(message))
         except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
             # 🔥 FIX: Déconnexions normales - nettoyer silencieusement
             await self.disconnect(websocket)
@@ -68,7 +86,7 @@ class WebSocketManager:
             return
         
         # 🔥 OPTIMISATION: Créer le message JSON une seule fois
-        message_json = json.dumps(message)
+        message_json = self._json_dump(message)
         
         # 🔥 FIX: Créer une copie de la liste pour éviter les modifications pendant l'itération
         connections_to_send = list(self.active_connections)
@@ -215,7 +233,7 @@ class WebSocketManager:
                 'data': data,
                 'timestamp': datetime.now().isoformat()
             }
-            message_json = json.dumps(message)
+            message_json = self._json_dump(message)
             
             # 🔥 OPTIMISATION: Envoyer en parallèle avec asyncio.gather
             async def send_to_connection(connection):

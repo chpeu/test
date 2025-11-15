@@ -36,6 +36,12 @@ except ImportError:
     print("❌ openpyxl non installé. Installez-le avec: pip install openpyxl")
     sys.exit(1)
 
+try:
+    from database.pg import get_connection
+    HAS_APP_POOL = True
+except Exception:  # pragma: no cover - script fallback path
+    HAS_APP_POOL = False
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -59,6 +65,7 @@ class DataLoggerExporter:
 
     def __init__(
         self,
+        *,
         connection_string: Optional[str] = None,
         host: Optional[str] = None,
         port: Optional[int] = None,
@@ -77,11 +84,11 @@ class DataLoggerExporter:
             user: Utilisateur
             password: Mot de passe
         """
-        # Construire connection string si non fourni
+        self._custom_connection = any([connection_string, host, port, database, user, password])
+
         if connection_string:
             self.connection_string = connection_string
         else:
-            # Utiliser variables d'environnement ou paramètres
             host = host or os.getenv('POSTGRES_HOST', 'localhost')
             port = port or int(os.getenv('POSTGRES_PORT', '5432'))
             database = database or os.getenv('POSTGRES_DB', 'trade_cursor_ml')
@@ -94,11 +101,16 @@ class DataLoggerExporter:
             )
 
         self.conn = None
+        self._conn_ctx = None
 
     def connect(self) -> bool:
         """Connecter à PostgreSQL"""
         try:
-            self.conn = psycopg2.connect(self.connection_string)
+            if not self._custom_connection and HAS_APP_POOL:
+                self._conn_ctx = get_connection()
+                self.conn = self._conn_ctx.__enter__()
+            else:
+                self.conn = psycopg2.connect(self.connection_string)
             logger.info("✅ Connecté à PostgreSQL")
             return True
         except Exception as e:
@@ -107,7 +119,12 @@ class DataLoggerExporter:
 
     def disconnect(self):
         """Déconnecter de PostgreSQL"""
-        if self.conn:
+        if self._conn_ctx:
+            self._conn_ctx.__exit__(None, None, None)
+            self._conn_ctx = None
+            self.conn = None
+            logger.info("🔌 Connexion restituée au pool")
+        elif self.conn:
             self.conn.close()
             logger.info("🔌 Déconnecté de PostgreSQL")
 

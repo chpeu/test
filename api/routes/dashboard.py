@@ -4,20 +4,23 @@ Routes API pour le dashboard - Gestion du statut et du contrôle de l'applicatio
 
 import asyncio
 import logging
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, Depends, Security
 from fastapi.responses import JSONResponse
 from typing import Optional, Dict, Any
 import time
 
 from api.auth import verify_api_key
+from app.dependencies import get_app_state as dependency_app_state, get_ws_manager as dependency_ws_manager
 
 logger = logging.getLogger(__name__)
 
-# Variables globales injectées par main.py
+# Variables globales injectées (scheduler/position manager)
 _scheduler = None
 _position_manager = None
-_app_state = None
-_ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif uniquement
+
+# Overrides pour compatibilité historique (sinon dependencies.py fournit les singletons)
+_app_state_override = None
+_ws_manager_override = None
 
 
 def set_scheduler(scheduler):
@@ -33,22 +36,30 @@ def set_position_manager(position_manager):
 
 
 def set_app_state(app_state):
-    """Injecter l'état de l'application"""
-    global _app_state
-    _app_state = app_state
+    """Injecter l'état de l'application (legacy)"""
+    global _app_state_override
+    _app_state_override = app_state
 
 
 def set_websocket_manager(ws_manager):
-    """🔥 MIGRATION COMPLÈTE: Injecter l'instance WebSocketManager (WebSocket natif uniquement)"""
-    global _ws_manager
-    _ws_manager = ws_manager
+    """Injecter l'instance WebSocketManager (legacy)"""
+    global _ws_manager_override
+    _ws_manager_override = ws_manager
 
 
 def set_socketio(sio):
     """🔥 LEGACY: Alias pour compatibilité (déprécié - utiliser set_websocket_manager)"""
-    global _ws_manager
+    global _ws_manager_override
     # Si c'est un ws_manager, l'utiliser
-    _ws_manager = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
+    _ws_manager_override = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
+
+
+def _get_app_state_dependency(app_state: Dict = Depends(dependency_app_state)) -> Dict:
+    return _app_state_override or app_state
+
+
+def _get_ws_manager_dependency(ws=Depends(dependency_ws_manager)):
+    return _ws_manager_override or ws
 
 
 # Créer le router
@@ -56,7 +67,7 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 
 
 @router.get("/status")
-async def get_status():
+async def get_status(app_state: Dict = Depends(_get_app_state_dependency)):
     """
     GET /api/status
     Récupérer l'état global de l'application
@@ -71,18 +82,18 @@ async def get_status():
         "trade_history": [...]
     }
     """
-    if not _app_state:
+    if not app_state:
         return JSONResponse({'error': 'App state not available'}, status_code=503)
 
     try:
-        return JSONResponse(_app_state)
+        return JSONResponse(dict(app_state))
     except Exception as e:
         logger.error(f"Erreur récupération statut: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
 @router.get("/state")
-async def get_complete_state():
+async def get_complete_state(app_state: Dict = Depends(_get_app_state_dependency)):
     """
     GET /api/state
     Récupérer l'état complet de l'application
@@ -96,7 +107,7 @@ async def get_complete_state():
     """
     # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
     # Note: time est déjà importé au niveau du module (ligne 10)
-    if not _app_state:
+    if not app_state:
         return JSONResponse({
             'success': False,
             'error': 'App state not available',
@@ -119,10 +130,10 @@ async def get_complete_state():
 
         # Récupérer stats
         stats_dict = {
-            'total_trades': _app_state.get('stats', {}).get('total_trades', 0),
-            'wins': _app_state.get('stats', {}).get('wins', 0),
-            'losses': _app_state.get('stats', {}).get('losses', 0),
-            'winrate': _app_state.get('stats', {}).get('winrate', 0.0)
+            'total_trades': app_state.get('stats', {}).get('total_trades', 0),
+            'wins': app_state.get('stats', {}).get('wins', 0),
+            'losses': app_state.get('stats', {}).get('losses', 0),
+            'winrate': app_state.get('stats', {}).get('winrate', 0.0)
         }
 
         from config import TRADING_CONFIG
@@ -145,8 +156,8 @@ async def get_complete_state():
                 'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
             },
             'scanner': {
-                'is_scanning': _app_state.get('is_scanning', False),
-                'top_pairs': _app_state.get('top_pairs', [])
+                'is_scanning': app_state.get('is_scanning', False),
+                'top_pairs': app_state.get('top_pairs', [])
             },
             'position': {
                 'active': active_position_dict is not None,
@@ -173,7 +184,11 @@ async def get_complete_state():
 
 
 @router.post("/start")
-async def start_scanner(user: dict = Security(verify_api_key)):
+async def start_scanner(
+    user: dict = Security(verify_api_key),
+    app_state: Dict = Depends(_get_app_state_dependency),
+    ws_manager=Depends(_get_ws_manager_dependency),
+):
     """
     POST /api/start
     Démarrer le scanner et le scheduler
@@ -187,7 +202,7 @@ async def start_scanner(user: dict = Security(verify_api_key)):
     """
     # 🔥 FIX: Initialiser les instances si nécessaire
     try:
-        if not _scheduler or not _app_state:
+        if not _scheduler or not app_state:
             # Essayer d'initialiser les instances
             try:
                 from main import init_instances
@@ -196,7 +211,7 @@ async def start_scanner(user: dict = Security(verify_api_key)):
                 logger.warning(f"Impossible d'initialiser les instances: {e}")
         
         # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
-        if not _scheduler or not _app_state:
+        if not _scheduler or not app_state:
             return JSONResponse({
                 'success': False,
                 'status': 'error',
@@ -206,23 +221,22 @@ async def start_scanner(user: dict = Security(verify_api_key)):
 
         try:
             # 🔥 FIX: Démarrer le scheduler si disponible
-            if _scheduler and not _app_state.get('is_scanning', False):
+            if _scheduler and not app_state.get('is_scanning', False):
                 _scheduler.start()
                 logger.info("✅ Scanner démarré via /api/start")
 
-            if _app_state:
-                _app_state['is_scanning'] = True
+            app_state['is_scanning'] = True
 
             # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif uniquement
-            if _ws_manager:
+            if ws_manager:
                 status_data = {
                     'is_scanning': True,
-                    'active_position': _app_state.get('active_position'),
-                    'stats': _app_state.get('stats', {}),
-                    'top_pairs': _app_state.get('top_pairs', [])
+                    'active_position': app_state.get('active_position'),
+                    'stats': app_state.get('stats', {}),
+                    'top_pairs': app_state.get('top_pairs', [])
                 }
-                await _ws_manager.emit('status', status_data)
-                await _ws_manager.emit('scan_started', {'timestamp': time.time()})
+                await ws_manager.emit('status', status_data)
+                await ws_manager.emit('scan_started', {'timestamp': time.time()})
 
             return JSONResponse({
                 'success': True,
@@ -249,7 +263,11 @@ async def start_scanner(user: dict = Security(verify_api_key)):
 
 
 @router.post("/stop")
-async def stop_scanner(user: dict = Security(verify_api_key)):
+async def stop_scanner(
+    user: dict = Security(verify_api_key),
+    app_state: Dict = Depends(_get_app_state_dependency),
+    ws_manager=Depends(_get_ws_manager_dependency),
+):
     """
     POST /api/stop
     Arrêter le scanner et le scheduler
@@ -282,22 +300,21 @@ async def stop_scanner(user: dict = Security(verify_api_key)):
 
         try:
             # 🔥 FIX: Arrêter le scheduler si disponible
-            if _scheduler and _app_state.get('is_scanning', False):
+            if _scheduler and app_state.get('is_scanning', False):
                 _scheduler.stop()
                 logger.info("⏸️ Scanner arrêté via /api/stop")
 
-            if _app_state:
-                _app_state['is_scanning'] = False
+            app_state['is_scanning'] = False
 
             # 🔥 MIGRATION COMPLÈTE: Émettre l'état via WebSocket natif uniquement
-            if _ws_manager:
+            if ws_manager:
                 status_data = {
                     'is_scanning': False,
-                    'active_position': _app_state.get('active_position'),
-                    'stats': _app_state.get('stats', {}),
-                    'top_pairs': _app_state.get('top_pairs', [])
+                    'active_position': app_state.get('active_position'),
+                    'stats': app_state.get('stats', {}),
+                    'top_pairs': app_state.get('top_pairs', [])
                 }
-                await _ws_manager.emit('status', status_data)
+                await ws_manager.emit('status', status_data)
 
             return JSONResponse({
                 'success': True,

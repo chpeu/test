@@ -19,11 +19,13 @@ from .dashboard import (
     set_socketio as set_socketio_dashboard,
     set_websocket_manager as set_websocket_manager_dashboard
 )
+from .datalogger import router as datalogger_router
 
 # Créer un router combiné pour compatibilité avec main.py
 router = APIRouter()
 router.include_router(scanner_router)
 router.include_router(dashboard_router)
+router.include_router(datalogger_router)
 
 # Variables pour les dépendances injectées
 _analytics_db = None
@@ -69,6 +71,7 @@ __all__ = [
     'router',
     'scanner_router',
     'dashboard_router',
+    'datalogger_router',
     'set_scanner',
     'set_analyzer',
     'set_price_provider',

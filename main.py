@@ -21,6 +21,10 @@ from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
+from app.factory import create_app
+from app.runtime import app_state, ws_manager
+from app.schemas import DashboardSummary, DataloggerResetResponse
+from database.pg import get_cursor
 from core.websocket_manager import get_websocket_manager
 import time
 # 🔥 FIX: Import colorama pour les couleurs dans les logs
@@ -74,7 +78,7 @@ logger = logging.getLogger(__name__)
 # (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
 # Initialisation FastAPI
-app = FastAPI(title="Trade Cursor v7.0")
+app = create_app()
 
 
 # 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
@@ -120,75 +124,7 @@ async def global_exception_handler(request, exc):
     }, status_code=500)
 # 🔥 CLEANUP: Jinja2Templates supprimé - Frontend Svelte gère l'interface
 
-# 🔥 FIX: Middleware pour logger toutes les requêtes et réponses
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
-
-class LoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        import time
-        start_time = time.time()
-        path = request.url.path
-        
-        logger.info(f"📥 Requête entrante: {request.method} {path}")
-        
-        try:
-            response = await call_next(request)
-            process_time = time.time() - start_time
-            logger.info(f"📤 Réponse: {request.method} {path} - {response.status_code} ({process_time:.3f}s)")
-            return response
-        except Exception as e:
-            process_time = time.time() - start_time
-            logger.error(f"❌ Exception dans middleware pour {path}: {e} ({process_time:.3f}s)", exc_info=True)
-            raise
-
-app.add_middleware(LoggingMiddleware)
-
-# 🔒 Security Middleware: Ajout des headers de sécurité
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        response = await call_next(request)
-
-        # Content Security Policy
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "connect-src 'self' ws: wss:; "
-            "font-src 'self'; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self';"
-        )
-
-        # Autres headers de sécurité
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        return response
-
-app.add_middleware(SecurityHeadersMiddleware)
-
-# 🔥 CLEANUP: Fichiers statiques supprimés - Frontend Svelte gère l'interface
-# Plus besoin de servir des fichiers statiques, le frontend Svelte est indépendant
-
-if api_router:
-    app.include_router(api_router)
-    logger.info("✅ API REST routes incluses: /api/*")
-
-# 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
-# Socket.IO complètement retiré pour performances maximales
-
-# 🔥 WebSocket Natif - Instance globale
-ws_manager = get_websocket_manager()
-
-# 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les routes
-if set_websocket_manager_routes:
-    set_websocket_manager_routes(ws_manager)
-    logger.info("✅ ws_manager injecté dans API routes")
+# middlewares & router handled in app.factory
 
 from contextlib import asynccontextmanager
 
@@ -375,22 +311,6 @@ def load_trade_history():
         logger.error(f"❌ Erreur chargement historique: {e}")
         app_state['trade_history'] = []
 
-# Global state
-app_state = {
-    'is_scanning': False,
-    'active_position': None,
-    'stats': {
-        'total_trades': 0,
-        'wins': 0,
-        'losses': 0,
-        'winrate': 0.0
-    },
-    'top_pairs': [],
-    'logs': [],
-    'trade_history': []  # 🔥 PHASE 4: Historique des trades
-}
-
-
 async def _run_initial_top_pairs_scan():
     """Lancer le scan initial sans bloquer la boucle d'événements"""
     init_instances()
@@ -417,6 +337,8 @@ async def _run_initial_top_pairs_scan():
 
         if price_provider:
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+            symbols = ensure_active_symbol_in_list(symbols)
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
@@ -489,6 +411,8 @@ async def scanner_loop_callback():
                 # 🔥 JOUR 3: Démarrer WebSocket pour les top pairs
                 if price_provider and top_pairs:
                     symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                    # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+                    symbols = ensure_active_symbol_in_list(symbols)
                     if symbols:
                         try:
                             await price_provider.start_websocket(symbols)
@@ -895,19 +819,35 @@ async def scanner_loop_callback():
                                         logger.error(f"❌ ERREUR: app_state['active_position'] a été modifié pendant l'ouverture !")
                                         break
                                     
-                                    # 🔥 FIX: S'abonner au WebSocket pour prix en temps réel
-                                    if price_provider and price_provider.ws_manager and price_provider.ws_manager.connected:
+                                    # 🔥 FIX GEL: Redémarrer WebSocket avec symbole actif en priorité
+                                    if price_provider:
                                         try:
-                                            await price_provider.ws_manager.subscribe_ticker(symbol)
-                                            logger.debug(f"📡 WebSocket: Abonné à {symbol} pour prix temps réel")
+                                            # Récupérer les top pairs et forcer l'ajout du symbole actif
+                                            symbols = []
+                                            if app_state.get('top_pairs'):
+                                                symbols = [p.get('symbol', '') for p in app_state['top_pairs'][:30] if p.get('symbol')]
                                             
-                                            # 🔥 FIX: Configurer callback pour suivre position active
-                                            # Le WebSocket met à jour le cache en temps réel
-                                            # La boucle de check à 0.5s récupère le prix du cache et émet position_update
+                                            # Forcer le symbole actif en premier
+                                            symbols = ensure_active_symbol_in_list(symbols)
+                                            if not symbols:
+                                                symbols = [symbol]  # Au minimum le symbole actif
+                                            
+                                            # Arrêter proprement l'ancien WebSocket
+                                            try:
+                                                await price_provider.stop_websocket()
+                                            except Exception as e:
+                                                logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
+                                            
+                                            # Redémarrer WebSocket
+                                            await price_provider.start_websocket(symbols)
+                                            logger.warning(f"🔥 WebSocket redémarré avec {symbol} en priorité : {len(symbols)} symboles")
+                                            
+                                            # Configurer callback pour suivre position active
                                             price_provider.set_socketio_callback(None, symbol)
-                                            logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
-                                            logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
+                                            logger.error(f"❌ Erreur redémarrage WebSocket pour {symbol}: {e}")
+                                            import traceback
+                                            logger.error(f"Traceback: {traceback.format_exc()}")
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     await add_log('INFO', 'Position ouverte automatiquement', 
@@ -915,7 +855,13 @@ async def scanner_loop_callback():
                                     
                                     # 🔥 FIX: Émettre l'événement UNE SEULE FOIS avec gestion d'erreur pour éviter les déconnexions
                                     try:
-                                        await ws_manager.emit('position_opened', position.to_dict())
+                                        position_dict = position.to_dict()
+                                        # Ajouter opened_at si manquant
+                                        if 'opened_at' not in position_dict and hasattr(position, 'start_time'):
+                                            from datetime import datetime
+                                            position_dict['opened_at'] = datetime.fromtimestamp(position.start_time).isoformat()
+                                        await ws_manager.emit('position_opened', position_dict)
+                                        logger.info(f"📡 position_opened émis: {symbol}")
                                     except Exception as e:
                                         logger.warning(f"⚠️ Erreur émission position_opened: {e}")
                                     
@@ -938,6 +884,11 @@ async def scanner_loop_callback():
                                             
                                             # 🔥 FIX: Gestion d'erreur pour éviter les déconnexions WebSocket
                                             try:
+                                                from datetime import datetime
+                                                opened_at = None
+                                                if hasattr(position, 'start_time') and position.start_time:
+                                                    opened_at = datetime.fromtimestamp(position.start_time).isoformat()
+                                                
                                                 await ws_manager.emit('position_update', {
                                                     'symbol': position.symbol,
                                                     'direction': position.direction,
@@ -948,10 +899,13 @@ async def scanner_loop_callback():
                                                     'pnl': pnl,
                                                     'pnl_usdt': pnl_usdt,
                                                     'size': position.size,
+                                                    'opened_at': opened_at,
                                                     'break_even_set': position.break_even_set,
-                                                    'partial_tp_sold': position.partial_tp_sold
+                                                    'partial_tp_sold': position.partial_tp_sold,
+                                                    'price_precision': getattr(position, 'price_precision', None),
+                                                    'tickSize': getattr(position, 'tick_size', getattr(position, 'tickSize', None))
                                                 })
-                                                logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                                logger.info(f"📡 position_update émis immédiatement: {symbol} @ {current_price:.6f} | PnL: {pnl:.2f}%")
                                             except Exception as e:
                                                 logger.warning(f"⚠️ Erreur émission position_update: {e}")
                                     except Exception as e:
@@ -1546,6 +1500,15 @@ async def position_check_loop_callback():
     """Callback appelé toutes les 2 secondes pour vérifier la position"""
     init_instances()
     
+    # 🔥 FIX: Appeler le vrai callback qui contient la logique de diagnostic WebSocket
+    try:
+        from core.callbacks.position_check_loop import position_check_loop_callback as external_callback
+        await external_callback()
+        return  # Le callback externe gère tout
+    except ImportError as e:
+        logger.warning(f"⚠️ Impossible d'importer le callback externe: {e}")
+    
+    # Fallback: logique locale (si module externe indisponible)
     # Vérifier si on a une position active
     if not position_manager or not position_manager.active_position:
         return
@@ -1695,6 +1658,32 @@ async def position_check_loop_callback():
         await add_log('ERROR', 'Erreur position check', str(e))
 
 
+def ensure_active_symbol_in_list(symbols: list) -> list:
+    """
+    🔥 FIX GEL: S'assurer que le symbole de la position active est TOUJOURS dans la liste
+    Cette fonction doit être appelée AVANT chaque start_websocket() pour éviter de perdre
+    l'abonnement au symbole actif lors des refresh de scalability.
+    """
+    active_symbol = None
+    
+    # Chercher le symbole actif
+    if position_manager and position_manager.active_position:
+        active_symbol = position_manager.active_position.symbol
+    elif app_state.get('active_position'):
+        pos = app_state['active_position']
+        active_symbol = pos.symbol if hasattr(pos, 'symbol') else pos.get('symbol') if isinstance(pos, dict) else None
+    
+    # Ajouter le symbole actif s'il n'est pas dans la liste
+    if active_symbol:
+        if active_symbol not in symbols:
+            symbols = [active_symbol] + symbols  # Mettre en premier
+            logger.warning(f"🔥 Position active sur {active_symbol} : ajout forcé au WebSocket")
+        else:
+            logger.debug(f"✅ Position active sur {active_symbol} : déjà dans les symboles WebSocket")
+    
+    return symbols
+
+
 async def scalability_refresh_loop_callback():
     """Callback appelé toutes les 90 secondes pour rafraîchir la liste des top pairs"""
     if not app_state['is_scanning']:
@@ -1731,6 +1720,10 @@ async def scalability_refresh_loop_callback():
             
             # Démarrer avec les nouvelles paires
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            
+            # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+            symbols = ensure_active_symbol_in_list(symbols)
+            
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
@@ -2035,11 +2028,22 @@ def init_instances():
         except ImportError:
             pass  # Callback module optionnel
         
-        # 🔥 FIX: Injecter ws_manager dans position_check_loop
+        # 🔥 FIX: Injecter toutes les instances dans position_check_loop
         try:
-            from core.callbacks.position_check_loop import set_websocket_manager
-            if set_websocket_manager:
-                set_websocket_manager(ws_manager)
+            import core.callbacks.position_check_loop as pcl_module
+            # Injecter ws_manager
+            if hasattr(pcl_module, 'set_websocket_manager'):
+                pcl_module.set_websocket_manager(ws_manager)
+            # Injecter position_manager (variable globale déjà initialisée)
+            if hasattr(pcl_module, 'set_position_manager') and position_manager:
+                pcl_module.set_position_manager(position_manager)
+            # Injecter price_provider (variable globale déjà initialisée)
+            if hasattr(pcl_module, 'set_price_provider') and price_provider:
+                pcl_module.set_price_provider(price_provider)
+            # Injecter app_state
+            if hasattr(pcl_module, 'set_app_state'):
+                pcl_module.set_app_state(app_state)
+            logger.info("✅ Instances injectées dans position_check_loop")
         except ImportError:
             pass  # Callback module optionnel
 
@@ -2633,6 +2637,9 @@ async def api_start_websocket():
         
         if not symbols:
             return JSONResponse({'error': 'Aucun symbole valide trouvé'}, status_code=400)
+        
+        # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+        symbols = ensure_active_symbol_in_list(symbols)
         
         # Démarrer WebSocket
         await price_provider.start_websocket(symbols)
@@ -4355,22 +4362,24 @@ async def get_dashboard_summary():
     if position_manager and position_manager.config:
         recovery_mode_active = position_manager.config.recovery_mode_active
     
-    return JSONResponse({
-        'total_trades': total_trades,
-        'wins': wins,
-        'losses': losses,
-        'winrate': round(winrate, 2),
-        'profit_total': round(profit_total, 4),
-        'profit_today': round(profit_today, 4),
-        'drawdown': round(max_dd_info.get('current_dd', 0), 2),  # Drawdown actuel (%)
-        'drawdown_max': max_dd_info.get('max_dd', 0),  # Drawdown max historique (%)
-        'drawdown_max_date': max_dd_info.get('max_dd_date'),  # Date du max drawdown
-        'current_peak': max_dd_info.get('current_peak', 0),  # Pic actuel (%)
-        'win_streak': win_streak,
-        'loss_streak': loss_streak,
-        'recovery_mode_active': recovery_mode_active,
-        'equity_curve': equity_curve[-100:]  # Derniers 100 points
-    })
+    summary = DashboardSummary(
+        total_trades=total_trades,
+        wins=wins,
+        losses=losses,
+        winrate=round(winrate, 2),
+        profit_total=round(profit_total, 4),
+        profit_today=round(profit_today, 4),
+        drawdown=round(max_dd_info.get('current_dd', 0), 2),
+        drawdown_max=max_dd_info.get('max_dd', 0),
+        drawdown_max_date=max_dd_info.get('max_dd_date'),
+        current_peak=max_dd_info.get('current_peak', 0),
+        win_streak=win_streak,
+        loss_streak=loss_streak,
+        recovery_mode_active=recovery_mode_active,
+        equity_curve=equity_curve[-100:],
+    )
+
+    return JSONResponse(summary.model_dump())
 
 @app.get("/api/dashboard/trades-history")
 async def get_trades_history(limit: int = 50):
@@ -4449,297 +4458,19 @@ async def export_trades_csv(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
-
-@app.get("/api/datalogger/export/excel")
-async def export_datalogger_excel(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-):
-    """
-    🔥 Export des données du datalogger en Excel (.xlsx)
-    
-    Args:
-        start_date: Date début (YYYY-MM-DD) - optionnel
-        end_date: Date fin (YYYY-MM-DD) - optionnel
-    
-    Returns:
-        Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
-    """
-    try:
-        from core.callbacks.scanner_loop import get_pg_datalogger
-        pg_datalogger = get_pg_datalogger()
-        
-        if not pg_datalogger or not pg_datalogger.enabled:
-            return JSONResponse(
-                {"error": "PostgreSQL DataLogger non disponible"},
-                status_code=503
-            )
-        
-        # Vérifier si openpyxl est installé
-        try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment
-            from openpyxl.utils import get_column_letter
-        except ImportError:
-            return JSONResponse(
-                {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
-                status_code=500
-            )
-        
-        conn = pg_datalogger._get_connection()
-        if not conn:
-            return JSONResponse(
-                {"error": "Impossible de se connecter à PostgreSQL"},
-                status_code=503
-            )
-        
-        try:
-            from psycopg2.extras import RealDictCursor
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Créer un workbook Excel
-            wb = Workbook()
-            wb.remove(wb.active)  # Supprimer la feuille par défaut
-            
-            # ===== ONGLET 1: SCANS =====
-            ws_scans = wb.create_sheet("Scans")
-            query_scans = """
-                SELECT 
-                    timestamp, symbol, price, scan_duration_ms,
-                    rsi_1m, rsi_5m, score_total,
-                    is_opportunity, opportunity_direction, reject_reason,
-                    trend_direction, trend_strength
-                FROM scan_logs
-                WHERE 1=1
-            """
-            params = []
-            if start_date:
-                query_scans += " AND timestamp >= %s"
-                params.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_scans += " AND timestamp <= %s"
-                params.append(f"{end_date} 23:59:59")
-            query_scans += " ORDER BY timestamp DESC LIMIT 10000"
-            
-            cursor.execute(query_scans, params)
-            scans = cursor.fetchall()
-            
-            if scans:
-                # En-têtes
-                headers = list(scans[0].keys())
-                ws_scans.append(headers)
-                
-                # Style en-têtes
-                header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                header_font = Font(bold=True, color="FFFFFF")
-                for cell in ws_scans[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                # Données
-                for row in scans:
-                    ws_scans.append([row.get(h) for h in headers])
-                
-                # Ajuster largeur colonnes
-                for col in range(1, len(headers) + 1):
-                    ws_scans.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 2: OPPORTUNITIES =====
-            ws_opps = wb.create_sheet("Opportunities")
-            query_opps = """
-                SELECT 
-                    timestamp, symbol, direction, setup_score,
-                    entry_price, tp_price, sl_price,
-                    conditions_matched, confirmed_by
-                FROM opportunities
-                WHERE 1=1
-            """
-            params_opps = []
-            if start_date:
-                query_opps += " AND timestamp >= %s"
-                params_opps.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_opps += " AND timestamp <= %s"
-                params_opps.append(f"{end_date} 23:59:59")
-            query_opps += " ORDER BY timestamp DESC LIMIT 10000"
-            
-            cursor.execute(query_opps, params_opps)
-            opportunities = cursor.fetchall()
-            
-            if opportunities:
-                headers = list(opportunities[0].keys())
-                ws_opps.append(headers)
-                
-                for cell in ws_opps[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in opportunities:
-                    ws_opps.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_opps.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 3: TRADES =====
-            ws_trades = wb.create_sheet("Trades")
-            query_trades = """
-                SELECT 
-                    timestamp_entry, timestamp_exit, symbol, direction,
-                    entry_price, exit_price, size_usdt,
-                    gross_pnl_usdt, net_pnl_usdt, net_pnl_pct,
-                    exit_reason, duration_seconds, win
-                FROM trades
-                WHERE 1=1
-            """
-            params_trades = []
-            if start_date:
-                query_trades += " AND timestamp_entry >= %s"
-                params_trades.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_trades += " AND timestamp_entry <= %s"
-                params_trades.append(f"{end_date} 23:59:59")
-            query_trades += " ORDER BY timestamp_entry DESC LIMIT 10000"
-            
-            cursor.execute(query_trades, params_trades)
-            trades = cursor.fetchall()
-            
-            if trades:
-                headers = list(trades[0].keys())
-                ws_trades.append(headers)
-                
-                for cell in ws_trades[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in trades:
-                    ws_trades.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_trades.column_dimensions[get_column_letter(col)].width = 15
-            
-            cursor.close()
-            pg_datalogger._return_connection(conn)
-            
-            # Sauvegarder dans un buffer
-            from io import BytesIO
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
-            
-            filename = f"datalogger_export_{start_date}_{end_date}.xlsx" if (start_date and end_date) else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
-            
-            return StreamingResponse(
-                output,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
-            )
-            
-        except Exception as e:
-            pg_datalogger._return_connection(conn)
-            logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
-            return JSONResponse(
-                {"error": f"Erreur export Excel: {str(e)}"},
-                status_code=500
-            )
-            
-    except Exception as e:
-        logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
-        return JSONResponse(
-            {"error": f"Erreur export Excel: {str(e)}"},
-            status_code=500
-        )
-
-
-@app.delete("/api/datalogger/reset")
-async def reset_datalogger_db():
-    """
-    🔥 Reset complet de la base de données PostgreSQL du datalogger
-    
-    ATTENTION: Cette opération supprime TOUTES les données (scans, opportunities, trades, etc.)
-    
-    Returns:
-        Message de confirmation
-    """
-    try:
-        from core.callbacks.scanner_loop import get_pg_datalogger
-        pg_datalogger = get_pg_datalogger()
-        
-        if not pg_datalogger or not pg_datalogger.enabled:
-            return JSONResponse(
-                {"error": "PostgreSQL DataLogger non disponible"},
-                status_code=503
-            )
-        
-        conn = pg_datalogger._get_connection()
-        if not conn:
-            return JSONResponse(
-                {"error": "Impossible de se connecter à PostgreSQL"},
-                status_code=503
-            )
-        
-        try:
-            cursor = conn.cursor()
-            
-            # Supprimer toutes les données (dans l'ordre pour respecter les contraintes FK)
-            tables = [
-                'trades',
-                'opportunities',
-                'scan_logs',
-                'scan_errors',
-                'market_context',
-                'config_snapshots',
-                'trading_sessions'
-            ]
-            
-            deleted_counts = {}
-            for table in tables:
-                cursor.execute(f"DELETE FROM {table}")
-                deleted_counts[table] = cursor.rowcount
-            
-            conn.commit()
-            cursor.close()
-            pg_datalogger._return_connection(conn)
-            
-            total_deleted = sum(deleted_counts.values())
-            logger.warning(f"🗑️  Base de données PostgreSQL resetée: {total_deleted} enregistrements supprimés")
-            
-            return JSONResponse({
-                "success": True,
-                "message": f"Base de données resetée avec succès",
-                "deleted": deleted_counts,
-                "total_deleted": total_deleted
-            })
-            
-        except Exception as e:
-            conn.rollback()
-            pg_datalogger._return_connection(conn)
-            logger.error(f"❌ Erreur reset DB: {e}", exc_info=True)
-            return JSONResponse(
-                {"error": f"Erreur reset DB: {str(e)}"},
-                status_code=500
-            )
-            
-    except Exception as e:
-        logger.error(f"❌ Erreur reset DB: {e}", exc_info=True)
-        return JSONResponse(
-            {"error": f"Erreur reset DB: {str(e)}"},
-            status_code=500
-        )
-
-
 if __name__ == '__main__':
     import uvicorn
     import socket
     
-    # 🔥 PHASE 4: Charger l'historique au démarrage
+    # PHASE 4: Charger l'historique au démarrage
     load_trade_history()
     
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     
+    logger.info(" Trade Cursor v7.0 démarré")
+    logger.info(" FastAPI (async natif) + WebSocket natif")
+    logger.info(" Backend API uniquement - Frontend Svelte gère l'interface")
     logger.info("🚀 Trade Cursor v7.0 démarré")
     logger.info("📊 FastAPI (async natif) + WebSocket natif")
     logger.info("🔥 Backend API uniquement - Frontend Svelte gère l'interface")

@@ -423,16 +423,32 @@ class PositionManager:
                     # Essayer de récupérer depuis info
                     price_precision = market_info.get('info', {}).get('pricePrecision')
                 
-                # Essayer de récupérer tickSize
-                tick_size = market_info.get('precision', {}).get('amount')
+                # Essayer de récupérer tickSize côté prix (pas amount)
+                tick_size = market_info.get('info', {}).get('tickSize')
                 if tick_size is None:
-                    tick_size = market_info.get('info', {}).get('tickSize')
-                if tick_size is None:
+                    tick_size = (
+                        market_info
+                        .get('limits', {})
+                        .get('price', {})
+                        .get('min')
+                    )
+                if tick_size is None and price_precision is not None:
                     # Calculer depuis pricePrecision si disponible
-                    if price_precision is not None:
-                        tick_size = 10 ** (-price_precision)
+                    tick_size = 10 ** (-price_precision)
         except Exception as e:
             logger.warning(f"⚠️ Impossible de récupérer la précision pour {symbol}: {e}")
+        
+        # 🔥 FIX: Si pas de précision trouvée, déduire depuis le prix d'entrée
+        if price_precision is None and tick_size is None:
+            if entry < 0.01:
+                price_precision = 6  # Très petits prix: 6 décimales
+            elif entry < 1:
+                price_precision = 4  # Petits prix: 4 décimales
+            elif entry < 1000:
+                price_precision = 2  # Prix moyens: 2 décimales
+            else:
+                price_precision = 2  # Grands prix: 2 décimales
+            logger.info(f"💡 Précision déduite pour {symbol} (entry={entry}): {price_precision} décimales")
 
         # Créer position
         self.active_position = Position(
