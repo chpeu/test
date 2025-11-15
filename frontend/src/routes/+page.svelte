@@ -359,16 +359,14 @@
 			// L'état sera mis à jour via WebSocket natif ou le composant BotControls
 		}
 		
-		// 🔥 FIX: Mettre à jour la position active si présente
-		if (data.active_position || data.position?.active) {
-			const { updatePosition } = await import('$lib/stores/position');
-			const positionData = data.active_position || data.position;
-			if (positionData) {
-				updatePosition(positionData);
-			}
+		// 🔥 FIX: Mettre à jour la position active si présente (supporte wrapper {active, data})
+		const positionWrapper = data.active_position ?? data.position;
+		const isActive = positionWrapper?.active ?? Boolean(positionWrapper);
+		const actualPosition = positionWrapper?.data ?? positionWrapper;
+		const { updatePosition, clearPosition } = await import('$lib/stores/position');
+		if (isActive && actualPosition) {
+			updatePosition(actualPosition);
 		} else {
-			// Nettoyer la position si aucune position active
-			const { clearPosition } = await import('$lib/stores/position');
 			clearPosition();
 		}
 		
