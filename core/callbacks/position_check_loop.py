@@ -183,7 +183,6 @@ async def position_check_loop_callback():
         
         # 🔥 DEBUG GEL: Logger l'âge du prix
         if isinstance(current_price_data, dict) and 'timestamp' in current_price_data:
-            import time
             age = time.time() - current_price_data['timestamp']
             if age > 2:  # Si prix > 2 secondes
                 logger.warning(f"⚠️ Prix obsolète pour {symbol}: {age:.1f}s")
