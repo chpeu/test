@@ -1,6 +1,7 @@
 """API routes for datalogger exports and maintenance."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from io import BytesIO
@@ -40,6 +41,15 @@ async def export_datalogger_excel(start_date: str | None = None, end_date: str |
             header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
             header_font = Font(bold=True, color="FFFFFF")
 
+            def _normalize_row(row: Dict) -> Dict:
+                normalized = {}
+                for key, value in row.items():
+                    if isinstance(value, (list, dict)):
+                        normalized[key] = json.dumps(value, ensure_ascii=False)
+                    else:
+                        normalized[key] = value
+                return normalized
+
             def _write_sheet(worksheet, rows: List[Dict]):
                 if not rows:
                     return
@@ -50,7 +60,8 @@ async def export_datalogger_excel(start_date: str | None = None, end_date: str |
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
                 for row in rows:
-                    worksheet.append([row.get(h) for h in headers])
+                    normalized = _normalize_row(row)
+                    worksheet.append([normalized.get(h) for h in headers])
                 for col in range(1, len(headers) + 1):
                     worksheet.column_dimensions[get_column_letter(col)].width = 15
 

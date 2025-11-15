@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from main import app
-from app.dependencies import get_app_state as dependency_app_state
+from api.routes.dashboard import _get_app_state_dependency as dependency_app_state
 
 
 @pytest.fixture
@@ -36,7 +36,8 @@ def override_app_state(fake_app_state):
 
 @pytest.mark.asyncio
 async def test_status_endpoint_returns_app_state(fake_app_state):
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/status")
 
     assert response.status_code == 200
@@ -45,7 +46,8 @@ async def test_status_endpoint_returns_app_state(fake_app_state):
 
 @pytest.mark.asyncio
 async def test_state_endpoint_includes_config_and_stats(fake_app_state):
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/state")
 
     assert response.status_code == 200
@@ -53,4 +55,3 @@ async def test_state_endpoint_includes_config_and_stats(fake_app_state):
     assert payload["success"] is True
     assert payload["scanner"]["is_scanning"] == fake_app_state["is_scanning"]
     assert payload["stats"]["total_trades"] == fake_app_state["stats"]["total_trades"]
-*** End of File

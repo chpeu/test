@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Sequence
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from main import app
 
@@ -55,7 +55,7 @@ def patch_get_cursor(monkeypatch, *, select_results=None, delete_rowcounts=None)
         )
         yield cursor
 
-    monkeypatch.setattr("main.get_cursor", fake_get_cursor)
+    monkeypatch.setattr("api.routes.datalogger.get_cursor", fake_get_cursor)
 
 
 @pytest.mark.asyncio
@@ -111,7 +111,8 @@ async def test_export_excel_returns_workbook(monkeypatch):
 
     patch_get_cursor(monkeypatch, select_results=select_rows)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/datalogger/export/excel")
 
     assert response.status_code == 200
@@ -135,7 +136,8 @@ async def test_reset_datalogger_returns_counts(monkeypatch):
 
     patch_get_cursor(monkeypatch, delete_rowcounts=delete_counts)
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.delete("/api/datalogger/reset")
 
     assert response.status_code == 200
@@ -143,4 +145,3 @@ async def test_reset_datalogger_returns_counts(monkeypatch):
     assert payload["success"] is True
     assert payload["deleted"] == delete_counts
     assert payload["total_deleted"] == sum(delete_counts.values())
-*** End of File

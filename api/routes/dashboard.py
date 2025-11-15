@@ -86,7 +86,7 @@ async def get_status(app_state: Dict = Depends(_get_app_state_dependency)):
         return JSONResponse({'error': 'App state not available'}, status_code=503)
 
     try:
-        return JSONResponse(app_state)
+        return JSONResponse(dict(app_state))
     except Exception as e:
         logger.error(f"Erreur récupération statut: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)

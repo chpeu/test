@@ -4367,16 +4367,23 @@ async def export_trades_csv(
     
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode('utf-8')),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 if __name__ == '__main__':
     import uvicorn
     import socket
     
-    # 🔥 PHASE 4: Charger l'historique au démarrage
+    # PHASE 4: Charger l'historique au démarrage
     load_trade_history()
     
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     
+    logger.info(" Trade Cursor v7.0 démarré")
+    logger.info(" FastAPI (async natif) + WebSocket natif")
+    logger.info(" Backend API uniquement - Frontend Svelte gère l'interface")
     logger.info("🚀 Trade Cursor v7.0 démarré")
     logger.info("📊 FastAPI (async natif) + WebSocket natif")
     logger.info("🔥 Backend API uniquement - Frontend Svelte gère l'interface")
