@@ -1486,6 +1486,15 @@ async def position_check_loop_callback():
     """Callback appelé toutes les 2 secondes pour vérifier la position"""
     init_instances()
     
+    # 🔥 FIX: Appeler le vrai callback qui contient la logique de diagnostic WebSocket
+    try:
+        from core.callbacks.position_check_loop import position_check_loop_callback as external_callback
+        await external_callback()
+        return  # Le callback externe gère tout
+    except ImportError as e:
+        logger.warning(f"⚠️ Impossible d'importer le callback externe: {e}")
+    
+    # Fallback: logique locale (si module externe indisponible)
     # Vérifier si on a une position active
     if not position_manager or not position_manager.active_position:
         return
