@@ -889,25 +889,34 @@ async def scanner_loop_callback():
                                     
                                     # Mettre à jour app_state AVANT d'émettre l'événement
                                     app_state['active_position'] = position
-                                    
+
                                     # 🔥 FIX: Vérification finale avant de continuer
                                     if app_state['active_position'] != position:
                                         logger.error(f"❌ ERREUR: app_state['active_position'] a été modifié pendant l'ouverture !")
                                         break
-                                    
-                                    # 🔥 FIX: S'abonner au WebSocket pour prix en temps réel
-                                    if price_provider and price_provider.ws_manager and price_provider.ws_manager.connected:
+
+                                    # 🔥 FIX CRITIQUE: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
+                                    # Ceci garantit que current_price sera mis à jour correctement pendant la position
+                                    # PROBLÈME: subscribe_ticker() ajoutait juste le symbole aux symboles existants
+                                    # SOLUTION: Redémarrer complètement le WebSocket avec UNIQUEMENT le symbole de la position
+                                    if price_provider:
                                         try:
-                                            await price_provider.ws_manager.subscribe_ticker(symbol)
-                                            logger.debug(f"📡 WebSocket: Abonné à {symbol} pour prix temps réel")
-                                            
-                                            # 🔥 FIX: Configurer callback pour suivre position active
-                                            # Le WebSocket met à jour le cache en temps réel
-                                            # La boucle de check à 0.5s récupère le prix du cache et émet position_update
-                                            price_provider.set_socketio_callback(None, symbol)
-                                            logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
+                                            # Arrêter WebSocket actuel
+                                            if hasattr(price_provider, 'stop_websocket'):
+                                                await price_provider.stop_websocket()
+                                                logger.info(f"🔌 WebSocket arrêté avant position")
+
+                                            # Redémarrer WebSocket uniquement sur le symbole de la position
+                                            if hasattr(price_provider, 'start_websocket'):
+                                                await price_provider.start_websocket([symbol])
+                                                logger.info(f"✅ WebSocket redémarré pour position: {symbol} UNIQUEMENT")
+
+                                            # Configurer callback pour suivre position active
+                                            if hasattr(price_provider, 'set_socketio_callback'):
+                                                price_provider.set_socketio_callback(None, symbol)
+                                                logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
-                                            logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
+                                            logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     await add_log('INFO', 'Position ouverte automatiquement', 
