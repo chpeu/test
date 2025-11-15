@@ -259,7 +259,9 @@ async def _emit_position_update(position, current_price: float):
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
             'dynamic_sl': getattr(position, 'dynamic_sl', None),  # 🔥 FIX: Trailing stop
             'size_remaining': getattr(position, 'size_remaining', None),  # 🔥 FIX: Position restante
-            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None  # 🔥 FIX: Niveaux TP escalier
+            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None,  # 🔥 FIX: Niveaux TP escalier
+            'price_precision': getattr(position, 'price_precision', None),
+            'tickSize': getattr(position, 'tick_size', getattr(position, 'tickSize', None))
         }
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
