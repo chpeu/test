@@ -434,6 +434,21 @@ class WebSocketManager:
     
     async def start(self):
         """Démarrer WebSocket"""
+        # 🔥 FIX: Annuler les tâches existantes avant d'en créer de nouvelles
+        if self._receive_task and not self._receive_task.done():
+            self._receive_task.cancel()
+            try:
+                await self._receive_task
+            except asyncio.CancelledError:
+                pass
+        
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+        
         self._running = True
         await self.connect()
 

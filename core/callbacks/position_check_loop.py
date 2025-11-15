@@ -152,7 +152,11 @@ async def position_check_loop_callback():
     4. Émettre position_update pour le frontend
     5. Si position fermée: archiver et nettoyer
     """
+    # 🔥 FIX: Log si instances manquantes pour diagnostiquer pourquoi la boucle ne tourne pas
     if not _position_manager or not _price_provider or not _app_state:
+        if not hasattr(position_check_loop_callback, '_logged_missing_instances'):
+            logger.error(f"❌ Instances manquantes: PM={bool(_position_manager)}, PP={bool(_price_provider)}, AS={bool(_app_state)}")
+            position_check_loop_callback._logged_missing_instances = True
         return
 
     try:
@@ -163,6 +167,14 @@ async def position_check_loop_callback():
         # Récupérer la position
         position = _position_manager.active_position
         symbol = position.symbol
+        
+        # 🔥 FIX: Log périodique pour confirmer que la boucle tourne
+        if not hasattr(position_check_loop_callback, '_last_heartbeat'):
+            position_check_loop_callback._last_heartbeat = 0
+        now = time.time()
+        if now - position_check_loop_callback._last_heartbeat >= 10:  # Log toutes les 10s
+            logger.info(f"💓 position_check_loop actif pour {symbol}")
+            position_check_loop_callback._last_heartbeat = now
 
         # Récupérer prix actuel
         current_price_data = await _price_provider.get_price(symbol)

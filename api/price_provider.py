@@ -193,13 +193,15 @@ class HybridPriceProvider:
             symbols = symbols[:MAX_WEBSOCKET_SYMBOLS]
         
         try:
-            # Créer WebSocket Manager
-            self.ws_manager = WebSocketManager(
-                url=WEBSOCKET_CONFIG['url'],
-                callback=self._handle_mexc_message
-            )
+            # 🔥 FIX: Réutiliser le WebSocketManager existant si possible
+            if not self.ws_manager:
+                # Créer WebSocket Manager seulement si inexistant
+                self.ws_manager = WebSocketManager(
+                    url=WEBSOCKET_CONFIG['url'],
+                    callback=self._handle_mexc_message
+                )
             
-            # Connecter
+            # Connecter (ou reconnecter)
             await self.ws_manager.start()
             
             # S'abonner aux symboles
@@ -244,7 +246,8 @@ class HybridPriceProvider:
                 await self.ws_manager.disconnect()
             except Exception as e:
                 logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
-            self.ws_manager = None
+            # 🔥 FIX: Ne pas mettre à None pour permettre la réutilisation
+            # self.ws_manager = None
             logger.info("🔌 WebSocket arrêté")
     
     async def get_price(self, symbol: str) -> Optional[Dict]:

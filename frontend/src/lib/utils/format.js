@@ -144,8 +144,25 @@ export function formatPrice(price, precision = null) {
 	if (num < 1) {
 		return num.toFixed(4);
 	}
+	
+	// 🔥 FIX: Pour les prix moyens (1-1000), utiliser 4 décimales pour préserver la précision
+	// Exemple: 664.75 doit afficher "664.7500" ou mieux "664.75" sans arrondir à "665"
+	if (num < 1000) {
+		// Formater avec 4 décimales puis supprimer les zéros de fin
+		let formatted = num.toFixed(4);
+		// Supprimer les zéros de fin mais garder au moins 2 décimales
+		formatted = formatted.replace(/(\.\d*?)0+$/, '$1');
+		if (formatted.endsWith('.')) {
+			formatted += '00';
+		}
+		const decimalPart = formatted.includes('.') ? formatted.split('.')[1] : '';
+		if (decimalPart.length < 2) {
+			return num.toFixed(2);
+		}
+		return formatted;
+	}
 
-	// For normal prices, use 2 decimals
+	// For large prices (>= 1000), use 2 decimals
 	return num.toFixed(2);
 }
 
