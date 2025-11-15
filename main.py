@@ -1721,7 +1721,7 @@ async def scalability_refresh_loop_callback():
         return
     
     try:
-        await add_log('INFO', 'Scalability refresh', 'Rafraîchissement des top pairs...')
+        logger.info("[%s] INFO: Scalability refresh", datetime.now().strftime('%H:%M:%S'))
         
         top_pairs = await scanner.scan_top_pairs(20)
         app_state['top_pairs'] = top_pairs
@@ -1730,8 +1730,9 @@ async def scalability_refresh_loop_callback():
         if hasattr(app, '_top_pairs_cache'):
             app._top_pairs_cache.pop('top_pairs', None)
         
-        await add_log('INFO', 'Scalability refresh', f'{len(top_pairs)} paires scalables')
-        await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+        logger.info("[%s] INFO: %d paires scalables", datetime.now().strftime('%H:%M:%S'), len(top_pairs))
+        if ws_manager:
+            await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
 
         # 🔥 FIX CRITIQUE: Revérifier si position active APRÈS le scan (protection double)
         # Le scan peut prendre 20+ secondes, pendant lesquelles une position peut s'ouvrir
@@ -1750,13 +1751,13 @@ async def scalability_refresh_loop_callback():
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
-                    await add_log('INFO', 'WebSocket mis à jour', f'{len(symbols)} symboles')
+                    logger.info("[%s] INFO: WebSocket mis à jour - %d symboles", datetime.now().strftime('%H:%M:%S'), len(symbols))
                 except Exception as e:
                     logger.warning(f"Erreur démarrage WebSocket: {e}")
     
     except Exception as e:
-        logger.error(f"Erreur scalability refresh: {e}")
-        await add_log('ERROR', 'Erreur scalability refresh', str(e))
+        logger.error(f"Erreur scalability refresh: {e}", exc_info=True)
+        logger.error("[%s] ERROR: Erreur scalability refresh", datetime.now().strftime('%H:%M:%S'))
 
 
 def init_instances():
@@ -4606,7 +4607,7 @@ async def export_datalogger_excel(
                         cell.font = header_font
                         cell.alignment = Alignment(horizontal="center")
                 for row in rows:
-                    ws.append([row.get(h) if isinstance(row, dict) else row[index] for index, h in enumerate(headers)])
+                    ws.append([row[h] for h in headers])
                 for col in range(1, len(headers) + 1):
                     ws.column_dimensions[get_column_letter(col)].width = 15
 
