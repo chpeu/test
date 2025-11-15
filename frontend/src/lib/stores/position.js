@@ -105,7 +105,22 @@ export const positionDuration = derived(activePosition, $pos => {
 
 // Actions
 export function updatePosition(data) {
-	activePosition.set(normalizePositionPrecision(data));
+	// 🔥 DEBUG: Log pour diagnostiquer le problème de précision
+	console.log('📥 updatePosition reçu:', {
+		symbol: data?.symbol,
+		entry: data?.entry,
+		current_price: data?.current_price,
+		price_precision: data?.price_precision,
+		tickSize: data?.tickSize || data?.tick_size
+	});
+	const normalized = normalizePositionPrecision(data);
+	console.log('📤 updatePosition normalisé:', {
+		symbol: normalized?.symbol,
+		entry: normalized?.entry,
+		current_price: normalized?.current_price,
+		price_precision: normalized?.price_precision
+	});
+	activePosition.set(normalized);
 }
 
 export function clearPosition() {

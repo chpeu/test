@@ -437,6 +437,18 @@ class PositionManager:
                     tick_size = 10 ** (-price_precision)
         except Exception as e:
             logger.warning(f"⚠️ Impossible de récupérer la précision pour {symbol}: {e}")
+        
+        # 🔥 FIX: Si pas de précision trouvée, déduire depuis le prix d'entrée
+        if price_precision is None and tick_size is None:
+            if entry < 0.01:
+                price_precision = 6  # Très petits prix: 6 décimales
+            elif entry < 1:
+                price_precision = 4  # Petits prix: 4 décimales
+            elif entry < 1000:
+                price_precision = 2  # Prix moyens: 2 décimales
+            else:
+                price_precision = 2  # Grands prix: 2 décimales
+            logger.info(f"💡 Précision déduite pour {symbol} (entry={entry}): {price_precision} décimales")
 
         # Créer position
         self.active_position = Position(

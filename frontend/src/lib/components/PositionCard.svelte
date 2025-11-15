@@ -212,6 +212,17 @@
 	
 	// 🔥 FIX: Fonction helper pour formater avec précision
 	function formatPriceWithPrecision(price) {
+		// 🔥 DEBUG: Log pour diagnostiquer le problème de précision
+		if (!hasattr(formatPriceWithPrecision, '_logged_once')) {
+			console.log('🔍 formatPriceWithPrecision:', {
+				price,
+				pricePrecision,
+				tickSize,
+				activePosition: $activePosition
+			});
+			formatPriceWithPrecision._logged_once = true;
+		}
+		
 		// Si on a price_precision (nombre de décimales), l'utiliser directement
 		if (pricePrecision !== null && pricePrecision !== undefined) {
 			return formatPrice(price, pricePrecision);

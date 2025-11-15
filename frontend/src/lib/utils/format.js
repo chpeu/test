@@ -151,13 +151,17 @@ export function formatPrice(price, precision = null) {
 		// Formater avec 4 décimales puis supprimer les zéros de fin
 		let formatted = num.toFixed(4);
 		// Supprimer les zéros de fin mais garder au moins 2 décimales
-		formatted = formatted.replace(/(\.\d*?)0+$/, '$1');
-		if (formatted.endsWith('.')) {
-			formatted += '00';
-		}
-		const decimalPart = formatted.includes('.') ? formatted.split('.')[1] : '';
-		if (decimalPart.length < 2) {
-			return num.toFixed(2);
+		// 🔥 FIX: Regex corrigée pour ne pas supprimer tous les chiffres
+		formatted = formatted.replace(/\.?0+$/, '');
+		// Si plus de point décimal, ajouter .00
+		if (!formatted.includes('.')) {
+			formatted += '.00';
+		} else {
+			// S'assurer d'avoir au moins 2 décimales
+			const decimalPart = formatted.split('.')[1];
+			if (decimalPart.length < 2) {
+				formatted += '0'.repeat(2 - decimalPart.length);
+			}
 		}
 		return formatted;
 	}
