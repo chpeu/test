@@ -265,20 +265,18 @@ async def _emit_position_update(position, current_price: float):
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
         if _ws_manager:
             await _ws_manager.emit('position_update', update_data)
-        # 🔥 FIX: Émettre aussi status pour synchronisation temps réel complète
-        if _app_state and _ws_manager:
-            status_data = {
-                'is_scanning': _app_state.get('is_scanning', False),
-                'active_position': update_data,
-                'stats': _app_state.get('stats', {}),
-                'top_pairs': _app_state.get('top_pairs', [])
-            }
-            await _ws_manager.emit('status', status_data)
-
-        logger.debug(
-            f"📡 position_update émis: {position.symbol} | "
-            f"Prix: {current_price:.6f} | PnL: {pnl:.2f}%"
-        )
+            # 🔥 DEBUG: Log toutes les 10 émissions (pour éviter spam)
+            if not hasattr(_emit_position_update, '_emit_count'):
+                _emit_position_update._emit_count = 0
+            _emit_position_update._emit_count += 1
+            if _emit_position_update._emit_count % 10 == 0:
+                logger.info(
+                    f"📡 position_update émis ({_emit_position_update._emit_count}x): {position.symbol} | "
+                    f"Prix: {current_price:.6f} | PnL: {pnl:.2f}%"
+                )
+        # 🔥 FIX BUG PRIX FIGÉ: Ne PAS émettre status ici car il peut écraser position_update
+        # Le frontend écoute position_update pour les mises à jour de prix en temps réel
+        # status est émis séparément par d'autres endpoints (scanner, config, etc.)
 
     except Exception as e:
         logger.error(f"❌ Erreur émission position_update: {e}")

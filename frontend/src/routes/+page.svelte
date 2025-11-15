@@ -217,6 +217,8 @@
 		ws.on('position_update', async (data: any) => {
 			const { updatePosition } = await import('$lib/stores/position');
 			if (data) {
+				// 🔥 DEBUG: Log pour vérifier que les updates arrivent
+				console.log('📡 position_update reçu:', data.symbol, 'Prix:', data.current_price, 'PnL:', data.pnl?.toFixed(2) + '%');
 				updatePosition(data);
 			}
 		});
