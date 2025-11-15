@@ -4466,6 +4466,32 @@ async def export_trades_csv(
     )
 
 
+def _get_pg_connection_for_export():
+    """Obtenir une connexion PostgreSQL même si le bot n'est pas actif."""
+    pg_datalogger = None
+    try:
+        from core.callbacks.scanner_loop import get_pg_datalogger
+        pg_datalogger = get_pg_datalogger()
+    except Exception:
+        pg_datalogger = None
+
+    if pg_datalogger and getattr(pg_datalogger, "enabled", True):
+        conn = pg_datalogger._get_connection()
+        return conn, lambda: pg_datalogger._return_connection(conn)
+
+    import psycopg2
+
+    conn = psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', '5432')),
+        dbname=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
+        user=os.getenv('POSTGRES_USER', 'postgres'),
+        password=os.getenv('POSTGRES_PASSWORD', '')
+    )
+
+    return conn, conn.close
+
+
 @app.get("/api/datalogger/export/excel")
 async def export_datalogger_excel(
     start_date: Optional[str] = None,
@@ -4482,15 +4508,6 @@ async def export_datalogger_excel(
         Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
     """
     try:
-        from core.callbacks.scanner_loop import get_pg_datalogger
-        pg_datalogger = get_pg_datalogger()
-        
-        if not pg_datalogger or not pg_datalogger.enabled:
-            return JSONResponse(
-                {"error": "PostgreSQL DataLogger non disponible"},
-                status_code=503
-            )
-        
         # Vérifier si openpyxl est installé
         try:
             from openpyxl import Workbook
@@ -4501,9 +4518,11 @@ async def export_datalogger_excel(
                 {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
                 status_code=500
             )
-        
-        conn = pg_datalogger._get_connection()
-        if not conn:
+
+        try:
+            conn, release_conn = _get_pg_connection_for_export()
+        except Exception as conn_error:
+            logger.error("❌ Impossible de se connecter à PostgreSQL pour l'export: %s", conn_error)
             return JSONResponse(
                 {"error": "Impossible de se connecter à PostgreSQL"},
                 status_code=503
@@ -4535,29 +4554,23 @@ async def export_datalogger_excel(
             if end_date:
                 query_scans += " AND timestamp <= %s"
                 params.append(f"{end_date} 23:59:59")
-            query_scans += " ORDER BY timestamp DESC LIMIT 10000"
+            query_scans += " ORDER BY timestamp DESC"
             
             cursor.execute(query_scans, params)
             scans = cursor.fetchall()
             
-            if scans:
-                # En-têtes
-                headers = list(scans[0].keys())
+            # Déterminer les en-têtes même si aucune ligne
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+            headers = list(scans[0].keys()) if scans else [desc.name for desc in cursor.description]
+            if headers:
                 ws_scans.append(headers)
-                
-                # Style en-têtes
-                header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                header_font = Font(bold=True, color="FFFFFF")
                 for cell in ws_scans[1]:
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
-                
-                # Données
                 for row in scans:
                     ws_scans.append([row.get(h) for h in headers])
-                
-                # Ajuster largeur colonnes
                 for col in range(1, len(headers) + 1):
                     ws_scans.column_dimensions[get_column_letter(col)].width = 15
             
@@ -4578,24 +4591,21 @@ async def export_datalogger_excel(
             if end_date:
                 query_opps += " AND timestamp <= %s"
                 params_opps.append(f"{end_date} 23:59:59")
-            query_opps += " ORDER BY timestamp DESC LIMIT 10000"
+            query_opps += " ORDER BY timestamp DESC"
             
             cursor.execute(query_opps, params_opps)
             opportunities = cursor.fetchall()
             
-            if opportunities:
-                headers = list(opportunities[0].keys())
-                ws_opps.append(headers)
-                
+            headers_opps = list(opportunities[0].keys()) if opportunities else [desc.name for desc in cursor.description]
+            if headers_opps:
+                ws_opps.append(headers_opps)
                 for cell in ws_opps[1]:
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
-                
                 for row in opportunities:
-                    ws_opps.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
+                    ws_opps.append([row.get(h) for h in headers_opps])
+                for col in range(1, len(headers_opps) + 1):
                     ws_opps.column_dimensions[get_column_letter(col)].width = 15
             
             # ===== ONGLET 3: TRADES =====
@@ -4616,28 +4626,25 @@ async def export_datalogger_excel(
             if end_date:
                 query_trades += " AND timestamp_entry <= %s"
                 params_trades.append(f"{end_date} 23:59:59")
-            query_trades += " ORDER BY timestamp_entry DESC LIMIT 10000"
+            query_trades += " ORDER BY timestamp_entry DESC"
             
             cursor.execute(query_trades, params_trades)
             trades = cursor.fetchall()
             
-            if trades:
-                headers = list(trades[0].keys())
-                ws_trades.append(headers)
-                
+            headers_trades = list(trades[0].keys()) if trades else [desc.name for desc in cursor.description]
+            if headers_trades:
+                ws_trades.append(headers_trades)
                 for cell in ws_trades[1]:
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
-                
                 for row in trades:
-                    ws_trades.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
+                    ws_trades.append([row.get(h) for h in headers_trades])
+                for col in range(1, len(headers_trades) + 1):
                     ws_trades.column_dimensions[get_column_letter(col)].width = 15
             
             cursor.close()
-            pg_datalogger._return_connection(conn)
+            release_conn()
             
             # Sauvegarder dans un buffer
             from io import BytesIO
@@ -4654,7 +4661,7 @@ async def export_datalogger_excel(
             )
             
         except Exception as e:
-            pg_datalogger._return_connection(conn)
+            release_conn()
             logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
             return JSONResponse(
                 {"error": f"Erreur export Excel: {str(e)}"},
