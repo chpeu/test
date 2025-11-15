@@ -894,7 +894,8 @@ class PostgreSQLDataLogger:
                     %s, %s,
                     %s, %s, %s, %s,
                     %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -1206,6 +1207,10 @@ class PostgreSQLDataLogger:
                 _extract_numeric_value(exit_indicators.get('volume_ratio_1m')), _extract_numeric_value(exit_indicators.get('volume_ratio_5m')),
                 _extract_numeric_value(exit_indicators.get('spread_pct')),  # exit_spread_pct
                 _extract_numeric_value(exit_indicators.get('balance_score')),  # exit_balance_score
+                # Volume de sortie (indicateurs de scalabilité à la sortie)
+                _extract_numeric_value(exit_indicators.get('recent_volume') or exit_indicators.get('recentVolume')),  # exit_recent_volume
+                _extract_numeric_value(exit_indicators.get('vol5')),  # exit_vol5
+                _extract_numeric_value(exit_indicators.get('vol15')),  # exit_vol15
                 _extract_numeric_value(entry_to_exit_price_change_pct) if entry_to_exit_price_change_pct is not None else None,
                 # Métriques temporelles exit
                 exit_hour, exit_day,
