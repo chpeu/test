@@ -685,10 +685,13 @@ class PostgreSQLDataLogger:
                 INSERT INTO opportunities (
                     scan_log_id, session_id, symbol, timestamp,
                     status, direction, setup_score,
-                    conditions_matched, entry_suggested, tp_suggested, sl_suggested,
-                    tp_sl_mode
+                    score_long, score_short, score_min_required,
+                    trend_bonus, divergence_bonus,
+                    conditions_matched, condition_count,
+                    entry_suggested, tp_suggested, sl_suggested,
+                    tp_sl_mode, setup_reason
                 )
-                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
             
@@ -729,16 +732,35 @@ class PostgreSQLDataLogger:
             if isinstance(status, dict):
                 status = status.get('status') or status.get('value') or 'PENDING'
             
+            # 🔥 FIX: Extraire les nouveaux champs
+            score_long = opportunity_data.get('score_long')
+            score_short = opportunity_data.get('score_short')
+            score_min_required = opportunity_data.get('score_min_required')
+            trend_bonus = opportunity_data.get('trend_bonus')
+            divergence_bonus = opportunity_data.get('divergence_bonus')
+            condition_count = opportunity_data.get('condition_count', len(conditions_matched))
+            setup_reason = opportunity_data.get('setup_reason')
+            
             params = (
                 scan_id, session_id, symbol,
                 str(status) if status else 'PENDING',
                 str(direction) if direction else None,
                 float(setup_score) if setup_score is not None else None,
+                # Nouveaux champs
+                float(score_long) if score_long is not None else None,
+                float(score_short) if score_short is not None else None,
+                float(score_min_required) if score_min_required is not None else None,
+                float(trend_bonus) if trend_bonus is not None else None,
+                float(divergence_bonus) if divergence_bonus is not None else None,
+                # Conditions
                 conditions_matched,  # TEXT[] - liste de strings
+                int(condition_count) if condition_count is not None else len(conditions_matched),
+                # Prix
                 float(entry_price) if entry_price is not None else None,  # entry_suggested
                 float(tp_price) if tp_price is not None else None,  # tp_suggested
                 float(sl_price) if sl_price is not None else None,  # sl_suggested
-                str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
+                str(tp_sl_mode) if tp_sl_mode else 'FIXE',  # tp_sl_mode
+                str(setup_reason) if setup_reason else None  # setup_reason
             )
             
             if any(isinstance(p, dict) for p in params):
