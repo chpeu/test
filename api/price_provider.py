@@ -220,21 +220,25 @@ class HybridPriceProvider:
         if self.use_websocket and self.ws_manager and self.ws_manager.connected:
             async with self.cache_lock:
                 if symbol in self.price_cache:
-                    if metrics:
-                        metrics.ws_price_count += 1
-                    return self.price_cache[symbol]
+                    # 🔥 DEBUG GEL: Vérifier âge du prix en cache
+                    cached_price = self.price_cache[symbol]
+                    age = time.time() - cached_price.get('timestamp', 0)
+                    if age > 5:  # Prix obsolète > 5s
+                        logger.warning(f"⚠️ Prix cache obsolète pour {symbol}: {age:.1f}s, fallback REST")
+                    else:
+                        if metrics:
+                            metrics.ws_price_count += 1
+                        return cached_price
             
-            # Pas en cache mais WS connecté → attendre un peu
-            await asyncio.sleep(0.05)
-            async with self.cache_lock:
-                if symbol in self.price_cache:
-                    if metrics:
-                        metrics.ws_price_count += 1
-                    return self.price_cache[symbol]
+            # 🔥 FIX GEL: Pas en cache, NE PAS attendre si position active (latence critique)
+            # Faire fallback REST immédiatement
+            logger.warning(f"⚠️ {symbol} absent du cache WebSocket, fallback REST immédiat")
+        else:
+            # WebSocket non connecté
+            if DEBUG_ENABLED:
+                logger.debug(f"⚠️ WS non connecté, fallback REST pour {symbol}")
         
         # Fallback REST
-        if DEBUG_ENABLED:
-            logger.debug(f"⚠️ WS down ou pas de cache, fallback REST pour {symbol}")
         
         if metrics:
             metrics.ws_rest_fallback_count += 1

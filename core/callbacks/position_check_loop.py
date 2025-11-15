@@ -122,16 +122,58 @@ async def position_check_loop_callback():
         # Récupérer prix actuel
         current_price_data = await _price_provider.get_price(symbol)
         if not current_price_data:
-            # 🔥 FIX: Ne pas logger en WARNING si c'est juste temporaire (peut être normal)
-            # Le prix peut être indisponible temporairement sans être une erreur critique
-            logger.debug(f"⚠️ Prix indisponible pour {symbol} (tentative suivante dans {_app_state.get('check_interval', 0.1)}s)")
+            # 🔥 DEBUG GEL: Compter les échecs consécutifs
+            if not hasattr(position_check_loop_callback, '_price_fail_count'):
+                position_check_loop_callback._price_fail_count = {}
+            
+            position_check_loop_callback._price_fail_count[symbol] = \
+                position_check_loop_callback._price_fail_count.get(symbol, 0) + 1
+            
+            fail_count = position_check_loop_callback._price_fail_count[symbol]
+            
+            # Log WARNING si échec répété (>20 fois = >1 seconde)
+            if fail_count % 20 == 0:
+                ws_connected = (_price_provider.ws_manager and _price_provider.ws_manager.connected) if _price_provider else False
+                cache_has_symbol = False
+                if _price_provider and hasattr(_price_provider, 'price_cache'):
+                    async with _price_provider.cache_lock:
+                        cache_has_symbol = symbol in _price_provider.price_cache
+                
+                logger.warning(
+                    f"⚠️ Prix INDISPONIBLE pour {symbol} depuis {fail_count * 0.05:.1f}s | "
+                    f"WS connecté: {ws_connected} | Cache: {cache_has_symbol}"
+                )
+                
+                # 🔥 FIX GEL: Tenter de réabonner au symbole si WebSocket connecté
+                if _price_provider and _price_provider.ws_manager and _price_provider.ws_manager.connected:
+                    try:
+                        logger.info(f"🔄 Tentative réabonnement WebSocket pour {symbol}")
+                        await _price_provider.ws_manager.subscribe_ticker(symbol)
+                    except Exception as e:
+                        logger.error(f"❌ Erreur réabonnement: {e}")
+            
             return
 
+        # 🔥 DEBUG GEL: Reset compteur échecs si prix obtenu
+        if hasattr(position_check_loop_callback, '_price_fail_count'):
+            if symbol in position_check_loop_callback._price_fail_count:
+                fail_count = position_check_loop_callback._price_fail_count[symbol]
+                if fail_count > 0:
+                    logger.info(f"✅ Prix récupéré pour {symbol} après {fail_count} échecs")
+                position_check_loop_callback._price_fail_count[symbol] = 0
+        
         current_price = (
             current_price_data.get('lastPrice', 0)
             if isinstance(current_price_data, dict)
             else current_price_data
         )
+        
+        # 🔥 DEBUG GEL: Logger l'âge du prix
+        if isinstance(current_price_data, dict) and 'timestamp' in current_price_data:
+            import time
+            age = time.time() - current_price_data['timestamp']
+            if age > 2:  # Si prix > 2 secondes
+                logger.warning(f"⚠️ Prix obsolète pour {symbol}: {age:.1f}s")
 
         # Vérifier la position (retourne None ou raison de fermeture)
         close_reason = await _position_manager.check_position(current_price)
