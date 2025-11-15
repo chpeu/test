@@ -118,7 +118,7 @@ class Position:
             'tp_escalier_levels': self.tp_escalier_levels if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else [],  # 🔥 FIX: Retourner la liste native pour éviter erreurs de type
             'current_price': getattr(self, 'current_price', None),  # 🔥 FIX: Ajouter prix actuel si disponible
             'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
-            'tickSize': self.tick_size  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
+            'tick_size': self.tick_size  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
         }
 
 

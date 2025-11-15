@@ -13,8 +13,16 @@ from api.routes import dashboard
 @pytest.fixture
 def app():
     """Create FastAPI app with dashboard router"""
+    from api.auth import verify_api_key
+
     app = FastAPI()
     app.include_router(dashboard.router)
+
+    # Override verify_api_key dependency for testing
+    async def override_verify_api_key():
+        return {"user": "test_user"}
+
+    app.dependency_overrides[verify_api_key] = override_verify_api_key
     return app
 
 
@@ -98,6 +106,9 @@ class TestDashboardRoutes:
         """Test set_socketio with ws_manager (legacy alias)"""
         mock_ws = Mock()
         mock_ws.emit = Mock()
+        # Remove 'on' attribute to ensure it's detected as ws_manager
+        mock_ws.on = None
+        del mock_ws.on
         dashboard.set_socketio(mock_ws)
         assert dashboard._ws_manager == mock_ws
 
@@ -127,10 +138,13 @@ class TestDashboardRoutes:
 
     def test_get_status_exception(self, client):
         """Test /api/status with exception"""
-        # Create a mock that raises exception when accessed
-        mock_state = Mock()
-        mock_state.__getitem__.side_effect = Exception("Test error")
-        dashboard._app_state = mock_state
+        # Set app_state to an object that causes exception during JSON serialization
+        class UnserializableObject:
+            def __init__(self):
+                self.circular = self
+                self.value = "test"
+
+        dashboard._app_state = {"data": UnserializableObject()}
 
         response = client.get("/api/status")
         assert response.status_code == 500
@@ -145,7 +159,7 @@ class TestDashboardRoutes:
         assert data['success'] is False
         assert 'session_id' in data
 
-    @patch('api.routes.dashboard.TRADING_CONFIG', {
+    @patch('config.TRADING_CONFIG', {
         'snr_threshold': 0.25,
         'breakout_threshold': 0.35,
         'wick_ratio_max': 2.8,
@@ -174,7 +188,7 @@ class TestDashboardRoutes:
         assert 'position' in data
         assert 'stats' in data
 
-    @patch('api.routes.dashboard.TRADING_CONFIG', {})
+    @patch('config.TRADING_CONFIG', {})
     def test_get_complete_state_with_active_position(self, client, mock_app_state, mock_position_manager):
         """Test /api/state with active position"""
         mock_position = Mock()
@@ -209,12 +223,11 @@ class TestDashboardRoutes:
         dashboard._scheduler = None
         dashboard._app_state = None
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            with patch('api.routes.dashboard.init_instances', side_effect=Exception("Cannot init")):
-                response = client.post("/api/start", headers={"X-API-Key": "test"})
-                assert response.status_code == 200
-                data = response.json()
-                assert data['success'] is False
+        with patch('main.init_instances', side_effect=Exception("Cannot init")):
+            response = client.post("/api/start", headers={"X-API-Key": "test_key"})
+            assert response.status_code == 200
+            data = response.json()
+            assert data['success'] is False
 
     @pytest.mark.asyncio
     async def test_start_scanner_success(self, client, mock_scheduler, mock_app_state, mock_ws_manager):
@@ -224,13 +237,12 @@ class TestDashboardRoutes:
         dashboard._app_state = mock_app_state
         dashboard._ws_manager = mock_ws_manager
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            response = client.post("/api/start", headers={"X-API-Key": "test"})
-            assert response.status_code == 200
-            data = response.json()
-            assert data['success'] is True
-            assert data['is_scanning'] is True
-            mock_scheduler.start.assert_called_once()
+        response = client.post("/api/start")
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+        assert data['is_scanning'] is True
+        mock_scheduler.start.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_scanner_already_scanning(self, client, mock_scheduler, mock_app_state):
@@ -239,10 +251,9 @@ class TestDashboardRoutes:
         dashboard._scheduler = mock_scheduler
         dashboard._app_state = mock_app_state
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            response = client.post("/api/start", headers={"X-API-Key": "test"})
-            # Scheduler.start should not be called
-            mock_scheduler.start.assert_not_called()
+        response = client.post("/api/start")
+        # Scheduler.start should not be called
+        mock_scheduler.start.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_start_scanner_exception(self, client, mock_scheduler, mock_app_state):
@@ -252,11 +263,10 @@ class TestDashboardRoutes:
         dashboard._scheduler = mock_scheduler
         dashboard._app_state = mock_app_state
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            response = client.post("/api/start", headers={"X-API-Key": "test"})
-            assert response.status_code == 200
-            data = response.json()
-            assert data['success'] is False
+        response = client.post("/api/start")
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is False
 
     @pytest.mark.asyncio
     async def test_stop_scanner_no_scheduler(self, client):
@@ -264,12 +274,11 @@ class TestDashboardRoutes:
         dashboard._scheduler = None
         dashboard._app_state = None
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            with patch('api.routes.dashboard.init_instances', side_effect=Exception("Cannot init")):
-                response = client.post("/api/stop", headers={"X-API-Key": "test"})
-                assert response.status_code == 200
-                data = response.json()
-                assert data['success'] is False
+        with patch('main.init_instances', side_effect=Exception("Cannot init")):
+            response = client.post("/api/stop")
+            assert response.status_code == 200
+            data = response.json()
+            assert data['success'] is False
 
     @pytest.mark.asyncio
     async def test_stop_scanner_success(self, client, mock_scheduler, mock_app_state, mock_ws_manager):
@@ -279,13 +288,12 @@ class TestDashboardRoutes:
         dashboard._app_state = mock_app_state
         dashboard._ws_manager = mock_ws_manager
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            response = client.post("/api/stop", headers={"X-API-Key": "test"})
-            assert response.status_code == 200
-            data = response.json()
-            assert data['success'] is True
-            assert data['is_scanning'] is False
-            mock_scheduler.stop.assert_called_once()
+        response = client.post("/api/stop")
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+        assert data['is_scanning'] is False
+        mock_scheduler.stop.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_stop_scanner_not_scanning(self, client, mock_scheduler, mock_app_state):
@@ -294,10 +302,9 @@ class TestDashboardRoutes:
         dashboard._scheduler = mock_scheduler
         dashboard._app_state = mock_app_state
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            response = client.post("/api/stop", headers={"X-API-Key": "test"})
-            # Scheduler.stop should not be called
-            mock_scheduler.stop.assert_not_called()
+        response = client.post("/api/stop")
+        # Scheduler.stop should not be called
+        mock_scheduler.stop.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_stop_scanner_exception(self, client, mock_scheduler, mock_app_state):
@@ -307,8 +314,7 @@ class TestDashboardRoutes:
         dashboard._scheduler = mock_scheduler
         dashboard._app_state = mock_app_state
 
-        with patch('api.routes.dashboard.verify_api_key', return_value={'user': 'test'}):
-            response = client.post("/api/stop", headers={"X-API-Key": "test"})
-            assert response.status_code == 200
-            data = response.json()
-            assert data['success'] is False
+        response = client.post("/api/stop")
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is False

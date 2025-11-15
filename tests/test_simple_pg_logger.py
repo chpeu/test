@@ -433,15 +433,20 @@ class TestSimplePGLogger:
         mock_conn = Mock()
         mock_conn.closed = False
         mock_cursor = Mock()
-        mock_cursor.execute.side_effect = Exception("Database error")
+
+        # Simulate connection becoming closed after execute error
+        def execute_with_connection_close(*args, **kwargs):
+            mock_conn.closed = True  # Connection closes due to error
+            raise Exception("Database error")
+
+        mock_cursor.execute.side_effect = execute_with_connection_close
         mock_conn.cursor.return_value = mock_cursor
 
-        # First call returns closed connection, second call returns new connection
+        # First call returns mock_conn, second call returns new connection
         mock_new_conn = Mock()
         mock_psycopg2.connect.side_effect = [mock_conn, mock_new_conn]
 
         logger = SimplePGLogger()
-        mock_conn.closed = True  # Simulate connection closed after error
 
         scan_data = {
             'market_data': {'price': 50000}
