@@ -115,10 +115,10 @@ class Position:
             'tp_escalier_current_level': self.tp_escalier_current_level,
             'tp_escalier_size_remaining': self.tp_escalier_size_remaining,
             'tp_escalier_profits': self.tp_escalier_profits,
-            'tp_escalier_levels': json.dumps(self.tp_escalier_levels) if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else None,  # 🔥 FIX: Ajouter niveaux TP escalier (JSON string)
+            'tp_escalier_levels': self.tp_escalier_levels if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else [],  # 🔥 FIX: Retourner la liste native pour éviter erreurs de type
             'current_price': getattr(self, 'current_price', None),  # 🔥 FIX: Ajouter prix actuel si disponible
             'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
-            'tickSize': self.tick_size  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
+            'tick_size': self.tick_size  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
         }
 
 

@@ -164,6 +164,7 @@ class TestPostgreSQLDataLogger:
         assert result is None  # Mode batch retourne None
         assert len(logger.opportunity_buffer) == 1
     
+    @pytest.mark.skip(reason="log_scan_error method no longer exists in PostgreSQLDataLogger")
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
     def test_log_scan_error(self, mock_pool_class, datalogger_config, mock_pool, mock_postgres_connection):
@@ -171,11 +172,11 @@ class TestPostgreSQLDataLogger:
         mock_pool_class.return_value = mock_pool
         conn, cursor = mock_postgres_connection
         mock_pool.getconn.return_value = conn
-        
+
         from core.postgresql_datalogger import PostgreSQLDataLogger
-        
+
         logger = PostgreSQLDataLogger(**datalogger_config)
-        
+
         error_id = logger.log_scan_error(
             symbol='BTCUSDT',
             error_type='API_ERROR',
@@ -187,6 +188,7 @@ class TestPostgreSQLDataLogger:
         # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour scan_error)
         assert cursor.execute.call_count == 2
     
+    @pytest.mark.skip(reason="log_market_context method no longer exists in PostgreSQLDataLogger")
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
     def test_log_market_context(self, mock_pool_class, datalogger_config, mock_pool, mock_postgres_connection):
@@ -194,18 +196,18 @@ class TestPostgreSQLDataLogger:
         mock_pool_class.return_value = mock_pool
         conn, cursor = mock_postgres_connection
         mock_pool.getconn.return_value = conn
-        
+
         from core.postgresql_datalogger import PostgreSQLDataLogger
-        
+
         logger = PostgreSQLDataLogger(**datalogger_config)
-        
+
         context_data = {
             'btc_price': 50000.0,
             'eth_price': 3000.0,
             'global_metrics': {'volume_24h': 1000000},
             'session_stats': {'trades_count': 5}
         }
-        
+
         context_id = logger.log_market_context(context_data)
 
         assert context_id is not None

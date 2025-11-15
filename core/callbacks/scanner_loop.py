@@ -414,6 +414,22 @@ async def _scan_top_pairs():
                 if _app_state is not None:
                     _app_state['active_position'] = position_result.to_dict()
 
+                # 🔥 FIX: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
+                # Ceci garantit que current_price sera mis à jour correctement pendant la position
+                if _price_provider:
+                    try:
+                        # Arrêter WebSocket actuel
+                        if hasattr(_price_provider, 'stop_websocket'):
+                            await _price_provider.stop_websocket()
+                            logger.debug("🔌 WebSocket arrêté pour position")
+
+                        # Redémarrer WebSocket uniquement sur le symbole de la position
+                        if hasattr(_price_provider, 'start_websocket'):
+                            await _price_provider.start_websocket([symbol])
+                            logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur redémarrage WebSocket pour position: {e}")
+
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
                     await _ws_manager.emit('position_opened', position_result.to_dict())
