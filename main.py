@@ -21,6 +21,7 @@ from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
+from app.runtime import app_state, ws_manager
 from core.websocket_manager import get_websocket_manager
 import time
 # 🔥 FIX: Import colorama pour les couleurs dans les logs
@@ -182,10 +183,7 @@ if api_router:
 # 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
 # Socket.IO complètement retiré pour performances maximales
 
-# 🔥 WebSocket Natif - Instance globale
-ws_manager = get_websocket_manager()
-
-# 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les routes
+# 🔥 WebSocket Natif - Instance globale (via runtime)
 if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
@@ -374,22 +372,6 @@ def load_trade_history():
     except Exception as e:
         logger.error(f"❌ Erreur chargement historique: {e}")
         app_state['trade_history'] = []
-
-# Global state
-app_state = {
-    'is_scanning': False,
-    'active_position': None,
-    'stats': {
-        'total_trades': 0,
-        'wins': 0,
-        'losses': 0,
-        'winrate': 0.0
-    },
-    'top_pairs': [],
-    'logs': [],
-    'trade_history': []  # 🔥 PHASE 4: Historique des trades
-}
-
 
 async def _run_initial_top_pairs_scan():
     """Lancer le scan initial sans bloquer la boucle d'événements"""
