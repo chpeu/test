@@ -822,9 +822,6 @@ async def scanner_loop_callback():
                                     # 🔥 FIX GEL: Redémarrer WebSocket avec symbole actif en priorité
                                     if price_provider:
                                         try:
-                                            # Arrêter l'ancien WebSocket
-                                            await price_provider.stop_websocket()
-                                            
                                             # Récupérer les top pairs et forcer l'ajout du symbole actif
                                             symbols = []
                                             if app_state.get('top_pairs'):
@@ -835,6 +832,12 @@ async def scanner_loop_callback():
                                             if not symbols:
                                                 symbols = [symbol]  # Au minimum le symbole actif
                                             
+                                            # Arrêter proprement l'ancien WebSocket
+                                            try:
+                                                await price_provider.stop_websocket()
+                                            except Exception as e:
+                                                logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
+                                            
                                             # Redémarrer WebSocket
                                             await price_provider.start_websocket(symbols)
                                             logger.warning(f"🔥 WebSocket redémarré avec {symbol} en priorité : {len(symbols)} symboles")
@@ -843,6 +846,8 @@ async def scanner_loop_callback():
                                             price_provider.set_socketio_callback(None, symbol)
                                         except Exception as e:
                                             logger.error(f"❌ Erreur redémarrage WebSocket pour {symbol}: {e}")
+                                            import traceback
+                                            logger.error(f"Traceback: {traceback.format_exc()}")
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     await add_log('INFO', 'Position ouverte automatiquement', 

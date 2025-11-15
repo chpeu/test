@@ -121,8 +121,12 @@ async def position_check_loop_callback():
 
         # Récupérer prix actuel
         current_price_data = await _price_provider.get_price(symbol)
-        if not current_price_data:
-            # 🔥 DEBUG GEL: Compter les échecs consécutifs
+        
+        # 🔥 FIX GEL: Détecter si le prix vient du REST (WebSocket inactif)
+        is_rest_fallback = current_price_data and current_price_data.get('source') in ['rest', 'rest_fallback_stale']
+        
+        if not current_price_data or is_rest_fallback:
+            # 🔥 DEBUG GEL: Compter les échecs consécutifs (pas de prix OU fallback REST)
             if not hasattr(position_check_loop_callback, '_price_fail_count'):
                 position_check_loop_callback._price_fail_count = {}
             
@@ -139,9 +143,10 @@ async def position_check_loop_callback():
                     async with _price_provider.cache_lock:
                         cache_has_symbol = symbol in _price_provider.price_cache
                 
+                source = current_price_data.get('source', 'unknown') if current_price_data else 'none'
                 logger.warning(
-                    f"⚠️ Prix INDISPONIBLE pour {symbol} depuis {fail_count * 0.05:.1f}s | "
-                    f"WS connecté: {ws_connected} | Cache: {cache_has_symbol}"
+                    f"⚠️ WebSocket INACTIF pour {symbol} depuis {fail_count * 0.05:.1f}s | "
+                    f"Source: {source} | WS connecté: {ws_connected} | Cache: {cache_has_symbol}"
                 )
                 
                 # 🔥 FIX GEL: Redémarrer WebSocket s'il est déconnecté
@@ -170,15 +175,18 @@ async def position_check_loop_callback():
                         except Exception as e:
                             logger.error(f"❌ Erreur redémarrage WebSocket: {e}")
             
-            return
+            # 🔥 FIX: Ne pas retourner si on a un prix REST, continuer avec ce prix
+            if not current_price_data:
+                return
 
-        # 🔥 DEBUG GEL: Reset compteur échecs si prix obtenu
+        # 🔥 DEBUG GEL: Reset compteur échecs si prix WebSocket obtenu
         if hasattr(position_check_loop_callback, '_price_fail_count'):
             if symbol in position_check_loop_callback._price_fail_count:
                 fail_count = position_check_loop_callback._price_fail_count[symbol]
-                if fail_count > 0:
-                    logger.info(f"✅ Prix récupéré pour {symbol} après {fail_count} échecs")
-                position_check_loop_callback._price_fail_count[symbol] = 0
+                source = current_price_data.get('source', 'unknown') if current_price_data else 'none'
+                if fail_count > 0 and source == 'websocket':
+                    logger.info(f"✅ WebSocket récupéré pour {symbol} après {fail_count * 0.05:.1f}s (source: {source})")
+                    position_check_loop_callback._price_fail_count[symbol] = 0
         
         current_price = (
             current_price_data.get('lastPrice', 0)

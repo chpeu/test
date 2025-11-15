@@ -191,7 +191,10 @@ class HybridPriceProvider:
     async def stop_websocket(self):
         """Arrêter WebSocket"""
         if self.ws_manager:
-            await self.ws_manager.disconnect()
+            try:
+                await self.ws_manager.disconnect()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
             self.ws_manager = None
             logger.info("🔌 WebSocket arrêté")
     
@@ -225,9 +228,12 @@ class HybridPriceProvider:
                     age = time.time() - cached_price.get('timestamp', 0)
                     if age > 5:  # Prix obsolète > 5s
                         logger.warning(f"⚠️ Prix cache obsolète pour {symbol}: {age:.1f}s, fallback REST")
+                        # Marquer comme source REST pour déclencher redémarrage
+                        cached_price['source'] = 'rest_fallback_stale'
                     else:
                         if metrics:
                             metrics.ws_price_count += 1
+                        cached_price['source'] = 'websocket'
                         return cached_price
             
             # 🔥 FIX GEL: Pas en cache, NE PAS attendre si position active (latence critique)
@@ -264,7 +270,8 @@ class HybridPriceProvider:
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),
                     "volume24": ticker.get("quoteVolume", 0),
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "source": "rest"  # Marquer source REST
                 }
         except Exception as e:
             if DEBUG_ENABLED:

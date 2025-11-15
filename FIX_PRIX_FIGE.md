@@ -151,3 +151,41 @@ if fail_count % 20 == 0:  # Toutes les 1 seconde
 - ✅ WebSocket **redémarre automatiquement** s'il s'arrête pendant une position
 - ✅ Détection en 1 seconde au lieu de laisser le prix figé
 - ✅ Fallback REST fonctionne pendant le redémarrage
+
+### Phase 4 : Détection fallback REST 🔥
+**Problème identifié** : Le compteur d'échecs ne s'incrémente jamais car `get_price()` retourne toujours un prix (via REST), donc le redémarrage automatique ne se déclenche pas.
+
+**Solution** : Marquer la source des prix et détecter le fallback REST
+
+**1. Marquage source dans `api/price_provider.py`** (ligne 233, 271)
+```python
+# Prix WebSocket
+cached_price['source'] = 'websocket'
+return cached_price
+
+# Prix REST
+return {
+    "symbol": symbol,
+    "lastPrice": ticker.get("last", 0),
+    "source": "rest"  # ← Marquer source
+}
+```
+
+**2. Détection fallback dans `position_check_loop.py`** (ligne 125)
+```python
+# Détecter si le prix vient du REST (WebSocket inactif)
+is_rest_fallback = current_price_data and current_price_data.get('source') in ['rest', 'rest_fallback_stale']
+
+if not current_price_data or is_rest_fallback:
+    # Compter échecs ET fallback REST
+    fail_count += 1
+    
+    if fail_count % 20 == 0:  # Toutes les 1s
+        logger.warning(f"⚠️ WebSocket INACTIF pour {symbol} depuis {fail_count * 0.05:.1f}s | Source: {source}")
+        # Redémarrer WebSocket...
+```
+
+**Impact** :
+- ✅ Le redémarrage se déclenche **même si le REST fonctionne**
+- ✅ Logs affichent la source du prix (`websocket` vs `rest`)
+- ✅ Le bot reste fonctionnel avec REST pendant le redémarrage WebSocket
