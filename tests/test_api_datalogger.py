@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import Dict, List, Sequence
+import sys
+import types
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -58,11 +60,95 @@ def patch_get_cursor(monkeypatch, *, select_results=None, delete_rowcounts=None)
     monkeypatch.setattr("api.routes.datalogger.get_cursor", fake_get_cursor)
 
 
+def patch_openpyxl(monkeypatch):
+    """Inject a tiny fake openpyxl module so export route can run without dependency."""
+
+    class FakeCell:
+        def __init__(self, value):
+            self.value = value
+            self.fill = None
+            self.font = None
+            self.alignment = None
+
+    class ColumnDimensions(dict):
+        def __getitem__(self, key):
+            if key not in self:
+                self[key] = types.SimpleNamespace(width=None)
+            return super().__getitem__(key)
+
+    class FakeWorksheet:
+        def __init__(self, title):
+            self.title = title
+            self._rows: List[List[FakeCell]] = []
+            self.column_dimensions = ColumnDimensions()
+
+        def append(self, values):
+            row = [FakeCell(v) for v in values]
+            self._rows.append(row)
+
+        def __getitem__(self, index):
+            # openpyxl is 1-indexed for rows
+            return self._rows[index - 1]
+
+    class FakeWorkbook:
+        def __init__(self):
+            self.active = FakeWorksheet("Active")
+            self._sheets: List[FakeWorksheet] = []
+
+        def remove(self, _worksheet):
+            # Nothing to do for fake workbook
+            pass
+
+        def create_sheet(self, title):
+            ws = FakeWorksheet(title)
+            self._sheets.append(ws)
+            return ws
+
+        def save(self, output_stream):
+            # XLSX files are zip archives that start with 'PK'
+            output_stream.write(b"PKFAKE_XLSX")
+
+    class FakePatternFill:
+        def __init__(self, *_, **__):
+            pass
+
+    class FakeFont:
+        def __init__(self, *_, **__):
+            pass
+
+    class FakeAlignment:
+        def __init__(self, *_, **__):
+            pass
+
+    def fake_get_column_letter(index: int) -> str:
+        result = ""
+        while index > 0:
+            index, remainder = divmod(index - 1, 26)
+            result = chr(65 + remainder) + result
+        return result or "A"
+
+    fake_openpyxl = types.ModuleType("openpyxl")
+    fake_styles = types.ModuleType("openpyxl.styles")
+    fake_utils = types.ModuleType("openpyxl.utils")
+
+    fake_openpyxl.Workbook = FakeWorkbook
+    fake_styles.PatternFill = FakePatternFill
+    fake_styles.Font = FakeFont
+    fake_styles.Alignment = FakeAlignment
+    fake_utils.get_column_letter = fake_get_column_letter
+
+    fake_openpyxl.styles = fake_styles
+    fake_openpyxl.utils = fake_utils
+
+    sys.modules["openpyxl"] = fake_openpyxl
+    sys.modules["openpyxl.styles"] = fake_styles
+    sys.modules["openpyxl.utils"] = fake_utils
+
+
 @pytest.mark.asyncio
 async def test_export_excel_returns_workbook(monkeypatch):
-    # 🔥 FIX: Vérifier que openpyxl est disponible avant de tester
-    pytest.importorskip("openpyxl", reason="openpyxl not installed")
-    
+    patch_openpyxl(monkeypatch)
+
     select_rows = [
         [
             {

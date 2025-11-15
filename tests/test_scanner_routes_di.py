@@ -2,16 +2,19 @@
 Tests pour les routes scanner avec Dependency Injection
 """
 import pytest
-from fastapi.testclient import TestClient
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, Mock
 from api.routes.scanner import get_scanner, get_analyzer, get_app_state, get_ws_manager
 
 
-@pytest.fixture
-def client():
-    """Client de test FastAPI"""
+@pytest_asyncio.fixture
+async def client():
+    """Client HTTPX async pour FastAPI"""
     from main import app
-    return TestClient(app)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
 
 
 @pytest.fixture
@@ -39,7 +42,8 @@ def mock_app_state():
 class TestTopPairsRoute:
     """Tests pour GET /api/scanner/top-pairs"""
 
-    def test_get_top_pairs_with_data(self, client, mock_app_state):
+    @pytest.mark.asyncio
+    async def test_get_top_pairs_with_data(self, client, mock_app_state):
         """Test récupération des top pairs avec données"""
         from main import app
 
@@ -47,7 +51,7 @@ class TestTopPairsRoute:
         app.dependency_overrides[get_app_state] = lambda: mock_app_state
 
         try:
-            response = client.get("/api/scanner/top-pairs")
+            response = await client.get("/api/scanner/top-pairs")
 
             assert response.status_code == 200
             data = response.json()
@@ -56,7 +60,8 @@ class TestTopPairsRoute:
         finally:
             app.dependency_overrides.clear()
 
-    def test_get_top_pairs_empty(self, client):
+    @pytest.mark.asyncio
+    async def test_get_top_pairs_empty(self, client):
         """Test récupération des top pairs sans données"""
         from main import app
 
@@ -64,7 +69,7 @@ class TestTopPairsRoute:
         app.dependency_overrides[get_app_state] = lambda: {}
 
         try:
-            response = client.get("/api/scanner/top-pairs")
+            response = await client.get("/api/scanner/top-pairs")
 
             assert response.status_code == 200
             data = response.json()
@@ -76,7 +81,8 @@ class TestTopPairsRoute:
 class TestStartScannerRoute:
     """Tests pour POST /api/scanner/start"""
 
-    def test_start_scanner_success(self, client, mock_scanner, mock_app_state):
+    @pytest.mark.asyncio
+    async def test_start_scanner_success(self, client, mock_scanner, mock_app_state):
         """Test démarrage scanner avec succès"""
         from main import app
 
@@ -86,7 +92,7 @@ class TestStartScannerRoute:
         app.dependency_overrides[get_ws_manager] = lambda: None
 
         try:
-            response = client.post("/api/scanner/start", json={"top_n": 10})
+            response = await client.post("/api/scanner/start", json={"top_n": 10})
 
             assert response.status_code == 200
             data = response.json()
@@ -99,7 +105,8 @@ class TestStartScannerRoute:
         finally:
             app.dependency_overrides.clear()
 
-    def test_start_scanner_default_top_n(self, client, mock_scanner, mock_app_state):
+    @pytest.mark.asyncio
+    async def test_start_scanner_default_top_n(self, client, mock_scanner, mock_app_state):
         """Test démarrage scanner avec top_n par défaut"""
         from main import app
 
@@ -108,7 +115,7 @@ class TestStartScannerRoute:
         app.dependency_overrides[get_ws_manager] = lambda: None
 
         try:
-            response = client.post("/api/scanner/start", json={})
+            response = await client.post("/api/scanner/start", json={})
 
             assert response.status_code == 200
             data = response.json()
@@ -116,7 +123,8 @@ class TestStartScannerRoute:
         finally:
             app.dependency_overrides.clear()
 
-    def test_start_scanner_error_handling(self, client, mock_app_state):
+    @pytest.mark.asyncio
+    async def test_start_scanner_error_handling(self, client, mock_app_state):
         """Test gestion d'erreur lors du démarrage"""
         from main import app
 
@@ -130,7 +138,7 @@ class TestStartScannerRoute:
         app.dependency_overrides[get_ws_manager] = lambda: None
 
         try:
-            response = client.post("/api/scanner/start", json={"top_n": 10})
+            response = await client.post("/api/scanner/start", json={"top_n": 10})
 
             assert response.status_code == 500
             data = response.json()
@@ -138,14 +146,15 @@ class TestStartScannerRoute:
         finally:
             app.dependency_overrides.clear()
 
-    def test_start_scanner_without_dependencies(self, client):
+    @pytest.mark.asyncio
+    async def test_start_scanner_without_dependencies(self, client):
         """Test démarrage scanner sans dépendances disponibles"""
         from main import app
 
         # Ne pas injecter les dépendances (simuler indisponibilité)
         # get_scanner lèvera une HTTPException 503
 
-        response = client.post("/api/scanner/start", json={"top_n": 10})
+        response = await client.post("/api/scanner/start", json={"top_n": 10})
 
         # Devrait retourner 503 (Service Unavailable)
         assert response.status_code == 503
@@ -154,14 +163,15 @@ class TestStartScannerRoute:
 class TestAnalyzeSymbolRoute:
     """Tests pour GET /api/scanner/analyze/{symbol}"""
 
-    def test_analyze_symbol_basic(self, client, mock_analyzer):
+    @pytest.mark.asyncio
+    async def test_analyze_symbol_basic(self, client, mock_analyzer):
         """Test analyse d'un symbole"""
         from main import app
 
         app.dependency_overrides[get_analyzer] = lambda: mock_analyzer
 
         try:
-            response = client.get("/api/scanner/analyze/BTCUSDT")
+            response = await client.get("/api/scanner/analyze/BTCUSDT")
 
             assert response.status_code == 200
             data = response.json()
@@ -170,14 +180,15 @@ class TestAnalyzeSymbolRoute:
         finally:
             app.dependency_overrides.clear()
 
-    def test_analyze_symbol_with_params(self, client, mock_analyzer):
+    @pytest.mark.asyncio
+    async def test_analyze_symbol_with_params(self, client, mock_analyzer):
         """Test analyse avec paramètres"""
         from main import app
 
         app.dependency_overrides[get_analyzer] = lambda: mock_analyzer
 
         try:
-            response = client.get(
+            response = await client.get(
                 "/api/scanner/analyze/ETHUSDT"
                 "?tf=5m&use_confluence=true&volume_multiplier=1.5"
             )
@@ -188,9 +199,10 @@ class TestAnalyzeSymbolRoute:
         finally:
             app.dependency_overrides.clear()
 
-    def test_analyze_symbol_without_analyzer(self, client):
+    @pytest.mark.asyncio
+    async def test_analyze_symbol_without_analyzer(self, client):
         """Test analyse sans analyzer disponible"""
-        response = client.get("/api/scanner/analyze/BTCUSDT")
+        response = await client.get("/api/scanner/analyze/BTCUSDT")
 
         # Devrait retourner 503 si analyzer non disponible
         assert response.status_code == 503

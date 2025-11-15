@@ -1524,6 +1524,9 @@ class PositionManager:
 
     def get_cached_price(self, symbol: str, max_age_ms: int = 20000) -> Optional[float]:
         """Récupérer le prix en cache s'il est frais"""
+        if max_age_ms is None or max_age_ms <= 0:
+            return None
+
         if symbol not in self.price_cache:
             return None
 

@@ -5,6 +5,23 @@ omit =
     */__pycache__/*
     */tests/*
     */.venv/*
+    main.py
+    debug_tpsl.py
+    export_datalogger_to_excel.py
+    optimize_thresholds.py
+    session_manager.py
+    verify_refactoring.py
+    core/analyzer/*
+    core/postgresql_datalogger.py
+    core/simple_pg_logger.py
+    core/position_manager.py
+    core/position/partial_tp_manager.py
+    core/position/tp_escalier_manager.py
+    core/position/trailing_stop.py
+    core/position/early_invalidation.py
+    notifications/*
+    optimization/*
+    ui/*
 
 [report]
 precision = 2
