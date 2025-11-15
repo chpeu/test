@@ -5,6 +5,7 @@ Exécuté toutes les 2 secondes pour vérifier la position active
 
 import asyncio
 import logging
+import time
 from typing import Optional
 from datetime import datetime
 
@@ -134,9 +135,19 @@ async def position_check_loop_callback():
                 position_check_loop_callback._price_fail_count.get(symbol, 0) + 1
             
             fail_count = position_check_loop_callback._price_fail_count[symbol]
+
+            # 🔥 HOTFIX LATENCE: tenter une action immédiate avec cooldown
+            cooldown = 2.0  # secondes entre deux tentatives forcées
+            if not hasattr(position_check_loop_callback, '_last_ws_action'):
+                position_check_loop_callback._last_ws_action = {}
+            last_action = position_check_loop_callback._last_ws_action.get(symbol, 0)
+            now = time.time()
+            if now - last_action >= cooldown:
+                position_check_loop_callback._last_ws_action[symbol] = now
+                await _recover_websocket_stream(symbol, reason='rest_fallback')
             
             # Log WARNING si échec répété (>20 fois = >1 seconde)
-            if fail_count % 20 == 0:
+            if fail_count % 10 == 0:
                 ws_connected = (_price_provider.ws_manager and _price_provider.ws_manager.connected) if _price_provider else False
                 cache_has_symbol = False
                 if _price_provider and hasattr(_price_provider, 'price_cache'):
@@ -149,31 +160,7 @@ async def position_check_loop_callback():
                     f"Source: {source} | WS connecté: {ws_connected} | Cache: {cache_has_symbol}"
                 )
                 
-                # 🔥 FIX GEL: Redémarrer WebSocket s'il est déconnecté
-                if _price_provider:
-                    if _price_provider.ws_manager and _price_provider.ws_manager.connected:
-                        # WebSocket connecté mais symbole absent → réabonner
-                        try:
-                            logger.info(f"🔄 Réabonnement WebSocket pour {symbol}")
-                            await _price_provider.ws_manager.subscribe_ticker(symbol)
-                        except Exception as e:
-                            logger.error(f"❌ Erreur réabonnement: {e}")
-                    else:
-                        # WebSocket déconnecté → redémarrer complètement
-                        try:
-                            logger.warning(f"🔥 WebSocket déconnecté, redémarrage avec {symbol}")
-                            symbols = [symbol]  # Au minimum le symbole actif
-                            # Ajouter top_pairs si disponibles
-                            if _app_state and _app_state.get('top_pairs'):
-                                top_symbols = [p.get('symbol', '') for p in _app_state['top_pairs'][:30] if p.get('symbol')]
-                                if symbol not in top_symbols:
-                                    symbols.extend(top_symbols)
-                                else:
-                                    symbols = top_symbols
-                            await _price_provider.start_websocket(symbols)
-                            logger.warning(f"✅ WebSocket redémarré : {len(symbols)} symboles")
-                        except Exception as e:
-                            logger.error(f"❌ Erreur redémarrage WebSocket: {e}")
+                await _recover_websocket_stream(symbol, reason='stale_warning')
             
             # 🔥 FIX: Ne pas retourner si on a un prix REST, continuer avec ce prix
             if not current_price_data:
