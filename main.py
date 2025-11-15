@@ -2016,18 +2016,19 @@ def init_instances():
         
         # 🔥 FIX: Injecter toutes les instances dans position_check_loop
         try:
-            from core.callbacks.position_check_loop import (
-                set_websocket_manager, set_position_manager, 
-                set_price_provider, set_app_state
-            )
-            if set_websocket_manager:
-                set_websocket_manager(ws_manager)
-            if set_position_manager and position_manager:
-                set_position_manager(position_manager)
-            if set_price_provider and price_provider:
-                set_price_provider(price_provider)
-            if set_app_state:
-                set_app_state(app_state)
+            import core.callbacks.position_check_loop as pcl_module
+            # Injecter ws_manager
+            if hasattr(pcl_module, 'set_websocket_manager'):
+                pcl_module.set_websocket_manager(ws_manager)
+            # Injecter position_manager (variable globale déjà initialisée)
+            if hasattr(pcl_module, 'set_position_manager') and position_manager:
+                pcl_module.set_position_manager(position_manager)
+            # Injecter price_provider (variable globale déjà initialisée)
+            if hasattr(pcl_module, 'set_price_provider') and price_provider:
+                pcl_module.set_price_provider(price_provider)
+            # Injecter app_state
+            if hasattr(pcl_module, 'set_app_state'):
+                pcl_module.set_app_state(app_state)
             logger.info("✅ Instances injectées dans position_check_loop")
         except ImportError:
             pass  # Callback module optionnel
