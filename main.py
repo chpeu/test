@@ -22,6 +22,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from app.runtime import app_state, ws_manager
+from app.schemas import DashboardSummary, DataloggerResetResponse
+from database.pg import get_cursor
 from core.websocket_manager import get_websocket_manager
 import time
 # 🔥 FIX: Import colorama pour les couleurs dans les logs
@@ -4337,22 +4339,24 @@ async def get_dashboard_summary():
     if position_manager and position_manager.config:
         recovery_mode_active = position_manager.config.recovery_mode_active
     
-    return JSONResponse({
-        'total_trades': total_trades,
-        'wins': wins,
-        'losses': losses,
-        'winrate': round(winrate, 2),
-        'profit_total': round(profit_total, 4),
-        'profit_today': round(profit_today, 4),
-        'drawdown': round(max_dd_info.get('current_dd', 0), 2),  # Drawdown actuel (%)
-        'drawdown_max': max_dd_info.get('max_dd', 0),  # Drawdown max historique (%)
-        'drawdown_max_date': max_dd_info.get('max_dd_date'),  # Date du max drawdown
-        'current_peak': max_dd_info.get('current_peak', 0),  # Pic actuel (%)
-        'win_streak': win_streak,
-        'loss_streak': loss_streak,
-        'recovery_mode_active': recovery_mode_active,
-        'equity_curve': equity_curve[-100:]  # Derniers 100 points
-    })
+    summary = DashboardSummary(
+        total_trades=total_trades,
+        wins=wins,
+        losses=losses,
+        winrate=round(winrate, 2),
+        profit_total=round(profit_total, 4),
+        profit_today=round(profit_today, 4),
+        drawdown=round(max_dd_info.get('current_dd', 0), 2),
+        drawdown_max=max_dd_info.get('max_dd', 0),
+        drawdown_max_date=max_dd_info.get('max_dd_date'),
+        current_peak=max_dd_info.get('current_peak', 0),
+        win_streak=win_streak,
+        loss_streak=loss_streak,
+        recovery_mode_active=recovery_mode_active,
+        equity_curve=equity_curve[-100:],
+    )
+
+    return JSONResponse(summary.model_dump())
 
 @app.get("/api/dashboard/trades-history")
 async def get_trades_history(limit: int = 50):
@@ -4448,15 +4452,6 @@ async def export_datalogger_excel(
         Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
     """
     try:
-        from core.callbacks.scanner_loop import get_pg_datalogger
-        pg_datalogger = get_pg_datalogger()
-        
-        if not pg_datalogger or not pg_datalogger.enabled:
-            return JSONResponse(
-                {"error": "PostgreSQL DataLogger non disponible"},
-                status_code=503
-            )
-        
         # Vérifier si openpyxl est installé
         try:
             from openpyxl import Workbook
@@ -4467,23 +4462,11 @@ async def export_datalogger_excel(
                 {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
                 status_code=500
             )
-        
-        conn = pg_datalogger._get_connection()
-        if not conn:
-            return JSONResponse(
-                {"error": "Impossible de se connecter à PostgreSQL"},
-                status_code=503
-            )
-        
-        try:
-            from psycopg2.extras import RealDictCursor
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Créer un workbook Excel
+
+        with get_cursor(dict_cursor=True) as cursor:
             wb = Workbook()
-            wb.remove(wb.active)  # Supprimer la feuille par défaut
-            
-            # ===== ONGLET 1: SCANS =====
+            wb.remove(wb.active)
+
             ws_scans = wb.create_sheet("Scans")
             query_scans = """
                 SELECT 
@@ -4505,29 +4488,26 @@ async def export_datalogger_excel(
             
             cursor.execute(query_scans, params)
             scans = cursor.fetchall()
-            
-            if scans:
-                # En-têtes
-                headers = list(scans[0].keys())
-                ws_scans.append(headers)
-                
-                # Style en-têtes
-                header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                header_font = Font(bold=True, color="FFFFFF")
-                for cell in ws_scans[1]:
+
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+
+            def _write_sheet(worksheet, rows):
+                if not rows:
+                    return
+                headers = list(rows[0].keys())
+                worksheet.append(headers)
+                for cell in worksheet[1]:
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center")
-                
-                # Données
-                for row in scans:
-                    ws_scans.append([row.get(h) for h in headers])
-                
-                # Ajuster largeur colonnes
+                for row in rows:
+                    worksheet.append([row.get(h) for h in headers])
                 for col in range(1, len(headers) + 1):
-                    ws_scans.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 2: OPPORTUNITIES =====
+                    worksheet.column_dimensions[get_column_letter(col)].width = 15
+
+            _write_sheet(ws_scans, scans)
+
             ws_opps = wb.create_sheet("Opportunities")
             query_opps = """
                 SELECT 
@@ -4545,26 +4525,11 @@ async def export_datalogger_excel(
                 query_opps += " AND timestamp <= %s"
                 params_opps.append(f"{end_date} 23:59:59")
             query_opps += " ORDER BY timestamp DESC LIMIT 10000"
-            
+
             cursor.execute(query_opps, params_opps)
             opportunities = cursor.fetchall()
-            
-            if opportunities:
-                headers = list(opportunities[0].keys())
-                ws_opps.append(headers)
-                
-                for cell in ws_opps[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in opportunities:
-                    ws_opps.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_opps.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 3: TRADES =====
+            _write_sheet(ws_opps, opportunities)
+
             ws_trades = wb.create_sheet("Trades")
             query_trades = """
                 SELECT 
@@ -4586,47 +4551,25 @@ async def export_datalogger_excel(
             
             cursor.execute(query_trades, params_trades)
             trades = cursor.fetchall()
-            
-            if trades:
-                headers = list(trades[0].keys())
-                ws_trades.append(headers)
-                
-                for cell in ws_trades[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in trades:
-                    ws_trades.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_trades.column_dimensions[get_column_letter(col)].width = 15
-            
-            cursor.close()
-            pg_datalogger._return_connection(conn)
-            
-            # Sauvegarder dans un buffer
-            from io import BytesIO
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
-            
-            filename = f"datalogger_export_{start_date}_{end_date}.xlsx" if (start_date and end_date) else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
-            
-            return StreamingResponse(
-                output,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
-            )
-            
-        except Exception as e:
-            pg_datalogger._return_connection(conn)
-            logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
-            return JSONResponse(
-                {"error": f"Erreur export Excel: {str(e)}"},
-                status_code=500
-            )
-            
+            _write_sheet(ws_trades, trades)
+
+        from io import BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = (
+            f"datalogger_export_{start_date}_{end_date}.xlsx"
+            if (start_date and end_date)
+            else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        )
+
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
     except Exception as e:
         logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
         return JSONResponse(
@@ -4646,64 +4589,34 @@ async def reset_datalogger_db():
         Message de confirmation
     """
     try:
-        from core.callbacks.scanner_loop import get_pg_datalogger
-        pg_datalogger = get_pg_datalogger()
-        
-        if not pg_datalogger or not pg_datalogger.enabled:
-            return JSONResponse(
-                {"error": "PostgreSQL DataLogger non disponible"},
-                status_code=503
-            )
-        
-        conn = pg_datalogger._get_connection()
-        if not conn:
-            return JSONResponse(
-                {"error": "Impossible de se connecter à PostgreSQL"},
-                status_code=503
-            )
-        
-        try:
-            cursor = conn.cursor()
-            
-            # Supprimer toutes les données (dans l'ordre pour respecter les contraintes FK)
-            tables = [
-                'trades',
-                'opportunities',
-                'scan_logs',
-                'scan_errors',
-                'market_context',
-                'config_snapshots',
-                'trading_sessions'
-            ]
-            
-            deleted_counts = {}
+        tables = [
+            'trades',
+            'opportunities',
+            'scan_logs',
+            'scan_errors',
+            'market_context',
+            'config_snapshots',
+            'trading_sessions'
+        ]
+
+        deleted_counts: Dict[str, int] = {}
+        with get_cursor() as cursor:
             for table in tables:
                 cursor.execute(f"DELETE FROM {table}")
                 deleted_counts[table] = cursor.rowcount
-            
-            conn.commit()
-            cursor.close()
-            pg_datalogger._return_connection(conn)
-            
-            total_deleted = sum(deleted_counts.values())
-            logger.warning(f"🗑️  Base de données PostgreSQL resetée: {total_deleted} enregistrements supprimés")
-            
-            return JSONResponse({
-                "success": True,
-                "message": f"Base de données resetée avec succès",
-                "deleted": deleted_counts,
-                "total_deleted": total_deleted
-            })
-            
-        except Exception as e:
-            conn.rollback()
-            pg_datalogger._return_connection(conn)
-            logger.error(f"❌ Erreur reset DB: {e}", exc_info=True)
-            return JSONResponse(
-                {"error": f"Erreur reset DB: {str(e)}"},
-                status_code=500
-            )
-            
+
+        total_deleted = sum(deleted_counts.values())
+        logger.warning("🗑️  Base de données PostgreSQL resetée: %s enregistrements supprimés", total_deleted)
+
+        response = DataloggerResetResponse(
+            success=True,
+            message="Base de données resetée avec succès",
+            deleted=deleted_counts,
+            total_deleted=total_deleted,
+        )
+
+        return JSONResponse(response.model_dump())
+
     except Exception as e:
         logger.error(f"❌ Erreur reset DB: {e}", exc_info=True)
         return JSONResponse(
