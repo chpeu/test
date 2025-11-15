@@ -337,6 +337,8 @@ async def _run_initial_top_pairs_scan():
 
         if price_provider:
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+            symbols = ensure_active_symbol_in_list(symbols)
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
@@ -409,6 +411,8 @@ async def scanner_loop_callback():
                 # 🔥 JOUR 3: Démarrer WebSocket pour les top pairs
                 if price_provider and top_pairs:
                     symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                    # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+                    symbols = ensure_active_symbol_in_list(symbols)
                     if symbols:
                         try:
                             await price_provider.start_websocket(symbols)
@@ -1615,6 +1619,32 @@ async def position_check_loop_callback():
         await add_log('ERROR', 'Erreur position check', str(e))
 
 
+def ensure_active_symbol_in_list(symbols: list) -> list:
+    """
+    🔥 FIX GEL: S'assurer que le symbole de la position active est TOUJOURS dans la liste
+    Cette fonction doit être appelée AVANT chaque start_websocket() pour éviter de perdre
+    l'abonnement au symbole actif lors des refresh de scalability.
+    """
+    active_symbol = None
+    
+    # Chercher le symbole actif
+    if position_manager and position_manager.active_position:
+        active_symbol = position_manager.active_position.symbol
+    elif app_state.get('active_position'):
+        pos = app_state['active_position']
+        active_symbol = pos.symbol if hasattr(pos, 'symbol') else pos.get('symbol') if isinstance(pos, dict) else None
+    
+    # Ajouter le symbole actif s'il n'est pas dans la liste
+    if active_symbol:
+        if active_symbol not in symbols:
+            symbols = [active_symbol] + symbols  # Mettre en premier
+            logger.warning(f"🔥 Position active sur {active_symbol} : ajout forcé au WebSocket")
+        else:
+            logger.debug(f"✅ Position active sur {active_symbol} : déjà dans les symboles WebSocket")
+    
+    return symbols
+
+
 async def scalability_refresh_loop_callback():
     """Callback appelé toutes les 90 secondes pour rafraîchir la liste des top pairs"""
     if not app_state['is_scanning']:
@@ -1651,6 +1681,10 @@ async def scalability_refresh_loop_callback():
             
             # Démarrer avec les nouvelles paires
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            
+            # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+            symbols = ensure_active_symbol_in_list(symbols)
+            
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
@@ -2553,6 +2587,9 @@ async def api_start_websocket():
         
         if not symbols:
             return JSONResponse({'error': 'Aucun symbole valide trouvé'}, status_code=400)
+        
+        # 🔥 FIX GEL: S'assurer que le symbole actif est toujours inclus
+        symbols = ensure_active_symbol_in_list(symbols)
         
         # Démarrer WebSocket
         await price_provider.start_websocket(symbols)

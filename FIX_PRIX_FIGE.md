@@ -90,6 +90,29 @@ Après relance du backend, observe les logs lors d'une position :
 
 ## 📝 Fichiers Modifiés
 
+### Phase 1 : Diagnostic
 - `core/callbacks/position_check_loop.py` : Diagnostic + réabonnement auto
 - `api/price_provider.py` : Fallback immédiat + vérification âge
 - `frontend/src/lib/stores/position.js` : Normalisation précision
+
+### Phase 2 : Fix Scalability Refresh 🔥
+**Problème identifié** : Le WebSocket est redémarré toutes les 90s par `scalability_refresh` et **perd l'abonnement au symbole actif**.
+
+**Solution** : Fonction `ensure_active_symbol_in_list()` qui force l'inclusion du symbole actif dans TOUS les redémarrages WebSocket.
+
+**Modifications** - `main.py` :
+1. Nouvelle fonction `ensure_active_symbol_in_list(symbols)` (ligne ~1618)
+   - Cherche le symbole actif dans `position_manager.active_position` ou `app_state['active_position']`
+   - L'ajoute en premier si absent
+   - Log un WARNING pour traçabilité
+
+2. Appels de `ensure_active_symbol_in_list()` dans :
+   - `_run_initial_top_pairs_scan()` (ligne ~341)
+   - `scanner_loop_callback()` (ligne ~415)
+   - `scalability_refresh_loop_callback()` (ligne ~1682)
+   - `api_start_websocket()` (ligne ~2592)
+
+**Impact** :
+- ✅ Le symbole actif reste **TOUJOURS** abonné au WebSocket
+- ✅ Les prix continuent de se mettre à jour même après un refresh
+- ✅ Plus de gel du `current_price` en position
