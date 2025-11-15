@@ -10,19 +10,35 @@ import argparse
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
+    from database.pg import get_connection
+    HAS_APP_POOL = True
 except ImportError:
     print("❌ psycopg2 non installé")
     sys.exit(1)
+except Exception:
+    HAS_APP_POOL = False
 
 
 def check_tables(password):
     """Vérifier toutes les tables et partitions"""
 
-    # Connection
-    conn_string = f"host=localhost port=5432 dbname=trade_cursor_ml user=postgres password={password}"
+    conn = None
+    conn_ctx = None
 
     try:
-        conn = psycopg2.connect(conn_string)
+        if HAS_APP_POOL and not password:
+            conn_ctx = get_connection()
+            conn = conn_ctx.__enter__()
+        else:
+            conn_string = (
+                f"host={os.getenv('POSTGRES_HOST', 'localhost')} "
+                f"port={os.getenv('POSTGRES_PORT', '5432')} "
+                f"dbname={os.getenv('POSTGRES_DB', 'trade_cursor_ml')} "
+                f"user={os.getenv('POSTGRES_USER', 'postgres')} "
+                f"password={password}"
+            )
+            conn = psycopg2.connect(conn_string)
+
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         print("=" * 70)
@@ -178,17 +194,22 @@ def check_tables(password):
         print("=" * 70)
 
         cursor.close()
-        conn.close()
+        if conn_ctx:
+            conn_ctx.__exit__(None, None, None)
+        elif conn:
+            conn.close()
 
     except Exception as e:
         print(f"❌ Erreur: {e}")
         import traceback
         traceback.print_exc()
+        if conn_ctx:
+            conn_ctx.__exit__(None, None, None)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Diagnostic DataLogger PostgreSQL')
-    parser.add_argument('--password', required=True, help='PostgreSQL password')
+    parser.add_argument('--password', default='', help='PostgreSQL password (facultatif si pool déjà configuré)')
 
     args = parser.parse_args()
     check_tables(args.password)
