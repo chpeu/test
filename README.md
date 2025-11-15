@@ -1,6 +1,6 @@
 # 🚀 Trade Cursor v7.0 - MEXC Smart Scalping Scanner
 
-**Migration Python de v5.1 HTML avec interface IDENTIQUE**
+**Backend FastAPI + WebSocket natif avec interface IDENTIQUE**
 
 [![Tests](https://github.com/chpeu/trade_cursor_py/workflows/Tests%20&%20Coverage/badge.svg)](https://github.com/chpeu/trade_cursor_py/actions)
 [![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
@@ -41,16 +41,16 @@ pip install -r requirements.txt
 
 ### 2. Installation dépendances
 ```bash
-cd trade_cursor_py
 pip install -r requirements.txt
 ```
 
-### 3. Lancer l'application
+### 3. Lancer l'application (FastAPI)
 ```bash
-python main.py
+uvicorn main:app --reload
+# ou python main.py pour l’instance par défaut
 ```
 
-Ouvrez `http://localhost:5000` dans votre navigateur.
+Frontend Svelte disponible via `start_svelte.bat` (panel HTML identique). API: `http://localhost:5000`.
 
 ---
 
@@ -58,27 +58,20 @@ Ouvrez `http://localhost:5000` dans votre navigateur.
 
 ```
 trade_cursor_py/
-├── main.py                    # App Flask + Socket.IO
-├── config.py                  # Configuration globale
+├── main.py                    # Entrée FastAPI (app factory en cours)
+├── app/
+│   ├── state.py              # ApplicationState partagé
+│   ├── runtime.py            # Singletons (app_state, ws_manager)
+│   └── schemas.py            # DTO Pydantic (dashboard, exports…)
+├── database/
+│   └── pg.py                 # Helper psycopg2 (get_cursor, pool)
+├── core/                      # Logique métier (scanner, analyzer, positions…)
+├── api/                       # Routes REST + WebSocket natif
+├── frontend/                  # Interface Svelte équivalente à v5.1
+├── templates/                 # HTML legacy (identique v5.1)
 ├── requirements.txt           # Dépendances Python
 ├── README.md                  # Ce fichier
-│
-├── templates/
-│   └── index.html            # UI HTML v5.1 (IDENTIQUE)
-│
-├── core/                      # Logique métier
-│   ├── indicators.py         # Indicateurs techniques
-│   ├── scanner.py            # Scanner scalabilité
-│   ├── analyzer.py           # Analyse technique
-│   └── position_manager.py   # Gestion positions
-│
-├── api/                       # API MEXC
-│   └── mexc.py               # Client ccxt
-│
-├── utils/                     # Utilitaires
-│   └── logger.py             # Logging coloré
-│
-└── test_*.py                  # Tests unitaires
+└── tests/                     # Tests unitaires/async
 ```
 
 ---
@@ -151,11 +144,11 @@ pylint trade_cursor_py/
 
 ## 🔄 MIGRATION
 
-**Du HTML/JS vers Python/Flask**:
-- ✅ Architecture modulaire
-- ✅ Code propre (0 erreurs)
-- ✅ Tests unitaires
-- ✅ Interface identique
+**Vers FastAPI + WebSocket natif**:
+- ✅ Architecture modulaire (app/, database/, core/)
+- ✅ WebSocket natif haute performance
+- ✅ Tests unitaires + endpoints async
+- ✅ Interface identique (Svelte + templates legacy)
 
 **Avantages Python**:
 - Pas de CORS/proxies
