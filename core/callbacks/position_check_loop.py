@@ -63,6 +63,50 @@ def set_analytics_db(analytics_db):
     _analytics_db = analytics_db
 
 
+async def _recover_websocket_stream(symbol: str, reason: str = "manual"):
+    """Tenter de rétablir un flux WebSocket fiable pour le symbole actif."""
+    if not _price_provider or not symbol:
+        return
+
+    try:
+        logger.warning(
+            f"🔄 Tentative récupération WebSocket ({reason}) pour {symbol}"
+        )
+
+        # 1) S'assurer que la connexion prioritaire est active pour le symbole en position
+        if hasattr(_price_provider, 'ensure_priority_connection'):
+            await _price_provider.ensure_priority_connection(symbol)
+
+        # 2) Si le WebSocket principal est connecté, forcer un réabonnement rapide
+        if _price_provider.ws_manager and _price_provider.ws_manager.connected:
+            try:
+                await _price_provider.ws_manager.subscribe_ticker(symbol)
+                logger.info(f"🔁 Réabonnement ticker réussi pour {symbol}")
+                return
+            except Exception as e:
+                logger.error(f"❌ Échec réabonnement WebSocket ({symbol}): {e}")
+
+        # 3) Sinon, redémarrer complètement la connexion avec une liste prioritaire
+        symbols = [symbol]
+        if _app_state and _app_state.get('top_pairs'):
+            top_symbols = [
+                p.get('symbol', '')
+                for p in _app_state['top_pairs'][:30]
+                if p.get('symbol')
+            ]
+            for top_symbol in top_symbols:
+                if top_symbol and top_symbol not in symbols:
+                    symbols.append(top_symbol)
+
+        await _price_provider.start_websocket(symbols)
+        logger.warning(
+            f"✅ WebSocket redémarré ({reason}) avec {symbol} en priorité : {len(symbols)} symboles"
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Impossible de récupérer WebSocket pour {symbol}: {e}")
+
+
 def _update_session_stats(result: dict):
     """
     Mettre à jour les statistiques de session après fermeture d'une position
