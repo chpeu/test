@@ -4616,6 +4616,9 @@ async def export_datalogger_excel(
                             excel_row.append(json.dumps(value, ensure_ascii=False))
                         elif value is None:
                             excel_row.append('')
+                        elif isinstance(value, datetime):
+                            # Excel ne supporte pas les timezones - convertir en datetime naive
+                            excel_row.append(value.replace(tzinfo=None) if value.tzinfo else value)
                         else:
                             excel_row.append(value)
                     ws.append(excel_row)
@@ -4625,7 +4628,10 @@ async def export_datalogger_excel(
                 summary_sheet.append([table_name, len(rows)])
 
             cursor.close()
-            release_conn()
+            try:
+                release_conn()
+            except Exception as conn_err:
+                logger.debug(f"Note: Erreur retour connexion (non-critique): {conn_err}")
 
             from io import BytesIO
             output = BytesIO()
@@ -4641,7 +4647,10 @@ async def export_datalogger_excel(
             )
             
         except Exception as e:
-            release_conn()
+            try:
+                release_conn()
+            except Exception:
+                pass  # Connexion déjà fermée ou non du pool
             logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
             return JSONResponse(
                 {"error": f"Erreur export Excel: {str(e)}"},
