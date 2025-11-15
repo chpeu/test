@@ -181,7 +181,7 @@ async def position_check_loop_callback():
             fail_count = position_check_loop_callback._price_fail_count[symbol]
 
             # 🔥 HOTFIX LATENCE: tenter une action immédiate avec cooldown
-            cooldown = 2.0  # secondes entre deux tentatives forcées
+            cooldown = 1.0  # secondes entre deux tentatives forcées (réduit de 2s à 1s)
             if not hasattr(position_check_loop_callback, '_last_ws_action'):
                 position_check_loop_callback._last_ws_action = {}
             last_action = position_check_loop_callback._last_ws_action.get(symbol, 0)
@@ -190,8 +190,8 @@ async def position_check_loop_callback():
                 position_check_loop_callback._last_ws_action[symbol] = now
                 await _recover_websocket_stream(symbol, reason='rest_fallback')
             
-            # Log WARNING si échec répété (>20 fois = >1 seconde)
-            if fail_count % 10 == 0:
+            # Log WARNING si échec répété (>5 fois = >0.25 seconde)
+            if fail_count % 5 == 0:
                 ws_connected = (_price_provider.ws_manager and _price_provider.ws_manager.connected) if _price_provider else False
                 cache_has_symbol = False
                 if _price_provider and hasattr(_price_provider, 'price_cache'):
@@ -200,7 +200,7 @@ async def position_check_loop_callback():
                 
                 source = current_price_data.get('source', 'unknown') if current_price_data else 'none'
                 logger.warning(
-                    f"⚠️ WebSocket INACTIF pour {symbol} depuis {fail_count * 0.05:.1f}s | "
+                    f"⚠️ WebSocket INACTIF pour {symbol} depuis {fail_count * 2:.1f}s | "
                     f"Source: {source} | WS connecté: {ws_connected} | Cache: {cache_has_symbol}"
                 )
                 
@@ -216,7 +216,7 @@ async def position_check_loop_callback():
                 fail_count = position_check_loop_callback._price_fail_count[symbol]
                 source = current_price_data.get('source', 'unknown') if current_price_data else 'none'
                 if fail_count > 0 and source == 'websocket':
-                    logger.info(f"✅ WebSocket récupéré pour {symbol} après {fail_count * 0.05:.1f}s (source: {source})")
+                    logger.info(f"✅ WebSocket récupéré pour {symbol} après {fail_count * 2:.1f}s (source: {source})")
                     position_check_loop_callback._price_fail_count[symbol] = 0
         
         current_price = (

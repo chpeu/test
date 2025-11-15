@@ -395,7 +395,7 @@ class WebSocketManager:
         """Surveiller activité WebSocket avec détection précoce"""
         while self._running:
             try:
-                await asyncio.sleep(15)  # Check toutes les 15s
+                await asyncio.sleep(10)  # Check toutes les 10s (réduit de 15s)
                 
                 if not self._running or not self._connected:
                     continue
@@ -414,10 +414,16 @@ class WebSocketManager:
                         # 🔥 FIX: _reconnect() n'est pas async, elle crée juste une tâche
                         await self._reconnect()
                 
-                elif time_since_last > 20:  # Avertissement précoce
+                elif time_since_last > 15:  # Avertissement précoce (réduit de 20s à 15s)
                     logger.warning(
                         f"🐕 Watchdog: WebSocket lent ({time_since_last:.0f}s depuis dernier message)"
                     )
+                    # 🔥 FIX: Envoyer ping MEXC pour maintenir connexion active
+                    try:
+                        await self.send_ping()
+                        logger.info("📡 Ping MEXC envoyé pour maintenir connexion")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur envoi ping: {e}")
             
             except asyncio.CancelledError:
                 logger.info("🐕 Watchdog arrêté")

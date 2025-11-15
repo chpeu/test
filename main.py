@@ -855,7 +855,13 @@ async def scanner_loop_callback():
                                     
                                     # 🔥 FIX: Émettre l'événement UNE SEULE FOIS avec gestion d'erreur pour éviter les déconnexions
                                     try:
-                                        await ws_manager.emit('position_opened', position.to_dict())
+                                        position_dict = position.to_dict()
+                                        # Ajouter opened_at si manquant
+                                        if 'opened_at' not in position_dict and hasattr(position, 'start_time'):
+                                            from datetime import datetime
+                                            position_dict['opened_at'] = datetime.fromtimestamp(position.start_time).isoformat()
+                                        await ws_manager.emit('position_opened', position_dict)
+                                        logger.info(f"📡 position_opened émis: {symbol}")
                                     except Exception as e:
                                         logger.warning(f"⚠️ Erreur émission position_opened: {e}")
                                     
@@ -878,6 +884,11 @@ async def scanner_loop_callback():
                                             
                                             # 🔥 FIX: Gestion d'erreur pour éviter les déconnexions WebSocket
                                             try:
+                                                from datetime import datetime
+                                                opened_at = None
+                                                if hasattr(position, 'start_time') and position.start_time:
+                                                    opened_at = datetime.fromtimestamp(position.start_time).isoformat()
+                                                
                                                 await ws_manager.emit('position_update', {
                                                     'symbol': position.symbol,
                                                     'direction': position.direction,
@@ -888,10 +899,13 @@ async def scanner_loop_callback():
                                                     'pnl': pnl,
                                                     'pnl_usdt': pnl_usdt,
                                                     'size': position.size,
+                                                    'opened_at': opened_at,
                                                     'break_even_set': position.break_even_set,
-                                                    'partial_tp_sold': position.partial_tp_sold
+                                                    'partial_tp_sold': position.partial_tp_sold,
+                                                    'price_precision': getattr(position, 'price_precision', None),
+                                                    'tickSize': getattr(position, 'tick_size', getattr(position, 'tickSize', None))
                                                 })
-                                                logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                                logger.info(f"📡 position_update émis immédiatement: {symbol} @ {current_price:.6f} | PnL: {pnl:.2f}%")
                                             except Exception as e:
                                                 logger.warning(f"⚠️ Erreur émission position_update: {e}")
                                     except Exception as e:

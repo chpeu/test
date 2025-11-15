@@ -226,6 +226,8 @@
 		ws.on('position_opened', async (data: any) => {
 			const { updatePosition } = await import('$lib/stores/position');
 			if (data) {
+				// 🔥 DEBUG: Log pour vérifier que position_opened arrive
+				console.log('📡 position_opened reçu:', data.symbol, 'Entry:', data.entry, 'Size:', data.size);
 				updatePosition(data);
 			}
 			// 🔥 NOUVEAU: Mettre à jour la phase du bot
