@@ -144,13 +144,31 @@ async def position_check_loop_callback():
                     f"WS connecté: {ws_connected} | Cache: {cache_has_symbol}"
                 )
                 
-                # 🔥 FIX GEL: Tenter de réabonner au symbole si WebSocket connecté
-                if _price_provider and _price_provider.ws_manager and _price_provider.ws_manager.connected:
-                    try:
-                        logger.info(f"🔄 Tentative réabonnement WebSocket pour {symbol}")
-                        await _price_provider.ws_manager.subscribe_ticker(symbol)
-                    except Exception as e:
-                        logger.error(f"❌ Erreur réabonnement: {e}")
+                # 🔥 FIX GEL: Redémarrer WebSocket s'il est déconnecté
+                if _price_provider:
+                    if _price_provider.ws_manager and _price_provider.ws_manager.connected:
+                        # WebSocket connecté mais symbole absent → réabonner
+                        try:
+                            logger.info(f"🔄 Réabonnement WebSocket pour {symbol}")
+                            await _price_provider.ws_manager.subscribe_ticker(symbol)
+                        except Exception as e:
+                            logger.error(f"❌ Erreur réabonnement: {e}")
+                    else:
+                        # WebSocket déconnecté → redémarrer complètement
+                        try:
+                            logger.warning(f"🔥 WebSocket déconnecté, redémarrage avec {symbol}")
+                            symbols = [symbol]  # Au minimum le symbole actif
+                            # Ajouter top_pairs si disponibles
+                            if _app_state and _app_state.get('top_pairs'):
+                                top_symbols = [p.get('symbol', '') for p in _app_state['top_pairs'][:30] if p.get('symbol')]
+                                if symbol not in top_symbols:
+                                    symbols.extend(top_symbols)
+                                else:
+                                    symbols = top_symbols
+                            await _price_provider.start_websocket(symbols)
+                            logger.warning(f"✅ WebSocket redémarré : {len(symbols)} symboles")
+                        except Exception as e:
+                            logger.error(f"❌ Erreur redémarrage WebSocket: {e}")
             
             return
 

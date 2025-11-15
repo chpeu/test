@@ -819,19 +819,30 @@ async def scanner_loop_callback():
                                         logger.error(f"❌ ERREUR: app_state['active_position'] a été modifié pendant l'ouverture !")
                                         break
                                     
-                                    # 🔥 FIX: S'abonner au WebSocket pour prix en temps réel
-                                    if price_provider and price_provider.ws_manager and price_provider.ws_manager.connected:
+                                    # 🔥 FIX GEL: Redémarrer WebSocket avec symbole actif en priorité
+                                    if price_provider:
                                         try:
-                                            await price_provider.ws_manager.subscribe_ticker(symbol)
-                                            logger.debug(f"📡 WebSocket: Abonné à {symbol} pour prix temps réel")
+                                            # Arrêter l'ancien WebSocket
+                                            await price_provider.stop_websocket()
                                             
-                                            # 🔥 FIX: Configurer callback pour suivre position active
-                                            # Le WebSocket met à jour le cache en temps réel
-                                            # La boucle de check à 0.5s récupère le prix du cache et émet position_update
+                                            # Récupérer les top pairs et forcer l'ajout du symbole actif
+                                            symbols = []
+                                            if app_state.get('top_pairs'):
+                                                symbols = [p.get('symbol', '') for p in app_state['top_pairs'][:30] if p.get('symbol')]
+                                            
+                                            # Forcer le symbole actif en premier
+                                            symbols = ensure_active_symbol_in_list(symbols)
+                                            if not symbols:
+                                                symbols = [symbol]  # Au minimum le symbole actif
+                                            
+                                            # Redémarrer WebSocket
+                                            await price_provider.start_websocket(symbols)
+                                            logger.warning(f"🔥 WebSocket redémarré avec {symbol} en priorité : {len(symbols)} symboles")
+                                            
+                                            # Configurer callback pour suivre position active
                                             price_provider.set_socketio_callback(None, symbol)
-                                            logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
-                                            logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
+                                            logger.error(f"❌ Erreur redémarrage WebSocket pour {symbol}: {e}")
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     await add_log('INFO', 'Position ouverte automatiquement', 

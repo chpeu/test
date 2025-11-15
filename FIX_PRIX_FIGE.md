@@ -116,3 +116,38 @@ Après relance du backend, observe les logs lors d'une position :
 - ✅ Le symbole actif reste **TOUJOURS** abonné au WebSocket
 - ✅ Les prix continuent de se mettre à jour même après un refresh
 - ✅ Plus de gel du `current_price` en position
+
+### Phase 3 : Redémarrage WebSocket automatique 🔥
+**Problème identifié** : Le Watchdog arrête le WebSocket si MEXC ne renvoie pas de messages (symbole peu volatil), et le WebSocket ne redémarre pas automatiquement.
+
+**Solution** : Double protection contre la déconnexion WebSocket :
+
+**1. Redémarrage lors de l'ouverture de position** - `main.py` (ligne ~822)
+```python
+# Arrêter l'ancien WebSocket
+await price_provider.stop_websocket()
+
+# Forcer le symbole actif en premier
+symbols = ensure_active_symbol_in_list(symbols)
+
+# Redémarrer WebSocket
+await price_provider.start_websocket(symbols)
+logger.warning(f"🔥 WebSocket redémarré avec {symbol} en priorité")
+```
+
+**2. Redémarrage automatique en position** - `core/callbacks/position_check_loop.py` (ligne ~147)
+```python
+if fail_count % 20 == 0:  # Toutes les 1 seconde
+    if ws_manager and ws_manager.connected:
+        # Réabonner au symbole
+        await ws_manager.subscribe_ticker(symbol)
+    else:
+        # WebSocket déconnecté → REDÉMARRER
+        await price_provider.start_websocket([symbol])
+        logger.warning(f"✅ WebSocket redémarré : {len(symbols)} symboles")
+```
+
+**Impact** :
+- ✅ WebSocket **redémarre automatiquement** s'il s'arrête pendant une position
+- ✅ Détection en 1 seconde au lieu de laisser le prix figé
+- ✅ Fallback REST fonctionne pendant le redémarrage
