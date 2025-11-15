@@ -423,14 +423,18 @@ class PositionManager:
                     # Essayer de récupérer depuis info
                     price_precision = market_info.get('info', {}).get('pricePrecision')
                 
-                # Essayer de récupérer tickSize
-                tick_size = market_info.get('precision', {}).get('amount')
+                # Essayer de récupérer tickSize côté prix (pas amount)
+                tick_size = market_info.get('info', {}).get('tickSize')
                 if tick_size is None:
-                    tick_size = market_info.get('info', {}).get('tickSize')
-                if tick_size is None:
+                    tick_size = (
+                        market_info
+                        .get('limits', {})
+                        .get('price', {})
+                        .get('min')
+                    )
+                if tick_size is None and price_precision is not None:
                     # Calculer depuis pricePrecision si disponible
-                    if price_precision is not None:
-                        tick_size = 10 ** (-price_precision)
+                    tick_size = 10 ** (-price_precision)
         except Exception as e:
             logger.warning(f"⚠️ Impossible de récupérer la précision pour {symbol}: {e}")
 
