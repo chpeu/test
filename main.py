@@ -4531,129 +4531,97 @@ async def export_datalogger_excel(
         try:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Créer un workbook Excel
+
+            # Récupérer toutes les tables du schéma public
+            cursor.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """
+            )
+            table_names = [row['table_name'] for row in cursor.fetchall()]
+
             wb = Workbook()
-            wb.remove(wb.active)  # Supprimer la feuille par défaut
-            
-            # ===== ONGLET 1: SCANS =====
-            ws_scans = wb.create_sheet("Scans")
-            query_scans = """
-                SELECT 
-                    timestamp, symbol, price, scan_duration_ms,
-                    rsi_1m, rsi_5m, score_total,
-                    is_opportunity, opportunity_direction, reject_reason,
-                    trend_direction, trend_strength
-                FROM scan_logs
-                WHERE 1=1
-            """
-            params = []
-            if start_date:
-                query_scans += " AND timestamp >= %s"
-                params.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_scans += " AND timestamp <= %s"
-                params.append(f"{end_date} 23:59:59")
-            query_scans += " ORDER BY timestamp DESC"
-            
-            cursor.execute(query_scans, params)
-            scans = cursor.fetchall()
-            
-            # Déterminer les en-têtes même si aucune ligne
+            summary_sheet = wb.active
+            summary_sheet.title = "Summary"
+            summary_sheet.append(["Table", "Rows"])
+
             header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
             header_font = Font(bold=True, color="FFFFFF")
-            headers = list(scans[0].keys()) if scans else [desc.name for desc in cursor.description]
-            if headers:
-                ws_scans.append(headers)
-                for cell in ws_scans[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                for row in scans:
-                    ws_scans.append([row.get(h) for h in headers])
+
+            for table_name in table_names:
+                ws = wb.create_sheet(table_name[:31])
+
+                # Récupérer les colonnes de la table (pour appliquer les filtres date intelligemment)
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = %s
+                    """,
+                    (table_name,)
+                )
+                column_names = [row['column_name'] for row in cursor.fetchall()]
+
+                base_query = f"SELECT * FROM {table_name} WHERE 1=1"
+                params: List[str] = []
+
+                has_timestamp = 'timestamp' in column_names
+                has_timestamp_entry = 'timestamp_entry' in column_names
+
+                if start_date and (has_timestamp or has_timestamp_entry):
+                    if has_timestamp and has_timestamp_entry:
+                        base_query += " AND (timestamp >= %s OR timestamp_entry >= %s)"
+                        params.extend([f"{start_date} 00:00:00", f"{start_date} 00:00:00"])
+                    elif has_timestamp:
+                        base_query += " AND timestamp >= %s"
+                        params.append(f"{start_date} 00:00:00")
+                    elif has_timestamp_entry:
+                        base_query += " AND timestamp_entry >= %s"
+                        params.append(f"{start_date} 00:00:00")
+
+                if end_date and (has_timestamp or has_timestamp_entry):
+                    if has_timestamp and has_timestamp_entry:
+                        base_query += " AND (timestamp <= %s OR timestamp_entry <= %s)"
+                        params.extend([f"{end_date} 23:59:59", f"{end_date} 23:59:59"])
+                    elif has_timestamp:
+                        base_query += " AND timestamp <= %s"
+                        params.append(f"{end_date} 23:59:59")
+                    elif has_timestamp_entry:
+                        base_query += " AND timestamp_entry <= %s"
+                        params.append(f"{end_date} 23:59:59")
+
+                cursor.execute(base_query, params)
+                rows = cursor.fetchall()
+                headers = [desc.name for desc in cursor.description] if cursor.description else []
+
+                if headers:
+                    ws.append(headers)
+                    for cell in ws[1]:
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal="center")
+                for row in rows:
+                    ws.append([row.get(h) if isinstance(row, dict) else row[index] for index, h in enumerate(headers)])
                 for col in range(1, len(headers) + 1):
-                    ws_scans.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 2: OPPORTUNITIES =====
-            ws_opps = wb.create_sheet("Opportunities")
-            query_opps = """
-                SELECT 
-                    timestamp, symbol, direction, setup_score,
-                    entry_price, tp_price, sl_price,
-                    conditions_matched, confirmed_by
-                FROM opportunities
-                WHERE 1=1
-            """
-            params_opps = []
-            if start_date:
-                query_opps += " AND timestamp >= %s"
-                params_opps.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_opps += " AND timestamp <= %s"
-                params_opps.append(f"{end_date} 23:59:59")
-            query_opps += " ORDER BY timestamp DESC"
-            
-            cursor.execute(query_opps, params_opps)
-            opportunities = cursor.fetchall()
-            
-            headers_opps = list(opportunities[0].keys()) if opportunities else [desc.name for desc in cursor.description]
-            if headers_opps:
-                ws_opps.append(headers_opps)
-                for cell in ws_opps[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                for row in opportunities:
-                    ws_opps.append([row.get(h) for h in headers_opps])
-                for col in range(1, len(headers_opps) + 1):
-                    ws_opps.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 3: TRADES =====
-            ws_trades = wb.create_sheet("Trades")
-            query_trades = """
-                SELECT 
-                    timestamp_entry, timestamp_exit, symbol, direction,
-                    entry_price, exit_price, size_usdt,
-                    gross_pnl_usdt, net_pnl_usdt, net_pnl_pct,
-                    exit_reason, duration_seconds, win
-                FROM trades
-                WHERE 1=1
-            """
-            params_trades = []
-            if start_date:
-                query_trades += " AND timestamp_entry >= %s"
-                params_trades.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_trades += " AND timestamp_entry <= %s"
-                params_trades.append(f"{end_date} 23:59:59")
-            query_trades += " ORDER BY timestamp_entry DESC"
-            
-            cursor.execute(query_trades, params_trades)
-            trades = cursor.fetchall()
-            
-            headers_trades = list(trades[0].keys()) if trades else [desc.name for desc in cursor.description]
-            if headers_trades:
-                ws_trades.append(headers_trades)
-                for cell in ws_trades[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                for row in trades:
-                    ws_trades.append([row.get(h) for h in headers_trades])
-                for col in range(1, len(headers_trades) + 1):
-                    ws_trades.column_dimensions[get_column_letter(col)].width = 15
-            
+                    ws.column_dimensions[get_column_letter(col)].width = 15
+
+                summary_sheet.append([table_name, len(rows)])
+
             cursor.close()
             release_conn()
-            
-            # Sauvegarder dans un buffer
+
             from io import BytesIO
             output = BytesIO()
             wb.save(output)
             output.seek(0)
-            
+
             filename = f"datalogger_export_{start_date}_{end_date}.xlsx" if (start_date and end_date) else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
-            
+
             return StreamingResponse(
                 output,
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
