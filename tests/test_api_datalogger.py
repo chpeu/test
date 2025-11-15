@@ -60,6 +60,9 @@ def patch_get_cursor(monkeypatch, *, select_results=None, delete_rowcounts=None)
 
 @pytest.mark.asyncio
 async def test_export_excel_returns_workbook(monkeypatch):
+    # 🔥 FIX: Vérifier que openpyxl est disponible avant de tester
+    pytest.importorskip("openpyxl", reason="openpyxl not installed")
+    
     select_rows = [
         [
             {

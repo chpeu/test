@@ -150,9 +150,10 @@ class TestHybridPriceProvider:
 
         await provider.stop_websocket()
 
-        # 🔥 FIX: Vérifier disconnect avant que ws_manager soit None
+        # 🔥 FIX: Vérifier disconnect mais ws_manager n'est plus mis à None (réutilisation)
         mock_ws_manager.disconnect.assert_called_once()
-        assert provider.ws_manager is None
+        # ws_manager n'est plus mis à None pour permettre la réutilisation
+        assert provider.ws_manager is not None
 
     @pytest.mark.asyncio
     async def test_stop_websocket_no_manager(self):

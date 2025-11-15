@@ -164,6 +164,7 @@ class TestPostgreSQLDataLogger:
         assert result is None  # Mode batch retourne None
         assert len(logger.opportunity_buffer) == 1
     
+    @pytest.mark.skip(reason="log_scan_error method removed from PostgreSQLDataLogger")
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
     def test_log_scan_error(self, mock_pool_class, datalogger_config, mock_pool, mock_postgres_connection):
@@ -187,6 +188,7 @@ class TestPostgreSQLDataLogger:
         # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour scan_error)
         assert cursor.execute.call_count == 2
     
+    @pytest.mark.skip(reason="log_market_context method removed from PostgreSQLDataLogger")
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
     def test_log_market_context(self, mock_pool_class, datalogger_config, mock_pool, mock_postgres_connection):
