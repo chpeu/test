@@ -4607,7 +4607,18 @@ async def export_datalogger_excel(
                         cell.font = header_font
                         cell.alignment = Alignment(horizontal="center")
                 for row in rows:
-                    ws.append([row[h] for h in headers])
+                    # Convertir valeurs complexes (arrays, dicts) en string JSON pour Excel
+                    excel_row = []
+                    for h in headers:
+                        value = row[h]
+                        # Convertir types non-supportés par Excel
+                        if isinstance(value, (list, dict)):
+                            excel_row.append(json.dumps(value, ensure_ascii=False))
+                        elif value is None:
+                            excel_row.append('')
+                        else:
+                            excel_row.append(value)
+                    ws.append(excel_row)
                 for col in range(1, len(headers) + 1):
                     ws.column_dimensions[get_column_letter(col)].width = 15
 
