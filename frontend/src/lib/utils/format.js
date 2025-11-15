@@ -1,4 +1,61 @@
 /**
+ * Get significant decimal places from a number (without trailing zeros)
+ * @param {number} value - The value to analyze
+ * @returns {number} Number of significant decimal places
+ */
+export function getSignificantDecimals(value) {
+	if (value === null || value === undefined || isNaN(value)) {
+		return 2;
+	}
+
+	const str = value.toString();
+
+	// If no decimal point, return 0
+	if (!str.includes('.')) {
+		return 0;
+	}
+
+	// Get decimal part
+	const decimalPart = str.split('.')[1];
+
+	// Remove trailing zeros
+	const withoutTrailingZeros = decimalPart.replace(/0+$/, '');
+
+	// Return length (number of significant decimals)
+	return withoutTrailingZeros.length;
+}
+
+/**
+ * Format a number with specific decimals, removing trailing zeros
+ * @param {number} value - The value to format
+ * @param {number} decimals - Number of decimal places to use
+ * @returns {string} Formatted value without trailing zeros
+ */
+export function formatWithoutTrailingZeros(value, decimals) {
+	if (value === null || value === undefined || isNaN(value)) {
+		return '0';
+	}
+
+	const num = Number(value);
+
+	// Format with specified decimals
+	let formatted = num.toFixed(decimals);
+
+	// Remove trailing zeros after decimal point
+	if (formatted.includes('.')) {
+		formatted = formatted.replace(/\.?0+$/, '');
+	}
+
+	// If we removed all decimals, ensure we have at least the decimal point
+	if (!formatted.includes('.') && decimals > 0) {
+		// Keep at least 2 decimals for prices
+		return num.toFixed(Math.min(2, decimals));
+	}
+
+	return formatted;
+}
+
+/**
  * Utility functions for formatting numbers and values
  */
 
