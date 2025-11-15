@@ -187,6 +187,7 @@ class PostgreSQLDataLogger:
         if not PSYCOPG2_AVAILABLE:
             logger.error("❌ psycopg2 non disponible - PostgreSQL DataLogger désactivé")
             self.enabled = False
+            self.pool = None  # 🔥 FIX: Initialiser pool à None pour les tests
             return
         
         self.enabled = True

@@ -213,7 +213,7 @@
 	// 🔥 FIX: Fonction helper pour formater avec précision
 	function formatPriceWithPrecision(price) {
 		// 🔥 DEBUG: Log pour diagnostiquer le problème de précision
-		if (!hasattr(formatPriceWithPrecision, '_logged_once')) {
+		if (!formatPriceWithPrecision._logged_once) {
 			console.log('🔍 formatPriceWithPrecision:', {
 				price,
 				pricePrecision,
