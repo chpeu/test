@@ -1732,12 +1732,19 @@ async def scalability_refresh_loop_callback():
         
         await add_log('INFO', 'Scalability refresh', f'{len(top_pairs)} paires scalables')
         await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
-        
-        # 🔥 JOUR 3: Mettre à jour WebSocket avec les nouvelles top pairs
+
+        # 🔥 FIX CRITIQUE: Revérifier si position active APRÈS le scan (protection double)
+        # Le scan peut prendre 20+ secondes, pendant lesquelles une position peut s'ouvrir
+        # Si une position est ouverte pendant le scan, NE PAS toucher au WebSocket
+        if app_state['active_position'] or (position_manager and position_manager.active_position):
+            logger.info("⏸️ Mise à jour WebSocket ignorée - Position ouverte pendant le scan de scalabilité")
+            return
+
+        # 🔥 JOUR 3: Mettre à jour WebSocket avec les nouvelles top pairs (seulement si pas de position)
         if price_provider and top_pairs:
             # Arrêter l'ancien WebSocket
             await price_provider.stop_websocket()
-            
+
             # Démarrer avec les nouvelles paires
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
             if symbols:
