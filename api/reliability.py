@@ -207,6 +207,9 @@ class WebSocketManager:
         self._connected = False
         self._reconnecting = False  # Flag pour éviter reconnexions multiples
         self.watchdog_timeout = WEBSOCKET_CONFIG.get('watchdog_timeout', 30)  # 30s pour scalping
+
+        # 🔥 FIX CRITIQUE: Callback appelé après reconnexion réussie pour réabonner aux symboles
+        self.reconnect_callback: Optional[Callable] = None
         
     async def connect(self):
         """Se connecter au WebSocket"""
@@ -378,6 +381,14 @@ class WebSocketManager:
 
                     if DEBUG_ENABLED:
                         logger.info("✅ WebSocket reconnecté")
+
+                    # 🔥 FIX CRITIQUE: Appeler callback de reconnexion pour réabonner aux symboles
+                    if self.reconnect_callback:
+                        try:
+                            await self.reconnect_callback()
+                        except Exception as e:
+                            logger.error(f"❌ Erreur callback reconnexion: {e}")
+
                     break
 
                 except Exception as e:
