@@ -135,9 +135,10 @@ async def _update_websocket(top_pairs: list):
     Mettre à jour WebSocket avec les nouvelles paires
 
     Procédure:
-    1. Arrêter ancien WebSocket
-    2. Démarrer nouveau WebSocket avec les nouvelles paires
-    3. Logger les changements
+    1. Vérifier qu'aucune position n'est active (🔥 FIX: Ne pas changer WebSocket pendant position)
+    2. Arrêter ancien WebSocket
+    3. Démarrer nouveau WebSocket avec les nouvelles paires
+    4. Logger les changements
 
     Args:
         top_pairs: Liste des nouvelles top pairs
@@ -147,6 +148,14 @@ async def _update_websocket(top_pairs: list):
         return
 
     try:
+        # 🔥 FIX: Vérifier qu'aucune position n'est active AVANT de changer le WebSocket
+        # Ceci empêche le prix de se figer pendant une position active
+        if _app_state and (_app_state.get('active_position') or (
+            _position_manager and _position_manager.active_position
+        )):
+            logger.info("⏸️ Mise à jour WebSocket ignorée - Position active en cours (current_price protection)")
+            return
+
         logger.debug("🔌 Mise à jour WebSocket...")
 
         # Arrêter ancien WebSocket
