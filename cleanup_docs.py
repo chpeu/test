@@ -14,13 +14,33 @@ ESSENTIAL_GUIDES = {
 
 # Documentation essentielle à garder à la racine
 ESSENTIAL_DOCS = {
-    'README.md',
-    'README_ARCHITECTURE_V2.md',
-    'DOCUMENTATION_COMPLETE.md',
+    '.gitignore',
+    'ACTION_PLAN.md',
+    'CONFIG_POSTGRES.md',
     'DEMARRAGE_RAPIDE.md',
+    'DOCUMENTATION_COMPLETE.md',
     'DOCUMENTATION_INVALIDATION.md',
     'DOCUMENTATION_PHASE_8.md',
-    '.gitignore',
+    'FEATURES_ROADMAP.md',
+    'FIX_DATALOGGER.md',
+    'FRONTEND_CORRECTIONS_STATUS.md',
+    'FRONTEND_STATUS_UPDATE.md',
+    'GUIDE_INSTALLATION_V66.md',
+    'GUIDE_MULTI_INSTANCES.md',
+    'GUIDE_TELEGRAM.md',
+    'GUIDE_UTILISATION_RAPIDE.md',
+    'INVESTIGATION_SOLUTION.md',
+    'PARAMETRES_VARIABLES_SCAN_SCALABLES.md',
+    'PHASE3_DATALOGGER_OPTIMIZATIONS.md',
+    'PR_EXPLANATION.md',
+    'PRODUCTION_DEPLOYMENT.md',
+    'RAPPORT_SYNCHRONISATION_WEBSOCKET.md',
+    'README.md',
+    'README_ARCHITECTURE_V2.md',
+    'README_REFACTORING.md',
+    'README_WINDOWS.md',
+    'VARIABLES_FIX.md',
+    'WORKFLOW_PR.md',
     'cleanup_docs.py'
 }
 
@@ -40,6 +60,7 @@ ARCHIVE_PATTERNS = [
 def main():
     base_dir = Path('.')
     archive_dir = Path('docs/archive/autres')
+    archive_dir.mkdir(parents=True, exist_ok=True)
 
     # Déplacer les guides secondaires
     moved_count = 0
@@ -63,13 +84,30 @@ def main():
                     except Exception as e:
                         print(f"Erreur : {f.name} - {e}")
 
-    print(f"\n✓ {moved_count} fichiers déplacés vers docs/archive/autres/")
-    print(f"✓ Total archive : {len(list(archive_dir.glob('*.md')))} fichiers")
+    print(f"\n[OK] {moved_count} fichiers déplacés vers docs/archive/autres/")
+    print(f"[OK] Total archive : {len(list(archive_dir.glob('*.md')))} fichiers")
 
-    # Afficher documentation restante
-    remaining = [f.name for f in base_dir.glob('*.md')]
+    # Deuxième passe: déplacer tout fichier Markdown non essentiel restant
+    for md_file in base_dir.glob('*.md'):
+        if md_file.name in ESSENTIAL_DOCS or md_file.name in ESSENTIAL_GUIDES:
+            continue
+        dest = archive_dir / md_file.name
+        if dest.exists():
+            continue
+        print(f"Déplacement : {md_file.name}")
+        shutil.move(str(md_file), str(dest))
+        moved_count += 1
+
+    # Recompter après la deuxième passe
+    print(f"\n[OK] {moved_count} fichiers déplacés vers docs/archive/autres/")
+    print(f"[OK] Total archive : {len(list(archive_dir.glob('*.md')))} fichiers")
+
+    remaining = sorted(
+        f.name for f in base_dir.glob('*.md')
+        if f.name in ESSENTIAL_DOCS or f.name in ESSENTIAL_GUIDES
+    )
     print(f"\n📄 Documentation restante à la racine : {len(remaining)} fichiers")
-    for doc in sorted(remaining):
+    for doc in remaining:
         print(f"  - {doc}")
 
 if __name__ == '__main__':
