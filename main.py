@@ -21,6 +21,7 @@ from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
+from app.factory import create_app
 from app.runtime import app_state, ws_manager
 from app.schemas import DashboardSummary, DataloggerResetResponse
 from database.pg import get_cursor
@@ -77,7 +78,7 @@ logger = logging.getLogger(__name__)
 # (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
 # Initialisation FastAPI
-app = FastAPI(title="Trade Cursor v7.0")
+app = create_app()
 
 
 # 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
@@ -123,72 +124,7 @@ async def global_exception_handler(request, exc):
     }, status_code=500)
 # 🔥 CLEANUP: Jinja2Templates supprimé - Frontend Svelte gère l'interface
 
-# 🔥 FIX: Middleware pour logger toutes les requêtes et réponses
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
-
-class LoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        import time
-        start_time = time.time()
-        path = request.url.path
-        
-        logger.info(f"📥 Requête entrante: {request.method} {path}")
-        
-        try:
-            response = await call_next(request)
-            process_time = time.time() - start_time
-            logger.info(f"📤 Réponse: {request.method} {path} - {response.status_code} ({process_time:.3f}s)")
-            return response
-        except Exception as e:
-            process_time = time.time() - start_time
-            logger.error(f"❌ Exception dans middleware pour {path}: {e} ({process_time:.3f}s)", exc_info=True)
-            raise
-
-app.add_middleware(LoggingMiddleware)
-
-# 🔒 Security Middleware: Ajout des headers de sécurité
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        response = await call_next(request)
-
-        # Content Security Policy
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "connect-src 'self' ws: wss:; "
-            "font-src 'self'; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self';"
-        )
-
-        # Autres headers de sécurité
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        return response
-
-app.add_middleware(SecurityHeadersMiddleware)
-
-# 🔥 CLEANUP: Fichiers statiques supprimés - Frontend Svelte gère l'interface
-# Plus besoin de servir des fichiers statiques, le frontend Svelte est indépendant
-
-if api_router:
-    app.include_router(api_router)
-    logger.info("✅ API REST routes incluses: /api/*")
-
-# 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
-# Socket.IO complètement retiré pour performances maximales
-
-# 🔥 WebSocket Natif - Instance globale (via runtime)
-if set_websocket_manager_routes:
-    set_websocket_manager_routes(ws_manager)
-    logger.info("✅ ws_manager injecté dans API routes")
+# middlewares & router handled in app.factory
 
 from contextlib import asynccontextmanager
 
@@ -4431,200 +4367,6 @@ async def export_trades_csv(
     
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode('utf-8')),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
-
-
-@app.get("/api/datalogger/export/excel")
-async def export_datalogger_excel(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-):
-    """
-    🔥 Export des données du datalogger en Excel (.xlsx)
-    
-    Args:
-        start_date: Date début (YYYY-MM-DD) - optionnel
-        end_date: Date fin (YYYY-MM-DD) - optionnel
-    
-    Returns:
-        Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
-    """
-    try:
-        # Vérifier si openpyxl est installé
-        try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment
-            from openpyxl.utils import get_column_letter
-        except ImportError:
-            return JSONResponse(
-                {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
-                status_code=500
-            )
-
-        with get_cursor(dict_cursor=True) as cursor:
-            wb = Workbook()
-            wb.remove(wb.active)
-
-            ws_scans = wb.create_sheet("Scans")
-            query_scans = """
-                SELECT 
-                    timestamp, symbol, price, scan_duration_ms,
-                    rsi_1m, rsi_5m, score_total,
-                    is_opportunity, opportunity_direction, reject_reason,
-                    trend_direction, trend_strength
-                FROM scan_logs
-                WHERE 1=1
-            """
-            params = []
-            if start_date:
-                query_scans += " AND timestamp >= %s"
-                params.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_scans += " AND timestamp <= %s"
-                params.append(f"{end_date} 23:59:59")
-            query_scans += " ORDER BY timestamp DESC LIMIT 10000"
-            
-            cursor.execute(query_scans, params)
-            scans = cursor.fetchall()
-
-            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-            header_font = Font(bold=True, color="FFFFFF")
-
-            def _write_sheet(worksheet, rows):
-                if not rows:
-                    return
-                headers = list(rows[0].keys())
-                worksheet.append(headers)
-                for cell in worksheet[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                for row in rows:
-                    worksheet.append([row.get(h) for h in headers])
-                for col in range(1, len(headers) + 1):
-                    worksheet.column_dimensions[get_column_letter(col)].width = 15
-
-            _write_sheet(ws_scans, scans)
-
-            ws_opps = wb.create_sheet("Opportunities")
-            query_opps = """
-                SELECT 
-                    timestamp, symbol, direction, setup_score,
-                    entry_price, tp_price, sl_price,
-                    conditions_matched, confirmed_by
-                FROM opportunities
-                WHERE 1=1
-            """
-            params_opps = []
-            if start_date:
-                query_opps += " AND timestamp >= %s"
-                params_opps.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_opps += " AND timestamp <= %s"
-                params_opps.append(f"{end_date} 23:59:59")
-            query_opps += " ORDER BY timestamp DESC LIMIT 10000"
-
-            cursor.execute(query_opps, params_opps)
-            opportunities = cursor.fetchall()
-            _write_sheet(ws_opps, opportunities)
-
-            ws_trades = wb.create_sheet("Trades")
-            query_trades = """
-                SELECT 
-                    timestamp_entry, timestamp_exit, symbol, direction,
-                    entry_price, exit_price, size_usdt,
-                    gross_pnl_usdt, net_pnl_usdt, net_pnl_pct,
-                    exit_reason, duration_seconds, win
-                FROM trades
-                WHERE 1=1
-            """
-            params_trades = []
-            if start_date:
-                query_trades += " AND timestamp_entry >= %s"
-                params_trades.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_trades += " AND timestamp_entry <= %s"
-                params_trades.append(f"{end_date} 23:59:59")
-            query_trades += " ORDER BY timestamp_entry DESC LIMIT 10000"
-            
-            cursor.execute(query_trades, params_trades)
-            trades = cursor.fetchall()
-            _write_sheet(ws_trades, trades)
-
-        from io import BytesIO
-        output = BytesIO()
-        wb.save(output)
-        output.seek(0)
-
-        filename = (
-            f"datalogger_export_{start_date}_{end_date}.xlsx"
-            if (start_date and end_date)
-            else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
-        )
-
-        return StreamingResponse(
-            output,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-
-    except Exception as e:
-        logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
-        return JSONResponse(
-            {"error": f"Erreur export Excel: {str(e)}"},
-            status_code=500
-        )
-
-
-@app.delete("/api/datalogger/reset")
-async def reset_datalogger_db():
-    """
-    🔥 Reset complet de la base de données PostgreSQL du datalogger
-    
-    ATTENTION: Cette opération supprime TOUTES les données (scans, opportunities, trades, etc.)
-    
-    Returns:
-        Message de confirmation
-    """
-    try:
-        tables = [
-            'trades',
-            'opportunities',
-            'scan_logs',
-            'scan_errors',
-            'market_context',
-            'config_snapshots',
-            'trading_sessions'
-        ]
-
-        deleted_counts: Dict[str, int] = {}
-        with get_cursor() as cursor:
-            for table in tables:
-                cursor.execute(f"DELETE FROM {table}")
-                deleted_counts[table] = cursor.rowcount
-
-        total_deleted = sum(deleted_counts.values())
-        logger.warning("🗑️  Base de données PostgreSQL resetée: %s enregistrements supprimés", total_deleted)
-
-        response = DataloggerResetResponse(
-            success=True,
-            message="Base de données resetée avec succès",
-            deleted=deleted_counts,
-            total_deleted=total_deleted,
-        )
-
-        return JSONResponse(response.model_dump())
-
-    except Exception as e:
-        logger.error(f"❌ Erreur reset DB: {e}", exc_info=True)
-        return JSONResponse(
-            {"error": f"Erreur reset DB: {str(e)}"},
-            status_code=500
-        )
-
-
 if __name__ == '__main__':
     import uvicorn
     import socket
