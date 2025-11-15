@@ -2014,11 +2014,21 @@ def init_instances():
         except ImportError:
             pass  # Callback module optionnel
         
-        # 🔥 FIX: Injecter ws_manager dans position_check_loop
+        # 🔥 FIX: Injecter toutes les instances dans position_check_loop
         try:
-            from core.callbacks.position_check_loop import set_websocket_manager
+            from core.callbacks.position_check_loop import (
+                set_websocket_manager, set_position_manager, 
+                set_price_provider, set_app_state
+            )
             if set_websocket_manager:
                 set_websocket_manager(ws_manager)
+            if set_position_manager and position_manager:
+                set_position_manager(position_manager)
+            if set_price_provider and price_provider:
+                set_price_provider(price_provider)
+            if set_app_state:
+                set_app_state(app_state)
+            logger.info("✅ Instances injectées dans position_check_loop")
         except ImportError:
             pass  # Callback module optionnel
 

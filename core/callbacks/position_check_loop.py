@@ -311,13 +311,36 @@ async def _emit_position_update(position, current_price: float):
             else:
                 opened_at = position.timestamp
         
+        # 🔥 FIX PRÉCISION: Arrondir les prix selon price_precision ou tickSize
+        def round_price(price, precision=None, tick_size=None):
+            """Arrondir un prix selon la précision appropriée"""
+            if price is None:
+                return None
+            if tick_size:
+                # Arrondir au multiple de tick_size le plus proche
+                return round(price / tick_size) * tick_size
+            elif precision is not None:
+                return round(price, precision)
+            return price
+        
+        price_precision = getattr(position, 'price_precision', None)
+        tick_size = getattr(position, 'tick_size', getattr(position, 'tickSize', None))
+        
+        # Arrondir tous les prix
+        entry_rounded = round_price(position.entry, price_precision, tick_size)
+        current_price_rounded = round_price(current_price, price_precision, tick_size)
+        sl_rounded = round_price(position.sl, price_precision, tick_size)
+        tp_rounded = round_price(position.tp, price_precision, tick_size)
+        dynamic_sl = getattr(position, 'dynamic_sl', None)
+        dynamic_sl_rounded = round_price(dynamic_sl, price_precision, tick_size) if dynamic_sl else None
+        
         update_data = {
             'symbol': position.symbol,
             'direction': position.direction,
-            'entry': position.entry,
-            'current_price': current_price,
-            'sl': position.sl,
-            'tp': position.tp,
+            'entry': entry_rounded,
+            'current_price': current_price_rounded,
+            'sl': sl_rounded,
+            'tp': tp_rounded,
             'pnl': pnl,
             'pnl_usdt': pnl_usdt,
             'size': position.size,
@@ -325,7 +348,7 @@ async def _emit_position_update(position, current_price: float):
             'break_even_set': getattr(position, 'break_even_set', False),
             'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-            'dynamic_sl': getattr(position, 'dynamic_sl', None),  # 🔥 FIX: Trailing stop
+            'dynamic_sl': dynamic_sl_rounded,  # 🔥 FIX: Trailing stop arrondi
             'size_remaining': getattr(position, 'size_remaining', None),  # 🔥 FIX: Position restante
             'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None,  # 🔥 FIX: Niveaux TP escalier
             'price_precision': getattr(position, 'price_precision', None),
