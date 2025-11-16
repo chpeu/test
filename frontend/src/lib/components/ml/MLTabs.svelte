@@ -10,6 +10,13 @@
 			enabled: true
 		},
 		{
+			id: 'predictions',
+			label: 'Prédictions Live',
+			icon: '🔮',
+			enabled: tradesCount >= 50,
+			minTrades: 50
+		},
+		{
 			id: 'features',
 			label: 'Features',
 			icon: '🔍',

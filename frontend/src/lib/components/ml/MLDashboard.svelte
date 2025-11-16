@@ -6,6 +6,7 @@
 	import DataProgressCard from './DataProgressCard.svelte';
 	import FeatureImportance from './FeatureImportance.svelte';
 	import ModelsOverview from './ModelsOverview.svelte';
+	import LivePredictions from './LivePredictions.svelte';
 
 	let activeSubTab = 'dashboard';
 	let loading = true;
@@ -62,6 +63,8 @@
 					<DataProgressCard stats={$mlStats} />
 					<DataQualityCard quality={$dataQuality} />
 				</div>
+			{:else if activeSubTab === 'predictions'}
+				<LivePredictions />
 			{:else if activeSubTab === 'features'}
 				<FeatureImportance tradesCount={$mlStats.trades_count} />
 			{:else if activeSubTab === 'models'}

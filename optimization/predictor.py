@@ -1,0 +1,200 @@
+"""
+ML Predictor - Service de prédiction en temps réel
+Charge les modèles entraînés et fait des prédictions sur de nouvelles opportunités
+"""
+
+import os
+import logging
+import pickle
+import json
+from typing import Dict, Optional, List
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class MLPredictor:
+    """Service de prédiction ML avec modèles pré-entraînés"""
+    
+    def __init__(self, model_name: str = "xgboost_v1"):
+        self.model_name = model_name
+        self.model = None
+        self.preprocessor = None
+        self.metadata = None
+        self.feature_names = None
+        self.loaded = False
+        
+    def load_model(self) -> bool:
+        """Charge le modèle et le preprocessor depuis les fichiers sauvegardés"""
+        try:
+            models_dir = "optimization/saved_models"
+            
+            # Charger modèle
+            model_path = f"{models_dir}/{self.model_name}.pkl"
+            if not os.path.exists(model_path):
+                logger.warning(f"Modèle {self.model_name} non trouvé à {model_path}")
+                return False
+            
+            with open(model_path, 'rb') as f:
+                self.model = pickle.load(f)
+            
+            # Charger preprocessor
+            preprocessor_path = f"{models_dir}/{self.model_name}_preprocessor.pkl"
+            if not os.path.exists(preprocessor_path):
+                logger.warning(f"Preprocessor non trouvé à {preprocessor_path}")
+                return False
+            
+            with open(preprocessor_path, 'rb') as f:
+                self.preprocessor = pickle.load(f)
+            
+            # Charger metadata
+            metadata_path = f"{models_dir}/{self.model_name}_metadata.json"
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    self.metadata = json.load(f)
+            
+            # Extraire feature names du preprocessor
+            if hasattr(self.preprocessor, 'feature_names_in_'):
+                self.feature_names = list(self.preprocessor.feature_names_in_)
+            else:
+                logger.warning("Preprocessor n'a pas feature_names_in_")
+                self.feature_names = []
+            
+            self.loaded = True
+            logger.info(f"✅ Modèle {self.model_name} chargé avec succès ({len(self.feature_names)} features)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur chargement modèle {self.model_name}: {e}", exc_info=True)
+            return False
+    
+    def predict(self, features: Dict) -> Optional[Dict]:
+        """
+        Fait une prédiction sur une opportunité
+        
+        Args:
+            features: Dictionnaire avec toutes les features nécessaires
+            
+        Returns:
+            Dict avec prédiction, probabilité, et metadata
+        """
+        try:
+            # Charger modèle si pas déjà fait
+            if not self.loaded:
+                if not self.load_model():
+                    return None
+            
+            # Convertir features en DataFrame
+            df = pd.DataFrame([features])
+            
+            # Vérifier features manquantes
+            missing_features = set(self.feature_names) - set(df.columns)
+            if missing_features:
+                logger.warning(f"Features manquantes: {missing_features}")
+                # Ajouter features manquantes avec 0
+                for feat in missing_features:
+                    df[feat] = 0
+            
+            # Garder seulement les features du modèle dans le bon ordre
+            df = df[self.feature_names]
+            
+            # Remplacer NaN/inf
+            df = df.replace([np.inf, -np.inf], 0)
+            df = df.fillna(0)
+            
+            # Preprocesser
+            X = self.preprocessor.transform(df)
+            
+            # Prédiction
+            prediction = int(self.model.predict(X)[0])
+            
+            # Probabilités
+            if hasattr(self.model, 'predict_proba'):
+                proba = self.model.predict_proba(X)[0]
+                confidence = float(max(proba))
+                win_probability = float(proba[1] if len(proba) > 1 else proba[0])
+            else:
+                confidence = 0.5
+                win_probability = 0.5
+            
+            # Feature importance pour cette prédiction (si XGBoost)
+            top_features = None
+            if hasattr(self.model, 'get_booster'):
+                try:
+                    feature_importance = self.model.get_booster().get_score(importance_type='gain')
+                    top_features = [
+                        {'feature': k, 'importance': float(v)}
+                        for k, v in sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[:5]
+                    ]
+                except:
+                    pass
+            
+            result = {
+                'prediction': 'win' if prediction == 1 else 'loss',
+                'prediction_value': prediction,
+                'win_probability': win_probability,
+                'loss_probability': 1 - win_probability,
+                'confidence': confidence,
+                'model_name': self.model_name,
+                'predicted_at': datetime.now().isoformat(),
+                'top_features': top_features
+            }
+            
+            # Ajouter infos du metadata si disponible
+            if self.metadata:
+                result['model_version'] = self.metadata.get('version')
+                result['model_performance'] = {
+                    'test_accuracy': self.metadata.get('metrics', {}).get('test', {}).get('accuracy'),
+                    'test_f1': self.metadata.get('metrics', {}).get('test', {}).get('f1')
+                }
+            
+            logger.info(f"✅ Prédiction: {result['prediction']} (confidence: {confidence:.2%})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur prédiction: {e}", exc_info=True)
+            return None
+    
+    def batch_predict(self, features_list: List[Dict]) -> List[Optional[Dict]]:
+        """
+        Fait des prédictions en batch
+        
+        Args:
+            features_list: Liste de dictionnaires de features
+            
+        Returns:
+            Liste de prédictions
+        """
+        return [self.predict(features) for features in features_list]
+
+
+# Singleton pour éviter de recharger le modèle à chaque fois
+_predictor_instance: Optional[MLPredictor] = None
+
+
+def get_predictor(model_name: str = "xgboost_v1") -> MLPredictor:
+    """Récupère ou crée l'instance singleton du predictor"""
+    global _predictor_instance
+    
+    if _predictor_instance is None or _predictor_instance.model_name != model_name:
+        _predictor_instance = MLPredictor(model_name)
+        _predictor_instance.load_model()
+    
+    return _predictor_instance
+
+
+def predict_opportunity(features: Dict, model_name: str = "xgboost_v1") -> Optional[Dict]:
+    """
+    Helper function pour faire une prédiction rapide
+    
+    Args:
+        features: Features de l'opportunité
+        model_name: Nom du modèle à utiliser
+        
+    Returns:
+        Prédiction ou None si erreur
+    """
+    predictor = get_predictor(model_name)
+    return predictor.predict(features)

@@ -7,7 +7,7 @@ import asyncio
 import logging
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import pandas as pd
 import uuid
 from datetime import datetime
@@ -536,6 +536,80 @@ async def get_experiments(limit: int = 10):
     except Exception as e:
         logger.error(f"❌ Erreur get_experiments: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# ========== PREDICTIONS ==========
+
+@router.post("/predict")
+async def predict_opportunity(
+    features: Dict[str, Any],
+    model_name: str = Query('xgboost_v1'),
+):
+    """
+    Faire une prédiction ML sur une opportunité
+    
+    Args:
+        features: Dictionnaire avec toutes les features (RSI, MACD, BB, etc.)
+        model_name: Nom du modèle à utiliser (défaut: xgboost_v1)
+        
+    Returns:
+        Prédiction avec probabilité et confiance
+    """
+    try:
+        from optimization.predictor import predict_opportunity as predict_opp
+        
+        # Faire prédiction
+        prediction = predict_opp(features, model_name)
+        
+        if prediction is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Modèle '{model_name}' non disponible. Entraînez d'abord le modèle."
+            )
+        
+        return prediction
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur predict_opportunity: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/predict/batch")
+async def predict_batch(
+    opportunities: List[Dict[str, Any]],
+    model_name: str = Query('xgboost_v1'),
+):
+    """
+    Faire des prédictions ML en batch sur plusieurs opportunités
+    
+    Args:
+        opportunities: Liste de dictionnaires de features
+        model_name: Nom du modèle à utiliser
+        
+    Returns:
+        Liste de prédictions
+    """
+    try:
+        from optimization.predictor import get_predictor
+        
+        predictor = get_predictor(model_name)
+        predictions = predictor.batch_predict(opportunities)
+        
+        # Filtrer les None
+        results = [p for p in predictions if p is not None]
+        
+        return {
+            'predictions': results,
+            'total': len(opportunities),
+            'successful': len(results),
+            'failed': len(opportunities) - len(results)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur predict_batch: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ========== TRAINING ==========
