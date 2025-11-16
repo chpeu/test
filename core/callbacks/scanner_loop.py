@@ -414,6 +414,22 @@ async def _scan_top_pairs():
                 if _app_state is not None:
                     _app_state['active_position'] = position_result.to_dict()
 
+                # 🔥 FIX: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
+                # Ceci garantit que current_price sera mis à jour correctement pendant la position
+                if _price_provider:
+                    try:
+                        # Arrêter WebSocket actuel
+                        if hasattr(_price_provider, 'stop_websocket'):
+                            await _price_provider.stop_websocket()
+                            logger.debug("🔌 WebSocket arrêté pour position")
+
+                        # Redémarrer WebSocket uniquement sur le symbole de la position
+                        if hasattr(_price_provider, 'start_websocket'):
+                            await _price_provider.start_websocket([symbol])
+                            logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur redémarrage WebSocket pour position: {e}")
+
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
                     await _ws_manager.emit('position_opened', position_result.to_dict())
@@ -736,12 +752,18 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'scan_duration_ms': scan_duration_ms,
                     'market_data': {
                         'price': scan_price,
-                        'spread_pct': analysis.get('spread_pct') if analysis else None,
-                        'book_depth': analysis.get('book_depth') if analysis else None,
-                        'balance_score': analysis.get('balance_score') if analysis else None,
-                        'bid_vol': analysis.get('bid_vol') if analysis else None,
-                        'ask_vol': analysis.get('ask_vol') if analysis else None,
-                        'orderbook_imbalance_ratio': analysis.get('orderbook_imbalance_ratio') if analysis else None,
+                        # 🔥 FIX: Utiliser scalability_data au lieu de analysis pour les métriques de scalabilité
+                        'spread_pct': scalability_data.get('spread'),
+                        'book_depth': scalability_data.get('bookDepth'),
+                        'balance_score': scalability_data.get('balanceScore'),
+                        'bid_vol': scalability_data.get('bidVol'),
+                        'ask_vol': scalability_data.get('askVol'),
+                        # Calculer imbalance ratio si bid/ask disponibles
+                        'orderbook_imbalance_ratio': (
+                            scalability_data.get('bidVol') / scalability_data.get('askVol')
+                            if scalability_data.get('askVol') and scalability_data.get('askVol') > 0
+                            else None
+                        ),
                         # Paramètres du scan de scalabilité
                         'recent_volume': scalability_data.get('recent_volume'),
                         'vol5': scalability_data.get('vol5'),
@@ -823,7 +845,28 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
                         'setup_score': analysis.get('score_total'),
+                        
+                        # 🔥 FIX: Ajouter scores détaillés
+                        'score_long': analysis.get('score_long_1m') or analysis.get('score_long_5m'),
+                        'score_short': analysis.get('score_short_1m') or analysis.get('score_short_5m'),
+                        'score_min_required': scan_data['params_snapshot'].get('min_score_required'),
+                        
+                        # 🔥 FIX: Ajouter bonus
+                        'trend_bonus': scan_data.get('trend_bonus'),
+                        'divergence_bonus': scan_data.get('divergence_bonus'),
+                        
+                        # Conditions et raison
                         'conditions_matched': analysis.get('condition_types', []),
+                        'condition_count': len(analysis.get('condition_types', [])),
+                        'setup_reason': analysis.get('reason'),
+                        
+                        # Prix et setup
+                        'entry_suggested': analysis.get('entry') or analysis.get('price'),
+                        'tp_suggested': analysis.get('tp'),
+                        'sl_suggested': analysis.get('sl'),
+                        'tp_sl_mode': analysis.get('tp_sl_mode', 'FIXE'),
+                        
+                        # Legacy (pour compatibilité)
                         'entry_price': analysis.get('entry') or analysis.get('price'),
                         'tp_price': analysis.get('tp'),
                         'sl_price': analysis.get('sl'),

@@ -28,17 +28,20 @@ class HybridPriceProvider:
         self.ws_manager: Optional[WebSocketManager] = None
         self.rest_client = get_mexc_client()
         self.use_websocket = True
-        
+
         # Cache des derniers prix reçus
         self.price_cache: Dict[str, Dict] = {}
         self.cache_lock = asyncio.Lock()
-        
+
         # 🔥 v6.6.1 Phase 2A: Buffer pour backpressure (optionnel)
         self.message_buffer = deque(maxlen=100)
-        
+
         # 🔥 FIX: Callback pour émettre prix en temps réel via SocketIO
         self.socketio_emit_callback = None
         self.active_position_symbol = None
+
+        # 🔥 FIX CRITIQUE: Stocker symboles pour réabonnement après reconnexion
+        self.monitored_symbols: list = []
         
     def _handle_mexc_message(self, data: dict):
         """
@@ -124,33 +127,46 @@ class HybridPriceProvider:
         async with self.cache_lock:
             self.price_cache[symbol] = data
             self.message_buffer.append(data)
+
+    async def _get_cached_price(self, symbol: str) -> Optional[Dict]:
+        """Récupérer le dernier prix connu dans le cache (même si WS est down)."""
+        async with self.cache_lock:
+            price_data = self.price_cache.get(symbol)
+            # Retourner une copie pour éviter les mutations externes
+            return dict(price_data) if price_data else None
     
     async def start_websocket(self, symbols: list):
         """
         Démarrer WebSocket pour monitoring prix
-        
+
         Args:
             symbols: Liste de symboles à monitorer (max 30)
         """
         if len(symbols) > 30:
             logger.warning(f"⚠️ Plus de 30 symboles ({len(symbols)}), seulement les 30 premiers seront monitorés")
             symbols = symbols[:30]
-        
+
+        # 🔥 FIX CRITIQUE: Stocker symboles pour réabonnement après reconnexion
+        self.monitored_symbols = symbols
+
         try:
             # Créer WebSocket Manager
             self.ws_manager = WebSocketManager(
                 url=WEBSOCKET_CONFIG['url'],
                 callback=self._handle_mexc_message
             )
-            
+
+            # Configurer callback de reconnexion pour réabonner aux symboles
+            self.ws_manager.reconnect_callback = self._resubscribe_after_reconnect
+
             # Connecter
             await self.ws_manager.start()
-            
+
             # S'abonner aux symboles
             for symbol in symbols:
                 await self.ws_manager.subscribe_ticker(symbol)
                 await asyncio.sleep(0.1)  # Petit délai
-            
+
             logger.info(f"✅ WebSocket démarré pour {len(symbols)} symboles")
             
             # 🔥 JOUR 5: Métriques
@@ -181,11 +197,62 @@ class HybridPriceProvider:
             except:
                 pass
     
+    async def _resubscribe_after_reconnect(self):
+        """
+        🔥 FIX CRITIQUE: Réabonner aux symboles après reconnexion WebSocket
+
+        Cette méthode est appelée automatiquement par WebSocketManager après reconnexion.
+        Elle s'assure que le WebSocket continue de recevoir les prix des symboles monitorés.
+
+        Logique:
+        - Si position active: réabonner UNIQUEMENT au symbole de la position
+        - Sinon: réabonner aux symboles stockés dans monitored_symbols
+        """
+        if not self.ws_manager:
+            return
+
+        try:
+            # Déterminer quels symboles réabonner
+            symbols_to_subscribe = []
+
+            # Vérifier si position active (importer ici pour éviter circular import)
+            try:
+                # 🔥 FIX: Vérifier via app_state pour détecter position active
+                from main import app_state, position_manager
+                if app_state and (app_state.get('active_position') or (
+                    position_manager and position_manager.active_position
+                )):
+                    # Position active: réabonner UNIQUEMENT au symbole de la position
+                    active_pos = position_manager.active_position if position_manager else app_state.get('active_position')
+                    if active_pos:
+                        position_symbol = active_pos.symbol if hasattr(active_pos, 'symbol') else active_pos.get('symbol')
+                        if position_symbol:
+                            symbols_to_subscribe = [position_symbol]
+                            logger.info(f"🔄 Réabonnement WebSocket (position active): {position_symbol} UNIQUEMENT")
+            except Exception as e:
+                logger.debug(f"Impossible de vérifier position active: {e}")
+
+            # Pas de position active: réabonner aux symboles monitorés
+            if not symbols_to_subscribe and self.monitored_symbols:
+                symbols_to_subscribe = self.monitored_symbols
+                logger.info(f"🔄 Réabonnement WebSocket: {len(symbols_to_subscribe)} symboles")
+
+            # Réabonner
+            for symbol in symbols_to_subscribe:
+                await self.ws_manager.subscribe_ticker(symbol)
+                await asyncio.sleep(0.05)  # Petit délai
+
+            logger.info(f"✅ WebSocket réabonné à {len(symbols_to_subscribe)} symbole(s)")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur réabonnement WebSocket: {e}")
+
     async def stop_websocket(self):
         """Arrêter WebSocket"""
         if self.ws_manager:
             await self.ws_manager.disconnect()
             self.ws_manager = None
+            self.monitored_symbols = []  # Vider les symboles monitorés
             logger.info("🔌 WebSocket arrêté")
     
     async def get_price(self, symbol: str) -> Optional[Dict]:
@@ -234,12 +301,24 @@ class HybridPriceProvider:
         
         try:
             ticker = await self.rest_client.fetch_ticker(symbol)
+            
+            # 🔥 FIX: Vérifier que ticker est un dict AVANT utilisation
+            if not isinstance(ticker, dict) or ticker is None:
+                # Essayer le cache avant de logger l'erreur
+                cached = await self._get_cached_price(symbol)
+                if cached:
+                    if DEBUG_ENABLED:
+                        logger.debug(
+                            f"⚠️ Ticker invalide pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s)"
+                        )
+                    return cached
+                # Si pas de cache, alors logger l'erreur
+                logger.warning(
+                    f"⚠️ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol} - Pas de cache disponible"
+                )
+                return None
+            
             if ticker:
-                # 🔥 FIX: Vérifier que ticker est un dict, pas une liste
-                if not isinstance(ticker, dict):
-                    logger.error(f"❌ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol}")
-                    return None
-                
                 return {
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),
@@ -247,10 +326,19 @@ class HybridPriceProvider:
                     "timestamp": time.time()
                 }
         except Exception as e:
+            # Essayer le cache avant de logger l'erreur
+            cached = await self._get_cached_price(symbol)
+            if cached:
+                if DEBUG_ENABLED:
+                    logger.debug(
+                        f"⚠️ REST erreur pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s): {e}"
+                    )
+                return cached
+            # Si pas de cache, alors logger l'erreur complète
             if DEBUG_ENABLED:
                 logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
         
         return None
     

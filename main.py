@@ -95,12 +95,9 @@ async def global_exception_handler(request, exc):
     # Si c'est une route /api/state, retourner réponse minimale avec 200
     if request.url.path == "/api/state":
         logger.info(f"🔍 Exception handler global appelé pour /api/state - Exception: {type(exc).__name__}: {exc}")
+        # 🔥 FIX: Gestion sécurisée de session_id (try/except imbriqué redondant supprimé)
         try:
-            # 🔥 FIX: Gestion sécurisée de session_id
-            try:
-                session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
-            except:
-                session_id_value = f"live_{int(time.time())}"
+            session_id_value = session_id if 'session_id' in globals() and session_id else f"live_{int(time.time())}"
         except:
             session_id_value = f"live_{int(time.time())}"
         
@@ -193,12 +190,13 @@ if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
 
-# 🔥 FIX: Événement de démarrage FastAPI pour réinitialiser le frontend AVANT le scan
-@app.on_event("startup")
-async def startup_event():
-    """Événement de démarrage - réinitialiser le frontend AVANT le scan"""
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    data_logger = None
     try:
-        # ✅ Initialiser DataLogger
         try:
             from backend.ml.data_logger import DataLogger
             data_logger = DataLogger()
@@ -208,46 +206,55 @@ async def startup_event():
         except Exception as e:
             logger.warning(f"⚠️ Erreur initialisation DataLogger: {e}")
             app.state.data_logger = None
-        
-        # Initialiser les instances si pas déjà fait
+
         init_instances()
-        
-        # Attendre un peu pour que les connexions WebSocket soient prêtes
-        await asyncio.sleep(1.0)
-        
-        # 🔥 FIX: Émettre événement de réinitialisation pour synchroniser le frontend IMMÉDIATEMENT
+
+        try:
+            await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Timeout lors de l'initialisation WebSocket")
+
         if ws_manager:
             await ws_manager.emit('reset_session', {
                 'timestamp': time.time(),
                 'reason': 'backend_startup'
             })
             logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur événement startup: {e}")
 
-# ✅ Événement de shutdown pour arrêter DataLogger proprement
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Événement de shutdown - arrêter DataLogger proprement"""
-    try:
-        if hasattr(app.state, 'data_logger') and app.state.data_logger:
-            try:
-                await app.state.data_logger.shutdown()
-                logger.info("✅ DataLogger arrêté proprement")
-            except Exception as e:
-                logger.error(f"❌ Erreur arrêt DataLogger: {e}")
-        
-        # 🔥 PHASE 3: Fermer PostgreSQL DataLogger proprement
+        yield
+
+    finally:
         try:
-            from core.callbacks.scanner_loop import get_pg_datalogger
-            pg_datalogger = get_pg_datalogger()
-            if pg_datalogger:
-                pg_datalogger.close()
-                logger.info("✅ PostgreSQL DataLogger fermé proprement")
+            if hasattr(app.state, 'data_logger') and app.state.data_logger:
+                try:
+                    await app.state.data_logger.shutdown()
+                    logger.info("✅ DataLogger arrêté proprement")
+                except Exception as e:
+                    logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+
+            try:
+                from core.callbacks.scanner_loop import get_pg_datalogger
+                pg_datalogger = get_pg_datalogger()
+                if pg_datalogger:
+                    pg_datalogger.close()
+                    logger.info("✅ PostgreSQL DataLogger fermé proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+
+            try:
+                from api.mexc import get_mexc_client
+                mexc_client = get_mexc_client()
+                if mexc_client:
+                    await mexc_client.close()
+                    logger.info("✅ MEXC client fermé proprement")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
+
         except Exception as e:
-            logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
-    except Exception as e:
-        logger.warning(f"⚠️ Erreur événement shutdown: {e}")
+            logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
+
+
+app.router.lifespan_context = lifespan
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -382,6 +389,43 @@ app_state = {
     'logs': [],
     'trade_history': []  # 🔥 PHASE 4: Historique des trades
 }
+
+
+async def _run_initial_top_pairs_scan():
+    """Lancer le scan initial sans bloquer la boucle d'événements"""
+    init_instances()
+
+    if app_state.get('top_pairs'):
+        return  # Scan déjà effectué
+
+    if not scanner:
+        logger.warning("⚠️ Impossible de lancer le scan initial: scanner indisponible")
+        return
+
+    try:
+        await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs en arrière-plan...')
+        top_pairs = await scanner.scan_top_pairs(20)
+
+        if not top_pairs:
+            logger.warning("⚠️ Scan initial terminé sans résultats")
+            return
+
+        app_state['top_pairs'] = top_pairs
+
+        if ws_manager:
+            await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+
+        if price_provider:
+            symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            if symbols:
+                try:
+                    await price_provider.start_websocket(symbols)
+                    await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                except Exception as e:
+                    logger.warning(f"Erreur démarrage WebSocket: {e}")
+
+    except Exception as e:
+        logger.error(f"❌ Erreur scan initial en arrière-plan: {e}", exc_info=True)
 
 # 🔥 FIX: Injecter app_state dans le router APRÈS définition
 if api_router and set_app_state:
@@ -845,25 +889,34 @@ async def scanner_loop_callback():
                                     
                                     # Mettre à jour app_state AVANT d'émettre l'événement
                                     app_state['active_position'] = position
-                                    
+
                                     # 🔥 FIX: Vérification finale avant de continuer
                                     if app_state['active_position'] != position:
                                         logger.error(f"❌ ERREUR: app_state['active_position'] a été modifié pendant l'ouverture !")
                                         break
-                                    
-                                    # 🔥 FIX: S'abonner au WebSocket pour prix en temps réel
-                                    if price_provider and price_provider.ws_manager and price_provider.ws_manager.connected:
+
+                                    # 🔥 FIX CRITIQUE: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
+                                    # Ceci garantit que current_price sera mis à jour correctement pendant la position
+                                    # PROBLÈME: subscribe_ticker() ajoutait juste le symbole aux symboles existants
+                                    # SOLUTION: Redémarrer complètement le WebSocket avec UNIQUEMENT le symbole de la position
+                                    if price_provider:
                                         try:
-                                            await price_provider.ws_manager.subscribe_ticker(symbol)
-                                            logger.debug(f"📡 WebSocket: Abonné à {symbol} pour prix temps réel")
-                                            
-                                            # 🔥 FIX: Configurer callback pour suivre position active
-                                            # Le WebSocket met à jour le cache en temps réel
-                                            # La boucle de check à 0.5s récupère le prix du cache et émet position_update
-                                            price_provider.set_socketio_callback(None, symbol)
-                                            logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
+                                            # Arrêter WebSocket actuel
+                                            if hasattr(price_provider, 'stop_websocket'):
+                                                await price_provider.stop_websocket()
+                                                logger.info(f"🔌 WebSocket arrêté avant position")
+
+                                            # Redémarrer WebSocket uniquement sur le symbole de la position
+                                            if hasattr(price_provider, 'start_websocket'):
+                                                await price_provider.start_websocket([symbol])
+                                                logger.info(f"✅ WebSocket redémarré pour position: {symbol} UNIQUEMENT")
+
+                                            # Configurer callback pour suivre position active
+                                            if hasattr(price_provider, 'set_socketio_callback'):
+                                                price_provider.set_socketio_callback(None, symbol)
+                                                logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
-                                            logger.warning(f"⚠️ Erreur abonnement WebSocket {symbol}: {e}")
+                                            logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     await add_log('INFO', 'Position ouverte automatiquement', 
@@ -1525,38 +1578,13 @@ async def position_check_loop_callback():
             # Calculer PnL pour affichage
             position = position_manager.active_position
             if position:
-                # 🔥 FIX: Vérifier que position est un objet Position et non un dict ou string
-                if isinstance(position, str):
-                    # Si position est une chaîne, essayer de la parser en dict
-                    import json
-                    try:
-                        position_dict = json.loads(position)
-                        # Utiliser les valeurs du dict pour calculer PnL
-                        pnl = position_manager.pnl_calculator.calculate_pnl_percent(
-                            entry=position_dict.get('entry', 0),
-                            current_price=current_price,
-                            direction=position_dict.get('direction', 'LONG')
-                        )
-                        pnl_usdt = position_manager.pnl_calculator.calculate_pnl_usdt(
-                            position=position_dict,
-                            current_price=current_price
-                        )
-                        # Créer un objet position-like pour le reste du code
-                        class PositionProxy:
-                            def __init__(self, d):
-                                self.symbol = d.get('symbol', '')
-                                self.direction = d.get('direction', 'LONG')
-                                self.entry = d.get('entry', 0)
-                                self.sl = d.get('sl', 0)
-                                self.tp = d.get('tp', 0)
-                                self.size = d.get('size', 0)
-                                self.break_even_set = d.get('break_even_set', False)
-                                self.partial_tp_sold = d.get('partial_tp_sold', False)
-                        position = PositionProxy(position_dict)
-                    except Exception as parse_err:
-                        logger.error(f"❌ Erreur parsing position (string): {parse_err}")
-                        return
-                elif isinstance(position, dict):
+                # 🔥 FIX: Vérifier que position est un objet Position valide
+                # active_position ne doit JAMAIS être une string ou dict - c'est toujours un objet Position
+                if not hasattr(position, 'symbol') or not hasattr(position, 'entry'):
+                    logger.error(f"❌ Position invalide: type={type(position)}, attendu Position object")
+                    return
+                
+                if isinstance(position, dict):
                     # Si position est déjà un dict, utiliser directement
                     pnl = position_manager.pnl_calculator.calculate_pnl_percent(
                         entry=position.get('entry', 0),
@@ -1693,7 +1721,7 @@ async def scalability_refresh_loop_callback():
         return
     
     try:
-        await add_log('INFO', 'Scalability refresh', 'Rafraîchissement des top pairs...')
+        logger.info("[%s] INFO: Scalability refresh", datetime.now().strftime('%H:%M:%S'))
         
         top_pairs = await scanner.scan_top_pairs(20)
         app_state['top_pairs'] = top_pairs
@@ -1702,26 +1730,34 @@ async def scalability_refresh_loop_callback():
         if hasattr(app, '_top_pairs_cache'):
             app._top_pairs_cache.pop('top_pairs', None)
         
-        await add_log('INFO', 'Scalability refresh', f'{len(top_pairs)} paires scalables')
-        await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
-        
-        # 🔥 JOUR 3: Mettre à jour WebSocket avec les nouvelles top pairs
+        logger.info("[%s] INFO: %d paires scalables", datetime.now().strftime('%H:%M:%S'), len(top_pairs))
+        if ws_manager:
+            await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+
+        # 🔥 FIX CRITIQUE: Revérifier si position active APRÈS le scan (protection double)
+        # Le scan peut prendre 20+ secondes, pendant lesquelles une position peut s'ouvrir
+        # Si une position est ouverte pendant le scan, NE PAS toucher au WebSocket
+        if app_state['active_position'] or (position_manager and position_manager.active_position):
+            logger.info("⏸️ Mise à jour WebSocket ignorée - Position ouverte pendant le scan de scalabilité")
+            return
+
+        # 🔥 JOUR 3: Mettre à jour WebSocket avec les nouvelles top pairs (seulement si pas de position)
         if price_provider and top_pairs:
             # Arrêter l'ancien WebSocket
             await price_provider.stop_websocket()
-            
+
             # Démarrer avec les nouvelles paires
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
-                    await add_log('INFO', 'WebSocket mis à jour', f'{len(symbols)} symboles')
+                    logger.info("[%s] INFO: WebSocket mis à jour - %d symboles", datetime.now().strftime('%H:%M:%S'), len(symbols))
                 except Exception as e:
                     logger.warning(f"Erreur démarrage WebSocket: {e}")
     
     except Exception as e:
-        logger.error(f"Erreur scalability refresh: {e}")
-        await add_log('ERROR', 'Erreur scalability refresh', str(e))
+        logger.error(f"Erreur scalability refresh: {e}", exc_info=True)
+        logger.error("[%s] ERROR: Erreur scalability refresh", datetime.now().strftime('%H:%M:%S'))
 
 
 def init_instances():
@@ -3195,6 +3231,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'use_confluence': TRADING_CONFIG.get('use_confluence', False),
                                     'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
                                     'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                                    'max_slippage_pct': TRADING_CONFIG.get('max_slippage_pct', 0.03),
                                     # TP/SL Configuration
                                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                                     'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
@@ -3317,21 +3354,7 @@ async def handle_client_command(command: str, params: dict):
         
         # Si pas de top_pairs, faire un scan initial
         if not app_state['top_pairs']:
-            await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
-            if scanner:
-                top_pairs = await scanner.scan_top_pairs(20)
-                app_state['top_pairs'] = top_pairs
-                await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
-                
-                # Démarrer WebSocket pour les top pairs
-                if price_provider and top_pairs:
-                    symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
-                    if symbols:
-                        try:
-                            await price_provider.start_websocket(symbols)
-                            await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
-                        except Exception as e:
-                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+            asyncio.create_task(_run_initial_top_pairs_scan())
         
         # Démarrer le scheduler
         if scheduler:
@@ -4444,6 +4467,32 @@ async def export_trades_csv(
     )
 
 
+def _get_pg_connection_for_export():
+    """Obtenir une connexion PostgreSQL même si le bot n'est pas actif."""
+    pg_datalogger = None
+    try:
+        from core.callbacks.scanner_loop import get_pg_datalogger
+        pg_datalogger = get_pg_datalogger()
+    except Exception:
+        pg_datalogger = None
+
+    if pg_datalogger and getattr(pg_datalogger, "enabled", True):
+        conn = pg_datalogger._get_connection()
+        return conn, lambda: pg_datalogger._return_connection(conn)
+
+    import psycopg2
+
+    conn = psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', '5432')),
+        dbname=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
+        user=os.getenv('POSTGRES_USER', 'postgres'),
+        password=os.getenv('POSTGRES_PASSWORD', '')
+    )
+
+    return conn, conn.close
+
+
 @app.get("/api/datalogger/export/excel")
 async def export_datalogger_excel(
     start_date: Optional[str] = None,
@@ -4460,15 +4509,6 @@ async def export_datalogger_excel(
         Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
     """
     try:
-        from core.callbacks.scanner_loop import get_pg_datalogger
-        pg_datalogger = get_pg_datalogger()
-        
-        if not pg_datalogger or not pg_datalogger.enabled:
-            return JSONResponse(
-                {"error": "PostgreSQL DataLogger non disponible"},
-                status_code=503
-            )
-        
         # Vérifier si openpyxl est installé
         try:
             from openpyxl import Workbook
@@ -4479,9 +4519,11 @@ async def export_datalogger_excel(
                 {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
                 status_code=500
             )
-        
-        conn = pg_datalogger._get_connection()
-        if not conn:
+
+        try:
+            conn, release_conn = _get_pg_connection_for_export()
+        except Exception as conn_error:
+            logger.error("❌ Impossible de se connecter à PostgreSQL pour l'export: %s", conn_error)
             return JSONResponse(
                 {"error": "Impossible de se connecter à PostgreSQL"},
                 status_code=503
@@ -4490,141 +4532,114 @@ async def export_datalogger_excel(
         try:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Créer un workbook Excel
+
+            # Récupérer toutes les tables du schéma public
+            cursor.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """
+            )
+            table_names = [row['table_name'] for row in cursor.fetchall()]
+
             wb = Workbook()
-            wb.remove(wb.active)  # Supprimer la feuille par défaut
-            
-            # ===== ONGLET 1: SCANS =====
-            ws_scans = wb.create_sheet("Scans")
-            query_scans = """
-                SELECT 
-                    timestamp, symbol, price, scan_duration_ms,
-                    rsi_1m, rsi_5m, score_total,
-                    is_opportunity, opportunity_direction, reject_reason,
-                    trend_direction, trend_strength
-                FROM scan_logs
-                WHERE 1=1
-            """
-            params = []
-            if start_date:
-                query_scans += " AND timestamp >= %s"
-                params.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_scans += " AND timestamp <= %s"
-                params.append(f"{end_date} 23:59:59")
-            query_scans += " ORDER BY timestamp DESC LIMIT 10000"
-            
-            cursor.execute(query_scans, params)
-            scans = cursor.fetchall()
-            
-            if scans:
-                # En-têtes
-                headers = list(scans[0].keys())
-                ws_scans.append(headers)
-                
-                # Style en-têtes
-                header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                header_font = Font(bold=True, color="FFFFFF")
-                for cell in ws_scans[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                # Données
-                for row in scans:
-                    ws_scans.append([row.get(h) for h in headers])
-                
-                # Ajuster largeur colonnes
+            summary_sheet = wb.active
+            summary_sheet.title = "Summary"
+            summary_sheet.append(["Table", "Rows"])
+
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+
+            for table_name in table_names:
+                ws = wb.create_sheet(table_name[:31])
+
+                # Récupérer les colonnes de la table (pour appliquer les filtres date intelligemment)
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = %s
+                    """,
+                    (table_name,)
+                )
+                column_names = [row['column_name'] for row in cursor.fetchall()]
+
+                base_query = f"SELECT * FROM {table_name} WHERE 1=1"
+                params: List[str] = []
+
+                has_timestamp = 'timestamp' in column_names
+                has_timestamp_entry = 'timestamp_entry' in column_names
+
+                if start_date and (has_timestamp or has_timestamp_entry):
+                    if has_timestamp and has_timestamp_entry:
+                        base_query += " AND (timestamp >= %s OR timestamp_entry >= %s)"
+                        params.extend([f"{start_date} 00:00:00", f"{start_date} 00:00:00"])
+                    elif has_timestamp:
+                        base_query += " AND timestamp >= %s"
+                        params.append(f"{start_date} 00:00:00")
+                    elif has_timestamp_entry:
+                        base_query += " AND timestamp_entry >= %s"
+                        params.append(f"{start_date} 00:00:00")
+
+                if end_date and (has_timestamp or has_timestamp_entry):
+                    if has_timestamp and has_timestamp_entry:
+                        base_query += " AND (timestamp <= %s OR timestamp_entry <= %s)"
+                        params.extend([f"{end_date} 23:59:59", f"{end_date} 23:59:59"])
+                    elif has_timestamp:
+                        base_query += " AND timestamp <= %s"
+                        params.append(f"{end_date} 23:59:59")
+                    elif has_timestamp_entry:
+                        base_query += " AND timestamp_entry <= %s"
+                        params.append(f"{end_date} 23:59:59")
+
+                cursor.execute(base_query, params)
+                rows = cursor.fetchall()
+                headers = [desc.name for desc in cursor.description] if cursor.description else []
+
+                if headers:
+                    ws.append(headers)
+                    for cell in ws[1]:
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal="center")
+                for row in rows:
+                    # Convertir valeurs complexes (arrays, dicts) en string JSON pour Excel
+                    excel_row = []
+                    for h in headers:
+                        value = row[h]
+                        # Convertir types non-supportés par Excel
+                        if isinstance(value, (list, dict)):
+                            excel_row.append(json.dumps(value, ensure_ascii=False))
+                        elif value is None:
+                            excel_row.append('')
+                        elif isinstance(value, datetime):
+                            # Excel ne supporte pas les timezones - convertir en datetime naive
+                            excel_row.append(value.replace(tzinfo=None) if value.tzinfo else value)
+                        else:
+                            excel_row.append(value)
+                    ws.append(excel_row)
                 for col in range(1, len(headers) + 1):
-                    ws_scans.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 2: OPPORTUNITIES =====
-            ws_opps = wb.create_sheet("Opportunities")
-            query_opps = """
-                SELECT 
-                    timestamp, symbol, direction, setup_score,
-                    entry_price, tp_price, sl_price,
-                    conditions_matched, confirmed_by
-                FROM opportunities
-                WHERE 1=1
-            """
-            params_opps = []
-            if start_date:
-                query_opps += " AND timestamp >= %s"
-                params_opps.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_opps += " AND timestamp <= %s"
-                params_opps.append(f"{end_date} 23:59:59")
-            query_opps += " ORDER BY timestamp DESC LIMIT 10000"
-            
-            cursor.execute(query_opps, params_opps)
-            opportunities = cursor.fetchall()
-            
-            if opportunities:
-                headers = list(opportunities[0].keys())
-                ws_opps.append(headers)
-                
-                for cell in ws_opps[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in opportunities:
-                    ws_opps.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_opps.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 3: TRADES =====
-            ws_trades = wb.create_sheet("Trades")
-            query_trades = """
-                SELECT 
-                    timestamp_entry, timestamp_exit, symbol, direction,
-                    entry_price, exit_price, size_usdt,
-                    gross_pnl_usdt, net_pnl_usdt, net_pnl_pct,
-                    exit_reason, duration_seconds, win
-                FROM trades
-                WHERE 1=1
-            """
-            params_trades = []
-            if start_date:
-                query_trades += " AND timestamp_entry >= %s"
-                params_trades.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_trades += " AND timestamp_entry <= %s"
-                params_trades.append(f"{end_date} 23:59:59")
-            query_trades += " ORDER BY timestamp_entry DESC LIMIT 10000"
-            
-            cursor.execute(query_trades, params_trades)
-            trades = cursor.fetchall()
-            
-            if trades:
-                headers = list(trades[0].keys())
-                ws_trades.append(headers)
-                
-                for cell in ws_trades[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in trades:
-                    ws_trades.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_trades.column_dimensions[get_column_letter(col)].width = 15
-            
+                    ws.column_dimensions[get_column_letter(col)].width = 15
+
+                summary_sheet.append([table_name, len(rows)])
+
             cursor.close()
-            pg_datalogger._return_connection(conn)
-            
-            # Sauvegarder dans un buffer
+            try:
+                release_conn()
+            except Exception as conn_err:
+                logger.debug(f"Note: Erreur retour connexion (non-critique): {conn_err}")
+
             from io import BytesIO
             output = BytesIO()
             wb.save(output)
             output.seek(0)
-            
+
             filename = f"datalogger_export_{start_date}_{end_date}.xlsx" if (start_date and end_date) else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
-            
+
             return StreamingResponse(
                 output,
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4632,7 +4647,10 @@ async def export_datalogger_excel(
             )
             
         except Exception as e:
-            pg_datalogger._return_connection(conn)
+            try:
+                release_conn()
+            except Exception:
+                pass  # Connexion déjà fermée ou non du pool
             logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
             return JSONResponse(
                 {"error": f"Erreur export Excel: {str(e)}"},
@@ -4726,6 +4744,7 @@ async def reset_datalogger_db():
 
 if __name__ == '__main__':
     import uvicorn
+    import socket
     
     # 🔥 PHASE 4: Charger l'historique au démarrage
     load_trade_history()
@@ -4754,5 +4773,40 @@ if __name__ == '__main__':
     logger.info("=" * 70)
     logger.info("")
     
-    # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
-    uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+    # 🔥 FIX: Vérifier que le port est disponible avant de démarrer
+    def is_port_available(port):
+        """Vérifier si le port est disponible"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            result = sock.connect_ex(('127.0.0.1', port))
+            return result != 0  # Port disponible si connexion échoue
+        finally:
+            sock.close()
+    
+    # 🔥 FIX: Essayer le port demandé, puis chercher un port disponible
+    original_port = port
+    max_attempts = 10
+    attempt = 0
+    
+    while not is_port_available(port) and attempt < max_attempts:
+        logger.warning(f"⚠️ Port {port} déjà utilisé, essai du port {port + 1}...")
+        port += 1
+        attempt += 1
+    
+    if not is_port_available(port):
+        logger.error(f"❌ Impossible de trouver un port disponible après {max_attempts} tentatives (à partir du port {original_port})")
+        sys.exit(1)
+    
+    if port != original_port:
+        logger.info(f"✅ Port changé de {original_port} à {port}")
+    
+    try:
+        # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
+        uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+    except OSError as e:
+        logger.error(f"❌ Erreur binding port {port}: {e}")
+        logger.error(f"Vérifiez que le port {port} n'est pas déjà utilisé")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"❌ Erreur démarrage serveur: {e}", exc_info=True)
+        sys.exit(1)

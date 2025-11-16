@@ -6,7 +6,7 @@ Logging des scans, opportunités et trades vers PostgreSQL pour ML
 
 import logging
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Sequence
 from datetime import datetime, timezone, date
 from decimal import Decimal
 import json
@@ -25,6 +25,22 @@ except ImportError:
     logger.warning("⚠️ psycopg2 non installé - PostgreSQL DataLogger désactivé")
 
 logger = logging.getLogger(__name__)
+
+
+def _summarize_params(params: Optional[Sequence[Any]], limit: int = 5) -> str:
+    """Retourner un aperçu compact des paramètres SQL."""
+    if not params:
+        return "<no-params>"
+    try:
+        iterable = list(params)
+    except TypeError:
+        return f"<{type(params).__name__}>"
+    summary = []
+    for value in iterable[:limit]:
+        summary.append(f"{type(value).__name__}:{str(value)[:30]}")
+    if len(iterable) > limit:
+        summary.append(f"…(+{len(iterable) - limit})")
+    return '[' + ', '.join(summary) + ']'
 
 
 def _extract_numeric_value(value: Any) -> Optional[float]:
@@ -171,6 +187,7 @@ class PostgreSQLDataLogger:
         if not PSYCOPG2_AVAILABLE:
             logger.error("❌ psycopg2 non disponible - PostgreSQL DataLogger désactivé")
             self.enabled = False
+            self.pool = None
             return
         
         self.enabled = True
@@ -251,6 +268,12 @@ class PostgreSQLDataLogger:
         
         try:
             cursor = conn.cursor()
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "SQL exec: %s | params=%s",
+                    ' '.join(query.strip().splitlines())[:200],
+                    _summarize_params(params)
+                )
             cursor.execute(query, params)
             
             if fetch:
@@ -265,8 +288,12 @@ class PostgreSQLDataLogger:
                 self._return_connection(conn)
                 return True
         except Exception as e:
-            logger.error(f"❌ Erreur exécution requête: {e}")
-            logger.debug(f"Query: {query[:200]}...")
+            logger.error(
+                "❌ Erreur exécution requête: %s | params=%s",
+                e,
+                _summarize_params(params)
+            )
+            logger.debug(f"Query: {query[:400]}...")
             if conn:
                 conn.rollback()
                 self._return_connection(conn)
@@ -484,8 +511,6 @@ class PostgreSQLDataLogger:
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
@@ -660,10 +685,13 @@ class PostgreSQLDataLogger:
                 INSERT INTO opportunities (
                     scan_log_id, session_id, symbol, timestamp,
                     status, direction, setup_score,
-                    conditions_matched, entry_suggested, tp_suggested, sl_suggested,
-                    tp_sl_mode
+                    score_long, score_short, score_min_required,
+                    trend_bonus, divergence_bonus,
+                    conditions_matched, condition_count,
+                    entry_suggested, tp_suggested, sl_suggested,
+                    tp_sl_mode, setup_reason
                 )
-                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
             
@@ -689,17 +717,14 @@ class PostgreSQLDataLogger:
             status = opportunity_data.get('status', 'PENDING')
             
             # S'assurer que les prix sont des nombres, pas des dicts
-            if isinstance(entry_price, dict):
-                entry_price = entry_price.get('price') or entry_price.get('value')
-            if isinstance(tp_price, dict):
-                tp_price = tp_price.get('price') or tp_price.get('value')
-            if isinstance(sl_price, dict):
-                sl_price = sl_price.get('price') or sl_price.get('value')
+            entry_price = _extract_numeric_value(entry_price)
+            tp_price = _extract_numeric_value(tp_price)
+            sl_price = _extract_numeric_value(sl_price)
             if isinstance(tp_sl_mode, dict):
                 tp_sl_mode = tp_sl_mode.get('mode') or 'FIXE'
             # S'assurer que setup_score est un nombre, pas un dict
             if isinstance(setup_score, dict):
-                setup_score = setup_score.get('score') or setup_score.get('value') or setup_score.get('totalScore')
+                setup_score = _extract_numeric_value(setup_score)
             # S'assurer que direction est une string, pas un dict
             if isinstance(direction, dict):
                 direction = direction.get('direction') or direction.get('value') or str(direction)
@@ -707,17 +732,43 @@ class PostgreSQLDataLogger:
             if isinstance(status, dict):
                 status = status.get('status') or status.get('value') or 'PENDING'
             
+            # 🔥 FIX: Extraire les nouveaux champs
+            score_long = opportunity_data.get('score_long')
+            score_short = opportunity_data.get('score_short')
+            score_min_required = opportunity_data.get('score_min_required')
+            trend_bonus = opportunity_data.get('trend_bonus')
+            divergence_bonus = opportunity_data.get('divergence_bonus')
+            condition_count = opportunity_data.get('condition_count', len(conditions_matched))
+            setup_reason = opportunity_data.get('setup_reason')
+            
             params = (
                 scan_id, session_id, symbol,
                 str(status) if status else 'PENDING',
                 str(direction) if direction else None,
-                float(setup_score) if setup_score is not None and not isinstance(setup_score, dict) else None,
+                float(setup_score) if setup_score is not None else None,
+                # Nouveaux champs
+                float(score_long) if score_long is not None else None,
+                float(score_short) if score_short is not None else None,
+                float(score_min_required) if score_min_required is not None else None,
+                float(trend_bonus) if trend_bonus is not None else None,
+                float(divergence_bonus) if divergence_bonus is not None else None,
+                # Conditions
                 conditions_matched,  # TEXT[] - liste de strings
-                float(entry_price) if entry_price is not None and not isinstance(entry_price, dict) else None,  # entry_suggested
-                float(tp_price) if tp_price is not None and not isinstance(tp_price, dict) else None,  # tp_suggested
-                float(sl_price) if sl_price is not None and not isinstance(sl_price, dict) else None,  # sl_suggested
-                str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
+                int(condition_count) if condition_count is not None else len(conditions_matched),
+                # Prix
+                float(entry_price) if entry_price is not None else None,  # entry_suggested
+                float(tp_price) if tp_price is not None else None,  # tp_suggested
+                float(sl_price) if sl_price is not None else None,  # sl_suggested
+                str(tp_sl_mode) if tp_sl_mode else 'FIXE',  # tp_sl_mode
+                str(setup_reason) if setup_reason else None  # setup_reason
             )
+            
+            if any(isinstance(p, dict) for p in params):
+                logger.error(
+                    "⚠️ Paramètre dict détecté dans log_opportunity pour %s | types=%s",
+                    symbol,
+                    [type(p).__name__ for p in params]
+                )
             
             result = self._execute_query(query, params, fetch=True)
             if result:
@@ -728,126 +779,6 @@ class PostgreSQLDataLogger:
             
         except Exception as e:
             logger.error(f"❌ Erreur logging opportunité {symbol}: {e}")
-            return None
-    
-    def log_scan_error(
-        self,
-        symbol: str,
-        error_type: str,
-        error_message: str,
-        error_details: Optional[Dict] = None,
-        session_id: Optional[str] = None
-    ) -> Optional[int]:
-        """
-        Logger une erreur de scan dans scan_errors
-        
-        Args:
-            symbol: Symbole de la paire
-            error_type: Type d'erreur (API_ERROR, TIMEOUT, etc.)
-            error_message: Message d'erreur
-            error_details: Détails supplémentaires (optionnel)
-            session_id: UUID de la session
-        
-        Returns:
-            ID de l'erreur loggée ou None
-        """
-        if not self.enabled:
-            return None
-        
-        if not session_id:
-            session_id = self.get_or_create_session()
-        
-        try:
-            query = """
-                INSERT INTO scan_errors (
-                    timestamp, session_id, symbol,
-                    error_type, error_message, error_stack, scan_context
-                )
-                VALUES (NOW(), %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """
-            
-            # Extraire stack trace si disponible
-            error_stack = None
-            if error_details:
-                error_stack = error_details.get('stack') or error_details.get('error_stack')
-            
-            params = (
-                session_id, symbol,
-                error_type, error_message,
-                error_stack,
-                json.dumps(error_details or {})
-            )
-            
-            result = self._execute_query(query, params, fetch=True)
-            if result:
-                error_id = result[0][0]
-                logger.debug(f"📊 Erreur loggée: {symbol} - {error_type} (ID: {error_id})")
-                return error_id
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur logging erreur scan {symbol}: {e}")
-            return None
-    
-    def log_market_context(
-        self,
-        context_data: Dict[str, Any],
-        session_id: Optional[str] = None
-    ) -> Optional[int]:
-        """
-        Logger le contexte marché dans market_context
-        
-        Args:
-            context_data: Données du contexte marché
-            session_id: UUID de la session
-        
-        Returns:
-            ID du contexte loggé ou None
-        """
-        if not self.enabled:
-            return None
-        
-        if not session_id:
-            session_id = self.get_or_create_session()
-        
-        try:
-            query = """
-                INSERT INTO market_context (
-                    timestamp, session_id,
-                    hour_of_day, day_of_week,
-                    btc_price, eth_price,
-                    global_metrics, session_stats,
-                    market_trend, market_volatility, fear_greed_index
-                )
-                VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """
-            
-            # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
-            now = datetime.now(timezone.utc)
-            params = (
-                session_id,
-                now.hour,
-                now.weekday(),
-                context_data.get('btc_price'),
-                context_data.get('eth_price'),
-                json.dumps(context_data.get('global_metrics', {})),
-                json.dumps(context_data.get('session_stats', {})),
-                context_data.get('market_trend'),
-                context_data.get('market_volatility'),
-                context_data.get('fear_greed_index')
-            )
-            
-            result = self._execute_query(query, params, fetch=True)
-            if result:
-                context_id = result[0][0]
-                logger.debug(f"📊 Contexte marché loggé (ID: {context_id})")
-                return context_id
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur logging contexte marché: {e}")
             return None
     
     def log_trade(
@@ -893,102 +824,6 @@ class PostgreSQLDataLogger:
             # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
             now = datetime.now(timezone.utc)
             timestamp_iso = now.isoformat()
-            
-            query = """
-                INSERT INTO trades (
-                    timestamp_entry, timestamp_exit, session_id, opportunity_id, scan_log_id, symbol,
-                    direction, entry_price, exit_price,
-                    size_usdt, tp_price, sl_price, gross_pnl_usdt, pnl_pct, pnl_usdt,
-                    net_pnl_usdt, net_pnl_pct,
-                    fees_usdt, slippage_pct, slippage_usdt,
-                    exit_reason, duration_seconds,
-                    tp_sl_mode, break_even_set,
-                    break_even_triggered_at,
-                    trailing_stop_activated, trailing_stop_triggered_at,
-                    partial_tp_executed, partial_tp_triggered_at,
-                    partial_tp_profit, partial_tp_percent,
-                    tp_escalier_levels_executed, tp_escalier_profits,
-                    early_invalidation_triggered, early_invalidation_triggered_at,
-                    early_invalidation_threshold, early_invalidation_elapsed,
-                    early_invalidation_atr_pct, early_invalidation_pnl_pct,
-                    -- Indicateurs d'entrée (pour ML) - RSI
-                    entry_rsi_1m, entry_rsi_5m, entry_rsi_prev_1m, entry_rsi_prev_5m,
-                    -- Indicateurs d'entrée - MACD
-                    entry_macd_1m, entry_macd_signal_1m, entry_macd_hist_1m, entry_macd_hist_prev_1m,
-                    entry_macd_5m, entry_macd_signal_5m, entry_macd_hist_5m, entry_macd_hist_prev_5m,
-                    -- Indicateurs d'entrée - ADX
-                    entry_adx_1m, entry_adx_5m,
-                    entry_di_plus_1m, entry_di_minus_1m, entry_di_gap_1m,
-                    entry_di_plus_5m, entry_di_minus_5m, entry_di_gap_5m,
-                    -- Indicateurs d'entrée - EMA
-                    entry_ema9_1m, entry_ema21_1m, entry_ema_diff_pct_1m,
-                    entry_ema9_5m, entry_ema21_5m, entry_ema_diff_pct_5m,
-                    -- Indicateurs d'entrée - ATR
-                    entry_atr_1m, entry_atr_pct_1m, entry_atr_5m, entry_atr_pct_5m,
-                    -- Indicateurs d'entrée - Bollinger Bands
-                    entry_bb_upper_1m, entry_bb_middle_1m, entry_bb_lower_1m,
-                    entry_bb_width_1m, entry_bb_distance_to_lower_1m, entry_bb_distance_to_upper_1m,
-                    entry_bb_upper_5m, entry_bb_middle_5m, entry_bb_lower_5m,
-                    entry_bb_width_5m, entry_bb_distance_to_lower_5m, entry_bb_distance_to_upper_5m,
-                    -- Indicateurs d'entrée - Volume
-                    entry_volume_1m, entry_volume_avg_1m, entry_volume_ratio_1m, entry_volume_spike_1m,
-                    entry_volume_5m, entry_volume_avg_5m, entry_volume_ratio_5m, entry_volume_spike_5m,
-                    -- Indicateurs d'entrée - Score et autres
-                    entry_score, entry_spread_pct, entry_balance_score,
-                    entry_conditions, entry_condition_count,
-                    -- Métriques temporelles entry
-                    entry_hour_of_day, entry_day_of_week,
-                    -- Indicateurs de sortie
-                    exit_rsi_1m, exit_rsi_5m,
-                    exit_macd_hist_1m, exit_macd_hist_5m,
-                    exit_adx_1m, exit_adx_5m,
-                    exit_atr_pct_1m, exit_atr_pct_5m,
-                    exit_score, exit_volume_ratio_1m, exit_volume_ratio_5m,
-                    exit_spread_pct, exit_balance_score,
-                    entry_to_exit_price_change_pct,
-                    -- Métriques temporelles exit
-                    exit_hour_of_day, exit_day_of_week,
-                    -- Métriques de position
-                    max_favorable_excursion, max_adverse_excursion,
-                    max_favorable_excursion_usdt, max_adverse_excursion_usdt,
-                    -- Métriques de qualité
-                    risk_reward_ratio,
-                    profit_factor,
-                    -- Métriques de performance additionnelles
-                    entry_to_max_profit_price_change_pct, entry_to_max_loss_price_change_pct,
-                    max_drawdown_pct, max_drawdown_usdt,
-                    -- Scalability
-                    entry_book_depth, entry_bid_vol, entry_ask_vol, entry_orderbook_imbalance,
-                    entry_recent_volume, entry_vol5, entry_vol15, entry_scalability_score,
-                    -- Configuration snapshot
-                    config_snapshot,
-                    win
-                )
-                VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                RETURNING id
-            """
             
             # Utiliser timestamp_entry pour entry et timestamp_exit pour exit
             # Récupérer timestamp_entry depuis trade_data si disponible, sinon utiliser maintenant
@@ -1215,118 +1050,194 @@ class PostgreSQLDataLogger:
             else:
                 entry_conditions = [str(entry_conditions)] if entry_conditions else []
             
-            params = (
-                entry_timestamp, exit_timestamp, session_id, opportunity_id, scan_log_id,
-                trade_data.get('symbol'),
-                trade_data.get('direction'),
-                entry_price,  # entry_price (nettoyé)
-                exit_price,  # exit_price (nettoyé)
-                size_usdt,  # size_usdt (nettoyé)
-                tp_price,  # tp_price (nettoyé)
-                sl_price,  # sl_price (nettoyé)
-                _extract_numeric_value(trade_data.get('gross_pnl_usdt')) or 0,
-                _extract_numeric_value(trade_data.get('gross_pnl_pct')) or 0,  # pnl_pct (gross)
-                _extract_numeric_value(trade_data.get('gross_pnl_usdt')) or 0,  # pnl_usdt (gross) - même valeur que gross_pnl_usdt (redondant mais présent dans le schéma)
-                _extract_numeric_value(trade_data.get('net_pnl_usdt')) or 0,
-                _extract_numeric_value(trade_data.get('net_pnl_pct')) or 0,
-                _extract_numeric_value(trade_data.get('fees')) or 0,  # fees_usdt
-                _extract_numeric_value(trade_data.get('slippage')) or 0,  # slippage_pct
-                slippage_usdt,  # slippage_usdt
-                trade_data.get('reason'),  # exit_reason
-                _extract_numeric_value(trade_data.get('duration_seconds')),
-                trade_data.get('tp_sl_mode'),
-                trade_data.get('break_even_triggered', False),  # break_even_set
-                trade_data.get('break_even_triggered_at'),  # break_even_triggered_at
-                trade_data.get('trailing_stop_triggered', False),  # trailing_stop_activated
-                trade_data.get('trailing_stop_triggered_at'),  # trailing_stop_triggered_at
-                trade_data.get('partial_tp_triggered', False),  # partial_tp_executed
-                trade_data.get('partial_tp_triggered_at'),  # partial_tp_triggered_at
-                _extract_numeric_value(trade_data.get('partial_tp_profit')),  # partial_tp_profit
-                _extract_numeric_value(trade_data.get('partial_tp_percent')),  # partial_tp_percent
-                len(tp_escalier_levels_hit),  # tp_escalier_levels_executed (count)
-                _extract_numeric_value(tp_escalier_profits) if tp_escalier_profits is not None else 0,  # tp_escalier_profits (somme)
-                # Early Invalidation
-                trade_data.get('early_invalidation_triggered', False),  # early_invalidation_triggered
-                trade_data.get('early_invalidation_triggered_at'),  # early_invalidation_triggered_at
-                _extract_numeric_value(trade_data.get('early_invalidation_threshold')),  # early_invalidation_threshold
-                _extract_numeric_value(trade_data.get('early_invalidation_elapsed')),  # early_invalidation_elapsed
-                _extract_numeric_value(trade_data.get('early_invalidation_atr_pct')),  # early_invalidation_atr_pct
-                _extract_numeric_value(trade_data.get('early_invalidation_pnl_pct')),  # early_invalidation_pnl_pct
-                # Indicateurs d'entrée - RSI
-                entry_indicators.get('rsi_1m'), entry_indicators.get('rsi_5m'),
-                entry_indicators.get('rsi_prev_1m'), entry_indicators.get('rsi_prev_5m'),
-                # Indicateurs d'entrée - MACD
-                entry_indicators.get('macd_1m'), entry_indicators.get('macd_signal_1m'),
-                entry_indicators.get('macd_hist_1m'), entry_indicators.get('macd_hist_prev_1m'),
-                entry_indicators.get('macd_5m'), entry_indicators.get('macd_signal_5m'),
-                entry_indicators.get('macd_hist_5m'), entry_indicators.get('macd_hist_prev_5m'),
-                # Indicateurs d'entrée - ADX
-                entry_indicators.get('adx_1m'), entry_indicators.get('adx_5m'),
-                entry_indicators.get('di_plus_1m'), entry_indicators.get('di_minus_1m'), entry_indicators.get('di_gap_1m'),
-                entry_indicators.get('di_plus_5m'), entry_indicators.get('di_minus_5m'), entry_indicators.get('di_gap_5m'),
-                # Indicateurs d'entrée - EMA
-                entry_indicators.get('ema9_1m'), entry_indicators.get('ema21_1m'), entry_indicators.get('ema_diff_pct_1m'),
-                entry_indicators.get('ema9_5m'), entry_indicators.get('ema21_5m'), entry_indicators.get('ema_diff_pct_5m'),
-                # Indicateurs d'entrée - ATR
-                entry_indicators.get('atr_1m'), entry_indicators.get('atr_pct_1m'),
-                entry_indicators.get('atr_5m'), entry_indicators.get('atr_pct_5m'),
-                # Indicateurs d'entrée - Bollinger Bands
-                entry_indicators.get('bb_upper_1m'), entry_indicators.get('bb_middle_1m'), entry_indicators.get('bb_lower_1m'),
-                entry_indicators.get('bb_width_1m'), entry_indicators.get('bb_distance_to_lower_1m'), entry_indicators.get('bb_distance_to_upper_1m'),
-                entry_indicators.get('bb_upper_5m'), entry_indicators.get('bb_middle_5m'), entry_indicators.get('bb_lower_5m'),
-                entry_indicators.get('bb_width_5m'), entry_indicators.get('bb_distance_to_lower_5m'), entry_indicators.get('bb_distance_to_upper_5m'),
-                # Indicateurs d'entrée - Volume
-                entry_indicators.get('volume_1m'), entry_indicators.get('volume_avg_1m'),
-                entry_indicators.get('volume_ratio_1m'), entry_indicators.get('volume_spike_1m'),
-                entry_indicators.get('volume_5m'), entry_indicators.get('volume_avg_5m'),
-                entry_indicators.get('volume_ratio_5m'), entry_indicators.get('volume_spike_5m'),
-                # Indicateurs d'entrée - Score et autres
-                _extract_numeric_value(entry_indicators.get('score')),  # entry_score
-                _extract_numeric_value(entry_scalability.get('spread_pct')),  # entry_spread_pct
-                _extract_numeric_value(entry_scalability.get('balance_score')),  # entry_balance_score
-                entry_conditions,  # entry_conditions (TEXT[])
-                len(entry_conditions),  # entry_condition_count
-                # Métriques temporelles entry
-                entry_hour, entry_day,
-                # Indicateurs de sortie
-                exit_indicators.get('rsi_1m'), exit_indicators.get('rsi_5m'),
-                exit_indicators.get('macd_hist_1m'), exit_indicators.get('macd_hist_5m'),
-                exit_indicators.get('adx_1m'), exit_indicators.get('adx_5m'),
-                exit_indicators.get('atr_pct_1m'), exit_indicators.get('atr_pct_5m'),
-                _extract_numeric_value(exit_indicators.get('score')),  # exit_score
-                _extract_numeric_value(exit_indicators.get('volume_ratio_1m')), _extract_numeric_value(exit_indicators.get('volume_ratio_5m')),
-                _extract_numeric_value(exit_indicators.get('spread_pct')),  # exit_spread_pct
-                _extract_numeric_value(exit_indicators.get('balance_score')),  # exit_balance_score
-                _extract_numeric_value(entry_to_exit_price_change_pct) if entry_to_exit_price_change_pct is not None else None,
-                # Métriques temporelles exit
-                exit_hour, exit_day,
-                # Métriques de position
-                _extract_numeric_value(max_favorable_excursion) if max_favorable_excursion is not None else None,
-                _extract_numeric_value(max_adverse_excursion) if max_adverse_excursion is not None else None,
-                _extract_numeric_value(max_favorable_excursion_usdt) if max_favorable_excursion_usdt is not None else None,
-                _extract_numeric_value(max_adverse_excursion_usdt) if max_adverse_excursion_usdt is not None else None,
-                # Métriques de qualité
-                _extract_numeric_value(risk_reward_ratio) if risk_reward_ratio is not None else None,
-                None,  # profit_factor (non calculé pour l'instant)
-                # Métriques de performance additionnelles
-                _extract_numeric_value(entry_to_max_profit_price_change_pct) if entry_to_max_profit_price_change_pct is not None else None,
-                _extract_numeric_value(entry_to_max_loss_price_change_pct) if entry_to_max_loss_price_change_pct is not None else None,
-                _extract_numeric_value(max_drawdown_pct) if max_drawdown_pct is not None else None,
-                _extract_numeric_value(max_drawdown_usdt) if max_drawdown_usdt is not None else None,
-                # Scalability
-                _extract_numeric_value(entry_scalability.get('book_depth')),  # entry_book_depth
-                _extract_numeric_value(entry_scalability.get('bid_vol')),  # entry_bid_vol
-                _extract_numeric_value(entry_scalability.get('ask_vol')),  # entry_ask_vol
-                _extract_numeric_value(entry_scalability.get('orderbook_imbalance')),  # entry_orderbook_imbalance
-                # Paramètres du scan de scalabilité
-                _extract_numeric_value(entry_scalability.get('recent_volume') or entry_scalability.get('recentVolume')),  # entry_recent_volume
-                _extract_numeric_value(entry_scalability.get('vol5')),  # entry_vol5
-                _extract_numeric_value(entry_scalability.get('vol15')),  # entry_vol15
-                _extract_numeric_value(entry_scalability.get('scalability_score') or entry_scalability.get('score')),  # entry_scalability_score
-                # Configuration snapshot
-                config_snapshot,
-                win
-            )
+            gross_pnl_usdt = _extract_numeric_value(trade_data.get('gross_pnl_usdt')) or 0
+            gross_pnl_pct = _extract_numeric_value(trade_data.get('gross_pnl_pct')) or 0
+            net_pnl_usdt_value = _extract_numeric_value(trade_data.get('net_pnl_usdt')) or 0
+            net_pnl_pct_value = _extract_numeric_value(trade_data.get('net_pnl_pct')) or 0
+            fees_usdt = _extract_numeric_value(trade_data.get('fees')) or 0
+            slippage_pct_value = _extract_numeric_value(trade_data.get('slippage')) or 0
+            duration_seconds = _extract_numeric_value(trade_data.get('duration_seconds'))
+            partial_tp_profit = _extract_numeric_value(trade_data.get('partial_tp_profit'))
+            partial_tp_percent = _extract_numeric_value(trade_data.get('partial_tp_percent'))
+            early_invalidation_threshold = _extract_numeric_value(trade_data.get('early_invalidation_threshold'))
+            early_invalidation_elapsed = _extract_numeric_value(trade_data.get('early_invalidation_elapsed'))
+            early_invalidation_atr_pct = _extract_numeric_value(trade_data.get('early_invalidation_atr_pct'))
+            early_invalidation_pnl_pct = _extract_numeric_value(trade_data.get('early_invalidation_pnl_pct'))
+            exit_score = _extract_numeric_value(exit_indicators.get('score'))
+            exit_volume_ratio_1m = _extract_numeric_value(exit_indicators.get('volume_ratio_1m'))
+            exit_volume_ratio_5m = _extract_numeric_value(exit_indicators.get('volume_ratio_5m'))
+            exit_spread_pct = _extract_numeric_value(exit_indicators.get('spread_pct'))
+            exit_balance_score = _extract_numeric_value(exit_indicators.get('balance_score'))
+            exit_recent_volume = _extract_numeric_value(exit_indicators.get('recent_volume') or exit_indicators.get('recentVolume'))
+            exit_vol5 = _extract_numeric_value(exit_indicators.get('vol5'))
+            exit_vol15 = _extract_numeric_value(exit_indicators.get('vol15'))
+            entry_score_value = _extract_numeric_value(entry_indicators.get('score'))
+            entry_spread_pct = _extract_numeric_value(entry_scalability.get('spread_pct'))
+            entry_balance_score = _extract_numeric_value(entry_scalability.get('balance_score'))
+            entry_book_depth = _extract_numeric_value(entry_scalability.get('book_depth')) or _extract_numeric_value(entry_scalability.get('depth'))
+            entry_bid_vol = _extract_numeric_value(entry_scalability.get('bid_vol'))
+            entry_ask_vol = _extract_numeric_value(entry_scalability.get('ask_vol'))
+            entry_orderbook_imbalance = _extract_numeric_value(entry_scalability.get('orderbook_imbalance'))
+            entry_recent_volume = _extract_numeric_value(entry_scalability.get('recent_volume') or entry_scalability.get('recentVolume'))
+            entry_vol5 = _extract_numeric_value(entry_scalability.get('vol5'))
+            entry_vol15 = _extract_numeric_value(entry_scalability.get('vol15'))
+            entry_scalability_score = _extract_numeric_value(entry_scalability.get('scalability_score') or entry_scalability.get('score'))
+
+            fields = []
+            fields.extend([
+                ('timestamp_entry', entry_timestamp),
+                ('timestamp_exit', exit_timestamp),
+                ('session_id', session_id),
+                ('opportunity_id', opportunity_id),
+                ('scan_log_id', scan_log_id),
+                ('symbol', trade_data.get('symbol')),
+                ('direction', trade_data.get('direction')),
+                ('entry_price', entry_price),
+                ('exit_price', exit_price),
+                ('size_usdt', size_usdt),
+                ('tp_price', tp_price),
+                ('sl_price', sl_price),
+                ('gross_pnl_usdt', gross_pnl_usdt),
+                ('pnl_pct', gross_pnl_pct),
+                ('pnl_usdt', gross_pnl_usdt),
+                ('net_pnl_usdt', net_pnl_usdt_value),
+                ('net_pnl_pct', net_pnl_pct_value),
+                ('fees_usdt', fees_usdt),
+                ('slippage_pct', slippage_pct_value),
+                ('slippage_usdt', slippage_usdt),
+                ('exit_reason', trade_data.get('reason')),
+                ('duration_seconds', duration_seconds),
+                ('tp_sl_mode', trade_data.get('tp_sl_mode')),
+                ('break_even_set', trade_data.get('break_even_triggered', False)),
+                ('break_even_triggered_at', trade_data.get('break_even_triggered_at')),
+                ('trailing_stop_activated', trade_data.get('trailing_stop_triggered', False)),
+                ('trailing_stop_triggered_at', trade_data.get('trailing_stop_triggered_at')),
+                ('partial_tp_executed', trade_data.get('partial_tp_triggered', False)),
+                ('partial_tp_triggered_at', trade_data.get('partial_tp_triggered_at')),
+                ('partial_tp_profit', partial_tp_profit),
+                ('partial_tp_percent', partial_tp_percent),
+                ('tp_escalier_levels_executed', len(tp_escalier_levels_hit)),
+                ('tp_escalier_profits', tp_escalier_profits or 0),
+                ('early_invalidation_triggered', trade_data.get('early_invalidation_triggered', False)),
+                ('early_invalidation_triggered_at', trade_data.get('early_invalidation_triggered_at')),
+                ('early_invalidation_threshold', early_invalidation_threshold),
+                ('early_invalidation_elapsed', early_invalidation_elapsed),
+                ('early_invalidation_atr_pct', early_invalidation_atr_pct),
+                ('early_invalidation_pnl_pct', early_invalidation_pnl_pct),
+                ('entry_rsi_1m', entry_indicators.get('rsi_1m')),
+                ('entry_rsi_5m', entry_indicators.get('rsi_5m')),
+                ('entry_rsi_prev_1m', entry_indicators.get('rsi_prev_1m')),
+                ('entry_rsi_prev_5m', entry_indicators.get('rsi_prev_5m')),
+                ('entry_macd_1m', entry_indicators.get('macd_1m')),
+                ('entry_macd_signal_1m', entry_indicators.get('macd_signal_1m')),
+                ('entry_macd_hist_1m', entry_indicators.get('macd_hist_1m')),
+                ('entry_macd_hist_prev_1m', entry_indicators.get('macd_hist_prev_1m')),
+                ('entry_macd_5m', entry_indicators.get('macd_5m')),
+                ('entry_macd_signal_5m', entry_indicators.get('macd_signal_5m')),
+                ('entry_macd_hist_5m', entry_indicators.get('macd_hist_5m')),
+                ('entry_macd_hist_prev_5m', entry_indicators.get('macd_hist_prev_5m')),
+                ('entry_adx_1m', entry_indicators.get('adx_1m')),
+                ('entry_adx_5m', entry_indicators.get('adx_5m')),
+                ('entry_di_plus_1m', entry_indicators.get('di_plus_1m')),
+                ('entry_di_minus_1m', entry_indicators.get('di_minus_1m')),
+                ('entry_di_gap_1m', entry_indicators.get('di_gap_1m')),
+                ('entry_di_plus_5m', entry_indicators.get('di_plus_5m')),
+                ('entry_di_minus_5m', entry_indicators.get('di_minus_5m')),
+                ('entry_di_gap_5m', entry_indicators.get('di_gap_5m')),
+                ('entry_ema9_1m', entry_indicators.get('ema9_1m')),
+                ('entry_ema21_1m', entry_indicators.get('ema21_1m')),
+                ('entry_ema_diff_pct_1m', entry_indicators.get('ema_diff_pct_1m')),
+                ('entry_ema9_5m', entry_indicators.get('ema9_5m')),
+                ('entry_ema21_5m', entry_indicators.get('ema21_5m')),
+                ('entry_ema_diff_pct_5m', entry_indicators.get('ema_diff_pct_5m')),
+                ('entry_atr_1m', entry_indicators.get('atr_1m')),
+                ('entry_atr_pct_1m', entry_indicators.get('atr_pct_1m')),
+                ('entry_atr_5m', entry_indicators.get('atr_5m')),
+                ('entry_atr_pct_5m', entry_indicators.get('atr_pct_5m')),
+                ('entry_bb_upper_1m', entry_indicators.get('bb_upper_1m')),
+                ('entry_bb_middle_1m', entry_indicators.get('bb_middle_1m')),
+                ('entry_bb_lower_1m', entry_indicators.get('bb_lower_1m')),
+                ('entry_bb_width_1m', entry_indicators.get('bb_width_1m')),
+                ('entry_bb_distance_to_lower_1m', entry_indicators.get('bb_distance_to_lower_1m')),
+                ('entry_bb_distance_to_upper_1m', entry_indicators.get('bb_distance_to_upper_1m')),
+                ('entry_bb_upper_5m', entry_indicators.get('bb_upper_5m')),
+                ('entry_bb_middle_5m', entry_indicators.get('bb_middle_5m')),
+                ('entry_bb_lower_5m', entry_indicators.get('bb_lower_5m')),
+                ('entry_bb_width_5m', entry_indicators.get('bb_width_5m')),
+                ('entry_bb_distance_to_lower_5m', entry_indicators.get('bb_distance_to_lower_5m')),
+                ('entry_bb_distance_to_upper_5m', entry_indicators.get('bb_distance_to_upper_5m')),
+                ('entry_volume_1m', entry_indicators.get('volume_1m')),
+                ('entry_volume_avg_1m', entry_indicators.get('volume_avg_1m')),
+                ('entry_volume_ratio_1m', entry_indicators.get('volume_ratio_1m')),
+                ('entry_volume_spike_1m', entry_indicators.get('volume_spike_1m')),
+                ('entry_volume_5m', entry_indicators.get('volume_5m')),
+                ('entry_volume_avg_5m', entry_indicators.get('volume_avg_5m')),
+                ('entry_volume_ratio_5m', entry_indicators.get('volume_ratio_5m')),
+                ('entry_volume_spike_5m', entry_indicators.get('volume_spike_5m')),
+                ('entry_score', entry_score_value),
+                ('entry_spread_pct', entry_spread_pct),
+                ('entry_balance_score', entry_balance_score),
+                ('entry_conditions', entry_conditions),
+                ('entry_condition_count', len(entry_conditions)),
+                ('entry_hour_of_day', entry_hour),
+                ('entry_day_of_week', entry_day),
+                ('exit_rsi_1m', exit_indicators.get('rsi_1m')),
+                ('exit_rsi_5m', exit_indicators.get('rsi_5m')),
+                ('exit_macd_hist_1m', exit_indicators.get('macd_hist_1m')),
+                ('exit_macd_hist_5m', exit_indicators.get('macd_hist_5m')),
+                ('exit_adx_1m', exit_indicators.get('adx_1m')),
+                ('exit_adx_5m', exit_indicators.get('adx_5m')),
+                ('exit_atr_pct_1m', exit_indicators.get('atr_pct_1m')),
+                ('exit_atr_pct_5m', exit_indicators.get('atr_pct_5m')),
+                ('exit_score', exit_score),
+                ('exit_volume_ratio_1m', exit_volume_ratio_1m),
+                ('exit_volume_ratio_5m', exit_volume_ratio_5m),
+                ('exit_spread_pct', exit_spread_pct),
+                ('exit_balance_score', exit_balance_score),
+                ('entry_to_exit_price_change_pct', entry_to_exit_price_change_pct),
+                ('exit_hour_of_day', exit_hour),
+                ('exit_day_of_week', exit_day),
+                ('max_favorable_excursion', max_favorable_excursion),
+                ('max_adverse_excursion', max_adverse_excursion),
+                ('max_favorable_excursion_usdt', max_favorable_excursion_usdt),
+                ('max_adverse_excursion_usdt', max_adverse_excursion_usdt),
+                ('risk_reward_ratio', risk_reward_ratio),
+                ('profit_factor', None),
+                ('entry_to_max_profit_price_change_pct', entry_to_max_profit_price_change_pct),
+                ('entry_to_max_loss_price_change_pct', entry_to_max_loss_price_change_pct),
+                ('max_drawdown_pct', max_drawdown_pct),
+                ('max_drawdown_usdt', max_drawdown_usdt),
+                ('entry_book_depth', entry_book_depth),
+                ('entry_bid_vol', entry_bid_vol),
+                ('entry_ask_vol', entry_ask_vol),
+                ('entry_orderbook_imbalance', entry_orderbook_imbalance),
+                ('entry_recent_volume', entry_recent_volume),
+                ('entry_vol5', entry_vol5),
+                ('entry_vol15', entry_vol15),
+                ('entry_scalability_score', entry_scalability_score),
+                ('config_snapshot', config_snapshot),
+                ('win', win)
+            ])
+
+            columns_sql = ',\n                    '.join(name for name, _ in fields)
+            placeholders_sql = ', '.join(['%s'] * len(fields))
+            query = f"""
+                INSERT INTO trades (
+                    {columns_sql}
+                ) VALUES (
+                    {placeholders_sql}
+                )
+                RETURNING id
+            """
+
+            params = [value for _, value in fields]
+
+            if any(isinstance(p, dict) for p in params):
+                logger.error(
+                    "⚠️ Paramètre dict détecté dans log_trade pour %s | types=%s",
+                    trade_data.get('symbol'),
+                    [type(p).__name__ for p in params]
+                )
             
             # Vérifier le nombre de paramètres AVANT l'exécution
             param_count = len(params)

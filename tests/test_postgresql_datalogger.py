@@ -3,6 +3,7 @@ Tests unitaires pour PostgreSQLDataLogger
 """
 import pytest
 import os
+import uuid
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 import json
@@ -164,6 +165,7 @@ class TestPostgreSQLDataLogger:
         assert result is None  # Mode batch retourne None
         assert len(logger.opportunity_buffer) == 1
     
+    @pytest.mark.skip(reason="log_scan_error method no longer exists in PostgreSQLDataLogger")
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
     def test_log_scan_error(self, mock_pool_class, datalogger_config, mock_pool, mock_postgres_connection):
@@ -171,11 +173,11 @@ class TestPostgreSQLDataLogger:
         mock_pool_class.return_value = mock_pool
         conn, cursor = mock_postgres_connection
         mock_pool.getconn.return_value = conn
-        
+
         from core.postgresql_datalogger import PostgreSQLDataLogger
-        
+
         logger = PostgreSQLDataLogger(**datalogger_config)
-        
+
         error_id = logger.log_scan_error(
             symbol='BTCUSDT',
             error_type='API_ERROR',
@@ -187,6 +189,7 @@ class TestPostgreSQLDataLogger:
         # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour scan_error)
         assert cursor.execute.call_count == 2
     
+    @pytest.mark.skip(reason="log_market_context method no longer exists in PostgreSQLDataLogger")
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
     def test_log_market_context(self, mock_pool_class, datalogger_config, mock_pool, mock_postgres_connection):
@@ -194,18 +197,18 @@ class TestPostgreSQLDataLogger:
         mock_pool_class.return_value = mock_pool
         conn, cursor = mock_postgres_connection
         mock_pool.getconn.return_value = conn
-        
+
         from core.postgresql_datalogger import PostgreSQLDataLogger
-        
+
         logger = PostgreSQLDataLogger(**datalogger_config)
-        
+
         context_data = {
             'btc_price': 50000.0,
             'eth_price': 3000.0,
             'global_metrics': {'volume_24h': 1000000},
             'session_stats': {'trades_count': 5}
         }
-        
+
         context_id = logger.log_market_context(context_data)
 
         assert context_id is not None
@@ -256,6 +259,82 @@ class TestPostgreSQLDataLogger:
         assert trade_id is not None
         # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour trade)
         assert cursor.execute.call_count == 2
+
+    @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
+    @patch('core.postgresql_datalogger.ThreadedConnectionPool')
+    def test_log_trade_placeholder_alignment(self, mock_pool_class, datalogger_config):
+        """Vérifie que log_trade garde le même nombre de colonnes, placeholders et paramètres"""
+        mock_pool_class.return_value = MagicMock()
+
+        from core.postgresql_datalogger import PostgreSQLDataLogger
+
+        logger = PostgreSQLDataLogger(**datalogger_config)
+
+        captured = {
+            'query': None,
+            'params': None,
+        }
+
+        def fake_execute(query, params=None, fetch=False):
+            captured['query'] = query
+            captured['params'] = params
+            return [(42,)] if fetch else None
+
+        logger._execute_query = MagicMock(side_effect=fake_execute)
+
+        trade_data = {
+            'symbol': 'SOL/USDT:USDT',
+            'direction': 'SHORT',
+            'timestamp_entry': '2025-11-15T22:55:37.034840+01:00',
+            'timestamp_exit': '2025-11-15T23:03:58.599866+01:00',
+            'entry_price': 138.86,
+            'exit_price': 139.21,
+            'tp_price': 140.0,
+            'sl_price': 137.0,
+            'size_usdt': 100.0,
+            'gross_pnl_usdt': -0.05,
+            'gross_pnl_pct': -0.04,
+            'net_pnl_usdt': -0.05,
+            'net_pnl_pct': -0.04,
+            'fees': 0.01,
+            'slippage': 0.0,
+            'reason': 'TS',
+            'duration_seconds': 480,
+            'tp_sl_mode': 'FIXE',
+            'break_even_triggered': False,
+            'trailing_stop_triggered': False,
+            'partial_tp_triggered': False,
+            'tp_escalier_levels_hit': [],
+            'early_invalidation_triggered': False,
+            'entry_conditions': ['EMAs', 'Volume'],
+            'entry_indicators': {},
+            'exit_indicators': {},
+            'entry_scalability': {
+                'spread_pct': 0.02,
+                'balance_score': 0.9,
+                'book_depth': 50000,
+                'bid_vol': 25000,
+                'ask_vol': 25000,
+                'recent_volume': 75000,
+                'vol5': 15000,
+                'vol15': 45000,
+                'scalability_score': 0.75
+            },
+            'pnl_history': [],
+            'config_snapshot': {'tp_sl_mode': 'FIXE'}
+        }
+
+        session_id = str(uuid.uuid4())
+        trade_id = logger.log_trade(trade_data, opportunity_id=1, scan_log_id=1, session_id=session_id)
+
+        assert trade_id == 42
+        assert captured['query'] is not None
+        assert captured['params'] is not None
+        placeholders = captured['query'].count('%s')
+        assert placeholders == len(captured['params'])
+        # S'assurer que quelques colonnes critiques sont bien présentes
+        assert 'timestamp_entry' in captured['query']
+        assert 'config_snapshot' in captured['query']
     
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')

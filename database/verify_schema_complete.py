@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Script de vérification complète du schéma PostgreSQL
 Compare le schéma SQL avec le code Python pour détecter les incohérences
@@ -6,6 +7,7 @@ Compare le schéma SQL avec le code Python pour détecter les incohérences
 
 import os
 import sys
+import argparse
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
@@ -24,6 +26,13 @@ if sys.platform == 'win32':
     import codecs
     sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
     sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+
+def parse_args():
+    """Parse CLI arguments"""
+    parser = argparse.ArgumentParser(description="Vérification complète du schéma PostgreSQL")
+    parser.add_argument('--password', help='Mot de passe PostgreSQL (prioritaire sur POSTGRES_PASSWORD)')
+    return parser.parse_args()
+
 
 def get_connection():
     """Obtenir une connexion PostgreSQL"""
@@ -228,6 +237,10 @@ def main():
     print("🔍 VÉRIFICATION COMPLÈTE DU SCHÉMA POSTGRESQL")
     print("=" * 80)
     
+    args = parse_args()
+    if args.password:
+        DB_CONFIG['password'] = args.password
+
     conn = get_connection()
     if not conn:
         return 1

@@ -38,10 +38,19 @@ class MEXCClient:
     async def fetch_ticker(self, symbol: str) -> Optional[Dict]:
         """Récupère le ticker d'une paire avec retry + circuit breaker"""
         async def _fetch():
-            return await self.exchange.fetch_ticker(symbol)
+            result = await self.exchange.fetch_ticker(symbol)
+            if result is None or not isinstance(result, dict):
+                raise ValueError(f"Invalid ticker data for {symbol}: {type(result).__name__}")
+            return result
         
         try:
-            return await fetch_with_all_protections(_fetch)
+            result = await fetch_with_all_protections(_fetch)
+            # Double-check que le résultat est bien un dict
+            if result is None or not isinstance(result, dict):
+                if DEBUG_ENABLED:
+                    print(f"⚠️ fetch_ticker {symbol}: Returned None or invalid type")
+                return None
+            return result
         except Exception as e:
             if DEBUG_ENABLED:
                 print(f"❌ Erreur fetch_ticker {symbol}: {e}")
@@ -114,16 +123,10 @@ class MEXCClient:
     
     def __del__(self):
         """Destructeur: ferme les connexions"""
-        if hasattr(self, 'exchange'):
-            try:
-                asyncio.create_task(self.exchange.close())
-            except:
-                pass
-        if hasattr(self, 'session'):
-            try:
-                asyncio.create_task(self.session.close())
-            except:
-                pass
+        # 🔥 FIX: Ne pas utiliser asyncio.create_task() dans __del__
+        # Les coroutines ne seront jamais attendues et causeront des warnings
+        # Les ressources seront fermées proprement par la méthode close() async
+        pass
 
 
 # Instance globale
