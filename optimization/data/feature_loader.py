@@ -162,12 +162,14 @@ def load_features_from_postgres(
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Supprimer colonnes entièrement NaN pour éviter soucis imputer (sklearn)
+        # Colonnes entièrement NaN -> remplir avec 0 pour éviter erreurs imputations/feature eng.
         feature_columns = [col for col in df.columns if col not in ['scan_id', 'timestamp', 'symbol', 'opportunity_direction']]
         all_nan_cols = [col for col in feature_columns if df[col].isna().all()]
         if all_nan_cols:
-            logger.warning(f"⚠️ Suppression {len(all_nan_cols)} colonnes sans données: {all_nan_cols}")
-            df = df.drop(columns=all_nan_cols)
+            logger.warning(
+                f"⚠️ Colonnes sans données ({len(all_nan_cols)}), remplissage par 0: {all_nan_cols}"
+            )
+            df[all_nan_cols] = 0.0
         
         logger.info(f"🔄 Conversion des types numériques effectuée")
         
