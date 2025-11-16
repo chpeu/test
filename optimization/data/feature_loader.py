@@ -146,6 +146,9 @@ def load_features_from_postgres(
         conn.close()
         
         logger.info(f"📊 Features chargées: {len(df)} rows depuis PostgreSQL")
+        logger.info(f"🔍 Colonnes présentes: {list(df.columns)}")
+        if 'target_win' in df.columns:
+            logger.info(f"🔍 target_win: dtype={df['target_win'].dtype}, non-null={df['target_win'].notna().sum()}, values={df['target_win'].head(5).tolist()}")
         
         # Convertir colonnes numériques (exclure booléennes et texte)
         exclude_from_numeric = [
@@ -171,22 +174,12 @@ def load_features_from_postgres(
             )
             df[all_nan_cols] = 0.0
         
-        # Normaliser target_win en 0/1 (bool -> int, string -> int)
+        # Normaliser target_win en 0/1 (bool -> int)
         if 'target_win' in df.columns:
-            df['target_win'] = (
-                df['target_win']
-                .replace({
-                    True: 1,
-                    False: 0,
-                    'true': 1,
-                    'false': 0,
-                    't': 1,
-                    'f': 0,
-                    '1': 1,
-                    '0': 0,
-                })
-            )
-            df['target_win'] = pd.to_numeric(df['target_win'], errors='coerce')
+            # Diagnostic
+            logger.info(f"🔍 target_win avant conversion: type={df['target_win'].dtype}, non-null={df['target_win'].notna().sum()}/{len(df)}, unique values={df['target_win'].unique()[:10]}")
+            # Convertir directement bool/string en int (True->1, False->0)
+            df['target_win'] = df['target_win'].astype(bool).astype(int)
         
         logger.info(f"🔄 Conversion des types numériques effectuée")
         
@@ -197,7 +190,9 @@ def load_features_from_postgres(
             )
         
         # Nettoyer NaN
+        logger.info(f"🔍 Avant dropna: {len(df)} rows, target_win non-null: {df['target_win'].notna().sum() if 'target_win' in df.columns else 'N/A'}")
         df = df.dropna(subset=['target_win'])
+        logger.info(f"🔍 Après dropna: {len(df)} rows")
         
         logger.info(f"✅ Features prêtes: {len(df)} rows, {len(df.columns)} features")
         
