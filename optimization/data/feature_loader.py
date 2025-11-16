@@ -148,7 +148,9 @@ def load_features_from_postgres(
         logger.info(f"📊 Features chargées: {len(df)} rows depuis PostgreSQL")
         logger.info(f"🔍 Colonnes présentes: {list(df.columns)}")
         if 'target_win' in df.columns:
-            logger.info(f"🔍 target_win: dtype={df['target_win'].dtype}, non-null={df['target_win'].notna().sum()}, values={df['target_win'].head(5).tolist()}")
+            logger.info(f"🔍 target_win RAW: dtype={df['target_win'].dtype}, non-null={df['target_win'].notna().sum()}")
+            logger.info(f"🔍 target_win SAMPLE VALUES: {df['target_win'].head(10).tolist()}")
+            logger.info(f"🔍 target_win UNIQUE: {df['target_win'].unique()}")
         
         # Convertir colonnes numériques (exclure booléennes et texte)
         exclude_from_numeric = [
@@ -178,8 +180,9 @@ def load_features_from_postgres(
         if 'target_win' in df.columns:
             # Diagnostic
             logger.info(f"🔍 target_win avant conversion: type={df['target_win'].dtype}, non-null={df['target_win'].notna().sum()}/{len(df)}, unique values={df['target_win'].unique()[:10]}")
-            # Convertir directement bool/string en int (True->1, False->0)
-            df['target_win'] = df['target_win'].astype(bool).astype(int)
+            # Convertir PostgreSQL boolean strings ('t'/'f') en int (1/0)
+            df['target_win'] = df['target_win'].map({'t': 1, 'f': 0, True: 1, False: 0, 1: 1, 0: 0})
+            logger.info(f"🔍 target_win après conversion: unique={df['target_win'].unique()}, dtype={df['target_win'].dtype}")
         
         logger.info(f"🔄 Conversion des types numériques effectuée")
         
