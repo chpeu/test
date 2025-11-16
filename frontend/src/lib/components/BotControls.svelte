@@ -4,6 +4,7 @@
 	import { activePosition } from '$lib/stores/position';
 
 	let loading = false;
+	let rebooting = false;
 
 	// 🔥 NOUVEAU: Calculer le message de statut dynamique
 	$: statusMessage = (() => {
@@ -62,11 +63,52 @@
 			loading = false;
 		}
 	}
+
+	async function rebootBackend() {
+		if (rebooting) return;
+		if (typeof window !== 'undefined') {
+			const confirmed = window.confirm('⚠️ Redémarrer le backend ? Tous les processus seront relancés.');
+			if (!confirmed) {
+				return;
+			}
+		}
+
+		try {
+			rebooting = true;
+			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+
+			if (!ws || !ws.connected) {
+				throw new Error('WebSocket non connecté. Réessayez après reconnexion.');
+			}
+
+			await sendCommandViaWS('reboot_backend', {});
+			console.log('♻️ Backend reboot demandé');
+			if (typeof window !== 'undefined') {
+				alert('♻️ Redémarrage du backend en cours...');
+			}
+		} catch (err) {
+			console.error('❌ Error rebooting backend:', err);
+			alert(`❌ Erreur: ${err.message || 'Impossible de redémarrer le backend'}`);
+		} finally {
+			rebooting = false;
+		}
+	}
 </script>
 
 <div class="bot-controls" data-debug-name="botControls">
 	<div class="controls-header" data-debug-name="botControls.header">
-		<h3 data-debug-name="botControls.title">🤖 Bot Controls</h3>
+		<div class="title-group">
+			<h3 data-debug-name="botControls.title">🤖 Bot Controls</h3>
+			<button
+				class="btn-reboot"
+				on:click={rebootBackend}
+				disabled={rebooting}
+				data-debug-name="botControls.rebootButton"
+			>
+				{rebooting ? '♻️ Rebooting...' : 'Reboot backend'}
+			</button>
+		</div>
 		<div class="bot-status" class:active={$isScanning} data-debug-name="isScanning">
 			{$isScanning ? '🟢 Running' : '🔴 Stopped'}
 		</div>
@@ -114,6 +156,12 @@
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 20px;
+	}
+
+	.title-group {
+		display: flex;
+		align-items: center;
+		gap: 12px;
 	}
 
 	.controls-header h3 {
@@ -195,6 +243,28 @@
 		box-shadow: 0 6px 20px rgba(255, 68, 68, 0.4);
 	}
 
+	.btn-reboot {
+		padding: 8px 14px;
+		border-radius: 8px;
+		border: 1px solid #ffaa33;
+		background: rgba(255, 170, 51, 0.15);
+		color: #ffaa33;
+		font-size: 13px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.btn-reboot:hover:not(:disabled) {
+		background: rgba(255, 170, 51, 0.3);
+		transform: translateY(-1px);
+	}
+
+	.btn-reboot:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
 	.controls-info {
 		background: rgba(0, 170, 255, 0.1);
 		border-left: 3px solid #00aaff;
@@ -221,6 +291,11 @@
 
 		.controls-header h3 {
 			font-size: 18px;
+		}
+
+		.title-group {
+			flex-direction: column;
+			align-items: flex-start;
 		}
 
 		.bot-status {
