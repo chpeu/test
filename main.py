@@ -1721,7 +1721,7 @@ async def scalability_refresh_loop_callback():
         return
     
     try:
-        await add_log('INFO', 'Scalability refresh', 'Rafraîchissement des top pairs...')
+        logger.info("[%s] INFO: Scalability refresh", datetime.now().strftime('%H:%M:%S'))
         
         top_pairs = await scanner.scan_top_pairs(20)
         app_state['top_pairs'] = top_pairs
@@ -1730,8 +1730,9 @@ async def scalability_refresh_loop_callback():
         if hasattr(app, '_top_pairs_cache'):
             app._top_pairs_cache.pop('top_pairs', None)
         
-        await add_log('INFO', 'Scalability refresh', f'{len(top_pairs)} paires scalables')
-        await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+        logger.info("[%s] INFO: %d paires scalables", datetime.now().strftime('%H:%M:%S'), len(top_pairs))
+        if ws_manager:
+            await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
 
         # 🔥 FIX CRITIQUE: Revérifier si position active APRÈS le scan (protection double)
         # Le scan peut prendre 20+ secondes, pendant lesquelles une position peut s'ouvrir
@@ -1750,13 +1751,13 @@ async def scalability_refresh_loop_callback():
             if symbols:
                 try:
                     await price_provider.start_websocket(symbols)
-                    await add_log('INFO', 'WebSocket mis à jour', f'{len(symbols)} symboles')
+                    logger.info("[%s] INFO: WebSocket mis à jour - %d symboles", datetime.now().strftime('%H:%M:%S'), len(symbols))
                 except Exception as e:
                     logger.warning(f"Erreur démarrage WebSocket: {e}")
     
     except Exception as e:
-        logger.error(f"Erreur scalability refresh: {e}")
-        await add_log('ERROR', 'Erreur scalability refresh', str(e))
+        logger.error(f"Erreur scalability refresh: {e}", exc_info=True)
+        logger.error("[%s] ERROR: Erreur scalability refresh", datetime.now().strftime('%H:%M:%S'))
 
 
 def init_instances():
@@ -4466,6 +4467,32 @@ async def export_trades_csv(
     )
 
 
+def _get_pg_connection_for_export():
+    """Obtenir une connexion PostgreSQL même si le bot n'est pas actif."""
+    pg_datalogger = None
+    try:
+        from core.callbacks.scanner_loop import get_pg_datalogger
+        pg_datalogger = get_pg_datalogger()
+    except Exception:
+        pg_datalogger = None
+
+    if pg_datalogger and getattr(pg_datalogger, "enabled", True):
+        conn = pg_datalogger._get_connection()
+        return conn, lambda: pg_datalogger._return_connection(conn)
+
+    import psycopg2
+
+    conn = psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', '5432')),
+        dbname=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
+        user=os.getenv('POSTGRES_USER', 'postgres'),
+        password=os.getenv('POSTGRES_PASSWORD', '')
+    )
+
+    return conn, conn.close
+
+
 @app.get("/api/datalogger/export/excel")
 async def export_datalogger_excel(
     start_date: Optional[str] = None,
@@ -4482,15 +4509,6 @@ async def export_datalogger_excel(
         Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
     """
     try:
-        from core.callbacks.scanner_loop import get_pg_datalogger
-        pg_datalogger = get_pg_datalogger()
-        
-        if not pg_datalogger or not pg_datalogger.enabled:
-            return JSONResponse(
-                {"error": "PostgreSQL DataLogger non disponible"},
-                status_code=503
-            )
-        
         # Vérifier si openpyxl est installé
         try:
             from openpyxl import Workbook
@@ -4501,9 +4519,11 @@ async def export_datalogger_excel(
                 {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
                 status_code=500
             )
-        
-        conn = pg_datalogger._get_connection()
-        if not conn:
+
+        try:
+            conn, release_conn = _get_pg_connection_for_export()
+        except Exception as conn_error:
+            logger.error("❌ Impossible de se connecter à PostgreSQL pour l'export: %s", conn_error)
             return JSONResponse(
                 {"error": "Impossible de se connecter à PostgreSQL"},
                 status_code=503
@@ -4512,141 +4532,114 @@ async def export_datalogger_excel(
         try:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Créer un workbook Excel
+
+            # Récupérer toutes les tables du schéma public
+            cursor.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """
+            )
+            table_names = [row['table_name'] for row in cursor.fetchall()]
+
             wb = Workbook()
-            wb.remove(wb.active)  # Supprimer la feuille par défaut
-            
-            # ===== ONGLET 1: SCANS =====
-            ws_scans = wb.create_sheet("Scans")
-            query_scans = """
-                SELECT 
-                    timestamp, symbol, price, scan_duration_ms,
-                    rsi_1m, rsi_5m, score_total,
-                    is_opportunity, opportunity_direction, reject_reason,
-                    trend_direction, trend_strength
-                FROM scan_logs
-                WHERE 1=1
-            """
-            params = []
-            if start_date:
-                query_scans += " AND timestamp >= %s"
-                params.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_scans += " AND timestamp <= %s"
-                params.append(f"{end_date} 23:59:59")
-            query_scans += " ORDER BY timestamp DESC LIMIT 10000"
-            
-            cursor.execute(query_scans, params)
-            scans = cursor.fetchall()
-            
-            if scans:
-                # En-têtes
-                headers = list(scans[0].keys())
-                ws_scans.append(headers)
-                
-                # Style en-têtes
-                header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                header_font = Font(bold=True, color="FFFFFF")
-                for cell in ws_scans[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                # Données
-                for row in scans:
-                    ws_scans.append([row.get(h) for h in headers])
-                
-                # Ajuster largeur colonnes
+            summary_sheet = wb.active
+            summary_sheet.title = "Summary"
+            summary_sheet.append(["Table", "Rows"])
+
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+
+            for table_name in table_names:
+                ws = wb.create_sheet(table_name[:31])
+
+                # Récupérer les colonnes de la table (pour appliquer les filtres date intelligemment)
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = %s
+                    """,
+                    (table_name,)
+                )
+                column_names = [row['column_name'] for row in cursor.fetchall()]
+
+                base_query = f"SELECT * FROM {table_name} WHERE 1=1"
+                params: List[str] = []
+
+                has_timestamp = 'timestamp' in column_names
+                has_timestamp_entry = 'timestamp_entry' in column_names
+
+                if start_date and (has_timestamp or has_timestamp_entry):
+                    if has_timestamp and has_timestamp_entry:
+                        base_query += " AND (timestamp >= %s OR timestamp_entry >= %s)"
+                        params.extend([f"{start_date} 00:00:00", f"{start_date} 00:00:00"])
+                    elif has_timestamp:
+                        base_query += " AND timestamp >= %s"
+                        params.append(f"{start_date} 00:00:00")
+                    elif has_timestamp_entry:
+                        base_query += " AND timestamp_entry >= %s"
+                        params.append(f"{start_date} 00:00:00")
+
+                if end_date and (has_timestamp or has_timestamp_entry):
+                    if has_timestamp and has_timestamp_entry:
+                        base_query += " AND (timestamp <= %s OR timestamp_entry <= %s)"
+                        params.extend([f"{end_date} 23:59:59", f"{end_date} 23:59:59"])
+                    elif has_timestamp:
+                        base_query += " AND timestamp <= %s"
+                        params.append(f"{end_date} 23:59:59")
+                    elif has_timestamp_entry:
+                        base_query += " AND timestamp_entry <= %s"
+                        params.append(f"{end_date} 23:59:59")
+
+                cursor.execute(base_query, params)
+                rows = cursor.fetchall()
+                headers = [desc.name for desc in cursor.description] if cursor.description else []
+
+                if headers:
+                    ws.append(headers)
+                    for cell in ws[1]:
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal="center")
+                for row in rows:
+                    # Convertir valeurs complexes (arrays, dicts) en string JSON pour Excel
+                    excel_row = []
+                    for h in headers:
+                        value = row[h]
+                        # Convertir types non-supportés par Excel
+                        if isinstance(value, (list, dict)):
+                            excel_row.append(json.dumps(value, ensure_ascii=False))
+                        elif value is None:
+                            excel_row.append('')
+                        elif isinstance(value, datetime):
+                            # Excel ne supporte pas les timezones - convertir en datetime naive
+                            excel_row.append(value.replace(tzinfo=None) if value.tzinfo else value)
+                        else:
+                            excel_row.append(value)
+                    ws.append(excel_row)
                 for col in range(1, len(headers) + 1):
-                    ws_scans.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 2: OPPORTUNITIES =====
-            ws_opps = wb.create_sheet("Opportunities")
-            query_opps = """
-                SELECT 
-                    timestamp, symbol, direction, setup_score,
-                    entry_price, tp_price, sl_price,
-                    conditions_matched, confirmed_by
-                FROM opportunities
-                WHERE 1=1
-            """
-            params_opps = []
-            if start_date:
-                query_opps += " AND timestamp >= %s"
-                params_opps.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_opps += " AND timestamp <= %s"
-                params_opps.append(f"{end_date} 23:59:59")
-            query_opps += " ORDER BY timestamp DESC LIMIT 10000"
-            
-            cursor.execute(query_opps, params_opps)
-            opportunities = cursor.fetchall()
-            
-            if opportunities:
-                headers = list(opportunities[0].keys())
-                ws_opps.append(headers)
-                
-                for cell in ws_opps[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in opportunities:
-                    ws_opps.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_opps.column_dimensions[get_column_letter(col)].width = 15
-            
-            # ===== ONGLET 3: TRADES =====
-            ws_trades = wb.create_sheet("Trades")
-            query_trades = """
-                SELECT 
-                    timestamp_entry, timestamp_exit, symbol, direction,
-                    entry_price, exit_price, size_usdt,
-                    gross_pnl_usdt, net_pnl_usdt, net_pnl_pct,
-                    exit_reason, duration_seconds, win
-                FROM trades
-                WHERE 1=1
-            """
-            params_trades = []
-            if start_date:
-                query_trades += " AND timestamp_entry >= %s"
-                params_trades.append(f"{start_date} 00:00:00")
-            if end_date:
-                query_trades += " AND timestamp_entry <= %s"
-                params_trades.append(f"{end_date} 23:59:59")
-            query_trades += " ORDER BY timestamp_entry DESC LIMIT 10000"
-            
-            cursor.execute(query_trades, params_trades)
-            trades = cursor.fetchall()
-            
-            if trades:
-                headers = list(trades[0].keys())
-                ws_trades.append(headers)
-                
-                for cell in ws_trades[1]:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center")
-                
-                for row in trades:
-                    ws_trades.append([row.get(h) for h in headers])
-                
-                for col in range(1, len(headers) + 1):
-                    ws_trades.column_dimensions[get_column_letter(col)].width = 15
-            
+                    ws.column_dimensions[get_column_letter(col)].width = 15
+
+                summary_sheet.append([table_name, len(rows)])
+
             cursor.close()
-            pg_datalogger._return_connection(conn)
-            
-            # Sauvegarder dans un buffer
+            try:
+                release_conn()
+            except Exception as conn_err:
+                logger.debug(f"Note: Erreur retour connexion (non-critique): {conn_err}")
+
             from io import BytesIO
             output = BytesIO()
             wb.save(output)
             output.seek(0)
-            
+
             filename = f"datalogger_export_{start_date}_{end_date}.xlsx" if (start_date and end_date) else f"datalogger_export_all_{datetime.now().strftime('%Y%m%d')}.xlsx"
-            
+
             return StreamingResponse(
                 output,
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4654,7 +4647,10 @@ async def export_datalogger_excel(
             )
             
         except Exception as e:
-            pg_datalogger._return_connection(conn)
+            try:
+                release_conn()
+            except Exception:
+                pass  # Connexion déjà fermée ou non du pool
             logger.error(f"❌ Erreur export Excel: {e}", exc_info=True)
             return JSONResponse(
                 {"error": f"Erreur export Excel: {str(e)}"},

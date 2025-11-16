@@ -1,13 +1,13 @@
 <script>
 	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
-	import { formatPrice, formatPercent, formatUSDT } from '$lib/utils/format';
+	import { formatPrice, formatPercent, formatUSDT, getSignificantDecimals, formatWithoutTrailingZeros } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import { onMount, onDestroy } from 'svelte';
 
-	// 🔥 FIX: Extraire la précision depuis les données de position
-	$: pricePrecision = $activePosition?.price_precision;
-	$: tickSize = $activePosition?.tickSize || $activePosition?.tick_size;
-	
+	// 🔥 FIX: Calculer le nombre de décimales significatives depuis entry
+	// Exemple: entry=1.132200 → entryDecimals=4 (1.1322 a 4 décimales significatives)
+	$: entryDecimals = $activePosition?.entry ? getSignificantDecimals($activePosition.entry) : 2;
+
 	// 🔥 FIX: Récupérer la config pour afficher les bonnes informations TP/SL
 	let tradingConfig = null;
 
@@ -210,18 +210,22 @@
 		};
 	})();
 	
-	// 🔥 FIX: Fonction helper pour formater avec précision
+	// 🔥 FIX: Fonction helper pour formater avec précision basée sur entry
+	// Tous les prix (current, TP, SL) utilisent le même nombre de décimales que entry
+	// Les zéros superflus à la fin sont supprimés
+	// Exemple: Si entry=1.132200 (4 décimales significatives: 1.1322)
+	//          Alors current=1.128000 sera affiché comme 1.128 (4 décimales max, sans zéros de fin)
 	function formatPriceWithPrecision(price) {
-		// Si on a price_precision (nombre de décimales), l'utiliser directement
-		if (pricePrecision !== null && pricePrecision !== undefined) {
-			return formatPrice(price, pricePrecision);
+		if (!price || isNaN(price)) {
+			return '0.00';
 		}
-		// Si on a tickSize, le passer comme objet pour que formatPrice calcule les décimales
-		if (tickSize !== null && tickSize !== undefined) {
-			return formatPrice(price, { tickSize: tickSize });
-		}
-		// Fallback: utiliser formatPrice sans précision (utilisera le comportement adaptatif)
-		return formatPrice(price);
+
+		// Utiliser le nombre de décimales significatives de entry
+		// Mais avec un minimum de 2 et maximum de 8 pour la lisibilité
+		const decimals = Math.max(2, Math.min(8, entryDecimals));
+
+		// Formater sans les zéros de fin
+		return formatWithoutTrailingZeros(price, decimals);
 	}
 
 	// 🔥 FIX: Fonction pour clôturer la position manuellement
