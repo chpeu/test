@@ -713,7 +713,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
                 # Récupérer les données du scan de scalabilité depuis top_pairs
                 scalability_data: Dict[str, Any] = {}
+                logger.info(f"💹 DEBUG log_scan: _app_state existe={_app_state is not None}, top_pairs={'présent' if (_app_state and _app_state.get('top_pairs')) else 'absent'}")
                 if _app_state and _app_state.get('top_pairs'):
+                    logger.info(f"💹 DEBUG log_scan: top_pairs contient {len(_app_state['top_pairs'])} paires")
                     for pair in _app_state['top_pairs']:
                         if pair.get('symbol') == symbol:
                             spread_value = pair.get('spread') or pair.get('spread_pct')
@@ -747,7 +749,12 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                                 'scalability_score': pair.get('score'),
                                 'score': pair.get('score')
                             }
+                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}")
                             break
+                
+                # 🔥 DEBUG: Vérifier si scalability_data a été rempli
+                if not scalability_data:
+                    logger.warning(f"⚠️ scalability_data vide après recherche dans top_pairs pour {symbol}")
 
                 # Fallback: utiliser les infos présentes dans l'analyse/best_setup
                 if not scalability_data:
@@ -778,12 +785,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'askVol': ask_value,
                         'orderbook_imbalance_ratio': imbalance,
                         'recent_volume': analysis_obj.get('recent_volume'),
-                        'recentVolume': analysis_obj.get('recent_volume'),
+                        'recentVolume': analysis_obj.get('recent_volume'),  # Alias
                         'vol5': analysis_obj.get('vol5'),
                         'vol15': analysis_obj.get('vol15'),
                         'scalability_score': analysis_obj.get('scalability_score'),
-                        'score': analysis_obj.get('scalability_score')
+                        'score': analysis_obj.get('scalability_score'),  # Alias
                     }
+                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
 
                 scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 

@@ -1361,13 +1361,77 @@ async def scan_pair_for_setup(symbol: str):
                 if app_state and app_state.get('top_pairs'):
                     for pair in app_state.get('top_pairs', []):
                         if pair.get('symbol') == symbol:
+                            spread_value = pair.get('spread') or pair.get('spread_pct')
+                            book_depth = pair.get('bookDepth')
+                            balance_score = pair.get('balanceScore')
+                            bid_vol = pair.get('bidVol')
+                            ask_vol = pair.get('askVol')
+                            if book_depth in (None, 0) and bid_vol and ask_vol:
+                                book_depth = bid_vol + ask_vol
+                            imbalance = None
+                            if bid_vol and ask_vol:
+                                try:
+                                    imbalance = bid_vol / ask_vol if ask_vol > 0 else None
+                                except Exception:
+                                    imbalance = None
+                            
                             scalability_data = {
+                                'spread': spread_value,
+                                'spread_pct': spread_value,
+                                'bookDepth': book_depth,
+                                'book_depth': book_depth,
+                                'balanceScore': balance_score,
+                                'balance_score': balance_score,
+                                'bidVol': bid_vol,
+                                'askVol': ask_vol,
+                                'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
+                                'score': pair.get('score')
                             }
+                            logger.info(f"💹 DEBUG main.py: Scalability data trouvé pour {symbol}: spread={spread_value}, depth={book_depth}")
                             break
+                
+                # Fallback: utiliser les infos présentes dans l'analyse/best_setup
+                if not scalability_data:
+                    logger.warning(f"⚠️ DEBUG main.py: scalability_data vide pour {symbol}, utilisation fallback depuis analysis")
+                    analysis_obj = analysis or {}
+                    orderbook_check = analysis_obj.get('orderbook_check') or {}
+                    bid_value = orderbook_check.get('bid_value') or analysis_obj.get('bid_vol')
+                    ask_value = orderbook_check.get('ask_value') or analysis_obj.get('ask_vol')
+                    book_depth = None
+                    if bid_value or ask_value:
+                        bid_value = bid_value or 0
+                        ask_value = ask_value or 0
+                        book_depth = bid_value + ask_value
+                    imbalance = None
+                    if bid_value and ask_value:
+                        try:
+                            imbalance = bid_value / ask_value if ask_value > 0 else None
+                        except Exception:
+                            imbalance = None
+
+                    scalability_data = {
+                        'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'bookDepth': book_depth,
+                        'book_depth': book_depth,
+                        'balanceScore': analysis_obj.get('orderbook_balance'),
+                        'balance_score': analysis_obj.get('orderbook_balance'),
+                        'bidVol': bid_value,
+                        'askVol': ask_value,
+                        'orderbook_imbalance_ratio': imbalance,
+                        'recent_volume': analysis_obj.get('recent_volume'),
+                        'recentVolume': analysis_obj.get('recent_volume'),
+                        'vol5': analysis_obj.get('vol5'),
+                        'vol15': analysis_obj.get('vol15'),
+                        'scalability_score': analysis_obj.get('scalability_score'),
+                        'score': analysis_obj.get('scalability_score')
+                    }
+                    logger.info(f"⚠️ DEBUG main.py: Scalability data depuis fallback pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
                 
                 # Préparer les données du scan pour PostgreSQL
                 # 🔥 FIX: Récupérer le prix avec fallbacks (comme pour SimplePGLogger)
@@ -1403,12 +1467,18 @@ async def scan_pair_for_setup(symbol: str):
                     'scan_duration_ms': scan_duration_ms,
                     'market_data': {
                         'price': scan_price,
-                        'spread_pct': analysis.get('spread_pct') if analysis else None,
-                        'book_depth': analysis.get('book_depth') if analysis else None,
-                        'balance_score': analysis.get('balance_score') if analysis else None,
-                        'bid_vol': analysis.get('bid_vol') if analysis else None,
-                        'ask_vol': analysis.get('ask_vol') if analysis else None,
-                        'orderbook_imbalance_ratio': analysis.get('orderbook_imbalance_ratio') if analysis else None,
+                        # 🔥 FIX: Utiliser scalability_data au lieu de analysis pour les métriques de scalabilité
+                        'spread_pct': scalability_data.get('spread'),
+                        'book_depth': scalability_data.get('bookDepth'),
+                        'balance_score': scalability_data.get('balanceScore'),
+                        'bid_vol': scalability_data.get('bidVol'),
+                        'ask_vol': scalability_data.get('askVol'),
+                        # Calculer imbalance ratio si bid/ask disponibles
+                        'orderbook_imbalance_ratio': (
+                            scalability_data.get('bidVol') / scalability_data.get('askVol')
+                            if scalability_data.get('askVol') and scalability_data.get('askVol') > 0
+                            else None
+                        ),
                         # Paramètres du scan de scalabilité
                         'recent_volume': scalability_data.get('recent_volume'),
                         'vol5': scalability_data.get('vol5'),
