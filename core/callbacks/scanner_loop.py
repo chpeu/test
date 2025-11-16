@@ -708,28 +708,81 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             try:
                 logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
                 # Récupérer les données du scan de scalabilité depuis top_pairs
-                scalability_data = {}
+                scalability_data: Dict[str, Any] = {}
                 if _app_state and _app_state.get('top_pairs'):
                     for pair in _app_state['top_pairs']:
                         if pair.get('symbol') == symbol:
+                            spread_value = pair.get('spread') or pair.get('spread_pct')
+                            book_depth = pair.get('bookDepth')
+                            balance_score = pair.get('balanceScore')
+                            bid_vol = pair.get('bidVol')
+                            ask_vol = pair.get('askVol')
+                            if book_depth in (None, 0) and bid_vol and ask_vol:
+                                book_depth = bid_vol + ask_vol
+                            imbalance = None
+                            if bid_vol and ask_vol:
+                                try:
+                                    imbalance = bid_vol / ask_vol if ask_vol > 0 else None
+                                except Exception:
+                                    imbalance = None
+
                             scalability_data = {
+                                'spread': spread_value,
+                                'spread_pct': spread_value,
+                                'bookDepth': book_depth,
+                                'book_depth': book_depth,
+                                'balanceScore': balance_score,
+                                'balance_score': balance_score,
+                                'bidVol': bid_vol,
+                                'askVol': ask_vol,
+                                'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
+                                'score': pair.get('score')
                             }
                             break
-                
-                # Préparer les données du scan pour PostgreSQL
-                # 🔥 FIX: Récupérer le prix avec fallbacks (pour éviter NULL)
-                scan_price = None
-                if analysis and isinstance(analysis, dict):
-                    scan_price = analysis.get('price')
-                
-                # Fallback: Depuis analysis_1m ou analysis_5m si disponible
-                if scan_price is None and analysis:
-                    analysis_1m = analysis.get('analysis_1m', {})
-                    if isinstance(analysis_1m, dict):
+
+                # Fallback: utiliser les infos présentes dans l'analyse/best_setup
+                if not scalability_data:
+                    analysis_obj = analysis or {}
+                    orderbook_check = analysis_obj.get('orderbook_check') or {}
+                    bid_value = orderbook_check.get('bid_value') or analysis_obj.get('bid_vol')
+                    ask_value = orderbook_check.get('ask_value') or analysis_obj.get('ask_vol')
+                    book_depth = None
+                    if bid_value or ask_value:
+                        bid_value = bid_value or 0
+                        ask_value = ask_value or 0
+                        book_depth = bid_value + ask_value
+                    imbalance = None
+                    if bid_value and ask_value:
+                        try:
+                            imbalance = bid_value / ask_value if ask_value > 0 else None
+                        except Exception:
+                            imbalance = None
+
+                    scalability_data = {
+                        'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'bookDepth': book_depth,
+                        'book_depth': book_depth,
+                        'balanceScore': analysis_obj.get('orderbook_balance'),
+                        'balance_score': analysis_obj.get('orderbook_balance'),
+                        'bidVol': bid_value,
+                        'askVol': ask_value,
+                        'orderbook_imbalance_ratio': imbalance,
+                        'recent_volume': analysis_obj.get('recent_volume'),
+                        'recentVolume': analysis_obj.get('recent_volume'),
+                        'vol5': analysis_obj.get('vol5'),
+                        'vol15': analysis_obj.get('vol15'),
+                        'scalability_score': analysis_obj.get('scalability_score'),
+                        'score': analysis_obj.get('scalability_score')
+                    }
+
+                scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+
                         scan_price = analysis_1m.get('price')
                     if scan_price is None:
                         analysis_5m = analysis.get('analysis_5m', {})
