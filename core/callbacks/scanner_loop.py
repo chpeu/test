@@ -783,7 +783,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
 
                 scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
-                        scan_price = analysis_1m.get('price')
+                scan_price = None
+                if analysis and isinstance(analysis, dict):
+                    analysis_market = analysis.get('market_data', {})
+                    if isinstance(analysis_market, dict):
+                        scan_price = analysis_market.get('price')
+                    if scan_price is None:
+                        analysis_1m = analysis.get('analysis_1m', {})
+                        if isinstance(analysis_1m, dict):
+                            scan_price = analysis_1m.get('price')
                     if scan_price is None:
                         analysis_5m = analysis.get('analysis_5m', {})
                         if isinstance(analysis_5m, dict):
