@@ -894,36 +894,35 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
                 # avec scan_id=None temporairement (sera mis à jour lors du flush)
                 if scan_data['is_opportunity'] and analysis:
+                    condition_list = analysis.get('condition_types', [])
+                    score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
+                    score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
+                    min_required = scan_data['params_snapshot'].get('min_score_required')
+                    trend_bonus = scan_data.get('trend_bonus')
+                    divergence_bonus = scan_data.get('divergence_bonus')
+                    setup_reason = analysis.get('reason')
+
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
                         'setup_score': analysis.get('score_total'),
-                        
-                        # 🔥 FIX: Ajouter scores détaillés
-                        'score_long': analysis.get('score_long_1m') or analysis.get('score_long_5m'),
-                        'score_short': analysis.get('score_short_1m') or analysis.get('score_short_5m'),
-                        'score_min_required': scan_data['params_snapshot'].get('min_score_required'),
-                        
-                        # 🔥 FIX: Ajouter bonus
-                        'trend_bonus': scan_data.get('trend_bonus'),
-                        'divergence_bonus': scan_data.get('divergence_bonus'),
-                        
-                        # Conditions et raison
-                        'conditions_matched': analysis.get('condition_types', []),
-                        'condition_count': len(analysis.get('condition_types', [])),
-                        'setup_reason': analysis.get('reason'),
-                        
-                        # Prix et setup
+                        'score_long': score_long,
+                        'score_short': score_short,
+                        'score_min_required': min_required,
+                        'trend_bonus': trend_bonus,
+                        'divergence_bonus': divergence_bonus,
+                        'conditions_matched': condition_list,
+                        'condition_count': len(condition_list),
+                        'setup_reason': setup_reason,
                         'entry_suggested': analysis.get('entry') or analysis.get('price'),
                         'tp_suggested': analysis.get('tp'),
                         'sl_suggested': analysis.get('sl'),
                         'tp_sl_mode': analysis.get('tp_sl_mode', 'FIXE'),
-                        
-                        # Legacy (pour compatibilité)
+                        # Legacy
                         'entry_price': analysis.get('entry') or analysis.get('price'),
                         'tp_price': analysis.get('tp'),
                         'sl_price': analysis.get('sl'),
-                        'size_usdt': None,  # Sera calculé lors de l'ouverture
+                        'size_usdt': None,
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
                     }
