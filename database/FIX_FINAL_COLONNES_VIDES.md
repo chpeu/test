@@ -271,19 +271,120 @@ Après 5-10 minutes de fonctionnement :
 - [ ] Export Excel téléchargé et vérifié
 - [ ] Colonnes `spread_pct`, `book_depth`, `balance_score` sont remplies pour les nouvelles lignes
 
+## 🔥 FIX SUPPLÉMENTAIRE - Colonnes opportunities vides
+
+### Problème identifié (2ème partie)
+
+Les colonnes `score_long`, `score_short`, `score_min_required`, `trend_bonus`, `divergence_bonus`, `condition_count` dans `opportunities` étaient vides car :
+
+**Fichier** : `main.py` lignes 1554-1576
+
+**Problème** : `opportunity_data` ne contenait pas ces champs
+
+```python
+# ❌ AVANT (INCOMPLET)
+opportunity_data = {
+    'status': 'PENDING',
+    'direction': analysis.get('direction'),
+    'setup_score': analysis.get('score_total') or analysis.get('totalScore'),
+    'conditions_matched': analysis.get('condition_types', []) or analysis.get('signals', []),
+    'entry_price': analysis.get('entry') or analysis.get('price'),
+    'tp_price': analysis.get('tp'),
+    'sl_price': analysis.get('sl'),
+    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+    'size_usdt': None,
+    'risk_usdt': None,
+    'reward_risk_ratio': None,
+}
+```
+
+### Solution appliquée
+
+**Fichier modifié** : `main.py` lignes 1554-1596
+
+```python
+# ✅ APRÈS (COMPLET)
+if scan_data['is_opportunity'] and analysis:
+    condition_list = analysis.get('condition_types', []) or analysis.get('signals', [])
+    score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
+    score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
+    min_required = scan_data['params_snapshot'].get('min_score_required')
+    trend_bonus = scan_data.get('trend_bonus')
+    divergence_bonus = scan_data.get('divergence_bonus')
+    setup_reason = analysis.get('reason')
+    
+    opportunity_data = {
+        'status': 'PENDING',
+        'direction': analysis.get('direction'),
+        'setup_score': analysis.get('score_total') or analysis.get('totalScore'),
+        'score_long': score_long,
+        'score_short': score_short,
+        'score_min_required': min_required,
+        'trend_bonus': trend_bonus,
+        'divergence_bonus': divergence_bonus,
+        'conditions_matched': condition_list,
+        'condition_count': len(condition_list),
+        'setup_reason': setup_reason,
+        'entry_suggested': analysis.get('entry') or analysis.get('price'),
+        'tp_suggested': analysis.get('tp'),
+        'sl_suggested': analysis.get('sl'),
+        'tp_sl_mode': analysis.get('tp_sl_mode', 'FIXE'),
+        # Legacy
+        'entry_price': analysis.get('entry') or analysis.get('price'),
+        'tp_price': analysis.get('tp'),
+        'sl_price': analysis.get('sl'),
+        'size_usdt': None,
+        'risk_usdt': None,
+        'reward_risk_ratio': None,
+    }
+```
+
+### Vérification des nouvelles données (opportunities)
+
+**SQL pour vérifier les colonnes remplies** :
+
+```sql
+-- Dernières opportunités avec colonnes de scores
+SELECT 
+    id,
+    timestamp,
+    symbol,
+    direction,
+    setup_score,
+    score_long,
+    score_short,
+    score_min_required,
+    trend_bonus,
+    divergence_bonus,
+    condition_count
+FROM opportunities
+WHERE timestamp > NOW() - INTERVAL '10 minutes'
+ORDER BY timestamp DESC
+LIMIT 20;
+```
+
+**Résultat attendu** :
+- `score_long` : valeur entre 0 et 15 (score LONG)
+- `score_short` : valeur entre 0 et 15 (score SHORT)
+- `score_min_required` : valeur du seuil minimum (ex: 1.0, 7.5)
+- `trend_bonus` : valeur entre 0 et 2 (bonus de tendance)
+- `divergence_bonus` : valeur entre 0 et 2 (bonus de divergence)
+- `condition_count` : nombre de conditions validées (ex: 2, 3, 4)
+
 ## 🎯 Résumé
 
 **Fichiers modifiés** :
 1. `main.py` (lignes 1358-1487) : Construction complète de `scalability_data` et utilisation dans `scan_data`
-2. `scanner_loop.py` (lignes 716-794) : Logs de debug (déjà appliqués précédemment)
+2. `main.py` (lignes 1554-1596) : Ajout des champs manquants dans `opportunity_data`
+3. `scanner_loop.py` (lignes 716-794) : Logs de debug (déjà appliqués précédemment)
 
 **Prochaines étapes** :
 1. Redémarrer le bot
 2. Observer les logs pendant 5-10 minutes
-3. Vérifier les nouvelles données dans la base
+3. Vérifier les nouvelles données dans la base (scan_logs ET opportunities)
 4. Exporter vers Excel et vérifier les colonnes
 
 **Si les colonnes sont encore vides après redémarrage** :
 - Partager les logs contenant "💹 DEBUG main.py"
-- Partager le résultat de la requête SQL ci-dessus
+- Partager le résultat des requêtes SQL ci-dessus
 - Je pourrai alors diagnostiquer plus précisément le problème

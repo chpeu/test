@@ -1553,15 +1553,34 @@ async def scan_pair_for_setup(symbol: str):
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 if scan_data['is_opportunity'] and analysis:
+                    condition_list = analysis.get('condition_types', []) or analysis.get('signals', [])
+                    score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
+                    score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
+                    min_required = scan_data['params_snapshot'].get('min_score_required')
+                    trend_bonus = scan_data.get('trend_bonus')
+                    divergence_bonus = scan_data.get('divergence_bonus')
+                    setup_reason = analysis.get('reason')
+                    
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
                         'setup_score': analysis.get('score_total') or analysis.get('totalScore'),
-                        'conditions_matched': analysis.get('condition_types', []) or analysis.get('signals', []),
+                        'score_long': score_long,
+                        'score_short': score_short,
+                        'score_min_required': min_required,
+                        'trend_bonus': trend_bonus,
+                        'divergence_bonus': divergence_bonus,
+                        'conditions_matched': condition_list,
+                        'condition_count': len(condition_list),
+                        'setup_reason': setup_reason,
+                        'entry_suggested': analysis.get('entry') or analysis.get('price'),
+                        'tp_suggested': analysis.get('tp'),
+                        'sl_suggested': analysis.get('sl'),
+                        'tp_sl_mode': analysis.get('tp_sl_mode', 'FIXE'),
+                        # Legacy
                         'entry_price': analysis.get('entry') or analysis.get('price'),
                         'tp_price': analysis.get('tp'),
                         'sl_price': analysis.get('sl'),
-                        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                         'size_usdt': None,
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
