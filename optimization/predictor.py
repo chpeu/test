@@ -11,6 +11,7 @@ from typing import Dict, Optional, List
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import joblib
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,11 @@ class MLPredictor:
                 logger.warning(f"Preprocessor non trouvé à {preprocessor_path}")
                 return False
             
-            with open(preprocessor_path, 'rb') as f:
-                self.preprocessor = pickle.load(f)
+            try:
+                self.preprocessor = joblib.load(preprocessor_path)
+            except Exception:
+                with open(preprocessor_path, 'rb') as f:
+                    self.preprocessor = pickle.load(f)
             
             # Charger metadata
             metadata_path = f"{models_dir}/{self.model_name}_metadata.json"
@@ -58,8 +62,16 @@ class MLPredictor:
             # Extraire feature names du preprocessor
             if hasattr(self.preprocessor, 'feature_names_in_'):
                 self.feature_names = list(self.preprocessor.feature_names_in_)
+            elif hasattr(self.preprocessor, 'feature_names'):
+                self.feature_names = list(self.preprocessor.feature_names)
+            elif hasattr(self.preprocessor, 'named_steps'):
+                selector = self.preprocessor.named_steps.get('feature_selector')
+                if selector and hasattr(selector, 'feature_names'):
+                    self.feature_names = list(selector.feature_names)
+                else:
+                    self.feature_names = []
             else:
-                logger.warning("Preprocessor n'a pas feature_names_in_")
+                logger.warning("Preprocessor n'a pas d'information de features")
                 self.feature_names = []
             
             self.loaded = True
