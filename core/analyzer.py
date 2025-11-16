@@ -1095,7 +1095,10 @@ class TechnicalAnalyzer:
                 )
 
                 if not orderbook_check['valid']:
-                    required_str = '≥0.5' if best_setup['direction'] == 'LONG' else '≤2.0'
+                    # Utiliser les vraies constantes depuis market_data.py
+                    from core.analyzer.market_data import ORDERBOOK_LONG_MIN_RATIO, ORDERBOOK_SHORT_MAX_RATIO
+                    required_ratio = ORDERBOOK_LONG_MIN_RATIO if best_setup['direction'] == 'LONG' else ORDERBOOK_SHORT_MAX_RATIO
+                    required_str = f'≥{required_ratio}' if best_setup['direction'] == 'LONG' else f'≤{required_ratio}'
                     info_msg = (
                         f"ℹ️ {symbol} - Setup {best_setup['direction']} rejeté : "
                         f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})"
@@ -1270,7 +1273,12 @@ class TechnicalAnalyzer:
                     if not correlation_check['valid']:
                         logger.warning(f"⚠️ {symbol} - Setup rejeté: {correlation_check['reason']}")
                         if return_reason:
-                            return {'reason': correlation_check['reason'], 'symbol': symbol}
+                            return {
+                                'reason': correlation_check['reason'], 
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m
+                            }
                         return None
                     elif correlation_check.get('penalty', 0) != 0:
                         penalty = correlation_check['penalty']
@@ -1326,7 +1334,12 @@ class TechnicalAnalyzer:
                                     not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m)):
                                 logger.warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): Confluence requise")
                                 if return_reason:
-                                    return {'reason': f'Recovery Mode Niveau {level_num}: Confluence requise', 'symbol': symbol}
+                                    return {
+                                        'reason': f'Recovery Mode Niveau {level_num}: Confluence requise', 
+                                        'symbol': symbol,
+                                        'analysis_1m': analysis_1m,
+                                        'analysis_5m': analysis_5m
+                                    }
                                 return None
 
                         # Vérifier score avec boost
@@ -1339,7 +1352,9 @@ class TechnicalAnalyzer:
                             if return_reason:
                                 return {
                                     'reason': f'Recovery Mode: Score insuffisant ({setup_score:.1f} < {adjusted_min_score:.1f})',
-                                    'symbol': symbol
+                                    'symbol': symbol,
+                                    'analysis_1m': analysis_1m,
+                                    'analysis_5m': analysis_5m
                                 }
                             return None
 
@@ -1564,6 +1579,11 @@ class TechnicalAnalyzer:
                     if best_setup.get('confirmedBy'):
                         setup_reason_text += f" - {best_setup.get('confirmedBy')}"
                     best_setup['setup_reason'] = setup_reason_text
+
+                # 🔥 FIX: Ajouter analysis_1m et analysis_5m complets pour filter_metrics
+                # Cela permet à scanner_loop.py d'extraire les filter_metrics via _extract_filter_metrics()
+                best_setup['analysis_1m'] = analysis_1m
+                best_setup['analysis_5m'] = analysis_5m
 
                 return best_setup
 

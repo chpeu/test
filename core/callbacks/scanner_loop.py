@@ -457,42 +457,59 @@ async def _scan_top_pairs():
 
 def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict.
+    Extract filter metrics from analysis_1m and analysis_5m with correct _1m/_5m suffixes.
     
     Args:
         analysis: Analysis dictionary containing analysis_1m and analysis_5m
         
     Returns:
-        Unified filters dictionary with all filter metrics
+        Unified filters dictionary with all filter metrics with proper suffixes
     """
     if not analysis or not isinstance(analysis, dict):
+        logger.warning("⚠️ _extract_filter_metrics: analysis est None ou pas un dict")
         return {}
     
     filters = {}
     
-    # Extract from analysis_1m
+    # Extract from analysis_1m with _1m suffix
     analysis_1m = analysis.get('analysis_1m', {})
+    logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_1m présent={bool(analysis_1m)}, type={type(analysis_1m)}")
     if analysis_1m and isinstance(analysis_1m, dict):
+        logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_1m keys (premiers 20): {list(analysis_1m.keys())[:20]}")
         filters.update({
-            'volume_filter_passed': analysis_1m.get('volume_filter_passed'),
-            'snr': analysis_1m.get('snr'),
-            'snr_passed': analysis_1m.get('snr_passed'),
-            'breakout_distance': analysis_1m.get('breakout_distance'),
-            'breakout_passed': analysis_1m.get('breakout_passed'),
-            'wick_ratio': analysis_1m.get('wick_ratio'),
-            'wick_passed': analysis_1m.get('wick_passed'),
-            'atr_optimal_passed': analysis_1m.get('atr_optimal_passed')
+            'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed'),
+            'snr_1m': analysis_1m.get('snr'),
+            'snr_passed_1m': analysis_1m.get('snr_passed'),
+            'breakout_distance_1m': analysis_1m.get('breakout_distance'),
+            'breakout_passed_1m': analysis_1m.get('breakout_passed'),
+            'wick_ratio_1m': analysis_1m.get('wick_ratio'),
+            'wick_passed_1m': analysis_1m.get('wick_passed'),
+            'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed')
         })
+        logger.info(f"✅ Filters 1m extraits: snr_1m={filters.get('snr_1m')}, wick_ratio_1m={filters.get('wick_ratio_1m')}, volume_filter_passed_1m={filters.get('volume_filter_passed_1m')}")
+    else:
+        logger.warning(f"⚠️ _extract_filter_metrics: analysis_1m invalide ou vide")
     
-    # Extract from analysis_5m (override with 5m values if available, for completeness)
+    # Extract from analysis_5m with _5m suffix
     analysis_5m = analysis.get('analysis_5m', {})
+    logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_5m présent={bool(analysis_5m)}, type={type(analysis_5m)}")
     if analysis_5m and isinstance(analysis_5m, dict):
-        # Only update if 1m values are None or if we want to prioritize 5m for specific metrics
-        for key in ['volume_filter_passed', 'snr', 'snr_passed', 'breakout_distance', 
-                   'breakout_passed', 'wick_ratio', 'wick_passed', 'atr_optimal_passed']:
-            if filters.get(key) is None and analysis_5m.get(key) is not None:
-                filters[key] = analysis_5m.get(key)
+        logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_5m keys (premiers 20): {list(analysis_5m.keys())[:20]}")
+        filters.update({
+            'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed'),
+            'snr_5m': analysis_5m.get('snr'),
+            'snr_passed_5m': analysis_5m.get('snr_passed'),
+            'breakout_distance_5m': analysis_5m.get('breakout_distance'),
+            'breakout_passed_5m': analysis_5m.get('breakout_passed'),
+            'wick_ratio_5m': analysis_5m.get('wick_ratio'),
+            'wick_passed_5m': analysis_5m.get('wick_passed'),
+            'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed')
+        })
+        logger.info(f"✅ Filters 5m extraits: snr_5m={filters.get('snr_5m')}, wick_ratio_5m={filters.get('wick_ratio_5m')}, volume_filter_passed_5m={filters.get('volume_filter_passed_5m')}")
+    else:
+        logger.warning(f"⚠️ _extract_filter_metrics: analysis_5m invalide ou vide")
     
+    logger.info(f"📊 Filters finaux retournés (total {len(filters)} clés)")
     return filters
 
 

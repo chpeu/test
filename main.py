@@ -1346,6 +1346,44 @@ async def scan_pair_for_setup(symbol: str):
             import traceback
             logger.debug(f"Traceback: {traceback.format_exc()}")
         
+        # Helper function to extract filter metrics
+        def _extract_filter_metrics_main(analysis):
+            """Extract filter metrics from analysis_1m and analysis_5m with correct suffixes"""
+            if not analysis or not isinstance(analysis, dict):
+                return {}
+            
+            filters = {}
+            
+            # Extract from analysis_1m with _1m suffix
+            analysis_1m = analysis.get('analysis_1m', {})
+            if analysis_1m and isinstance(analysis_1m, dict):
+                filters.update({
+                    'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed'),
+                    'snr_1m': analysis_1m.get('snr'),
+                    'snr_passed_1m': analysis_1m.get('snr_passed'),
+                    'breakout_distance_1m': analysis_1m.get('breakout_distance'),
+                    'breakout_passed_1m': analysis_1m.get('breakout_passed'),
+                    'wick_ratio_1m': analysis_1m.get('wick_ratio'),
+                    'wick_passed_1m': analysis_1m.get('wick_passed'),
+                    'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed')
+                })
+            
+            # Extract from analysis_5m with _5m suffix
+            analysis_5m = analysis.get('analysis_5m', {})
+            if analysis_5m and isinstance(analysis_5m, dict):
+                filters.update({
+                    'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed'),
+                    'snr_5m': analysis_5m.get('snr'),
+                    'snr_passed_5m': analysis_5m.get('snr_passed'),
+                    'breakout_distance_5m': analysis_5m.get('breakout_distance'),
+                    'breakout_passed_5m': analysis_5m.get('breakout_passed'),
+                    'wick_ratio_5m': analysis_5m.get('wick_ratio'),
+                    'wick_passed_5m': analysis_5m.get('wick_passed'),
+                    'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed')
+                })
+            
+            return filters
+        
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé (comme dans scanner_loop.py)
         try:
             from core.callbacks.scanner_loop import get_pg_datalogger
@@ -1495,7 +1533,7 @@ async def scan_pair_for_setup(symbol: str):
                     'score': scalability_data.get('scalability_score'),  # Alias
                     'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
                     'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
-                    'filters': analysis.get('filters', {}) if analysis else {},
+                    'filters': _extract_filter_metrics_main(analysis),
                     'scores': {
                         'score_1m': analysis.get('score_1m') if analysis else None,
                         'score_5m': analysis.get('score_5m') if analysis else None,
