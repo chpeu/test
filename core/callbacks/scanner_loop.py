@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
-from core.simple_pg_logger import SimplePGLogger
+# from core.simple_pg_logger import SimplePGLogger  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
 _pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML (injection)
 _pg_datalogger_instance = None  # 🔥 Force Initialization: Instance créée automatiquement
-_simple_logger = SimplePGLogger()  # 🔥 Simple Logger: Logger ultra-simple sans batch
+# _simple_logger = SimplePGLogger()  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger pour les 46 features ML
 
 
 def set_scanner(scanner):
@@ -718,33 +718,33 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         # 🔥 DEBUG: Vérifier que le code atteint cette section AVANT Simple Logger
         logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT Simple Logger, analysis type: {type(analysis)}")
 
-        # 🔥 Simple Logger: Logger ultra-simple sans batch
-        try:
-            # Vérifier que _simple_logger est défini et accessible
-            try:
-                logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: _simple_logger existe, enabled={getattr(_simple_logger, 'enabled', 'ATTRIBUT_MANQUANT')}")
-            except NameError:
-                logger.error(f"❌ _simple_logger n'est pas défini pour {symbol}")
-                _simple_logger = None
-            except Exception as e:
-                logger.error(f"❌ Erreur accès _simple_logger pour {symbol}: {e}")
-                _simple_logger = None
-            
-            if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
-                logger.info(f"📝 Tentative log_scan_simple pour {symbol}")
-                result = _simple_logger.log_scan_simple(symbol, {
-                    'market_data': {'price': analysis.get('price') if analysis else None},
-                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
-                    'scores': {'score_total': analysis.get('score_total') if analysis else None},
-                    'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
-                })
-                logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
-            else:
-                logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
-        except Exception as e:
-            logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
-            import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+        # 🔥 Simple Logger: DÉSACTIVÉ - On utilise PostgreSQLDataLogger pour les 46 features ML
+        # try:
+        #     # Vérifier que _simple_logger est défini et accessible
+        #     try:
+        #         logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: _simple_logger existe, enabled={getattr(_simple_logger, 'enabled', 'ATTRIBUT_MANQUANT')}")
+        #     except NameError:
+        #         logger.error(f"❌ _simple_logger n'est pas défini pour {symbol}")
+        #         _simple_logger = None
+        #     except Exception as e:
+        #         logger.error(f"❌ Erreur accès _simple_logger pour {symbol}: {e}")
+        #         _simple_logger = None
+        #     
+        #     if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
+        #         logger.info(f"📝 Tentative log_scan_simple pour {symbol}")
+        #         result = _simple_logger.log_scan_simple(symbol, {
+        #             'market_data': {'price': analysis.get('price') if analysis else None},
+        #             'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
+        #             'scores': {'score_total': analysis.get('score_total') if analysis else None},
+        #             'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
+        #         })
+        #         logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
+        #     else:
+        #         logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
+        # except Exception as e:
+        #     logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
+        #     import traceback
+        #     logger.debug(f"Traceback: {traceback.format_exc()}")
 
         # 🔥 DEBUG: Vérifier que le code atteint cette section
         logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT calcul durée scan")
