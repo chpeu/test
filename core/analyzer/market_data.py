@@ -11,6 +11,9 @@ from utils.logger import get_logger
 
 logger = get_logger()
 
+ORDERBOOK_LONG_MIN_RATIO = 1.1
+ORDERBOOK_SHORT_MAX_RATIO = 0.95
+
 
 async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
     """
@@ -160,8 +163,7 @@ async def check_orderbook_imbalance(
 
         # Validation selon direction
         if direction == 'LONG':
-            # LONG : besoin de pression acheteuse (ratio ≥ 0.5) - 🔥 FIX: Seuil réduit pour permettre plus de trades
-            required_ratio = 0.5
+            required_ratio = ORDERBOOK_LONG_MIN_RATIO
             valid = ratio >= required_ratio
 
             # Quality scoring
@@ -177,8 +179,7 @@ async def check_orderbook_imbalance(
                 quality = 'POOR'
 
         else:  # SHORT
-            # SHORT : besoin de pression vendeuse (ratio ≤ 2.0) - 🔥 FIX: Seuil augmenté pour permettre plus de trades
-            required_ratio = 2.0
+            required_ratio = ORDERBOOK_SHORT_MAX_RATIO
             valid = ratio <= required_ratio
 
             if ratio <= 0.6:
@@ -202,7 +203,8 @@ async def check_orderbook_imbalance(
             'ratio': ratio,
             'quality': quality,
             'bid_value': bid_value,
-            'ask_value': ask_value
+            'ask_value': ask_value,
+            'required_ratio': required_ratio
         }
 
         # Mettre en cache

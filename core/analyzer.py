@@ -331,6 +331,18 @@ class TechnicalAnalyzer:
             min_vol_ratio = base_min_vol * volume_multiplier
             min_vol_ratio = max(0.4, min(1.5, min_vol_ratio))
 
+            # Préparer métriques des filtres pour logging/DB
+            filter_metrics = {
+                'volume_filter_passed': vol_spike >= min_vol_ratio,
+                'snr': None,
+                'snr_passed': None,
+                'breakout_distance': None,
+                'breakout_passed': None,
+                'wick_ratio': None,
+                'wick_passed': None,
+                'atr_optimal_passed': None
+            }
+
             # 1. Filtre Volume
             volume_result = check_volume_filter(
                 vol_spike=vol_spike,
@@ -374,8 +386,23 @@ class TechnicalAnalyzer:
                     result_dict = build_indicators_dict(atr_result.get('reason') if isinstance(atr_result, dict) else str(atr_result))
                     return result_dict
                 return None
+            else:
+                if timeframe == '1m':
+                    optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
+                    optimal_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
+                else:
+                    optimal_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
+                    optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
+                filter_metrics['atr_optimal_passed'] = optimal_atr_min <= atr_percent <= optimal_atr_max
 
             # 4. SNR Filter (Signal-to-Noise Ratio)
+            snr_value = None
+            snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
+            use_snr = TRADING_CONFIG.get('use_snr', True)
+            if atr and atr > 0 and ema21 is not None:
+                snr_value = abs(price - ema21) / atr
+            filter_metrics['snr'] = snr_value
+            filter_metrics['snr_passed'] = True if not use_snr else (snr_value is not None and snr_value >= snr_threshold)
             snr_result = check_snr_filter(
                 price=price,
                 ema21=ema21,
@@ -392,6 +419,18 @@ class TechnicalAnalyzer:
                 return None
 
             # 5. Breakout Filter
+            use_breakout = TRADING_CONFIG.get('use_breakout', True)
+            breakout_mult = TRADING_CONFIG.get('breakout_threshold', 0.3)
+            breakout_distance = None
+            if atr and atr > 0 and ema21 is not None:
+                breakout_distance = abs(price - ema21) / atr
+            filter_metrics['breakout_distance'] = breakout_distance
+            if not use_breakout:
+                filter_metrics['breakout_passed'] = True
+            elif breakout_distance is None:
+                filter_metrics['breakout_passed'] = False
+            else:
+                filter_metrics['breakout_passed'] = not (price < (ema21 + atr * breakout_mult) and price > (ema21 - atr * breakout_mult))
             breakout_result = check_breakout_filter(
                 price=price,
                 ema21=ema21,
@@ -408,6 +447,14 @@ class TechnicalAnalyzer:
                 return None
 
             # 6. Wick Ratio Filter (manipulation)
+            body = abs(current_candle[1] - current_candle[4])
+            if body == 0:
+                body = 0.0001
+            wick_ratio = (current_candle[2] - current_candle[3]) / body
+            wick_max = TRADING_CONFIG.get('wick_ratio_max', 2.5)
+            use_wick = TRADING_CONFIG.get('use_wick', True)
+            filter_metrics['wick_ratio'] = wick_ratio
+            filter_metrics['wick_passed'] = True if not use_wick else wick_ratio <= wick_max
             wick_result = check_wick_filter(
                 current_candle=current_candle,
                 symbol=symbol,
@@ -669,7 +716,16 @@ class TechnicalAnalyzer:
                 'volume_ratio': vol_spike if vol_spike else None,
                 'volume_spike': vol_spike if vol_spike else None,
                 # Pattern
-                'pattern': pattern if pattern else None
+                'pattern': pattern if pattern else None,
+                # Filtres
+                'snr': filter_metrics['snr'],
+                'snr_passed': filter_metrics['snr_passed'],
+                'breakout_distance': filter_metrics['breakout_distance'],
+                'breakout_passed': filter_metrics['breakout_passed'],
+                'wick_ratio': filter_metrics['wick_ratio'],
+                'wick_passed': filter_metrics['wick_passed'],
+                'atr_optimal_passed': filter_metrics['atr_optimal_passed'],
+                'volume_filter_passed': filter_metrics['volume_filter_passed']
             }
 
         except Exception as e:
