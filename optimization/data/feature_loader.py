@@ -147,6 +147,13 @@ def load_features_from_postgres(
         
         logger.info(f"📊 Features chargées: {len(df)} rows depuis PostgreSQL")
         
+        # Convertir toutes les colonnes numériques (gère TEXT stocké comme string)
+        numeric_cols = [col for col in df.columns if col not in ['scan_id', 'timestamp', 'symbol', 'opportunity_direction']]
+        for col in numeric_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        logger.info(f"🔄 Conversion des types numériques effectuée")
+        
         # Validation minimum
         if len(df) < min_trades:
             raise ValueError(
