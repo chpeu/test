@@ -396,6 +396,118 @@ async def get_experiments(limit: int = 10):
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
+# ========== TRAINING ==========
+
+@router.post("/train")
+async def train_model(
+    background_tasks: BackgroundTasks,
+    model_type: str = Query('xgboost', regex='^(xgboost)$'),
+    timeframe_days: int = 60,
+    min_trades: int = 50,
+):
+    """
+    Déclencher entraînement modèle ML
+    
+    Args:
+        model_type: Type de modèle (xgboost pour l'instant)
+        timeframe_days: Fenêtre temporelle données
+        min_trades: Minimum trades requis
+        
+    Returns:
+        task_id pour suivre progression
+    """
+    try:
+        from optimization.data.feature_loader import get_trades_count
+        
+        # Vérifier données suffisantes
+        trades_count = get_trades_count()
+        
+        if trades_count < min_trades:
+            raise HTTPException(
+                400,
+                f"Pas assez de données: {trades_count}/{min_trades} trades requis"
+            )
+        
+        # Créer task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialiser task status
+        ml_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'pending',
+            'model_type': model_type,
+            'timeframe_days': timeframe_days,
+            'min_trades': min_trades,
+            'created_at': datetime.now().isoformat(),
+            'progress': 0,
+        }
+        
+        # Lancer entraînement en background
+        if model_type == 'xgboost':
+            background_tasks.add_task(
+                _train_xgboost_background,
+                task_id,
+                timeframe_days,
+                min_trades,
+            )
+        
+        logger.info(f"🚀 Entraînement {model_type} démarré (task_id={task_id})")
+        
+        return {
+            'task_id': task_id,
+            'status': 'pending',
+            'message': f'Entraînement {model_type} démarré',
+            'trades_count': trades_count,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur train_model: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+async def _train_xgboost_background(task_id: str, timeframe_days: int, min_trades: int):
+    """Fonction background pour entraînement XGBoost"""
+    try:
+        from optimization.models.xgboost_trainer import XGBoostTrainer
+        
+        # Update status
+        ml_tasks[task_id]['status'] = 'running'
+        ml_tasks[task_id]['progress'] = 10
+        
+        logger.info(f"🎯 Entraînement XGBoost en cours (task_id={task_id})")
+        
+        # Entraîner
+        trainer = XGBoostTrainer()
+        
+        ml_tasks[task_id]['progress'] = 30
+        
+        results = trainer.train(
+            timeframe_days=timeframe_days,
+            min_trades=min_trades,
+        )
+        
+        # Success
+        ml_tasks[task_id].update({
+            'status': 'completed',
+            'progress': 100,
+            'results': results,
+            'completed_at': datetime.now().isoformat(),
+        })
+        
+        logger.info(f"✅ Entraînement XGBoost terminé (task_id={task_id})")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur entraînement XGBoost: {e}", exc_info=True)
+        
+        ml_tasks[task_id].update({
+            'status': 'failed',
+            'error': str(e),
+            'failed_at': datetime.now().isoformat(),
+        })
+
+
 # ========== TASKS ==========
 
 @router.get("/tasks/{task_id}")
