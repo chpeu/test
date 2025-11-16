@@ -377,6 +377,148 @@ async def get_models_status():
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
+@router.get("/models/metrics/{model_name}")
+async def get_model_metrics(model_name: str):
+    """
+    Récupère les métriques détaillées d'un modèle entraîné
+    
+    Args:
+        model_name: Nom du modèle (ex: xgboost_v1, gru_v1)
+    
+    Returns:
+        Métriques complètes: train/test performance, feature importance, confusion matrix
+    """
+    try:
+        import os
+        import json
+        
+        # Chemin vers metadata
+        metadata_path = f"optimization/saved_models/{model_name}_metadata.json"
+        
+        if not os.path.exists(metadata_path):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Modèle '{model_name}' non trouvé. Entraînez d'abord le modèle."
+            )
+        
+        # Charger metadata
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        # Extraire métriques clés
+        metrics = metadata.get('metrics', {})
+        feature_importance = metadata.get('feature_importance', [])
+        training_info = metadata.get('training_info', {})
+        
+        # Top features (limiter à 10)
+        top_features = [
+            {
+                'feature': f['feature'],
+                'importance': round(f['importance'] * 100, 2)  # En pourcentage
+            }
+            for f in feature_importance[:10]
+            if f['importance'] > 0
+        ]
+        
+        # Calculer overfitting score
+        train_acc = metrics.get('train', {}).get('accuracy', 0)
+        test_acc = metrics.get('test', {}).get('accuracy', 0)
+        overfitting_gap = train_acc - test_acc
+        
+        # Évaluation qualité
+        quality_assessment = {
+            'overfitting': 'high' if overfitting_gap > 0.2 else 'moderate' if overfitting_gap > 0.1 else 'low',
+            'test_performance': 'good' if test_acc > 0.7 else 'acceptable' if test_acc > 0.6 else 'poor',
+            'data_sufficiency': 'sufficient' if training_info.get('total_samples', 0) > 200 else 'limited'
+        }
+        
+        return {
+            'model_name': model_name,
+            'model_type': metadata.get('model_type'),
+            'version': metadata.get('version'),
+            'trained_at': training_info.get('trained_at'),
+            'training_info': {
+                'total_samples': training_info.get('total_samples'),
+                'train_samples': training_info.get('train_samples'),
+                'test_samples': training_info.get('test_samples'),
+                'timeframe_days': training_info.get('timeframe_days'),
+                'training_time_seconds': round(training_info.get('training_time_seconds', 0), 2)
+            },
+            'performance': {
+                'train': {
+                    'accuracy': round(metrics.get('train', {}).get('accuracy', 0), 3),
+                    'f1': round(metrics.get('train', {}).get('f1', 0), 3),
+                    'roc_auc': round(metrics.get('train', {}).get('roc_auc', 0), 3)
+                },
+                'test': {
+                    'accuracy': round(metrics.get('test', {}).get('accuracy', 0), 3),
+                    'precision': round(metrics.get('test', {}).get('precision', 0), 3),
+                    'recall': round(metrics.get('test', {}).get('recall', 0), 3),
+                    'f1': round(metrics.get('test', {}).get('f1', 0), 3),
+                    'roc_auc': round(metrics.get('test', {}).get('roc_auc', 0), 3)
+                },
+                'overfitting_gap': round(overfitting_gap, 3)
+            },
+            'confusion_matrix': metrics.get('confusion_matrix'),
+            'top_features': top_features,
+            'quality_assessment': quality_assessment,
+            'recommendations': _generate_recommendations(
+                test_acc, 
+                overfitting_gap, 
+                training_info.get('total_samples', 0),
+                len([f for f in feature_importance if f['importance'] == 0])
+            )
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur get_model_metrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _generate_recommendations(test_acc: float, overfitting_gap: float, total_samples: int, zero_importance_count: int) -> list:
+    """Génère recommandations basées sur métriques"""
+    recommendations = []
+    
+    if total_samples < 100:
+        recommendations.append({
+            'type': 'data',
+            'priority': 'high',
+            'message': f'Dataset trop petit ({total_samples} samples). Collectez au moins 200 trades pour améliorer la généralisation.'
+        })
+    
+    if overfitting_gap > 0.2:
+        recommendations.append({
+            'type': 'model',
+            'priority': 'high',
+            'message': f'Overfitting détecté (gap: {overfitting_gap:.1%}). Réduisez max_depth ou augmentez les données.'
+        })
+    
+    if test_acc < 0.65:
+        recommendations.append({
+            'type': 'performance',
+            'priority': 'medium',
+            'message': f'Performance test faible ({test_acc:.1%}). Essayez feature engineering ou plus de données.'
+        })
+    
+    if zero_importance_count > 50:
+        recommendations.append({
+            'type': 'features',
+            'priority': 'low',
+            'message': f'{zero_importance_count} features inutiles. Implémentez feature selection pour accélérer l\'entraînement.'
+        })
+    
+    if not recommendations:
+        recommendations.append({
+            'type': 'success',
+            'priority': 'info',
+            'message': 'Modèle en bonne santé. Continuez à collecter des données pour améliorer.'
+        })
+    
+    return recommendations
+
+
 @router.get("/models/experiments")
 async def get_experiments(limit: int = 10):
     """
