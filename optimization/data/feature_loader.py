@@ -171,6 +171,23 @@ def load_features_from_postgres(
             )
             df[all_nan_cols] = 0.0
         
+        # Normaliser target_win en 0/1 (bool -> int, string -> int)
+        if 'target_win' in df.columns:
+            df['target_win'] = (
+                df['target_win']
+                .replace({
+                    True: 1,
+                    False: 0,
+                    'true': 1,
+                    'false': 0,
+                    't': 1,
+                    'f': 0,
+                    '1': 1,
+                    '0': 0,
+                })
+            )
+            df['target_win'] = pd.to_numeric(df['target_win'], errors='coerce')
+        
         logger.info(f"🔄 Conversion des types numériques effectuée")
         
         # Validation minimum
