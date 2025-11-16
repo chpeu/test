@@ -1,10 +1,13 @@
 <script>
 	import { onMount } from 'svelte';
 	import { modelsStatus, loadModelsStatus } from '$lib/stores/ml';
+	import ModelMetricsCard from './ModelMetricsCard.svelte';
 
 	export let tradesCount = 0;
 
 	let loading = true;
+	let selectedModel = null;
+	let showMetrics = false;
 
 	onMount(async () => {
 		await loadModelsStatus();
@@ -42,6 +45,16 @@
 			default:
 				return modelType;
 		}
+	}
+
+	function viewMetrics(modelType) {
+		selectedModel = `${modelType}_v1`;
+		showMetrics = true;
+	}
+
+	function closeMetrics() {
+		showMetrics = false;
+		selectedModel = null;
 	}
 </script>
 
@@ -99,7 +112,11 @@
 						<div class="warning">{status.warning}</div>
 					{/if}
 
-					{#if status.ready && !status.trained}
+					{#if status.trained}
+						<button class="metrics-btn" on:click={() => viewMetrics(modelType)}>
+							📊 Voir les Métriques
+						</button>
+					{:else if status.ready && !status.trained}
 						<button class="train-btn" disabled title="Training à implémenter Phase 3">
 							Entraîner le Modèle
 						</button>
@@ -121,6 +138,16 @@
 				</div>
 			{/each}
 		</div>
+
+		<!-- Modal pour afficher les métriques -->
+		{#if showMetrics && selectedModel}
+			<div class="modal-overlay" on:click={closeMetrics}>
+				<div class="modal-content" on:click|stopPropagation>
+					<button class="close-btn" on:click={closeMetrics}>✕</button>
+					<ModelMetricsCard modelName={selectedModel} />
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -315,5 +342,73 @@
 		font-size: 0.85rem;
 		color: #6b7280;
 		text-align: center;
+	}
+
+	.metrics-btn {
+		width: 100%;
+		padding: 0.75rem;
+		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.metrics-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+	}
+
+	.modal-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 1rem;
+		overflow-y: auto;
+	}
+
+	.modal-content {
+		position: relative;
+		max-width: 1200px;
+		width: 100%;
+		max-height: 90vh;
+		overflow-y: auto;
+		background: white;
+		border-radius: 12px;
+		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+	}
+
+	.close-btn {
+		position: sticky;
+		top: 1rem;
+		right: 1rem;
+		float: right;
+		background: #ef4444;
+		color: white;
+		border: none;
+		border-radius: 50%;
+		width: 36px;
+		height: 36px;
+		font-size: 1.2rem;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 10;
+		transition: all 0.2s;
+	}
+
+	.close-btn:hover {
+		background: #dc2626;
+		transform: scale(1.1);
 	}
 </style>
