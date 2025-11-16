@@ -302,12 +302,29 @@ opportunity_data = {
 
 **Fichier modifié** : `main.py` lignes 1554-1596
 
+**IMPORTANT** : Les clés correctes dans `analysis` sont `long_score` et `short_score`, **pas** `score_long_1m` ou `score_long_5m`.
+
 ```python
-# ✅ APRÈS (COMPLET)
+# ✅ APRÈS (COMPLET - AVEC BONNES CLÉS)
 if scan_data['is_opportunity'] and analysis:
     condition_list = analysis.get('condition_types', []) or analysis.get('signals', [])
-    score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
-    score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
+    
+    # 🔥 FIX: Les clés correctes sont 'long_score' et 'short_score'
+    score_long = analysis.get('long_score')
+    score_short = analysis.get('short_score')
+    
+    # Fallback: essayer aussi les anciennes clés si les nouvelles ne sont pas présentes
+    if score_long is None:
+        score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
+    if score_short is None:
+        score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
+    
+    # Fallback: chercher dans scan_data['scores'] si toujours None
+    if score_long is None and 'scores' in scan_data:
+        score_long = scan_data['scores'].get('score_long_1m') or scan_data['scores'].get('score_long_5m')
+    if score_short is None and 'scores' in scan_data:
+        score_short = scan_data['scores'].get('score_short_1m') or scan_data['scores'].get('score_short_5m')
+    
     min_required = scan_data['params_snapshot'].get('min_score_required')
     trend_bonus = scan_data.get('trend_bonus')
     divergence_bonus = scan_data.get('divergence_bonus')
