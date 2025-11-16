@@ -997,6 +997,16 @@ async def _train_xgboost_background(task_id: str, timeframe_days: int, min_trade
         
         logger.info(f"✅ Entraînement XGBoost terminé (task_id={task_id})")
         
+        # Recharger automatiquement le predictor avec le nouveau modèle
+        try:
+            from optimization.predictor import get_predictor
+            predictor = get_predictor('xgboost_v1')
+            predictor.loaded = False  # Force reload
+            predictor.load_model()
+            logger.info("🔄 Predictor rechargé automatiquement avec le nouveau modèle")
+        except Exception as reload_err:
+            logger.warning(f"⚠️ Impossible de recharger le predictor: {reload_err}")
+        
     except Exception as e:
         logger.error(f"❌ Erreur entraînement XGBoost: {e}", exc_info=True)
         

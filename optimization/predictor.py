@@ -225,8 +225,22 @@ def predict_opportunity(
     Returns:
         Prédiction ou None si erreur
     """
+    # Appliquer feature engineering pour obtenir toutes les features dérivées
+    try:
+        from optimization.data.feature_engineering import calculate_derived_features
+        
+        # Convertir en DataFrame pour feature engineering
+        df_features = pd.DataFrame([features])
+        df_engineered = calculate_derived_features(df_features)
+        
+        # Reconvertir en dict
+        engineered_features = df_engineered.iloc[0].to_dict()
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur feature engineering, utilisation features brutes: {e}")
+        engineered_features = features
+    
     predictor = get_predictor(model_name)
-    prediction = predictor.predict(features)
+    prediction = predictor.predict(engineered_features)
     
     # Logger dans DB si demandé
     if prediction and log_to_db and symbol:

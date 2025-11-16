@@ -191,9 +191,23 @@
 					{/if}
 
 					{#if status.trained}
-						<button class="metrics-btn" on:click={() => viewMetrics(modelType)}>
-							📊 Voir les Métriques
-						</button>
+						<div class="actions-grid">
+							<button class="metrics-btn" on:click={() => viewMetrics(modelType)}>
+								📊 Voir les Métriques
+							</button>
+							<button 
+								class="train-btn ghost" 
+								on:click={() => startTraining(modelType)}
+								disabled={isTraining(modelType)}
+							>
+								{#if isTraining(modelType)}
+									<span class="spinner-small"></span>
+									Relance en cours...
+								{:else}
+									🔄 Réentraîner
+								{/if}
+							</button>
+						</div>
 					{:else if status.ready && !status.trained}
 						<button 
 							class="train-btn" 
@@ -434,6 +448,23 @@
 
 	.progress-info {
 		margin-top: 1rem;
+	}
+
+	.actions-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.train-btn.ghost {
+		background: transparent;
+		border: 2px dashed rgba(102, 126, 234, 0.6);
+		color: #4c1d95;
+	}
+
+	.train-btn.ghost:disabled {
+		border-color: rgba(102, 126, 234, 0.3);
+		color: rgba(76, 29, 149, 0.6);
 	}
 
 	.progress-bar {
