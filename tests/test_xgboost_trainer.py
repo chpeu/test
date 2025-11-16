@@ -30,14 +30,20 @@ def mock_training_dataset():
 @pytest.fixture
 def mock_prepare_training_dataset(mock_training_dataset):
     """Mock prepare_training_dataset to return synthetic data."""
+    from sklearn.preprocessing import StandardScaler
+    
     X, y = mock_training_dataset
+    
+    # Create a valid preprocessor mock
+    mock_preprocessor = StandardScaler()
+    mock_preprocessor.fit(X)
     
     mock_dataset = MagicMock()
     mock_dataset.X = X
     mock_dataset.y = y
     mock_dataset.base_df = pd.DataFrame()
     mock_dataset.engineered_df = pd.DataFrame()
-    mock_dataset.preprocessor = None
+    mock_dataset.preprocessor = mock_preprocessor
     
     return mock_dataset
 
@@ -66,6 +72,7 @@ def test_xgboost_trainer_train(mock_prepare, mock_prepare_training_dataset, tmp_
         n_estimators=10,  # Small for speed
         max_depth=3,
         early_stopping_rounds=5,
+        feature_selection=False,  # Disable for tests
     )
     
     # Check results structure
@@ -102,6 +109,7 @@ def test_xgboost_trainer_predict(mock_prepare, mock_prepare_training_dataset, tm
         min_trades=10,
         n_estimators=10,
         max_depth=3,
+        feature_selection=False,  # Disable for tests
     )
     
     # Predict
@@ -131,7 +139,7 @@ def test_xgboost_trainer_load_model(mock_prepare, mock_prepare_training_dataset,
     
     # Train and save
     trainer1 = XGBoostTrainer(model_dir=str(tmp_path), model_name="test_load")
-    trainer1.train(timeframe_days=30, min_trades=10, n_estimators=10)
+    trainer1.train(timeframe_days=30, min_trades=10, n_estimators=10, feature_selection=False)
     
     # Load
     trainer2 = XGBoostTrainer.load_model(model_dir=str(tmp_path), model_name="test_load")

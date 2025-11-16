@@ -599,6 +599,40 @@ async def get_recent_predictions(limit: int = Query(20, ge=1, le=100)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/predictor/reload")
+async def reload_predictor(model_name: str = Query('xgboost_v1')):
+    """
+    Recharger le predictor (utile après ré-entraînement)
+    
+    Args:
+        model_name: Nom du modèle à recharger
+        
+    Returns:
+        Statut du rechargement
+    """
+    try:
+        from optimization import predictor
+        
+        # Reset singleton
+        predictor._predictor_instance = None
+        
+        # Recharger
+        new_predictor = predictor.get_predictor(model_name)
+        
+        if new_predictor.loaded:
+            return {
+                'status': 'success',
+                'message': f'Predictor {model_name} rechargé',
+                'features_count': len(new_predictor.feature_names) if new_predictor.feature_names else 0
+            }
+        else:
+            raise HTTPException(status_code=500, detail='Échec du rechargement')
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur reload_predictor: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/predict")
 async def predict_opportunity(
     features: Dict[str, Any],

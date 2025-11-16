@@ -156,12 +156,30 @@ class XGBoostTrainer:
             X_train = X_train[selected_features]
             X_test = X_test[selected_features]
             
-            # Update preprocessor to only use selected features
-            dataset.preprocessor.feature_names_in_ = np.array(selected_features)
+            # Create a wrapper preprocessor that filters features
+            from sklearn.pipeline import Pipeline
+            from sklearn.preprocessing import FunctionTransformer
+            
+            def select_features(X):
+                """Select only the chosen features"""
+                if isinstance(X, pd.DataFrame):
+                    return X[selected_features]
+                return X
+            
+            # Create new pipeline with feature selection
+            feature_selector = FunctionTransformer(select_features, validate=False)
+            new_preprocessor = Pipeline([
+                ('feature_selector', feature_selector),
+                ('scaler', dataset.preprocessor)
+            ])
+            
+            # Save the new preprocessor
             joblib.dump(
-                dataset.preprocessor,
+                new_preprocessor,
                 str(self.model_dir / f"{self.model_name}_preprocessor.pkl")
             )
+            
+            logger.info(f"💾 Preprocessor with feature selection saved")
         
         # 6. Entraîner avec early stopping (sur features sélectionnées)
         logger.info("🎯 Entraînement du modèle final...")
