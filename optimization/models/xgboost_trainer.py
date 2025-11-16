@@ -26,8 +26,24 @@ from optimization.ml_pipeline import (
     split_training_dataset,
     compute_class_weights,
 )
+from sklearn.base import BaseEstimator, TransformerMixin
 
 logger = logging.getLogger(__name__)
+
+
+class FeatureSelector(BaseEstimator, TransformerMixin):
+    """Select specific features by name - used for feature selection in XGBoost"""
+    
+    def __init__(self, feature_names):
+        self.feature_names = feature_names
+    
+    def fit(self, X, y=None):
+        return self
+    
+    def transform(self, X):
+        if isinstance(X, pd.DataFrame):
+            return X[self.feature_names]
+        return X
 
 
 class XGBoostTrainer:
@@ -157,25 +173,9 @@ class XGBoostTrainer:
             X_test = X_test[selected_features]
             
             # Create a wrapper preprocessor that filters features
-            # Use a simple dict to store selected features instead of a function
-            from sklearn.base import BaseEstimator, TransformerMixin
-            
-            class FeatureSelector(BaseEstimator, TransformerMixin):
-                """Select specific features by name"""
-                def __init__(self, feature_names):
-                    self.feature_names = feature_names
-                
-                def fit(self, X, y=None):
-                    return self
-                
-                def transform(self, X):
-                    if isinstance(X, pd.DataFrame):
-                        return X[self.feature_names]
-                    return X
-            
             from sklearn.pipeline import Pipeline
             
-            # Create new pipeline with feature selection
+            # Create new pipeline with feature selection (FeatureSelector is at module level)
             feature_selector = FeatureSelector(selected_features)
             new_preprocessor = Pipeline([
                 ('feature_selector', feature_selector),
