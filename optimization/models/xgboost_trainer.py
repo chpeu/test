@@ -173,15 +173,31 @@ class XGBoostTrainer:
             X_test = X_test[selected_features]
             
             # Re-fit preprocessor on selected features only
-            from optimization.data.preprocessor import FeaturePreprocessor
+            from sklearn.preprocessing import RobustScaler
+            from sklearn.impute import SimpleImputer
             
-            selected_preprocessor = FeaturePreprocessor(scaler_type="robust")
-            X_train_scaled = selected_preprocessor.fit_transform(X_train)
-            X_test_scaled = selected_preprocessor.transform(X_test)
+            # Create scaler and imputer for selected features
+            imputer = SimpleImputer(strategy='median')
+            scaler = RobustScaler()
+            
+            # Fit and transform
+            X_train_imputed = imputer.fit_transform(X_train)
+            X_train_scaled = scaler.fit_transform(X_train_imputed)
+            
+            X_test_imputed = imputer.transform(X_test)
+            X_test_scaled = scaler.transform(X_test_imputed)
             
             # Convert back to DataFrame
             X_train = pd.DataFrame(X_train_scaled, columns=selected_features, index=X_train.index)
             X_test = pd.DataFrame(X_test_scaled, columns=selected_features, index=X_test.index)
+            
+            # Create a simple preprocessor wrapper for the pipeline
+            from optimization.data.preprocessor import FeaturePreprocessor
+            selected_preprocessor = FeaturePreprocessor(scaler_type="robust")
+            selected_preprocessor.imputer = imputer
+            selected_preprocessor.scaler = scaler
+            selected_preprocessor.feature_names = selected_features
+            selected_preprocessor.is_fitted = True
             
             # Create a wrapper preprocessor that filters features then scales
             from sklearn.pipeline import Pipeline
