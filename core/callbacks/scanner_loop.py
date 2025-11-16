@@ -455,6 +455,47 @@ async def _scan_top_pairs():
         logger.error(f"❌ Erreur scan top pairs: {e}")
 
 
+def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict.
+    
+    Args:
+        analysis: Analysis dictionary containing analysis_1m and analysis_5m
+        
+    Returns:
+        Unified filters dictionary with all filter metrics
+    """
+    if not analysis or not isinstance(analysis, dict):
+        return {}
+    
+    filters = {}
+    
+    # Extract from analysis_1m
+    analysis_1m = analysis.get('analysis_1m', {})
+    if analysis_1m and isinstance(analysis_1m, dict):
+        filters.update({
+            'volume_filter_passed': analysis_1m.get('volume_filter_passed'),
+            'snr': analysis_1m.get('snr'),
+            'snr_passed': analysis_1m.get('snr_passed'),
+            'breakout_distance': analysis_1m.get('breakout_distance'),
+            'breakout_passed': analysis_1m.get('breakout_passed'),
+            'wick_ratio': analysis_1m.get('wick_ratio'),
+            'wick_passed': analysis_1m.get('wick_passed'),
+            'atr_optimal_passed': analysis_1m.get('atr_optimal_passed')
+        })
+    
+    # Extract from analysis_5m (override with 5m values if available, for completeness)
+    analysis_5m = analysis.get('analysis_5m', {})
+    if analysis_5m and isinstance(analysis_5m, dict):
+        # Only update if 1m values are None or if we want to prioritize 5m for specific metrics
+        for key in ['volume_filter_passed', 'snr', 'snr_passed', 'breakout_distance', 
+                   'breakout_passed', 'wick_ratio', 'wick_passed', 'atr_optimal_passed']:
+            if filters.get(key) is None and analysis_5m.get(key) is not None:
+                filters[key] = analysis_5m.get(key)
+    
+    return filters
+
+
 async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
     """
     Analyser une paire pour chercher un setup valide
@@ -853,7 +894,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'score': scalability_data.get('scalability_score'),  # Alias
                     'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
                     'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
-                    'filters': analysis.get('filters', {}) if analysis else {},
+                    # 🔥 FIX: Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict
+                    'filters': _extract_filter_metrics(analysis) if analysis else {},
                     'scores': {
                         'score_1m': analysis.get('score_1m') if analysis else None,
                         'score_5m': analysis.get('score_5m') if analysis else None,
