@@ -147,8 +147,18 @@ def load_features_from_postgres(
         
         logger.info(f"📊 Features chargées: {len(df)} rows depuis PostgreSQL")
         
-        # Convertir toutes les colonnes numériques (gère TEXT stocké comme string)
-        numeric_cols = [col for col in df.columns if col not in ['scan_id', 'timestamp', 'symbol', 'opportunity_direction']]
+        # Convertir colonnes numériques (exclure booléennes et texte)
+        exclude_from_numeric = [
+            'scan_id', 'timestamp', 'symbol', 'opportunity_direction',
+            'target_win', 'is_opportunity',  # Booléens
+            'snr_passed_1m', 'snr_passed_5m',  # Quality filters (bool)
+            'breakout_passed_1m', 'breakout_passed_5m',
+            'wick_passed_1m', 'wick_passed_5m',
+            'atr_optimal_passed_1m', 'atr_optimal_passed_5m',
+            'volume_filter_passed_1m', 'volume_filter_passed_5m',
+        ]
+        
+        numeric_cols = [col for col in df.columns if col not in exclude_from_numeric]
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
         

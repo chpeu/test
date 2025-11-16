@@ -133,10 +133,11 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
         'wick_passed_5m', 'atr_optimal_passed_5m', 'volume_filter_passed_5m'
     ]
     
-    # Convertir bool en int si nécessaire
+    # Convertir en int (gère bool, object/string depuis PostgreSQL)
     for col in filter_cols_1m + filter_cols_5m:
-        if col in df_eng.columns and df_eng[col].dtype == 'bool':
-            df_eng[col] = df_eng[col].astype(int)
+        if col in df_eng.columns:
+            # Convertir True/False strings ou bools en 1/0
+            df_eng[col] = df_eng[col].astype(str).str.lower().map({'true': 1, 'false': 0, 't': 1, 'f': 0}).fillna(0).astype(int)
     
     df_eng['quality_score_1m'] = df_eng[filter_cols_1m].sum(axis=1)
     df_eng['quality_score_5m'] = df_eng[filter_cols_5m].sum(axis=1)
