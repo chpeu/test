@@ -172,14 +172,25 @@ class XGBoostTrainer:
             X_train = X_train[selected_features]
             X_test = X_test[selected_features]
             
-            # Create a wrapper preprocessor that filters features
+            # Re-fit preprocessor on selected features only
+            from optimization.data.preprocessor import FeaturePreprocessor
+            
+            selected_preprocessor = FeaturePreprocessor(scaler_type="robust")
+            X_train_scaled = selected_preprocessor.fit_transform(X_train)
+            X_test_scaled = selected_preprocessor.transform(X_test)
+            
+            # Convert back to DataFrame
+            X_train = pd.DataFrame(X_train_scaled, columns=selected_features, index=X_train.index)
+            X_test = pd.DataFrame(X_test_scaled, columns=selected_features, index=X_test.index)
+            
+            # Create a wrapper preprocessor that filters features then scales
             from sklearn.pipeline import Pipeline
             
             # Create new pipeline with feature selection (FeatureSelector is at module level)
             feature_selector = FeatureSelector(selected_features)
             new_preprocessor = Pipeline([
                 ('feature_selector', feature_selector),
-                ('scaler', dataset.preprocessor)
+                ('scaler', selected_preprocessor)
             ])
             
             # Save the new preprocessor
