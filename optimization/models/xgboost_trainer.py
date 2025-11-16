@@ -228,6 +228,7 @@ class XGBoostTrainer:
                 "test_samples": len(X_test),
                 "training_time_seconds": training_time,
                 "trained_at": start_time.isoformat(),
+                "feature_names": list(dataset.X.columns),  # Pour predictor
             },
         )
         

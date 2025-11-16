@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { modelsStatus, loadModelsStatus } from '$lib/stores/ml';
 	import ModelMetricsCard from './ModelMetricsCard.svelte';
 
@@ -8,17 +8,27 @@
 	let loading = true;
 	let selectedModel = null;
 	let showMetrics = false;
+	let trainingTasks = {}; // { modelType: { taskId, polling } }
+	let pollingIntervals = {};
 
 	onMount(async () => {
 		await loadModelsStatus();
 		loading = false;
 
-		// Refresh every 30s
+		// Refresh every 30s (sauf si training en cours)
 		const interval = setInterval(() => {
-			loadModelsStatus();
+			const hasTrainingInProgress = Object.values(trainingTasks).some(t => t.polling);
+			if (!hasTrainingInProgress) {
+				loadModelsStatus();
+			}
 		}, 30000);
 
 		return () => clearInterval(interval);
+	});
+
+	onDestroy(() => {
+		// Nettoyer tous les intervalles de polling
+		Object.values(pollingIntervals).forEach(interval => clearInterval(interval));
 	});
 
 	function getModelIcon(modelType) {
@@ -56,6 +66,69 @@
 		showMetrics = false;
 		selectedModel = null;
 	}
+
+	async function startTraining(modelType) {
+		try {
+			const response = await fetch(`/api/ml/train?model_type=${modelType}&timeframe_days=30&min_trades=50`, {
+				method: 'POST'
+			});
+			
+			if (!response.ok) {
+				throw new Error('Failed to start training');
+			}
+
+			const data = await response.json();
+			const taskId = data.task_id;
+
+			// Démarrer le suivi de la tâche
+			trainingTasks[modelType] = { taskId, polling: true };
+			trainingTasks = { ...trainingTasks }; // Trigger reactivity
+
+			// Polling toutes les 10 secondes
+			pollingIntervals[modelType] = setInterval(async () => {
+				await checkTrainingStatus(modelType, taskId);
+			}, 10000);
+
+			// Check immédiat
+			await checkTrainingStatus(modelType, taskId);
+		} catch (error) {
+			console.error('Error starting training:', error);
+			alert('Erreur lors du démarrage de l\'entraînement');
+		}
+	}
+
+	async function checkTrainingStatus(modelType, taskId) {
+		try {
+			const response = await fetch(`/api/ml/tasks/${taskId}`);
+			if (!response.ok) return;
+
+			const data = await response.json();
+
+			if (data.status === 'completed' || data.status === 'error') {
+				// Arrêter le polling
+				if (pollingIntervals[modelType]) {
+					clearInterval(pollingIntervals[modelType]);
+					delete pollingIntervals[modelType];
+				}
+
+				trainingTasks[modelType] = { ...trainingTasks[modelType], polling: false };
+				trainingTasks = { ...trainingTasks };
+
+				// Recharger le statut des modèles
+				await loadModelsStatus();
+
+				if (data.status === 'error') {
+					alert('Erreur durant l\'entraînement');
+				}
+			}
+		} catch (error) {
+			console.error('Error checking training status:', error);
+		}
+	}
+
+	function isTraining(modelType) {
+		return trainingTasks[modelType]?.polling === true;
+	}
 </script>
 
 <div class="models-overview">
@@ -78,7 +151,12 @@
 						<div class="model-title">
 							<h3>{getModelName(modelType)}</h3>
 							<div class="model-status">
-								{#if status.trained}
+								{#if isTraining(modelType)}
+									<span class="badge training">
+										<span class="spinner-small"></span>
+										Entraînement en cours
+									</span>
+								{:else if status.trained}
 									<span class="badge trained">✓ Entraîné</span>
 								{:else if status.ready}
 									<span class="badge ready">Prêt</span>
@@ -117,8 +195,17 @@
 							📊 Voir les Métriques
 						</button>
 					{:else if status.ready && !status.trained}
-						<button class="train-btn" disabled title="Training à implémenter Phase 3">
-							Entraîner le Modèle
+						<button 
+							class="train-btn" 
+							on:click={() => startTraining(modelType)}
+							disabled={isTraining(modelType)}
+						>
+							{#if isTraining(modelType)}
+								<span class="spinner-small"></span>
+								Entraînement en cours...
+							{:else}
+								🚀 Entraîner le Modèle
+							{/if}
 						</button>
 					{:else if !status.ready}
 						<div class="progress-info">
@@ -264,6 +351,24 @@
 		color: #6b7280;
 	}
 
+	.badge.training {
+		background: #fef3c7;
+		color: #92400e;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.spinner-small {
+		border: 2px solid transparent;
+		border-top: 2px solid currentColor;
+		border-radius: 50%;
+		width: 12px;
+		height: 12px;
+		animation: spin 1s linear infinite;
+		display: inline-block;
+	}
+
 	.model-info {
 		display: grid;
 		gap: 0.5rem;
@@ -316,8 +421,15 @@
 	}
 
 	.train-btn:disabled {
-		opacity: 0.5;
+		opacity: 0.7;
 		cursor: not-allowed;
+	}
+
+	.train-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
 	}
 
 	.progress-info {
