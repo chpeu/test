@@ -10,6 +10,7 @@ import logging
 from typing import Optional, Dict, List
 import os
 from datetime import datetime, timedelta
+from sqlalchemy import create_engine
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def get_postgres_connection():
         conn = psycopg2.connect(
             host=os.getenv('POSTGRES_HOST', 'localhost'),
             port=int(os.getenv('POSTGRES_PORT', 5432)),
-            database=os.getenv('POSTGRES_DB', 'tradecursor'),
+            database=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', ''),
             cursor_factory=RealDictCursor
@@ -28,6 +29,28 @@ def get_postgres_connection():
         return conn
     except Exception as e:
         logger.error(f"❌ Erreur connexion PostgreSQL: {e}")
+        raise
+
+
+def get_sqlalchemy_engine():
+    """Connexion SQLAlchemy pour pandas read_sql"""
+    try:
+        from urllib.parse import quote_plus
+        
+        host = os.getenv('POSTGRES_HOST', 'localhost')
+        port = int(os.getenv('POSTGRES_PORT', 5432))
+        database = os.getenv('POSTGRES_DB', 'trade_cursor_ml')
+        user = os.getenv('POSTGRES_USER', 'postgres')
+        password = os.getenv('POSTGRES_PASSWORD', '')
+        
+        # URL-encode password to handle special characters
+        password_encoded = quote_plus(password) if password else ''
+        
+        connection_string = f"postgresql://{user}:{password_encoded}@{host}:{port}/{database}"
+        engine = create_engine(connection_string)
+        return engine
+    except Exception as e:
+        logger.error(f"❌ Erreur création SQLAlchemy engine: {e}")
         raise
 
 
@@ -87,7 +110,7 @@ def load_features_from_postgres(
         ValueError: Si pas assez de données
     """
     try:
-        conn = get_postgres_connection()
+        engine = get_sqlalchemy_engine()
         
         # Requête optimisée sur vue ml_features
         query = """
@@ -128,7 +151,7 @@ def load_features_from_postgres(
             target_pnl
             
         FROM ml_features
-        WHERE timestamp > NOW() - INTERVAL '%s days'
+        WHERE timestamp > NOW() - INTERVAL '%(days)s days'
         """
         
         # Ajouter filtre trades fermés si nécessaire
@@ -141,9 +164,8 @@ def load_features_from_postgres(
         if max_trades:
             query += f" LIMIT {max_trades}"
         
-        # Charger dans DataFrame
-        df = pd.read_sql(query, conn, params=(timeframe_days,))
-        conn.close()
+        # Charger dans DataFrame avec SQLAlchemy
+        df = pd.read_sql(query, engine, params={'days': timeframe_days})
         
         logger.info(f"📊 Features chargées: {len(df)} rows depuis PostgreSQL")
         logger.info(f"🔍 Colonnes présentes: {list(df.columns)}")
