@@ -151,7 +151,7 @@ async def get_data_quality():
                 'wins': int(win_count),
                 'losses': int(loss_count),
                 'win_rate': float(win_rate),
-                'balanced': 0.4 <= win_rate <= 0.6
+                'balanced': bool(0.4 <= win_rate <= 0.6)
             },
             'missing_values': {
                 'high_missing_features': high_missing,
