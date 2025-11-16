@@ -185,16 +185,64 @@ def get_predictor(model_name: str = "xgboost_v1") -> MLPredictor:
     return _predictor_instance
 
 
-def predict_opportunity(features: Dict, model_name: str = "xgboost_v1") -> Optional[Dict]:
+def predict_opportunity(
+    features: Dict, 
+    model_name: str = "xgboost_v1",
+    symbol: Optional[str] = None,
+    scan_id: Optional[int] = None,
+    log_to_db: bool = True
+) -> Optional[Dict]:
     """
     Helper function pour faire une prédiction rapide
     
     Args:
         features: Features de l'opportunité
         model_name: Nom du modèle à utiliser
+        symbol: Symbole de l'opportunité (pour logging)
+        scan_id: ID du scan (pour logging)
+        log_to_db: Si True, log la prédiction dans PostgreSQL
         
     Returns:
         Prédiction ou None si erreur
     """
     predictor = get_predictor(model_name)
-    return predictor.predict(features)
+    prediction = predictor.predict(features)
+    
+    # Logger dans DB si demandé
+    if prediction and log_to_db and symbol:
+        try:
+            from optimization.prediction_logger import log_prediction
+            
+            prediction_id = log_prediction(
+                prediction_data=prediction,
+                symbol=symbol,
+                scan_id=scan_id,
+                opportunity_timestamp=datetime.now(),
+                metadata={'features_count': len(features)}
+            )
+            
+            if prediction_id:
+                prediction['prediction_id'] = prediction_id
+                logger.info(f"✅ Prédiction loggée: ID={prediction_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de logger prédiction: {e}")
+    
+    # Envoyer alerte si haute confiance
+    if prediction and symbol:
+        try:
+            from optimization.ml_alerts import send_ml_alert
+            
+            alert_result = send_ml_alert(
+                prediction=prediction,
+                symbol=symbol,
+                scan_id=scan_id,
+                min_confidence=0.75,  # Alerte seulement si confiance >= 75%
+                channels=['console']  # Par défaut console, configurable via env
+            )
+            
+            if alert_result:
+                logger.info(f"🔔 Alerte ML envoyée pour {symbol}")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible d'envoyer alerte: {e}")
+    
+    return prediction

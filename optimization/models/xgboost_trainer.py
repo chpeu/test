@@ -60,11 +60,13 @@ class XGBoostTrainer:
         timeframe_days: int = 60,
         min_trades: int = 50,
         test_size: float = 0.2,
-        n_estimators: int = 100,
-        max_depth: int = 6,
-        learning_rate: float = 0.1,
-        early_stopping_rounds: int = 10,
+        n_estimators: int = 150,
+        max_depth: int = 4,  # Reduced from 6 to reduce overfitting
+        learning_rate: float = 0.05,  # Reduced for better generalization
+        early_stopping_rounds: int = 15,
         random_state: int = 42,
+        feature_selection: bool = True,
+        max_features: int = 30,  # Keep only top 30 features
         **xgb_params,
     ) -> Dict:
         """
@@ -130,8 +132,39 @@ class XGBoostTrainer:
         
         logger.info(f"🔧 Modèle configuré: {model_params}")
         
-        # 5. Entraîner avec early stopping
-        logger.info("🎯 Entraînement en cours...")
+        # 5. Feature selection (si activé)
+        selected_features = None
+        if feature_selection:
+            logger.info(f"🔍 Feature selection: training initial model to identify top {max_features} features...")
+            
+            # Train initial model to get feature importances
+            initial_model = XGBClassifier(**model_params)
+            initial_model.fit(X_train, y_train, verbose=False)
+            
+            # Get feature importances
+            importances = initial_model.feature_importances_
+            feature_names = dataset.X.columns
+            
+            # Select top N features
+            indices = np.argsort(importances)[::-1][:max_features]
+            selected_features = feature_names[indices].tolist()
+            
+            logger.info(f"✂️ Selected {len(selected_features)} features")
+            logger.info(f"Top 5: {selected_features[:5]}")
+            
+            # Re-filter datasets with selected features
+            X_train = X_train[selected_features]
+            X_test = X_test[selected_features]
+            
+            # Update preprocessor to only use selected features
+            dataset.preprocessor.feature_names_in_ = np.array(selected_features)
+            joblib.dump(
+                dataset.preprocessor,
+                str(self.model_dir / f"{self.model_name}_preprocessor.pkl")
+            )
+        
+        # 6. Entraîner avec early stopping (sur features sélectionnées)
+        logger.info("🎯 Entraînement du modèle final...")
         
         eval_set = [(X_train, y_train), (X_test, y_test)]
         
@@ -146,11 +179,14 @@ class XGBoostTrainer:
         training_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"✅ Entraînement terminé en {training_time:.2f}s")
         
-        # 6. Évaluer modèle
+        # 7. Évaluer modèle
         metrics = self._evaluate_model(X_train, X_test, y_train, y_test)
         
-        # 7. Feature importance
-        feature_importance = self._get_feature_importance(dataset.X.columns)
+        # 8. Feature importance
+        if selected_features:
+            feature_importance = self._get_feature_importance(selected_features)
+        else:
+            feature_importance = self._get_feature_importance(dataset.X.columns)
         
         # 8. Sauvegarder modèle et metadata
         self._save_model_and_metadata(

@@ -540,6 +540,65 @@ async def get_experiments(limit: int = 10):
 
 # ========== PREDICTIONS ==========
 
+@router.get("/predictions/analytics")
+async def get_predictions_analytics(
+    model_name: Optional[str] = None,
+    days: int = Query(30, ge=1, le=365)
+):
+    """
+    Récupérer analytics des prédictions ML
+    
+    Args:
+        model_name: Filtrer par modèle (optionnel)
+        days: Nombre de jours à analyser
+        
+    Returns:
+        Analytics: accuracy, trades exécutés, PnL moyen, etc.
+    """
+    try:
+        from optimization.prediction_logger import get_prediction_analytics, get_best_symbols_for_ml
+        
+        analytics = get_prediction_analytics(model_name, days)
+        best_symbols = get_best_symbols_for_ml(min_predictions=3)
+        
+        return {
+            'analytics': analytics,
+            'best_symbols': best_symbols,
+            'period_days': days,
+            'model_name': model_name
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_predictions_analytics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/predictions/recent")
+async def get_recent_predictions(limit: int = Query(20, ge=1, le=100)):
+    """
+    Récupérer les prédictions récentes avec leur statut
+    
+    Args:
+        limit: Nombre de prédictions à retourner
+        
+    Returns:
+        Liste des prédictions récentes
+    """
+    try:
+        from optimization.prediction_logger import get_recent_predictions as get_recent
+        
+        predictions = get_recent(limit)
+        
+        return {
+            'predictions': predictions,
+            'total': len(predictions)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_recent_predictions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/predict")
 async def predict_opportunity(
     features: Dict[str, Any],
@@ -612,7 +671,197 @@ async def predict_batch(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ========== ALERTS ==========
+
+@router.get("/alerts/history")
+async def get_alerts_history(limit: int = Query(20, ge=1, le=100)):
+    """
+    Récupérer l'historique des alertes ML
+    
+    Args:
+        limit: Nombre d'alertes à retourner
+        
+    Returns:
+        Historique des alertes
+    """
+    try:
+        from optimization.ml_alerts import get_alert_manager
+        
+        manager = get_alert_manager()
+        history = manager.get_alert_history(limit)
+        
+        return {
+            'alerts': history,
+            'total': len(history)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_alerts_history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/alerts/test")
+async def test_alert(
+    symbol: str = Query('BTCUSDT'),
+    channels: List[str] = Query(['console'])
+):
+    """
+    Tester le système d'alertes avec une prédiction fictive
+    
+    Args:
+        symbol: Symbole pour le test
+        channels: Canaux à tester
+        
+    Returns:
+        Résultat du test
+    """
+    try:
+        from optimization.ml_alerts import send_ml_alert
+        
+        # Créer prédiction fictive
+        test_prediction = {
+            'prediction': 'win',
+            'win_probability': 0.85,
+            'loss_probability': 0.15,
+            'confidence': 0.85,
+            'model_name': 'xgboost_v1_test',
+            'top_features': [
+                {'feature': 'bb_distance_to_upper_1m', 'importance': 15.6},
+                {'feature': 'macd_momentum_5m', 'importance': 11.0},
+                {'feature': 'rsi_divergence', 'importance': 7.2}
+            ]
+        }
+        
+        result = send_ml_alert(
+            prediction=test_prediction,
+            symbol=symbol,
+            scan_id=None,
+            min_confidence=0.7,
+            channels=channels
+        )
+        
+        return {
+            'status': 'success',
+            'message': 'Alerte test envoyée',
+            'result': result
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur test_alert: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== TRAINING ==========
+
+@router.get("/retrain/check")
+async def check_retrain_status():
+    """
+    Vérifier si le modèle doit être ré-entraîné
+    
+    Returns:
+        Statut et raisons pour ré-entraînement
+    """
+    try:
+        from optimization.auto_retrain import check_retrain_needed, get_retrain_schedule_info
+        
+        check = check_retrain_needed()
+        schedule = get_retrain_schedule_info()
+        
+        return {
+            'retrain_check': check,
+            'schedule_info': schedule
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur check_retrain_status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/retrain")
+async def trigger_retrain(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(False),
+):
+    """
+    Déclencher ré-entraînement automatique du modèle
+    
+    Args:
+        force: Forcer le ré-entraînement même si pas nécessaire
+        
+    Returns:
+        Task ID pour suivre progression
+    """
+    try:
+        from optimization.auto_retrain import auto_retrain_if_needed
+        
+        # Vérifier si nécessaire (sauf si force)
+        if not force:
+            from optimization.auto_retrain import check_retrain_needed
+            check = check_retrain_needed()
+            
+            if not check['retrain_needed']:
+                return {
+                    'status': 'skipped',
+                    'message': check['message'],
+                    'details': check.get('details')
+                }
+        
+        # Créer task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialiser task status
+        ml_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'pending',
+            'model_type': 'xgboost',
+            'action': 'retrain',
+            'created_at': datetime.now().isoformat(),
+            'progress': 0,
+        }
+        
+        # Lancer ré-entraînement en background
+        async def _retrain_background():
+            try:
+                ml_tasks[task_id]['status'] = 'running'
+                ml_tasks[task_id]['progress'] = 10
+                
+                result = await auto_retrain_if_needed(force=force)
+                
+                if result['status'] == 'success':
+                    ml_tasks[task_id].update({
+                        'status': 'completed',
+                        'progress': 100,
+                        'result': result['result'],
+                        'completed_at': datetime.now().isoformat()
+                    })
+                else:
+                    ml_tasks[task_id].update({
+                        'status': 'error',
+                        'error': result['message'],
+                        'completed_at': datetime.now().isoformat()
+                    })
+                    
+            except Exception as e:
+                ml_tasks[task_id].update({
+                    'status': 'error',
+                    'error': str(e),
+                    'completed_at': datetime.now().isoformat()
+                })
+        
+        background_tasks.add_task(_retrain_background)
+        
+        logger.info(f"🚀 Ré-entraînement déclenché (task_id={task_id})")
+        
+        return {
+            'task_id': task_id,
+            'status': 'pending',
+            'message': 'Ré-entraînement démarré'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur trigger_retrain: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/train")
 async def train_model(
