@@ -15,6 +15,7 @@ import json
 import os
 import csv
 import io
+import subprocess
 from datetime import datetime
 from typing import Optional, List, Dict
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
@@ -441,6 +442,9 @@ position_config = None
 position_manager = None
 price_provider = None
 scheduler = None
+
+# 🔧 Gestion du reboot backend
+backend_reboot_in_progress = False
 
 # 🔥 ARCHITECTURE V2: Nouvelles instances
 analytics_db = None
@@ -4084,8 +4088,12 @@ async def handle_client_command(command: str, params: dict):
         await add_log('INFO', f'Config modifiée: {config_key}', str(config_change))
         return {'status': 'logged', 'key': config_key, 'change': config_change}
     
+    elif command == 'reboot_backend':
+        reason = params.get('reason', 'manual')
+        return await initiate_backend_reboot(reason=reason)
+    
     else:
-        raise ValueError(f'Commande inconnue: {command}')
+        raise ValueError(f"Unknown command: {command}")
 
 
 # Configuration endpoints
@@ -4411,6 +4419,109 @@ async def add_log(level, message, detail=''):
     # Logger avec couleur dans la console backend
     logger.info(f"{color}[{entry['timestamp']}] {entry['level']}: {message}{reset_code}")
 
+
+async def initiate_backend_reboot(reason: str = 'manual') -> Dict:
+    """Démarrer le processus de reboot backend (non bloquant)."""
+    global backend_reboot_in_progress
+
+    if backend_reboot_in_progress:
+        await add_log('INFO', 'Backend reboot', 'Déjà en cours, nouvelle demande ignorée')
+        return {'status': 'already_in_progress'}
+
+    backend_reboot_in_progress = True
+    info_msg = f"Demande de reboot backend reçue (raison: {reason})"
+    await add_log('WARNING', 'Backend reboot', info_msg)
+
+    if ws_manager:
+        await ws_manager.emit('backend_reboot', {
+            'status': 'pending',
+            'reason': reason,
+            'timestamp': time.time()
+        })
+
+    asyncio.create_task(_perform_backend_reboot(reason))
+    return {'status': 'rebooting', 'reason': reason}
+
+
+async def _perform_backend_reboot(reason: str):
+    """Arrêter proprement les services puis relancer le processus."""
+    global backend_reboot_in_progress
+
+    try:
+        await add_log('INFO', 'Backend reboot', 'Arrêt des services en cours...')
+        if ws_manager:
+            await ws_manager.emit('backend_reboot', {
+                'status': 'shutting_down',
+                'reason': reason,
+                'timestamp': time.time()
+            })
+
+        # Arrêter scheduler
+        if scheduler and getattr(scheduler, 'is_running', False):
+            try:
+                await scheduler.stop_async()
+                await add_log('INFO', 'Backend reboot', 'Scheduler arrêté')
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur arrêt scheduler (reboot): {e}")
+
+        # Arrêter price provider websocket
+        if price_provider and hasattr(price_provider, 'stop_websocket'):
+            try:
+                await price_provider.stop_websocket()
+                await add_log('INFO', 'Backend reboot', 'WebSocket prix arrêté')
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur arrêt price provider (reboot): {e}")
+
+        # Fermer data logger PostgreSQL
+        try:
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger:
+                pg_datalogger.close()
+                await add_log('INFO', 'Backend reboot', 'PG DataLogger fermé')
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur fermeture PG DataLogger (reboot): {e}")
+
+        # Sauvegarder historique avant sortie
+        try:
+            save_trade_history()
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur sauvegarde historique avant reboot: {e}")
+
+        await asyncio.sleep(0.5)
+
+        if ws_manager:
+            await ws_manager.emit('backend_reboot', {
+                'status': 'restarting',
+                'reason': reason,
+                'timestamp': time.time()
+            })
+
+        await add_log('INFO', 'Backend reboot', 'Relance du processus backend...')
+
+        python_cmd = sys.executable or 'python'
+        script_path = os.path.abspath(sys.argv[0])
+        args = sys.argv[1:]
+        env = os.environ.copy()
+        env['BACKEND_REBOOT_REASON'] = reason
+
+        subprocess.Popen([python_cmd, script_path, *args], env=env, close_fds=os.name != 'nt')
+
+        await asyncio.sleep(0.5)
+        logger.info('♻️ Nouveau processus backend lancé, arrêt de l\'instance actuelle...')
+        os._exit(0)
+
+    except Exception as e:
+        backend_reboot_in_progress = False
+        logger.error(f"❌ Échec reboot backend: {e}")
+        await add_log('ERROR', 'Backend reboot échoué', str(e))
+        if ws_manager:
+            await ws_manager.emit('backend_reboot', {
+                'status': 'error',
+                'reason': reason,
+                'error': str(e),
+                'timestamp': time.time()
+            })
 
 # Main entry point
 
