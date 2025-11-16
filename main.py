@@ -905,6 +905,8 @@ async def scanner_loop_callback():
                                             if hasattr(price_provider, 'stop_websocket'):
                                                 await price_provider.stop_websocket()
                                                 logger.info(f"🔌 WebSocket arrêté avant position")
+                                                # Attendre que le WebSocket soit complètement arrêté
+                                                await asyncio.sleep(0.5)
 
                                             # Redémarrer WebSocket uniquement sur le symbole de la position
                                             if hasattr(price_provider, 'start_websocket'):
@@ -917,6 +919,8 @@ async def scanner_loop_callback():
                                                 logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
                                             logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
+                                            import traceback
+                                            logger.debug(traceback.format_exc())
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     await add_log('INFO', 'Position ouverte automatiquement', 

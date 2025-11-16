@@ -422,13 +422,17 @@ async def _scan_top_pairs():
                         if hasattr(_price_provider, 'stop_websocket'):
                             await _price_provider.stop_websocket()
                             logger.debug("🔌 WebSocket arrêté pour position")
+                            # Attendre que le WebSocket soit complètement arrêté
+                            await asyncio.sleep(0.5)
 
                         # Redémarrer WebSocket uniquement sur le symbole de la position
                         if hasattr(_price_provider, 'start_websocket'):
                             await _price_provider.start_websocket([symbol])
                             logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
                     except Exception as e:
-                        logger.error(f"❌ Erreur redémarrage WebSocket pour position: {e}")
+                        logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
+                        import traceback
+                        logger.debug(traceback.format_exc())
 
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
