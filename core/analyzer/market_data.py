@@ -160,8 +160,8 @@ async def check_orderbook_imbalance(
 
         # Validation selon direction
         if direction == 'LONG':
-            # LONG : besoin de pression acheteuse (ratio ≥ 1.1)
-            required_ratio = 1.1
+            # LONG : besoin de pression acheteuse (ratio ≥ 0.5) - 🔥 FIX: Seuil réduit pour permettre plus de trades
+            required_ratio = 0.5
             valid = ratio >= required_ratio
 
             # Quality scoring
@@ -169,22 +169,26 @@ async def check_orderbook_imbalance(
                 quality = 'EXCELLENT'
             elif ratio >= 1.3:
                 quality = 'GOOD'
-            elif ratio >= required_ratio:
+            elif ratio >= 1.1:
                 quality = 'ACCEPTABLE'
+            elif ratio >= required_ratio:
+                quality = 'FAIR'
             else:
                 quality = 'POOR'
 
         else:  # SHORT
-            # SHORT : besoin de pression vendeuse (ratio ≤ 0.95)
-            required_ratio = 0.95
+            # SHORT : besoin de pression vendeuse (ratio ≤ 2.0) - 🔥 FIX: Seuil augmenté pour permettre plus de trades
+            required_ratio = 2.0
             valid = ratio <= required_ratio
 
             if ratio <= 0.6:
                 quality = 'EXCELLENT'
             elif ratio <= 0.7:
                 quality = 'GOOD'
-            elif ratio <= required_ratio:
+            elif ratio <= 0.95:
                 quality = 'ACCEPTABLE'
+            elif ratio <= required_ratio:
+                quality = 'FAIR'
             else:
                 quality = 'POOR'
 

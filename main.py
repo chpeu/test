@@ -1499,11 +1499,11 @@ async def scan_pair_for_setup(symbol: str):
                     'scores': {
                         'score_1m': analysis.get('score_1m') if analysis else None,
                         'score_5m': analysis.get('score_5m') if analysis else None,
-                        'score_total': analysis.get('score_total') if analysis else None,
-                        'score_long_1m': analysis.get('score_long_1m') if analysis else None,
-                        'score_short_1m': analysis.get('score_short_1m') if analysis else None,
-                        'score_long_5m': analysis.get('score_long_5m') if analysis else None,
-                        'score_short_5m': analysis.get('score_short_5m') if analysis else None,
+                        'score_total': analysis.get('totalScore') or analysis.get('score_total') if analysis else None,
+                        'score_long_1m': analysis.get('long_score') if analysis else None,
+                        'score_short_1m': analysis.get('short_score') if analysis else None,
+                        'score_long_5m': analysis.get('long_score') if analysis else None,
+                        'score_short_5m': analysis.get('short_score') if analysis else None,
                     },
                     'patterns': {
                         'pattern_1m': analysis.get('pattern_1m') if analysis else None,
@@ -1511,20 +1511,20 @@ async def scan_pair_for_setup(symbol: str):
                         'pattern_5m': analysis.get('pattern_5m') if analysis else None,
                         'pattern_multi_5m': analysis.get('pattern_multi_5m') if analysis else None,
                     },
+                    'trend_bonus': analysis.get('trend_bonus') if analysis else 0,
+                    'divergence_bonus': analysis.get('divergence_bonus') if analysis else 0,
+                    'divergence_detected': analysis.get('divergence_detected') if analysis else False,
+                    'divergence_type': analysis.get('divergence_type') if analysis else None,
                     'use_confluence': use_confluence,
                     'confluence_met': analysis.get('confluence_met') if analysis else False,
                     'timeframes_aligned': analysis.get('timeframes_aligned') if analysis else False,
                     'trend_timeframe': trend_timeframe,
                     'trend_direction': trend_data.get('trend') if trend_data else None,  # 'trend' pas 'direction'
                     'trend_strength': None,  # trend_data.get('strength') est une chaîne ('STRONG', 'MODERATE', 'NONE'), pas un FLOAT
-                    'trend_bonus': trend_data.get('bonus') if trend_data else None,
-                    'divergence_detected': analysis.get('divergence_detected') if analysis else False,
-                    'divergence_type': analysis.get('divergence_type') if analysis else None,
-                    'divergence_bonus': analysis.get('divergence_bonus') if analysis else 0,
+                    'reject_reason': analysis.get('reason') if analysis else None,
+                    'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)),
                     'opportunity_direction': analysis.get('direction') if analysis and 'direction' in analysis else None,
-                    'reject_reason': analysis.get('reason') if analysis and 'reason' in analysis else None,
-                    'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'params_snapshot': {
                         'volume_multiplier': volume_multiplier,
                         'use_confluence': use_confluence,
@@ -1576,8 +1576,9 @@ async def scan_pair_for_setup(symbol: str):
                     
                     min_required = scan_data['params_snapshot'].get('min_score_required')
                     trend_bonus = scan_data.get('trend_bonus')
-                    divergence_bonus = scan_data.get('divergence_bonus')
-                    setup_reason = analysis.get('reason')
+                    # 🔥 FIX: divergence_bonus et setup_reason sont maintenant dans l'objet analysis
+                    divergence_bonus = analysis.get('divergence_bonus')
+                    setup_reason = analysis.get('setup_reason')
                     
                     opportunity_data = {
                         'status': 'PENDING',
