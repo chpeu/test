@@ -60,16 +60,25 @@ class MLPredictor:
                     self.metadata = json.load(f)
             
             # Extraire feature names du preprocessor
-            if hasattr(self.preprocessor, 'feature_names_in_'):
+            # Pour un Pipeline avec feature selection, on veut les features AVANT feature selection
+            if hasattr(self.preprocessor, 'named_steps'):
+                # Pipeline: extraire du dernier step (scaler)
+                scaler_step = self.preprocessor.named_steps.get('scaler')
+                if scaler_step and hasattr(scaler_step, 'feature_names'):
+                    self.feature_names = list(scaler_step.feature_names)
+                elif scaler_step and hasattr(scaler_step, 'feature_names_in_'):
+                    self.feature_names = list(scaler_step.feature_names_in_)
+                else:
+                    # Fallback sur le selector
+                    selector = self.preprocessor.named_steps.get('feature_selector')
+                    if selector and hasattr(selector, 'feature_names'):
+                        self.feature_names = list(selector.feature_names)
+                    else:
+                        self.feature_names = []
+            elif hasattr(self.preprocessor, 'feature_names_in_'):
                 self.feature_names = list(self.preprocessor.feature_names_in_)
             elif hasattr(self.preprocessor, 'feature_names'):
                 self.feature_names = list(self.preprocessor.feature_names)
-            elif hasattr(self.preprocessor, 'named_steps'):
-                selector = self.preprocessor.named_steps.get('feature_selector')
-                if selector and hasattr(selector, 'feature_names'):
-                    self.feature_names = list(selector.feature_names)
-                else:
-                    self.feature_names = []
             else:
                 logger.warning("Preprocessor n'a pas d'information de features")
                 self.feature_names = []
