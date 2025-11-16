@@ -237,15 +237,24 @@ class HybridPriceProvider:
                 symbols_to_subscribe = self.monitored_symbols
                 logger.info(f"🔄 Réabonnement WebSocket: {len(symbols_to_subscribe)} symboles")
 
-            # Réabonner
+            # Réabonner avec vérification que le WebSocket est prêt
+            if not self.ws_manager._ws or not self.ws_manager._connected:
+                logger.warning("⚠️ WebSocket pas encore prêt pour réabonnement, attente...")
+                await asyncio.sleep(0.5)
+            
             for symbol in symbols_to_subscribe:
-                await self.ws_manager.subscribe_ticker(symbol)
-                await asyncio.sleep(0.05)  # Petit délai
+                try:
+                    await self.ws_manager.subscribe_ticker(symbol)
+                    await asyncio.sleep(0.05)  # Petit délai
+                except Exception as sub_err:
+                    logger.warning(f"⚠️ Erreur souscription {symbol}: {sub_err}")
 
             logger.info(f"✅ WebSocket réabonné à {len(symbols_to_subscribe)} symbole(s)")
 
         except Exception as e:
             logger.error(f"❌ Erreur réabonnement WebSocket: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
 
     async def stop_websocket(self):
         """Arrêter WebSocket"""
@@ -303,16 +312,19 @@ class HybridPriceProvider:
             ticker = await self.rest_client.fetch_ticker(symbol)
             
             # 🔥 FIX: Vérifier que ticker est un dict AVANT utilisation
-            if not isinstance(ticker, dict):
-                logger.error(
-                    f"❌ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol}"
-                )
+            if not isinstance(ticker, dict) or ticker is None:
+                # Essayer le cache avant de logger l'erreur
                 cached = await self._get_cached_price(symbol)
                 if cached:
-                    logger.warning(
-                        f"⚠️ Utilisation du dernier prix cache pour {symbol} (timestamp={cached.get('timestamp')})"
-                    )
+                    if DEBUG_ENABLED:
+                        logger.debug(
+                            f"⚠️ Ticker invalide pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s)"
+                        )
                     return cached
+                # Si pas de cache, alors logger l'erreur
+                logger.warning(
+                    f"⚠️ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol} - Pas de cache disponible"
+                )
                 return None
             
             if ticker:
@@ -323,16 +335,19 @@ class HybridPriceProvider:
                     "timestamp": time.time()
                 }
         except Exception as e:
-            if DEBUG_ENABLED:
-                logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Essayer le cache avant de logger l'erreur
             cached = await self._get_cached_price(symbol)
             if cached:
-                logger.warning(
-                    f"⚠️ REST indisponible pour {symbol}, utilisation du dernier prix cache (timestamp={cached.get('timestamp')})"
-                )
+                if DEBUG_ENABLED:
+                    logger.debug(
+                        f"⚠️ REST erreur pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s): {e}"
+                    )
                 return cached
+            # Si pas de cache, alors logger l'erreur complète
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
         
         return None
     

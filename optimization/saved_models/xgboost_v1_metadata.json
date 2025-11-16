@@ -1,0 +1,283 @@
+{
+  "model_name": "xgboost_v1",
+  "model_type": "XGBClassifier",
+  "model_path": "optimization\\saved_models\\xgboost_v1.pkl",
+  "preprocessor_path": "optimization\\saved_models\\xgboost_v1_preprocessor.pkl",
+  "model_params": {
+    "n_estimators": 150,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "scale_pos_weight": 1.05,
+    "random_state": 42,
+    "eval_metric": "logloss",
+    "use_label_encoder": false
+  },
+  "metrics": {
+    "train": {
+      "accuracy": 0.9024390243902439,
+      "precision": 0.8636363636363636,
+      "recall": 0.95,
+      "f1": 0.9047619047619048,
+      "roc_auc": 0.9639880952380953
+    },
+    "test": {
+      "accuracy": 0.6190476190476191,
+      "precision": 0.6,
+      "recall": 0.6,
+      "f1": 0.6,
+      "roc_auc": 0.5909090909090909
+    },
+    "confusion_matrix": [
+      [
+        7,
+        4
+      ],
+      [
+        4,
+        6
+      ]
+    ],
+    "classification_report": {
+      "0": {
+        "precision": 0.6363636363636364,
+        "recall": 0.6363636363636364,
+        "f1-score": 0.6363636363636364,
+        "support": 11.0
+      },
+      "1": {
+        "precision": 0.6,
+        "recall": 0.6,
+        "f1-score": 0.6,
+        "support": 10.0
+      },
+      "accuracy": 0.6190476190476191,
+      "macro avg": {
+        "precision": 0.6181818181818182,
+        "recall": 0.6181818181818182,
+        "f1-score": 0.6181818181818182,
+        "support": 21.0
+      },
+      "weighted avg": {
+        "precision": 0.6190476190476191,
+        "recall": 0.6190476190476191,
+        "f1-score": 0.6190476190476191,
+        "support": 21.0
+      }
+    }
+  },
+  "feature_importance": [
+    {
+      "feature": "ema_diff_pct_5m",
+      "importance": 0.10307643562555313
+    },
+    {
+      "feature": "bb_distance_to_upper_1m",
+      "importance": 0.09113739430904388
+    },
+    {
+      "feature": "volatility_ratio",
+      "importance": 0.074886254966259
+    },
+    {
+      "feature": "macd_hist_5m",
+      "importance": 0.06815816462039948
+    },
+    {
+      "feature": "atr_pct_1m",
+      "importance": 0.06443659216165543
+    },
+    {
+      "feature": "ema_trend_strength_1m",
+      "importance": 0.05666569620370865
+    },
+    {
+      "feature": "macd_momentum_1m",
+      "importance": 0.04627704247832298
+    },
+    {
+      "feature": "rsi_change_1m",
+      "importance": 0.0458335280418396
+    },
+    {
+      "feature": "di_plus_5m",
+      "importance": 0.04427031800150871
+    },
+    {
+      "feature": "macd_hist_prev_1m",
+      "importance": 0.043535299599170685
+    },
+    {
+      "feature": "bb_width_1m",
+      "importance": 0.04261216148734093
+    },
+    {
+      "feature": "ema_trend_strength_5m",
+      "importance": 0.038526542484760284
+    },
+    {
+      "feature": "trend_strength_5m",
+      "importance": 0.03843391686677933
+    },
+    {
+      "feature": "di_gap_1m",
+      "importance": 0.03780393674969673
+    },
+    {
+      "feature": "bb_distance_to_lower_5m",
+      "importance": 0.03779343143105507
+    },
+    {
+      "feature": "rsi_5m",
+      "importance": 0.037206459790468216
+    },
+    {
+      "feature": "rsi_prev_1m",
+      "importance": 0.02964012324810028
+    },
+    {
+      "feature": "adx_1m",
+      "importance": 0.02608431503176689
+    },
+    {
+      "feature": "rsi_1m",
+      "importance": 0.02407469041645527
+    },
+    {
+      "feature": "volume_divergence",
+      "importance": 0.02291242592036724
+    },
+    {
+      "feature": "bb_width_5m",
+      "importance": 0.01913759857416153
+    },
+    {
+      "feature": "volume_ratio_1m",
+      "importance": 0.007497744169086218
+    },
+    {
+      "feature": "di_plus_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "momentum_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "adx_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_ratio_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "strong_trend_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "di_gap_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "di_minus_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "ema_diff_pct_1m",
+      "importance": 0.0
+    }
+  ],
+  "training_info": {
+    "timeframe_days": 30,
+    "min_trades": 50,
+    "total_samples": 103,
+    "train_samples": 82,
+    "test_samples": 21,
+    "training_time_seconds": 0.213839,
+    "trained_at": "2025-11-16T18:59:56.559387",
+    "feature_names": [
+      "rsi_1m",
+      "rsi_prev_1m",
+      "macd_hist_1m",
+      "macd_hist_prev_1m",
+      "adx_1m",
+      "di_plus_1m",
+      "di_minus_1m",
+      "di_gap_1m",
+      "atr_pct_1m",
+      "ema_diff_pct_1m",
+      "volume_ratio_1m",
+      "volume_spike_1m",
+      "bb_width_1m",
+      "bb_distance_to_lower_1m",
+      "bb_distance_to_upper_1m",
+      "rsi_5m",
+      "rsi_prev_5m",
+      "macd_hist_5m",
+      "macd_hist_prev_5m",
+      "adx_5m",
+      "di_plus_5m",
+      "di_minus_5m",
+      "di_gap_5m",
+      "atr_pct_5m",
+      "ema_diff_pct_5m",
+      "volume_ratio_5m",
+      "volume_spike_5m",
+      "bb_width_5m",
+      "bb_distance_to_lower_5m",
+      "bb_distance_to_upper_5m",
+      "snr_passed_1m",
+      "snr_passed_5m",
+      "breakout_passed_1m",
+      "breakout_passed_5m",
+      "wick_passed_1m",
+      "wick_passed_5m",
+      "atr_optimal_passed_1m",
+      "atr_optimal_passed_5m",
+      "volume_filter_passed_1m",
+      "volume_filter_passed_5m",
+      "momentum_1m",
+      "momentum_5m",
+      "momentum_divergence",
+      "volatility_ratio",
+      "volatility_expanding",
+      "bb_squeeze_1m",
+      "bb_squeeze_5m",
+      "rsi_change_1m",
+      "rsi_change_5m",
+      "rsi_divergence",
+      "rsi_oversold_1m",
+      "rsi_overbought_1m",
+      "rsi_neutral_1m",
+      "macd_momentum_1m",
+      "macd_momentum_5m",
+      "macd_divergence",
+      "macd_bullish_cross_1m",
+      "macd_bearish_cross_1m",
+      "trend_strength_1m",
+      "trend_strength_5m",
+      "strong_trend_1m",
+      "strong_trend_5m",
+      "trend_bullish_1m",
+      "trend_bearish_1m",
+      "ema_trend_strength_1m",
+      "ema_trend_strength_5m",
+      "ema_bullish_1m",
+      "ema_bullish_5m",
+      "ema_aligned",
+      "volume_surge",
+      "volume_spike_strong",
+      "volume_divergence",
+      "quality_score_1m",
+      "quality_score_5m",
+      "quality_score_total",
+      "high_quality_setup",
+      "bullish_confluence",
+      "bearish_confluence",
+      "high_volatility_risk",
+      "low_quality_risk",
+      "choppy_market"
+    ]
+  },
+  "version": "1.0"
+}

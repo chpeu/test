@@ -1323,9 +1323,13 @@ class PositionManager:
                     config_snapshot['CIRCUIT_BREAKER_CONFIG'] = serialize_config_safe(CIRCUIT_BREAKER_CONFIG) if CIRCUIT_BREAKER_CONFIG else {}
                     config_snapshot['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
                     
-                    # Préparer indicateurs de sortie (vide pour l'instant, sera rempli plus tard si nécessaire)
-                    # TODO: Faire un scan rapide au moment de la fermeture pour récupérer les indicateurs de sortie
-                    exit_indicators = {}
+                    # Préparer indicateurs de sortie (scalabilité au moment de la sortie)
+                    exit_indicators = {
+                        'recent_volume': 0,  # TODO: Récupérer depuis API si disponible
+                        'vol5': 0,
+                        'vol15': 0,
+                        'score': 0
+                    }
                     
                     trade_data = {
                         'symbol': self.active_position.symbol,
@@ -1429,8 +1433,8 @@ class PositionManager:
                                     tp_escalier_levels_executed=len(self.active_position.tp_escalier_profits) if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else 0,
                                     tp_escalier_profits=sum(p.get('profit', 0) for p in self.active_position.tp_escalier_profits) if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else 0,
                                     trailing_stop_activated=(reason == 'TS'),
-                                    max_favorable_excursion=None,
-                                    max_adverse_excursion=None
+                                    max_favorable_excursion=trade_data.get('max_pnl_reached'),
+                                    max_adverse_excursion=trade_data.get('min_pnl_reached')
                                 )
                             loop.create_task(log_exit())
                         else:

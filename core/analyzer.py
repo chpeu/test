@@ -331,6 +331,18 @@ class TechnicalAnalyzer:
             min_vol_ratio = base_min_vol * volume_multiplier
             min_vol_ratio = max(0.4, min(1.5, min_vol_ratio))
 
+            # Préparer métriques des filtres pour logging/DB
+            filter_metrics = {
+                'volume_filter_passed': vol_spike >= min_vol_ratio,
+                'snr': None,
+                'snr_passed': None,
+                'breakout_distance': None,
+                'breakout_passed': None,
+                'wick_ratio': None,
+                'wick_passed': None,
+                'atr_optimal_passed': None
+            }
+
             # 1. Filtre Volume
             volume_result = check_volume_filter(
                 vol_spike=vol_spike,
@@ -374,8 +386,23 @@ class TechnicalAnalyzer:
                     result_dict = build_indicators_dict(atr_result.get('reason') if isinstance(atr_result, dict) else str(atr_result))
                     return result_dict
                 return None
+            else:
+                if timeframe == '1m':
+                    optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
+                    optimal_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
+                else:
+                    optimal_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
+                    optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
+                filter_metrics['atr_optimal_passed'] = optimal_atr_min <= atr_percent <= optimal_atr_max
 
             # 4. SNR Filter (Signal-to-Noise Ratio)
+            snr_value = None
+            snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
+            use_snr = TRADING_CONFIG.get('use_snr', True)
+            if atr and atr > 0 and ema21 is not None:
+                snr_value = abs(price - ema21) / atr
+            filter_metrics['snr'] = snr_value
+            filter_metrics['snr_passed'] = True if not use_snr else (snr_value is not None and snr_value >= snr_threshold)
             snr_result = check_snr_filter(
                 price=price,
                 ema21=ema21,
@@ -392,6 +419,18 @@ class TechnicalAnalyzer:
                 return None
 
             # 5. Breakout Filter
+            use_breakout = TRADING_CONFIG.get('use_breakout', True)
+            breakout_mult = TRADING_CONFIG.get('breakout_threshold', 0.3)
+            breakout_distance = None
+            if atr and atr > 0 and ema21 is not None:
+                breakout_distance = abs(price - ema21) / atr
+            filter_metrics['breakout_distance'] = breakout_distance
+            if not use_breakout:
+                filter_metrics['breakout_passed'] = True
+            elif breakout_distance is None:
+                filter_metrics['breakout_passed'] = False
+            else:
+                filter_metrics['breakout_passed'] = not (price < (ema21 + atr * breakout_mult) and price > (ema21 - atr * breakout_mult))
             breakout_result = check_breakout_filter(
                 price=price,
                 ema21=ema21,
@@ -408,6 +447,14 @@ class TechnicalAnalyzer:
                 return None
 
             # 6. Wick Ratio Filter (manipulation)
+            body = abs(current_candle[1] - current_candle[4])
+            if body == 0:
+                body = 0.0001
+            wick_ratio = (current_candle[2] - current_candle[3]) / body
+            wick_max = TRADING_CONFIG.get('wick_ratio_max', 2.5)
+            use_wick = TRADING_CONFIG.get('use_wick', True)
+            filter_metrics['wick_ratio'] = wick_ratio
+            filter_metrics['wick_passed'] = True if not use_wick else wick_ratio <= wick_max
             wick_result = check_wick_filter(
                 current_candle=current_candle,
                 symbol=symbol,
@@ -669,7 +716,16 @@ class TechnicalAnalyzer:
                 'volume_ratio': vol_spike if vol_spike else None,
                 'volume_spike': vol_spike if vol_spike else None,
                 # Pattern
-                'pattern': pattern if pattern else None
+                'pattern': pattern if pattern else None,
+                # Filtres
+                'snr': filter_metrics['snr'],
+                'snr_passed': filter_metrics['snr_passed'],
+                'breakout_distance': filter_metrics['breakout_distance'],
+                'breakout_passed': filter_metrics['breakout_passed'],
+                'wick_ratio': filter_metrics['wick_ratio'],
+                'wick_passed': filter_metrics['wick_passed'],
+                'atr_optimal_passed': filter_metrics['atr_optimal_passed'],
+                'volume_filter_passed': filter_metrics['volume_filter_passed']
             }
 
         except Exception as e:
@@ -1009,7 +1065,18 @@ class TechnicalAnalyzer:
                         'long_score': best_setup.get('long_score'),
                         'short_score': best_setup.get('short_score'),
                         'price': best_setup.get('price'),
-                        'symbol': symbol
+                        'symbol': symbol,
+                        # 🔥 FIX: Ajouter les champs manquants même pour les rejets
+                        'score_1m': analysis_1m.get('totalScore') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'score_5m': analysis_5m.get('totalScore') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'pattern_1m': analysis_1m.get('pattern') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'pattern_5m': analysis_5m.get('pattern') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'pattern_multi_1m': analysis_1m.get('pattern_multi') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'pattern_multi_5m': analysis_5m.get('pattern_multi') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                        'divergence_bonus': 0,  # Pas de divergence pour les rejets spread
+                        'divergence_detected': False,
+                        'divergence_type': None
                     }
 
                 best_setup['spread_pct'] = spread_check['spread_pct']
@@ -1028,7 +1095,10 @@ class TechnicalAnalyzer:
                 )
 
                 if not orderbook_check['valid']:
-                    required_str = '≥1.1' if best_setup['direction'] == 'LONG' else '≤0.95'
+                    # Utiliser les vraies constantes depuis market_data.py
+                    from core.analyzer.market_data import ORDERBOOK_LONG_MIN_RATIO, ORDERBOOK_SHORT_MAX_RATIO
+                    required_ratio = ORDERBOOK_LONG_MIN_RATIO if best_setup['direction'] == 'LONG' else ORDERBOOK_SHORT_MAX_RATIO
+                    required_str = f'≥{required_ratio}' if best_setup['direction'] == 'LONG' else f'≤{required_ratio}'
                     info_msg = (
                         f"ℹ️ {symbol} - Setup {best_setup['direction']} rejeté : "
                         f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})"
@@ -1131,7 +1201,18 @@ class TechnicalAnalyzer:
                         'long_score': best_setup.get('long_score'),
                         'short_score': best_setup.get('short_score'),
                         'price': best_setup.get('price'),
-                        'symbol': symbol
+                        'symbol': symbol,
+                        # 🔥 FIX: Ajouter les champs manquants même pour les rejets
+                        'score_1m': analysis_1m.get('totalScore') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'score_5m': analysis_5m.get('totalScore') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'pattern_1m': analysis_1m.get('pattern') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'pattern_5m': analysis_5m.get('pattern') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'pattern_multi_1m': analysis_1m.get('pattern_multi') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
+                        'pattern_multi_5m': analysis_5m.get('pattern_multi') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                        'divergence_bonus': 0,  # Pas de divergence pour les rejets orderbook
+                        'divergence_detected': False,
+                        'divergence_type': None
                     }
 
                 # Bonus si orderbook très favorable
@@ -1192,7 +1273,12 @@ class TechnicalAnalyzer:
                     if not correlation_check['valid']:
                         logger.warning(f"⚠️ {symbol} - Setup rejeté: {correlation_check['reason']}")
                         if return_reason:
-                            return {'reason': correlation_check['reason'], 'symbol': symbol}
+                            return {
+                                'reason': correlation_check['reason'], 
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m
+                            }
                         return None
                     elif correlation_check.get('penalty', 0) != 0:
                         penalty = correlation_check['penalty']
@@ -1248,7 +1334,12 @@ class TechnicalAnalyzer:
                                     not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m)):
                                 logger.warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): Confluence requise")
                                 if return_reason:
-                                    return {'reason': f'Recovery Mode Niveau {level_num}: Confluence requise', 'symbol': symbol}
+                                    return {
+                                        'reason': f'Recovery Mode Niveau {level_num}: Confluence requise', 
+                                        'symbol': symbol,
+                                        'analysis_1m': analysis_1m,
+                                        'analysis_5m': analysis_5m
+                                    }
                                 return None
 
                         # Vérifier score avec boost
@@ -1261,7 +1352,9 @@ class TechnicalAnalyzer:
                             if return_reason:
                                 return {
                                     'reason': f'Recovery Mode: Score insuffisant ({setup_score:.1f} < {adjusted_min_score:.1f})',
-                                    'symbol': symbol
+                                    'symbol': symbol,
+                                    'analysis_1m': analysis_1m,
+                                    'analysis_5m': analysis_5m
                                 }
                             return None
 
@@ -1381,6 +1474,30 @@ class TechnicalAnalyzer:
                         elif best_setup.get('direction') == 'SHORT':
                             score_short = best_setup.get('totalScore')
                         
+                        # 🔥 FIX: Calculer divergence_bonus correctement
+                        divergence_bonus_value = 0
+                        if best_setup.get('direction') == 'LONG':
+                            # Utiliser les conditions LONG pour calculer divergence
+                            long_conditions = best_setup.get('signals', [])
+                            if long_conditions:
+                                from core.analyzer.scoring import apply_divergence_bonus
+                                divergence_bonus_value = apply_divergence_bonus(
+                                    rsi=best_setup.get('rsi', 0),
+                                    rsi_prev=best_setup.get('rsi_prev', 0),
+                                    macd=best_setup.get('macd', 0),
+                                    macd_prev=best_setup.get('macd_hist_prev', 0),
+                                    temp_direction='LONG',
+                                    conditions=long_conditions,
+                                    condition_types=long_conditions
+                                )
+                        
+                        # Construire setup_reason descriptif
+                        setup_reason_text = f"Setup {best_setup.get('direction')} détecté"
+                        if best_setup.get('timeframe'):
+                            setup_reason_text += f" ({best_setup.get('timeframe')})"
+                        if best_setup.get('confirmedBy'):
+                            setup_reason_text += f" - {best_setup.get('confirmedBy')}"
+                        
                         # Logger l'opportunité
                         opp_id = await data_logger.log_opportunity(
                             scan_log_id=scan_uuid_opp,
@@ -1391,13 +1508,13 @@ class TechnicalAnalyzer:
                             sl_suggested=best_setup.get('sl', 0),
                             tp_sl_mode=TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                             setup_score=best_setup.get('totalScore', 0),
-                            setup_reason=best_setup.get('confirmedBy', 'Setup détecté'),
+                            setup_reason=setup_reason_text,
                             conditions_matched=conditions_matched,
                             score_long=score_long,
                             score_short=score_short,
                             score_min_required=best_setup.get('min_score_required'),
                             trend_bonus=trend_data.get('bonus', 0) if trend_data else 0,
-                            divergence_bonus=0  # À adapter si vous avez divergence
+                            divergence_bonus=divergence_bonus_value
                         )
                         
                         # Stocker opp_id pour Point C
@@ -1407,6 +1524,66 @@ class TechnicalAnalyzer:
                 # ========================================
                 # FIN POINT B
                 # ========================================
+                
+                # 🔥 FIX: Ajouter les champs manquants pour scan_logs
+                # Scores par timeframe
+                if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                    best_setup['score_1m'] = analysis_1m.get('totalScore') or analysis_1m.get('score_total')
+                    best_setup['pattern_1m'] = analysis_1m.get('pattern') or analysis_1m.get('pattern_name')
+                else:
+                    best_setup['score_1m'] = None
+                    best_setup['pattern_1m'] = None
+                    
+                if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                    best_setup['score_5m'] = analysis_5m.get('totalScore') or analysis_5m.get('score_total')
+                    best_setup['pattern_5m'] = analysis_5m.get('pattern') or analysis_5m.get('pattern_name')
+                else:
+                    best_setup['score_5m'] = None
+                    best_setup['pattern_5m'] = None
+                
+                # Patterns multi-timeframe
+                best_setup['pattern_multi_1m'] = analysis_1m.get('pattern_multi') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None
+                best_setup['pattern_multi_5m'] = analysis_5m.get('pattern_multi') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
+                
+                # Trend data
+                best_setup['trend_bonus'] = trend_data.get('bonus', 0) if trend_data else 0
+                
+                # 🔥 FIX: Calculer divergence_bonus si pas déjà présent
+                if 'divergence_bonus' not in best_setup or best_setup['divergence_bonus'] is None:
+                    divergence_bonus_calc = 0
+                    if best_setup.get('direction') == 'LONG':
+                        long_conditions = best_setup.get('signals', [])
+                        if long_conditions:
+                            try:
+                                from core.analyzer.scoring import apply_divergence_bonus
+                                divergence_bonus_calc = apply_divergence_bonus(
+                                    rsi=best_setup.get('rsi', 0),
+                                    rsi_prev=best_setup.get('rsi_prev', 0),
+                                    macd=best_setup.get('macd', 0),
+                                    macd_prev=best_setup.get('macd_prev', 0),
+                                    macd_hist=best_setup.get('macd_hist', 0),
+                                    macd_hist_prev=best_setup.get('macd_hist_prev', 0),
+                                    condition_types=long_conditions
+                                )
+                            except:
+                                pass
+                    best_setup['divergence_bonus'] = divergence_bonus_calc
+                    best_setup['divergence_detected'] = divergence_bonus_calc > 0
+                    best_setup['divergence_type'] = 'RSI_MACD' if divergence_bonus_calc > 0 else None
+                
+                # 🔥 FIX: Construire setup_reason si pas déjà présent
+                if 'setup_reason' not in best_setup or best_setup['setup_reason'] is None:
+                    setup_reason_text = f"Setup {best_setup.get('direction')} détecté"
+                    if best_setup.get('timeframe'):
+                        setup_reason_text += f" ({best_setup.get('timeframe')})"
+                    if best_setup.get('confirmedBy'):
+                        setup_reason_text += f" - {best_setup.get('confirmedBy')}"
+                    best_setup['setup_reason'] = setup_reason_text
+
+                # 🔥 FIX: Ajouter analysis_1m et analysis_5m complets pour filter_metrics
+                # Cela permet à scanner_loop.py d'extraire les filter_metrics via _extract_filter_metrics()
+                best_setup['analysis_1m'] = analysis_1m
+                best_setup['analysis_5m'] = analysis_5m
 
                 return best_setup
 
@@ -1416,7 +1593,25 @@ class TechnicalAnalyzer:
                 if analysis_1m['direction'] != analysis_5m['direction']:
                     reason = f"Confluence: directions opposées (1m={analysis_1m['direction']}, 5m={analysis_5m['direction']})"
                     if return_reason:
-                        return {'reason': reason, 'symbol': symbol, 'timeframe': '1m+5m'}
+                        return {
+                            'reason': reason, 
+                            'symbol': symbol, 
+                            'timeframe': '1m+5m',
+                            # 🔥 FIX: Ajouter les champs manquants même pour les rejets confluence
+                            'analysis_1m': analysis_1m,
+                            'analysis_5m': analysis_5m,
+                            'score_1m': analysis_1m.get('totalScore') if analysis_1m else None,
+                            'score_5m': analysis_5m.get('totalScore') if analysis_5m else None,
+                            'pattern_1m': analysis_1m.get('pattern') if analysis_1m else None,
+                            'pattern_5m': analysis_5m.get('pattern') if analysis_5m else None,
+                            'pattern_multi_1m': analysis_1m.get('pattern_multi') if analysis_1m else None,
+                            'pattern_multi_5m': analysis_5m.get('pattern_multi') if analysis_5m else None,
+                            'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                            'divergence_bonus': 0,
+                            'divergence_detected': False,
+                            'divergence_type': None,
+                            'reject_category': 'confluence'
+                        }
                     if DEBUG_ENABLED:
                         logger.debug(reason)
                     return None
@@ -1427,7 +1622,25 @@ class TechnicalAnalyzer:
                 if strength_5m < strength_1m * 0.8:
                     reason = f"Confluence: 5m trop faible (1m={strength_1m} conds, 5m={strength_5m} conds, besoin ≥{strength_1m*0.8:.1f})"
                     if return_reason:
-                        return {'reason': reason, 'symbol': symbol, 'timeframe': '1m+5m'}
+                        return {
+                            'reason': reason, 
+                            'symbol': symbol, 
+                            'timeframe': '1m+5m',
+                            # 🔥 FIX: Ajouter les champs manquants même pour les rejets confluence
+                            'analysis_1m': analysis_1m,
+                            'analysis_5m': analysis_5m,
+                            'score_1m': analysis_1m.get('totalScore') if analysis_1m else None,
+                            'score_5m': analysis_5m.get('totalScore') if analysis_5m else None,
+                            'pattern_1m': analysis_1m.get('pattern') if analysis_1m else None,
+                            'pattern_5m': analysis_5m.get('pattern') if analysis_5m else None,
+                            'pattern_multi_1m': analysis_1m.get('pattern_multi') if analysis_1m else None,
+                            'pattern_multi_5m': analysis_5m.get('pattern_multi') if analysis_5m else None,
+                            'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                            'divergence_bonus': 0,
+                            'divergence_detected': False,
+                            'divergence_type': None,
+                            'reject_category': 'confluence'
+                        }
                     if DEBUG_ENABLED:
                         logger.debug(reason)
                     return None
