@@ -277,9 +277,9 @@ class TechnicalAnalyzer:
             # ATR percent
             atr_percent = (atr / price) * 100 if price > 0 else 0
 
-            # 🔥 FIX: Fonction helper pour construire le dict avec les indicateurs
-            def build_indicators_dict(reason=None):
-                """Construit un dict avec tous les indicateurs calculés"""
+            # 🔥 FIX: Fonction helper pour construire le dict avec les indicateurs ET les filter_metrics
+            def build_indicators_dict(reason=None, filters=None):
+                """Construit un dict avec tous les indicateurs calculés ET les métriques de filtres"""
                 indicators_dict = {
                     'symbol': symbol,
                     'timeframe': timeframe,
@@ -320,11 +320,24 @@ class TechnicalAnalyzer:
                     'pattern': pattern if pattern else None,
                     'ohlcv': ohlcv
                 }
+                # 🔥 Toujours inclure les filter_metrics si fournis
+                if filters:
+                    indicators_dict.update({
+                        'volume_filter_passed': filters.get('volume_filter_passed'),
+                        'snr': filters.get('snr'),
+                        'snr_passed': filters.get('snr_passed'),
+                        'breakout_distance': filters.get('breakout_distance'),
+                        'breakout_passed': filters.get('breakout_passed'),
+                        'wick_ratio': filters.get('wick_ratio'),
+                        'wick_passed': filters.get('wick_passed'),
+                        'atr_optimal_passed': filters.get('atr_optimal_passed')
+                    })
                 if reason:
                     indicators_dict['reason'] = reason
                 return indicators_dict
 
-            # === FILTRES DE VALIDATION ===
+            # === CALCULER TOUTES LES MÉTRIQUES DE FILTRES D'ABORD ===
+            # (Avant les rejets, pour les capturer même si setup rejeté)
 
             # Min volume ratio adaptatif
             base_min_vol = 1.0 if atr_percent > 1.0 else (0.6 if atr_percent < 0.3 else 0.8)
@@ -343,59 +356,16 @@ class TechnicalAnalyzer:
                 'atr_optimal_passed': None
             }
 
-            # 1. Filtre Volume
-            volume_result = check_volume_filter(
-                vol_spike=vol_spike,
-                min_vol_ratio=min_vol_ratio,
-                symbol=symbol,
-                timeframe=timeframe,
-                atr_percent=atr_percent,
-                volume_multiplier=volume_multiplier,
-                return_reason=return_reason
-            )
-            if volume_result:
-                if return_reason:
-                    # Inclure les indicateurs même si rejeté
-                    result_dict = build_indicators_dict(volume_result.get('reason') if isinstance(volume_result, dict) else str(volume_result))
-                    return result_dict
-                return None
-
-            # 2. Filtrer micro-range
-            min_range = atr_percent * 0.2
-            min_range = max(0.0003, min(0.003, min_range))
-            candle_range = ((current_candle[2] - current_candle[3]) / price) * 100  # high - low
-
-            if candle_range < min_range:
-                reason = f"Bougie plate: range={candle_range:.4f}% < {min_range:.4f}% requis"
-                if return_reason:
-                    return build_indicators_dict(reason)
-                if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
-                return None
-
-            # 3. Filtre ATR optimal
-            atr_result = check_atr_filter(
-                atr_percent=atr_percent,
-                timeframe=timeframe,
-                symbol=symbol,
-                return_reason=return_reason
-            )
-            if atr_result:
-                if return_reason:
-                    # Inclure les indicateurs même si rejeté
-                    result_dict = build_indicators_dict(atr_result.get('reason') if isinstance(atr_result, dict) else str(atr_result))
-                    return result_dict
-                return None
+            # 1. ATR Optimal (calculé d'abord)
+            if timeframe == '1m':
+                optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
+                optimal_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
             else:
-                if timeframe == '1m':
-                    optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
-                    optimal_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
-                else:
-                    optimal_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
-                    optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
-                filter_metrics['atr_optimal_passed'] = optimal_atr_min <= atr_percent <= optimal_atr_max
+                optimal_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
+                optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
+            filter_metrics['atr_optimal_passed'] = optimal_atr_min <= atr_percent <= optimal_atr_max
 
-            # 4. SNR Filter (Signal-to-Noise Ratio)
+            # 2. SNR (Signal-to-Noise Ratio)
             snr_value = None
             snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
             use_snr = TRADING_CONFIG.get('use_snr', True)
@@ -403,22 +373,8 @@ class TechnicalAnalyzer:
                 snr_value = abs(price - ema21) / atr
             filter_metrics['snr'] = snr_value
             filter_metrics['snr_passed'] = True if not use_snr else (snr_value is not None and snr_value >= snr_threshold)
-            snr_result = check_snr_filter(
-                price=price,
-                ema21=ema21,
-                atr=atr,
-                symbol=symbol,
-                timeframe=timeframe,
-                return_reason=return_reason
-            )
-            if snr_result:
-                if return_reason:
-                    # Inclure les indicateurs même si rejeté
-                    result_dict = build_indicators_dict(snr_result.get('reason') if isinstance(snr_result, dict) else str(snr_result))
-                    return result_dict
-                return None
 
-            # 5. Breakout Filter
+            # 3. Breakout Distance
             use_breakout = TRADING_CONFIG.get('use_breakout', True)
             breakout_mult = TRADING_CONFIG.get('breakout_threshold', 0.3)
             breakout_distance = None
@@ -431,6 +387,89 @@ class TechnicalAnalyzer:
                 filter_metrics['breakout_passed'] = False
             else:
                 filter_metrics['breakout_passed'] = not (price < (ema21 + atr * breakout_mult) and price > (ema21 - atr * breakout_mult))
+
+            # 4. Wick Ratio
+            body = abs(current_candle[1] - current_candle[4])
+            if body == 0:
+                body = 0.0001
+            wick_ratio = (current_candle[2] - current_candle[3]) / body
+            wick_max = TRADING_CONFIG.get('wick_ratio_max', 2.5)
+            use_wick = TRADING_CONFIG.get('use_wick', True)
+            filter_metrics['wick_ratio'] = wick_ratio
+            filter_metrics['wick_passed'] = True if not use_wick else wick_ratio <= wick_max
+
+            # === MAINTENANT APPLIQUER LES FILTRES DE VALIDATION ===
+
+            # 1. Filtre Volume
+            volume_result = check_volume_filter(
+                vol_spike=vol_spike,
+                min_vol_ratio=min_vol_ratio,
+                symbol=symbol,
+                timeframe=timeframe,
+                atr_percent=atr_percent,
+                volume_multiplier=volume_multiplier,
+                return_reason=return_reason
+            )
+            if volume_result:
+                if return_reason:
+                    # 🔥 Inclure les indicateurs ET filter_metrics même si rejeté
+                    result_dict = build_indicators_dict(
+                        volume_result.get('reason') if isinstance(volume_result, dict) else str(volume_result),
+                        filters=filter_metrics
+                    )
+                    return result_dict
+                return None
+
+            # 2. Filtrer micro-range
+            min_range = atr_percent * 0.2
+            min_range = max(0.0003, min(0.003, min_range))
+            candle_range = ((current_candle[2] - current_candle[3]) / price) * 100  # high - low
+
+            if candle_range < min_range:
+                reason = f"Bougie plate: range={candle_range:.4f}% < {min_range:.4f}% requis"
+                if return_reason:
+                    return build_indicators_dict(reason, filters=filter_metrics)
+                if DEBUG_ENABLED:
+                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                return None
+
+            # 3. Filtre ATR optimal (métrique déjà calculée)
+            atr_result = check_atr_filter(
+                atr_percent=atr_percent,
+                timeframe=timeframe,
+                symbol=symbol,
+                return_reason=return_reason
+            )
+            if atr_result:
+                if return_reason:
+                    # 🔥 Inclure les indicateurs ET filter_metrics même si rejeté
+                    result_dict = build_indicators_dict(
+                        atr_result.get('reason') if isinstance(atr_result, dict) else str(atr_result),
+                        filters=filter_metrics
+                    )
+                    return result_dict
+                return None
+
+            # 4. SNR Filter (métrique déjà calculée)
+            snr_result = check_snr_filter(
+                price=price,
+                ema21=ema21,
+                atr=atr,
+                symbol=symbol,
+                timeframe=timeframe,
+                return_reason=return_reason
+            )
+            if snr_result:
+                if return_reason:
+                    # 🔥 Inclure les indicateurs ET filter_metrics même si rejeté
+                    result_dict = build_indicators_dict(
+                        snr_result.get('reason') if isinstance(snr_result, dict) else str(snr_result),
+                        filters=filter_metrics
+                    )
+                    return result_dict
+                return None
+
+            # 5. Breakout Filter (métrique déjà calculée)
             breakout_result = check_breakout_filter(
                 price=price,
                 ema21=ema21,
@@ -441,20 +480,15 @@ class TechnicalAnalyzer:
             )
             if breakout_result:
                 if return_reason:
-                    # Inclure les indicateurs même si rejeté
-                    result_dict = build_indicators_dict(breakout_result.get('reason') if isinstance(breakout_result, dict) else str(breakout_result))
+                    # 🔥 Inclure les indicateurs ET filter_metrics même si rejeté
+                    result_dict = build_indicators_dict(
+                        breakout_result.get('reason') if isinstance(breakout_result, dict) else str(breakout_result),
+                        filters=filter_metrics
+                    )
                     return result_dict
                 return None
 
-            # 6. Wick Ratio Filter (manipulation)
-            body = abs(current_candle[1] - current_candle[4])
-            if body == 0:
-                body = 0.0001
-            wick_ratio = (current_candle[2] - current_candle[3]) / body
-            wick_max = TRADING_CONFIG.get('wick_ratio_max', 2.5)
-            use_wick = TRADING_CONFIG.get('use_wick', True)
-            filter_metrics['wick_ratio'] = wick_ratio
-            filter_metrics['wick_passed'] = True if not use_wick else wick_ratio <= wick_max
+            # 6. Wick Ratio Filter (métrique déjà calculée)
             wick_result = check_wick_filter(
                 current_candle=current_candle,
                 symbol=symbol,
@@ -463,8 +497,11 @@ class TechnicalAnalyzer:
             )
             if wick_result:
                 if return_reason:
-                    # Inclure les indicateurs même si rejeté
-                    result_dict = build_indicators_dict(wick_result.get('reason') if isinstance(wick_result, dict) else str(wick_result))
+                    # 🔥 Inclure les indicateurs ET filter_metrics même si rejeté
+                    result_dict = build_indicators_dict(
+                        wick_result.get('reason') if isinstance(wick_result, dict) else str(wick_result),
+                        filters=filter_metrics
+                    )
                     return result_dict
                 return None
 
@@ -556,7 +593,7 @@ class TechnicalAnalyzer:
                     reason = f"Conditions insuffisantes: Long={len(long_conditions)} Short={len(short_conditions)} (min={min_score_required} requis)"
 
                 if return_reason:
-                    result_dict = build_indicators_dict(reason)
+                    result_dict = build_indicators_dict(reason, filters=filter_metrics)
                     result_dict.update({
                         'long_conditions': len(long_conditions), 'short_conditions': len(short_conditions),
                         'min_required': min_score_required,
@@ -572,7 +609,7 @@ class TechnicalAnalyzer:
             if direction == 'LONG' and ema9 > ema21 and macd['histogram'] <= -0.001:
                 reason = f"Incohérence EMA/MACD: EMA9>EMA21 mais MACD très négatif (histogram={macd['histogram']:.4f})"
                 if return_reason:
-                    return build_indicators_dict(reason)
+                    return build_indicators_dict(reason, filters=filter_metrics)
                 if DEBUG_ENABLED:
                     logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
@@ -580,7 +617,7 @@ class TechnicalAnalyzer:
             if direction == 'SHORT' and ema9 < ema21 and macd['histogram'] >= 0.001:
                 reason = f"Incohérence EMA/MACD: EMA9<EMA21 mais MACD très positif (histogram={macd['histogram']:.4f})"
                 if return_reason:
-                    return build_indicators_dict(reason)
+                    return build_indicators_dict(reason, filters=filter_metrics)
                 if DEBUG_ENABLED:
                     logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
@@ -613,8 +650,8 @@ class TechnicalAnalyzer:
                 if not has_swing:
                     reason = f"Pas de structure swing: {direction} requis (HH/HL pour LONG, LH/LL pour SHORT)"
                     if return_reason:
-                        # 🔥 FIX: Retourner les indicateurs même si la structure swing est absente
-                        result_dict = build_indicators_dict(reason)
+                        # 🔥 FIX: Retourner les indicateurs ET filter_metrics même si la structure swing est absente
+                        result_dict = build_indicators_dict(reason, filters=filter_metrics)
                         result_dict.update({
                             'symbol': symbol,
                             'timeframe': timeframe,
@@ -896,24 +933,24 @@ class TechnicalAnalyzer:
                         'divergence_bonus': 0
                     }
                     
-                    # Préparer filters
+                    # Préparer filters - 🔥 TOUJOURS extraire, même si 'reason' présent
                     filters = {
-                        'snr_1m': analysis_1m.get('snr') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'snr_5m': analysis_5m.get('snr') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
+                        'snr_1m': analysis_1m.get('snr') if analysis_1m else None,
+                        'snr_5m': analysis_5m.get('snr') if analysis_5m else None,
+                        'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m else None,
+                        'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m else None,
+                        'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m else None,
+                        'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m else None,
+                        'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m else None,
+                        'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m else None,
+                        'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m else None,
+                        'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m else None,
+                        'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m else None,
+                        'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m else None,
+                        'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m else None,
+                        'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m else None,
+                        'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m else None,
+                        'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m else None
                     }
                     
                     # Logger le scan
@@ -1699,6 +1736,9 @@ class TechnicalAnalyzer:
                     f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
                 )
 
+                # 🔥 FIX: Toujours inclure analysis_1m et analysis_5m pour extraction des filtres
+                best['analysis_1m'] = analysis_1m
+                best['analysis_5m'] = analysis_5m
                 return best
             else:
                 # MODE PERMISSIF avec priorité par force
@@ -1762,6 +1802,9 @@ class TechnicalAnalyzer:
                         f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
                     )
 
+                    # 🔥 FIX: Toujours inclure analysis_1m et analysis_5m pour extraction des filtres
+                    best['analysis_1m'] = analysis_1m
+                    best['analysis_5m'] = analysis_5m
                     return best
 
             # Aucun timeframe valide
