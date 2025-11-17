@@ -1588,10 +1588,12 @@ async def scan_pair_for_setup(symbol: str):
                     }
                 }
                 
+                # 🔥 FIX: Logging désactivé ici car déjà fait dans scanner_loop.py avec filters complets
                 # Logger le scan (mode batch par défaut)
-                logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
-                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
-                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
+                # logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
+                # scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                # logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
+                scan_id = None  # Le vrai scan_id sera créé par scanner_loop.py
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 if scan_data['is_opportunity'] and analysis:

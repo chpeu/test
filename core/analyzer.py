@@ -933,24 +933,24 @@ class TechnicalAnalyzer:
                         'divergence_bonus': 0
                     }
                     
-                    # Préparer filters
+                    # Préparer filters - 🔥 TOUJOURS extraire, même si 'reason' présent
                     filters = {
-                        'snr_1m': analysis_1m.get('snr') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'snr_5m': analysis_5m.get('snr') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
-                        'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
+                        'snr_1m': analysis_1m.get('snr') if analysis_1m else None,
+                        'snr_5m': analysis_5m.get('snr') if analysis_5m else None,
+                        'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m else None,
+                        'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m else None,
+                        'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m else None,
+                        'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m else None,
+                        'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m else None,
+                        'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m else None,
+                        'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m else None,
+                        'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m else None,
+                        'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m else None,
+                        'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m else None,
+                        'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m else None,
+                        'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m else None,
+                        'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m else None,
+                        'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m else None
                     }
                     
                     # Logger le scan
@@ -1736,6 +1736,9 @@ class TechnicalAnalyzer:
                     f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
                 )
 
+                # 🔥 FIX: Toujours inclure analysis_1m et analysis_5m pour extraction des filtres
+                best['analysis_1m'] = analysis_1m
+                best['analysis_5m'] = analysis_5m
                 return best
             else:
                 # MODE PERMISSIF avec priorité par force
@@ -1799,6 +1802,9 @@ class TechnicalAnalyzer:
                         f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
                     )
 
+                    # 🔥 FIX: Toujours inclure analysis_1m et analysis_5m pour extraction des filtres
+                    best['analysis_1m'] = analysis_1m
+                    best['analysis_5m'] = analysis_5m
                     return best
 
             # Aucun timeframe valide
