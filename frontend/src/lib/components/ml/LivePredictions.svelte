@@ -1,5 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { predictionSettings } from '$lib/stores/ml.js';
+	import ConfidenceFilter from './ConfidenceFilter.svelte';
 
 	let predictions = [];
 	let loading = false;
@@ -160,6 +162,9 @@
 		</div>
 	</div>
 
+	<!-- Slider de filtrage ML -->
+	<ConfidenceFilter />
+
 	{#if error}
 		<div class="error-card">
 			<h3>⚠️ Erreur</h3>
@@ -177,7 +182,8 @@
 		<div class="predictions-list">
 			{#each predictions as pred (pred.id)}
 				{@const rec = getRecommendation(pred.prediction, pred.confidence)}
-				<div class="prediction-card" class:win={pred.prediction === 'win'} class:loss={pred.prediction === 'loss'}>
+				{@const wouldTake = !$predictionSettings.filterEnabled || (pred.prediction === 'win' && pred.win_probability >= $predictionSettings.confidenceThreshold)}
+				<div class="prediction-card" class:win={pred.prediction === 'win'} class:loss={pred.prediction === 'loss'} class:filtered={!wouldTake}>
 					<div class="pred-header">
 						<div class="pred-time">{pred.timestamp}</div>
 						<div class="pred-model">{pred.model_name}</div>
@@ -353,6 +359,24 @@
 	.prediction-card.loss {
 		border-color: #fca5a5;
 		background: #fef2f2;
+	}
+
+	.prediction-card.filtered {
+		opacity: 0.5;
+		position: relative;
+	}
+
+	.prediction-card.filtered::after {
+		content: '⏭️ FILTRÉ';
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		background: rgba(107, 114, 128, 0.9);
+		color: white;
+		padding: 4px 12px;
+		border-radius: 12px;
+		font-size: 0.75rem;
+		font-weight: 700;
 	}
 
 	.pred-header {

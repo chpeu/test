@@ -76,13 +76,18 @@ class XGBoostTrainer:
         timeframe_days: int = 60,
         min_trades: int = 50,
         test_size: float = 0.2,
-        n_estimators: int = 150,
-        max_depth: int = 4,  # Reduced from 6 to reduce overfitting
-        learning_rate: float = 0.05,  # Reduced for better generalization
+        n_estimators: int = 50,  # Réduit de 150 à 50 (moins d'arbres)
+        max_depth: int = 2,  # Réduit de 4 à 2 (arbres plus simples)
+        learning_rate: float = 0.05,  # Conservé (déjà optimal)
+        min_child_weight: int = 10,  # NOUVEAU: minimum 10 samples par feuille
+        reg_alpha: float = 1.0,  # NOUVEAU: régularisation L1
+        reg_lambda: float = 5.0,  # NOUVEAU: régularisation L2 forte
+        subsample: float = 0.7,  # NOUVEAU: utilise 70% des données (bagging)
+        colsample_bytree: float = 0.7,  # NOUVEAU: utilise 70% des features
         early_stopping_rounds: int = 15,
         random_state: int = 42,
         feature_selection: bool = True,
-        max_features: int = 30,  # Keep only top 30 features
+        max_features: int = 20,  # Réduit de 30 à 20 features
         **xgb_params,
     ) -> Dict:
         """
@@ -132,11 +137,16 @@ class XGBoostTrainer:
         class_weights = compute_class_weights(y_train, strategy="balanced")
         scale_pos_weight = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
         
-        # 4. Configurer modèle
+        # 4. Configurer modèle avec paramètres anti-overfitting
         model_params = {
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "learning_rate": learning_rate,
+            "min_child_weight": min_child_weight,  # Minimum samples par feuille
+            "reg_alpha": reg_alpha,  # Régularisation L1 (Lasso)
+            "reg_lambda": reg_lambda,  # Régularisation L2 (Ridge)
+            "subsample": subsample,  # Fraction de données par arbre (bagging)
+            "colsample_bytree": colsample_bytree,  # Fraction de features par arbre
             "scale_pos_weight": scale_pos_weight,
             "random_state": random_state,
             "eval_metric": "logloss",
@@ -418,14 +428,14 @@ class XGBoostTrainer:
 def train_xgboost_cli(
     timeframe_days: int = 60,
     min_trades: int = 50,
-    n_estimators: int = 100,
-    max_depth: int = 6,
-    learning_rate: float = 0.1,
+    n_estimators: int = 50,  # Optimisé: 50 au lieu de 100
+    max_depth: int = 2,  # Optimisé: 2 au lieu de 6
+    learning_rate: float = 0.05,  # Optimisé: 0.05 au lieu de 0.1
 ):
-    """Helper pour entraînement CLI"""
-    
+    """Helper pour entraînement CLI avec paramètres optimisés"""
+
     trainer = XGBoostTrainer()
-    
+
     results = trainer.train(
         timeframe_days=timeframe_days,
         min_trades=min_trades,

@@ -3,7 +3,7 @@
  * Gère stats, features, models, training progress
  */
 
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 
 // ========== STORES ==========
 
@@ -54,6 +54,12 @@ export const trainingProgress = writable({
 
 // Experiments tracking
 export const experiments = writable([]);
+
+// Prediction filtering settings
+export const predictionSettings = writable({
+	confidenceThreshold: 0.70,  // 70% par défaut (recommandé)
+	filterEnabled: true
+});
 
 // ========== DERIVED STORES ==========
 
@@ -198,6 +204,20 @@ export function resetTrainingProgress() {
 		accuracy: null,
 		message: ''
 	});
+}
+
+/**
+ * Vérifier si un trade doit être pris selon le filtrage
+ */
+export function shouldTakeTrade(prediction, settings = null) {
+	const config = settings || get(predictionSettings);
+
+	if (!config.filterEnabled) {
+		return true;
+	}
+
+	return prediction.prediction === 'win' &&
+	       prediction.win_probability >= config.confidenceThreshold;
 }
 
 /**
