@@ -7,194 +7,194 @@
     "n_estimators": 150,
     "max_depth": 4,
     "learning_rate": 0.05,
-    "scale_pos_weight": 1.3134328358208953,
+    "scale_pos_weight": 1.47953216374269,
     "random_state": 42,
     "eval_metric": "logloss",
     "use_label_encoder": false
   },
   "metrics": {
     "train": {
-      "accuracy": 0.8129032258064516,
-      "precision": 0.7878787878787878,
-      "recall": 0.7761194029850746,
-      "f1": 0.7819548872180451,
-      "roc_auc": 0.8508310719131614
+      "accuracy": 0.6981132075471698,
+      "precision": 0.6162162162162163,
+      "recall": 0.6666666666666666,
+      "f1": 0.6404494382022472,
+      "roc_auc": 0.7423086702262903
     },
     "test": {
-      "accuracy": 0.4358974358974359,
-      "precision": 0.3684210526315789,
-      "recall": 0.4117647058823529,
-      "f1": 0.3888888888888889,
-      "roc_auc": 0.41711229946524064
+      "accuracy": 0.5566037735849056,
+      "precision": 0.4583333333333333,
+      "recall": 0.5116279069767442,
+      "f1": 0.4835164835164835,
+      "roc_auc": 0.5169804355850868
     },
     "confusion_matrix": [
       [
-        10,
-        12
+        37,
+        26
       ],
       [
-        10,
-        7
+        21,
+        22
       ]
     ],
     "classification_report": {
       "0": {
-        "precision": 0.5,
-        "recall": 0.45454545454545453,
-        "f1-score": 0.47619047619047616,
-        "support": 22.0
+        "precision": 0.6379310344827587,
+        "recall": 0.5873015873015873,
+        "f1-score": 0.6115702479338843,
+        "support": 63.0
       },
       "1": {
-        "precision": 0.3684210526315789,
-        "recall": 0.4117647058823529,
-        "f1-score": 0.3888888888888889,
-        "support": 17.0
+        "precision": 0.4583333333333333,
+        "recall": 0.5116279069767442,
+        "f1-score": 0.4835164835164835,
+        "support": 43.0
       },
-      "accuracy": 0.4358974358974359,
+      "accuracy": 0.5566037735849056,
       "macro avg": {
-        "precision": 0.4342105263157895,
-        "recall": 0.4331550802139037,
-        "f1-score": 0.43253968253968256,
-        "support": 39.0
+        "precision": 0.548132183908046,
+        "recall": 0.5494647471391658,
+        "f1-score": 0.5475433657251839,
+        "support": 106.0
       },
       "weighted avg": {
-        "precision": 0.4426450742240216,
-        "recall": 0.4358974358974359,
-        "f1-score": 0.43813593813593815,
-        "support": 39.0
+        "precision": 0.5650753632617653,
+        "recall": 0.5566037735849056,
+        "f1-score": 0.5596239095381462,
+        "support": 106.0
       }
     }
   },
   "feature_importance": [
     {
-      "feature": "macd_hist_prev_1m",
-      "importance": 0.06985912472009659
-    },
-    {
-      "feature": "bb_distance_to_upper_1m",
-      "importance": 0.06632853299379349
-    },
-    {
-      "feature": "rsi_prev_1m",
-      "importance": 0.059821777045726776
-    },
-    {
-      "feature": "trend_strength_5m",
-      "importance": 0.05477341264486313
-    },
-    {
-      "feature": "di_gap_1m",
-      "importance": 0.054342109709978104
-    },
-    {
-      "feature": "atr_pct_1m",
-      "importance": 0.05067109689116478
-    },
-    {
-      "feature": "trend_strength_1m",
-      "importance": 0.049266450107097626
-    },
-    {
-      "feature": "rsi_1m",
-      "importance": 0.04806032404303551
-    },
-    {
-      "feature": "bb_distance_to_upper_5m",
-      "importance": 0.0452338345348835
-    },
-    {
-      "feature": "macd_momentum_1m",
-      "importance": 0.04429533705115318
-    },
-    {
-      "feature": "macd_momentum_5m",
-      "importance": 0.04294341802597046
-    },
-    {
-      "feature": "macd_hist_1m",
-      "importance": 0.04237857088446617
-    },
-    {
-      "feature": "rsi_change_1m",
-      "importance": 0.04140293598175049
-    },
-    {
-      "feature": "bb_distance_to_lower_1m",
-      "importance": 0.04130230098962784
-    },
-    {
-      "feature": "ema_trend_strength_1m",
-      "importance": 0.041153158992528915
-    },
-    {
-      "feature": "rsi_prev_5m",
-      "importance": 0.03617572411894798
-    },
-    {
       "feature": "di_gap_5m",
-      "importance": 0.035970233380794525
+      "importance": 0.06379090249538422
     },
     {
-      "feature": "rsi_5m",
-      "importance": 0.03570782393217087
-    },
-    {
-      "feature": "di_minus_1m",
-      "importance": 0.02616080455482006
-    },
-    {
-      "feature": "adx_1m",
-      "importance": 0.025565259158611298
-    },
-    {
-      "feature": "di_plus_1m",
-      "importance": 0.021556947380304337
-    },
-    {
-      "feature": "volume_ratio_1m",
-      "importance": 0.019975412636995316
-    },
-    {
-      "feature": "volume_divergence",
-      "importance": 0.019579555839300156
-    },
-    {
-      "feature": "momentum_1m",
-      "importance": 0.01781722903251648
+      "feature": "ema_diff_pct_5m",
+      "importance": 0.05584408715367317
     },
     {
       "feature": "di_minus_5m",
-      "importance": 0.00965866819024086
+      "importance": 0.055666811764240265
     },
     {
-      "feature": "snr_passed_1m",
-      "importance": 0.0
+      "feature": "ema_trend_strength_5m",
+      "importance": 0.05378514528274536
+    },
+    {
+      "feature": "di_minus_1m",
+      "importance": 0.05370274558663368
+    },
+    {
+      "feature": "adx_1m",
+      "importance": 0.049000222235918045
+    },
+    {
+      "feature": "macd_momentum_1m",
+      "importance": 0.048765361309051514
+    },
+    {
+      "feature": "bb_distance_to_upper_5m",
+      "importance": 0.046034835278987885
+    },
+    {
+      "feature": "rsi_prev_1m",
+      "importance": 0.043558519333601
+    },
+    {
+      "feature": "atr_pct_5m",
+      "importance": 0.0435386523604393
+    },
+    {
+      "feature": "ema_trend_strength_1m",
+      "importance": 0.04346432164311409
+    },
+    {
+      "feature": "bb_distance_to_upper_1m",
+      "importance": 0.039363209158182144
+    },
+    {
+      "feature": "breakout_passed_5m",
+      "importance": 0.03935805335640907
+    },
+    {
+      "feature": "bb_width_1m",
+      "importance": 0.03788163140416145
+    },
+    {
+      "feature": "bb_width_5m",
+      "importance": 0.03778699412941933
+    },
+    {
+      "feature": "bb_distance_to_lower_5m",
+      "importance": 0.0372501015663147
+    },
+    {
+      "feature": "bb_distance_to_lower_1m",
+      "importance": 0.03541707620024681
+    },
+    {
+      "feature": "rsi_prev_5m",
+      "importance": 0.03474114090204239
+    },
+    {
+      "feature": "atr_pct_1m",
+      "importance": 0.03253839537501335
+    },
+    {
+      "feature": "volume_divergence",
+      "importance": 0.03144951909780502
+    },
+    {
+      "feature": "rsi_divergence",
+      "importance": 0.027711616829037666
+    },
+    {
+      "feature": "di_plus_1m",
+      "importance": 0.023122932761907578
+    },
+    {
+      "feature": "di_plus_5m",
+      "importance": 0.021014731377363205
     },
     {
       "feature": "momentum_5m",
+      "importance": 0.018776366487145424
+    },
+    {
+      "feature": "trend_strength_5m",
+      "importance": 0.014658341184258461
+    },
+    {
+      "feature": "macd_hist_prev_1m",
+      "importance": 0.010755290277302265
+    },
+    {
+      "feature": "di_gap_1m",
+      "importance": 0.001023037824779749
+    },
+    {
+      "feature": "strong_trend_1m",
       "importance": 0.0
     },
     {
-      "feature": "ema_diff_pct_1m",
+      "feature": "volume_ratio_1m",
       "importance": 0.0
     },
     {
-      "feature": "volatility_ratio",
-      "importance": 0.0
-    },
-    {
-      "feature": "volume_ratio_5m",
+      "feature": "quality_score_total",
       "importance": 0.0
     }
   ],
   "training_info": {
     "timeframe_days": 30,
     "min_trades": 50,
-    "total_samples": 194,
-    "train_samples": 155,
-    "test_samples": 39,
-    "training_time_seconds": 0.229115,
-    "trained_at": "2025-11-17T06:30:48.530256",
+    "total_samples": 530,
+    "train_samples": 424,
+    "test_samples": 106,
+    "training_time_seconds": 0.507133,
+    "trained_at": "2025-11-18T18:18:06.531059",
     "feature_names": [
       "rsi_1m",
       "rsi_prev_1m",
