@@ -39,7 +39,8 @@ class TestSimplePGLogger:
                 port=5433,
                 dbname='testdb',
                 user='testuser',
-                password='testpass'
+                password='testpass',
+                client_encoding='utf8'
             )
 
     @patch('core.simple_pg_logger.PSYCOPG2_AVAILABLE', True)
@@ -57,7 +58,8 @@ class TestSimplePGLogger:
                 port=5432,
                 dbname='trade_cursor_ml',
                 user='postgres',
-                password=''
+                password='',
+                client_encoding='utf8'
             )
 
     @patch('core.simple_pg_logger.PSYCOPG2_AVAILABLE', True)
