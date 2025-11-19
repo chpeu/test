@@ -22,7 +22,8 @@ def get_postgres_connection():
             database=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', ''),
-            cursor_factory=RealDictCursor
+            cursor_factory=RealDictCursor,
+            client_encoding='utf8'
         )
         return conn
     except Exception as e:
