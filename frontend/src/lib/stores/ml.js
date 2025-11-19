@@ -55,6 +55,12 @@ export const trainingProgress = writable({
 // Experiments tracking
 export const experiments = writable([]);
 
+// Prediction settings (confidence filter)
+export const predictionSettings = writable({
+	confidenceThreshold: 0.70, // 70% par défaut
+	filterEnabled: true
+});
+
 // ========== DERIVED STORES ==========
 
 // ML ready for any model
@@ -226,4 +232,17 @@ export async function loadAllMLData() {
 		console.error('Error loading all ML data:', error);
 		return false;
 	}
+}
+
+/**
+ * Vérifier si un trade doit être pris selon les settings de confiance
+ */
+export function shouldTakeTrade(prediction) {
+	let settings;
+	predictionSettings.subscribe(value => settings = value)();
+
+	if (!settings.filterEnabled) return true;
+
+	return prediction.prediction === 'win' &&
+	       prediction.win_probability >= settings.confidenceThreshold;
 }

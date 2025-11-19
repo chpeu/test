@@ -633,6 +633,91 @@ async def reload_predictor(model_name: str = Query('xgboost_v1')):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/predict/current")
+async def predict_current_market(
+    model_name: str = Query('xgboost_v1'),
+):
+    """
+    Faire une prédiction sur les conditions de marché actuelles
+    Récupère les features de la dernière opportunity scannée
+
+    Args:
+        model_name: Nom du modèle à utiliser (défaut: xgboost_v1)
+
+    Returns:
+        Prédiction avec probabilité et confiance + features utilisées
+    """
+    try:
+        from optimization.data.feature_loader import get_postgres_connection
+        from optimization.predictor import predict_opportunity as predict_opp
+
+        # Récupérer dernière opportunity avec features
+        conn = get_postgres_connection()
+        cursor = conn.cursor()
+
+        query = """
+            SELECT
+                symbol,
+                timestamp,
+                rsi_1m, rsi_prev_1m, macd_hist_1m, macd_hist_prev_1m,
+                adx_1m, di_plus_1m, di_minus_1m, di_gap_1m,
+                atr_pct_1m, ema_diff_pct_1m, volume_ratio_1m, volume_spike_1m,
+                bb_width_1m, bb_distance_to_lower_1m, bb_distance_to_upper_1m,
+                rsi_5m, rsi_prev_5m, macd_hist_5m, macd_hist_prev_5m,
+                adx_5m, di_plus_5m, di_minus_5m, di_gap_5m,
+                atr_pct_5m, ema_diff_pct_5m, volume_ratio_5m, volume_spike_5m,
+                bb_width_5m, bb_distance_to_lower_5m, bb_distance_to_upper_5m,
+                snr_passed_1m, snr_passed_5m,
+                breakout_passed_1m, breakout_passed_5m,
+                wick_passed_1m, wick_passed_5m,
+                atr_optimal_passed_1m, atr_optimal_passed_5m,
+                volume_filter_passed_1m, volume_filter_passed_5m,
+                rsi_change_1m, rsi_change_5m,
+                rsi_divergence, macd_divergence, volume_divergence
+            FROM opportunities
+            WHERE timestamp >= NOW() - INTERVAL '1 hour'
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """
+
+        cursor.execute(query)
+        opportunity = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not opportunity:
+            raise HTTPException(
+                status_code=404,
+                detail="Aucune opportunity récente trouvée. Lancez un scan pour obtenir des données."
+            )
+
+        # Convertir en dictionnaire de features
+        features = dict(opportunity)
+        symbol = features.pop('symbol')
+        timestamp = features.pop('timestamp')
+
+        # Faire prédiction
+        prediction = predict_opp(features, model_name)
+
+        if prediction is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Modèle '{model_name}' non disponible. Entraînez d'abord le modèle."
+            )
+
+        # Ajouter contexte
+        prediction['symbol'] = symbol
+        prediction['data_timestamp'] = timestamp.isoformat() if timestamp else None
+
+        return prediction
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur predict_current_market: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/predict")
 async def predict_opportunity(
     features: Dict[str, Any],
@@ -640,28 +725,28 @@ async def predict_opportunity(
 ):
     """
     Faire une prédiction ML sur une opportunité
-    
+
     Args:
         features: Dictionnaire avec toutes les features (RSI, MACD, BB, etc.)
         model_name: Nom du modèle à utiliser (défaut: xgboost_v1)
-        
+
     Returns:
         Prédiction avec probabilité et confiance
     """
     try:
         from optimization.predictor import predict_opportunity as predict_opp
-        
+
         # Faire prédiction
         prediction = predict_opp(features, model_name)
-        
+
         if prediction is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Modèle '{model_name}' non disponible. Entraînez d'abord le modèle."
             )
-        
+
         return prediction
-        
+
     except HTTPException:
         raise
     except Exception as e:
