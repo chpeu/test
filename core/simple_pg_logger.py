@@ -31,7 +31,8 @@ class SimplePGLogger:
                 port=int(os.getenv('POSTGRES_PORT', '5432')),
                 dbname=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
                 user=os.getenv('POSTGRES_USER', 'postgres'),
-                password=os.getenv('POSTGRES_PASSWORD', '')
+                password=os.getenv('POSTGRES_PASSWORD', ''),
+                client_encoding='utf8'
             )
             logger.info("✅ SimplePGLogger connecté")
         except Exception as e:
@@ -231,7 +232,8 @@ class SimplePGLogger:
                         port=int(os.getenv('POSTGRES_PORT', '5432')),
                         dbname=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
                         user=os.getenv('POSTGRES_USER', 'postgres'),
-                        password=os.getenv('POSTGRES_PASSWORD', '')
+                        password=os.getenv('POSTGRES_PASSWORD', ''),
+                        client_encoding='utf8'
                     )
                     logger.info("✅ Reconnexion réussie")
             except Exception as reconnect_error:
