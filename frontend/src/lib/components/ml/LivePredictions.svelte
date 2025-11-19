@@ -1,5 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { predictionSettings } from '$lib/stores/ml.js';
+	import ConfidenceFilter from './ConfidenceFilter.svelte';
 
 	let predictions = [];
 	let loading = false;
@@ -7,83 +9,31 @@
 	let autoRefresh = true;
 	let refreshInterval;
 
-	// Exemple de features pour demo (46 features de base attendues par le modèle)
-	const demoFeatures = {
-		// 1m timeframe
-		rsi_1m: 65.5,
-		rsi_prev_1m: 63.2,
-		macd_hist_1m: 0.0012,
-		macd_hist_prev_1m: 0.0008,
-		adx_1m: 25.0,
-		di_plus_1m: 22.0,
-		di_minus_1m: 18.0,
-		di_gap_1m: 4.0,
-		atr_pct_1m: 0.08,
-		ema_diff_pct_1m: 0.04,
-		volume_ratio_1m: 1.25,
-		volume_spike_1m: 0,
-		bb_width_1m: 0.0030,
-		bb_distance_to_lower_1m: 0.0015,
-		bb_distance_to_upper_1m: 0.0015,
-		// 5m timeframe
-		rsi_5m: 62.8,
-		rsi_prev_5m: 61.0,
-		macd_hist_5m: 0.0015,
-		macd_hist_prev_5m: 0.0010,
-		adx_5m: 28.0,
-		di_plus_5m: 24.0,
-		di_minus_5m: 19.0,
-		di_gap_5m: 5.0,
-		atr_pct_5m: 0.12,
-		ema_diff_pct_5m: 0.08,
-		volume_ratio_5m: 1.15,
-		volume_spike_5m: 0,
-		bb_width_5m: 0.0040,
-		bb_distance_to_lower_5m: 0.0020,
-		bb_distance_to_upper_5m: 0.0020,
-		// Filter flags (0 ou 1)
-		snr_passed_1m: 1,
-		snr_passed_5m: 1,
-		breakout_passed_1m: 1,
-		breakout_passed_5m: 1,
-		wick_passed_1m: 1,
-		wick_passed_5m: 1,
-		atr_optimal_passed_1m: 1,
-		atr_optimal_passed_5m: 1,
-		volume_filter_passed_1m: 1,
-		volume_filter_passed_5m: 1,
-		// Extras
-		rsi_change_1m: 2.3,
-		rsi_change_5m: 1.8,
-		rsi_divergence: 2.7,
-		macd_divergence: -0.0003,
-		volume_divergence: 10.0
-	};
-
 	async function fetchPrediction() {
 		loading = true;
 		error = null;
 
 		try {
-			const response = await fetch('/api/ml/predict', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(demoFeatures)
-			});
+			// Utiliser le nouvel endpoint qui récupère les données réelles
+			const response = await fetch('/api/ml/predict/current');
 
 			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+				const errorText = await response.text();
+				if (response.status === 404) {
+					throw new Error('Aucune donnée de marché récente. Lancez un scan pour obtenir des prédictions.');
+				}
+				throw new Error(`HTTP ${response.status}: ${errorText}`);
 			}
 
 			const prediction = await response.json();
-			
+
 			// Ajouter timestamp et ID
 			prediction.id = Date.now();
 			prediction.timestamp = new Date().toLocaleTimeString('fr-FR');
-			
+
 			// Ajouter en tete de liste
 			predictions = [prediction, ...predictions].slice(0, 10); // Garder max 10
-			
+
 		} catch (err) {
 			console.error('Error fetching prediction:', err);
 			error = err.message;
@@ -160,6 +110,9 @@
 		</div>
 	</div>
 
+	<!-- Slider de filtrage de confiance -->
+	<ConfidenceFilter />
+
 	{#if error}
 		<div class="error-card">
 			<h3>⚠️ Erreur</h3>
@@ -177,10 +130,23 @@
 		<div class="predictions-list">
 			{#each predictions as pred (pred.id)}
 				{@const rec = getRecommendation(pred.prediction, pred.confidence)}
-				<div class="prediction-card" class:win={pred.prediction === 'win'} class:loss={pred.prediction === 'loss'}>
+				{@const wouldTake = !$predictionSettings.filterEnabled || (pred.prediction === 'win' && pred.win_probability >= $predictionSettings.confidenceThreshold)}
+				<div class="prediction-card" class:win={pred.prediction === 'win'} class:loss={pred.prediction === 'loss'} class:filtered={!wouldTake}>
 					<div class="pred-header">
-						<div class="pred-time">{pred.timestamp}</div>
-						<div class="pred-model">{pred.model_name}</div>
+						<div class="pred-info">
+							<div class="pred-time">{pred.timestamp}</div>
+							{#if pred.symbol}
+								<div class="pred-symbol">{pred.symbol}</div>
+							{/if}
+						</div>
+						<div class="pred-actions">
+							{#if wouldTake}
+								<span class="trade-badge trade">✓ TRADE</span>
+							{:else}
+								<span class="trade-badge skip">✗ SKIP</span>
+							{/if}
+							<div class="pred-model">{pred.model_name}</div>
+						</div>
 					</div>
 
 					<div class="pred-main">
@@ -355,16 +321,65 @@
 		background: #fef2f2;
 	}
 
+	.prediction-card.filtered {
+		opacity: 0.5;
+		border-style: dashed;
+	}
+
 	.pred-header {
 		display: flex;
 		justify-content: space-between;
+		align-items: flex-start;
 		margin-bottom: 1rem;
 		font-size: 0.85rem;
+	}
+
+	.pred-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
 	}
 
 	.pred-time {
 		color: #6b7280;
 		font-weight: 600;
+	}
+
+	.pred-symbol {
+		background: #fef3c7;
+		color: #92400e;
+		padding: 0.15rem 0.4rem;
+		border-radius: 4px;
+		font-weight: 700;
+		font-size: 0.75rem;
+		display: inline-block;
+		width: fit-content;
+	}
+
+	.pred-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.trade-badge {
+		font-size: 0.75rem;
+		font-weight: 700;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		white-space: nowrap;
+	}
+
+	.trade-badge.trade {
+		background: #dcfce7;
+		color: #166534;
+		border: 1px solid #86efac;
+	}
+
+	.trade-badge.skip {
+		background: #fee2e2;
+		color: #991b1b;
+		border: 1px solid #fca5a5;
 	}
 
 	.pred-model {
