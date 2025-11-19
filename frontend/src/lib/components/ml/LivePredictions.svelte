@@ -1,5 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { predictionSettings } from '$lib/stores/ml.js';
+	import ConfidenceFilter from './ConfidenceFilter.svelte';
 
 	let predictions = [];
 	let loading = false;
@@ -160,6 +162,9 @@
 		</div>
 	</div>
 
+	<!-- Slider de filtrage de confiance -->
+	<ConfidenceFilter />
+
 	{#if error}
 		<div class="error-card">
 			<h3>⚠️ Erreur</h3>
@@ -177,10 +182,18 @@
 		<div class="predictions-list">
 			{#each predictions as pred (pred.id)}
 				{@const rec = getRecommendation(pred.prediction, pred.confidence)}
-				<div class="prediction-card" class:win={pred.prediction === 'win'} class:loss={pred.prediction === 'loss'}>
+				{@const wouldTake = !$predictionSettings.filterEnabled || (pred.prediction === 'win' && pred.win_probability >= $predictionSettings.confidenceThreshold)}
+				<div class="prediction-card" class:win={pred.prediction === 'win'} class:loss={pred.prediction === 'loss'} class:filtered={!wouldTake}>
 					<div class="pred-header">
 						<div class="pred-time">{pred.timestamp}</div>
-						<div class="pred-model">{pred.model_name}</div>
+						<div class="pred-actions">
+							{#if wouldTake}
+								<span class="trade-badge trade">✓ TRADE</span>
+							{:else}
+								<span class="trade-badge skip">✗ SKIP</span>
+							{/if}
+							<div class="pred-model">{pred.model_name}</div>
+						</div>
 					</div>
 
 					<div class="pred-main">
@@ -355,11 +368,43 @@
 		background: #fef2f2;
 	}
 
+	.prediction-card.filtered {
+		opacity: 0.5;
+		border-style: dashed;
+	}
+
 	.pred-header {
 		display: flex;
 		justify-content: space-between;
+		align-items: flex-start;
 		margin-bottom: 1rem;
 		font-size: 0.85rem;
+	}
+
+	.pred-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.trade-badge {
+		font-size: 0.75rem;
+		font-weight: 700;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		white-space: nowrap;
+	}
+
+	.trade-badge.trade {
+		background: #dcfce7;
+		color: #166534;
+		border: 1px solid #86efac;
+	}
+
+	.trade-badge.skip {
+		background: #fee2e2;
+		color: #991b1b;
+		border: 1px solid #fca5a5;
 	}
 
 	.pred-time {
