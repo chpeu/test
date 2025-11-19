@@ -285,6 +285,7 @@ def test_predict_opportunity_no_model(client: TestClient, monkeypatch):
 
 def test_predict_current_market(client: TestClient, monkeypatch):
     """Teste l'endpoint GET /predict/current avec des données de marché réelles."""
+    from datetime import datetime
 
     class FakeCursor:
         def execute(self, query):
@@ -293,7 +294,7 @@ def test_predict_current_market(client: TestClient, monkeypatch):
         def fetchone(self):
             return {
                 "symbol": "BTCUSDT",
-                "timestamp": "2025-11-19T10:30:00",
+                "timestamp": datetime(2025, 11, 19, 10, 30, 0),
                 "rsi_1m": 65.5,
                 "rsi_prev_1m": 63.2,
                 "macd_hist_1m": 0.0012,
