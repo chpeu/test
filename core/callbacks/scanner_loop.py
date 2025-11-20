@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
-from core.simple_pg_logger import SimplePGLogger
+# from core.simple_pg_logger import SimplePGLogger  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
 _pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML (injection)
 _pg_datalogger_instance = None  # 🔥 Force Initialization: Instance créée automatiquement
-_simple_logger = SimplePGLogger()  # 🔥 Simple Logger: Logger ultra-simple sans batch
+# _simple_logger = SimplePGLogger()  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger pour les 46 features ML
 
 
 def set_scanner(scanner):
@@ -422,13 +422,17 @@ async def _scan_top_pairs():
                         if hasattr(_price_provider, 'stop_websocket'):
                             await _price_provider.stop_websocket()
                             logger.debug("🔌 WebSocket arrêté pour position")
+                            # Attendre que le WebSocket soit complètement arrêté
+                            await asyncio.sleep(0.5)
 
                         # Redémarrer WebSocket uniquement sur le symbole de la position
                         if hasattr(_price_provider, 'start_websocket'):
                             await _price_provider.start_websocket([symbol])
                             logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
                     except Exception as e:
-                        logger.error(f"❌ Erreur redémarrage WebSocket pour position: {e}")
+                        logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
+                        import traceback
+                        logger.debug(traceback.format_exc())
 
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
@@ -449,6 +453,64 @@ async def _scan_top_pairs():
 
     except Exception as e:
         logger.error(f"❌ Erreur scan top pairs: {e}")
+
+
+def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract filter metrics from analysis_1m and analysis_5m with correct _1m/_5m suffixes.
+    
+    Args:
+        analysis: Analysis dictionary containing analysis_1m and analysis_5m
+        
+    Returns:
+        Unified filters dictionary with all filter metrics with proper suffixes
+    """
+    if not analysis or not isinstance(analysis, dict):
+        logger.warning("⚠️ _extract_filter_metrics: analysis est None ou pas un dict")
+        return {}
+    
+    filters = {}
+    
+    # Extract from analysis_1m with _1m suffix
+    analysis_1m = analysis.get('analysis_1m', {})
+    logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_1m présent={bool(analysis_1m)}, type={type(analysis_1m)}")
+    if analysis_1m and isinstance(analysis_1m, dict):
+        logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_1m keys (premiers 20): {list(analysis_1m.keys())[:20]}")
+        filters.update({
+            'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed'),
+            'snr_1m': analysis_1m.get('snr'),
+            'snr_passed_1m': analysis_1m.get('snr_passed'),
+            'breakout_distance_1m': analysis_1m.get('breakout_distance'),
+            'breakout_passed_1m': analysis_1m.get('breakout_passed'),
+            'wick_ratio_1m': analysis_1m.get('wick_ratio'),
+            'wick_passed_1m': analysis_1m.get('wick_passed'),
+            'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed')
+        })
+        logger.info(f"✅ Filters 1m extraits: snr_1m={filters.get('snr_1m')}, wick_ratio_1m={filters.get('wick_ratio_1m')}, volume_filter_passed_1m={filters.get('volume_filter_passed_1m')}")
+    else:
+        logger.warning(f"⚠️ _extract_filter_metrics: analysis_1m invalide ou vide")
+    
+    # Extract from analysis_5m with _5m suffix
+    analysis_5m = analysis.get('analysis_5m', {})
+    logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_5m présent={bool(analysis_5m)}, type={type(analysis_5m)}")
+    if analysis_5m and isinstance(analysis_5m, dict):
+        logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_5m keys (premiers 20): {list(analysis_5m.keys())[:20]}")
+        filters.update({
+            'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed'),
+            'snr_5m': analysis_5m.get('snr'),
+            'snr_passed_5m': analysis_5m.get('snr_passed'),
+            'breakout_distance_5m': analysis_5m.get('breakout_distance'),
+            'breakout_passed_5m': analysis_5m.get('breakout_passed'),
+            'wick_ratio_5m': analysis_5m.get('wick_ratio'),
+            'wick_passed_5m': analysis_5m.get('wick_passed'),
+            'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed')
+        })
+        logger.info(f"✅ Filters 5m extraits: snr_5m={filters.get('snr_5m')}, wick_ratio_5m={filters.get('wick_ratio_5m')}, volume_filter_passed_5m={filters.get('volume_filter_passed_5m')}")
+    else:
+        logger.warning(f"⚠️ _extract_filter_metrics: analysis_5m invalide ou vide")
+    
+    logger.info(f"📊 Filters finaux retournés (total {len(filters)} clés)")
+    return filters
 
 
 async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
@@ -656,33 +718,33 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         # 🔥 DEBUG: Vérifier que le code atteint cette section AVANT Simple Logger
         logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT Simple Logger, analysis type: {type(analysis)}")
 
-        # 🔥 Simple Logger: Logger ultra-simple sans batch
-        try:
-            # Vérifier que _simple_logger est défini et accessible
-            try:
-                logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: _simple_logger existe, enabled={getattr(_simple_logger, 'enabled', 'ATTRIBUT_MANQUANT')}")
-            except NameError:
-                logger.error(f"❌ _simple_logger n'est pas défini pour {symbol}")
-                _simple_logger = None
-            except Exception as e:
-                logger.error(f"❌ Erreur accès _simple_logger pour {symbol}: {e}")
-                _simple_logger = None
-            
-            if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
-                logger.info(f"📝 Tentative log_scan_simple pour {symbol}")
-                result = _simple_logger.log_scan_simple(symbol, {
-                    'market_data': {'price': analysis.get('price') if analysis else None},
-                    'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
-                    'scores': {'score_total': analysis.get('score_total') if analysis else None},
-                    'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
-                })
-                logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
-            else:
-                logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
-        except Exception as e:
-            logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
-            import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+        # 🔥 Simple Logger: DÉSACTIVÉ - On utilise PostgreSQLDataLogger pour les 46 features ML
+        # try:
+        #     # Vérifier que _simple_logger est défini et accessible
+        #     try:
+        #         logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: _simple_logger existe, enabled={getattr(_simple_logger, 'enabled', 'ATTRIBUT_MANQUANT')}")
+        #     except NameError:
+        #         logger.error(f"❌ _simple_logger n'est pas défini pour {symbol}")
+        #         _simple_logger = None
+        #     except Exception as e:
+        #         logger.error(f"❌ Erreur accès _simple_logger pour {symbol}: {e}")
+        #         _simple_logger = None
+        #     
+        #     if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
+        #         logger.info(f"📝 Tentative log_scan_simple pour {symbol}")
+        #         result = _simple_logger.log_scan_simple(symbol, {
+        #             'market_data': {'price': analysis.get('price') if analysis else None},
+        #             'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
+        #             'scores': {'score_total': analysis.get('score_total') if analysis else None},
+        #             'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
+        #         })
+        #         logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
+        #     else:
+        #         logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
+        # except Exception as e:
+        #     logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
+        #     import traceback
+        #     logger.debug(f"Traceback: {traceback.format_exc()}")
 
         # 🔥 DEBUG: Vérifier que le code atteint cette section
         logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT calcul durée scan")
@@ -708,29 +770,98 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             try:
                 logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
                 # Récupérer les données du scan de scalabilité depuis top_pairs
-                scalability_data = {}
+                scalability_data: Dict[str, Any] = {}
+                logger.info(f"💹 DEBUG log_scan: _app_state existe={_app_state is not None}, top_pairs={'présent' if (_app_state and _app_state.get('top_pairs')) else 'absent'}")
                 if _app_state and _app_state.get('top_pairs'):
+                    logger.info(f"💹 DEBUG log_scan: top_pairs contient {len(_app_state['top_pairs'])} paires")
                     for pair in _app_state['top_pairs']:
                         if pair.get('symbol') == symbol:
+                            spread_value = pair.get('spread') or pair.get('spread_pct')
+                            book_depth = pair.get('bookDepth')
+                            balance_score = pair.get('balanceScore')
+                            bid_vol = pair.get('bidVol')
+                            ask_vol = pair.get('askVol')
+                            if book_depth in (None, 0) and bid_vol and ask_vol:
+                                book_depth = bid_vol + ask_vol
+                            imbalance = None
+                            if bid_vol and ask_vol:
+                                try:
+                                    imbalance = bid_vol / ask_vol if ask_vol > 0 else None
+                                except Exception:
+                                    imbalance = None
+
                             scalability_data = {
+                                'spread': spread_value,
+                                'spread_pct': spread_value,
+                                'bookDepth': book_depth,
+                                'book_depth': book_depth,
+                                'balanceScore': balance_score,
+                                'balance_score': balance_score,
+                                'bidVol': bid_vol,
+                                'askVol': ask_vol,
+                                'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
+                                'score': pair.get('score')
                             }
+                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}")
                             break
                 
-                # Préparer les données du scan pour PostgreSQL
-                # 🔥 FIX: Récupérer le prix avec fallbacks (pour éviter NULL)
+                # 🔥 DEBUG: Vérifier si scalability_data a été rempli
+                if not scalability_data:
+                    logger.warning(f"⚠️ scalability_data vide après recherche dans top_pairs pour {symbol}")
+
+                # Fallback: utiliser les infos présentes dans l'analyse/best_setup
+                if not scalability_data:
+                    analysis_obj = analysis or {}
+                    orderbook_check = analysis_obj.get('orderbook_check') or {}
+                    bid_value = orderbook_check.get('bid_value') or analysis_obj.get('bid_vol')
+                    ask_value = orderbook_check.get('ask_value') or analysis_obj.get('ask_vol')
+                    book_depth = None
+                    if bid_value or ask_value:
+                        bid_value = bid_value or 0
+                        ask_value = ask_value or 0
+                        book_depth = bid_value + ask_value
+                    imbalance = None
+                    if bid_value and ask_value:
+                        try:
+                            imbalance = bid_value / ask_value if ask_value > 0 else None
+                        except Exception:
+                            imbalance = None
+
+                    scalability_data = {
+                        'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'bookDepth': book_depth,
+                        'book_depth': book_depth,
+                        'balanceScore': analysis_obj.get('orderbook_balance'),
+                        'balance_score': analysis_obj.get('orderbook_balance'),
+                        'bidVol': bid_value,
+                        'askVol': ask_value,
+                        'orderbook_imbalance_ratio': imbalance,
+                        'recent_volume': analysis_obj.get('recent_volume'),
+                        'recentVolume': analysis_obj.get('recent_volume'),  # Alias
+                        'vol5': analysis_obj.get('vol5'),
+                        'vol15': analysis_obj.get('vol15'),
+                        'scalability_score': analysis_obj.get('scalability_score'),
+                        'score': analysis_obj.get('scalability_score'),  # Alias
+                    }
+                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
+
+                scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+
                 scan_price = None
                 if analysis and isinstance(analysis, dict):
-                    scan_price = analysis.get('price')
-                
-                # Fallback: Depuis analysis_1m ou analysis_5m si disponible
-                if scan_price is None and analysis:
-                    analysis_1m = analysis.get('analysis_1m', {})
-                    if isinstance(analysis_1m, dict):
-                        scan_price = analysis_1m.get('price')
+                    analysis_market = analysis.get('market_data', {})
+                    if isinstance(analysis_market, dict):
+                        scan_price = analysis_market.get('price')
+                    if scan_price is None:
+                        analysis_1m = analysis.get('analysis_1m', {})
+                        if isinstance(analysis_1m, dict):
+                            scan_price = analysis_1m.get('price')
                     if scan_price is None:
                         analysis_5m = analysis.get('analysis_5m', {})
                         if isinstance(analysis_5m, dict):
@@ -780,7 +911,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'score': scalability_data.get('scalability_score'),  # Alias
                     'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
                     'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
-                    'filters': analysis.get('filters', {}) if analysis else {},
+                    # 🔥 FIX: Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict
+                    'filters': _extract_filter_metrics(analysis) if analysis else {},
                     'scores': {
                         'score_1m': analysis.get('score_1m') if analysis else None,
                         'score_5m': analysis.get('score_5m') if analysis else None,
@@ -841,36 +973,35 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
                 # avec scan_id=None temporairement (sera mis à jour lors du flush)
                 if scan_data['is_opportunity'] and analysis:
+                    condition_list = analysis.get('condition_types', [])
+                    score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
+                    score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
+                    min_required = scan_data['params_snapshot'].get('min_score_required')
+                    trend_bonus = scan_data.get('trend_bonus')
+                    divergence_bonus = scan_data.get('divergence_bonus')
+                    setup_reason = analysis.get('reason')
+
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
                         'setup_score': analysis.get('score_total'),
-                        
-                        # 🔥 FIX: Ajouter scores détaillés
-                        'score_long': analysis.get('score_long_1m') or analysis.get('score_long_5m'),
-                        'score_short': analysis.get('score_short_1m') or analysis.get('score_short_5m'),
-                        'score_min_required': scan_data['params_snapshot'].get('min_score_required'),
-                        
-                        # 🔥 FIX: Ajouter bonus
-                        'trend_bonus': scan_data.get('trend_bonus'),
-                        'divergence_bonus': scan_data.get('divergence_bonus'),
-                        
-                        # Conditions et raison
-                        'conditions_matched': analysis.get('condition_types', []),
-                        'condition_count': len(analysis.get('condition_types', [])),
-                        'setup_reason': analysis.get('reason'),
-                        
-                        # Prix et setup
+                        'score_long': score_long,
+                        'score_short': score_short,
+                        'score_min_required': min_required,
+                        'trend_bonus': trend_bonus,
+                        'divergence_bonus': divergence_bonus,
+                        'conditions_matched': condition_list,
+                        'condition_count': len(condition_list),
+                        'setup_reason': setup_reason,
                         'entry_suggested': analysis.get('entry') or analysis.get('price'),
                         'tp_suggested': analysis.get('tp'),
                         'sl_suggested': analysis.get('sl'),
                         'tp_sl_mode': analysis.get('tp_sl_mode', 'FIXE'),
-                        
-                        # Legacy (pour compatibilité)
+                        # Legacy
                         'entry_price': analysis.get('entry') or analysis.get('price'),
                         'tp_price': analysis.get('tp'),
                         'sl_price': analysis.get('sl'),
-                        'size_usdt': None,  # Sera calculé lors de l'ouverture
+                        'size_usdt': None,
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
                     }

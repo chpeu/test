@@ -1596,12 +1596,28 @@ class PostgreSQLDataLogger:
                 if isinstance(status, dict):
                     status = status.get('status') or status.get('value') or 'PENDING'
                 
+                # 🔥 FIX: Extraire les champs manquants
+                score_long = opp_data.get('score_long')
+                score_short = opp_data.get('score_short')
+                score_min_required = opp_data.get('score_min_required')
+                trend_bonus = opp_data.get('trend_bonus')
+                divergence_bonus = opp_data.get('divergence_bonus')
+                condition_count = opp_data.get('condition_count')
+                setup_reason = opp_data.get('setup_reason')
+                
                 value_tuple = (
                     scan_id, session_id, symbol,
                     str(status) if status else 'PENDING',
                     str(direction) if direction else None,
                     float(setup_score) if setup_score is not None and not isinstance(setup_score, dict) else None,
+                    float(score_long) if score_long is not None else None,
+                    float(score_short) if score_short is not None else None,
+                    float(score_min_required) if score_min_required is not None else None,
+                    float(trend_bonus) if trend_bonus is not None else None,
+                    float(divergence_bonus) if divergence_bonus is not None else None,
                     conditions_matched,  # TEXT[] - liste de strings
+                    int(condition_count) if condition_count is not None else None,
+                    str(setup_reason) if setup_reason else None,
                     float(entry_price) if entry_price is not None and not isinstance(entry_price, dict) else None,  # entry_suggested
                     float(tp_price) if tp_price is not None and not isinstance(tp_price, dict) else None,  # tp_suggested
                     float(sl_price) if sl_price is not None and not isinstance(sl_price, dict) else None,  # sl_suggested
@@ -1612,7 +1628,10 @@ class PostgreSQLDataLogger:
             columns = (
                 'scan_log_id', 'session_id', 'symbol',
                 'status', 'direction', 'setup_score',
-                'conditions_matched', 'entry_suggested', 'tp_suggested', 'sl_suggested',
+                'score_long', 'score_short', 'score_min_required',
+                'trend_bonus', 'divergence_bonus',
+                'conditions_matched', 'condition_count', 'setup_reason',
+                'entry_suggested', 'tp_suggested', 'sl_suggested',
                 'tp_sl_mode'
             )
             

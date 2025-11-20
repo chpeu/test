@@ -23,6 +23,7 @@
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
+	import MLDashboard from '$lib/components/ml/MLDashboard.svelte';
 	import { recentLogs } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
@@ -79,6 +80,7 @@
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
 		{ id: 'variables', label: 'Variables', icon: '⚙️' },
+		{ id: 'ml', label: 'ML', icon: '🤖' },
 		{ id: 'logs', label: 'Logs', icon: '📝' },
 		{ id: 'charts', label: 'Graphiques', icon: '📉' },
 		{ id: 'history', label: 'Historique', icon: '📜' },
@@ -570,6 +572,10 @@
 			{:else if activeTab === 'variables'}
 				<div class="tab-content">
 					<VariablesPanel />
+				</div>
+			{:else if activeTab === 'ml'}
+				<div class="tab-content">
+					<MLDashboard />
 				</div>
 			{:else if activeTab === 'logs'}
 				<div class="tab-content">
