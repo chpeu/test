@@ -74,15 +74,19 @@ class XGBoostTrainer:
     def train(
         self,
         timeframe_days: int = 60,
-        min_trades: int = 50,
+        min_trades: int = 100,  # 🔥 Augmenté: Plus de données pour meilleur apprentissage
         test_size: float = 0.2,
-        n_estimators: int = 150,
-        max_depth: int = 4,  # Reduced from 6 to reduce overfitting
-        learning_rate: float = 0.05,  # Reduced for better generalization
-        early_stopping_rounds: int = 15,
+        n_estimators: int = 300,  # 🔥 Augmenté: Plus d'arbres pour meilleure performance
+        max_depth: int = 6,  # 🔥 Augmenté: Profondeur optimale pour trading
+        learning_rate: float = 0.03,  # 🔥 Réduit: Apprentissage plus lent mais plus robuste
+        early_stopping_rounds: int = 20,  # 🔥 Augmenté: Plus de patience avant arrêt
         random_state: int = 42,
         feature_selection: bool = True,
-        max_features: int = 30,  # Keep only top 30 features
+        max_features: int = 40,  # 🔥 Augmenté: Plus de features avec nouvelles discriminantes
+        min_child_weight: int = 3,  # 🔥 NOUVEAU: Anti-overfitting
+        subsample: float = 0.8,  # 🔥 NOUVEAU: Bagging pour robustesse
+        colsample_bytree: float = 0.8,  # 🔥 NOUVEAU: Feature sampling
+        gamma: float = 0.1,  # 🔥 NOUVEAU: Régularisation min split gain
         **xgb_params,
     ) -> Dict:
         """
@@ -132,12 +136,16 @@ class XGBoostTrainer:
         class_weights = compute_class_weights(y_train, strategy="balanced")
         scale_pos_weight = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
         
-        # 4. Configurer modèle
+        # 4. Configurer modèle avec hyperparamètres optimisés
         model_params = {
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "learning_rate": learning_rate,
             "scale_pos_weight": scale_pos_weight,
+            "min_child_weight": min_child_weight,  # 🔥 Anti-overfitting
+            "subsample": subsample,  # 🔥 Bagging
+            "colsample_bytree": colsample_bytree,  # 🔥 Feature sampling
+            "gamma": gamma,  # 🔥 Régularisation
             "random_state": random_state,
             "eval_metric": "logloss",
             "use_label_encoder": False,

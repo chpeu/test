@@ -365,3 +365,32 @@ POSTGRES_USE_SSL = os.getenv('POSTGRES_USE_SSL', 'false').lower() == 'true'
 POSTGRES_MIN_CONN = int(os.getenv('POSTGRES_MIN_CONN', '1'))
 POSTGRES_MAX_CONN = int(os.getenv('POSTGRES_MAX_CONN', '5'))
 
+# ============================================================================
+# ML Configuration (Machine Learning Predictions)
+# ============================================================================
+ML_CONFIG = {
+    # Activation du filtre ML pour le trading
+    "enabled": os.getenv('ML_FILTER_ENABLED', 'false').lower() == 'true',
+
+    # Modèle à utiliser
+    "model_name": os.getenv('ML_MODEL_NAME', 'xgboost_v1'),
+
+    # Seuil de confiance minimum pour accepter un trade
+    "min_confidence": float(os.getenv('ML_MIN_CONFIDENCE', '0.60')),  # 60% par défaut
+
+    # Seuil de confiance pour rejeter un trade (prédiction loss)
+    "max_loss_confidence": float(os.getenv('ML_MAX_LOSS_CONFIDENCE', '0.70')),  # 70% par défaut
+
+    # Mode de fonctionnement
+    # - "STRICT": Accepter uniquement les prédictions 'win' avec confiance >= min_confidence
+    # - "SOFT": Rejeter seulement les prédictions 'loss' avec confiance >= max_loss_confidence
+    "mode": os.getenv('ML_MODE', 'STRICT'),
+
+    # Logger les prédictions dans PostgreSQL
+    "log_predictions": True,
+
+    # Envoyer des alertes ML (Telegram) quand confiance >= seuil
+    "send_alerts": False,
+    "alert_confidence_threshold": 0.75,
+}
+
