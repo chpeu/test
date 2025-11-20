@@ -4857,15 +4857,13 @@ async def export_datalogger_excel(
                         base_query += " AND timestamp_entry <= %s"
                         params.append(f"{end_date} 23:59:59")
 
-                # 🔥 FIX: Limiter scan_logs aux 50 derniers scans pour éviter crash sur base volumineuse
-                if table_name == 'scan_logs':
-                    # Ajouter ORDER BY et LIMIT 50 pour scan_logs
-                    if has_timestamp:
-                        base_query += " ORDER BY timestamp DESC LIMIT 50"
-                    elif has_timestamp_entry:
-                        base_query += " ORDER BY timestamp_entry DESC LIMIT 50"
-                    else:
-                        base_query += " LIMIT 50"  # Fallback si pas de timestamp
+                # 🔥 FIX: Limiter TOUTES les tables aux 50 dernières lignes pour éviter crash sur base volumineuse
+                if has_timestamp:
+                    base_query += " ORDER BY timestamp DESC LIMIT 50"
+                elif has_timestamp_entry:
+                    base_query += " ORDER BY timestamp_entry DESC LIMIT 50"
+                else:
+                    base_query += " LIMIT 50"  # Fallback: limiter aux 50 premières lignes
 
                 cursor.execute(base_query, params)
                 rows = cursor.fetchall()
