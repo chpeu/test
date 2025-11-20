@@ -63,7 +63,10 @@
 		trailing_trigger_pnl: 0.25,
 		trailing_atr_multiplier: 0.4,
 		trailing_min_distance: 0.08,
-		trailing_max_distance: 0.25
+		trailing_max_distance: 0.25,
+		// Machine Learning
+		ml_filter_enabled: false,
+		ml_min_confidence: 0.60
 	};
 
 	let config = { ...DEFAULTS };
@@ -277,6 +280,10 @@
 			'🔍 Scanner': {
 				top_pairs_limit: tradingConfig.top_pairs_limit,
 				balance_score_min: tradingConfig.balance_score_min,
+			},
+			'🤖 Machine Learning': {
+				ml_filter_enabled: tradingConfig.ml_filter_enabled,
+				ml_min_confidence: tradingConfig.ml_min_confidence,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -719,6 +726,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'} data-debug-name="activeSubTab">
 			🎯 TP/SL & Position
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'ml'} on:click={() => activeSubTab = 'ml'} data-debug-name="activeSubTab">
+			🤖 Machine Learning
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'current'} on:click={() => activeSubTab = 'current'} data-debug-name="activeSubTab">
 			📋 Variables en cours
@@ -2019,6 +2029,97 @@
 			</section>
 		{/if}
 
+	<!-- ONGLET MACHINE LEARNING -->
+	{#if activeSubTab === 'ml'}
+		<section class="variable-section">
+			<h3>🤖 Filtrage de Confiance Machine Learning</h3>
+			<p class="section-desc">
+				Le modèle XGBoost analyse chaque opportunité avant ouverture de position et prédit les chances de succès.
+				Vous pouvez filtrer les trades selon le niveau de confiance du modèle.
+			</p>
+
+			<!-- Activation du filtre ML -->
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_filter_enabled">
+						<span class="variable-name">Activer Filtrage ML</span>
+						<span class="variable-desc">Rejeter les opportunités avec faible confiance</span>
+					</label>
+				</div>
+				<label class="toggle">
+					<input
+						type="checkbox"
+						id="ml_filter_enabled"
+						bind:checked={config.ml_filter_enabled}
+						on:change={() => handleConfigChange()}
+					/>
+					<span class="toggle-slider"></span>
+				</label>
+			</div>
+
+			<!-- Seuil de confiance minimum -->
+			<div class="variable-item" class:disabled={!config.ml_filter_enabled}>
+				<div class="variable-label-container">
+					<label for="ml_min_confidence">
+						<span class="variable-name">Seuil de Confiance Minimum</span>
+						<span class="variable-desc">
+							Confiance minimale pour accepter un trade (50% = hasard, 90% = très sélectif)
+						</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_min_confidence"
+						min="0.50"
+						max="0.90"
+						step="0.05"
+						bind:value={config.ml_min_confidence}
+						on:input={() => handleConfigChange()}
+						disabled={!config.ml_filter_enabled}
+						class="slider"
+					/>
+					<span class="slider-value">{Math.round(config.ml_min_confidence * 100)}%</span>
+				</div>
+			</div>
+
+			<!-- Métriques du modèle actuel -->
+			<div class="ml-info-box">
+				<h4>📊 Modèle Actuel: XGBoost V1</h4>
+				<div class="ml-metrics">
+					<div class="metric">
+						<span class="metric-label">Accuracy:</span>
+						<span class="metric-value">55.3%</span>
+					</div>
+					<div class="metric">
+						<span class="metric-label">ROC-AUC:</span>
+						<span class="metric-value warning">55.4%</span>
+					</div>
+					<div class="metric">
+						<span class="metric-label">Overfitting:</span>
+						<span class="metric-value danger">33.1%</span>
+					</div>
+				</div>
+				<p class="ml-warning">
+					⚠️ Le modèle montre des signes d'overfitting. Réentraînez avec plus de données ou ajustez les hyperparamètres.
+				</p>
+			</div>
+
+			<!-- Recommandations -->
+			<div class="recommendations-box">
+				<h4>💡 Recommandations</h4>
+				<ul>
+					<li><strong>Seuil 60-65%</strong>: Équilibre entre volume et qualité (recommandé pour début)</li>
+					<li><strong>Seuil 70-80%</strong>: Haute sélectivité, peu de trades mais meilleure qualité</li>
+					<li><strong>Seuil 85-90%</strong>: Ultra-sélectif, très peu de trades mais confiance maximale</li>
+				</ul>
+				<p class="info-text">
+					💡 <strong>Astuce:</strong> Avec un modèle à 55% d'accuracy, un seuil >70% est recommandé pour filtrer efficacement les mauvais setups.
+				</p>
+			</div>
+		</section>
+	{/if}
+
 		<!-- ONGLET VARIABLES EN COURS -->
 		{#if activeSubTab === 'current'}
 			<section class="variable-section current-vars-section" data-debug-name="variablesPanel.current">
@@ -2992,4 +3093,107 @@
 			text-align: left;
 		}
 	}
+	/* ML Section Styles */
+	.ml-info-box {
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		border-radius: 12px;
+		padding: 20px;
+		color: white;
+		margin-top: 20px;
+	}
+
+	.ml-info-box h4 {
+		margin: 0 0 15px 0;
+		font-size: 16px;
+		font-weight: 600;
+	}
+
+	.ml-metrics {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 15px;
+		margin-bottom: 15px;
+	}
+
+	.metric {
+		background: rgba(255, 255, 255, 0.15);
+		padding: 12px;
+		border-radius: 8px;
+		text-align: center;
+	}
+
+	.metric-label {
+		display: block;
+		font-size: 12px;
+		opacity: 0.9;
+		margin-bottom: 5px;
+	}
+
+	.metric-value {
+		display: block;
+		font-size: 20px;
+		font-weight: bold;
+	}
+
+	.metric-value.warning {
+		color: #fbbf24;
+	}
+
+	.metric-value.danger {
+		color: #f87171;
+	}
+
+	.ml-warning {
+		background: rgba(239, 68, 68, 0.2);
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		padding: 10px;
+		border-radius: 6px;
+		font-size: 14px;
+		margin: 0;
+	}
+
+	.recommendations-box {
+		background: #f9fafb;
+		border: 2px solid #e5e7eb;
+		border-radius: 12px;
+		padding: 20px;
+		margin-top: 20px;
+	}
+
+	.recommendations-box h4 {
+		margin: 0 0 15px 0;
+		color: #111827;
+		font-size: 16px;
+	}
+
+	.recommendations-box ul {
+		list-style: none;
+		padding: 0;
+		margin: 0 0 15px 0;
+	}
+
+	.recommendations-box li {
+		padding: 8px 0;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.recommendations-box li:last-child {
+		border-bottom: none;
+	}
+
+	.info-text {
+		background: #eff6ff;
+		border: 1px solid #93c5fd;
+		padding: 12px;
+		border-radius: 6px;
+		color: #1e40af;
+		font-size: 14px;
+		margin: 0;
+	}
+
+	.variable-item.disabled {
+		opacity: 0.5;
+		pointer-events: none;
+	}
+
 </style>

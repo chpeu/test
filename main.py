@@ -3881,6 +3881,24 @@ async def handle_client_command(command: str, params: dict):
             if position_config:
                 position_config.atr_max = val
         
+        # 🔥 Machine Learning Filter Configuration
+        if 'ml_filter_enabled' in params:
+            from config import ML_CONFIG
+            ML_CONFIG['enabled'] = bool(params['ml_filter_enabled'])
+            TRADING_CONFIG['ml_filter_enabled'] = ML_CONFIG['enabled']
+            updated['ml_filter_enabled'] = ML_CONFIG['enabled']
+            logger.info(f"✅ ML Filter enabled: {ML_CONFIG['enabled']}")
+        
+        if 'ml_min_confidence' in params:
+            from config import ML_CONFIG
+            val = float(params['ml_min_confidence'])
+            val = max(0.50, min(0.90, val))  # Clamp 0.50-0.90 (50%-90%)
+            ML_CONFIG['min_confidence'] = val
+            TRADING_CONFIG['ml_min_confidence'] = val
+            updated['ml_min_confidence'] = val
+            logger.info(f"✅ ML min confidence: {val*100:.0f}%")
+        
+        
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
