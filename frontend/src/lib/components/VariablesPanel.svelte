@@ -2051,7 +2051,7 @@
 						type="checkbox"
 						id="ml_filter_enabled"
 						bind:checked={config.ml_filter_enabled}
-						on:change={() => handleConfigChange()}
+						on:change={() => triggerAutoSave('ml_filter_enabled', config.ml_filter_enabled ? 'Activé' : 'Désactivé')}
 					/>
 					<span class="toggle-slider"></span>
 				</label>
@@ -2075,7 +2075,7 @@
 						max="0.90"
 						step="0.05"
 						bind:value={config.ml_min_confidence}
-						on:input={() => handleConfigChange()}
+						on:change={() => triggerAutoSave('ml_min_confidence', Math.round(config.ml_min_confidence * 100) + '%')}
 						disabled={!config.ml_filter_enabled}
 						class="slider"
 					/>
