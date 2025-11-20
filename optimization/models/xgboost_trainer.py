@@ -83,10 +83,12 @@ class XGBoostTrainer:
         random_state: int = 42,
         feature_selection: bool = True,
         max_features: int = 40,  # 🔥 Augmenté: Plus de features avec nouvelles discriminantes
-        min_child_weight: int = 3,  # 🔥 NOUVEAU: Anti-overfitting
-        subsample: float = 0.8,  # 🔥 NOUVEAU: Bagging pour robustesse
-        colsample_bytree: float = 0.8,  # 🔥 NOUVEAU: Feature sampling
-        gamma: float = 0.1,  # 🔥 NOUVEAU: Régularisation min split gain
+        min_child_weight: int = 3,  # 🔥 Anti-overfitting
+        reg_alpha: float = 0.5,  # 🔥 Régularisation L1 (modérée)
+        reg_lambda: float = 2.0,  # 🔥 Régularisation L2 (modérée)
+        subsample: float = 0.8,  # 🔥 Bagging pour robustesse
+        colsample_bytree: float = 0.8,  # 🔥 Feature sampling
+        gamma: float = 0.1,  # 🔥 Régularisation min split gain
         **xgb_params,
     ) -> Dict:
         """
@@ -135,17 +137,19 @@ class XGBoostTrainer:
         # 3. Calculer class weights
         class_weights = compute_class_weights(y_train, strategy="balanced")
         scale_pos_weight = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
-        
-        # 4. Configurer modèle avec hyperparamètres optimisés
+
+        # 4. Configurer modèle avec hyperparamètres optimisés et régularisation
         model_params = {
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "learning_rate": learning_rate,
+            "min_child_weight": min_child_weight,  # Anti-overfitting
+            "reg_alpha": reg_alpha,  # Régularisation L1 (Lasso)
+            "reg_lambda": reg_lambda,  # Régularisation L2 (Ridge)
+            "subsample": subsample,  # Bagging
+            "colsample_bytree": colsample_bytree,  # Feature sampling
+            "gamma": gamma,  # Régularisation min split gain
             "scale_pos_weight": scale_pos_weight,
-            "min_child_weight": min_child_weight,  # 🔥 Anti-overfitting
-            "subsample": subsample,  # 🔥 Bagging
-            "colsample_bytree": colsample_bytree,  # 🔥 Feature sampling
-            "gamma": gamma,  # 🔥 Régularisation
             "random_state": random_state,
             "eval_metric": "logloss",
             "use_label_encoder": False,
@@ -426,14 +430,14 @@ class XGBoostTrainer:
 def train_xgboost_cli(
     timeframe_days: int = 60,
     min_trades: int = 50,
-    n_estimators: int = 100,
-    max_depth: int = 6,
-    learning_rate: float = 0.1,
+    n_estimators: int = 50,  # Optimisé: 50 au lieu de 100
+    max_depth: int = 2,  # Optimisé: 2 au lieu de 6
+    learning_rate: float = 0.05,  # Optimisé: 0.05 au lieu de 0.1
 ):
-    """Helper pour entraînement CLI"""
-    
+    """Helper pour entraînement CLI avec paramètres optimisés"""
+
     trainer = XGBoostTrainer()
-    
+
     results = trainer.train(
         timeframe_days=timeframe_days,
         min_trades=min_trades,
