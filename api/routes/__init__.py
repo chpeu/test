@@ -19,11 +19,13 @@ from .dashboard import (
     set_socketio as set_socketio_dashboard,
     set_websocket_manager as set_websocket_manager_dashboard
 )
+from .ml import router as ml_router
 
 # Créer un router combiné pour compatibilité avec main.py
 router = APIRouter()
 router.include_router(scanner_router)
 router.include_router(dashboard_router)
+router.include_router(ml_router)  # 🆕 Routes ML
 
 # Variables pour les dépendances injectées
 _analytics_db = None

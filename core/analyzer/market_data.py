@@ -11,6 +11,9 @@ from utils.logger import get_logger
 
 logger = get_logger()
 
+ORDERBOOK_LONG_MIN_RATIO = 1.1
+ORDERBOOK_SHORT_MAX_RATIO = 0.95
+
 
 async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
     """
@@ -160,8 +163,7 @@ async def check_orderbook_imbalance(
 
         # Validation selon direction
         if direction == 'LONG':
-            # LONG : besoin de pression acheteuse (ratio ≥ 1.1)
-            required_ratio = 1.1
+            required_ratio = ORDERBOOK_LONG_MIN_RATIO
             valid = ratio >= required_ratio
 
             # Quality scoring
@@ -169,22 +171,25 @@ async def check_orderbook_imbalance(
                 quality = 'EXCELLENT'
             elif ratio >= 1.3:
                 quality = 'GOOD'
-            elif ratio >= required_ratio:
+            elif ratio >= 1.1:
                 quality = 'ACCEPTABLE'
+            elif ratio >= required_ratio:
+                quality = 'FAIR'
             else:
                 quality = 'POOR'
 
         else:  # SHORT
-            # SHORT : besoin de pression vendeuse (ratio ≤ 0.95)
-            required_ratio = 0.95
+            required_ratio = ORDERBOOK_SHORT_MAX_RATIO
             valid = ratio <= required_ratio
 
             if ratio <= 0.6:
                 quality = 'EXCELLENT'
             elif ratio <= 0.7:
                 quality = 'GOOD'
-            elif ratio <= required_ratio:
+            elif ratio <= 0.95:
                 quality = 'ACCEPTABLE'
+            elif ratio <= required_ratio:
+                quality = 'FAIR'
             else:
                 quality = 'POOR'
 
@@ -198,7 +203,8 @@ async def check_orderbook_imbalance(
             'ratio': ratio,
             'quality': quality,
             'bid_value': bid_value,
-            'ask_value': ask_value
+            'ask_value': ask_value,
+            'required_ratio': required_ratio
         }
 
         # Mettre en cache

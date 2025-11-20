@@ -15,6 +15,7 @@ import json
 import os
 import csv
 import io
+import subprocess
 from datetime import datetime
 from typing import Optional, List, Dict
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
@@ -441,6 +442,9 @@ position_config = None
 position_manager = None
 price_provider = None
 scheduler = None
+
+# 🔧 Gestion du reboot backend
+backend_reboot_in_progress = False
 
 # 🔥 ARCHITECTURE V2: Nouvelles instances
 analytics_db = None
@@ -905,6 +909,8 @@ async def scanner_loop_callback():
                                             if hasattr(price_provider, 'stop_websocket'):
                                                 await price_provider.stop_websocket()
                                                 logger.info(f"🔌 WebSocket arrêté avant position")
+                                                # Attendre que le WebSocket soit complètement arrêté
+                                                await asyncio.sleep(0.5)
 
                                             # Redémarrer WebSocket uniquement sur le symbole de la position
                                             if hasattr(price_provider, 'start_websocket'):
@@ -917,6 +923,8 @@ async def scanner_loop_callback():
                                                 logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
                                         except Exception as e:
                                             logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
+                                            import traceback
+                                            logger.debug(traceback.format_exc())
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     await add_log('INFO', 'Position ouverte automatiquement', 
@@ -1342,6 +1350,44 @@ async def scan_pair_for_setup(symbol: str):
             import traceback
             logger.debug(f"Traceback: {traceback.format_exc()}")
         
+        # Helper function to extract filter metrics
+        def _extract_filter_metrics_main(analysis):
+            """Extract filter metrics from analysis_1m and analysis_5m with correct suffixes"""
+            if not analysis or not isinstance(analysis, dict):
+                return {}
+            
+            filters = {}
+            
+            # Extract from analysis_1m with _1m suffix
+            analysis_1m = analysis.get('analysis_1m', {})
+            if analysis_1m and isinstance(analysis_1m, dict):
+                filters.update({
+                    'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed'),
+                    'snr_1m': analysis_1m.get('snr'),
+                    'snr_passed_1m': analysis_1m.get('snr_passed'),
+                    'breakout_distance_1m': analysis_1m.get('breakout_distance'),
+                    'breakout_passed_1m': analysis_1m.get('breakout_passed'),
+                    'wick_ratio_1m': analysis_1m.get('wick_ratio'),
+                    'wick_passed_1m': analysis_1m.get('wick_passed'),
+                    'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed')
+                })
+            
+            # Extract from analysis_5m with _5m suffix
+            analysis_5m = analysis.get('analysis_5m', {})
+            if analysis_5m and isinstance(analysis_5m, dict):
+                filters.update({
+                    'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed'),
+                    'snr_5m': analysis_5m.get('snr'),
+                    'snr_passed_5m': analysis_5m.get('snr_passed'),
+                    'breakout_distance_5m': analysis_5m.get('breakout_distance'),
+                    'breakout_passed_5m': analysis_5m.get('breakout_passed'),
+                    'wick_ratio_5m': analysis_5m.get('wick_ratio'),
+                    'wick_passed_5m': analysis_5m.get('wick_passed'),
+                    'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed')
+                })
+            
+            return filters
+        
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé (comme dans scanner_loop.py)
         try:
             from core.callbacks.scanner_loop import get_pg_datalogger
@@ -1357,13 +1403,77 @@ async def scan_pair_for_setup(symbol: str):
                 if app_state and app_state.get('top_pairs'):
                     for pair in app_state.get('top_pairs', []):
                         if pair.get('symbol') == symbol:
+                            spread_value = pair.get('spread') or pair.get('spread_pct')
+                            book_depth = pair.get('bookDepth')
+                            balance_score = pair.get('balanceScore')
+                            bid_vol = pair.get('bidVol')
+                            ask_vol = pair.get('askVol')
+                            if book_depth in (None, 0) and bid_vol and ask_vol:
+                                book_depth = bid_vol + ask_vol
+                            imbalance = None
+                            if bid_vol and ask_vol:
+                                try:
+                                    imbalance = bid_vol / ask_vol if ask_vol > 0 else None
+                                except Exception:
+                                    imbalance = None
+                            
                             scalability_data = {
+                                'spread': spread_value,
+                                'spread_pct': spread_value,
+                                'bookDepth': book_depth,
+                                'book_depth': book_depth,
+                                'balanceScore': balance_score,
+                                'balance_score': balance_score,
+                                'bidVol': bid_vol,
+                                'askVol': ask_vol,
+                                'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
+                                'score': pair.get('score')
                             }
+                            logger.info(f"💹 DEBUG main.py: Scalability data trouvé pour {symbol}: spread={spread_value}, depth={book_depth}")
                             break
+                
+                # Fallback: utiliser les infos présentes dans l'analyse/best_setup
+                if not scalability_data:
+                    logger.warning(f"⚠️ DEBUG main.py: scalability_data vide pour {symbol}, utilisation fallback depuis analysis")
+                    analysis_obj = analysis or {}
+                    orderbook_check = analysis_obj.get('orderbook_check') or {}
+                    bid_value = orderbook_check.get('bid_value') or analysis_obj.get('bid_vol')
+                    ask_value = orderbook_check.get('ask_value') or analysis_obj.get('ask_vol')
+                    book_depth = None
+                    if bid_value or ask_value:
+                        bid_value = bid_value or 0
+                        ask_value = ask_value or 0
+                        book_depth = bid_value + ask_value
+                    imbalance = None
+                    if bid_value and ask_value:
+                        try:
+                            imbalance = bid_value / ask_value if ask_value > 0 else None
+                        except Exception:
+                            imbalance = None
+
+                    scalability_data = {
+                        'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
+                        'bookDepth': book_depth,
+                        'book_depth': book_depth,
+                        'balanceScore': analysis_obj.get('orderbook_balance'),
+                        'balance_score': analysis_obj.get('orderbook_balance'),
+                        'bidVol': bid_value,
+                        'askVol': ask_value,
+                        'orderbook_imbalance_ratio': imbalance,
+                        'recent_volume': analysis_obj.get('recent_volume'),
+                        'recentVolume': analysis_obj.get('recent_volume'),
+                        'vol5': analysis_obj.get('vol5'),
+                        'vol15': analysis_obj.get('vol15'),
+                        'scalability_score': analysis_obj.get('scalability_score'),
+                        'score': analysis_obj.get('scalability_score')
+                    }
+                    logger.info(f"⚠️ DEBUG main.py: Scalability data depuis fallback pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
                 
                 # Préparer les données du scan pour PostgreSQL
                 # 🔥 FIX: Récupérer le prix avec fallbacks (comme pour SimplePGLogger)
@@ -1399,12 +1509,18 @@ async def scan_pair_for_setup(symbol: str):
                     'scan_duration_ms': scan_duration_ms,
                     'market_data': {
                         'price': scan_price,
-                        'spread_pct': analysis.get('spread_pct') if analysis else None,
-                        'book_depth': analysis.get('book_depth') if analysis else None,
-                        'balance_score': analysis.get('balance_score') if analysis else None,
-                        'bid_vol': analysis.get('bid_vol') if analysis else None,
-                        'ask_vol': analysis.get('ask_vol') if analysis else None,
-                        'orderbook_imbalance_ratio': analysis.get('orderbook_imbalance_ratio') if analysis else None,
+                        # 🔥 FIX: Utiliser scalability_data au lieu de analysis pour les métriques de scalabilité
+                        'spread_pct': scalability_data.get('spread'),
+                        'book_depth': scalability_data.get('bookDepth'),
+                        'balance_score': scalability_data.get('balanceScore'),
+                        'bid_vol': scalability_data.get('bidVol'),
+                        'ask_vol': scalability_data.get('askVol'),
+                        # Calculer imbalance ratio si bid/ask disponibles
+                        'orderbook_imbalance_ratio': (
+                            scalability_data.get('bidVol') / scalability_data.get('askVol')
+                            if scalability_data.get('askVol') and scalability_data.get('askVol') > 0
+                            else None
+                        ),
                         # Paramètres du scan de scalabilité
                         'recent_volume': scalability_data.get('recent_volume'),
                         'vol5': scalability_data.get('vol5'),
@@ -1421,15 +1537,15 @@ async def scan_pair_for_setup(symbol: str):
                     'score': scalability_data.get('scalability_score'),  # Alias
                     'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
                     'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
-                    'filters': analysis.get('filters', {}) if analysis else {},
+                    'filters': _extract_filter_metrics_main(analysis),
                     'scores': {
                         'score_1m': analysis.get('score_1m') if analysis else None,
                         'score_5m': analysis.get('score_5m') if analysis else None,
-                        'score_total': analysis.get('score_total') if analysis else None,
-                        'score_long_1m': analysis.get('score_long_1m') if analysis else None,
-                        'score_short_1m': analysis.get('score_short_1m') if analysis else None,
-                        'score_long_5m': analysis.get('score_long_5m') if analysis else None,
-                        'score_short_5m': analysis.get('score_short_5m') if analysis else None,
+                        'score_total': analysis.get('totalScore') or analysis.get('score_total') if analysis else None,
+                        'score_long_1m': analysis.get('long_score') if analysis else None,
+                        'score_short_1m': analysis.get('short_score') if analysis else None,
+                        'score_long_5m': analysis.get('long_score') if analysis else None,
+                        'score_short_5m': analysis.get('short_score') if analysis else None,
                     },
                     'patterns': {
                         'pattern_1m': analysis.get('pattern_1m') if analysis else None,
@@ -1437,20 +1553,20 @@ async def scan_pair_for_setup(symbol: str):
                         'pattern_5m': analysis.get('pattern_5m') if analysis else None,
                         'pattern_multi_5m': analysis.get('pattern_multi_5m') if analysis else None,
                     },
+                    'trend_bonus': analysis.get('trend_bonus') if analysis else 0,
+                    'divergence_bonus': analysis.get('divergence_bonus') if analysis else 0,
+                    'divergence_detected': analysis.get('divergence_detected') if analysis else False,
+                    'divergence_type': analysis.get('divergence_type') if analysis else None,
                     'use_confluence': use_confluence,
                     'confluence_met': analysis.get('confluence_met') if analysis else False,
                     'timeframes_aligned': analysis.get('timeframes_aligned') if analysis else False,
                     'trend_timeframe': trend_timeframe,
                     'trend_direction': trend_data.get('trend') if trend_data else None,  # 'trend' pas 'direction'
                     'trend_strength': None,  # trend_data.get('strength') est une chaîne ('STRONG', 'MODERATE', 'NONE'), pas un FLOAT
-                    'trend_bonus': trend_data.get('bonus') if trend_data else None,
-                    'divergence_detected': analysis.get('divergence_detected') if analysis else False,
-                    'divergence_type': analysis.get('divergence_type') if analysis else None,
-                    'divergence_bonus': analysis.get('divergence_bonus') if analysis else 0,
+                    'reject_reason': analysis.get('reason') if analysis else None,
+                    'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)),
                     'opportunity_direction': analysis.get('direction') if analysis and 'direction' in analysis else None,
-                    'reject_reason': analysis.get('reason') if analysis and 'reason' in analysis else None,
-                    'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'params_snapshot': {
                         'volume_multiplier': volume_multiplier,
                         'use_confluence': use_confluence,
@@ -1472,22 +1588,62 @@ async def scan_pair_for_setup(symbol: str):
                     }
                 }
                 
+                # 🔥 FIX: Logging désactivé ici car déjà fait dans scanner_loop.py avec filters complets
                 # Logger le scan (mode batch par défaut)
-                logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
-                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
-                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
+                # logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
+                # scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                # logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
+                scan_id = None  # Le vrai scan_id sera créé par scanner_loop.py
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 if scan_data['is_opportunity'] and analysis:
+                    # 🔍 DEBUG: Logger les clés disponibles dans analysis
+                    logger.info(f"🔍 DEBUG main.py: analysis keys pour {symbol}: {list(analysis.keys())[:20]}")
+                    
+                    condition_list = analysis.get('condition_types', []) or analysis.get('signals', [])
+                    
+                    # 🔥 FIX: Les clés correctes sont 'long_score' et 'short_score', pas 'score_long_1m'
+                    score_long = analysis.get('long_score')
+                    score_short = analysis.get('short_score')
+                    
+                    # Fallback: essayer aussi les anciennes clés si les nouvelles ne sont pas présentes
+                    if score_long is None:
+                        score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
+                    if score_short is None:
+                        score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
+                    
+                    # Fallback: chercher dans scan_data['scores'] si toujours None
+                    if score_long is None and 'scores' in scan_data:
+                        score_long = scan_data['scores'].get('score_long_1m') or scan_data['scores'].get('score_long_5m')
+                    if score_short is None and 'scores' in scan_data:
+                        score_short = scan_data['scores'].get('score_short_1m') or scan_data['scores'].get('score_short_5m')
+                    
+                    min_required = scan_data['params_snapshot'].get('min_score_required')
+                    trend_bonus = scan_data.get('trend_bonus')
+                    # 🔥 FIX: divergence_bonus et setup_reason sont maintenant dans l'objet analysis
+                    divergence_bonus = analysis.get('divergence_bonus')
+                    setup_reason = analysis.get('setup_reason')
+                    
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
                         'setup_score': analysis.get('score_total') or analysis.get('totalScore'),
-                        'conditions_matched': analysis.get('condition_types', []) or analysis.get('signals', []),
+                        'score_long': score_long,
+                        'score_short': score_short,
+                        'score_min_required': min_required,
+                        'trend_bonus': trend_bonus,
+                        'divergence_bonus': divergence_bonus,
+                        'conditions_matched': condition_list,
+                        'condition_count': len(condition_list),
+                        'setup_reason': setup_reason,
+                        'entry_suggested': analysis.get('entry') or analysis.get('price'),
+                        'tp_suggested': analysis.get('tp'),
+                        'sl_suggested': analysis.get('sl'),
+                        'tp_sl_mode': analysis.get('tp_sl_mode', 'FIXE'),
+                        # Legacy
                         'entry_price': analysis.get('entry') or analysis.get('price'),
                         'tp_price': analysis.get('tp'),
                         'sl_price': analysis.get('sl'),
-                        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                         'size_usdt': None,
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
@@ -3934,8 +4090,12 @@ async def handle_client_command(command: str, params: dict):
         await add_log('INFO', f'Config modifiée: {config_key}', str(config_change))
         return {'status': 'logged', 'key': config_key, 'change': config_change}
     
+    elif command == 'reboot_backend':
+        reason = params.get('reason', 'manual')
+        return await initiate_backend_reboot(reason=reason)
+    
     else:
-        raise ValueError(f'Commande inconnue: {command}')
+        raise ValueError(f"Unknown command: {command}")
 
 
 # Configuration endpoints
@@ -4261,6 +4421,109 @@ async def add_log(level, message, detail=''):
     # Logger avec couleur dans la console backend
     logger.info(f"{color}[{entry['timestamp']}] {entry['level']}: {message}{reset_code}")
 
+
+async def initiate_backend_reboot(reason: str = 'manual') -> Dict:
+    """Démarrer le processus de reboot backend (non bloquant)."""
+    global backend_reboot_in_progress
+
+    if backend_reboot_in_progress:
+        await add_log('INFO', 'Backend reboot', 'Déjà en cours, nouvelle demande ignorée')
+        return {'status': 'already_in_progress'}
+
+    backend_reboot_in_progress = True
+    info_msg = f"Demande de reboot backend reçue (raison: {reason})"
+    await add_log('WARNING', 'Backend reboot', info_msg)
+
+    if ws_manager:
+        await ws_manager.emit('backend_reboot', {
+            'status': 'pending',
+            'reason': reason,
+            'timestamp': time.time()
+        })
+
+    asyncio.create_task(_perform_backend_reboot(reason))
+    return {'status': 'rebooting', 'reason': reason}
+
+
+async def _perform_backend_reboot(reason: str):
+    """Arrêter proprement les services puis relancer le processus."""
+    global backend_reboot_in_progress
+
+    try:
+        await add_log('INFO', 'Backend reboot', 'Arrêt des services en cours...')
+        if ws_manager:
+            await ws_manager.emit('backend_reboot', {
+                'status': 'shutting_down',
+                'reason': reason,
+                'timestamp': time.time()
+            })
+
+        # Arrêter scheduler
+        if scheduler and getattr(scheduler, 'is_running', False):
+            try:
+                await scheduler.stop_async()
+                await add_log('INFO', 'Backend reboot', 'Scheduler arrêté')
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur arrêt scheduler (reboot): {e}")
+
+        # Arrêter price provider websocket
+        if price_provider and hasattr(price_provider, 'stop_websocket'):
+            try:
+                await price_provider.stop_websocket()
+                await add_log('INFO', 'Backend reboot', 'WebSocket prix arrêté')
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur arrêt price provider (reboot): {e}")
+
+        # Fermer data logger PostgreSQL
+        try:
+            from core.callbacks.scanner_loop import get_pg_datalogger
+            pg_datalogger = get_pg_datalogger()
+            if pg_datalogger:
+                pg_datalogger.close()
+                await add_log('INFO', 'Backend reboot', 'PG DataLogger fermé')
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur fermeture PG DataLogger (reboot): {e}")
+
+        # Sauvegarder historique avant sortie
+        try:
+            save_trade_history()
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur sauvegarde historique avant reboot: {e}")
+
+        await asyncio.sleep(0.5)
+
+        if ws_manager:
+            await ws_manager.emit('backend_reboot', {
+                'status': 'restarting',
+                'reason': reason,
+                'timestamp': time.time()
+            })
+
+        await add_log('INFO', 'Backend reboot', 'Relance du processus backend...')
+
+        python_cmd = sys.executable or 'python'
+        script_path = os.path.abspath(sys.argv[0])
+        args = sys.argv[1:]
+        env = os.environ.copy()
+        env['BACKEND_REBOOT_REASON'] = reason
+
+        subprocess.Popen([python_cmd, script_path, *args], env=env, close_fds=os.name != 'nt')
+
+        await asyncio.sleep(0.5)
+        logger.info('♻️ Nouveau processus backend lancé, arrêt de l\'instance actuelle...')
+        os._exit(0)
+
+    except Exception as e:
+        backend_reboot_in_progress = False
+        logger.error(f"❌ Échec reboot backend: {e}")
+        await add_log('ERROR', 'Backend reboot échoué', str(e))
+        if ws_manager:
+            await ws_manager.emit('backend_reboot', {
+                'status': 'error',
+                'reason': reason,
+                'error': str(e),
+                'timestamp': time.time()
+            })
 
 # Main entry point
 

@@ -237,15 +237,24 @@ class HybridPriceProvider:
                 symbols_to_subscribe = self.monitored_symbols
                 logger.info(f"🔄 Réabonnement WebSocket: {len(symbols_to_subscribe)} symboles")
 
-            # Réabonner
+            # Réabonner avec vérification que le WebSocket est prêt
+            if not self.ws_manager._ws or not self.ws_manager._connected:
+                logger.warning("⚠️ WebSocket pas encore prêt pour réabonnement, attente...")
+                await asyncio.sleep(0.5)
+            
             for symbol in symbols_to_subscribe:
-                await self.ws_manager.subscribe_ticker(symbol)
-                await asyncio.sleep(0.05)  # Petit délai
+                try:
+                    await self.ws_manager.subscribe_ticker(symbol)
+                    await asyncio.sleep(0.05)  # Petit délai
+                except Exception as sub_err:
+                    logger.warning(f"⚠️ Erreur souscription {symbol}: {sub_err}")
 
             logger.info(f"✅ WebSocket réabonné à {len(symbols_to_subscribe)} symbole(s)")
 
         except Exception as e:
             logger.error(f"❌ Erreur réabonnement WebSocket: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
 
     async def stop_websocket(self):
         """Arrêter WebSocket"""
