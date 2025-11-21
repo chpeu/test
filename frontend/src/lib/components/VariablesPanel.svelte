@@ -98,6 +98,15 @@
 	let exportingExcel = false;
 	let retrainingML = false;
 	let resettingDB = false;
+	
+	// 🔥 FIX: Variables pour métriques ML dynamiques
+	let mlMetrics = {
+		test_accuracy: 55.3,
+		roc_auc: 55.4,
+		overfitting_gap: 33.1,
+		trades_count: 940
+	};
+	let loadingMLMetrics = false;
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
 	function autoAdjustEscalierSize(changedLevel) {
@@ -162,9 +171,72 @@
 		}
 	}
 	
+	// Fonction pour charger les métriques ML depuis l'API
+	let mlMetricsLoadAttempts = 0;
+	let mlMetricsLoaded = false;
+	const MAX_ML_METRICS_ATTEMPTS = 3;
+	
+	async function loadMLMetrics() {
+		// 🔥 FIX: Empêcher les tentatives infinies si le backend n'est pas prêt
+		if (loadingMLMetrics || mlMetricsLoadAttempts >= MAX_ML_METRICS_ATTEMPTS) {
+			return;
+		}
+		
+		loadingMLMetrics = true;
+		mlMetricsLoadAttempts++;
+		
+		try {
+			const response = await fetch('/api/ml/models/overview');
+			if (!response.ok) {
+				throw new Error(`Erreur HTTP: ${response.status}`);
+			}
+			const data = await response.json();
+			
+			// Extraire les métriques du modèle actuel (xgboost_v1)
+			const currentModel = data.models?.find(m => m.name === 'xgboost_v1');
+			if (currentModel && currentModel.metrics) {
+				mlMetrics = {
+					test_accuracy: (currentModel.metrics.test?.accuracy || 0) * 100,
+					roc_auc: (currentModel.metrics.test?.roc_auc || 0) * 100,
+					overfitting_gap: currentModel.overfitting_gap || 0,
+					trades_count: currentModel.dataset_info?.total_samples || 0
+				};
+				console.log('✅ Métriques ML chargées:', mlMetrics);
+				mlMetricsLoadAttempts = 0; // Reset sur succès
+				mlMetricsLoaded = true;
+			}
+		} catch (err) {
+			console.error(`❌ Erreur chargement métriques ML (tentative ${mlMetricsLoadAttempts}/${MAX_ML_METRICS_ATTEMPTS}):`, err);
+			if (mlMetricsLoadAttempts >= MAX_ML_METRICS_ATTEMPTS) {
+				saveMessage = '⚠️ Impossible de charger les métriques ML. Backend non accessible.';
+				setTimeout(() => saveMessage = '', 5000);
+			}
+		} finally {
+			loadingMLMetrics = false;
+		}
+	}
+	
 	// Charger la config complète quand on active l'onglet
-	$: if (activeSubTab === 'current' && !completeConfig && !loadingCompleteConfig) {
+	// 🔥 FIX: Ne recharger que si pas de changements non sauvegardés pour préserver les modifications locales
+	$: if (activeSubTab === 'current' && !completeConfig && !loadingCompleteConfig && !hasUnsavedChanges) {
 		loadCompleteConfig();
+	}
+	
+	// 🔥 FIX: Charger les métriques ML quand on active l'onglet Machine Learning une seule fois
+	$: if (activeSubTab === 'ml' && !loadingMLMetrics && !mlMetricsLoaded && mlMetricsLoadAttempts === 0) {
+		loadMLMetrics();
+	}
+	
+	// 🔥 FIX: Mettre à jour completeConfig.trading_config avec les valeurs locales si on a des changements non sauvegardés
+	$: if (activeSubTab === 'current' && completeConfig && hasUnsavedChanges) {
+		// Synchroniser les valeurs locales dans completeConfig pour affichage en temps réel
+		if (completeConfig.trading_config) {
+			Object.keys(config).forEach(key => {
+				if (config[key] !== completeConfig.trading_config[key]) {
+					completeConfig.trading_config[key] = config[key];
+				}
+			});
+		}
 	}
 	
 	// Fonction pour formater une valeur selon son type
@@ -468,22 +540,13 @@
 
 	async function retrainModel() {
 		retrainingML = true;
+		saveMessage = '⏳ Réentraînement en cours...';
+		
 		try {
-			const params = {
-				max_depth: config.ml_max_depth,
-				min_child_weight: config.ml_min_child_weight,
-				reg_alpha: config.ml_reg_alpha,
-				reg_lambda: config.ml_reg_lambda,
-				subsample: config.ml_subsample,
-				colsample_bytree: config.ml_colsample_bytree,
-				n_estimators: config.ml_n_estimators,
-				learning_rate: config.ml_learning_rate
-			};
-
-			const response = await fetch('/api/ml/retrain', {
+			// 1. Déclencher le réentraînement
+			const response = await fetch('/api/ml/retrain?force=true', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(params)
+				headers: { 'Content-Type': 'application/json' }
 			});
 
 			if (!response.ok) {
@@ -491,15 +554,64 @@
 			}
 
 			const result = await response.json();
-			const accuracy = (result.metrics.test.accuracy * 100).toFixed(1);
-			const rocauc = (result.metrics.test.roc_auc * 100).toFixed(1);
-			const gap = ((result.metrics.train.accuracy - result.metrics.test.accuracy) * 100).toFixed(1);
 			
-			alert('Modèle réentraîné!\n\nAccuracy: ' + accuracy + '%\nROC-AUC: ' + rocauc + '%\nOverfitting Gap: ' + gap + '%');
-			location.reload();
+			// 🔥 FIX: L'API retourne un task_id, pas le résultat immédiatement
+			if (result.status === 'pending' && result.task_id) {
+				saveMessage = '⏳ Réentraînement démarré, vérification de l\'état...';
+				
+				// 2. Attendre la completion de la tâche (polling)
+				const taskId = result.task_id;
+				let attempts = 0;
+				const maxAttempts = 60; // 5 minutes max (60 * 5s)
+				
+				while (attempts < maxAttempts) {
+					await new Promise(resolve => setTimeout(resolve, 5000)); // Attendre 5 secondes
+					
+					// Vérifier l'état de la tâche
+					const statusResponse = await fetch(`/api/ml/tasks/${taskId}`);
+					if (!statusResponse.ok) {
+						throw new Error('Impossible de vérifier l\'état du réentraînement');
+					}
+					
+					const taskStatus = await statusResponse.json();
+					
+					if (taskStatus.status === 'completed' && taskStatus.result) {
+						// ✅ Réentraînement terminé avec succès
+						const metrics = taskStatus.result.metrics;
+						if (metrics && metrics.test) {
+							const accuracy = (metrics.test.accuracy * 100).toFixed(1);
+							const rocauc = (metrics.test.roc_auc * 100).toFixed(1);
+							const gap = ((metrics.train.accuracy - metrics.test.accuracy) * 100).toFixed(1);
+							
+							saveMessage = `✅ Modèle réentraîné! Accuracy: ${accuracy}%, ROC-AUC: ${rocauc}%, Gap: ${gap}%`;
+							
+							// 🔥 FIX: Recharger les métriques ML pour mettre à jour le tableau
+							await loadMLMetrics();
+							
+							setTimeout(() => {
+								alert(`Modèle réentraîné avec succès!\n\nAccuracy: ${accuracy}%\nROC-AUC: ${rocauc}%\nOverfitting Gap: ${gap}%`);
+								location.reload();
+							}, 1000);
+							return;
+						}
+					} else if (taskStatus.status === 'error') {
+						throw new Error(taskStatus.error || 'Erreur lors du réentraînement');
+					}
+					
+					// Mise à jour du message de progression
+					saveMessage = `⏳ Réentraînement en cours... (${Math.round(taskStatus.progress || 0)}%)`;
+					attempts++;
+				}
+				
+				throw new Error('Timeout: Le réentraînement prend trop de temps');
+			} else if (result.status === 'skipped') {
+				saveMessage = `ℹ️ ${result.message}`;
+				setTimeout(() => saveMessage = '', 5000);
+			}
 		} catch (err) {
 			console.error('Erreur réentraînement:', err);
-			alert('Erreur: ' + err.message);
+			saveMessage = `❌ Erreur: ${err.message}`;
+			setTimeout(() => saveMessage = '', 5000);
 		} finally {
 			retrainingML = false;
 		}
@@ -2347,28 +2459,42 @@
 		<!-- Métriques Actuelles -->
 		<section class="variable-section">
 			<h3>📊 Métriques du Modèle Actuel</h3>
-			<div class="ml-metrics-grid">
-				<div class="metric-card">
-					<div class="metric-label">Test Accuracy</div>
-					<div class="metric-value">55.3%</div>
-					<div class="metric-status poor">Faible</div>
+			{#if loadingMLMetrics}
+				<div class="loading-message">⏳ Chargement des métriques...</div>
+			{:else}
+				<div class="ml-metrics-grid">
+					<div class="metric-card">
+						<div class="metric-label">Test Accuracy</div>
+						<div class="metric-value">{mlMetrics.test_accuracy.toFixed(1)}%</div>
+						<div class="metric-status" class:poor={mlMetrics.test_accuracy < 60} class:ok={mlMetrics.test_accuracy >= 60 && mlMetrics.test_accuracy < 70} class:good={mlMetrics.test_accuracy >= 70}>
+							{mlMetrics.test_accuracy < 60 ? 'Faible' : mlMetrics.test_accuracy < 70 ? 'Moyen' : 'Bon'}
+						</div>
+					</div>
+					<div class="metric-card">
+						<div class="metric-label">ROC-AUC</div>
+						<div class="metric-value">{mlMetrics.roc_auc.toFixed(1)}%</div>
+						<div class="metric-status" class:poor={mlMetrics.roc_auc < 60} class:ok={mlMetrics.roc_auc >= 60 && mlMetrics.roc_auc < 70} class:good={mlMetrics.roc_auc >= 70}>
+							{mlMetrics.roc_auc < 60 ? 'Faible' : mlMetrics.roc_auc < 70 ? 'Moyen' : 'Bon'}
+						</div>
+					</div>
+					<div class="metric-card">
+						<div class="metric-label">Overfitting Gap</div>
+						<div class="metric-value" class:danger={mlMetrics.overfitting_gap > 20} class:warning={mlMetrics.overfitting_gap > 10 && mlMetrics.overfitting_gap <= 20} class:ok={mlMetrics.overfitting_gap <= 10}>
+							{mlMetrics.overfitting_gap.toFixed(1)}%
+						</div>
+						<div class="metric-status" class:danger={mlMetrics.overfitting_gap > 20} class:warning={mlMetrics.overfitting_gap > 10 && mlMetrics.overfitting_gap <= 20} class:ok={mlMetrics.overfitting_gap <= 10}>
+							{mlMetrics.overfitting_gap > 20 ? 'Élevé' : mlMetrics.overfitting_gap > 10 ? 'Modéré' : 'Faible'}
+						</div>
+					</div>
+					<div class="metric-card">
+						<div class="metric-label">Trades</div>
+						<div class="metric-value">{mlMetrics.trades_count}</div>
+						<div class="metric-status" class:poor={mlMetrics.trades_count < 100} class:ok={mlMetrics.trades_count >= 100 && mlMetrics.trades_count < 500} class:good={mlMetrics.trades_count >= 500}>
+							{mlMetrics.trades_count < 100 ? 'Insuffisant' : mlMetrics.trades_count < 500 ? 'Suffisant' : 'Excellent'}
+						</div>
+					</div>
 				</div>
-				<div class="metric-card">
-					<div class="metric-label">ROC-AUC</div>
-					<div class="metric-value">55.4%</div>
-					<div class="metric-status poor">Faible</div>
-				</div>
-				<div class="metric-card">
-					<div class="metric-label">Overfitting Gap</div>
-					<div class="metric-value danger">33.1%</div>
-					<div class="metric-status danger">Élevé</div>
-				</div>
-				<div class="metric-card">
-					<div class="metric-label">Trades</div>
-					<div class="metric-value">940</div>
-					<div class="metric-status ok">Suffisant</div>
-				</div>
-			</div>
+			{/if}
 		</section>
 	{/if}
 

@@ -376,6 +376,8 @@ async def _scan_top_pairs():
 
                 # 🔥 NOUVEAU: Filtre ML avant ouverture de position
                 from config import ML_CONFIG
+                
+                logger.info(f"🔍 ML_CONFIG state: enabled={ML_CONFIG.get('enabled', False)}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}, mode={ML_CONFIG.get('mode', 'STRICT')}")
 
                 if ML_CONFIG.get('enabled', False):
                     logger.info(f"🤖 Filtre ML activé - Vérification prédiction pour {symbol}...")

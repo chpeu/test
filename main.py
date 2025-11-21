@@ -3436,6 +3436,17 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'check_interval': TRADING_CONFIG.get('check_interval', 0.1),
                                     'scan_interval': TRADING_CONFIG.get('scan_interval', 45),
                                     'scalability_interval': TRADING_CONFIG.get('scalability_interval', 90),
+                                    # Machine Learning
+                                    'ml_filter_enabled': TRADING_CONFIG.get('ml_filter_enabled', False),
+                                    'ml_min_confidence': TRADING_CONFIG.get('ml_min_confidence', 0.60),
+                                    'ml_max_depth': TRADING_CONFIG.get('ml_max_depth', 6),
+                                    'ml_min_child_weight': TRADING_CONFIG.get('ml_min_child_weight', 3),
+                                    'ml_reg_alpha': TRADING_CONFIG.get('ml_reg_alpha', 0.5),
+                                    'ml_reg_lambda': TRADING_CONFIG.get('ml_reg_lambda', 2.0),
+                                    'ml_subsample': TRADING_CONFIG.get('ml_subsample', 0.8),
+                                    'ml_colsample_bytree': TRADING_CONFIG.get('ml_colsample_bytree', 0.8),
+                                    'ml_n_estimators': TRADING_CONFIG.get('ml_n_estimators', 300),
+                                    'ml_learning_rate': TRADING_CONFIG.get('ml_learning_rate', 0.03),
                                     # Autres
                                     'telegram_enabled': TELEGRAM_ENABLED,  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
                                     # 🔥 NOUVEAU: Exposer les types de notifications Telegram
@@ -3959,6 +3970,15 @@ async def handle_client_command(command: str, params: dict):
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
+            
+            # 🔥 FIX: Persister les modifications dans config_overrides.json
+            # pour conserver les changements entre redémarrages
+            try:
+                from utils.config_persistence import save_config_overrides
+                if save_config_overrides(updated):
+                    logger.info(f"✅ Modifications persistées dans config_overrides.json")
+            except Exception as e:
+                logger.error(f"❌ Erreur persistence config: {e}")
             
             # 🔥 FIX: Mettre à jour immédiatement toutes les instances qui utilisent la config
             # Mettre à jour position_config si nécessaire (sans réinitialiser complètement)

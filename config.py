@@ -408,3 +408,23 @@ ML_CONFIG = {
     "alert_confidence_threshold": 0.75,
 }
 
+
+# 🔥 FIX: Appliquer les overrides persistés depuis config_overrides.json
+# Permet de conserver les modifications faites via l'UI entre redémarrages
+try:
+    from utils.config_persistence import apply_config_overrides
+    TRADING_CONFIG = apply_config_overrides(TRADING_CONFIG)
+    
+    # 🔥 FIX: Synchroniser ML_CONFIG avec TRADING_CONFIG après chargement des overrides
+    if 'ml_filter_enabled' in TRADING_CONFIG:
+        ML_CONFIG['enabled'] = TRADING_CONFIG['ml_filter_enabled']
+    if 'ml_min_confidence' in TRADING_CONFIG:
+        ML_CONFIG['min_confidence'] = TRADING_CONFIG['ml_min_confidence']
+    
+    import logging
+    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}")
+    
+except Exception as e:
+    import logging
+    logging.warning(f"⚠️ Impossible d'appliquer config overrides: {e}")
+
