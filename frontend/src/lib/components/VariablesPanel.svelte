@@ -66,7 +66,6 @@
 		trailing_max_distance: 0.25,
 		// Machine Learning
 		ml_filter_enabled: false,
-	};
 		ml_min_confidence: 0.60,
 		// Hyperparamètres XGBoost
 		ml_max_depth: 6,
@@ -77,6 +76,7 @@
 		ml_colsample_bytree: 0.8,
 		ml_n_estimators: 300,
 		ml_learning_rate: 0.03
+	};
 
 	let config = { ...DEFAULTS };
 	let loading = false;
