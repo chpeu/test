@@ -257,28 +257,34 @@ class WebSocketManager:
             self._running = False
         self._connected = False
 
-        # 🔥 FIX: Annuler et attendre les tâches proprement
-        if self._reconnect_task:
-            self._reconnect_task.cancel()
-            try:
-                await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
+        # 🔥 FIX: Annuler et attendre les tâches proprement (vérifier qu'elles sont actives)
+        if self._reconnect_task and isinstance(self._reconnect_task, asyncio.Task):
+            if not self._reconnect_task.done():
+                self._reconnect_task.cancel()
+                try:
+                    await self._reconnect_task
+                except asyncio.CancelledError:
+                    pass
+            self._reconnect_task = None
 
-        if self._watchdog_task:
-            self._watchdog_task.cancel()
-            try:
-                await self._watchdog_task
-            except asyncio.CancelledError:
-                pass
+        if self._watchdog_task and isinstance(self._watchdog_task, asyncio.Task):
+            if not self._watchdog_task.done():
+                self._watchdog_task.cancel()
+                try:
+                    await self._watchdog_task
+                except asyncio.CancelledError:
+                    pass
+            self._watchdog_task = None
         
         # 🔥 FIX: Annuler et attendre la tâche de réception
-        if self._receive_task:
-            self._receive_task.cancel()
-            try:
-                await self._receive_task
-            except asyncio.CancelledError:
-                pass
+        if self._receive_task and isinstance(self._receive_task, asyncio.Task):
+            if not self._receive_task.done():
+                self._receive_task.cancel()
+                try:
+                    await self._receive_task
+                except asyncio.CancelledError:
+                    pass
+            self._receive_task = None
 
         if self._ws:
             await self._ws.close()

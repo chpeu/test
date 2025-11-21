@@ -37,8 +37,8 @@ TRADING_CONFIG = {
     "tp_sl_mode": "FIXE",  # FIXE ou ATR
     
     # FIXE mode
-    "tp_percent": 0.6,  # +0.6% (TP final pour les 50% restants après TP partiel)
-    "sl_percent": 0.25,  # -0.25%
+    "tp_percent": 0.50,  # 🔥 PHASE 3 : +0.50% (optimisé pour scalping, était 0.6%)
+    "sl_percent": 0.20,  # 🔥 PHASE 3 : -0.20% (SL serré, était 0.25%)
     "break_even_trigger": 0.3,  # +0.3%
     "trailing_distance": 0.15,  # 0.15%
     
@@ -58,9 +58,9 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 3: Pondération des conditions (système de score)
     "use_weighted_scoring": True,  # Activer le système de score pondéré
-    "min_score_required": 7.5,  # Score minimum requis (au lieu de min_conditions) - 🔥 Valeur mise à jour
-    "min_score_adx_high": 7.0,  # Score minimum si ADX > 30
-    "min_score_adx_low": 8.0,  # Score minimum si ADX < 25
+    "min_score_required": 6.5,  # 🔥 PHASE 1 : Score minimum (était 7.5, baissé pour plus d'opportunités)
+    "min_score_adx_high": 6.0,  # 🔥 PHASE 1 : Score si ADX > 30 (était 7.0)
+    "min_score_adx_low": 7.0,  # 🔥 PHASE 1 : Score si ADX < 25 (était 8.0)
     
     # ✅ Patterns Techniques (activés par défaut)
     "use_breakout": True,  # Cassure de niveaux clés
@@ -78,9 +78,9 @@ TRADING_CONFIG = {
     "use_evening_star": True,
 
     # Phase 1+2: New filters (configurable) - 🔥 Valeurs mises à jour
-    "snr_threshold": 0.25,  # Signal-to-Noise Ratio minimum (était 0.3)
-    "breakout_threshold": 0.35,  # Breakout multiplier (ATR * threshold) (était 0.3)
-    "wick_ratio_max": 2.8,  # Max wick ratio before rejection (était 2.5)
+    "snr_threshold": 0.15,  # 🔥 PHASE 1 : SNR minimum (était 0.25, baissé pour rebonds EMA)
+    "breakout_threshold": 0.25,  # 🔥 PHASE 1 : Breakout multiplier (était 0.35, baissé)
+    "wick_ratio_max": 4.5,  # 🔥 PHASE 1 : Max wick ratio (était 2.8, wicks normaux en scalping)
     "di_gap_min": 4.0,  # Minimum DI+ - DI- gap (était 5)
     "di_gap_adx_threshold": 25,  # ADX threshold for DI gap
     
@@ -108,15 +108,15 @@ TRADING_CONFIG = {
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
         "enabled": True,
-        "delay": 10,  # Attendre 10s minimum avant de vérifier
-        "threshold_15s": -0.12,  # -0.12% avant 15s (conservateur)
-        "threshold_30s": -0.08,  # -0.08% avant 30s
+        "delay": 15,  # 🔥 PHASE 2 : 15s au lieu de 10s (laisser plus de temps)
+        "threshold_15s": -0.15,  # 🔥 PHASE 2 : -0.15% (était -0.12%, moins agressif)
+        "threshold_30s": -0.12,  # 🔥 PHASE 2 : -0.12% (était -0.08%, moins agressif)
     },
     
     # 🔥 PHASE 2: Trailing stop adaptatif ATR
     "trailing_stop": {
         "enabled": True,
-        "trigger_pnl": 0.25,      # Déclencher à +0.25%
+        "trigger_pnl": 0.15,      # 🔥 PHASE 2 : Déclencher à +0.15% (était 0.25%, protection plus tôt)
         "atr_multiplier": 0.4,   # Distance = ATR × 0.4
         "min_distance": 0.08,    # Minimum 0.08%
         "max_distance": 0.25,    # Maximum 0.25%
@@ -226,7 +226,7 @@ TRADING_CONFIG = {
 
     # ✅ Trailing Stop Adaptatif (paramètres individuels)
     "trailing_enabled": True,
-    "trailing_trigger_pnl": 0.25,
+    "trailing_trigger_pnl": 0.15,  # 🔥 PHASE 2 : 0.15% (était 0.25%)
     "trailing_atr_multiplier": 0.4,
     "trailing_min_distance": 0.08,
     "trailing_max_distance": 0.25,
@@ -243,8 +243,8 @@ TRADING_CONFIG = {
     },
 
     # 🤖 Machine Learning Configuration
-    "ml_filter_enabled": False,
-    "ml_min_confidence": 0.60,
+    "ml_filter_enabled": False,  # 🔥 PHASE 4 : Désactivé (accuracy 51% = aléatoire)
+    "ml_min_confidence": 0.60,  # 60% (si réactivé plus tard)
 
     # 🤖 Hyperparamètres XGBoost (ajustables via UI)
     "ml_max_depth": 6,

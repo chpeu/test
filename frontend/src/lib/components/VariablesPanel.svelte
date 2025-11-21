@@ -17,9 +17,9 @@
 		use_morning_star: true,
 		use_evening_star: true,
 		// Indicateurs Techniques
-		snr_threshold: 0.25,
-		breakout_threshold: 0.35,
-		wick_ratio_max: 2.8,
+		snr_threshold: 0.15,  // 🔥 PHASE 1 : 0.15 (était 0.25)
+		breakout_threshold: 0.25,  // 🔥 PHASE 1 : 0.25 (était 0.35)
+		wick_ratio_max: 4.5,  // 🔥 PHASE 1 : 4.5 (était 2.8)
 		di_gap_min: 4.0,
 		di_gap_adx_threshold: 25,
 		trend_timeframe: '15m',
@@ -31,7 +31,7 @@
 		// Validation Setups (déplacé depuis Stratégie)
 		use_confluence: false,
 		volume_multiplier: 0.95,
-		min_score_required: 7.5,
+		min_score_required: 6.5,  // 🔥 PHASE 1 : 6.5 (était 7.5)
 		max_slippage_pct: 0.03,
 		// Money Management
 		account_size: 1000.0,
@@ -39,8 +39,8 @@
 		// TP/SL Mode
 		tp_sl_mode: 'FIXE',
 		// Mode FIXE
-		tp_percent: 0.6,
-		sl_percent: 0.25,
+		tp_percent: 0.50,  // 🔥 PHASE 3 : 0.50 (était 0.6)
+		sl_percent: 0.20,  // 🔥 PHASE 3 : 0.20 (était 0.25)
 		partial_tp_percent: 50,
 		break_even_trigger: 0.3,
 		trailing_distance: 0.15,
@@ -60,13 +60,13 @@
 		escalier_level4_size: 25,
 		// Trailing Stop Adaptatif (tous modes)
 		trailing_enabled: true,
-		trailing_trigger_pnl: 0.25,
+		trailing_trigger_pnl: 0.15,  // 🔥 PHASE 2 : 0.15 (était 0.25)
 		trailing_atr_multiplier: 0.4,
 		trailing_min_distance: 0.08,
 		trailing_max_distance: 0.25,
 		// Machine Learning
-		ml_filter_enabled: false,
-		ml_min_confidence: 0.60,
+		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
+		ml_min_confidence: 0.60,  // 60% (si réactivé plus tard)
 		// Hyperparamètres XGBoost
 		ml_max_depth: 6,
 		ml_min_child_weight: 3,
