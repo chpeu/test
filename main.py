@@ -1588,12 +1588,10 @@ async def scan_pair_for_setup(symbol: str):
                     }
                 }
                 
-                # 🔥 FIX: Logging désactivé ici car déjà fait dans scanner_loop.py avec filters complets
                 # Logger le scan (mode batch par défaut)
-                # logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
-                # scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
-                # logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
-                scan_id = None  # Le vrai scan_id sera créé par scanner_loop.py
+                logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
+                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 if scan_data['is_opportunity'] and analysis:
@@ -3438,6 +3436,17 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'check_interval': TRADING_CONFIG.get('check_interval', 0.1),
                                     'scan_interval': TRADING_CONFIG.get('scan_interval', 45),
                                     'scalability_interval': TRADING_CONFIG.get('scalability_interval', 90),
+                                    # Machine Learning
+                                    'ml_filter_enabled': TRADING_CONFIG.get('ml_filter_enabled', False),
+                                    'ml_min_confidence': TRADING_CONFIG.get('ml_min_confidence', 0.60),
+                                    'ml_max_depth': TRADING_CONFIG.get('ml_max_depth', 6),
+                                    'ml_min_child_weight': TRADING_CONFIG.get('ml_min_child_weight', 3),
+                                    'ml_reg_alpha': TRADING_CONFIG.get('ml_reg_alpha', 0.5),
+                                    'ml_reg_lambda': TRADING_CONFIG.get('ml_reg_lambda', 2.0),
+                                    'ml_subsample': TRADING_CONFIG.get('ml_subsample', 0.8),
+                                    'ml_colsample_bytree': TRADING_CONFIG.get('ml_colsample_bytree', 0.8),
+                                    'ml_n_estimators': TRADING_CONFIG.get('ml_n_estimators', 300),
+                                    'ml_learning_rate': TRADING_CONFIG.get('ml_learning_rate', 0.03),
                                     # Autres
                                     'telegram_enabled': TELEGRAM_ENABLED,  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
                                     # 🔥 NOUVEAU: Exposer les types de notifications Telegram
@@ -3883,9 +3892,93 @@ async def handle_client_command(command: str, params: dict):
             if position_config:
                 position_config.atr_max = val
         
+        # 🔥 Machine Learning Filter Configuration
+        if 'ml_filter_enabled' in params:
+            from config import ML_CONFIG
+            ML_CONFIG['enabled'] = bool(params['ml_filter_enabled'])
+            TRADING_CONFIG['ml_filter_enabled'] = ML_CONFIG['enabled']
+            updated['ml_filter_enabled'] = ML_CONFIG['enabled']
+            logger.info(f"✅ ML Filter enabled: {ML_CONFIG['enabled']}")
+        
+        if 'ml_min_confidence' in params:
+            from config import ML_CONFIG
+            val = float(params['ml_min_confidence'])
+            val = max(0.50, min(0.90, val))  # Clamp 0.50-0.90 (50%-90%)
+            ML_CONFIG['min_confidence'] = val
+            TRADING_CONFIG['ml_min_confidence'] = val
+            updated['ml_min_confidence'] = val
+            logger.info(f"✅ ML min confidence: {val*100:.0f}%")
+
+        # 🔥 ML Hyperparameters (XGBoost)
+        if 'ml_max_depth' in params:
+            val = int(params['ml_max_depth'])
+            val = max(2, min(8, val))  # Clamp 2-8
+            TRADING_CONFIG['ml_max_depth'] = val
+            updated['ml_max_depth'] = val
+            logger.info(f"✅ ML max_depth: {val}")
+
+        if 'ml_min_child_weight' in params:
+            val = int(params['ml_min_child_weight'])
+            val = max(1, min(15, val))  # Clamp 1-15
+            TRADING_CONFIG['ml_min_child_weight'] = val
+            updated['ml_min_child_weight'] = val
+            logger.info(f"✅ ML min_child_weight: {val}")
+
+        if 'ml_reg_alpha' in params:
+            val = float(params['ml_reg_alpha'])
+            val = max(0.0, min(5.0, val))  # Clamp 0.0-5.0
+            TRADING_CONFIG['ml_reg_alpha'] = val
+            updated['ml_reg_alpha'] = val
+            logger.info(f"✅ ML reg_alpha (L1): {val}")
+
+        if 'ml_reg_lambda' in params:
+            val = float(params['ml_reg_lambda'])
+            val = max(0.0, min(10.0, val))  # Clamp 0.0-10.0
+            TRADING_CONFIG['ml_reg_lambda'] = val
+            updated['ml_reg_lambda'] = val
+            logger.info(f"✅ ML reg_lambda (L2): {val}")
+
+        if 'ml_subsample' in params:
+            val = float(params['ml_subsample'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_subsample'] = val
+            updated['ml_subsample'] = val
+            logger.info(f"✅ ML subsample: {val*100:.0f}%")
+
+        if 'ml_colsample_bytree' in params:
+            val = float(params['ml_colsample_bytree'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_colsample_bytree'] = val
+            updated['ml_colsample_bytree'] = val
+            logger.info(f"✅ ML colsample_bytree: {val*100:.0f}%")
+
+        if 'ml_n_estimators' in params:
+            val = int(params['ml_n_estimators'])
+            val = max(50, min(500, val))  # Clamp 50-500
+            TRADING_CONFIG['ml_n_estimators'] = val
+            updated['ml_n_estimators'] = val
+            logger.info(f"✅ ML n_estimators: {val}")
+
+        if 'ml_learning_rate' in params:
+            val = float(params['ml_learning_rate'])
+            val = max(0.01, min(0.1, val))  # Clamp 0.01-0.1
+            TRADING_CONFIG['ml_learning_rate'] = val
+            updated['ml_learning_rate'] = val
+            logger.info(f"✅ ML learning_rate: {val}")
+
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
+            
+            # 🔥 FIX: Persister les modifications dans config_overrides.json
+            # pour conserver les changements entre redémarrages
+            try:
+                from utils.config_persistence import save_config_overrides
+                if save_config_overrides(updated):
+                    logger.info(f"✅ Modifications persistées dans config_overrides.json")
+            except Exception as e:
+                logger.error(f"❌ Erreur persistence config: {e}")
             
             # 🔥 FIX: Mettre à jour immédiatement toutes les instances qui utilisent la config
             # Mettre à jour position_config si nécessaire (sans réinitialiser complètement)
@@ -4579,6 +4672,68 @@ def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:
     }
 
 
+@app.post("/api/ml/retrain")
+async def api_ml_retrain(request: Request):
+    """
+    🤖 Réentraîner le modèle ML avec hyperparamètres personnalisés
+    """
+    try:
+        data = await request.json() if hasattr(request, 'json') else {}
+
+        # Récupérer les hyperparamètres (avec valeurs par défaut)
+        hyperparams = {
+            'max_depth': int(data.get('max_depth', 6)),
+            'min_child_weight': int(data.get('min_child_weight', 3)),
+            'reg_alpha': float(data.get('reg_alpha', 0.5)),
+            'reg_lambda': float(data.get('reg_lambda', 2.0)),
+            'subsample': float(data.get('subsample', 0.8)),
+            'colsample_bytree': float(data.get('colsample_bytree', 0.8)),
+            'n_estimators': int(data.get('n_estimators', 300)),
+            'learning_rate': float(data.get('learning_rate', 0.03))
+        }
+
+        logger.info(f"🤖 Démarrage réentraînement ML avec hyperparamètres: {hyperparams}")
+
+        # Import du trainer
+        from optimization.models.xgboost_trainer import XGBoostTrainer
+
+        # Créer une instance du trainer
+        trainer = XGBoostTrainer(model_name='xgboost_v1')
+
+        # Lancer l'entraînement avec les hyperparamètres
+        metrics = trainer.train(
+            min_trades=100,
+            n_estimators=hyperparams['n_estimators'],
+            max_depth=hyperparams['max_depth'],
+            learning_rate=hyperparams['learning_rate'],
+            early_stopping_rounds=20,
+            max_features=40,
+            min_child_weight=hyperparams['min_child_weight'],
+            reg_alpha=hyperparams['reg_alpha'],
+            reg_lambda=hyperparams['reg_lambda'],
+            subsample=hyperparams['subsample'],
+            colsample_bytree=hyperparams['colsample_bytree'],
+            gamma=0.1
+        )
+
+        if metrics is None:
+            logger.error("❌ Échec réentraînement: metrics is None")
+            return JSONResponse({'error': 'Échec du réentraînement'}, status_code=500)
+
+        logger.info(f"✅ Réentraînement terminé: {metrics}")
+
+        return JSONResponse({
+            'success': True,
+            'metrics': metrics,
+            'hyperparams': hyperparams,
+            'message': 'Modèle réentraîné avec succès'
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Erreur réentraînement ML: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
 @app.get("/api/dashboard/summary")
 async def get_dashboard_summary():
     """Résumé des statistiques de trading"""
@@ -4858,6 +5013,14 @@ async def export_datalogger_excel(
                     elif has_timestamp_entry:
                         base_query += " AND timestamp_entry <= %s"
                         params.append(f"{end_date} 23:59:59")
+
+                # 🔥 FIX: Limiter TOUTES les tables aux 50 dernières lignes pour éviter crash sur base volumineuse
+                if has_timestamp:
+                    base_query += " ORDER BY timestamp DESC LIMIT 50"
+                elif has_timestamp_entry:
+                    base_query += " ORDER BY timestamp_entry DESC LIMIT 50"
+                else:
+                    base_query += " LIMIT 50"  # Fallback: limiter aux 50 premières lignes
 
                 cursor.execute(base_query, params)
                 rows = cursor.fetchall()

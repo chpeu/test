@@ -242,6 +242,20 @@ TRADING_CONFIG = {
         ]
     },
 
+    # 🤖 Machine Learning Configuration
+    "ml_filter_enabled": False,
+    "ml_min_confidence": 0.60,
+
+    # 🤖 Hyperparamètres XGBoost (ajustables via UI)
+    "ml_max_depth": 6,
+    "ml_min_child_weight": 3,
+    "ml_reg_alpha": 0.5,
+    "ml_reg_lambda": 2.0,
+    "ml_subsample": 0.8,
+    "ml_colsample_bytree": 0.8,
+    "ml_n_estimators": 300,
+    "ml_learning_rate": 0.03,
+
 }
 
 # Risk management
@@ -364,4 +378,53 @@ POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
 POSTGRES_USE_SSL = os.getenv('POSTGRES_USE_SSL', 'false').lower() == 'true'
 POSTGRES_MIN_CONN = int(os.getenv('POSTGRES_MIN_CONN', '1'))
 POSTGRES_MAX_CONN = int(os.getenv('POSTGRES_MAX_CONN', '5'))
+
+# ============================================================================
+# ML Configuration (Machine Learning Predictions)
+# ============================================================================
+ML_CONFIG = {
+    # Activation du filtre ML pour le trading
+    "enabled": os.getenv('ML_FILTER_ENABLED', 'false').lower() == 'true',
+
+    # Modèle à utiliser
+    "model_name": os.getenv('ML_MODEL_NAME', 'xgboost_v1'),
+
+    # Seuil de confiance minimum pour accepter un trade
+    "min_confidence": float(os.getenv('ML_MIN_CONFIDENCE', '0.60')),  # 60% par défaut
+
+    # Seuil de confiance pour rejeter un trade (prédiction loss)
+    "max_loss_confidence": float(os.getenv('ML_MAX_LOSS_CONFIDENCE', '0.70')),  # 70% par défaut
+
+    # Mode de fonctionnement
+    # - "STRICT": Accepter uniquement les prédictions 'win' avec confiance >= min_confidence
+    # - "SOFT": Rejeter seulement les prédictions 'loss' avec confiance >= max_loss_confidence
+    "mode": os.getenv('ML_MODE', 'STRICT'),
+
+    # Logger les prédictions dans PostgreSQL
+    "log_predictions": True,
+
+    # Envoyer des alertes ML (Telegram) quand confiance >= seuil
+    "send_alerts": False,
+    "alert_confidence_threshold": 0.75,
+}
+
+
+# 🔥 FIX: Appliquer les overrides persistés depuis config_overrides.json
+# Permet de conserver les modifications faites via l'UI entre redémarrages
+try:
+    from utils.config_persistence import apply_config_overrides
+    TRADING_CONFIG = apply_config_overrides(TRADING_CONFIG)
+    
+    # 🔥 FIX: Synchroniser ML_CONFIG avec TRADING_CONFIG après chargement des overrides
+    if 'ml_filter_enabled' in TRADING_CONFIG:
+        ML_CONFIG['enabled'] = TRADING_CONFIG['ml_filter_enabled']
+    if 'ml_min_confidence' in TRADING_CONFIG:
+        ML_CONFIG['min_confidence'] = TRADING_CONFIG['ml_min_confidence']
+    
+    import logging
+    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}")
+    
+except Exception as e:
+    import logging
+    logging.warning(f"⚠️ Impossible d'appliquer config overrides: {e}")
 

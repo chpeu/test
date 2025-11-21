@@ -225,6 +225,86 @@ async def get_performance_analysis(
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
+# ========== MODELS ==========
+
+@router.get("/models/overview")
+async def get_models_overview():
+    """
+    Vue d'ensemble des modèles ML disponibles avec leurs métriques
+    """
+    try:
+        import json
+        from pathlib import Path
+        
+        models_dir = Path("optimization/saved_models")
+        models = []
+        
+        # Charger les métadonnées du modèle xgboost_v1
+        metadata_file = models_dir / "xgboost_v1_metadata.json"
+        
+        if metadata_file.exists():
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+            
+            # Calculer overfitting gap
+            metrics = metadata.get('metrics', {})
+            train_acc = metrics.get('train', {}).get('accuracy', 0)
+            test_acc = metrics.get('test', {}).get('accuracy', 0)
+            overfitting_gap = (train_acc - test_acc) * 100 if train_acc and test_acc else 0
+
+            # Quelques anciennes metadata n'ont pas dataset_info, on retombe sur training_info
+            dataset_info = metadata.get('dataset_info') or {}
+            if not dataset_info:
+                training_info = metadata.get('training_info', {})
+                dataset_info = {
+                    'total_samples': training_info.get('total_samples'),
+                    'train_samples': training_info.get('train_samples'),
+                    'test_samples': training_info.get('test_samples'),
+                    'timeframe_days': training_info.get('timeframe_days')
+                }
+            
+            models.append({
+                'name': 'xgboost_v1',
+                'type': 'XGBoost Classifier',
+                'version': metadata.get('version', '1.0'),
+                'trained_at': metadata.get('timestamp') or metadata.get('training_info', {}).get('trained_at'),
+                'metrics': metrics,
+                'overfitting_gap': round(overfitting_gap, 1),
+                'dataset_info': dataset_info,
+                'hyperparameters': metadata.get('hyperparameters', {}),
+                'feature_count': metadata.get('n_features', 0),
+                'is_active': True
+            })
+        else:
+            # Pas de modèle entraîné
+            models.append({
+                'name': 'xgboost_v1',
+                'type': 'XGBoost Classifier',
+                'version': '1.0',
+                'trained_at': None,
+                'metrics': {
+                    'test': {'accuracy': 0, 'roc_auc': 0},
+                    'train': {'accuracy': 0}
+                },
+                'overfitting_gap': 0,
+                'dataset_info': {'total_samples': 0},
+                'hyperparameters': {},
+                'feature_count': 0,
+                'is_active': False
+            })
+        
+        return {
+            'models': models,
+            'total_models': len(models),
+            'active_model': 'xgboost_v1' if models[0]['is_active'] else None,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_models_overview: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
 # ========== FEATURES ==========
 
 @router.get("/features/importance")

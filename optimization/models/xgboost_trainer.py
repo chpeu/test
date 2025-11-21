@@ -74,20 +74,21 @@ class XGBoostTrainer:
     def train(
         self,
         timeframe_days: int = 60,
-        min_trades: int = 50,
+        min_trades: int = 100,  # 🔥 Augmenté: Plus de données pour meilleur apprentissage
         test_size: float = 0.2,
-        n_estimators: int = 50,  # Réduit de 150 à 50 (moins d'arbres)
-        max_depth: int = 2,  # Réduit de 4 à 2 (arbres plus simples)
-        learning_rate: float = 0.05,  # Conservé (déjà optimal)
-        min_child_weight: int = 10,  # NOUVEAU: minimum 10 samples par feuille
-        reg_alpha: float = 1.0,  # NOUVEAU: régularisation L1
-        reg_lambda: float = 5.0,  # NOUVEAU: régularisation L2 forte
-        subsample: float = 0.7,  # NOUVEAU: utilise 70% des données (bagging)
-        colsample_bytree: float = 0.7,  # NOUVEAU: utilise 70% des features
-        early_stopping_rounds: int = 15,
+        n_estimators: int = 300,  # 🔥 Augmenté: Plus d'arbres pour meilleure performance
+        max_depth: int = 6,  # 🔥 Augmenté: Profondeur optimale pour trading
+        learning_rate: float = 0.03,  # 🔥 Réduit: Apprentissage plus lent mais plus robuste
+        early_stopping_rounds: int = 20,  # 🔥 Augmenté: Plus de patience avant arrêt
         random_state: int = 42,
         feature_selection: bool = True,
-        max_features: int = 20,  # Réduit de 30 à 20 features
+        max_features: int = 40,  # 🔥 Augmenté: Plus de features avec nouvelles discriminantes
+        min_child_weight: int = 3,  # 🔥 Anti-overfitting
+        reg_alpha: float = 0.5,  # 🔥 Régularisation L1 (modérée)
+        reg_lambda: float = 2.0,  # 🔥 Régularisation L2 (modérée)
+        subsample: float = 0.8,  # 🔥 Bagging pour robustesse
+        colsample_bytree: float = 0.8,  # 🔥 Feature sampling
+        gamma: float = 0.1,  # 🔥 Régularisation min split gain
         **xgb_params,
     ) -> Dict:
         """
@@ -136,17 +137,18 @@ class XGBoostTrainer:
         # 3. Calculer class weights
         class_weights = compute_class_weights(y_train, strategy="balanced")
         scale_pos_weight = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
-        
-        # 4. Configurer modèle avec paramètres anti-overfitting
+
+        # 4. Configurer modèle avec hyperparamètres optimisés et régularisation
         model_params = {
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "learning_rate": learning_rate,
-            "min_child_weight": min_child_weight,  # Minimum samples par feuille
+            "min_child_weight": min_child_weight,  # Anti-overfitting
             "reg_alpha": reg_alpha,  # Régularisation L1 (Lasso)
             "reg_lambda": reg_lambda,  # Régularisation L2 (Ridge)
-            "subsample": subsample,  # Fraction de données par arbre (bagging)
-            "colsample_bytree": colsample_bytree,  # Fraction de features par arbre
+            "subsample": subsample,  # Bagging
+            "colsample_bytree": colsample_bytree,  # Feature sampling
+            "gamma": gamma,  # Régularisation min split gain
             "scale_pos_weight": scale_pos_weight,
             "random_state": random_state,
             "eval_metric": "logloss",

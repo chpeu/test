@@ -374,6 +374,70 @@ async def _scan_top_pairs():
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 
+                # 🔥 NOUVEAU: Filtre ML avant ouverture de position
+                from config import ML_CONFIG
+                
+                logger.info(f"🔍 ML_CONFIG state: enabled={ML_CONFIG.get('enabled', False)}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}, mode={ML_CONFIG.get('mode', 'STRICT')}")
+
+                if ML_CONFIG.get('enabled', False):
+                    logger.info(f"🤖 Filtre ML activé - Vérification prédiction pour {symbol}...")
+
+                    try:
+                        # Récupérer klines depuis best_setup ou les refetch si nécessaire
+                        klines_1m = best_setup.get('klines_1m')
+
+                        if not klines_1m or len(klines_1m) < 30:
+                            logger.warning(f"⚠️ Klines manquantes pour ML, skip prédiction pour {symbol}")
+                        else:
+                            # Obtenir prédiction ML
+                            from optimization.scanner_ml_integration import get_ml_prediction_for_opportunity
+
+                            scan_id = best_setup.get('_scan_uuid') or best_setup.get('scan_id')
+                            ml_prediction = await get_ml_prediction_for_opportunity(
+                                klines=klines_1m,
+                                symbol=symbol,
+                                scan_id=scan_id,
+                                model_name=ML_CONFIG.get('model_name', 'xgboost_v1')
+                            )
+
+                            if ml_prediction:
+                                prediction = ml_prediction.get('prediction')
+                                confidence = ml_prediction.get('confidence', 0)
+
+                                logger.info(f"🤖 Prédiction ML: {prediction} (confiance: {confidence*100:.1f}%)")
+
+                                # Appliquer filtre selon mode
+                                mode = ML_CONFIG.get('mode', 'STRICT')
+                                min_confidence = ML_CONFIG.get('min_confidence', 0.60)
+                                max_loss_confidence = ML_CONFIG.get('max_loss_confidence', 0.70)
+
+                                should_reject = False
+                                reject_reason = ""
+
+                                if mode == 'STRICT':
+                                    # Mode STRICT: Accepter UNIQUEMENT les 'win' avec confiance suffisante
+                                    if prediction != 'win' or confidence < min_confidence:
+                                        should_reject = True
+                                        reject_reason = f"ML prédit {prediction} avec confiance {confidence*100:.1f}% (seuil: {min_confidence*100:.1f}%)"
+
+                                elif mode == 'SOFT':
+                                    # Mode SOFT: Rejeter SEULEMENT les 'loss' avec forte confiance
+                                    if prediction == 'loss' and confidence >= max_loss_confidence:
+                                        should_reject = True
+                                        reject_reason = f"ML prédit loss avec forte confiance {confidence*100:.1f}% (seuil: {max_loss_confidence*100:.1f}%)"
+
+                                if should_reject:
+                                    logger.warning(f"❌ ML REJETTE le trade: {reject_reason}")
+                                    return  # Bloquer l'ouverture de position
+                                else:
+                                    logger.info(f"✅ ML APPROUVE le trade: {prediction} (confiance: {confidence*100:.1f}%)")
+                            else:
+                                logger.warning(f"⚠️ Prédiction ML échouée pour {symbol}, trade autorisé par défaut")
+
+                    except Exception as ml_error:
+                        logger.error(f"❌ Erreur filtre ML: {ml_error}", exc_info=True)
+                        logger.warning(f"⚠️ Trade autorisé malgré erreur ML (failsafe)")
+
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
                 _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
                 _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
