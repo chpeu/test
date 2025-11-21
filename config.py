@@ -242,6 +242,20 @@ TRADING_CONFIG = {
         ]
     },
 
+    # 🤖 Machine Learning Configuration
+    "ml_filter_enabled": False,
+    "ml_min_confidence": 0.60,
+
+    # 🤖 Hyperparamètres XGBoost (ajustables via UI)
+    "ml_max_depth": 6,
+    "ml_min_child_weight": 3,
+    "ml_reg_alpha": 0.5,
+    "ml_reg_lambda": 2.0,
+    "ml_subsample": 0.8,
+    "ml_colsample_bytree": 0.8,
+    "ml_n_estimators": 300,
+    "ml_learning_rate": 0.03,
+
 }
 
 # Risk management

@@ -3897,8 +3897,65 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['ml_min_confidence'] = val
             updated['ml_min_confidence'] = val
             logger.info(f"✅ ML min confidence: {val*100:.0f}%")
-        
-        
+
+        # 🔥 ML Hyperparameters (XGBoost)
+        if 'ml_max_depth' in params:
+            val = int(params['ml_max_depth'])
+            val = max(2, min(8, val))  # Clamp 2-8
+            TRADING_CONFIG['ml_max_depth'] = val
+            updated['ml_max_depth'] = val
+            logger.info(f"✅ ML max_depth: {val}")
+
+        if 'ml_min_child_weight' in params:
+            val = int(params['ml_min_child_weight'])
+            val = max(1, min(15, val))  # Clamp 1-15
+            TRADING_CONFIG['ml_min_child_weight'] = val
+            updated['ml_min_child_weight'] = val
+            logger.info(f"✅ ML min_child_weight: {val}")
+
+        if 'ml_reg_alpha' in params:
+            val = float(params['ml_reg_alpha'])
+            val = max(0.0, min(5.0, val))  # Clamp 0.0-5.0
+            TRADING_CONFIG['ml_reg_alpha'] = val
+            updated['ml_reg_alpha'] = val
+            logger.info(f"✅ ML reg_alpha (L1): {val}")
+
+        if 'ml_reg_lambda' in params:
+            val = float(params['ml_reg_lambda'])
+            val = max(0.0, min(10.0, val))  # Clamp 0.0-10.0
+            TRADING_CONFIG['ml_reg_lambda'] = val
+            updated['ml_reg_lambda'] = val
+            logger.info(f"✅ ML reg_lambda (L2): {val}")
+
+        if 'ml_subsample' in params:
+            val = float(params['ml_subsample'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_subsample'] = val
+            updated['ml_subsample'] = val
+            logger.info(f"✅ ML subsample: {val*100:.0f}%")
+
+        if 'ml_colsample_bytree' in params:
+            val = float(params['ml_colsample_bytree'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_colsample_bytree'] = val
+            updated['ml_colsample_bytree'] = val
+            logger.info(f"✅ ML colsample_bytree: {val*100:.0f}%")
+
+        if 'ml_n_estimators' in params:
+            val = int(params['ml_n_estimators'])
+            val = max(50, min(500, val))  # Clamp 50-500
+            TRADING_CONFIG['ml_n_estimators'] = val
+            updated['ml_n_estimators'] = val
+            logger.info(f"✅ ML n_estimators: {val}")
+
+        if 'ml_learning_rate' in params:
+            val = float(params['ml_learning_rate'])
+            val = max(0.01, min(0.1, val))  # Clamp 0.01-0.1
+            TRADING_CONFIG['ml_learning_rate'] = val
+            updated['ml_learning_rate'] = val
+            logger.info(f"✅ ML learning_rate: {val}")
+
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -4593,6 +4650,68 @@ def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:
         'current_dd': round(current_dd, 2),
         'current_peak': round(current_peak, 2)
     }
+
+
+@app.post("/api/ml/retrain")
+async def api_ml_retrain(request: Request):
+    """
+    🤖 Réentraîner le modèle ML avec hyperparamètres personnalisés
+    """
+    try:
+        data = await request.json() if hasattr(request, 'json') else {}
+
+        # Récupérer les hyperparamètres (avec valeurs par défaut)
+        hyperparams = {
+            'max_depth': int(data.get('max_depth', 6)),
+            'min_child_weight': int(data.get('min_child_weight', 3)),
+            'reg_alpha': float(data.get('reg_alpha', 0.5)),
+            'reg_lambda': float(data.get('reg_lambda', 2.0)),
+            'subsample': float(data.get('subsample', 0.8)),
+            'colsample_bytree': float(data.get('colsample_bytree', 0.8)),
+            'n_estimators': int(data.get('n_estimators', 300)),
+            'learning_rate': float(data.get('learning_rate', 0.03))
+        }
+
+        logger.info(f"🤖 Démarrage réentraînement ML avec hyperparamètres: {hyperparams}")
+
+        # Import du trainer
+        from optimization.models.xgboost_trainer import XGBoostTrainer
+
+        # Créer une instance du trainer
+        trainer = XGBoostTrainer(model_name='xgboost_v1')
+
+        # Lancer l'entraînement avec les hyperparamètres
+        metrics = trainer.train(
+            min_trades=100,
+            n_estimators=hyperparams['n_estimators'],
+            max_depth=hyperparams['max_depth'],
+            learning_rate=hyperparams['learning_rate'],
+            early_stopping_rounds=20,
+            max_features=40,
+            min_child_weight=hyperparams['min_child_weight'],
+            reg_alpha=hyperparams['reg_alpha'],
+            reg_lambda=hyperparams['reg_lambda'],
+            subsample=hyperparams['subsample'],
+            colsample_bytree=hyperparams['colsample_bytree'],
+            gamma=0.1
+        )
+
+        if metrics is None:
+            logger.error("❌ Échec réentraînement: metrics is None")
+            return JSONResponse({'error': 'Échec du réentraînement'}, status_code=500)
+
+        logger.info(f"✅ Réentraînement terminé: {metrics}")
+
+        return JSONResponse({
+            'success': True,
+            'metrics': metrics,
+            'hyperparams': hyperparams,
+            'message': 'Modèle réentraîné avec succès'
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Erreur réentraînement ML: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
 @app.get("/api/dashboard/summary")

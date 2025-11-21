@@ -66,8 +66,17 @@
 		trailing_max_distance: 0.25,
 		// Machine Learning
 		ml_filter_enabled: false,
-		ml_min_confidence: 0.60
 	};
+		ml_min_confidence: 0.60,
+		// Hyperparamètres XGBoost
+		ml_max_depth: 6,
+		ml_min_child_weight: 3,
+		ml_reg_alpha: 0.5,
+		ml_reg_lambda: 2.0,
+		ml_subsample: 0.8,
+		ml_colsample_bytree: 0.8,
+		ml_n_estimators: 300,
+		ml_learning_rate: 0.03
 
 	let config = { ...DEFAULTS };
 	let loading = false;
@@ -87,6 +96,7 @@
 	
 	// Variables pour export Excel et reset DB
 	let exportingExcel = false;
+	let retrainingML = false;
 	let resettingDB = false;
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
@@ -284,6 +294,14 @@
 			'🤖 Machine Learning': {
 				ml_filter_enabled: tradingConfig.ml_filter_enabled,
 				ml_min_confidence: tradingConfig.ml_min_confidence,
+				ml_max_depth: tradingConfig.ml_max_depth,
+				ml_min_child_weight: tradingConfig.ml_min_child_weight,
+				ml_reg_alpha: tradingConfig.ml_reg_alpha,
+				ml_reg_lambda: tradingConfig.ml_reg_lambda,
+				ml_subsample: tradingConfig.ml_subsample,
+				ml_colsample_bytree: tradingConfig.ml_colsample_bytree,
+				ml_n_estimators: tradingConfig.ml_n_estimators,
+				ml_learning_rate: tradingConfig.ml_learning_rate,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -446,6 +464,45 @@
 		config[key] = DEFAULTS[key];
 		// 🔥 MODIFIÉ: Utiliser triggerAutoSave au lieu de logConfigChange
 		triggerAutoSave(key, `${oldValue} → ${DEFAULTS[key]}`);
+	}
+
+	async function retrainModel() {
+		retrainingML = true;
+		try {
+			const params = {
+				max_depth: config.ml_max_depth,
+				min_child_weight: config.ml_min_child_weight,
+				reg_alpha: config.ml_reg_alpha,
+				reg_lambda: config.ml_reg_lambda,
+				subsample: config.ml_subsample,
+				colsample_bytree: config.ml_colsample_bytree,
+				n_estimators: config.ml_n_estimators,
+				learning_rate: config.ml_learning_rate
+			};
+
+			const response = await fetch('/api/ml/retrain', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(params)
+			});
+
+			if (!response.ok) {
+				throw new Error('Erreur: ' + response.statusText);
+			}
+
+			const result = await response.json();
+			const accuracy = (result.metrics.test.accuracy * 100).toFixed(1);
+			const rocauc = (result.metrics.test.roc_auc * 100).toFixed(1);
+			const gap = ((result.metrics.train.accuracy - result.metrics.test.accuracy) * 100).toFixed(1);
+			
+			alert('Modèle réentraîné!\n\nAccuracy: ' + accuracy + '%\nROC-AUC: ' + rocauc + '%\nOverfitting Gap: ' + gap + '%');
+			location.reload();
+		} catch (err) {
+			console.error('Erreur réentraînement:', err);
+			alert('Erreur: ' + err.message);
+		} finally {
+			retrainingML = false;
+		}
 	}
 
 	// 🔥 NOUVEAU: Fonction générique pour déclencher la sauvegarde automatique avec debounce
@@ -2031,19 +2088,18 @@
 
 	<!-- ONGLET MACHINE LEARNING -->
 	{#if activeSubTab === 'ml'}
+		<!-- Section Filtrage -->
 		<section class="variable-section">
-			<h3>🤖 Filtrage de Confiance Machine Learning</h3>
+			<h3>🎯 Filtrage ML des Trades</h3>
 			<p class="section-desc">
-				Le modèle XGBoost analyse chaque opportunité avant ouverture de position et prédit les chances de succès.
-				Vous pouvez filtrer les trades selon le niveau de confiance du modèle.
+				Activez le filtrage pour que le bot rejette automatiquement les opportunités avec faible confiance ML.
 			</p>
 
-			<!-- Activation du filtre ML -->
 			<div class="variable-item">
 				<div class="variable-label-container">
 					<label for="ml_filter_enabled">
 						<span class="variable-name">Activer Filtrage ML</span>
-						<span class="variable-desc">Rejeter les opportunités avec faible confiance</span>
+						<span class="variable-desc">Bloquer les trades avec faible prédiction</span>
 					</label>
 				</div>
 				<label class="toggle">
@@ -2057,14 +2113,11 @@
 				</label>
 			</div>
 
-			<!-- Seuil de confiance minimum -->
 			<div class="variable-item" class:disabled={!config.ml_filter_enabled}>
 				<div class="variable-label-container">
 					<label for="ml_min_confidence">
 						<span class="variable-name">Seuil de Confiance Minimum</span>
-						<span class="variable-desc">
-							Confiance minimale pour accepter un trade (50% = hasard, 90% = très sélectif)
-						</span>
+						<span class="variable-desc">Confiance minimale pour accepter un trade (50-90%)</span>
 					</label>
 				</div>
 				<div class="slider-container">
@@ -2082,40 +2135,239 @@
 					<span class="slider-value">{Math.round(config.ml_min_confidence * 100)}%</span>
 				</div>
 			</div>
+		</section>
 
-			<!-- Métriques du modèle actuel -->
-			<div class="ml-info-box">
-				<h4>📊 Modèle Actuel: XGBoost V1</h4>
-				<div class="ml-metrics">
-					<div class="metric">
-						<span class="metric-label">Accuracy:</span>
-						<span class="metric-value">55.3%</span>
+		<!-- Section Hyperparamètres -->
+		<section class="variable-section">
+			<h3>⚙️ Hyperparamètres XGBoost</h3>
+			<p class="section-desc">
+				Ajustez les hyperparamètres pour combattre l'overfitting et améliorer les performances du modèle.
+			</p>
+
+			<!-- Anti-Overfitting -->
+			<div class="subsection">
+				<h4>🛡️ Anti-Overfitting</h4>
+				
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_max_depth">
+							<span class="variable-name">Max Depth</span>
+							<span class="variable-desc">Profondeur max des arbres (↓ réduit overfitting)</span>
+						</label>
 					</div>
-					<div class="metric">
-						<span class="metric-label">ROC-AUC:</span>
-						<span class="metric-value warning">55.4%</span>
+					<select
+						id="ml_max_depth"
+						bind:value={config.ml_max_depth}
+						on:change={() => triggerAutoSave('ml_max_depth', config.ml_max_depth)}
+						class="select-input"
+					>
+						<option value={2}>2 (très conservateur)</option>
+						<option value={3}>3 (conservateur)</option>
+						<option value={4}>4 (équilibré)</option>
+						<option value={5}>5 (modéré)</option>
+						<option value={6}>6 (actuel)</option>
+						<option value={7}>7 (agressif)</option>
+						<option value={8}>8 (très agressif)</option>
+					</select>
+				</div>
+
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_min_child_weight">
+							<span class="variable-name">Min Child Weight</span>
+							<span class="variable-desc">Samples minimum par feuille (↑ réduit overfitting)</span>
+						</label>
 					</div>
-					<div class="metric">
-						<span class="metric-label">Overfitting:</span>
-						<span class="metric-value danger">33.1%</span>
+					<select
+						id="ml_min_child_weight"
+						bind:value={config.ml_min_child_weight}
+						on:change={() => triggerAutoSave('ml_min_child_weight', config.ml_min_child_weight)}
+						class="select-input"
+					>
+						<option value={1}>1 (faible)</option>
+						<option value={3}>3 (actuel)</option>
+						<option value={5}>5 (modéré)</option>
+						<option value={10}>10 (élevé)</option>
+						<option value={15}>15 (très élevé)</option>
+					</select>
+				</div>
+
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_reg_alpha">
+							<span class="variable-name">Régularisation L1 (Alpha)</span>
+							<span class="variable-desc">Régularisation Lasso (↑ réduit overfitting)</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input
+							type="range"
+							id="ml_reg_alpha"
+							min="0.0"
+							max="5.0"
+							step="0.5"
+							bind:value={config.ml_reg_alpha}
+							on:change={() => triggerAutoSave('ml_reg_alpha', config.ml_reg_alpha.toFixed(1))}
+							class="slider"
+						/>
+						<span class="slider-value">{Number(config.ml_reg_alpha).toFixed(1)}</span>
 					</div>
 				</div>
-				<p class="ml-warning">
-					⚠️ Le modèle montre des signes d'overfitting. Réentraînez avec plus de données ou ajustez les hyperparamètres.
-				</p>
+
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_reg_lambda">
+							<span class="variable-name">Régularisation L2 (Lambda)</span>
+							<span class="variable-desc">Régularisation Ridge (↑ réduit overfitting)</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input
+							type="range"
+							id="ml_reg_lambda"
+							min="0.0"
+							max="10.0"
+							step="0.5"
+							bind:value={config.ml_reg_lambda}
+							on:change={() => triggerAutoSave('ml_reg_lambda', config.ml_reg_lambda.toFixed(1))}
+							class="slider"
+						/>
+						<span class="slider-value">{Number(config.ml_reg_lambda).toFixed(1)}</span>
+					</div>
+				</div>
 			</div>
 
-			<!-- Recommandations -->
-			<div class="recommendations-box">
-				<h4>💡 Recommandations</h4>
-				<ul>
-					<li><strong>Seuil 60-65%</strong>: Équilibre entre volume et qualité (recommandé pour début)</li>
-					<li><strong>Seuil 70-80%</strong>: Haute sélectivité, peu de trades mais meilleure qualité</li>
-					<li><strong>Seuil 85-90%</strong>: Ultra-sélectif, très peu de trades mais confiance maximale</li>
-				</ul>
-				<p class="info-text">
-					💡 <strong>Astuce:</strong> Avec un modèle à 55% d'accuracy, un seuil >70% est recommandé pour filtrer efficacement les mauvais setups.
+			<!-- Sampling -->
+			<div class="subsection">
+				<h4>🎲 Sampling</h4>
+
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_subsample">
+							<span class="variable-name">Subsample</span>
+							<span class="variable-desc">% données par arbre (↓ réduit overfitting)</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input
+							type="range"
+							id="ml_subsample"
+							min="0.5"
+							max="1.0"
+							step="0.05"
+							bind:value={config.ml_subsample}
+							on:change={() => triggerAutoSave('ml_subsample', (config.ml_subsample * 100).toFixed(0) + '%')}
+							class="slider"
+						/>
+						<span class="slider-value">{(config.ml_subsample * 100).toFixed(0)}%</span>
+					</div>
+				</div>
+
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_colsample_bytree">
+							<span class="variable-name">Colsample by Tree</span>
+							<span class="variable-desc">% features par arbre (↓ réduit overfitting)</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input
+							type="range"
+							id="ml_colsample_bytree"
+							min="0.5"
+							max="1.0"
+							step="0.05"
+							bind:value={config.ml_colsample_bytree}
+							on:change={() => triggerAutoSave('ml_colsample_bytree', (config.ml_colsample_bytree * 100).toFixed(0) + '%')}
+							class="slider"
+						/>
+						<span class="slider-value">{(config.ml_colsample_bytree * 100).toFixed(0)}%</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Apprentissage -->
+			<div class="subsection">
+				<h4>📚 Apprentissage</h4>
+
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_n_estimators">
+							<span class="variable-name">Nombre d'Arbres</span>
+							<span class="variable-desc">Plus d'arbres = meilleure performance (mais plus lent)</span>
+						</label>
+					</div>
+					<select
+						id="ml_n_estimators"
+						bind:value={config.ml_n_estimators}
+						on:change={() => triggerAutoSave('ml_n_estimators', config.ml_n_estimators)}
+						class="select-input"
+					>
+						<option value={50}>50 (rapide)</option>
+						<option value={100}>100 (équilibré)</option>
+						<option value={150}>150 (bon)</option>
+						<option value={200}>200 (très bon)</option>
+						<option value={300}>300 (actuel)</option>
+						<option value={500}>500 (excellent mais lent)</option>
+					</select>
+				</div>
+
+				<div class="variable-item">
+					<div class="variable-label-container">
+						<label for="ml_learning_rate">
+							<span class="variable-name">Learning Rate</span>
+							<span class="variable-desc">Vitesse d'apprentissage (↓ plus stable mais plus lent)</span>
+						</label>
+					</div>
+					<select
+						id="ml_learning_rate"
+						bind:value={config.ml_learning_rate}
+						on:change={() => triggerAutoSave('ml_learning_rate', config.ml_learning_rate)}
+						class="select-input"
+					>
+						<option value={0.01}>0.01 (très lent)</option>
+						<option value={0.03}>0.03 (actuel)</option>
+						<option value={0.05}>0.05 (modéré)</option>
+						<option value={0.1}>0.1 (rapide)</option>
+					</select>
+				</div>
+			</div>
+
+			<!-- Bouton Réentraîner -->
+			<div class="retrain-section">
+				<button class="btn-retrain" on:click={retrainModel} disabled={retrainingML}>
+					{retrainingML ? '⏳ Réentraînement en cours...' : '🚀 Réentraîner le Modèle'}
+				</button>
+				<p class="retrain-hint">
+					💡 Utilisez les hyperparamètres ci-dessus pour combattre l'overfitting (actuellement 33.1%)
 				</p>
+			</div>
+		</section>
+
+		<!-- Métriques Actuelles -->
+		<section class="variable-section">
+			<h3>📊 Métriques du Modèle Actuel</h3>
+			<div class="ml-metrics-grid">
+				<div class="metric-card">
+					<div class="metric-label">Test Accuracy</div>
+					<div class="metric-value">55.3%</div>
+					<div class="metric-status poor">Faible</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-label">ROC-AUC</div>
+					<div class="metric-value">55.4%</div>
+					<div class="metric-status poor">Faible</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-label">Overfitting Gap</div>
+					<div class="metric-value danger">33.1%</div>
+					<div class="metric-status danger">Élevé</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-label">Trades</div>
+					<div class="metric-value">940</div>
+					<div class="metric-status ok">Suffisant</div>
+				</div>
 			</div>
 		</section>
 	{/if}
@@ -3194,6 +3446,172 @@
 	.variable-item.disabled {
 		opacity: 0.5;
 		pointer-events: none;
+	}
+
+	/* Hyperparameters Subsections */
+	.subsection {
+		margin: 20px 0;
+		padding: 15px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 8px;
+		border-left: 3px solid #00ff88;
+	}
+
+	.subsection h4 {
+		margin: 0 0 15px 0;
+		color: #00ff88;
+		font-size: 15px;
+		font-weight: 600;
+	}
+
+	/* Select Input Styling */
+	.select-input {
+		width: 100%;
+		padding: 8px 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: 6px;
+		color: white;
+		font-size: 14px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.select-input:hover {
+		border-color: #00ff88;
+		background: rgba(0, 0, 0, 0.4);
+	}
+
+	.select-input:focus {
+		outline: none;
+		border-color: #00ff88;
+		box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
+	}
+
+	.select-input option {
+		background: #1a1a1a;
+		color: white;
+	}
+
+	/* Retrain Section */
+	.retrain-section {
+		margin-top: 25px;
+		padding: 20px;
+		background: rgba(0, 255, 136, 0.05);
+		border-radius: 8px;
+		border: 1px solid rgba(0, 255, 136, 0.2);
+		text-align: center;
+	}
+
+	.btn-retrain {
+		padding: 12px 30px;
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		color: #000;
+		border: none;
+		border-radius: 8px;
+		font-size: 16px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+	}
+
+	.btn-retrain:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 16px rgba(0, 255, 136, 0.4);
+	}
+
+	.btn-retrain:active:not(:disabled) {
+		transform: translateY(0);
+	}
+
+	.btn-retrain:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.retrain-hint {
+		margin-top: 12px;
+		font-size: 13px;
+		color: #888;
+		line-height: 1.5;
+	}
+
+	/* ML Metrics Grid */
+	.ml-metrics-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 15px;
+		margin-top: 15px;
+	}
+
+	.metric-card {
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
+		padding: 15px;
+		text-align: center;
+		transition: all 0.2s;
+	}
+
+	.metric-card:hover {
+		border-color: rgba(0, 255, 136, 0.3);
+		background: rgba(0, 0, 0, 0.4);
+	}
+
+	.metric-card .metric-label {
+		display: block;
+		font-size: 12px;
+		color: #888;
+		margin-bottom: 8px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.metric-card .metric-value {
+		display: block;
+		font-size: 24px;
+		font-weight: bold;
+		color: white;
+		margin-bottom: 8px;
+	}
+
+	.metric-card .metric-value.danger {
+		color: #f87171;
+	}
+
+	.metric-status {
+		display: inline-block;
+		padding: 4px 12px;
+		border-radius: 12px;
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.metric-status.poor {
+		background: rgba(239, 68, 68, 0.2);
+		color: #f87171;
+		border: 1px solid rgba(239, 68, 68, 0.4);
+	}
+
+	.metric-status.ok {
+		background: rgba(59, 130, 246, 0.2);
+		color: #60a5fa;
+		border: 1px solid rgba(59, 130, 246, 0.4);
+	}
+
+	.metric-status.good {
+		background: rgba(16, 185, 129, 0.2);
+		color: #10b981;
+		border: 1px solid rgba(16, 185, 129, 0.4);
+	}
+
+	.metric-status.danger {
+		background: rgba(239, 68, 68, 0.2);
+		color: #f87171;
+		border: 1px solid rgba(239, 68, 68, 0.4);
 	}
 
 </style>
