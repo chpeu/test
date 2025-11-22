@@ -52,12 +52,15 @@
   "use_slippage_calculation": true,
   "ml_filter_enabled": false,
   "ml_min_confidence": 0.6,
-  "ml_max_depth": 3,
-  "ml_min_child_weight": 10,
-  "ml_reg_alpha": 4.5,
-  "ml_reg_lambda": 9.0,
-  "ml_subsample": 0.7,
-  "ml_colsample_bytree": 0.6,
-  "ml_n_estimators": 500,
-  "ml_learning_rate": 0.01
+  "ml_max_depth": 4,
+  "ml_min_child_weight": 2,
+  "ml_reg_alpha": 5.928488152928379,
+  "ml_reg_lambda": 12.534699173971662,
+  "ml_subsample": 0.7654040416629261,
+  "ml_colsample_bytree": 0.8936151542542324,
+  "ml_n_estimators": 200,
+  "ml_learning_rate": 0.007437703266999504,
+  "ml_colsample_bylevel": 0.7770408761005763,
+  "ml_gamma": 4.0843397787602616,
+  "ml_scale_pos_weight": 1.4962587629481188
 }

@@ -253,6 +253,9 @@ TRADING_CONFIG = {
     "ml_reg_lambda": 2.0,
     "ml_subsample": 0.8,
     "ml_colsample_bytree": 0.8,
+    "ml_colsample_bylevel": 0.8,
+    "ml_gamma": 0.0,
+    "ml_scale_pos_weight": 1.0,
     "ml_n_estimators": 300,
     "ml_learning_rate": 0.03,
 

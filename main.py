@@ -3445,6 +3445,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'ml_reg_lambda': TRADING_CONFIG.get('ml_reg_lambda', 2.0),
                                     'ml_subsample': TRADING_CONFIG.get('ml_subsample', 0.8),
                                     'ml_colsample_bytree': TRADING_CONFIG.get('ml_colsample_bytree', 0.8),
+                                    'ml_colsample_bylevel': TRADING_CONFIG.get('ml_colsample_bylevel', 0.8),
+                                    'ml_gamma': TRADING_CONFIG.get('ml_gamma', 0.0),
+                                    'ml_scale_pos_weight': TRADING_CONFIG.get('ml_scale_pos_weight', 1.0),
                                     'ml_n_estimators': TRADING_CONFIG.get('ml_n_estimators', 300),
                                     'ml_learning_rate': TRADING_CONFIG.get('ml_learning_rate', 0.03),
                                     # Autres
@@ -3951,6 +3954,27 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['ml_colsample_bytree'] = val
             updated['ml_colsample_bytree'] = val
             logger.info(f"✅ ML colsample_bytree: {val*100:.0f}%")
+
+        if 'ml_colsample_bylevel' in params:
+            val = float(params['ml_colsample_bylevel'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_colsample_bylevel'] = val
+            updated['ml_colsample_bylevel'] = val
+            logger.info(f"✅ ML colsample_bylevel: {val*100:.0f}%")
+
+        if 'ml_gamma' in params:
+            val = float(params['ml_gamma'])
+            val = max(0.0, min(5.0, val))  # Clamp 0.0-5.0
+            TRADING_CONFIG['ml_gamma'] = val
+            updated['ml_gamma'] = val
+            logger.info(f"✅ ML gamma: {val}")
+
+        if 'ml_scale_pos_weight' in params:
+            val = float(params['ml_scale_pos_weight'])
+            val = max(0.8, min(1.5, val))  # Clamp 0.8-1.5
+            TRADING_CONFIG['ml_scale_pos_weight'] = val
+            updated['ml_scale_pos_weight'] = val
+            logger.info(f"✅ ML scale_pos_weight: {val}")
 
         if 'ml_n_estimators' in params:
             val = int(params['ml_n_estimators'])

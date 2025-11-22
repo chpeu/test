@@ -1106,3 +1106,360 @@ async def get_task_status(task_id: str):
     """
     task_info = get_ml_task_status(task_id)
     return task_info
+
+
+# ========== HYPERPARAMETER OPTIMIZATION ==========
+
+@router.post("/optimize/start")
+async def start_hyperparameter_optimization(
+    background_tasks: BackgroundTasks,
+    n_trials: int = Query(100, ge=10, le=1000),
+    timeout: Optional[int] = Query(None, ge=60),
+    metric: str = Query('trading_composite', regex='^(trading_composite|f1_score|accuracy|roc_auc)$'),
+    use_gpu: bool = Query(False),
+    max_samples: Optional[int] = Query(None, ge=100)
+):
+    """
+    Démarrer optimisation hyperparamètres
+    
+    Args:
+        n_trials: Nombre de trials (10-1000)
+        timeout: Timeout en secondes (optionnel)
+        metric: Métrique à optimiser
+        use_gpu: Utiliser GPU si disponible
+        max_samples: Limiter nombre de samples pour rapidité
+        
+    Returns:
+        task_id pour suivre progression
+    """
+    try:
+        from optimization.data.feature_loader import get_trades_count
+        
+        # Vérifier données suffisantes
+        trades_count = get_trades_count()
+        
+        if trades_count < 1000:
+            raise HTTPException(
+                400,
+                f"Pas assez de données: {trades_count}/1000 trades minimum requis pour optimisation"
+            )
+        
+        # Créer task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialiser task status
+        ml_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'pending',
+            'action': 'hyperparameter_optimization',
+            'n_trials': n_trials,
+            'metric': metric,
+            'use_gpu': use_gpu,
+            'created_at': datetime.now().isoformat(),
+            'progress': 0,
+            'current_trial': 0,
+            'best_score': None,
+            'best_params': None
+        }
+        
+        # Lancer optimisation en background
+        background_tasks.add_task(
+            _optimize_hyperparameters_background,
+            task_id,
+            n_trials,
+            timeout,
+            metric,
+            use_gpu,
+            max_samples
+        )
+        
+        logger.info(f"🎯 Optimisation hyperparamètres démarrée (task_id={task_id}, trials={n_trials})")
+        
+        return {
+            'task_id': task_id,
+            'status': 'pending',
+            'message': f'Optimisation démarrée ({n_trials} trials)',
+            'trades_count': trades_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur start_optimization: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _optimize_hyperparameters_background(
+    task_id: str,
+    n_trials: int,
+    timeout: Optional[int],
+    metric: str,
+    use_gpu: bool,
+    max_samples: Optional[int]
+):
+    """Fonction background pour optimisation hyperparamètres"""
+    try:
+        from ml.hyperparameter_tuning import HyperparameterTuner
+        
+        # Update status
+        ml_tasks[task_id]['status'] = 'running'
+        ml_tasks[task_id]['progress'] = 5
+        
+        logger.info(f"🚀 Optimisation en cours (task_id={task_id})")
+        
+        # Détecter GPU si demandé
+        gpu_id = None
+        if use_gpu:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    gpu_id = 0
+                    logger.info("🎮 GPU détecté et activé")
+            except:
+                pass
+        
+        # Charger et préparer données
+        ml_tasks[task_id]['progress'] = 10
+        ml_tasks[task_id]['stage'] = 'loading_data'
+        
+        X, y, feature_names = HyperparameterTuner.load_and_prepare_data(
+            max_samples=max_samples
+        )
+        
+        # Créer tuner
+        ml_tasks[task_id]['progress'] = 15
+        ml_tasks[task_id]['stage'] = 'initializing'
+        
+        tuner = HyperparameterTuner(
+            n_trials=n_trials,
+            timeout=timeout,
+            n_jobs=-1,  # Utiliser tous les CPU
+            gpu_id=gpu_id,
+            metric=metric,
+            cv_folds=5,
+            pruning=True
+        )
+        
+        # Callback pour mettre à jour progression
+        def trial_callback(study, trial):
+            if trial.state == optuna.trial.TrialState.COMPLETE:
+                progress = min(95, 15 + (trial.number / n_trials) * 80)
+                ml_tasks[task_id].update({
+                    'progress': int(progress),
+                    'current_trial': trial.number + 1,
+                    'best_score': study.best_value,
+                    'best_params': study.best_params,
+                    'stage': f'trial_{trial.number + 1}/{n_trials}'
+                })
+        
+        # Optimiser avec callback
+        ml_tasks[task_id]['stage'] = 'optimizing'
+        
+        import optuna
+        tuner.study.optimize(
+            lambda trial: tuner._objective(trial, X, y),
+            n_trials=n_trials,
+            timeout=timeout,
+            callbacks=[trial_callback],
+            show_progress_bar=False
+        )
+        
+        # Sauvegarder meilleurs params
+        ml_tasks[task_id]['progress'] = 95
+        ml_tasks[task_id]['stage'] = 'saving'
+        
+        tuner.save_best_params()
+        
+        # Success
+        ml_tasks[task_id].update({
+            'status': 'completed',
+            'progress': 100,
+            'stage': 'completed',
+            'best_score': tuner.study.best_value,
+            'best_params': tuner.study.best_params,
+            'n_trials_completed': len([t for t in tuner.study.trials if t.state == optuna.trial.TrialState.COMPLETE]),
+            'n_trials_pruned': len([t for t in tuner.study.trials if t.state == optuna.trial.TrialState.PRUNED]),
+            'completed_at': datetime.now().isoformat()
+        })
+        
+        logger.info(f"✅ Optimisation terminée (task_id={task_id}, best_score={tuner.study.best_value:.4f})")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur optimisation: {e}", exc_info=True)
+        
+        ml_tasks[task_id].update({
+            'status': 'failed',
+            'error': str(e),
+            'failed_at': datetime.now().isoformat()
+        })
+
+
+@router.get("/optimize/history")
+async def get_optimization_history(
+    limit: int = Query(50, ge=1, le=500),
+    study_name: str = Query('xgboost_trading_optimization')
+):
+    """
+    Récupérer historique des trials d'optimisation
+    
+    Args:
+        limit: Nombre de trials à retourner
+        study_name: Nom de l'étude Optuna
+        
+    Returns:
+        Liste des trials avec params et scores
+    """
+    try:
+        from ml.hyperparameter_tuning import HyperparameterTuner
+        
+        # Charger étude
+        tuner = HyperparameterTuner(
+            study_name=study_name,
+            n_trials=1  # Juste pour charger l'étude
+        )
+        
+        if len(tuner.study.trials) == 0:
+            return {
+                'trials': [],
+                'best_trial': None,
+                'total_trials': 0
+            }
+        
+        # Récupérer historique
+        history = tuner.get_optimization_history()
+        
+        # Filtrer trials complétés et trier par score
+        completed_trials = [
+            h for h in history 
+            if h['state'] == 'COMPLETE' and h['value'] is not None
+        ]
+        completed_trials.sort(key=lambda x: x['value'], reverse=True)
+        
+        # Limiter
+        limited_trials = completed_trials[:limit]
+        
+        # Best trial
+        best_trial = None
+        if tuner.study.best_trial:
+            best_trial = {
+                'number': tuner.study.best_trial.number,
+                'value': tuner.study.best_trial.value,
+                'params': tuner.study.best_trial.params,
+                'datetime': tuner.study.best_trial.datetime_start.isoformat() if tuner.study.best_trial.datetime_start else None
+            }
+        
+        return {
+            'trials': limited_trials,
+            'best_trial': best_trial,
+            'total_trials': len(tuner.study.trials),
+            'completed_trials': len(completed_trials),
+            'pruned_trials': len([t for t in tuner.study.trials if t.state.name == 'PRUNED'])
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_optimization_history: {e}", exc_info=True)
+        return {
+            'trials': [],
+            'best_trial': None,
+            'total_trials': 0,
+            'error': str(e)
+        }
+
+
+@router.get("/optimize/best")
+async def get_best_hyperparameters(
+    study_name: str = Query('xgboost_trading_optimization')
+):
+    """
+    Récupérer meilleurs hyperparamètres trouvés
+    
+    Returns:
+        Meilleurs params et score
+    """
+    try:
+        from ml.hyperparameter_tuning import HyperparameterTuner
+        
+        # Charger étude
+        tuner = HyperparameterTuner(
+            study_name=study_name,
+            n_trials=1
+        )
+        
+        if len(tuner.study.trials) == 0:
+            return {
+                'found': False,
+                'message': 'Aucune optimisation trouvée'
+            }
+        
+        best_trial = tuner.study.best_trial
+        
+        return {
+            'found': True,
+            'trial_number': best_trial.number,
+            'score': best_trial.value,
+            'params': best_trial.params,
+            'datetime': best_trial.datetime_start.isoformat() if best_trial.datetime_start else None,
+            'total_trials': len(tuner.study.trials)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_best_hyperparameters: {e}", exc_info=True)
+        return {
+            'found': False,
+            'error': str(e)
+        }
+
+
+@router.post("/optimize/apply")
+async def apply_best_hyperparameters(
+    study_name: str = Query('xgboost_trading_optimization'),
+    config_file: str = Query('config_overrides.json')
+):
+    """
+    Appliquer meilleurs hyperparamètres à config_overrides.json
+    
+    Returns:
+        Confirmation et params appliqués
+    """
+    try:
+        from ml.hyperparameter_tuning import HyperparameterTuner
+        
+        # Charger étude
+        tuner = HyperparameterTuner(
+            study_name=study_name,
+            n_trials=1
+        )
+        
+        if len(tuner.study.trials) == 0:
+            raise HTTPException(400, "Aucune optimisation trouvée")
+        
+        # Sauvegarder
+        tuner.save_best_params(filepath=config_file)
+        # Recharger immédiatement les overrides pour mettre à jour TRADING_CONFIG
+        try:
+            from config import TRADING_CONFIG
+            from utils.config_persistence import apply_config_overrides
+            apply_config_overrides(TRADING_CONFIG)
+            logger.info("✅ TRADING_CONFIG rechargé avec les meilleurs paramètres ML")
+        except Exception as reload_err:
+            logger.error(f"❌ Impossible de recharger TRADING_CONFIG après optimisation: {reload_err}")
+        
+        best_params = tuner.study.best_params
+        best_score = tuner.study.best_value
+        
+        logger.info(f"✅ Meilleurs params appliqués à {config_file}")
+        
+        return {
+            'success': True,
+            'message': f'Meilleurs paramètres appliqués à {config_file}',
+            'params': best_params,
+            'score': best_score,
+            'config_file': config_file,
+            'warning': 'Relancer entraînement du modèle pour appliquer les changements'
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur apply_best_hyperparameters: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

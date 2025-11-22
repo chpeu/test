@@ -7,6 +7,7 @@ python-dateutil==2.8.2
 python-dotenv==1.0.0
 # Optimisation & ML
 optuna==3.4.0
+optuna-dashboard==0.15.0  # Dashboard web pour visualiser optimisations
 
 # ML & Data Science (Phase 0-2)
 scikit-learn==1.5.1
