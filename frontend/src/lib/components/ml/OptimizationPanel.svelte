@@ -1,9 +1,14 @@
+
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
 	import { createEventDispatcher } from 'svelte';
 	import { Activity, Zap, TrendingUp, Cpu, CheckCircle, AlertCircle, Loader } from 'lucide-svelte';
 	
 	const dispatch = createEventDispatcher();
+
+const STORAGE_KEY = 'mlOptimizationConfig';
+let configLoaded = false;
 	
 	let optimizationConfig = {
 		n_trials: 100,
@@ -21,8 +26,10 @@
 	let errorMessage = null;
 	let statusInterval = null;
 	
-	// Charger meilleurs params et historique au montage
+	// Charger config persistée + données au montage
 	onMount(async () => {
+		loadConfigFromStorage();
+		configLoaded = true;
 		await loadBestParams();
 		await loadHistory();
 	});
@@ -162,6 +169,31 @@
 		}
 		return value;
 	}
+
+function loadConfigFromStorage() {
+	if (!browser) return;
+	try {
+		const raw = localStorage.getItem(STORAGE_KEY);
+		if (raw) {
+			const parsed = JSON.parse(raw);
+			optimizationConfig = {
+				...optimizationConfig,
+				...parsed
+			};
+		}
+	} catch (error) {
+		console.warn('⚠️ Impossible de charger la config Optuna depuis localStorage:', error);
+	}
+}
+
+function persistConfig() {
+	if (!browser || !configLoaded) return;
+	try {
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(optimizationConfig));
+	} catch (error) {
+		console.warn('⚠️ Impossible de sauvegarder la config Optuna:', error);
+	}
+}
 </script>
 
 <div class="optimization-panel">
@@ -190,6 +222,7 @@
 					min="10"
 					max="1000"
 					disabled={taskStatus && taskStatus.status === 'running'}
+					on:change={persistConfig}
 				/>
 				<span class="hint">10-1000 (recommandé: 50-200)</span>
 			</div>
@@ -200,6 +233,7 @@
 					id="metric"
 					bind:value={optimizationConfig.metric}
 					disabled={taskStatus && taskStatus.status === 'running'}
+					on:change={persistConfig}
 				>
 					<option value="trading_composite">Trading Composite (recommandé)</option>
 					<option value="f1_score">F1-Score</option>
@@ -218,6 +252,7 @@
 					min="60"
 					placeholder="Illimité"
 					disabled={taskStatus && taskStatus.status === 'running'}
+					on:change={persistConfig}
 				/>
 				<span class="hint">Optionnel (ex: 3600 = 1h)</span>
 			</div>
@@ -231,6 +266,7 @@
 					min="100"
 					placeholder="Tous"
 					disabled={taskStatus && taskStatus.status === 'running'}
+					on:change={persistConfig}
 				/>
 				<span class="hint">Pour rapidité (optionnel)</span>
 			</div>
@@ -242,6 +278,7 @@
 					type="checkbox" 
 					bind:checked={optimizationConfig.use_gpu}
 					disabled={taskStatus && taskStatus.status === 'running'}
+					on:change={persistConfig}
 				/>
 				<span><Cpu size={16} /> Utiliser GPU (30x plus rapide)</span>
 			</label>

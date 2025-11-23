@@ -73,7 +73,7 @@ class XGBoostTrainer:
     
     def train(
         self,
-        timeframe_days: int = 60,
+        timeframe_days: int = 90,
         min_trades: int = 100,  # 🔥 Augmenté: Plus de données pour meilleur apprentissage
         test_size: float = 0.2,
         n_estimators: int = 300,  # 🔥 Augmenté: Plus d'arbres pour meilleure performance
@@ -132,11 +132,28 @@ class XGBoostTrainer:
             stratify=True,
         )
         
-        logger.info(f"✂️ Split: {len(X_train)} train, {len(X_test)} test")
+        win_pct_train = (y_train == 1).mean() * 100
+        win_pct_test = (y_test == 1).mean() * 100
+        logger.info(
+            "✂️ Split: %s train / %s test | Win%% train=%.1f%% | Win%% test=%.1f%%",
+            len(X_train),
+            len(X_test),
+            win_pct_train,
+            win_pct_test
+        )
+        logger.info(
+            "📊 Distribution y_train: %s",
+            y_train.value_counts().to_dict()
+        )
+        logger.info(
+            "📊 Distribution y_test: %s",
+            y_test.value_counts().to_dict()
+        )
         
         # 3. Calculer class weights
         class_weights = compute_class_weights(y_train, strategy="balanced")
         scale_pos_weight = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
+        logger.info("⚖️ Class weights: %s | scale_pos_weight=%.2f", class_weights, scale_pos_weight)
 
         # 4. Configurer modèle avec hyperparamètres optimisés et régularisation
         model_params = {
@@ -271,6 +288,17 @@ class XGBoostTrainer:
             },
         )
         
+        if feature_importance:
+            top_features = feature_importance[:10]
+            logger.info(
+                "📈 Top features (importance): %s",
+                {item['feature']: round(item['importance'], 4) for item in top_features}
+            )
+            logger.info(
+                "📈 Importance moyenne=%.4f | max=%.4f",
+                np.mean([item['importance'] for item in feature_importance]),
+                max([item['importance'] for item in feature_importance]) if feature_importance else 0.0
+            )
         logger.info("💾 Modèle et metadata sauvegardés")
         
         return {

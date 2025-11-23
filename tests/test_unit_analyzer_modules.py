@@ -7,6 +7,7 @@ Target: 80%+ coverage for each analyzer module
 import pytest
 import sys
 import os
+from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.analyzer.filters import (
@@ -123,6 +124,7 @@ class TestFilters:
         # Price 300 away from EMA21 > 60
         assert result is None
 
+    @patch('core.analyzer.filters.TRADING_CONFIG', {'use_wick': True, 'wick_ratio_max': 2.5})
     def test_check_wick_filter_normal_wicks(self):
         """Test wick filter with normal wicks"""
         candle = [1000000, 50000.0, 50200.0, 49900.0, 50100.0, 1000.0]
@@ -138,6 +140,7 @@ class TestFilters:
         # Should reject due to high wicks
         assert result is not None
 
+    @patch('core.analyzer.filters.TRADING_CONFIG', {'use_wick': True, 'wick_ratio_max': 2.5})
     def test_check_wick_filter_low_wicks(self):
         """Test wick filter with low wicks"""
         candle = [1000000, 50000.0, 50120.0, 49980.0, 50100.0, 1000.0]
@@ -354,6 +357,12 @@ class TestScoring:
         assert min_score > 0
         assert min_score <= 8.0
 
+    @patch('core.analyzer.scoring.TRADING_CONFIG', {
+        'min_score_required': 7.5,
+        'min_score_adx_low': 8.0,
+        'min_score_adx_high': 7.0,
+        'use_weighted_scoring': True
+    })
     def test_get_min_score_required_low_adx(self):
         """Test min score with low ADX (higher requirement)"""
         min_score = get_min_score_required(adx_value=20.0, use_weighted=True)
