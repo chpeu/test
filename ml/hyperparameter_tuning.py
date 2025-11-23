@@ -187,26 +187,26 @@ class HyperparameterTuner:
             Dict d'hyperparamètres suggérés
         """
         params = {
-            # Profondeur et structure
-            'max_depth': trial.suggest_int('max_depth', 2, 6),
-            'min_child_weight': trial.suggest_int('min_child_weight', 1, 20),
+            # Profondeur et structure (plus resserré pour limiter l'overfitting)
+            'max_depth': trial.suggest_int('max_depth', 2, 4),
+            'min_child_weight': trial.suggest_int('min_child_weight', 3, 15),
             
             # Régularisation L1/L2
-            'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 10.0),
-            'reg_lambda': trial.suggest_float('reg_lambda', 1.0, 15.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 1.0, 12.0),
+            'reg_lambda': trial.suggest_float('reg_lambda', 3.0, 15.0),
             
-            # Échantillonnage
-            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
-            'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.5, 1.0),
+            # Échantillonnage (forcer un léger dropout)
+            'subsample': trial.suggest_float('subsample', 0.6, 0.9),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 0.9),
+            'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.6, 0.9),
             
             # Learning
-            'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.05, log=True),
-            'n_estimators': trial.suggest_int('n_estimators', 200, 1000, step=100),
+            'learning_rate': trial.suggest_float('learning_rate', 0.008, 0.03, log=True),
+            'n_estimators': trial.suggest_int('n_estimators', 200, 600, step=100),
             
             # Autres params XGBoost
-            'gamma': trial.suggest_float('gamma', 0.0, 5.0),
-            'scale_pos_weight': trial.suggest_float('scale_pos_weight', 0.8, 1.5),
+            'gamma': trial.suggest_float('gamma', 0.5, 4.0),
+            'scale_pos_weight': trial.suggest_float('scale_pos_weight', 0.9, 1.4),
         }
         
         # Params GPU si disponible
@@ -234,6 +234,7 @@ class HyperparameterTuner:
         """
         # Suggérer hyperparamètres
         params = self._suggest_hyperparameters(trial)
+        params['early_stopping_rounds'] = 50
         
         # Validation croisée stratifiée
         cv = StratifiedKFold(n_splits=self.cv_folds, shuffle=True, random_state=42)
@@ -254,7 +255,6 @@ class HyperparameterTuner:
             model.fit(
                 X_train, y_train,
                 eval_set=[(X_val, y_val)],
-                early_stopping_rounds=50,
                 verbose=False
             )
             

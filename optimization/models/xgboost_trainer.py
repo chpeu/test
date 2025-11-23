@@ -182,6 +182,7 @@ class XGBoostTrainer:
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "learning_rate": learning_rate,
+            "early_stopping_rounds": early_stopping_rounds,
             "min_child_weight": min_child_weight,  # Anti-overfitting
             "reg_alpha": reg_alpha,  # Régularisation L1 (Lasso)
             "reg_lambda": reg_lambda,  # Régularisation L2 (Ridge)
@@ -206,7 +207,12 @@ class XGBoostTrainer:
             logger.info(f"🔍 Feature selection: training initial model to identify top {max_features} features...")
             
             # Train initial model to get feature importances
-            initial_model = XGBClassifier(**model_params)
+            initial_model_params = {
+                key: value
+                for key, value in model_params.items()
+                if key != "early_stopping_rounds"
+            }
+            initial_model = XGBClassifier(**initial_model_params)
             initial_model.fit(X_train, y_train, verbose=False)
             
             # Get feature importances
@@ -278,7 +284,6 @@ class XGBoostTrainer:
             X_train,
             y_train,
             eval_set=eval_set,
-            early_stopping_rounds=early_stopping_rounds,
             verbose=False,
         )
         

@@ -1,10 +1,13 @@
-<script>
+	<script>
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
 	import { createEventDispatcher } from 'svelte';
 	import { TrendingUp, PlayCircle, AlertCircle, CheckCircle, Activity, Package, Clock, Target } from 'lucide-svelte';
 
 	const dispatch = createEventDispatcher();
+	const ACTIVE_TASK_KEY = 'ml_active_optimization';
+	const ML_PAGE_ROUTE = '/machine-learning';
 
 	// Constantes
 	const METRIC_OPTIONS = [
@@ -26,6 +29,7 @@
 	let errorMessage = null;
 	let statusCheckInterval = null;
 	let isInitializing = true;
+	let activeTaskId = null;
 
 	// Configuration optimisation
 	let config = {
@@ -38,6 +42,60 @@
 
 	function updateConfig(updates) {
 		config = { ...config, ...updates };
+	}
+
+	// Active task helper functions
+	function saveActiveTask(taskId, metricKey) {
+		if (!browser || !taskId) return;
+		const payload = { taskId, metric: metricKey, startedAt: Date.now() };
+		localStorage.setItem(ACTIVE_TASK_KEY, JSON.stringify(payload));
+		activeTaskId = taskId;
+	}
+
+	function loadActiveTask() {
+		if (!browser) return null;
+		try {
+			const stored = localStorage.getItem(ACTIVE_TASK_KEY);
+			return stored ? JSON.parse(stored) : null;
+		} catch (err) {
+			console.warn('Failed to load active task:', err);
+			return null;
+		}
+	}
+
+	function clearActiveTask() {
+		if (browser) {
+			localStorage.removeItem(ACTIVE_TASK_KEY);
+		}
+		activeTaskId = null;
+	}
+
+	async function resumeActiveOptimization() {
+		const storedTask = loadActiveTask();
+		if (!storedTask || !storedTask.taskId) return;
+		try {
+			const response = await fetch(`/api/ml/tasks/${storedTask.taskId}`);
+			if (!response.ok) {
+				clearActiveTask();
+				return;
+			}
+			const task = await response.json();
+			if (task.status === 'completed') {
+				clearActiveTask();
+				await fetchSummary();
+				applyMetricSelection(config.metric);
+				goto(ML_PAGE_ROUTE);
+			} else if (task.status === 'failed') {
+				clearActiveTask();
+				errorMessage = `Optimisation échouée: ${task.error || 'Erreur inconnue'}`;
+			} else {
+				console.log('🔄 Reprise du suivi de l\'optimisation en cours');
+				startTaskPolling(storedTask.taskId);
+			}
+		} catch (err) {
+			console.warn('Impossible de reprendre l\'optimisation active:', err);
+			clearActiveTask();
+		}
 	}
 
 	// Persistance dans localStorage
@@ -179,6 +237,7 @@
 			
 			// Démarrer le polling pour mettre à jour le summary quand l'optimisation se termine
 			if (taskId) {
+				saveActiveTask(taskId, config.metric);
 				startTaskPolling(taskId);
 			}
 		} catch (error) {
@@ -214,6 +273,7 @@
 				
 				if (task.status === 'completed') {
 					clearInterval(pollInterval);
+					clearActiveTask();
 					console.log('✅ Optimisation terminée, rafraîchissement du summary');
 					
 					// Attendre un peu pour que le backend écrive optuna_last_runs.json
@@ -226,8 +286,12 @@
 					applyMetricSelection(config.metric);
 					
 					alert(`✅ Optimisation ${config.metric} terminée!\nScore: ${task.run_best_score?.toFixed(4) || 'N/A'}`);
+					if (browser) {
+						goto(ML_PAGE_ROUTE);
+					}
 				} else if (task.status === 'failed') {
 					clearInterval(pollInterval);
+					clearActiveTask();
 					errorMessage = `Optimisation échouée: ${task.error || 'Erreur inconnue'}`;
 				}
 			} catch (err) {
@@ -291,6 +355,8 @@
 		// 3. Appliquer sélection métrique APRÈS avoir chargé config
 		// Utiliser la métrique stockée dans config, pas DEFAULT_METRIC
 		applyMetricSelection(config.metric);
+		
+		await resumeActiveOptimization();
 		
 		// 4. Activer la sauvegarde automatique APRÈS l'initialisation
 		isInitializing = false;
