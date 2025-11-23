@@ -1,98 +1,186 @@
-
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { createEventDispatcher } from 'svelte';
-	import { Activity, Zap, TrendingUp, Cpu, CheckCircle, AlertCircle, Loader } from 'lucide-svelte';
-	
+	import { TrendingUp, PlayCircle, AlertCircle, CheckCircle, Activity, Package, Clock, Target } from 'lucide-svelte';
+
 	const dispatch = createEventDispatcher();
 
-const STORAGE_KEY = 'mlOptimizationConfig';
-let configLoaded = false;
-	
-	let optimizationConfig = {
-		n_trials: 100,
-		timeout: null,
-		metric: 'trading_composite',
+	// Constantes
+	const METRIC_OPTIONS = [
+		{ key: 'trading_composite', label: 'Trading Composite', description: 'Score custom équilibré' },
+		{ key: 'f1_score', label: 'F1-Score', description: 'Équilibre précision/recall' },
+		{ key: 'accuracy', label: 'Accuracy', description: 'Taux de bonnes prédictions' },
+		{ key: 'roc_auc', label: 'ROC AUC', description: 'Capacité de discrimination' }
+	];
+
+	const METRIC_KEYS = METRIC_OPTIONS.map((m) => m.key);
+	const DEFAULT_METRIC = 'trading_composite';
+
+	// États
+	let metricSummary = { metrics: {} };
+	let selectedMetric = DEFAULT_METRIC;
+	let selectedMetricInfo = METRIC_OPTIONS[0];
+	let bestParams = null;
+	let isLoading = false;
+	let errorMessage = null;
+	let statusCheckInterval = null;
+	let isInitializing = true;
+
+	// Configuration optimisation
+	let config = {
+		n_trials: 50,
+		timeout: 3600,
+		metric: DEFAULT_METRIC,
 		use_gpu: false,
 		max_samples: null
 	};
-	
-	let currentTask = null;
-	let taskStatus = null;
-	let bestParams = null;
-	let optimizationHistory = null;
-	let isLoading = false;
-	let errorMessage = null;
-	let statusInterval = null;
-	
-	// Charger config persistée + données au montage
-	onMount(async () => {
-		loadConfigFromStorage();
-		configLoaded = true;
-		await loadBestParams();
-		await loadHistory();
-	});
-	
-	onDestroy(() => {
-		if (statusInterval) {
-			clearInterval(statusInterval);
-		}
-	});
-	
-	async function loadBestParams() {
-		try {
-			const response = await fetch('/api/ml/optimize/best');
-			const data = await response.json();
-			if (data.found) {
-				bestParams = data;
+
+	function updateConfig(updates) {
+		config = { ...config, ...updates };
+	}
+
+	// Persistance dans localStorage
+	function saveConfig() {
+		if (browser && !isInitializing) {
+			try {
+				localStorage.setItem('optimizationConfig', JSON.stringify(config));
+				console.log('💾 Config saved to localStorage:', config);
+			} catch (e) {
+				console.warn('Failed to save config:', e);
 			}
-		} catch (error) {
-			console.error('Error loading best params:', error);
 		}
 	}
-	
-	async function loadHistory() {
+
+	function loadConfig() {
+		if (browser) {
+			try {
+				const stored = localStorage.getItem('optimizationConfig');
+				if (stored) {
+					const parsed = JSON.parse(stored);
+					config = { ...config, ...parsed };
+					if (!config.metric || !METRIC_KEYS.includes(config.metric)) {
+						config.metric = DEFAULT_METRIC;
+					}
+					console.log('📂 Config loaded from localStorage:', config);
+				}
+			} catch (e) {
+				console.warn('Failed to load config:', e);
+			}
+		}
+	}
+
+	function saveSummary() {
+		if (browser) {
+			try {
+				localStorage.setItem('metricSummary', JSON.stringify(metricSummary));
+			} catch (e) {
+				console.warn('Failed to save summary:', e);
+			}
+		}
+	}
+
+	function loadSummary() {
+		if (browser) {
+			try {
+				const stored = localStorage.getItem('metricSummary');
+				if (stored) {
+					metricSummary = JSON.parse(stored);
+				}
+			} catch (e) {
+				console.warn('Failed to load summary:', e);
+			}
+		}
+	}
+
+	// Formatage score
+	function formatScore(score) {
+		if (score == null) return 'N/A';
+		return typeof score === 'number' ? score.toFixed(4) : score;
+	}
+
+	function getMetricDisplayScore(metricKey) {
+		const entry = metricSummary.metrics?.[metricKey];
+		if (!entry) return null;
+		return entry.last_run?.score ?? null;
+	}
+
+	function applyMetricSelection(metricKey = DEFAULT_METRIC) {
+		if (!METRIC_KEYS.includes(metricKey)) {
+			metricKey = DEFAULT_METRIC;
+		}
+		selectedMetric = metricKey;
+		selectedMetricInfo = METRIC_OPTIONS.find((option) => option.key === selectedMetric) || METRIC_OPTIONS[0];
+		const entry = metricSummary.metrics?.[selectedMetric];
+		if (!entry) {
+			bestParams = null;
+			return;
+		}
+		const candidate = entry.last_run;
+		bestParams = candidate ? { ...candidate, metric: selectedMetric, found: true } : null;
+	}
+
+	function handleMetricSelect(metricKey) {
+		updateConfig({ metric: metricKey });
+		applyMetricSelection(metricKey);
+	}
+
+	function handleMetricDropdownChange(event) {
+		const metricKey = event.target.value;
+		updateConfig({ metric: metricKey });
+		applyMetricSelection(metricKey);
+	}
+
+	function handleGpuToggle(event) {
+		updateConfig({ use_gpu: event.target.checked });
+	}
+
+	// Récupérer le summary
+	async function fetchSummary() {
 		try {
-			const response = await fetch('/api/ml/optimize/history?limit=20');
-			optimizationHistory = await response.json();
-		} catch (error) {
-			console.error('Error loading history:', error);
+			const response = await fetch('/api/ml/optimize/summary');
+			if (!response.ok) throw new Error('Failed to fetch summary');
+			const data = await response.json();
+			metricSummary = data;
+			saveSummary();
+		} catch (err) {
+			console.warn('Failed to fetch metric summary:', err);
 		}
 	}
-	
+
+	// Démarrer optimisation
 	async function startOptimization() {
 		try {
 			isLoading = true;
 			errorMessage = null;
-			
-			// Construire query params
-			const params = new URLSearchParams();
-			params.append('n_trials', optimizationConfig.n_trials);
-			if (optimizationConfig.timeout) {
-				params.append('timeout', optimizationConfig.timeout);
+
+			const params = new URLSearchParams({
+				n_trials: config.n_trials?.toString() ?? '50',
+				timeout: config.timeout?.toString() ?? '3600',
+				metric: config.metric,
+				use_gpu: config.use_gpu ? 'true' : 'false'
+			});
+			if (config.max_samples) {
+				params.set('max_samples', config.max_samples.toString());
 			}
-			params.append('metric', optimizationConfig.metric);
-			params.append('use_gpu', optimizationConfig.use_gpu);
-			if (optimizationConfig.max_samples) {
-				params.append('max_samples', optimizationConfig.max_samples);
-			}
-			
-			const response = await fetch(`/api/ml/optimize/start?${params}`, {
+
+			const response = await fetch(`/api/ml/optimize/start?${params.toString()}`, {
 				method: 'POST'
 			});
-			
+
 			if (!response.ok) {
 				const error = await response.json();
-				throw new Error(error.detail || 'Erreur démarrage optimisation');
+				throw new Error(error.detail || 'Erreur démarrage');
 			}
-			
+
 			const data = await response.json();
-			currentTask = data.task_id;
+			const taskId = data.task_id;
+			alert(data.message || 'Optimisation démarrée');
 			
-			// Démarrer polling du status
-			startStatusPolling();
-			
+			// Démarrer le polling pour mettre à jour le summary quand l'optimisation se termine
+			if (taskId) {
+				startTaskPolling(taskId);
+			}
 		} catch (error) {
 			errorMessage = error.message;
 			console.error('Error starting optimization:', error);
@@ -100,57 +188,89 @@ let configLoaded = false;
 			isLoading = false;
 		}
 	}
-	
-	function startStatusPolling() {
-		if (statusInterval) {
-			clearInterval(statusInterval);
-		}
+
+	// Polling pour suivre l'optimisation
+	async function startTaskPolling(taskId) {
+		let attempts = 0;
+		const maxAttempts = 360; // 30 minutes max (5s interval)
 		
-		statusInterval = setInterval(async () => {
-			if (!currentTask) return;
+		const pollInterval = setInterval(async () => {
+			attempts++;
+			
+			if (attempts > maxAttempts) {
+				clearInterval(pollInterval);
+				console.warn('Polling timeout reached');
+				return;
+			}
 			
 			try {
-				const response = await fetch(`/api/ml/tasks/${currentTask}`);
-				const data = await response.json();
-				taskStatus = data;
-				
-				// Si terminé ou échoué, arrêter polling
-				if (data.status === 'completed' || data.status === 'failed') {
-					clearInterval(statusInterval);
-					statusInterval = null;
-					
-					// Recharger best params et history
-					if (data.status === 'completed') {
-						await loadBestParams();
-						await loadHistory();
-					}
+				const response = await fetch(`/api/ml/tasks/${taskId}`);
+				if (!response.ok) {
+					clearInterval(pollInterval);
+					return;
 				}
-			} catch (error) {
-				console.error('Error polling status:', error);
+				
+				const task = await response.json();
+				
+				if (task.status === 'completed') {
+					clearInterval(pollInterval);
+					console.log('✅ Optimisation terminée, rafraîchissement du summary');
+					
+					// Attendre un peu pour que le backend écrive optuna_last_runs.json
+					await new Promise(resolve => setTimeout(resolve, 1000));
+					
+					// Rafraîchir le summary
+					await fetchSummary();
+					
+					// Réappliquer la sélection métrique pour afficher les nouveaux résultats
+					applyMetricSelection(config.metric);
+					
+					alert(`✅ Optimisation ${config.metric} terminée!\nScore: ${task.run_best_score?.toFixed(4) || 'N/A'}`);
+				} else if (task.status === 'failed') {
+					clearInterval(pollInterval);
+					errorMessage = `Optimisation échouée: ${task.error || 'Erreur inconnue'}`;
+				}
+			} catch (err) {
+				console.warn('Error polling task:', err);
 			}
-		}, 2000); // Poll toutes les 2 secondes
+		}, 5000); // Poll toutes les 5 secondes
+		
+		// Stocker l'interval pour le cleanup
+		if (statusCheckInterval) clearInterval(statusCheckInterval);
+		statusCheckInterval = pollInterval;
 	}
-	
+
+	// Appliquer les meilleurs paramètres
 	async function applyBestParams() {
+		if (!bestParams || !bestParams.params) {
+			alert('Aucun paramètre sélectionné');
+			return;
+		}
+
 		try {
 			isLoading = true;
 			errorMessage = null;
-			
+
+			const paramsToSend = {
+				...bestParams.params,
+				_metric: selectedMetric
+			};
+
 			const response = await fetch('/api/ml/optimize/apply', {
-				method: 'POST'
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(paramsToSend)
 			});
-			
+
 			if (!response.ok) {
 				const error = await response.json();
 				throw new Error(error.detail || 'Erreur application params');
 			}
-			
+
 			const data = await response.json();
-			alert(data.message + '\n\n⚠️ ' + data.warning);
-			
-			// Émettre un événement pour notifier VariablesPanel de recharger la config
+			alert(`${data.message}\n\nSource: Dernière optimisation (${selectedMetricInfo.label})\n\n⚠️ ${data.warning || ''}`);
+
 			dispatch('paramsApplied');
-			
 		} catch (error) {
 			errorMessage = error.message;
 			console.error('Error applying params:', error);
@@ -158,148 +278,129 @@ let configLoaded = false;
 			isLoading = false;
 		}
 	}
-	
-	function formatScore(score) {
-		return score ? (score * 100).toFixed(2) + '%' : 'N/A';
-	}
-	
-	function formatParam(value) {
-		if (typeof value === 'number') {
-			return value.toFixed(4);
-		}
-		return value;
-	}
 
-function loadConfigFromStorage() {
-	if (!browser) return;
-	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
-		if (raw) {
-			const parsed = JSON.parse(raw);
-			optimizationConfig = {
-				...optimizationConfig,
-				...parsed
-			};
-		}
-	} catch (error) {
-		console.warn('⚠️ Impossible de charger la config Optuna depuis localStorage:', error);
-	}
-}
+	// Lifecycle
+	onMount(async () => {
+		// 1. Charger config depuis localStorage en PREMIER
+		loadConfig();
+		loadSummary();
+		
+		// 2. Fetch backend summary
+		await fetchSummary();
+		
+		// 3. Appliquer sélection métrique APRÈS avoir chargé config
+		// Utiliser la métrique stockée dans config, pas DEFAULT_METRIC
+		applyMetricSelection(config.metric);
+		
+		// 4. Activer la sauvegarde automatique APRÈS l'initialisation
+		isInitializing = false;
+	});
 
-function persistConfig() {
-	if (!browser || !configLoaded) return;
-	try {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(optimizationConfig));
-	} catch (error) {
-		console.warn('⚠️ Impossible de sauvegarder la config Optuna:', error);
+	onDestroy(() => {
+		if (statusCheckInterval) {
+			clearInterval(statusCheckInterval);
+		}
+	});
+
+	// Sauvegarde automatique quand config change (après initialisation)
+	$: if (browser && config && !isInitializing) {
+		saveConfig();
 	}
-}
 </script>
 
 <div class="optimization-panel">
-	<!-- Header -->
 	<div class="panel-header">
 		<div class="header-content">
-			<Zap size={24} class="header-icon" />
+			<div class="header-icon">
+				<Activity size={28} />
+			</div>
 			<div>
 				<h2>Optimisation Hyperparamètres</h2>
 				<p class="subtitle">Recherche automatique des meilleurs paramètres XGBoost</p>
 			</div>
 		</div>
 	</div>
-	
+
 	<!-- Configuration -->
 	<div class="config-section">
-		<h3><Activity size={18} /> Configuration</h3>
-		
+		<h3><Package size={18} /> Configuration</h3>
 		<div class="config-grid">
 			<div class="config-item">
-				<label for="n_trials">Nombre de trials</label>
-				<input 
+				<label for="n_trials">Nombre d'essais</label>
+				<input
 					id="n_trials"
-					type="number" 
-					bind:value={optimizationConfig.n_trials}
-					min="10"
+					type="number"
+					bind:value={config.n_trials}
+					min="1"
 					max="1000"
-					disabled={taskStatus && taskStatus.status === 'running'}
-					on:change={persistConfig}
+					disabled={isLoading}
 				/>
-				<span class="hint">10-1000 (recommandé: 50-200)</span>
+				<span class="hint">Plus = meilleur mais plus long</span>
 			</div>
-			
-			<div class="config-item">
-				<label for="metric">Métrique</label>
-				<select 
-					id="metric"
-					bind:value={optimizationConfig.metric}
-					disabled={taskStatus && taskStatus.status === 'running'}
-					on:change={persistConfig}
-				>
-					<option value="trading_composite">Trading Composite (recommandé)</option>
-					<option value="f1_score">F1-Score</option>
-					<option value="accuracy">Accuracy</option>
-					<option value="roc_auc">ROC AUC</option>
-				</select>
-				<span class="hint">Métrique à maximiser</span>
-			</div>
-			
+
 			<div class="config-item">
 				<label for="timeout">Timeout (secondes)</label>
-				<input 
+				<input
 					id="timeout"
-					type="number" 
-					bind:value={optimizationConfig.timeout}
+					type="number"
+					bind:value={config.timeout}
 					min="60"
-					placeholder="Illimité"
-					disabled={taskStatus && taskStatus.status === 'running'}
-					on:change={persistConfig}
+					max="86400"
+					disabled={isLoading}
 				/>
-				<span class="hint">Optionnel (ex: 3600 = 1h)</span>
+				<span class="hint">Limite de temps max</span>
 			</div>
-			
+
 			<div class="config-item">
-				<label for="max_samples">Limite samples</label>
-				<input 
+				<label for="metric">Métrique cible</label>
+				<select
+					id="metric"
+					value={config.metric}
+					on:change={handleMetricDropdownChange}
+					disabled={isLoading}
+				>
+					{#each METRIC_OPTIONS as opt}
+						<option value={opt.key}>{opt.label}</option>
+					{/each}
+				</select>
+			</div>
+
+			<div class="config-item">
+				<label for="max_samples">Max samples</label>
+				<input
 					id="max_samples"
-					type="number" 
-					bind:value={optimizationConfig.max_samples}
-					min="100"
+					type="number"
+					bind:value={config.max_samples}
 					placeholder="Tous"
-					disabled={taskStatus && taskStatus.status === 'running'}
-					on:change={persistConfig}
+					disabled={isLoading}
 				/>
-				<span class="hint">Pour rapidité (optionnel)</span>
+				<span class="hint">Limite pour debug rapide</span>
 			</div>
 		</div>
-		
+
 		<div class="config-switches">
 			<label class="switch-item">
-				<input 
-					type="checkbox" 
-					bind:checked={optimizationConfig.use_gpu}
-					disabled={taskStatus && taskStatus.status === 'running'}
-					on:change={persistConfig}
+				<input
+					type="checkbox"
+					checked={config.use_gpu}
+					on:change={handleGpuToggle}
+					disabled={isLoading}
 				/>
-				<span><Cpu size={16} /> Utiliser GPU (30x plus rapide)</span>
+				Utiliser le GPU (si disponible)
 			</label>
 		</div>
-		
+
 		<div class="action-buttons">
-			<button 
-				class="btn-primary"
-				on:click={startOptimization}
-				disabled={isLoading || (taskStatus && taskStatus.status === 'running')}
-			>
-				{#if isLoading || (taskStatus && taskStatus.status === 'running')}
-					<Loader size={16} class="spin" />
-					{taskStatus?.status === 'running' ? 'Optimisation en cours...' : 'Démarrage...'}
+			<button class="btn-primary" on:click={startOptimization} disabled={isLoading}>
+				{#if isLoading}
+					<div class="spin"><Clock size={16} /></div>
 				{:else}
-					<Zap size={16} />
-					Lancer optimisation
+					<PlayCircle size={16} />
 				{/if}
+				{isLoading ? 'En cours...' : 'Lancer l\'optimisation'}
 			</button>
 		</div>
-		
+
 		{#if errorMessage}
 			<div class="error-message">
 				<AlertCircle size={16} />
@@ -307,114 +408,67 @@ function persistConfig() {
 			</div>
 		{/if}
 	</div>
-	
-	<!-- Progression en temps réel -->
-	{#if taskStatus && taskStatus.status !== 'completed' && taskStatus.status !== 'failed'}
-		<div class="progress-section">
-			<h3><TrendingUp size={18} /> Progression</h3>
-			
-			<div class="progress-bar-container">
-				<div class="progress-bar" style="width: {taskStatus.progress || 0}%"></div>
-			</div>
-			
-			<div class="progress-details">
-				<div class="detail-item">
-					<span class="label">Trial:</span>
-					<span class="value">{taskStatus.current_trial || 0} / {taskStatus.n_trials || 0}</span>
-				</div>
-				<div class="detail-item">
-					<span class="label">Progress:</span>
-					<span class="value">{taskStatus.progress || 0}%</span>
-				</div>
-				<div class="detail-item">
-					<span class="label">Stage:</span>
-					<span class="value">{taskStatus.stage || 'Initializing...'}</span>
-				</div>
-			</div>
-			
-			{#if taskStatus.best_score}
-				<div class="current-best">
-					<strong>Meilleur score actuel:</strong> {formatScore(taskStatus.best_score)}
-				</div>
-			{/if}
-		</div>
-	{/if}
-	
-	<!-- Résultat de l'optimisation -->
-	{#if taskStatus && taskStatus.status === 'completed'}
-		<div class="result-section success">
-			<h3><CheckCircle size={18} /> Optimisation terminée</h3>
-			
-			<div class="result-stats">
-				<div class="stat-card">
-					<span class="stat-label">Meilleur score</span>
-					<span class="stat-value">{formatScore(taskStatus.best_score)}</span>
-				</div>
-				<div class="stat-card">
-					<span class="stat-label">Trials complétés</span>
-					<span class="stat-value">{taskStatus.n_trials_completed || 0}</span>
-				</div>
-				<div class="stat-card">
-					<span class="stat-label">Trials pruned</span>
-					<span class="stat-value">{taskStatus.n_trials_pruned || 0}</span>
-				</div>
-			</div>
-			
-			{#if taskStatus.best_params}
-				<div class="best-params">
-					<h4>Meilleurs hyperparamètres</h4>
-					<div class="params-grid">
-						{#each Object.entries(taskStatus.best_params) as [key, value]}
-							<div class="param-item">
-								<span class="param-key">{key}:</span>
-								<span class="param-value">{formatParam(value)}</span>
+
+	<!-- Métriques -->
+	<div class="metrics-section">
+		<h3><TrendingUp size={18} /> Métriques Optimisées</h3>
+		<div class="metric-grid">
+			{#each METRIC_OPTIONS as metric}
+				<div
+					class="metric-card"
+					class:active={selectedMetric === metric.key}
+					on:click={() => handleMetricSelect(metric.key)}
+					role="button"
+					tabindex="0"
+					on:keypress={(e) => e.key === 'Enter' && handleMetricSelect(metric.key)}
+				>
+					<div class="metric-header">
+						<h4>{metric.label}</h4>
+						<p class="metric-description">{metric.description}</p>
+					</div>
+					<div class="metric-content">
+						{#if metricSummary.metrics?.[metric.key]?.last_run}
+							<div class="metric-value">
+								{formatScore(metricSummary.metrics[metric.key].last_run.score)}
+								<span class="metric-subtitle">Dernière optimisation</span>
 							</div>
-						{/each}
+						{:else}
+							<div class="metric-value">N/A</div>
+							<p class="metric-hint">Aucune optimisation trouvée</p>
+						{/if}
 					</div>
 				</div>
-			{/if}
-			
-			<button class="btn-success" on:click={applyBestParams}>
-				<CheckCircle size={16} />
-				Appliquer ces paramètres
-			</button>
+			{/each}
 		</div>
-	{/if}
-	
-	{#if taskStatus && taskStatus.status === 'failed'}
-		<div class="result-section error">
-			<h3><AlertCircle size={18} /> Échec optimisation</h3>
-			<p class="error-text">{taskStatus.error || 'Erreur inconnue'}</p>
-		</div>
-	{/if}
-	
-	<!-- Meilleurs params actuels -->
+	</div>
+
+	<!-- Meilleurs paramètres -->
 	{#if bestParams && bestParams.found}
 		<div class="current-best-section">
-			<h3>📊 Meilleurs paramètres actuels</h3>
-			
-			<div class="best-info">
-				<p><strong>Score:</strong> {formatScore(bestParams.score)}</p>
-				<p><strong>Trial:</strong> #{bestParams.trial_number}</p>
-				<p><strong>Total trials:</strong> {bestParams.total_trials}</p>
-				{#if bestParams.datetime}
-					<p><strong>Date:</strong> {new Date(bestParams.datetime).toLocaleString()}</p>
-				{/if}
+			<div class="best-source-row">
+				<div class="source-info">
+					<h3><Target size={18} /> Paramètres à appliquer</h3>
+					<p class="source-label">
+						<strong>{selectedMetricInfo.label}</strong> — Dernière optimisation
+						{#if bestParams.score}
+							<span class="score-badge">{formatScore(bestParams.score)}</span>
+						{/if}
+					</p>
+				</div>
+				<button class="btn-success" on:click={applyBestParams} disabled={isLoading}>
+					<CheckCircle size={16} />
+					Appliquer ces paramètres
+				</button>
 			</div>
-			
+
 			<div class="params-grid">
 				{#each Object.entries(bestParams.params) as [key, value]}
 					<div class="param-item">
-						<span class="param-key">{key}:</span>
-						<span class="param-value">{formatParam(value)}</span>
+						<span class="param-key">{key}</span>
+						<span class="param-value">{value}</span>
 					</div>
 				{/each}
 			</div>
-			
-			<button class="btn-outline" on:click={applyBestParams}>
-				<CheckCircle size={16} />
-				Appliquer ces paramètres
-			</button>
 		</div>
 	{/if}
 </div>
@@ -720,6 +774,198 @@ function persistConfig() {
 	.error-text {
 		color: #ff4444;
 		margin: 0.5rem 0;
+	}
+	
+	.best-source-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+		padding: 1rem;
+		background: var(--bg-input, #1a1a2e);
+		border-radius: 8px;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	
+	.source-pill {
+		padding: 0.5rem 1rem;
+		border-radius: 999px;
+		background: rgba(74, 158, 255, 0.2);
+		color: var(--accent-blue, #4a9eff);
+		font-size: 0.875rem;
+		font-weight: 600;
+		border: 2px solid var(--accent-blue, #4a9eff);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+	
+	.source-pill[data-active="false"] {
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--text-secondary, #888);
+		border-color: var(--border-color, #333);
+	}
+	
+	.source-actions {
+		display: flex;
+		gap: 0.5rem;
+		background: rgba(255, 255, 255, 0.03);
+		padding: 0.25rem;
+		border-radius: 8px;
+	}
+	
+	.source-actions button {
+		padding: 0.5rem 1rem;
+		background: transparent;
+		border: none;
+		color: var(--text-secondary, #888);
+		border-radius: 6px;
+		font-size: 0.875rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s;
+		position: relative;
+	}
+	
+	.source-actions button:hover:not(:disabled) {
+		background: rgba(74, 158, 255, 0.1);
+		color: var(--accent-blue, #4a9eff);
+	}
+	
+	.source-actions button.active {
+		background: var(--accent-blue, #4a9eff);
+		color: #fff;
+		font-weight: 600;
+		box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+	}
+	
+	.source-actions button:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+	
+	.source-actions button:disabled:hover {
+		background: transparent;
+		color: var(--text-secondary, #888);
+	}
+	
+	.metrics-section {
+		margin-top: 1.5rem;
+		padding: 1.5rem;
+		background: var(--bg-tertiary, #252540);
+		border-radius: 8px;
+	}
+	
+	.metric-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		gap: 1rem;
+		margin-top: 1rem;
+	}
+	
+	.metric-card {
+		padding: 1.25rem;
+		background: var(--bg-input, #1a1a2e);
+		border: 2px solid var(--border-color, #333);
+		border-radius: 8px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.metric-card:hover {
+		border-color: var(--accent-blue, #4a9eff);
+		transform: translateY(-2px);
+	}
+	
+	.metric-card.active {
+		border-color: var(--accent-green, #00ff88);
+		background: rgba(0, 255, 136, 0.05);
+	}
+	
+	.metric-header h4 {
+		margin: 0 0 0.25rem 0;
+		font-size: 1rem;
+		color: var(--text-primary, #e0e0e0);
+	}
+	
+	.metric-description {
+		margin: 0;
+		font-size: 0.75rem;
+		color: var(--text-secondary, #888);
+	}
+	
+	.metric-content {
+		margin-top: 1rem;
+	}
+	
+	.metric-value {
+		font-size: 1.75rem;
+		font-weight: 700;
+		color: var(--accent-green, #00ff88);
+		margin-bottom: 0.75rem;
+	}
+	
+	.metric-hint {
+		margin: 0;
+		font-size: 0.75rem;
+		color: var(--text-muted, #666);
+		font-style: italic;
+	}
+	
+	.metric-source {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.metric-source button {
+		padding: 0.5rem;
+		background: transparent;
+		border: 1px solid var(--border-color, #333);
+		color: var(--text-secondary, #888);
+		border-radius: 4px;
+		font-size: 0.75rem;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.metric-source button:hover:not(:disabled) {
+		border-color: var(--accent-blue, #4a9eff);
+		color: var(--accent-blue, #4a9eff);
+	}
+	
+	.metric-source button.active {
+		background: var(--accent-blue, #4a9eff);
+		border-color: var(--accent-blue, #4a9eff);
+		color: white;
+		font-weight: 600;
+	}
+	
+	.metric-source button.disabled,
+	.metric-source button:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+	
+	.source-info h3 {
+		margin: 0 0 0.5rem 0;
+	}
+	
+	.source-label {
+		margin: 0;
+		font-size: 0.875rem;
+		color: var(--text-secondary, #888);
+	}
+	
+	.score-badge {
+		display: inline-block;
+		margin-left: 0.5rem;
+		padding: 0.25rem 0.5rem;
+		background: rgba(0, 255, 136, 0.2);
+		border-radius: 4px;
+		color: var(--accent-green, #00ff88);
+		font-weight: 600;
+		font-family: 'Courier New', monospace;
 	}
 	
 	.spin {

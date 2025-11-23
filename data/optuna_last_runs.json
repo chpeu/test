@@ -1,0 +1,100 @@
+{
+  "metrics": {
+    "trading_composite": {
+      "metric": "trading_composite",
+      "last_run": {
+        "metric": "trading_composite",
+        "score": 0.6581930170081743,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 15,
+          "reg_alpha": 9.992375539959054,
+          "reg_lambda": 3.9400943358179923,
+          "subsample": 0.9485958149023781,
+          "colsample_bytree": 0.9805010536441364,
+          "colsample_bylevel": 0.6476481875454759,
+          "learning_rate": 0.00869295119499859,
+          "n_estimators": 200,
+          "gamma": 4.881376291043806,
+          "scale_pos_weight": 1.4850899921792173
+        },
+        "trial_number": 2797,
+        "total_trials": 2900,
+        "datetime": "2025-11-23T15:51:21.147534",
+        "source": "latest"
+      }
+    },
+    "f1_score": {
+      "metric": "f1_score",
+      "last_run": {
+        "metric": "f1_score",
+        "score": 0.2660098522167488,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 20,
+          "reg_alpha": 7.7925633537956625,
+          "reg_lambda": 7.826714033761929,
+          "subsample": 0.8328217286751153,
+          "colsample_bytree": 0.8590915160532425,
+          "colsample_bylevel": 0.6154179589674219,
+          "learning_rate": 0.007393791057717048,
+          "n_estimators": 300,
+          "gamma": 3.7872798630224844,
+          "scale_pos_weight": 1.3705482215001021
+        },
+        "trial_number": 3699,
+        "total_trials": 3700,
+        "datetime": "2025-11-23T16:23:47.316788",
+        "source": "latest"
+      }
+    },
+    "accuracy": {
+      "metric": "accuracy",
+      "last_run": {
+        "metric": "accuracy",
+        "score": 0.6256051231954846,
+        "params": {
+          "max_depth": 6,
+          "min_child_weight": 1,
+          "reg_alpha": 1.0395989115363633,
+          "reg_lambda": 1.9693676187200193,
+          "subsample": 0.8433219317408844,
+          "colsample_bytree": 0.7119259905547907,
+          "colsample_bylevel": 0.8065754781905399,
+          "learning_rate": 0.019711339992785386,
+          "n_estimators": 600,
+          "gamma": 1.9223279706664,
+          "scale_pos_weight": 0.92401570737778
+        },
+        "trial_number": 3867,
+        "total_trials": 3900,
+        "datetime": "2025-11-23T16:27:37.029661",
+        "source": "latest"
+      }
+    },
+    "roc_auc": {
+      "metric": "roc_auc",
+      "last_run": {
+        "metric": "roc_auc",
+        "score": 0.6124629565877242,
+        "params": {
+          "max_depth": 6,
+          "min_child_weight": 3,
+          "reg_alpha": 0.13172473503090742,
+          "reg_lambda": 3.7615832209916715,
+          "subsample": 0.8396901321652237,
+          "colsample_bytree": 0.7047191405243731,
+          "colsample_bylevel": 0.8674872539143506,
+          "learning_rate": 0.027928211584601802,
+          "n_estimators": 700,
+          "gamma": 0.736897057419639,
+          "scale_pos_weight": 0.9820180931084659
+        },
+        "trial_number": 3917,
+        "total_trials": 4100,
+        "datetime": "2025-11-23T16:31:43.179646",
+        "source": "latest"
+      }
+    }
+  }
+}

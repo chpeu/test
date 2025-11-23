@@ -159,14 +159,47 @@
 	// Fonction pour charger la configuration complète
 	async function handleParamsApplied() {
 		try {
-			// Attendre que le backend ait fini d'écrire config_overrides.json
-			await new Promise(resolve => setTimeout(resolve, 800));
-			
 			saveMessage = '⏳ Synchronisation des paramètres...';
+			
+			// Annuler le debounce timer si en cours
+			if (debounceTimer) {
+				clearTimeout(debounceTimer);
+				debounceTimer = null;
+			}
+			
+			// Forcer hasUnsavedChanges à false AVANT de recharger
 			hasUnsavedChanges = false;
 			
-			// Recharger la configuration locale et "Variables en cours"
-			await loadConfig();
+			// Polling: attendre que le backend ait écrit config_overrides.json
+			let attempts = 0;
+			const maxAttempts = 10;
+			let configUpdated = false;
+			
+			while (attempts < maxAttempts && !configUpdated) {
+				await new Promise(resolve => setTimeout(resolve, 300));
+				attempts++;
+				
+				try {
+					const response = await fetch('/api/config/complete');
+					if (response.ok) {
+						const data = await response.json();
+						// Vérifier si les paramètres ML sont présents
+						if (data.trading_config && data.trading_config.ml_max_depth !== undefined) {
+							configUpdated = true;
+							console.log(`✅ Config backend mise à jour (tentative ${attempts})`);
+						}
+					}
+				} catch (e) {
+					console.warn(`Tentative ${attempts} échouée:`, e);
+				}
+			}
+			
+			if (!configUpdated) {
+				console.warn('⚠️ Timeout: config backend non confirmée après 3s');
+			}
+			
+			// Recharger la configuration locale et "Variables en cours" en forçant le reload
+			await loadConfig(true); // force = true pour bypasser le guard
 			await loadCompleteConfig();
 			
 			console.log('✅ Paramètres optimisés appliqués et synchronisés via REST');
@@ -417,11 +450,12 @@
 		};
 	}
 
-	async function loadConfig() {
+	async function loadConfig(force = false) {
 		try {
 			// 🔥 FIX: Ne JAMAIS recharger la config si on a des changements non sauvegardés
 			// Cela évite d'écraser les modifications lors des changements d'onglet
-			if (hasUnsavedChanges) {
+			// SAUF si force=true (utilisé après apply params depuis OptimizationPanel)
+			if (hasUnsavedChanges && !force) {
 				console.log('⚠️ Changements non sauvegardés détectés, chargement de la config ignoré pour préserver les modifications');
 				return;
 			}

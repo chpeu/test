@@ -76,19 +76,21 @@ class XGBoostTrainer:
         timeframe_days: int = 90,
         min_trades: int = 100,  # 🔥 Augmenté: Plus de données pour meilleur apprentissage
         test_size: float = 0.2,
-        n_estimators: int = 300,  # 🔥 Augmenté: Plus d'arbres pour meilleure performance
-        max_depth: int = 6,  # 🔥 Augmenté: Profondeur optimale pour trading
-        learning_rate: float = 0.03,  # 🔥 Réduit: Apprentissage plus lent mais plus robuste
+        n_estimators: Optional[int] = None,
+        max_depth: Optional[int] = None,
+        learning_rate: Optional[float] = None,
         early_stopping_rounds: int = 20,  # 🔥 Augmenté: Plus de patience avant arrêt
         random_state: int = 42,
         feature_selection: bool = True,
         max_features: int = 40,  # 🔥 Augmenté: Plus de features avec nouvelles discriminantes
-        min_child_weight: int = 3,  # 🔥 Anti-overfitting
-        reg_alpha: float = 0.5,  # 🔥 Régularisation L1 (modérée)
-        reg_lambda: float = 2.0,  # 🔥 Régularisation L2 (modérée)
-        subsample: float = 0.8,  # 🔥 Bagging pour robustesse
-        colsample_bytree: float = 0.8,  # 🔥 Feature sampling
-        gamma: float = 0.1,  # 🔥 Régularisation min split gain
+        min_child_weight: Optional[int] = None,
+        reg_alpha: Optional[float] = None,
+        reg_lambda: Optional[float] = None,
+        subsample: Optional[float] = None,
+        colsample_bytree: Optional[float] = None,
+        colsample_bylevel: Optional[float] = None,
+        gamma: Optional[float] = None,
+        scale_pos_weight: Optional[float] = None,
         **xgb_params,
     ) -> Dict:
         """
@@ -110,6 +112,26 @@ class XGBoostTrainer:
         """
         logger.info("🚀 Démarrage entraînement XGBoost")
         logger.info(f"📊 Paramètres: timeframe={timeframe_days}d, min_trades={min_trades}")
+        
+        # Charger hyperparamètres depuis TRADING_CONFIG si non fournis
+        from config import TRADING_CONFIG
+        n_estimators = n_estimators or TRADING_CONFIG.get('ml_n_estimators', 300)
+        max_depth = max_depth or TRADING_CONFIG.get('ml_max_depth', 6)
+        learning_rate = learning_rate or TRADING_CONFIG.get('ml_learning_rate', 0.03)
+        min_child_weight = min_child_weight or TRADING_CONFIG.get('ml_min_child_weight', 3)
+        reg_alpha = reg_alpha or TRADING_CONFIG.get('ml_reg_alpha', 0.5)
+        reg_lambda = reg_lambda or TRADING_CONFIG.get('ml_reg_lambda', 2.0)
+        subsample = subsample or TRADING_CONFIG.get('ml_subsample', 0.8)
+        colsample_bytree = colsample_bytree or TRADING_CONFIG.get('ml_colsample_bytree', 0.8)
+        colsample_bylevel = colsample_bylevel or TRADING_CONFIG.get('ml_colsample_bylevel', 0.8)
+        gamma = gamma or TRADING_CONFIG.get('ml_gamma', 0.1)
+        scale_pos_weight = scale_pos_weight or TRADING_CONFIG.get('ml_scale_pos_weight', 1.0)
+        
+        logger.info(
+            f"🎯 Hyperparamètres ML: n_estimators={n_estimators}, max_depth={max_depth}, "
+            f"lr={learning_rate:.4f}, min_child_weight={min_child_weight}, "
+            f"reg_alpha={reg_alpha}, reg_lambda={reg_lambda}"
+        )
         
         start_time = datetime.now()
         
@@ -164,7 +186,8 @@ class XGBoostTrainer:
             "reg_alpha": reg_alpha,  # Régularisation L1 (Lasso)
             "reg_lambda": reg_lambda,  # Régularisation L2 (Ridge)
             "subsample": subsample,  # Bagging
-            "colsample_bytree": colsample_bytree,  # Feature sampling
+            "colsample_bytree": colsample_bytree,  # Feature sampling per tree
+            "colsample_bylevel": colsample_bylevel,  # Feature sampling per level
             "gamma": gamma,  # Régularisation min split gain
             "scale_pos_weight": scale_pos_weight,
             "random_state": random_state,

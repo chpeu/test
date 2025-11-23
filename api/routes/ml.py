@@ -4,8 +4,13 @@ Dashboard, Features, Models, Backtesting, Live Predictions
 """
 
 import asyncio
+import copy
+import json
 import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
+import os
+import threading
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body
 from fastapi.responses import JSONResponse
 from typing import Optional, Dict, Any, List
 import pandas as pd
@@ -17,8 +22,64 @@ logger = logging.getLogger(__name__)
 # Router ML
 router = APIRouter(prefix="/api/ml", tags=["ML"])
 
+
+@router.get("/optimize/summary")
+async def get_metric_summary():
+    """Renvoyer la dernière optimisation disponible pour chaque métrique."""
+    snapshot = get_metric_runs_snapshot()
+    metrics_map = snapshot.get("metrics", {})
+    for metric in METRIC_OPTIONS:
+        metrics_map.setdefault(metric, {"metric": metric, "last_run": None})
+    return {"metrics": metrics_map}
+
 # State global pour tracking tasks
 ml_tasks = {}
+
+METRIC_OPTIONS = ["trading_composite", "f1_score", "accuracy", "roc_auc"]
+
+LAST_RUNS_FILE = Path("data/optuna_last_runs.json")
+_metric_cache_lock = threading.Lock()
+metric_runs_cache = {"metrics": {}}
+
+
+def _load_metric_runs_cache():
+    global metric_runs_cache
+    if LAST_RUNS_FILE.exists():
+        try:
+            with LAST_RUNS_FILE.open('r') as f:
+                metric_runs_cache = json.load(f)
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de charger {LAST_RUNS_FILE}: {e}")
+            metric_runs_cache = {"metrics": {}}
+    else:
+        metric_runs_cache = {"metrics": {}}
+
+
+def _save_metric_runs_cache():
+    LAST_RUNS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with LAST_RUNS_FILE.open('w') as f:
+        json.dump(metric_runs_cache, f, indent=2)
+
+
+def record_metric_run(metric: str, run_data: Dict[str, Any]):
+    """Enregistrer la dernière optimisation et le record global pour chaque métrique."""
+    if not metric:
+        return
+    with _metric_cache_lock:
+        metrics_map = metric_runs_cache.setdefault("metrics", {})
+        metrics_map[metric] = {
+            'metric': metric,
+            'last_run': {**run_data, 'metric': metric, 'source': 'latest'}
+        }
+        _save_metric_runs_cache()
+
+
+def get_metric_runs_snapshot() -> Dict[str, Any]:
+    with _metric_cache_lock:
+        return copy.deepcopy(metric_runs_cache)
+
+
+_load_metric_runs_cache()
 
 
 # ========== HELPERS ==========
@@ -1115,7 +1176,7 @@ async def start_hyperparameter_optimization(
     background_tasks: BackgroundTasks,
     n_trials: int = Query(100, ge=10, le=1000),
     timeout: Optional[int] = Query(None, ge=60),
-    metric: str = Query('trading_composite', regex='^(trading_composite|f1_score|accuracy|roc_auc)$'),
+    metric: str = Query('trading_composite', regex='^(' + '|'.join(METRIC_OPTIONS) + ')$'),
     use_gpu: bool = Query(False),
     max_samples: Optional[int] = Query(None, ge=100)
 ):
@@ -1239,6 +1300,8 @@ async def _optimize_hyperparameters_background(
             cv_folds=5,
             pruning=True
         )
+        initial_trial_count = len(tuner.study.trials)
+        run_best_trial: Dict[str, Any] = {'trial': None}
         
         # Callback pour mettre à jour progression
         def trial_callback(study, trial):
@@ -1251,6 +1314,16 @@ async def _optimize_hyperparameters_background(
                     'best_params': study.best_params,
                     'stage': f'trial_{trial.number + 1}/{n_trials}'
                 })
+                if trial.number >= initial_trial_count:
+                    current_best = run_best_trial['trial']
+                    if current_best is None or (trial.value is not None and trial.value > current_best.value):
+                        run_best_trial['trial'] = trial
+                    if run_best_trial['trial'] is not None:
+                        ml_tasks[task_id].update({
+                            'run_best_score': run_best_trial['trial'].value,
+                            'run_best_params': run_best_trial['trial'].params,
+                            'run_best_trial': run_best_trial['trial'].number
+                        })
         
         # Optimiser avec callback
         ml_tasks[task_id]['stage'] = 'optimizing'
@@ -1271,18 +1344,43 @@ async def _optimize_hyperparameters_background(
         tuner.save_best_params()
         
         # Success
+        latest_run_trial = run_best_trial['trial']
+        if latest_run_trial is None:
+            # Aucun trial du run n'a dépassé les performances précédentes
+            # -> prendre le dernier trial exécuté pendant ce run pour représenter "last_run"
+            new_trials = [t for t in tuner.study.trials if t.number >= initial_trial_count]
+            if new_trials:
+                latest_run_trial = new_trials[-1]
+
         ml_tasks[task_id].update({
             'status': 'completed',
             'progress': 100,
             'stage': 'completed',
             'best_score': tuner.study.best_value,
             'best_params': tuner.study.best_params,
+            'run_best_score': latest_run_trial.value if latest_run_trial is not None else None,
+            'run_best_params': latest_run_trial.params if latest_run_trial is not None else None,
+            'run_best_trial': latest_run_trial.number if latest_run_trial is not None else None,
             'n_trials_completed': len([t for t in tuner.study.trials if t.state == optuna.trial.TrialState.COMPLETE]),
             'n_trials_pruned': len([t for t in tuner.study.trials if t.state == optuna.trial.TrialState.PRUNED]),
             'completed_at': datetime.now().isoformat()
         })
         
         logger.info(f"✅ Optimisation terminée (task_id={task_id}, best_score={tuner.study.best_value:.4f})")
+        
+        # Préparer les données pour record_metric_run
+        run_data = {
+            'metric': metric,
+            'score': latest_run_trial.value if latest_run_trial is not None else tuner.study.best_value,
+            'params': (latest_run_trial.params if latest_run_trial is not None else tuner.study.best_params),
+            'trial_number': (latest_run_trial.number if latest_run_trial is not None else tuner.study.best_trial.number),
+            'total_trials': len(tuner.study.trials),
+            'datetime': datetime.now().isoformat()
+        }
+        
+        logger.info(f"📊 Enregistrement métrique '{metric}' avec score={run_data['score']:.4f}, params={list(run_data['params'].keys())}")
+        record_metric_run(metric, run_data)
+        logger.info(f"✅ Métrique '{metric}' enregistrée dans optuna_last_runs.json")
         
     except Exception as e:
         logger.error(f"❌ Erreur optimisation: {e}", exc_info=True)
@@ -1412,48 +1510,77 @@ async def get_best_hyperparameters(
 
 @router.post("/optimize/apply")
 async def apply_best_hyperparameters(
-    study_name: str = Query('xgboost_trading_optimization'),
+    params_to_apply: Optional[Dict[str, Any]] = Body(None),
     config_file: str = Query('config_overrides.json')
 ):
     """
-    Appliquer meilleurs hyperparamètres à config_overrides.json
+    Appliquer hyperparamètres spécifiques à config_overrides.json
+    
+    Args:
+        params_to_apply: Paramètres à appliquer (si None, utilise best global Optuna)
+        config_file: Fichier de config à écrire
     
     Returns:
         Confirmation et params appliqués
     """
     try:
-        from ml.hyperparameter_tuning import HyperparameterTuner
+        # Si params fournis directement, les utiliser
+        if params_to_apply:
+            params_dict = params_to_apply
+            score = None
+            logger.info(f"📝 Application de paramètres fournis par le frontend: {params_dict}")
+        else:
+            # Fallback: utiliser le best global d'Optuna
+            from ml.hyperparameter_tuning import HyperparameterTuner
+            
+            tuner = HyperparameterTuner(
+                study_name='xgboost_trading_optimization',
+                n_trials=1
+            )
+            
+            if len(tuner.study.trials) == 0:
+                raise HTTPException(400, "Aucune optimisation trouvée et aucun paramètre fourni")
+            
+            params_dict = tuner.study.best_params
+            score = tuner.study.best_value
+            logger.info(f"📝 Application du meilleur global Optuna: {params_dict}")
         
-        # Charger étude
-        tuner = HyperparameterTuner(
-            study_name=study_name,
-            n_trials=1
-        )
+        # Sauvegarder dans config_overrides.json
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+        else:
+            config = {}
         
-        if len(tuner.study.trials) == 0:
-            raise HTTPException(400, "Aucune optimisation trouvée")
+        # Ajouter params avec préfixe ml_ (filtrer les metadata _source et _metric)
+        for param, value in params_dict.items():
+            # Ignorer les clés metadata du frontend
+            if param.startswith('_'):
+                continue
+            config_key = f"ml_{param}"
+            config[config_key] = value
         
-        # Sauvegarder
-        tuner.save_best_params(filepath=config_file)
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        logger.info(f"💾 Paramètres sauvegardés dans {config_file}")
+        
         # Recharger immédiatement les overrides pour mettre à jour TRADING_CONFIG
         try:
             from config import TRADING_CONFIG
             from utils.config_persistence import apply_config_overrides
             apply_config_overrides(TRADING_CONFIG)
-            logger.info("✅ TRADING_CONFIG rechargé avec les meilleurs paramètres ML")
+            logger.info("✅ TRADING_CONFIG rechargé avec les paramètres ML")
         except Exception as reload_err:
-            logger.error(f"❌ Impossible de recharger TRADING_CONFIG après optimisation: {reload_err}")
+            logger.error(f"❌ Impossible de recharger TRADING_CONFIG: {reload_err}")
         
-        best_params = tuner.study.best_params
-        best_score = tuner.study.best_value
-        
-        logger.info(f"✅ Meilleurs params appliqués à {config_file}")
+        logger.info(f"✅ Paramètres appliqués à {config_file}")
         
         return {
             'success': True,
-            'message': f'Meilleurs paramètres appliqués à {config_file}',
-            'params': best_params,
-            'score': best_score,
+            'message': f'Paramètres appliqués à {config_file}',
+            'params': params_dict,
+            'score': score,
             'config_file': config_file,
             'warning': 'Relancer entraînement du modèle pour appliquer les changements'
         }
