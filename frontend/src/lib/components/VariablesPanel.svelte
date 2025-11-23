@@ -162,48 +162,16 @@
 			// Attendre que le backend ait fini d'écrire config_overrides.json
 			await new Promise(resolve => setTimeout(resolve, 800));
 			
-			// Afficher un message immédiat
 			saveMessage = '⏳ Synchronisation des paramètres...';
-			
-			// Réinitialiser hasUnsavedChanges pour permettre le rechargement
 			hasUnsavedChanges = false;
 			
-			// Charger la configuration complète depuis REST API
-			const response = await fetch('/api/config/complete');
-			if (response.ok) {
-				const data = await response.json();
-				
-				// Mettre à jour la config locale avec tous les paramètres ML
-				if (data.trading_config) {
-					const tc = data.trading_config;
-					
-					console.log('✅ Paramètres optimisés appliqués et synchronisés:', {
-						ml_max_depth: tc.ml_max_depth,
-						ml_min_child_weight: tc.ml_min_child_weight,
-						ml_reg_alpha: tc.ml_reg_alpha,
-						ml_reg_lambda: tc.ml_reg_lambda,
-						ml_subsample: tc.ml_subsample,
-						ml_colsample_bytree: tc.ml_colsample_bytree,
-						ml_colsample_bylevel: tc.ml_colsample_bylevel,
-						ml_gamma: tc.ml_gamma,
-						ml_scale_pos_weight: tc.ml_scale_pos_weight,
-						ml_n_estimators: tc.ml_n_estimators,
-						ml_learning_rate: tc.ml_learning_rate
-					});
-					
-					// Afficher un message de succès
-					saveMessage = '✅ Paramètres appliqués - rechargement de la page...';
-					
-					// Attendre 1 seconde puis recharger la page pour forcer la synchronisation des sliders
-					setTimeout(() => {
-						window.location.reload();
-					}, 1000);
-				}
-				
-			} else {
-				throw new Error(`Erreur HTTP: ${response.status}`);
-			}
+			// Recharger la configuration locale et "Variables en cours"
+			await loadConfig();
+			await loadCompleteConfig();
 			
+			console.log('✅ Paramètres optimisés appliqués et synchronisés via REST');
+			saveMessage = '✅ Paramètres optimisés appliqués - sliders mis à jour';
+			setTimeout(() => { saveMessage = ''; }, 3000);
 		} catch (error) {
 			console.error('❌ Erreur handleParamsApplied:', error);
 			saveMessage = '❌ Erreur lors de l\'application des paramètres';
