@@ -775,7 +775,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             # Ajouter les indicateurs à analysis
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
-            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
+            
+            # 🔥 DIAGNOSTIC: Vérifier intégrité des indicateurs
+            null_count_1m = sum(1 for v in indicators_1m.values() if v is None)
+            null_count_5m = sum(1 for v in indicators_5m.values() if v is None)
+            logger.info(
+                f"✅ Indicateurs ajoutés à analysis pour {symbol}: "
+                f"indicators_1m: {len(indicators_1m)} keys ({null_count_1m} NULL), "
+                f"indicators_5m: {len(indicators_5m)} keys ({null_count_5m} NULL)"
+            )
         else:
             logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
 
@@ -978,13 +986,32 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     # 🔥 FIX: Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict
                     'filters': _extract_filter_metrics(analysis) if analysis else {},
                     'scores': {
-                        'score_1m': analysis.get('score_1m') if analysis else None,
-                        'score_5m': analysis.get('score_5m') if analysis else None,
-                        'score_total': analysis.get('score_total') if analysis else None,
-                        'score_long_1m': analysis.get('score_long_1m') if analysis else None,
-                        'score_short_1m': analysis.get('score_short_1m') if analysis else None,
-                        'score_long_5m': analysis.get('score_long_5m') if analysis else None,
-                        'score_short_5m': analysis.get('score_short_5m') if analysis else None,
+                        # 🔥 Extraire scores depuis analysis_1m/5m si présents, sinon fallback
+                        'score_1m': (
+                            analysis.get('analysis_1m', {}).get('totalScore') if analysis and analysis.get('analysis_1m') 
+                            else analysis.get('score_1m') if analysis else None
+                        ),
+                        'score_5m': (
+                            analysis.get('analysis_5m', {}).get('totalScore') if analysis and analysis.get('analysis_5m')
+                            else analysis.get('score_5m') if analysis else None
+                        ),
+                        'score_total': analysis.get('score_total') or analysis.get('totalScore') if analysis else None,
+                        'score_long_1m': (
+                            analysis.get('analysis_1m', {}).get('long_score') if analysis and analysis.get('analysis_1m')
+                            else analysis.get('score_long_1m') or analysis.get('long_score') if analysis else None
+                        ),
+                        'score_short_1m': (
+                            analysis.get('analysis_1m', {}).get('short_score') if analysis and analysis.get('analysis_1m')
+                            else analysis.get('score_short_1m') or analysis.get('short_score') if analysis else None
+                        ),
+                        'score_long_5m': (
+                            analysis.get('analysis_5m', {}).get('long_score') if analysis and analysis.get('analysis_5m')
+                            else analysis.get('score_long_5m') if analysis else None
+                        ),
+                        'score_short_5m': (
+                            analysis.get('analysis_5m', {}).get('short_score') if analysis and analysis.get('analysis_5m')
+                            else analysis.get('score_short_5m') if analysis else None
+                        ),
                     },
                     'patterns': {
                         'pattern_1m': analysis.get('pattern_1m') if analysis else None,
@@ -1027,6 +1054,28 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'use_divergence': TRADING_CONFIG.get('use_divergence', True),
                     }
                 }
+                
+                # 🔥 DIAGNOSTIC: Vérifier intégrité des données avant log
+                indicators_1m_check = scan_data.get('indicators_1m', {})
+                params_check = scan_data.get('params_snapshot', {})
+                
+                if not indicators_1m_check or not any(indicators_1m_check.values()):
+                    logger.warning(
+                        f"⚠️ {symbol}: indicators_1m VIDE avant log_scan! "
+                        f"analysis présent: {bool(analysis)}, "
+                        f"analysis keys: {list(analysis.keys()) if analysis else 'N/A'}"
+                    )
+                
+                if not params_check:
+                    logger.warning(f"⚠️ {symbol}: params_snapshot VIDE avant log_scan!")
+                
+                if indicators_1m_check:
+                    null_indicators = [k for k, v in indicators_1m_check.items() if v is None]
+                    if len(null_indicators) > 10:  # Si plus de 10 indicateurs NULL
+                        logger.warning(
+                            f"⚠️ {symbol}: {len(null_indicators)}/{len(indicators_1m_check)} "
+                            f"indicators_1m sont NULL (ex: {null_indicators[:5]})"
+                        )
                 
                 # Logger le scan (mode batch par défaut)
                 logger.info(f"📝 Appel log_scan() pour {symbol}")

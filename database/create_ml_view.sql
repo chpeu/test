@@ -48,6 +48,17 @@ SELECT
     s.atr_optimal_passed_5m,
     s.volume_filter_passed_1m,
     s.volume_filter_passed_5m,
+    -- 🔥 Config parameters (nouvelles colonnes)
+    CAST(s.config_min_score_required AS DOUBLE PRECISION) AS config_min_score_required,
+    CAST(s.config_snr_threshold AS DOUBLE PRECISION) AS config_snr_threshold,
+    CAST(s.config_atr_min_1m AS DOUBLE PRECISION) AS config_atr_min_1m,
+    CAST(s.config_atr_max_1m AS DOUBLE PRECISION) AS config_atr_max_1m,
+    CAST(s.config_atr_min_5m AS DOUBLE PRECISION) AS config_atr_min_5m,
+    CAST(s.config_atr_max_5m AS DOUBLE PRECISION) AS config_atr_max_5m,
+    CAST(s.config_volume_multiplier AS DOUBLE PRECISION) AS config_volume_multiplier,
+    s.config_use_confluence,
+    -- 🔥 Reject category (nouvelle colonne)
+    s.reject_reason_category,
     -- Labels / metadata
     s.is_opportunity,
     t.direction AS opportunity_direction,
