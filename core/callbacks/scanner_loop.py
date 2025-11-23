@@ -224,13 +224,21 @@ async def _scan_top_pairs():
                 errors.append(r)
             elif r and isinstance(r, dict):
                 # Setup valide = a 'direction' ET 'entry' (ou 'price')
-                if 'direction' in r and ('entry' in r or 'price' in r):
-                    # 🔥 DEBUG: Vérifier si le setup contient les indicateurs
-                    symbol_check = r.get('symbol', 'UNKNOWN')
-                    logger.info(f"🔍 DEBUG valid_setups.append({symbol_check}): contient indicators_1m: {'indicators_1m' in r}, indicators_5m: {'indicators_5m' in r}")
+                symbol_check = r.get('symbol', 'UNKNOWN')
+                has_direction = 'direction' in r
+                has_entry = 'entry' in r
+                has_price = 'price' in r
+                
+                # 🔥 DEBUG: Log détaillé pour CHAQUE résultat
+                logger.info(f"🔍 DEBUG result pour {symbol_check}: direction={has_direction}, entry={has_entry}, price={has_price}, keys={list(r.keys())[:10]}")
+                
+                if has_direction and (has_entry or has_price):
+                    logger.info(f"✅ {symbol_check} → VALID SETUP (direction={r.get('direction')}, entry={r.get('entry') or r.get('price')})")
                     valid_setups.append(r)
                 else:
                     # Rejet
+                    reason = r.get('reason', 'No reason')
+                    logger.info(f"❌ {symbol_check} → REJECTED (reason={reason}, has_direction={has_direction}, has_entry={has_entry})")
                     rejections.append(r)
             # else: None = aussi une erreur/skip
 
@@ -1077,15 +1085,23 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                             f"indicators_1m sont NULL (ex: {null_indicators[:5]})"
                         )
                 
-                # Logger le scan (mode batch par défaut)
-                logger.info(f"📝 Appel log_scan() pour {symbol}")
-                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                # 🔥 FIX: Désactiver batch mode pour opportunities (besoin ID immédiat)
+                # Les opportunities sont rares (~1:255) donc impact performance négligeable
+                is_opportunity = scan_data.get('is_opportunity', False)
+                use_batch_mode = not is_opportunity  # False si opportunity, True sinon
+                
+                logger.info(f"📝 Appel log_scan() pour {symbol} (batch={use_batch_mode})")
+                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=use_batch_mode)
                 logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
                 
+                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
+                if analysis and isinstance(analysis, dict) and scan_id:
+                    analysis['_scan_uuid'] = scan_id
+                    logger.info(f"✅ scan_id ajouté à analysis: {scan_id}")
+                
                 # Si c'est une opportunité, logger aussi dans opportunities
-                # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
-                # avec scan_id=None temporairement (sera mis à jour lors du flush)
-                if scan_data['is_opportunity'] and analysis:
+                opportunity_id = None
+                if is_opportunity and analysis:
                     condition_list = analysis.get('condition_types', [])
                     score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
                     score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
@@ -1118,14 +1134,20 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
                     }
-                    # En mode batch, on passe scan_id=None temporairement
-                    # Le scan_id sera résolu lors du flush batch
-                    pg_datalogger.log_opportunity(
-                        scan_id or 0,  # 0 = temporaire, sera mis à jour
+                    # 🔥 FIX: Mode direct (pas de batch) pour obtenir opportunity_id immédiatement
+                    opportunity_id = pg_datalogger.log_opportunity(
+                        scan_id,  # scan_id déjà disponible (mode direct utilisé ci-dessus)
                         symbol, 
                         opportunity_data,
-                        use_batch=True
+                        use_batch=False  # Mode direct pour avoir l'ID immédiatement
                     )
+                    
+                    # 🔥 FIX: Ajouter opportunity_id à analysis pour qu'il soit disponible dans best_setup
+                    if opportunity_id:
+                        analysis['_opportunity_id'] = opportunity_id
+                        logger.info(f"✅ Opportunity loggée pour {symbol} (opportunity_id={opportunity_id})")
+                    else:
+                        logger.warning(f"⚠️ opportunity_id est None pour {symbol} !")
                     
             except Exception as e:
                 logger.error(f"❌ Erreur logging PostgreSQL pour {symbol}: {e}")

@@ -616,11 +616,11 @@ class PostgreSQLDataLogger:
                 filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
                 
                 # Confluence
-                scan_data.get('use_confluence'), scan_data.get('confluence_met'),
+                scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
                 scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                scores.get('score_long_1m'), scores.get('score_short_1m'),
-                scores.get('score_long_5m'), scores.get('score_short_5m'),
-                scan_data.get('timeframes_aligned'),
+                scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
+                scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
+                scan_data.get('timeframes_aligned', False),
                 
                 # Patterns
                 patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
@@ -629,7 +629,7 @@ class PostgreSQLDataLogger:
                 # Trend
                 scan_data.get('trend_timeframe', '15m'),
                 scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                scan_data.get('trend_bonus'),
+                scan_data.get('trend_bonus', 0),
                 
                 # Divergence
                 scan_data.get('divergence_detected', False),
@@ -1054,18 +1054,38 @@ class PostgreSQLDataLogger:
             slippage_pct = _extract_numeric_value(slippage_pct_raw) if slippage_pct_raw is not None else 0
             slippage_usdt = (slippage_pct / 100) * (size_usdt or 0) if slippage_pct and size_usdt else 0
             
-            # Extraire config_snapshot
-            # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
-            config_snapshot = trade_data.get('config_snapshot', {})
-            if config_snapshot:
+            # 🔥 FIX: Extraire config_snapshot + colonnes config_*
+            config_snapshot_raw = trade_data.get('config_snapshot') or {}
+            config_snapshot_dict: Dict[str, Any] = {}
+            if isinstance(config_snapshot_raw, str):
                 try:
-                    config_snapshot_safe = serialize_config_safe(config_snapshot)
+                    config_snapshot_dict = json.loads(config_snapshot_raw)
+                except Exception:
+                    config_snapshot_dict = {}
+            elif isinstance(config_snapshot_raw, dict):
+                config_snapshot_dict = config_snapshot_raw
+
+            config_min_score_required = _extract_numeric_value(config_snapshot_dict.get('min_score_required'))
+            config_snr_threshold = _extract_numeric_value(config_snapshot_dict.get('snr_threshold'))
+            config_optimal_atr_min_1m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_min_1m'))
+            config_optimal_atr_max_1m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_1m'))
+            config_optimal_atr_min_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_min_5m'))
+            config_optimal_atr_max_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_5m'))
+            config_volume_multiplier = _extract_numeric_value(config_snapshot_dict.get('volume_multiplier'))
+            config_use_confluence = config_snapshot_dict.get('use_confluence')
+            if isinstance(config_use_confluence, str):
+                config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
+            elif config_use_confluence is None:
+                config_use_confluence = None
+
+            config_snapshot = None
+            if config_snapshot_dict:
+                try:
+                    config_snapshot_safe = serialize_config_safe(config_snapshot_dict)
                     config_snapshot = json.dumps(config_snapshot_safe)
                 except Exception as e:
                     logger.error(f"❌ Erreur sérialisation config_snapshot pour trade: {e}", exc_info=True)
                     config_snapshot = None
-            else:
-                config_snapshot = None
             
             # Convertir entry_conditions en liste de strings pour PostgreSQL TEXT[]
             # (doit être fait avant de créer params)
@@ -1241,6 +1261,15 @@ class PostgreSQLDataLogger:
                 ('entry_vol5', entry_vol5),
                 ('entry_vol15', entry_vol15),
                 ('entry_scalability_score', entry_scalability_score),
+                # Config snapshot décomposé
+                ('config_min_score_required', config_min_score_required),
+                ('config_snr_threshold', config_snr_threshold),
+                ('config_optimal_atr_min_1m', config_optimal_atr_min_1m),
+                ('config_optimal_atr_max_1m', config_optimal_atr_max_1m),
+                ('config_optimal_atr_min_5m', config_optimal_atr_min_5m),
+                ('config_optimal_atr_max_5m', config_optimal_atr_max_5m),
+                ('config_volume_multiplier', config_volume_multiplier),
+                ('config_use_confluence', config_use_confluence),
                 ('config_snapshot', config_snapshot),
                 ('win', win)
             ])
@@ -1464,18 +1493,18 @@ class PostgreSQLDataLogger:
                     filters.get('atr_optimal_passed_1m', False), filters.get('atr_optimal_passed_5m', False),
                     filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
                     # Confluence
-                    scan_data.get('use_confluence'), scan_data.get('confluence_met'),
+                    scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
                     scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                    scores.get('score_long_1m'), scores.get('score_short_1m'),
-                    scores.get('score_long_5m'), scores.get('score_short_5m'),
-                    scan_data.get('timeframes_aligned'),
+                    scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
+                    scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
+                    scan_data.get('timeframes_aligned', False),
                     # Patterns
                     patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
                     patterns.get('pattern_5m'), patterns.get('pattern_multi_5m'),
                     # Trend
                     scan_data.get('trend_timeframe', '15m'),
                     scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                    scan_data.get('trend_bonus'),
+                    scan_data.get('trend_bonus', 0),
                     # Divergence
                     scan_data.get('divergence_detected', False),
                     scan_data.get('divergence_type'), scan_data.get('divergence_bonus', 0),

@@ -5084,6 +5084,22 @@ async def export_datalogger_excel(
                     # S'assurer que reject_reason_category est présent
                     if 'reject_reason_category' not in headers:
                         headers.append('reject_reason_category')
+                # 🔥 FIX: Pour trades, masquer config_snapshot et s'assurer que les colonnes config_* sont présentes
+                if table_name == 'trades':
+                    headers = [h for h in headers if h != 'config_snapshot']
+                    config_columns = [
+                        'config_min_score_required', 'config_snr_threshold',
+                        'config_optimal_atr_min_1m', 'config_optimal_atr_max_1m',
+                        'config_optimal_atr_min_5m', 'config_optimal_atr_max_5m',
+                        'config_volume_multiplier', 'config_use_confluence'
+                    ]
+                    for col in config_columns:
+                        if col not in headers:
+                            headers.append(col)
+                    
+                    # 🔥 NOUVEAU: Ajouter colonne "data_complete" pour identifier trades complets
+                    if 'data_complete' not in headers:
+                        headers.append('data_complete')
 
                 if headers:
                     ws.append(headers)
@@ -5095,7 +5111,14 @@ async def export_datalogger_excel(
                     # Convertir valeurs complexes (arrays, dicts) en string JSON pour Excel
                     excel_row = []
                     for h in headers:
-                        value = row.get(h)  # Utiliser .get() car certaines clés peuvent ne pas exister
+                        # 🔥 NOUVEAU: Calculer data_complete pour trades
+                        if h == 'data_complete' and table_name == 'trades':
+                            # Complet si scan_log_id n'est pas NULL
+                            is_complete = row.get('scan_log_id') is not None
+                            value = '✅ Complet' if is_complete else '⚠️ Incomplet (ancien)'
+                        else:
+                            value = row.get(h)  # Utiliser .get() car certaines clés peuvent ne pas exister
+                        
                         # Convertir types non-supportés par Excel
                         if isinstance(value, (list, dict)):
                             excel_row.append(json.dumps(value, ensure_ascii=False))

@@ -187,12 +187,32 @@ async def get_data_quality():
         loss_count = (df['target_win'] == False).sum()
         win_rate = win_count / (win_count + loss_count) if (win_count + loss_count) > 0 else 0
         
-        # Missing values
-        missing_pct = (df.isnull().sum() / len(df) * 100).to_dict()
+        # 🔥 FIX: Exclure IDs, métadonnées et config de l'analyse de qualité
+        exclude_from_quality = [
+            'scan_id', 'timestamp', 'symbol',  # IDs et métadonnées
+            'opportunity_direction', 'reject_reason_category',  # Catégorielles (non-numériques)
+            'target_win', 'target_pnl', 'is_opportunity',  # Targets (pas des features)
+            # Config parameters (variance nulle intentionnelle - paramètres fixes)
+            'config_min_score_required', 'config_snr_threshold',
+            'config_atr_min_1m', 'config_atr_max_1m',
+            'config_atr_min_5m', 'config_atr_max_5m',
+            'config_volume_multiplier', 'config_use_confluence',
+            # Filtres booléens (variance naturellement faible - 0/1 seulement)
+            'snr_passed_1m', 'snr_passed_5m',
+            'breakout_passed_1m', 'breakout_passed_5m',
+            'wick_passed_1m', 'wick_passed_5m',
+            'atr_optimal_passed_1m', 'atr_optimal_passed_5m',
+            'volume_filter_passed_1m', 'volume_filter_passed_5m',
+        ]
+        
+        # Missing values (features uniquement)
+        feature_cols = [col for col in df.columns if col not in exclude_from_quality]
+        missing_pct = (df[feature_cols].isnull().sum() / len(df) * 100).to_dict()
         high_missing = {k: v for k, v in missing_pct.items() if v > 10}
         
-        # Features avec variance
-        numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+        # Features avec variance (features uniquement)
+        numeric_cols = [col for col in df.select_dtypes(include=['float64', 'int64']).columns 
+                       if col not in exclude_from_quality]
         low_variance = []
         for col in numeric_cols:
             if df[col].std() < 0.01:

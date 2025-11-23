@@ -609,6 +609,7 @@ class PositionManager:
         
         # 🔥 FIX: TOUJOURS stocker les indicateurs dans la position (pour PostgreSQL)
         self.active_position._scan_log_id = scan_uuid
+        self.active_position._opportunity_id = opportunity_id  # 🔥 FIX: Stocker opportunity_id
         self.active_position._entry_indicators = entry_indicators
         self.active_position._entry_conditions = entry_conditions
         self.active_position._entry_scalability = entry_scalability
@@ -1369,13 +1370,17 @@ class PositionManager:
                     config_snapshot['CIRCUIT_BREAKER_CONFIG'] = serialize_config_safe(CIRCUIT_BREAKER_CONFIG) if CIRCUIT_BREAKER_CONFIG else {}
                     config_snapshot['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
                     
-                    # Préparer indicateurs de sortie (scalabilité au moment de la sortie)
-                    exit_indicators = {
-                        'recent_volume': 0,  # TODO: Récupérer depuis API si disponible
-                        'vol5': 0,
-                        'vol15': 0,
-                        'score': 0
-                    }
+                    # Préparer indicateurs de sortie
+                    # 🔥 FIX: Utiliser les derniers indicateurs de la position (mis à jour périodiquement)
+                    # Note: Pour avoir les indicateurs exacts au moment de la sortie, il faudrait
+                    # appeler l'API pour récupérer les dernières klines et recalculer les indicateurs,
+                    # mais cela ajouterait de la latence. On utilise donc les derniers connus.
+                    exit_indicators = getattr(self.active_position, '_last_indicators', {}) or {}
+                    
+                    # Fallback: si aucun indicateur n'est disponible, utiliser un dict vide
+                    # (mieux que des valeurs 0 qui seraient trompeuses)
+                    if not exit_indicators:
+                        exit_indicators = {}
                     
                     trade_data = {
                         'symbol': self.active_position.symbol,
