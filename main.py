@@ -3971,21 +3971,23 @@ async def handle_client_command(command: str, params: dict):
 
         if 'ml_scale_pos_weight' in params:
             val = float(params['ml_scale_pos_weight'])
-            val = max(0.8, min(1.5, val))  # Clamp 0.8-1.5
+            # 🔥 Aligné sur le slider frontend (0.5 - 2.0)
+            val = max(0.5, min(2.0, val))
             TRADING_CONFIG['ml_scale_pos_weight'] = val
             updated['ml_scale_pos_weight'] = val
             logger.info(f"✅ ML scale_pos_weight: {val}")
 
         if 'ml_n_estimators' in params:
             val = int(params['ml_n_estimators'])
-            val = max(50, min(500, val))  # Clamp 50-500
+            val = max(50, min(800, val))  # Clamp 50-800 (aligné avec UI)
             TRADING_CONFIG['ml_n_estimators'] = val
             updated['ml_n_estimators'] = val
             logger.info(f"✅ ML n_estimators: {val}")
 
         if 'ml_learning_rate' in params:
             val = float(params['ml_learning_rate'])
-            val = max(0.01, min(0.1, val))  # Clamp 0.01-0.1
+            # 🔥 Aligné sur le slider frontend (0.001 - 0.2)
+            val = max(0.001, min(0.2, val))
             TRADING_CONFIG['ml_learning_rate'] = val
             updated['ml_learning_rate'] = val
             logger.info(f"✅ ML learning_rate: {val}")
