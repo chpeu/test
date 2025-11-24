@@ -247,12 +247,62 @@ class TechnicalAnalyzer:
             Dict avec setup ou None
         """
         try:
+            # 🔥 HELPER: Créer dict rejet précoce avec structure complète mais valeurs NULL
+            def build_early_reject_dict(reason, reject_category='data_error'):
+                """Retourne un dict avec tous les champs mais valeurs NULL pour rejets précoces"""
+                return {
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'price': None,
+                    'atr': None,
+                    'atr_pct': None,
+                    'atr_percent': None,
+                    'volatility': None,
+                    'ema9': None,
+                    'ema21': None,
+                    'rsi': None,
+                    'rsi_prev': None,
+                    'macd': None,
+                    'macd_signal': None,
+                    'macd_hist': None,
+                    'macd_hist_prev': None,
+                    'adx': None,
+                    'di_plus': None,
+                    'di_minus': None,
+                    'bb_upper': None,
+                    'bb_middle': None,
+                    'bb_lower': None,
+                    'bb_width': None,
+                    'bb_distance_to_lower': None,
+                    'bb_distance_to_upper': None,
+                    'volume': None,
+                    'volume_avg': None,
+                    'volume_ratio': None,
+                    'volume_spike': None,
+                    'volumeSpike': None,
+                    'pattern': None,
+                    'ohlcv': None,
+                    'totalScore': 0.0,
+                    'long_score': 0.0,
+                    'short_score': 0.0,
+                    'volume_filter_passed': None,
+                    'snr': None,
+                    'snr_passed': None,
+                    'breakout_distance': None,
+                    'breakout_passed': None,
+                    'wick_ratio': None,
+                    'wick_passed': None,
+                    'atr_optimal_passed': None,
+                    'reason': reason,
+                    'reject_category': reject_category
+                }
+
             # Récupérer prix via WebSocket (prioritaire) ou REST
             ticker_data = await self.price_provider.get_price(symbol)
             if not ticker_data:
                 reason = f"Prix non disponible (WebSocket ou REST) pour {symbol}"
                 if return_reason:
-                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                    return build_early_reject_dict(reason, 'no_price')
                 if DEBUG_ENABLED:
                     logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
@@ -261,7 +311,7 @@ class TechnicalAnalyzer:
             if not isinstance(ticker_data, dict):
                 reason = f"Format de données prix invalide (attendu dict, reçu {type(ticker_data).__name__}) pour {symbol}"
                 if return_reason:
-                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                    return build_early_reject_dict(reason, 'price_format_error')
                 logger.error(f"{symbol} {timeframe}: {reason}")
                 return None
 
@@ -269,7 +319,7 @@ class TechnicalAnalyzer:
             if current_price == 0:
                 reason = f"Prix invalide (0) pour {symbol}"
                 if return_reason:
-                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                    return build_early_reject_dict(reason, 'invalid_price')
                 if DEBUG_ENABLED:
                     logger.debug(f"{symbol} {timeframe}: {reason}")
                 return None
@@ -280,7 +330,7 @@ class TechnicalAnalyzer:
             except Exception as e:
                 reason = f"Erreur fetch OHLCV: {str(e)} (symbole: {symbol})"
                 if return_reason:
-                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                    return build_early_reject_dict(reason, 'ohlcv_fetch_error')
                 if DEBUG_ENABLED:
                     logger.error(f"{symbol} {timeframe}: {reason}")
                 return None
@@ -288,7 +338,7 @@ class TechnicalAnalyzer:
             if not ohlcv or len(ohlcv) < 20:
                 reason = f"Données OHLCV insuffisantes: {len(ohlcv) if ohlcv else 0} bougies (min 20)"
                 if return_reason:
-                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                    return build_early_reject_dict(reason, 'insufficient_data')
                 return None
 
             # Extraire données
@@ -844,7 +894,54 @@ class TechnicalAnalyzer:
             logger.error(f"❌ Erreur analyse {symbol} {timeframe}: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             if return_reason:
-                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+                # 🔥 Retourner structure complète même en cas d'exception
+                return {
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'price': None,
+                    'atr': None,
+                    'atr_pct': None,
+                    'atr_percent': None,
+                    'volatility': None,
+                    'ema9': None,
+                    'ema21': None,
+                    'rsi': None,
+                    'rsi_prev': None,
+                    'macd': None,
+                    'macd_signal': None,
+                    'macd_hist': None,
+                    'macd_hist_prev': None,
+                    'adx': None,
+                    'di_plus': None,
+                    'di_minus': None,
+                    'bb_upper': None,
+                    'bb_middle': None,
+                    'bb_lower': None,
+                    'bb_width': None,
+                    'bb_distance_to_lower': None,
+                    'bb_distance_to_upper': None,
+                    'volume': None,
+                    'volume_avg': None,
+                    'volume_ratio': None,
+                    'volume_spike': None,
+                    'volumeSpike': None,
+                    'pattern': None,
+                    'ohlcv': None,
+                    'totalScore': 0.0,
+                    'long_score': 0.0,
+                    'short_score': 0.0,
+                    'volume_filter_passed': None,
+                    'snr': None,
+                    'snr_passed': None,
+                    'breakout_distance': None,
+                    'breakout_passed': None,
+                    'wick_ratio': None,
+                    'wick_passed': None,
+                    'atr_optimal_passed': None,
+                    'reason': error_msg,
+                    'reject_category': 'exception',
+                    'error': True
+                }
             if DEBUG_ENABLED:
                 logger.error(f"Erreur analyse {symbol} {timeframe}: {e}")
             return None
@@ -885,6 +982,204 @@ class TechnicalAnalyzer:
             analysis_1m = await self.analyze_timeframe(symbol, '1m', trend_data, volume_multiplier, return_reason=return_reason)
             analysis_5m = await self.analyze_timeframe(symbol, '5m', trend_data, volume_multiplier, return_reason=return_reason)
 
+            # 🔥 FIX: Faire les checks spread/orderbook ICI (AVANT best_setup) pour que TOUS les setups y aient accès
+            spread_check_early = None
+            orderbook_check_early = None
+            
+            # Vérifier spread pour toutes les paires
+            spread_check_early = await check_spread(
+                client=self.client,
+                symbol=symbol,
+                spread_cache=self._spread_cache
+            )
+            
+            # 🔥 DEBUG: Vérifier si spread_check_early est valide
+            if not spread_check_early or spread_check_early.get('spread_pct') is None:
+                logger.info(f"⚠️ {symbol}: spread_check_early vide ou invalide: {spread_check_early}")
+            else:
+                logger.info(f"✅ {symbol}: spread_check_early OK - spread_pct={spread_check_early.get('spread_pct')}")
+            
+            # Vérifier orderbook si on a au moins un setup potentiel
+            potential_direction = None
+            if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
+                potential_direction = analysis_1m.get('direction')
+            elif analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
+                potential_direction = analysis_5m.get('direction')
+            
+            if potential_direction:
+                orderbook_check_early = await check_orderbook_imbalance(
+                    client=self.client,
+                    symbol=symbol,
+                    direction=potential_direction,
+                    orderbook_cache=self._orderbook_cache
+                )
+                
+                # 🔥 DEBUG: Vérifier si orderbook_check_early est valide
+                if not orderbook_check_early or orderbook_check_early.get('ratio') is None:
+                    logger.info(f"⚠️ {symbol}: orderbook_check_early vide ou invalide: {orderbook_check_early}")
+                else:
+                    logger.info(f"✅ {symbol}: orderbook_check_early OK - ratio={orderbook_check_early.get('ratio')}, bid={orderbook_check_early.get('bid_value')}, ask={orderbook_check_early.get('ask_value')}")
+            else:
+                logger.info(f"ℹ️ {symbol}: Pas de direction potentielle, skip orderbook check")
+
+            def build_scalability_snapshot(spread_result=None, orderbook_result=None, setup=None):
+                """Construire un instantané des métriques scalabilité pour les logs."""
+                snapshot = {
+                    'spread': None,
+                    'spread_pct': None,
+                    'bookDepth': None,
+                    'book_depth': None,
+                    'balanceScore': None,
+                    'balance_score': None,
+                    'bidVol': None,
+                    'askVol': None,
+                    'orderbook_imbalance_ratio': None,
+                    'recent_volume': None,
+                    'recentVolume': None,
+                    'vol5': None,
+                    'vol15': None,
+                    'scalability_score': None,
+                    'score': None
+                }
+
+                spread_value = None
+                if spread_result:
+                    spread_value = spread_result.get('spread_pct')
+                if spread_value is None and setup:
+                    spread_value = setup.get('spread_pct') or setup.get('spread')
+                snapshot['spread'] = snapshot['spread_pct'] = spread_value
+
+                bid_value = None
+                ask_value = None
+                if orderbook_result:
+                    bid_value = orderbook_result.get('bid_value')
+                    ask_value = orderbook_result.get('ask_value')
+                if setup:
+                    bid_value = bid_value if bid_value is not None else setup.get('orderbook_bid_value') or setup.get('bid_vol')
+                    ask_value = ask_value if ask_value is not None else setup.get('orderbook_ask_value') or setup.get('ask_vol')
+                if bid_value is not None:
+                    snapshot['bidVol'] = bid_value
+                if ask_value is not None:
+                    snapshot['askVol'] = ask_value
+
+                book_depth = None
+                if bid_value is not None or ask_value is not None:
+                    book_depth = (bid_value or 0) + (ask_value or 0)
+                snapshot['bookDepth'] = snapshot['book_depth'] = book_depth
+
+                ratio = None
+                if orderbook_result and orderbook_result.get('ratio') is not None:
+                    ratio = orderbook_result.get('ratio')
+                elif setup and setup.get('orderbook_ratio') is not None:
+                    ratio = setup.get('orderbook_ratio')
+                elif bid_value and ask_value and ask_value > 0:
+                    ratio = bid_value / ask_value
+                snapshot['orderbook_imbalance_ratio'] = ratio
+
+                balance_score = None
+                if setup:
+                    balance_score = setup.get('orderbook_balance') or setup.get('balance_score')
+                if balance_score is None and ratio is not None and ratio >= 0:
+                    try:
+                        bid_weight = ratio / (1 + ratio)
+                        balance_score = 1 - (abs(bid_weight - 0.5) * 2)
+                    except ZeroDivisionError:
+                        balance_score = None
+                snapshot['balanceScore'] = snapshot['balance_score'] = balance_score
+
+                recent_volume = None
+                if setup:
+                    recent_volume = setup.get('recent_volume') or setup.get('recentVolume')
+                snapshot['recent_volume'] = snapshot['recentVolume'] = recent_volume
+                if setup:
+                    snapshot['vol5'] = setup.get('vol5')
+                    snapshot['vol15'] = setup.get('vol15')
+                    scalability_score = setup.get('scalability_score') or setup.get('score')
+                    snapshot['scalability_score'] = snapshot['score'] = scalability_score
+
+                return snapshot
+
+            # 🔥 FIX: Extraire indicateurs IMMÉDIATEMENT après analyze_timeframe (pour best_setup)
+            # Préparer indicateurs 1m
+            indicators_1m = {}
+            if analysis_1m and isinstance(analysis_1m, dict):
+                indicators_1m = {
+                    'ema9': analysis_1m.get('ema9'),
+                    'ema21': analysis_1m.get('ema21'),
+                    'ema_diff_pct': (
+                        ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) 
+                         / analysis_1m.get('ema21', 1)) * 100
+                        if analysis_1m.get('ema21') else None
+                    ),
+                    'rsi': analysis_1m.get('rsi'),
+                    'rsi_prev': analysis_1m.get('rsi_prev'),
+                    'macd': analysis_1m.get('macd'),
+                    'macd_signal': analysis_1m.get('macd_signal'),
+                    'macd_hist': analysis_1m.get('macd_hist'),
+                    'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
+                    'adx': analysis_1m.get('adx'),
+                    'di_plus': analysis_1m.get('di_plus'),
+                    'di_minus': analysis_1m.get('di_minus'),
+                    'di_gap': (
+                        analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0)
+                        if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None
+                    ),
+                    'atr': analysis_1m.get('atr'),
+                    'atr_pct': analysis_1m.get('atr_pct'),
+                    'bb_upper': analysis_1m.get('bb_upper'),
+                    'bb_middle': analysis_1m.get('bb_middle'),
+                    'bb_lower': analysis_1m.get('bb_lower'),
+                    'bb_width': analysis_1m.get('bb_width'),
+                    'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
+                    'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
+                    'volume': analysis_1m.get('volume'),
+                    'volume_avg': analysis_1m.get('volume_avg'),
+                    'volume_ratio': analysis_1m.get('volumeSpike'),
+                    'volume_spike': analysis_1m.get('volumeSpike'),
+                    'pattern': analysis_1m.get('pattern'),
+                    'pattern_multi': analysis_1m.get('pattern_multi')
+                }
+            
+            # Préparer indicateurs 5m
+            indicators_5m = {}
+            if analysis_5m and isinstance(analysis_5m, dict):
+                indicators_5m = {
+                    'ema9': analysis_5m.get('ema9'),
+                    'ema21': analysis_5m.get('ema21'),
+                    'ema_diff_pct': (
+                        ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) 
+                         / analysis_5m.get('ema21', 1)) * 100
+                        if analysis_5m.get('ema21') else None
+                    ),
+                    'rsi': analysis_5m.get('rsi'),
+                    'rsi_prev': analysis_5m.get('rsi_prev'),
+                    'macd': analysis_5m.get('macd'),
+                    'macd_signal': analysis_5m.get('macd_signal'),
+                    'macd_hist': analysis_5m.get('macd_hist'),
+                    'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
+                    'adx': analysis_5m.get('adx'),
+                    'di_plus': analysis_5m.get('di_plus'),
+                    'di_minus': analysis_5m.get('di_minus'),
+                    'di_gap': (
+                        analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0)
+                        if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None
+                    ),
+                    'atr': analysis_5m.get('atr'),
+                    'atr_pct': analysis_5m.get('atr_pct'),
+                    'bb_upper': analysis_5m.get('bb_upper'),
+                    'bb_middle': analysis_5m.get('bb_middle'),
+                    'bb_lower': analysis_5m.get('bb_lower'),
+                    'bb_width': analysis_5m.get('bb_width'),
+                    'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
+                    'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
+                    'volume': analysis_5m.get('volume'),
+                    'volume_avg': analysis_5m.get('volume_avg'),
+                    'volume_ratio': analysis_5m.get('volumeSpike'),
+                    'volume_spike': analysis_5m.get('volumeSpike'),
+                    'pattern': analysis_5m.get('pattern'),
+                    'pattern_multi': analysis_5m.get('pattern_multi')
+                }
+
             # ========================================
             # ✅ POINT A : LOG SCAN (NON-BLOCKING)
             # ========================================
@@ -900,85 +1195,7 @@ class TechnicalAnalyzer:
                     ticker_data = await self.price_provider.get_price(symbol)
                     current_price = float(ticker_data.get('lastPrice', 0)) if ticker_data else 0
                     
-                    # Préparer indicateurs 1m
-                    indicators_1m = {}
-                    if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
-                        indicators_1m = {
-                            'ema9': analysis_1m.get('ema9'),
-                            'ema21': analysis_1m.get('ema21'),
-                            'ema_diff_pct': (
-                                ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) 
-                                 / analysis_1m.get('ema21', 1)) * 100
-                                if analysis_1m.get('ema21') else None
-                            ),
-                            'rsi': analysis_1m.get('rsi'),
-                            'rsi_prev': analysis_1m.get('rsi_prev'),
-                            'macd': analysis_1m.get('macd'),
-                            'macd_signal': analysis_1m.get('macd_signal'),
-                            'macd_hist': analysis_1m.get('macd_hist'),
-                            'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
-                            'adx': analysis_1m.get('adx'),
-                            'di_plus': analysis_1m.get('di_plus'),
-                            'di_minus': analysis_1m.get('di_minus'),
-                            'di_gap': (
-                                analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0)
-                                if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None
-                            ),
-                            'atr': analysis_1m.get('atr'),
-                            'atr_pct': analysis_1m.get('atr_pct'),
-                            'bb_upper': analysis_1m.get('bb_upper'),
-                            'bb_middle': analysis_1m.get('bb_middle'),
-                            'bb_lower': analysis_1m.get('bb_lower'),
-                            'bb_width': analysis_1m.get('bb_width'),
-                            'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
-                            'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
-                            'volume': analysis_1m.get('volume'),
-                            'volume_avg': analysis_1m.get('volume_avg'),
-                            'volume_ratio': analysis_1m.get('volumeSpike'),
-                            'volume_spike': analysis_1m.get('volumeSpike'),
-                            'pattern': analysis_1m.get('pattern'),
-                            'pattern_multi': analysis_1m.get('pattern_multi')
-                        }
-                    
-                    # Préparer indicateurs 5m
-                    indicators_5m = {}
-                    if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
-                        indicators_5m = {
-                            'ema9': analysis_5m.get('ema9'),
-                            'ema21': analysis_5m.get('ema21'),
-                            'ema_diff_pct': (
-                                ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) 
-                                 / analysis_5m.get('ema21', 1)) * 100
-                                if analysis_5m.get('ema21') else None
-                            ),
-                            'rsi': analysis_5m.get('rsi'),
-                            'rsi_prev': analysis_5m.get('rsi_prev'),
-                            'macd': analysis_5m.get('macd'),
-                            'macd_signal': analysis_5m.get('macd_signal'),
-                            'macd_hist': analysis_5m.get('macd_hist'),
-                            'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
-                            'adx': analysis_5m.get('adx'),
-                            'di_plus': analysis_5m.get('di_plus'),
-                            'di_minus': analysis_5m.get('di_minus'),
-                            'di_gap': (
-                                analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0)
-                                if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None
-                            ),
-                            'atr': analysis_5m.get('atr'),
-                            'atr_pct': analysis_5m.get('atr_pct'),
-                            'bb_upper': analysis_5m.get('bb_upper'),
-                            'bb_middle': analysis_5m.get('bb_middle'),
-                            'bb_lower': analysis_5m.get('bb_lower'),
-                            'bb_width': analysis_5m.get('bb_width'),
-                            'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
-                            'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
-                            'volume': analysis_5m.get('volume'),
-                            'volume_avg': analysis_5m.get('volume_avg'),
-                            'volume_ratio': analysis_5m.get('volumeSpike'),
-                            'volume_spike': analysis_5m.get('volumeSpike'),
-                            'pattern': analysis_5m.get('pattern'),
-                            'pattern_multi': analysis_5m.get('pattern_multi')
-                        }
+                    # 🔥 Indicateurs déjà extraits ci-dessus (lignes 987-1064), on les utilise directement
                     
                     # Récupérer scalability data (sera mis à jour après spread_check)
                     scalability_data = {
@@ -990,11 +1207,12 @@ class TechnicalAnalyzer:
                     }
                     
                     # Préparer confluence
+                    # 🔥 FIX: Extraire scores MÊME si 'reason' présent (rejets ont scores = 0.0)
                     confluence = {
                         'use_confluence': use_confluence,
                         'confluence_met': False,
-                        'score_1m': analysis_1m.get('totalScore') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
-                        'score_5m': analysis_5m.get('totalScore') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
+                        'score_1m': analysis_1m.get('totalScore') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                        'score_5m': analysis_5m.get('totalScore') if analysis_5m and isinstance(analysis_5m, dict) else None,
                         'score_total': None,
                         'score_long_1m': None,
                         'score_short_1m': None,
@@ -1106,10 +1324,10 @@ class TechnicalAnalyzer:
                     # 🔥 FIX: Retourner un dict avec les indicateurs et un reason au lieu de None
                     # pour permettre le logging des indicateurs même si le setup est rejeté
                     # Construire indicators_1m et indicators_5m depuis analysis_1m et analysis_5m
-                    indicators_1m_reject = {}
-                    indicators_5m_reject = {}
+                    indicators_1m = {}
+                    indicators_5m = {}
                     if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
-                        indicators_1m_reject = {
+                        indicators_1m = {
                             'rsi': analysis_1m.get('rsi'),
                             'rsi_prev': analysis_1m.get('rsi_prev'),
                             'macd': analysis_1m.get('macd'),
@@ -1137,7 +1355,7 @@ class TechnicalAnalyzer:
                             'volume_spike': analysis_1m.get('volumeSpike'),
                         }
                     if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
-                        indicators_5m_reject = {
+                        indicators_5m = {
                             'rsi': analysis_5m.get('rsi'),
                             'rsi_prev': analysis_5m.get('rsi_prev'),
                             'macd': analysis_5m.get('macd'),
@@ -1164,13 +1382,20 @@ class TechnicalAnalyzer:
                             'volume_ratio': analysis_5m.get('volumeSpike'),
                             'volume_spike': analysis_5m.get('volumeSpike'),
                         }
+                    spread_scalability = build_scalability_snapshot(
+                        spread_result=spread_check,
+                        setup=best_setup
+                    )
+                    if 'scalability_data' in locals():
+                        scalability_data.update(spread_scalability)
                     return {
                         'reason': f"Spread trop élevé ({spread_check['spread_pct']:.3f}% > {spread_check['max_allowed']:.3f}%)",
                         'reject_category': 'spread',
                         'analysis_1m': analysis_1m,
                         'analysis_5m': analysis_5m,
-                        'indicators_1m': indicators_1m_reject,
-                        'indicators_5m': indicators_5m_reject,
+                        'indicators_1m': indicators_1m,
+                        'indicators_5m': indicators_5m,
+                        'scalability_data': spread_scalability,
                         'totalScore': best_setup.get('totalScore'),
                         'long_score': best_setup.get('long_score'),
                         'short_score': best_setup.get('short_score'),
@@ -1242,10 +1467,10 @@ class TechnicalAnalyzer:
                     # 🔥 FIX: Retourner un dict avec les indicateurs et un reason au lieu de None
                     # pour permettre le logging des indicateurs même si le setup est rejeté
                     # Construire indicators_1m et indicators_5m depuis analysis_1m et analysis_5m
-                    indicators_1m_reject = {}
-                    indicators_5m_reject = {}
+                    indicators_1m = {}
+                    indicators_5m = {}
                     if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
-                        indicators_1m_reject = {
+                        indicators_1m = {
                             'rsi': analysis_1m.get('rsi'),
                             'rsi_prev': analysis_1m.get('rsi_prev'),
                             'macd': analysis_1m.get('macd'),
@@ -1273,7 +1498,7 @@ class TechnicalAnalyzer:
                             'volume_spike': analysis_1m.get('volumeSpike'),
                         }
                     if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
-                        indicators_5m_reject = {
+                        indicators_5m = {
                             'rsi': analysis_5m.get('rsi'),
                             'rsi_prev': analysis_5m.get('rsi_prev'),
                             'macd': analysis_5m.get('macd'),
@@ -1300,13 +1525,21 @@ class TechnicalAnalyzer:
                             'volume_ratio': analysis_5m.get('volumeSpike'),
                             'volume_spike': analysis_5m.get('volumeSpike'),
                         }
+                    orderbook_scalability = build_scalability_snapshot(
+                        spread_result=spread_check,
+                        orderbook_result=orderbook_check,
+                        setup=best_setup
+                    )
+                    if 'scalability_data' in locals():
+                        scalability_data.update(orderbook_scalability)
                     return {
                         'reason': f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})",
                         'reject_category': 'orderbook',
                         'analysis_1m': analysis_1m,
                         'analysis_5m': analysis_5m,
-                        'indicators_1m': indicators_1m_reject,
-                        'indicators_5m': indicators_5m_reject,
+                        'indicators_1m': indicators_1m,
+                        'indicators_5m': indicators_5m,
+                        'scalability_data': orderbook_scalability,
                         'totalScore': best_setup.get('totalScore'),
                         'long_score': best_setup.get('long_score'),
                         'short_score': best_setup.get('short_score'),
@@ -1336,6 +1569,16 @@ class TechnicalAnalyzer:
                 best_setup['orderbook_bid_value'] = orderbook_check.get('bid_value', 0)
                 best_setup['orderbook_ask_value'] = orderbook_check.get('ask_value', 0)
                 best_setup['orderbook_check'] = orderbook_check  # Stocker l'objet complet pour fallback
+                current_scalability = build_scalability_snapshot(
+                    spread_result=spread_check,
+                    orderbook_result=orderbook_check,
+                    setup=best_setup
+                )
+                best_setup['scalability_data'] = current_scalability
+                if current_scalability.get('balanceScore') is not None:
+                    best_setup['orderbook_balance'] = current_scalability.get('balanceScore')
+                if 'scalability_data' in locals():
+                    scalability_data.update(current_scalability)
                 
                 # ✅ Mettre à jour scalability_data pour le scan logué
                 if 'scalability_data' in locals():
@@ -1384,15 +1627,23 @@ class TechnicalAnalyzer:
                         logger.warning(f"⚠️ {symbol} - Setup rejeté: {correlation_check['reason']}")
                         if return_reason:
                             # 🔥 Extraire indicators depuis analysis
-                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
-                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            indicators_1m = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            correlation_scalability = build_scalability_snapshot(
+                                spread_result=spread_check_early,
+                                orderbook_result=orderbook_check_early,
+                                setup=best_setup
+                            )
+                            if 'scalability_data' in locals():
+                                scalability_data.update(correlation_scalability)
                             return {
                                 'reason': correlation_check['reason'], 
                                 'symbol': symbol,
                                 'analysis_1m': analysis_1m,
                                 'analysis_5m': analysis_5m,
-                                'indicators_1m': indicators_1m_reject,
-                                'indicators_5m': indicators_5m_reject,
+                                'indicators_1m': indicators_1m,
+                                'indicators_5m': indicators_5m,
+                                'scalability_data': correlation_scalability,
                                 'score_1m': analysis_1m.get('totalScore') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
                                 'score_5m': analysis_5m.get('totalScore') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
                                 'score_total': max(analysis_1m.get('totalScore', 0), analysis_5m.get('totalScore', 0)) if (analysis_1m and analysis_5m) else None,
@@ -1454,15 +1705,23 @@ class TechnicalAnalyzer:
                                 logger.warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): Confluence requise")
                                 if return_reason:
                                     # 🔥 Extraire indicators depuis analysis
-                                    indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
-                                    indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                                    indicators_1m = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                                    indicators_5m = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                                    recovery_scalability = build_scalability_snapshot(
+                                        spread_result=spread_check_early,
+                                        orderbook_result=orderbook_check_early,
+                                        setup=best_setup
+                                    )
+                                    if 'scalability_data' in locals():
+                                        scalability_data.update(recovery_scalability)
                                     return {
                                         'reason': f'Recovery Mode Niveau {level_num}: Confluence requise', 
                                         'symbol': symbol,
                                         'analysis_1m': analysis_1m,
                                         'analysis_5m': analysis_5m,
-                                        'indicators_1m': indicators_1m_reject,
-                                        'indicators_5m': indicators_5m_reject,
+                                        'indicators_1m': indicators_1m,
+                                        'indicators_5m': indicators_5m,
+                                        'scalability_data': recovery_scalability,
                                         'score_1m': analysis_1m.get('totalScore') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
                                         'score_5m': analysis_5m.get('totalScore') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
                                         'score_total': best_setup.get('totalScore', 0),
@@ -1479,15 +1738,23 @@ class TechnicalAnalyzer:
                             )
                             if return_reason:
                                 # 🔥 Extraire indicators depuis analysis
-                                indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
-                                indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                                indicators_1m = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                                indicators_5m = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                                recovery_score_scalability = build_scalability_snapshot(
+                                    spread_result=spread_check_early,
+                                    orderbook_result=orderbook_check_early,
+                                    setup=best_setup
+                                )
+                                if 'scalability_data' in locals():
+                                    scalability_data.update(recovery_score_scalability)
                                 return {
                                     'reason': f'Recovery Mode: Score insuffisant ({setup_score:.1f} < {adjusted_min_score:.1f})',
                                     'symbol': symbol,
                                     'analysis_1m': analysis_1m,
                                     'analysis_5m': analysis_5m,
-                                    'indicators_1m': indicators_1m_reject,
-                                    'indicators_5m': indicators_5m_reject,
+                                    'indicators_1m': indicators_1m,
+                                    'indicators_5m': indicators_5m,
+                                    'scalability_data': recovery_score_scalability,
                                     'score_1m': analysis_1m.get('totalScore') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None,
                                     'score_5m': analysis_5m.get('totalScore') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None,
                                     'score_total': setup_score,
@@ -1721,6 +1988,10 @@ class TechnicalAnalyzer:
                 # Cela permet à scanner_loop.py d'extraire les filter_metrics via _extract_filter_metrics()
                 best_setup['analysis_1m'] = analysis_1m
                 best_setup['analysis_5m'] = analysis_5m
+                
+                # 🔥 FIX: Ajouter indicators_1m et indicators_5m pour propagation directe
+                best_setup['indicators_1m'] = indicators_1m
+                best_setup['indicators_5m'] = indicators_5m
 
                 return best_setup
 
@@ -1731,8 +2002,12 @@ class TechnicalAnalyzer:
                     reason = f"Confluence: directions opposées (1m={analysis_1m['direction']}, 5m={analysis_5m['direction']})"
                     if return_reason:
                         # 🔥 Construire indicators_1m et indicators_5m depuis analysis
-                        indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
-                        indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                        indicators_1m = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                        indicators_5m = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                        confluence_dir_scalability = build_scalability_snapshot(
+                            spread_result=spread_check_early,
+                            orderbook_result=orderbook_check_early
+                        )
                         return {
                             'reason': reason, 
                             'symbol': symbol, 
@@ -1740,8 +2015,9 @@ class TechnicalAnalyzer:
                             # 🔥 FIX: Ajouter les champs manquants même pour les rejets confluence
                             'analysis_1m': analysis_1m,
                             'analysis_5m': analysis_5m,
-                            'indicators_1m': indicators_1m_reject,
-                            'indicators_5m': indicators_5m_reject,
+                            'indicators_1m': indicators_1m,
+                            'indicators_5m': indicators_5m,
+                            'scalability_data': confluence_dir_scalability,
                             'score_1m': analysis_1m.get('totalScore') if analysis_1m else None,
                             'score_5m': analysis_5m.get('totalScore') if analysis_5m else None,
                             'score_total': max(analysis_1m.get('totalScore', 0), analysis_5m.get('totalScore', 0)) if (analysis_1m and analysis_5m) else None,
@@ -1766,8 +2042,12 @@ class TechnicalAnalyzer:
                     reason = f"Confluence: 5m trop faible (1m={strength_1m} conds, 5m={strength_5m} conds, besoin ≥{strength_1m*0.8:.1f})"
                     if return_reason:
                         # 🔥 Construire indicators_1m et indicators_5m depuis analysis
-                        indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
-                        indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                        indicators_1m = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                        indicators_5m = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                        confluence_weak_scalability = build_scalability_snapshot(
+                            spread_result=spread_check_early,
+                            orderbook_result=orderbook_check_early
+                        )
                         return {
                             'reason': reason, 
                             'symbol': symbol, 
@@ -1775,8 +2055,9 @@ class TechnicalAnalyzer:
                             # 🔥 FIX: Ajouter les champs manquants même pour les rejets confluence
                             'analysis_1m': analysis_1m,
                             'analysis_5m': analysis_5m,
-                            'indicators_1m': indicators_1m_reject,
-                            'indicators_5m': indicators_5m_reject,
+                            'indicators_1m': indicators_1m,
+                            'indicators_5m': indicators_5m,
+                            'scalability_data': confluence_weak_scalability,
                             'score_1m': analysis_1m.get('totalScore') if analysis_1m else None,
                             'score_5m': analysis_5m.get('totalScore') if analysis_5m else None,
                             'score_total': max(analysis_1m.get('totalScore', 0), analysis_5m.get('totalScore', 0)) if (analysis_1m and analysis_5m) else None,
@@ -1941,6 +2222,38 @@ class TechnicalAnalyzer:
                     # 🔥 FIX: Toujours inclure analysis_1m et analysis_5m pour extraction des filtres
                     best['analysis_1m'] = analysis_1m
                     best['analysis_5m'] = analysis_5m
+                    
+                    # 🔥 FIX: Stocker spread et orderbook checks dans best AVANT scalability_snapshot
+                    # Même si None, stocker pour que build_scalability_snapshot puisse extraire
+                    if spread_check_early:
+                        best['spread_pct'] = spread_check_early.get('spread_pct')
+                        best['spread_quality'] = spread_check_early.get('quality')
+                    else:
+                        best['spread_pct'] = None
+                        best['spread_quality'] = None
+                    
+                    if orderbook_check_early:
+                        best['orderbook_ratio'] = orderbook_check_early.get('ratio')
+                        best['orderbook_quality'] = orderbook_check_early.get('quality')
+                        best['orderbook_bid_value'] = orderbook_check_early.get('bid_value', 0)
+                        best['orderbook_ask_value'] = orderbook_check_early.get('ask_value', 0)
+                    else:
+                        best['orderbook_ratio'] = None
+                        best['orderbook_quality'] = None
+                        best['orderbook_bid_value'] = 0
+                        best['orderbook_ask_value'] = 0
+                    
+                    # 🔥 FIX: Ajouter scalability_data pour mode permissif avec checks précoces
+                    permissive_scalability = build_scalability_snapshot(
+                        spread_result=spread_check_early,
+                        orderbook_result=orderbook_check_early,
+                        setup=best
+                    )
+                    best['scalability_data'] = permissive_scalability
+                    
+                    # 🔥 DEBUG: Vérifier contenu de scalability_data
+                    logger.info(f"📊 {symbol} Mode permissif - scalability_data: spread={permissive_scalability.get('spread_pct')}, depth={permissive_scalability.get('bookDepth')}, bid={permissive_scalability.get('bidVol')}, ask={permissive_scalability.get('askVol')}, ratio={permissive_scalability.get('orderbook_imbalance_ratio')}")
+                    
                     return best
 
             # Aucun timeframe valide

@@ -491,6 +491,9 @@ class PositionManager:
         opportunity_id = getattr(self, '_last_setup_opportunity_id', None)
         last_setup = getattr(self, '_last_setup', None)
         
+        # 🔥 DEBUG: Vérifier si les IDs sont bien présents
+        logger.warning(f"🔍🔍🔍 DEBUG open_position pour {symbol}: scan_uuid={scan_uuid}, opportunity_id={opportunity_id}")
+        
         # 🔥 FIX BUG #4: Monitoring amélioré - Log d'alerte si _last_setup est None
         if not last_setup:
             logger.error(

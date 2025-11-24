@@ -5,6 +5,7 @@ Exécuté toutes les 45 secondes pour scanner les setups
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
 # from core.simple_pg_logger import SimplePGLogger  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger
@@ -248,6 +249,7 @@ async def _scan_top_pairs():
         if valid_setups and _position_manager:
             # Prendre le meilleur setup (premier dans la liste)
             best_setup = valid_setups[0]
+            logger.warning(f"🎯🎯🎯 best_setup sélectionné: {best_setup.get('symbol')} {best_setup.get('direction')} | _scan_uuid={best_setup.get('_scan_uuid')}, _opportunity_id={best_setup.get('_opportunity_id')}")
 
             try:
                 # BUG #7 FIX: Valider que entry est présent et valide
@@ -447,8 +449,18 @@ async def _scan_top_pairs():
                         logger.warning(f"⚠️ Trade autorisé malgré erreur ML (failsafe)")
 
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
-                _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
-                _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
+                scan_uuid_from_setup = best_setup.get('_scan_uuid')
+                opp_id_from_setup = best_setup.get('_opportunity_id')
+                
+                # 🔥 DEBUG: Vérifier présence des IDs dans best_setup
+                logger.warning(f"🔍🔍🔍 DEBUG best_setup pour {symbol}: _scan_uuid={scan_uuid_from_setup}, _opportunity_id={opp_id_from_setup}")
+                if not scan_uuid_from_setup:
+                    logger.error(f"❌❌❌ best_setup ne contient PAS _scan_uuid pour {symbol}!")
+                if not opp_id_from_setup:
+                    logger.error(f"❌❌❌ best_setup ne contient PAS _opportunity_id pour {symbol}!")
+                
+                _position_manager._last_setup_scan_uuid = scan_uuid_from_setup
+                _position_manager._last_setup_opportunity_id = opp_id_from_setup
                 
                 # 🔥 DEBUG: Vérifier si best_setup contient les indicateurs
                 logger.info(f"🔍 DEBUG best_setup pour {symbol}: contient indicators_1m: {'indicators_1m' in best_setup}, indicators_5m: {'indicators_5m' in best_setup}")
@@ -784,6 +796,12 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
             
+            # 🔥 FIX: Ajouter scalability_data à analysis s'il est présent
+            if 'scalability_data' in analysis:
+                logger.debug(f"✅ scalability_data déjà présent dans analysis pour {symbol}")
+            else:
+                logger.debug(f"⚠️ scalability_data absent dans analysis pour {symbol}")
+            
             # 🔥 DIAGNOSTIC: Vérifier intégrité des indicateurs
             null_count_1m = sum(1 for v in indicators_1m.values() if v is None)
             null_count_5m = sum(1 for v in indicators_5m.values() if v is None)
@@ -844,94 +862,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         try:
             logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): pg_datalogger={pg_datalogger is not None}, enabled={getattr(pg_datalogger, 'enabled', False) if pg_datalogger else False}")
         except Exception as e:
-            logger.error(f"❌ Erreur log pg_datalogger pour {symbol}: {e}")
+            logger.error(f" Erreur log pg_datalogger pour {symbol}: {e}")
         
         if pg_datalogger and pg_datalogger.enabled:
             try:
-                logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
-                # Récupérer les données du scan de scalabilité depuis top_pairs
-                scalability_data: Dict[str, Any] = {}
-                logger.info(f"💹 DEBUG log_scan: _app_state existe={_app_state is not None}, top_pairs={'présent' if (_app_state and _app_state.get('top_pairs')) else 'absent'}")
-                if _app_state and _app_state.get('top_pairs'):
-                    logger.info(f"💹 DEBUG log_scan: top_pairs contient {len(_app_state['top_pairs'])} paires")
-                    for pair in _app_state['top_pairs']:
-                        if pair.get('symbol') == symbol:
-                            spread_value = pair.get('spread') or pair.get('spread_pct')
-                            book_depth = pair.get('bookDepth')
-                            balance_score = pair.get('balanceScore')
-                            bid_vol = pair.get('bidVol')
-                            ask_vol = pair.get('askVol')
-                            if book_depth in (None, 0) and bid_vol and ask_vol:
-                                book_depth = bid_vol + ask_vol
-                            imbalance = None
-                            if bid_vol and ask_vol:
-                                try:
-                                    imbalance = bid_vol / ask_vol if ask_vol > 0 else None
-                                except Exception:
-                                    imbalance = None
+                logger.info(f" Tentative de log scan PostgreSQL pour {symbol}")
+                # SECTION SUPPRIMÉE: scalability_data est maintenant extrait depuis analysis AVANT scan_data
+                # Cette section top_pairs est obsolète et causait des warnings inutiles
 
-                            scalability_data = {
-                                'spread': spread_value,
-                                'spread_pct': spread_value,
-                                'bookDepth': book_depth,
-                                'book_depth': book_depth,
-                                'balanceScore': balance_score,
-                                'balance_score': balance_score,
-                                'bidVol': bid_vol,
-                                'askVol': ask_vol,
-                                'orderbook_imbalance_ratio': imbalance,
-                                'recent_volume': pair.get('recentVolume'),
-                                'recentVolume': pair.get('recentVolume'),
-                                'vol5': pair.get('vol5'),
-                                'vol15': pair.get('vol15'),
-                                'scalability_score': pair.get('score'),
-                                'score': pair.get('score')
-                            }
-                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}")
-                            break
-                
-                # 🔥 DEBUG: Vérifier si scalability_data a été rempli
-                if not scalability_data:
-                    logger.warning(f"⚠️ scalability_data vide après recherche dans top_pairs pour {symbol}")
-
-                # Fallback: utiliser les infos présentes dans l'analyse/best_setup
-                if not scalability_data:
-                    analysis_obj = analysis or {}
-                    orderbook_check = analysis_obj.get('orderbook_check') or {}
-                    bid_value = orderbook_check.get('bid_value') or analysis_obj.get('bid_vol')
-                    ask_value = orderbook_check.get('ask_value') or analysis_obj.get('ask_vol')
-                    book_depth = None
-                    if bid_value or ask_value:
-                        bid_value = bid_value or 0
-                        ask_value = ask_value or 0
-                        book_depth = bid_value + ask_value
-                    imbalance = None
-                    if bid_value and ask_value:
-                        try:
-                            imbalance = bid_value / ask_value if ask_value > 0 else None
-                        except Exception:
-                            imbalance = None
-
-                    scalability_data = {
-                        'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
-                        'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
-                        'bookDepth': book_depth,
-                        'book_depth': book_depth,
-                        'balanceScore': analysis_obj.get('orderbook_balance'),
-                        'balance_score': analysis_obj.get('orderbook_balance'),
-                        'bidVol': bid_value,
-                        'askVol': ask_value,
-                        'orderbook_imbalance_ratio': imbalance,
-                        'recent_volume': analysis_obj.get('recent_volume'),
-                        'recentVolume': analysis_obj.get('recent_volume'),  # Alias
-                        'vol5': analysis_obj.get('vol5'),
-                        'vol15': analysis_obj.get('vol15'),
-                        'scalability_score': analysis_obj.get('scalability_score'),
-                        'score': analysis_obj.get('scalability_score'),  # Alias
-                    }
-                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
-
-                scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                scan_duration_ms = int((time.time() - scan_start_time) * 1000)
 
                 scan_price = None
                 if analysis and isinstance(analysis, dict):
@@ -959,36 +898,41 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         logger.warning(f"⚠️ Prix invalide pour {symbol}: {scan_price} (type: {type(scan_price)})")
                         scan_price = None
                 
+                # 🔥 FIX: Extraire scalability_data depuis analysis AVANT de construire scan_data
+                scalability_data = {}
+                if analysis and isinstance(analysis, dict):
+                    if 'scalability_data' in analysis and isinstance(analysis['scalability_data'], dict):
+                        scalability_data = analysis['scalability_data']
+                        logger.info(f"✅ {symbol}: scalability_data extrait depuis analysis - spread={scalability_data.get('spread_pct')}, depth={scalability_data.get('bookDepth')}")
+                    else:
+                        logger.warning(f"⚠️ {symbol}: scalability_data ABSENT dans analysis, utilisation dict vide")
+                
                 scan_data = {
                     'scan_duration_ms': scan_duration_ms,
                     'market_data': {
                         'price': scan_price,
-                        # 🔥 FIX: Utiliser scalability_data au lieu de analysis pour les métriques de scalabilité
-                        'spread_pct': scalability_data.get('spread'),
-                        'book_depth': scalability_data.get('bookDepth'),
-                        'balance_score': scalability_data.get('balanceScore'),
+                        # 🔥 FIX: Utiliser scalability_data depuis analysis (construit dans analyzer.py)
+                        'spread_pct': scalability_data.get('spread_pct') or scalability_data.get('spread'),
+                        'book_depth': scalability_data.get('bookDepth') or scalability_data.get('book_depth'),
+                        'balance_score': scalability_data.get('balanceScore') or scalability_data.get('balance_score'),
                         'bid_vol': scalability_data.get('bidVol'),
                         'ask_vol': scalability_data.get('askVol'),
-                        # Calculer imbalance ratio si bid/ask disponibles
-                        'orderbook_imbalance_ratio': (
-                            scalability_data.get('bidVol') / scalability_data.get('askVol')
-                            if scalability_data.get('askVol') and scalability_data.get('askVol') > 0
-                            else None
-                        ),
+                        # Utiliser orderbook_imbalance_ratio déjà calculé dans analyzer.py
+                        'orderbook_imbalance_ratio': scalability_data.get('orderbook_imbalance_ratio'),
                         # Paramètres du scan de scalabilité
-                        'recent_volume': scalability_data.get('recent_volume'),
+                        'recent_volume': scalability_data.get('recent_volume') or scalability_data.get('recentVolume'),
                         'vol5': scalability_data.get('vol5'),
                         'vol15': scalability_data.get('vol15'),
-                        'scalability_score': scalability_data.get('scalability_score'),
+                        'scalability_score': scalability_data.get('scalability_score') or scalability_data.get('score'),
                     },
                     # Ajouter aussi au niveau racine pour les fallbacks
                     'price': scan_price,  # 🔥 FIX: Ajouter le prix au niveau racine pour les fallbacks
-                    'recent_volume': scalability_data.get('recent_volume'),
-                    'recentVolume': scalability_data.get('recent_volume'),  # Alias
+                    'recent_volume': scalability_data.get('recent_volume') or scalability_data.get('recentVolume'),
+                    'recentVolume': scalability_data.get('recent_volume') or scalability_data.get('recentVolume'),  # Alias
                     'vol5': scalability_data.get('vol5'),
                     'vol15': scalability_data.get('vol15'),
-                    'scalability_score': scalability_data.get('scalability_score'),
-                    'score': scalability_data.get('scalability_score'),  # Alias
+                    'scalability_score': scalability_data.get('scalability_score') or scalability_data.get('score'),
+                    'score': scalability_data.get('scalability_score') or scalability_data.get('score'),  # Alias
                     'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
                     'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
                     # 🔥 FIX: Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict

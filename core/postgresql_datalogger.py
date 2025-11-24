@@ -18,6 +18,7 @@ try:
     import psycopg2
     from psycopg2.extras import execute_values, RealDictCursor
     from psycopg2.pool import ThreadedConnectionPool
+    from psycopg2.extensions import adapt, register_adapter, AsIs
     PSYCOPG2_AVAILABLE = True
 except ImportError:
     PSYCOPG2_AVAILABLE = False
@@ -293,6 +294,11 @@ class PostgreSQLDataLogger:
                 e,
                 _summarize_params(params)
             )
+            # 🔥 DEBUG: Log complet des paramètres en cas d'erreur de conversion
+            if params and "not all arguments converted" in str(e):
+                logger.error("🔍 Détail des paramètres problématiques:")
+                for i, p in enumerate(params):
+                    logger.error(f"  [{i}] type={type(p).__name__}, value={repr(p)[:100]}")
             logger.debug(f"Query: {query[:400]}...")
             if conn:
                 conn.rollback()
@@ -416,6 +422,10 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Prix manquant pour {symbol} dans log_scan (batch), scan non ajouté au buffer")
             return None
         
+        # 🔥 FIX: Les opportunités ont besoin d'un ID immédiat pour être reliées aux trades
+        if scan_data.get('is_opportunity'):
+            use_batch = False
+
         # 🔥 PHASE 3: Utiliser batch insert si activé
         if use_batch:
             with self.buffer_lock:
@@ -440,15 +450,18 @@ class PostgreSQLDataLogger:
             patterns = scan_data.get('patterns') or {}
             market_data = scan_data.get('market_data') or {}
             
-            # Requête d'insertion
-            query = """
+            # 🔥 FIX: Construire dynamiquement les placeholders pour éviter les erreurs de comptage
+            # Nombre de colonnes = 115 (total) - 1 (timestamp avec NOW()) = 114 paramètres
+            num_params = 114  # session_id jusqu'à config_use_confluence (114 éléments dans le tuple params)
+            placeholders = ', '.join(['%s'] * num_params)
+            
+            query = f"""
                 INSERT INTO scan_logs (
                     timestamp, session_id, symbol, scan_duration_ms,
                     price, spread_pct, book_depth, balance_score,
                     bid_vol, ask_vol, orderbook_imbalance_ratio,
                     recent_volume, vol5, vol15, scalability_score,
                     
-                    -- Indicateurs 1m
                     ema9_1m, ema21_1m, ema_diff_pct_1m,
                     rsi_1m, rsi_prev_1m,
                     macd_1m, macd_signal_1m, macd_hist_1m, macd_hist_prev_1m,
@@ -458,7 +471,6 @@ class PostgreSQLDataLogger:
                     bb_distance_to_lower_1m, bb_distance_to_upper_1m,
                     volume_1m, volume_avg_1m, volume_ratio_1m, volume_spike_1m,
                     
-                    -- Indicateurs 5m
                     ema9_5m, ema21_5m, ema_diff_pct_5m,
                     rsi_5m, rsi_prev_5m,
                     macd_5m, macd_signal_5m, macd_hist_5m, macd_hist_prev_5m,
@@ -468,7 +480,6 @@ class PostgreSQLDataLogger:
                     bb_distance_to_lower_5m, bb_distance_to_upper_5m,
                     volume_5m, volume_avg_5m, volume_ratio_5m, volume_spike_5m,
                     
-                    -- Filtres
                     snr_1m, snr_5m, snr_passed_1m, snr_passed_5m,
                     breakout_distance_1m, breakout_distance_5m,
                     breakout_passed_1m, breakout_passed_5m,
@@ -476,49 +487,27 @@ class PostgreSQLDataLogger:
                     atr_optimal_passed_1m, atr_optimal_passed_5m,
                     volume_filter_passed_1m, volume_filter_passed_5m,
                     
-                    -- Confluence
                     use_confluence, confluence_met,
                     score_1m, score_5m, score_total,
                     score_long_1m, score_short_1m, score_long_5m, score_short_5m,
                     timeframes_aligned,
                     
-                    -- Patterns
                     pattern_1m, pattern_multi_1m, pattern_5m, pattern_multi_5m,
                     
-                    -- Trend
                     trend_timeframe, trend_direction, trend_strength, trend_bonus,
                     
-                    -- Divergence
                     divergence_detected, divergence_type, divergence_bonus,
                     
-                    -- Décision ML
                     is_opportunity, opportunity_direction, reject_reason, reject_reason_category,
                     
-                    -- Params snapshot
                     params_snapshot,
                     
-                    -- Config extracted from params
                     config_min_score_required, config_snr_threshold,
                     config_atr_min_1m, config_atr_max_1m,
                     config_atr_min_5m, config_atr_max_5m,
                     config_volume_multiplier, config_use_confluence
                 )
-                VALUES (
-                    NOW(), %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
+                VALUES (NOW(), {placeholders})
                 RETURNING id
             """
             
@@ -562,96 +551,151 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
             
-            # Préparer les paramètres
+            # 🔥 Helper pour remplacer None par valeur par défaut
+            def default_float(val, default=0.0):
+                return default if val is None else val
+            
+            def default_bool(val, default=False):
+                return default if val is None else val
+            
+            def default_str(val, default=''):
+                return default if val is None else val
+            
+            # Préparer les paramètres avec valeurs par défaut pour remplir 100% des cellules
             params = (
                 session_id, symbol, scan_duration,
-                price, market_data.get('spread_pct'),
-                market_data.get('book_depth'), market_data.get('balance_score'),
-                market_data.get('bid_vol'), market_data.get('ask_vol'),
-                market_data.get('orderbook_imbalance_ratio'),
+                price, 
+                default_float(market_data.get('spread_pct'), 0.0),
+                default_float(market_data.get('book_depth'), 0.0), 
+                market_data.get('balance_score'),  # 🔥 FIX: Ne pas utiliser 1.0 comme défaut (1.0 = équilibre parfait, pas absence de données)
+                default_float(market_data.get('bid_vol'), 0.0), 
+                default_float(market_data.get('ask_vol'), 0.0),
+                market_data.get('orderbook_imbalance_ratio'),  # 🔥 FIX: Ne pas utiliser 1.0 comme défaut (1.0 = équilibre parfait, pas absence de données)
                 # Paramètres du scan de scalabilité
-                market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
-                market_data.get('vol5') or scan_data.get('vol5'),
-                market_data.get('vol15') or scan_data.get('vol15'),
-                market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                default_float(market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'), 0.0),
+                default_float(market_data.get('vol5') or scan_data.get('vol5'), 0.0),
+                default_float(market_data.get('vol15') or scan_data.get('vol15'), 0.0),
+                default_float(market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'), 0.0),
                 
-                # 1m
-                indicators_1m.get('ema9'), indicators_1m.get('ema21'),
-                indicators_1m.get('ema_diff_pct'),
-                indicators_1m.get('rsi'), indicators_1m.get('rsi_prev'),
-                indicators_1m.get('macd'), indicators_1m.get('macd_signal'),
-                indicators_1m.get('macd_hist'), indicators_1m.get('macd_hist_prev'),
-                indicators_1m.get('adx'), indicators_1m.get('di_plus'),
-                indicators_1m.get('di_minus'), indicators_1m.get('di_gap'),
-                indicators_1m.get('atr'), indicators_1m.get('atr_pct'),
-                indicators_1m.get('bb_upper'), indicators_1m.get('bb_middle'),
-                indicators_1m.get('bb_lower'), indicators_1m.get('bb_width'),
-                indicators_1m.get('bb_distance_to_lower'), indicators_1m.get('bb_distance_to_upper'),
-                indicators_1m.get('volume'), indicators_1m.get('volume_avg'),
-                indicators_1m.get('volume_ratio'), indicators_1m.get('volume_spike'),
+                # 1m - tous avec valeurs par défaut
+                default_float(indicators_1m.get('ema9'), 0.0), 
+                default_float(indicators_1m.get('ema21'), 0.0),
+                default_float(indicators_1m.get('ema_diff_pct'), 0.0),
+                default_float(indicators_1m.get('rsi'), 50.0), 
+                default_float(indicators_1m.get('rsi_prev'), 50.0),
+                default_float(indicators_1m.get('macd'), 0.0), 
+                default_float(indicators_1m.get('macd_signal'), 0.0),
+                default_float(indicators_1m.get('macd_hist'), 0.0), 
+                default_float(indicators_1m.get('macd_hist_prev'), 0.0),
+                default_float(indicators_1m.get('adx'), 0.0), 
+                default_float(indicators_1m.get('di_plus'), 0.0),
+                default_float(indicators_1m.get('di_minus'), 0.0), 
+                default_float(indicators_1m.get('di_gap'), 0.0),
+                default_float(indicators_1m.get('atr'), 0.0), 
+                default_float(indicators_1m.get('atr_pct'), 0.0),
+                default_float(indicators_1m.get('bb_upper'), 0.0), 
+                default_float(indicators_1m.get('bb_middle'), 0.0),
+                default_float(indicators_1m.get('bb_lower'), 0.0), 
+                default_float(indicators_1m.get('bb_width'), 0.0),
+                default_float(indicators_1m.get('bb_distance_to_lower'), 0.0), 
+                default_float(indicators_1m.get('bb_distance_to_upper'), 0.0),
+                default_float(indicators_1m.get('volume'), 0.0), 
+                default_float(indicators_1m.get('volume_avg'), 0.0),
+                default_float(indicators_1m.get('volume_ratio'), 0.0), 
+                default_float(indicators_1m.get('volume_spike'), 0.0),
                 
-                # 5m
-                indicators_5m.get('ema9'), indicators_5m.get('ema21'),
-                indicators_5m.get('ema_diff_pct'),
-                indicators_5m.get('rsi'), indicators_5m.get('rsi_prev'),
-                indicators_5m.get('macd'), indicators_5m.get('macd_signal'),
-                indicators_5m.get('macd_hist'), indicators_5m.get('macd_hist_prev'),
-                indicators_5m.get('adx'), indicators_5m.get('di_plus'),
-                indicators_5m.get('di_minus'), indicators_5m.get('di_gap'),
-                indicators_5m.get('atr'), indicators_5m.get('atr_pct'),
-                indicators_5m.get('bb_upper'), indicators_5m.get('bb_middle'),
-                indicators_5m.get('bb_lower'), indicators_5m.get('bb_width'),
-                indicators_5m.get('bb_distance_to_lower'), indicators_5m.get('bb_distance_to_upper'),
-                indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
-                indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
+                # 5m - tous avec valeurs par défaut
+                default_float(indicators_5m.get('ema9'), 0.0), 
+                default_float(indicators_5m.get('ema21'), 0.0),
+                default_float(indicators_5m.get('ema_diff_pct'), 0.0),
+                default_float(indicators_5m.get('rsi'), 50.0), 
+                default_float(indicators_5m.get('rsi_prev'), 50.0),
+                default_float(indicators_5m.get('macd'), 0.0), 
+                default_float(indicators_5m.get('macd_signal'), 0.0),
+                default_float(indicators_5m.get('macd_hist'), 0.0), 
+                default_float(indicators_5m.get('macd_hist_prev'), 0.0),
+                default_float(indicators_5m.get('adx'), 0.0), 
+                default_float(indicators_5m.get('di_plus'), 0.0),
+                default_float(indicators_5m.get('di_minus'), 0.0), 
+                default_float(indicators_5m.get('di_gap'), 0.0),
+                default_float(indicators_5m.get('atr'), 0.0), 
+                default_float(indicators_5m.get('atr_pct'), 0.0),
+                default_float(indicators_5m.get('bb_upper'), 0.0), 
+                default_float(indicators_5m.get('bb_middle'), 0.0),
+                default_float(indicators_5m.get('bb_lower'), 0.0), 
+                default_float(indicators_5m.get('bb_width'), 0.0),
+                default_float(indicators_5m.get('bb_distance_to_lower'), 0.0), 
+                default_float(indicators_5m.get('bb_distance_to_upper'), 0.0),
+                default_float(indicators_5m.get('volume'), 0.0), 
+                default_float(indicators_5m.get('volume_avg'), 0.0),
+                default_float(indicators_5m.get('volume_ratio'), 0.0), 
+                default_float(indicators_5m.get('volume_spike'), 0.0),
                 
-                # Filtres (avec defaults pour booléens False si absent)
-                filters.get('snr_1m'), filters.get('snr_5m'),
-                filters.get('snr_passed_1m', False), filters.get('snr_passed_5m', False),
-                filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
-                filters.get('breakout_passed_1m', False), filters.get('breakout_passed_5m', False),
-                filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
-                filters.get('wick_passed_1m', False), filters.get('wick_passed_5m', False),
-                filters.get('atr_optimal_passed_1m', False), filters.get('atr_optimal_passed_5m', False),
-                filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
+                # Filtres (avec defaults pour booléens False si absent, floats à 0.0)
+                default_float(filters.get('snr_1m'), 0.0), 
+                default_float(filters.get('snr_5m'), 0.0),
+                default_bool(filters.get('snr_passed_1m'), False), 
+                default_bool(filters.get('snr_passed_5m'), False),
+                default_float(filters.get('breakout_distance_1m'), 0.0), 
+                default_float(filters.get('breakout_distance_5m'), 0.0),
+                default_bool(filters.get('breakout_passed_1m'), False), 
+                default_bool(filters.get('breakout_passed_5m'), False),
+                default_float(filters.get('wick_ratio_1m'), 0.0), 
+                default_float(filters.get('wick_ratio_5m'), 0.0),
+                default_bool(filters.get('wick_passed_1m'), False), 
+                default_bool(filters.get('wick_passed_5m'), False),
+                default_bool(filters.get('atr_optimal_passed_1m'), False), 
+                default_bool(filters.get('atr_optimal_passed_5m'), False),
+                default_bool(filters.get('volume_filter_passed_1m'), False), 
+                default_bool(filters.get('volume_filter_passed_5m'), False),
                 
                 # Confluence
-                scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
-                scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
-                scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
-                scan_data.get('timeframes_aligned', False),
+                default_bool(scan_data.get('use_confluence'), False), 
+                default_bool(scan_data.get('confluence_met'), False),
+                default_float(scores.get('score_1m'), 0.0), 
+                default_float(scores.get('score_5m'), 0.0), 
+                default_float(scores.get('score_total'), 0.0),
+                default_float(scores.get('score_long_1m'), 0.0), 
+                default_float(scores.get('score_short_1m'), 0.0),
+                default_float(scores.get('score_long_5m'), 0.0), 
+                default_float(scores.get('score_short_5m'), 0.0),
+                default_bool(scan_data.get('timeframes_aligned'), False),
                 
-                # Patterns
-                patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
-                patterns.get('pattern_5m'), patterns.get('pattern_multi_5m'),
+                # Patterns (None au lieu de 'NONE' pour éviter erreurs PostgreSQL)
+                patterns.get('pattern_1m'), 
+                patterns.get('pattern_multi_1m'),
+                patterns.get('pattern_5m'), 
+                patterns.get('pattern_multi_5m'),
                 
                 # Trend
-                scan_data.get('trend_timeframe', '15m'),
-                scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                scan_data.get('trend_bonus', 0),
+                scan_data.get('trend_timeframe') or '15m',
+                scan_data.get('trend_direction'), 
+                scan_data.get('trend_strength'),
+                default_float(scan_data.get('trend_bonus'), 0.0),
                 
                 # Divergence
-                scan_data.get('divergence_detected', False),
-                scan_data.get('divergence_type'), scan_data.get('divergence_bonus', 0),
+                default_bool(scan_data.get('divergence_detected'), False),
+                scan_data.get('divergence_type'), 
+                default_float(scan_data.get('divergence_bonus'), 0.0),
                 
                 # Décision
-                scan_data.get('is_opportunity', False),
+                default_bool(scan_data.get('is_opportunity'), False),
                 scan_data.get('opportunity_direction'),
-                scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
+                scan_data.get('reject_reason'), 
+                scan_data.get('reject_reason_category'),
                 
                 # Params
                 json.dumps(params_snap),
                 
                 # Config extracted
-                params_snap.get('min_score_required'),
-                params_snap.get('snr_threshold'),
-                params_snap.get('optimal_atr_min_1m'),
-                params_snap.get('optimal_atr_max_1m'),
-                params_snap.get('optimal_atr_min_5m'),
-                params_snap.get('optimal_atr_max_5m'),
-                params_snap.get('volume_multiplier'),
-                params_snap.get('use_confluence')
+                default_float(params_snap.get('min_score_required'), 7.5),
+                default_float(params_snap.get('snr_threshold'), 0.25),
+                default_float(params_snap.get('optimal_atr_min_1m'), 0.12),
+                default_float(params_snap.get('optimal_atr_max_1m'), 0.75),
+                default_float(params_snap.get('optimal_atr_min_5m'), 0.22),
+                default_float(params_snap.get('optimal_atr_max_5m'), 1.4),
+                default_float(params_snap.get('volume_multiplier'), 1.0),
+                default_bool(params_snap.get('use_confluence'), False)
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -692,6 +736,11 @@ class PostgreSQLDataLogger:
         if not session_id:
             session_id = self.get_or_create_session()
         
+        # 🔥 FIX: Toujours en mode direct pour récupérer l'ID immédiatement
+        if use_batch:
+            logger.debug("⚠️ log_opportunity: use_batch demandé mais désactivé pour obtenir l'ID immédiatement")
+        use_batch = False
+
         # 🔥 PHASE 3: Utiliser batch insert si activé
         if use_batch:
             with self.buffer_lock:
@@ -721,7 +770,7 @@ class PostgreSQLDataLogger:
                 RETURNING id
             """
             
-            # Convertir conditions_matched en liste de strings
+            # Convertir conditions_matched en liste de strings pour PostgreSQL TEXT[]
             conditions_matched = opportunity_data.get('conditions_matched', [])
             if isinstance(conditions_matched, dict):
                 # Si c'est un dict, prendre les clés ou les valeurs selon le cas
@@ -732,6 +781,9 @@ class PostgreSQLDataLogger:
             else:
                 # Autre type (str, int, etc.) -> convertir en liste
                 conditions_matched = [str(conditions_matched)] if conditions_matched is not None else []
+            
+            # 🔥 FIX: psycopg2 gère nativement les listes Python → TEXT[]
+            # Pas besoin de conversion spéciale, psycopg2 le fait automatiquement
             
             # Extraire et valider les valeurs (s'assurer qu'elles ne sont pas des dicts)
             entry_price = opportunity_data.get('entry_price') or opportunity_data.get('entry_suggested')
@@ -778,7 +830,7 @@ class PostgreSQLDataLogger:
                 float(score_min_required) if score_min_required is not None else None,
                 float(trend_bonus) if trend_bonus is not None else None,
                 float(divergence_bonus) if divergence_bonus is not None else None,
-                # Conditions
+                # Conditions - psycopg2 convertit automatiquement list → TEXT[]
                 conditions_matched,  # TEXT[] - liste de strings
                 int(condition_count) if condition_count is not None else len(conditions_matched),
                 # Prix
@@ -827,6 +879,15 @@ class PostgreSQLDataLogger:
         """
         if not self.enabled:
             return None
+        
+        # 🔥 FIX: Récupérer opportunity_id et scan_log_id depuis les paramètres ou trade_data
+        # Ces IDs peuvent être passés soit en paramètres, soit dans trade_data
+        if opportunity_id is None:
+            opportunity_id = trade_data.get('opportunity_id')
+        if scan_log_id is None:
+            scan_log_id = trade_data.get('scan_log_id')
+        
+        logger.debug(f"📊 log_trade pour {trade_data.get('symbol')}: opportunity_id={opportunity_id}, scan_log_id={scan_log_id}")
         
         # Valider que session_id est un UUID valide, sinon créer une nouvelle session
         if session_id:
@@ -1443,86 +1504,96 @@ class PostgreSQLDataLogger:
                 if not params_snap or not isinstance(params_snap, dict):
                     params_snap = {}
                 
-                # Construire tuple de valeurs (même ordre que dans log_scan)
+                # 🔥 Helper pour remplacer None par valeur par défaut
+                def default_float(val, default=0.0):
+                    return default if val is None else val
+                
+                def default_bool(val, default=False):
+                    return default if val is None else val
+                
+                def default_str(val, default=''):
+                    return default if val is None else val
+                
+                # Construire tuple de valeurs avec defaults (même ordre que dans log_scan)
                 value_tuple = (
                     session_id, symbol, scan_duration,
-                    price, market_data.get('spread_pct'),
-                    market_data.get('book_depth'), market_data.get('balance_score'),
-                    market_data.get('bid_vol'), market_data.get('ask_vol'),
-                    market_data.get('orderbook_imbalance_ratio'),
+                    price, default_float(market_data.get('spread_pct'), 0.0),
+                    default_float(market_data.get('book_depth'), 0.0), default_float(market_data.get('balance_score'), 1.0),
+                    default_float(market_data.get('bid_vol'), 0.0), default_float(market_data.get('ask_vol'), 0.0),
+                    default_float(market_data.get('orderbook_imbalance_ratio'), 1.0),
                     # Paramètres du scan de scalabilité
-                    market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
-                    market_data.get('vol5') or scan_data.get('vol5'),
-                    market_data.get('vol15') or scan_data.get('vol15'),
-                    market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                    default_float(market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'), 0.0),
+                    default_float(market_data.get('vol5') or scan_data.get('vol5'), 0.0),
+                    default_float(market_data.get('vol15') or scan_data.get('vol15'), 0.0),
+                    default_float(market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'), 0.0),
                     # 1m indicators
-                    indicators_1m.get('ema9'), indicators_1m.get('ema21'),
-                    indicators_1m.get('ema_diff_pct'),
-                    indicators_1m.get('rsi'), indicators_1m.get('rsi_prev'),
-                    indicators_1m.get('macd'), indicators_1m.get('macd_signal'),
-                    indicators_1m.get('macd_hist'), indicators_1m.get('macd_hist_prev'),
-                    indicators_1m.get('adx'), indicators_1m.get('di_plus'),
-                    indicators_1m.get('di_minus'), indicators_1m.get('di_gap'),
-                    indicators_1m.get('atr'), indicators_1m.get('atr_pct'),
-                    indicators_1m.get('bb_upper'), indicators_1m.get('bb_middle'),
-                    indicators_1m.get('bb_lower'), indicators_1m.get('bb_width'),
-                    indicators_1m.get('bb_distance_to_lower'), indicators_1m.get('bb_distance_to_upper'),
-                    indicators_1m.get('volume'), indicators_1m.get('volume_avg'),
-                    indicators_1m.get('volume_ratio'), indicators_1m.get('volume_spike'),
+                    default_float(indicators_1m.get('ema9'), 0.0), default_float(indicators_1m.get('ema21'), 0.0),
+                    default_float(indicators_1m.get('ema_diff_pct'), 0.0),
+                    default_float(indicators_1m.get('rsi'), 50.0), default_float(indicators_1m.get('rsi_prev'), 50.0),
+                    default_float(indicators_1m.get('macd'), 0.0), default_float(indicators_1m.get('macd_signal'), 0.0),
+                    default_float(indicators_1m.get('macd_hist'), 0.0), default_float(indicators_1m.get('macd_hist_prev'), 0.0),
+                    default_float(indicators_1m.get('adx'), 0.0), default_float(indicators_1m.get('di_plus'), 0.0),
+                    default_float(indicators_1m.get('di_minus'), 0.0), default_float(indicators_1m.get('di_gap'), 0.0),
+                    default_float(indicators_1m.get('atr'), 0.0), default_float(indicators_1m.get('atr_pct'), 0.0),
+                    default_float(indicators_1m.get('bb_upper'), 0.0), default_float(indicators_1m.get('bb_middle'), 0.0),
+                    default_float(indicators_1m.get('bb_lower'), 0.0), default_float(indicators_1m.get('bb_width'), 0.0),
+                    default_float(indicators_1m.get('bb_distance_to_lower'), 0.0), default_float(indicators_1m.get('bb_distance_to_upper'), 0.0),
+                    default_float(indicators_1m.get('volume'), 0.0), default_float(indicators_1m.get('volume_avg'), 0.0),
+                    default_float(indicators_1m.get('volume_ratio'), 0.0), default_float(indicators_1m.get('volume_spike'), 0.0),
                     # 5m indicators
-                    indicators_5m.get('ema9'), indicators_5m.get('ema21'),
-                    indicators_5m.get('ema_diff_pct'),
-                    indicators_5m.get('rsi'), indicators_5m.get('rsi_prev'),
-                    indicators_5m.get('macd'), indicators_5m.get('macd_signal'),
-                    indicators_5m.get('macd_hist'), indicators_5m.get('macd_hist_prev'),
-                    indicators_5m.get('adx'), indicators_5m.get('di_plus'),
-                    indicators_5m.get('di_minus'), indicators_5m.get('di_gap'),
-                    indicators_5m.get('atr'), indicators_5m.get('atr_pct'),
-                    indicators_5m.get('bb_upper'), indicators_5m.get('bb_middle'),
-                    indicators_5m.get('bb_lower'), indicators_5m.get('bb_width'),
-                    indicators_5m.get('bb_distance_to_lower'), indicators_5m.get('bb_distance_to_upper'),
-                    indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
-                    indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
+                    default_float(indicators_5m.get('ema9'), 0.0), default_float(indicators_5m.get('ema21'), 0.0),
+                    default_float(indicators_5m.get('ema_diff_pct'), 0.0),
+                    default_float(indicators_5m.get('rsi'), 50.0), default_float(indicators_5m.get('rsi_prev'), 50.0),
+                    default_float(indicators_5m.get('macd'), 0.0), default_float(indicators_5m.get('macd_signal'), 0.0),
+                    default_float(indicators_5m.get('macd_hist'), 0.0), default_float(indicators_5m.get('macd_hist_prev'), 0.0),
+                    default_float(indicators_5m.get('adx'), 0.0), default_float(indicators_5m.get('di_plus'), 0.0),
+                    default_float(indicators_5m.get('di_minus'), 0.0), default_float(indicators_5m.get('di_gap'), 0.0),
+                    default_float(indicators_5m.get('atr'), 0.0), default_float(indicators_5m.get('atr_pct'), 0.0),
+                    default_float(indicators_5m.get('bb_upper'), 0.0), default_float(indicators_5m.get('bb_middle'), 0.0),
+                    default_float(indicators_5m.get('bb_lower'), 0.0), default_float(indicators_5m.get('bb_width'), 0.0),
+                    default_float(indicators_5m.get('bb_distance_to_lower'), 0.0), default_float(indicators_5m.get('bb_distance_to_upper'), 0.0),
+                    default_float(indicators_5m.get('volume'), 0.0), default_float(indicators_5m.get('volume_avg'), 0.0),
+                    default_float(indicators_5m.get('volume_ratio'), 0.0), default_float(indicators_5m.get('volume_spike'), 0.0),
                     # Filters (avec defaults pour booléens False si absent)
-                    filters.get('snr_1m'), filters.get('snr_5m'),
-                    filters.get('snr_passed_1m', False), filters.get('snr_passed_5m', False),
-                    filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
-                    filters.get('breakout_passed_1m', False), filters.get('breakout_passed_5m', False),
-                    filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
-                    filters.get('wick_passed_1m', False), filters.get('wick_passed_5m', False),
-                    filters.get('atr_optimal_passed_1m', False), filters.get('atr_optimal_passed_5m', False),
-                    filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
+                    default_float(filters.get('snr_1m'), 0.0), default_float(filters.get('snr_5m'), 0.0),
+                    default_bool(filters.get('snr_passed_1m'), False), default_bool(filters.get('snr_passed_5m'), False),
+                    default_float(filters.get('breakout_distance_1m'), 0.0), default_float(filters.get('breakout_distance_5m'), 0.0),
+                    default_bool(filters.get('breakout_passed_1m'), False), default_bool(filters.get('breakout_passed_5m'), False),
+                    default_float(filters.get('wick_ratio_1m'), 0.0), default_float(filters.get('wick_ratio_5m'), 0.0),
+                    default_bool(filters.get('wick_passed_1m'), False), default_bool(filters.get('wick_passed_5m'), False),
+                    default_bool(filters.get('atr_optimal_passed_1m'), False), default_bool(filters.get('atr_optimal_passed_5m'), False),
+                    default_bool(filters.get('volume_filter_passed_1m'), False), default_bool(filters.get('volume_filter_passed_5m'), False),
                     # Confluence
-                    scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
-                    scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                    scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
-                    scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
-                    scan_data.get('timeframes_aligned', False),
-                    # Patterns
+                    default_bool(scan_data.get('use_confluence'), False), default_bool(scan_data.get('confluence_met'), False),
+                    default_float(scores.get('score_1m'), 0.0), default_float(scores.get('score_5m'), 0.0), default_float(scores.get('score_total'), 0.0),
+                    default_float(scores.get('score_long_1m'), 0.0), default_float(scores.get('score_short_1m'), 0.0),
+                    default_float(scores.get('score_long_5m'), 0.0), default_float(scores.get('score_short_5m'), 0.0),
+                    default_bool(scan_data.get('timeframes_aligned'), False),
+                    # Patterns (None au lieu de 'NONE' pour éviter erreurs PostgreSQL)
                     patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
                     patterns.get('pattern_5m'), patterns.get('pattern_multi_5m'),
                     # Trend
-                    scan_data.get('trend_timeframe', '15m'),
+                    scan_data.get('trend_timeframe') or '15m',
                     scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                    scan_data.get('trend_bonus', 0),
+                    default_float(scan_data.get('trend_bonus'), 0.0),
                     # Divergence
-                    scan_data.get('divergence_detected', False),
-                    scan_data.get('divergence_type'), scan_data.get('divergence_bonus', 0),
+                    default_bool(scan_data.get('divergence_detected'), False),
+                    scan_data.get('divergence_type'), default_float(scan_data.get('divergence_bonus'), 0.0),
                     # Decision
-                    scan_data.get('is_opportunity', False),
+                    default_bool(scan_data.get('is_opportunity'), False),
                     scan_data.get('opportunity_direction'),
                     scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                     # Params
                     json.dumps(params_snap),
                     # Config extracted
-                    params_snap.get('min_score_required'),
-                    params_snap.get('snr_threshold'),
-                    params_snap.get('optimal_atr_min_1m'),
-                    params_snap.get('optimal_atr_max_1m'),
-                    params_snap.get('optimal_atr_min_5m'),
-                    params_snap.get('optimal_atr_max_5m'),
-                    params_snap.get('volume_multiplier'),
-                    params_snap.get('use_confluence')
+                    default_float(params_snap.get('min_score_required'), 7.5),
+                    default_float(params_snap.get('snr_threshold'), 0.25),
+                    default_float(params_snap.get('optimal_atr_min_1m'), 0.12),
+                    default_float(params_snap.get('optimal_atr_max_1m'), 0.75),
+                    default_float(params_snap.get('optimal_atr_min_5m'), 0.22),
+                    default_float(params_snap.get('optimal_atr_max_5m'), 1.4),
+                    default_float(params_snap.get('volume_multiplier'), 1.0),
+                    default_bool(params_snap.get('use_confluence'), False)
                 )
                 values.append(value_tuple)
             

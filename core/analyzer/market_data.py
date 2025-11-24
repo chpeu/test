@@ -130,13 +130,13 @@ async def check_orderbook_imbalance(
 
         if orderbook is None:
             logger.warning(f"⚠️ Orderbook None pour {symbol}, retour valeur par défaut")
-            return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}
+            return {'valid': True, 'ratio': None, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}  # 🔥 FIX: ratio=None au lieu de 1.0 (1.0 = vraie valeur, pas absence de données)
 
         bids = orderbook.get('bids', [])[:10] if orderbook.get('bids') else []
         asks = orderbook.get('asks', [])[:10] if orderbook.get('asks') else []
 
         if not bids or not asks:
-            return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}
+            return {'valid': True, 'ratio': None, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}  # 🔥 FIX: ratio=None au lieu de 1.0
 
         # Normaliser ordres en [price, size]
         def normalize_order(order):

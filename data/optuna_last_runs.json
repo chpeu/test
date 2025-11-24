@@ -4,23 +4,23 @@
       "metric": "trading_composite",
       "last_run": {
         "metric": "trading_composite",
-        "score": 0.5326093008215795,
+        "score": 0.4629093108149712,
         "params": {
           "max_depth": 2,
-          "min_child_weight": 14,
-          "reg_alpha": 8.052533122915944,
-          "reg_lambda": 3.4973599167837053,
-          "subsample": 0.8935399958938072,
-          "colsample_bytree": 0.7442671827943249,
-          "colsample_bylevel": 0.8158372707475863,
-          "learning_rate": 0.008218081425748824,
-          "n_estimators": 200,
-          "gamma": 3.930509029085961,
-          "scale_pos_weight": 1.3898758931118909
+          "min_child_weight": 9,
+          "reg_alpha": 9.058217992853875,
+          "reg_lambda": 3.460739058778201,
+          "subsample": 0.8936379182731425,
+          "colsample_bytree": 0.8278583545852157,
+          "colsample_bylevel": 0.759301291047854,
+          "learning_rate": 0.012970883833728982,
+          "n_estimators": 500,
+          "gamma": 3.9245561092760775,
+          "scale_pos_weight": 1.3895692122580972
         },
-        "trial_number": 6113,
-        "total_trials": 6150,
-        "datetime": "2025-11-23T23:18:13.624751",
+        "trial_number": 6199,
+        "total_trials": 6200,
+        "datetime": "2025-11-24T05:51:51.180337",
         "source": "latest"
       }
     },
