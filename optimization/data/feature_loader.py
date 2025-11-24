@@ -145,6 +145,19 @@ def load_features_from_postgres(
             atr_optimal_passed_1m, atr_optimal_passed_5m,
             volume_filter_passed_1m, volume_filter_passed_5m,
             
+            -- 🔥 Config parameters (nouvelles colonnes)
+            config_min_score_required,
+            config_snr_threshold,
+            config_atr_min_1m,
+            config_atr_max_1m,
+            config_atr_min_5m,
+            config_atr_max_5m,
+            config_volume_multiplier,
+            config_use_confluence,
+            
+            -- 🔥 Reject category (nouvelle colonne)
+            reject_reason_category,
+            
             -- Labels ML
             is_opportunity,
             target_win,
@@ -183,6 +196,8 @@ def load_features_from_postgres(
             'wick_passed_1m', 'wick_passed_5m',
             'atr_optimal_passed_1m', 'atr_optimal_passed_5m',
             'volume_filter_passed_1m', 'volume_filter_passed_5m',
+            'config_use_confluence',  # 🔥 Boolean config
+            'reject_reason_category',  # 🔥 Catégorie texte
         ]
         
         numeric_cols = [col for col in df.columns if col not in exclude_from_numeric]

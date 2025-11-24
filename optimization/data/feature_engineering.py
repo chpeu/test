@@ -179,7 +179,27 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
         (df_eng['adx_1m'] < 20) & (df_eng['adx_5m'] < 20)
     ).astype(int)
     
-    logger.info(f"✅ Feature engineering complete - {len(df_eng.columns)} total features")
+    # ========== REJECT CATEGORY ONE-HOT ENCODING ==========
+    # 🔥 Encoder reject_reason_category en features booléennes
+    if 'reject_reason_category' in df_eng.columns:
+        # Catégories principales à encoder
+        reject_categories = [
+            'volume_filter', 'atr_filter', 'snr_filter', 'orderbook',
+            'wick_filter', 'spread', 'structure_swing', 'score_insufficient',
+            'ema_macd_coherence', 'volume_quality', 'micro_range',
+            'confluence', 'correlation', 'recovery_mode'
+        ]
+        
+        for category in reject_categories:
+            col_name = f'reject_{category}'
+            df_eng[col_name] = (df_eng['reject_reason_category'] == category).astype(int)
+        
+        # Feature 'accepted' (pas de rejet = opportunity)
+        df_eng['reject_none'] = df_eng['reject_reason_category'].isna().astype(int)
+        
+        logger.info(f"🏷️ One-hot encoding reject_reason_category: {len(reject_categories)+1} features créées")
+    
+    logger.info(f"✅ Feature engineering terminé: {len(df_eng.columns)} features totales")
     
     return df_eng
 

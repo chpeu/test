@@ -1200,13 +1200,11 @@ async def scan_pair_for_setup(symbol: str):
             analysis['indicators_5m'] = indicators_5m
             logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
         
-        # 🔥 Simple Logger: Logger ultra-simple sans batch pour debugging
-        try:
-            if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
-                logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: enabled={_simple_logger.enabled}")
-                
-                # Récupérer le prix depuis analysis ou price_provider
-                scan_price = None
+        # 🔥 DÉSACTIVÉ: SimplePGLogger pour éviter doublons (PostgreSQLDataLogger fait déjà le travail)
+        if False:  # Désactivé - évite les doublons avec PostgreSQLDataLogger
+            try:
+                if _simple_logger and hasattr(_simple_logger, 'enabled') and _simple_logger.enabled:
+                    logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: enabled={_simple_logger.enabled}")
                 if analysis and isinstance(analysis, dict):
                     scan_price = analysis.get('price')
                 
@@ -1259,96 +1257,122 @@ async def scan_pair_for_setup(symbol: str):
                     # Fallback 1: Essayer depuis analysis_1m pour score_total
                     if score_total is None and isinstance(analysis_1m, dict) and analysis_1m:
                         score_total = analysis_1m.get('score_total') or analysis_1m.get('totalScore') or analysis_1m.get('score')
-                        # Si toujours None, essayer long_score ou short_score (utilisés dans analyzer.py pour les analyses rejetées)
+                    
+                    # Construire indicators_1m avec fallbacks
+                    indicators_1m = {}
+                    score_total = None
+                    
+                    if analysis:
+                        # Priorité 1: indicators_1m depuis analysis
+                        indicators_1m = analysis.get('indicators_1m', {}) or {}
+                        
+                        # Récupérer score_total avec fallbacks
+                        # Priorité 1: score_total directement
+                        score_total = analysis.get('score_total')
+                        # Priorité 2: totalScore (nom utilisé dans analyzer.py)
                         if score_total is None:
-                            # Prendre le maximum entre long_score et short_score, ou le premier non-None
-                            long_score = analysis_1m.get('long_score')
-                            short_score = analysis_1m.get('short_score')
-                            if long_score is not None or short_score is not None:
-                                score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
-                    # Fallback 2: Essayer depuis analysis_5m pour score_total
-                    if score_total is None and isinstance(analysis_5m, dict) and analysis_5m:
-                        score_total = analysis_5m.get('score_total') or analysis_5m.get('totalScore') or analysis_5m.get('score')
-                        # Si toujours None, essayer long_score ou short_score
+                            score_total = analysis.get('totalScore')
+                        # Priorité 3: score (nom alternatif)
                         if score_total is None:
-                            long_score = analysis_5m.get('long_score')
-                            short_score = analysis_5m.get('short_score')
-                            if long_score is not None or short_score is not None:
-                                score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
-                    
-                    # 🔥 AMÉLIORATION: Compléter indicators_1m avec les valeurs de analysis_1m si elles sont None
-                    if isinstance(analysis_1m, dict) and analysis_1m:
-                        # Log de debug pour voir ce qui est dans analysis_1m
-                        rsi_in_analysis_1m = analysis_1m.get('rsi')
-                        logger.debug(f"🔍 DEBUG {symbol}: analysis_1m contient rsi={rsi_in_analysis_1m}, keys: {list(analysis_1m.keys())[:15]}")
+                            score_total = analysis.get('score')
                         
-                        # Liste des indicateurs clés à vérifier
-                        indicator_keys = ['rsi', 'rsi_prev', 'macd', 'macd_signal', 'macd_hist', 'macd_hist_prev',
-                                        'adx', 'di_plus', 'di_minus', 'di_gap', 'ema9', 'ema21', 'ema_diff_pct',
-                                        'atr', 'atr_pct', 'bb_upper', 'bb_middle', 'bb_lower', 'bb_width',
-                                        'bb_distance_to_lower', 'bb_distance_to_upper', 'volume', 'volume_avg',
-                                        'volume_ratio', 'volume_spike']
+                        # 🔥 AMÉLIORATION: Récupérer analysis_1m et analysis_5m une seule fois
+                        analysis_1m = analysis.get('analysis_1m', {})
+                        analysis_5m = analysis.get('analysis_5m', {})
                         
-                        rsi_found_count = 0
-                        for key in indicator_keys:
-                            # Si l'indicateur n'existe pas dans indicators_1m ou est None, essayer de le récupérer depuis analysis_1m
-                            if key not in indicators_1m or indicators_1m.get(key) is None:
-                                value = analysis_1m.get(key)
-                                if value is not None:
-                                    indicators_1m[key] = value
-                                    if key == 'rsi':
-                                        rsi_found_count += 1
-                                        logger.info(f"✅ DEBUG {symbol}: RSI récupéré depuis analysis_1m: {value}")
+                        # Fallback 1: Essayer depuis analysis_1m pour score_total
+                        if score_total is None and isinstance(analysis_1m, dict) and analysis_1m:
+                            score_total = analysis_1m.get('score_total') or analysis_1m.get('totalScore') or analysis_1m.get('score')
+                            # Si toujours None, essayer long_score ou short_score (utilisés dans analyzer.py pour les analyses rejetées)
+                            if score_total is None:
+                                # Prendre le maximum entre long_score et short_score, ou le premier non-None
+                                long_score = analysis_1m.get('long_score')
+                                short_score = analysis_1m.get('short_score')
+                                if long_score is not None or short_score is not None:
+                                    score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
+                        # Fallback 2: Essayer depuis analysis_5m pour score_total
+                        if score_total is None and isinstance(analysis_5m, dict) and analysis_5m:
+                            score_total = analysis_5m.get('score_total') or analysis_5m.get('totalScore') or analysis_5m.get('score')
+                            # Si toujours None, essayer long_score ou short_score
+                            if score_total is None:
+                                long_score = analysis_5m.get('long_score')
+                                short_score = analysis_5m.get('short_score')
+                                if long_score is not None or short_score is not None:
+                                    score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
                         
-                        if rsi_found_count == 0 and rsi_in_analysis_1m is None:
-                            logger.debug(f"⚠️ DEBUG {symbol}: RSI est None dans analysis_1m. analysis_1m contient 'reason': {analysis_1m.get('reason', 'N/A')[:50] if analysis_1m.get('reason') else 'N/A'}")
+                        # 🔥 AMÉLIORATION: Compléter indicators_1m avec les valeurs de analysis_1m si elles sont None
+                        if isinstance(analysis_1m, dict) and analysis_1m:
+                            # Log de debug pour voir ce qui est dans analysis_1m
+                            rsi_in_analysis_1m = analysis_1m.get('rsi')
+                            logger.debug(f"🔍 DEBUG {symbol}: analysis_1m contient rsi={rsi_in_analysis_1m}, keys: {list(analysis_1m.keys())[:15]}")
+                            
+                            # Liste des indicateurs clés à vérifier
+                            indicator_keys = ['rsi', 'rsi_prev', 'macd', 'macd_signal', 'macd_hist', 'macd_hist_prev',
+                                            'adx', 'di_plus', 'di_minus', 'di_gap', 'ema9', 'ema21', 'ema_diff_pct',
+                                            'atr', 'atr_pct', 'bb_upper', 'bb_middle', 'bb_lower', 'bb_width',
+                                            'bb_distance_to_lower', 'bb_distance_to_upper', 'volume', 'volume_avg',
+                                            'volume_ratio', 'volume_spike']
+                            
+                            rsi_found_count = 0
+                            for key in indicator_keys:
+                                # Si l'indicateur n'existe pas dans indicators_1m ou est None, essayer de le récupérer depuis analysis_1m
+                                if key not in indicators_1m or indicators_1m.get(key) is None:
+                                    value = analysis_1m.get(key)
+                                    if value is not None:
+                                        indicators_1m[key] = value
+                                        if key == 'rsi':
+                                            rsi_found_count += 1
+                                            logger.info(f"✅ DEBUG {symbol}: RSI récupéré depuis analysis_1m: {value}")
+                            
+                            if rsi_found_count == 0 and rsi_in_analysis_1m is None:
+                                logger.debug(f"⚠️ DEBUG {symbol}: RSI est None dans analysis_1m. analysis_1m contient 'reason': {analysis_1m.get('reason', 'N/A')[:50] if analysis_1m.get('reason') else 'N/A'}")
+                        
+                        # Priorité 3: Essayer depuis analysis directement (champs de haut niveau) si RSI toujours manquant
+                        if not indicators_1m.get('rsi'):
+                            if 'rsi' in analysis and analysis.get('rsi') is not None:
+                                indicators_1m['rsi'] = analysis.get('rsi')
+                                logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi): {indicators_1m.get('rsi')}")
+                            elif 'rsi_1m' in analysis and analysis.get('rsi_1m') is not None:
+                                indicators_1m['rsi'] = analysis.get('rsi_1m')
+                                logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi_1m): {indicators_1m.get('rsi')}")
+                        
+                        # Log de debug si RSI toujours manquant
+                        if not indicators_1m.get('rsi'):
+                            logger.debug(f"⚠️ DEBUG {symbol}: RSI non trouvé. analysis keys: {list(analysis.keys())[:10] if analysis else 'None'}, "
+                                       f"indicators_1m keys: {list(indicators_1m.keys()) if indicators_1m else 'None'}, "
+                                       f"analysis_1m type: {type(analysis.get('analysis_1m'))}, "
+                                       f"analysis_1m rsi: {analysis_1m.get('rsi') if isinstance(analysis_1m, dict) else 'N/A'}")
                     
-                    # Priorité 3: Essayer depuis analysis directement (champs de haut niveau) si RSI toujours manquant
-                    if not indicators_1m.get('rsi'):
-                        if 'rsi' in analysis and analysis.get('rsi') is not None:
-                            indicators_1m['rsi'] = analysis.get('rsi')
-                            logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi): {indicators_1m.get('rsi')}")
-                        elif 'rsi_1m' in analysis and analysis.get('rsi_1m') is not None:
-                            indicators_1m['rsi'] = analysis.get('rsi_1m')
-                            logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi_1m): {indicators_1m.get('rsi')}")
-                    
-                    # Log de debug si RSI toujours manquant
-                    if not indicators_1m.get('rsi'):
-                        logger.debug(f"⚠️ DEBUG {symbol}: RSI non trouvé. analysis keys: {list(analysis.keys())[:10] if analysis else 'None'}, "
-                                   f"indicators_1m keys: {list(indicators_1m.keys()) if indicators_1m else 'None'}, "
-                                   f"analysis_1m type: {type(analysis.get('analysis_1m'))}, "
-                                   f"analysis_1m rsi: {analysis_1m.get('rsi') if isinstance(analysis_1m, dict) else 'N/A'}")
-                
-                logger.info(f"📝 Tentative log_scan_simple pour {symbol} (prix: {scan_price}, RSI: {indicators_1m.get('rsi', 'N/A')}, Score: {score_total or 'N/A'})")
-                # Construire scan_data avec tous les fallbacks possibles
-                scan_data_dict = {
-                    'market_data': {'price': scan_price},
-                    'indicators_1m': indicators_1m,
-                    'scores': {'score_total': score_total},
-                    'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
-                }
-                # Ajouter analysis_1m et analysis_5m si disponibles (pour les fallbacks dans SimplePGLogger)
-                if analysis and isinstance(analysis, dict):
-                    if 'analysis_1m' in analysis:
-                        scan_data_dict['analysis_1m'] = analysis.get('analysis_1m')
-                    if 'analysis_5m' in analysis:
-                        scan_data_dict['analysis_5m'] = analysis.get('analysis_5m')
-                    # Ajouter aussi totalScore directement si disponible
-                    if 'totalScore' in analysis:
-                        scan_data_dict['totalScore'] = analysis.get('totalScore')
-                    # Ajouter long_score et short_score si disponibles (pour les fallbacks dans SimplePGLogger)
-                    if 'long_score' in analysis:
-                        scan_data_dict['long_score'] = analysis.get('long_score')
-                    if 'short_score' in analysis:
-                        scan_data_dict['short_score'] = analysis.get('short_score')
-                result = _simple_logger.log_scan_simple(symbol, scan_data_dict)
-                logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
-            else:
-                logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
-        except Exception as e:
-            logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
-            import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+                    logger.info(f"📝 Tentative log_scan_simple pour {symbol} (prix: {scan_price}, RSI: {indicators_1m.get('rsi', 'N/A')}, Score: {score_total or 'N/A'})")
+                    # Construire scan_data avec tous les fallbacks possibles
+                    scan_data_dict = {
+                        'market_data': {'price': scan_price},
+                        'indicators_1m': indicators_1m,
+                        'scores': {'score_total': score_total},
+                        'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
+                    }
+                    # Ajouter analysis_1m et analysis_5m si disponibles (pour les fallbacks dans SimplePGLogger)
+                    if analysis and isinstance(analysis, dict):
+                        if 'analysis_1m' in analysis:
+                            scan_data_dict['analysis_1m'] = analysis.get('analysis_1m')
+                        if 'analysis_5m' in analysis:
+                            scan_data_dict['analysis_5m'] = analysis.get('analysis_5m')
+                        # Ajouter aussi totalScore directement si disponible
+                        if 'totalScore' in analysis:
+                            scan_data_dict['totalScore'] = analysis.get('totalScore')
+                        # Ajouter long_score et short_score si disponibles (pour les fallbacks dans SimplePGLogger)
+                        if 'long_score' in analysis:
+                            scan_data_dict['long_score'] = analysis.get('long_score')
+                        if 'short_score' in analysis:
+                            scan_data_dict['short_score'] = analysis.get('short_score')
+                    result = _simple_logger.log_scan_simple(symbol, scan_data_dict)
+                    logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
+                else:
+                    logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
+            except Exception as e:
+                logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
+                import traceback
+                logger.debug(f"Traceback: {traceback.format_exc()}")
         
         # Helper function to extract filter metrics
         def _extract_filter_metrics_main(analysis):
@@ -3445,6 +3469,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'ml_reg_lambda': TRADING_CONFIG.get('ml_reg_lambda', 2.0),
                                     'ml_subsample': TRADING_CONFIG.get('ml_subsample', 0.8),
                                     'ml_colsample_bytree': TRADING_CONFIG.get('ml_colsample_bytree', 0.8),
+                                    'ml_colsample_bylevel': TRADING_CONFIG.get('ml_colsample_bylevel', 0.8),
+                                    'ml_gamma': TRADING_CONFIG.get('ml_gamma', 0.0),
+                                    'ml_scale_pos_weight': TRADING_CONFIG.get('ml_scale_pos_weight', 1.0),
                                     'ml_n_estimators': TRADING_CONFIG.get('ml_n_estimators', 300),
                                     'ml_learning_rate': TRADING_CONFIG.get('ml_learning_rate', 0.03),
                                     # Autres
@@ -3952,16 +3979,39 @@ async def handle_client_command(command: str, params: dict):
             updated['ml_colsample_bytree'] = val
             logger.info(f"✅ ML colsample_bytree: {val*100:.0f}%")
 
+        if 'ml_colsample_bylevel' in params:
+            val = float(params['ml_colsample_bylevel'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_colsample_bylevel'] = val
+            updated['ml_colsample_bylevel'] = val
+            logger.info(f"✅ ML colsample_bylevel: {val*100:.0f}%")
+
+        if 'ml_gamma' in params:
+            val = float(params['ml_gamma'])
+            val = max(0.0, min(5.0, val))  # Clamp 0.0-5.0
+            TRADING_CONFIG['ml_gamma'] = val
+            updated['ml_gamma'] = val
+            logger.info(f"✅ ML gamma: {val}")
+
+        if 'ml_scale_pos_weight' in params:
+            val = float(params['ml_scale_pos_weight'])
+            # 🔥 Aligné sur le slider frontend (0.5 - 2.0)
+            val = max(0.5, min(2.0, val))
+            TRADING_CONFIG['ml_scale_pos_weight'] = val
+            updated['ml_scale_pos_weight'] = val
+            logger.info(f"✅ ML scale_pos_weight: {val}")
+
         if 'ml_n_estimators' in params:
             val = int(params['ml_n_estimators'])
-            val = max(50, min(500, val))  # Clamp 50-500
+            val = max(50, min(800, val))  # Clamp 50-800 (aligné avec UI)
             TRADING_CONFIG['ml_n_estimators'] = val
             updated['ml_n_estimators'] = val
             logger.info(f"✅ ML n_estimators: {val}")
 
         if 'ml_learning_rate' in params:
             val = float(params['ml_learning_rate'])
-            val = max(0.01, min(0.1, val))  # Clamp 0.01-0.1
+            # 🔥 Aligné sur le slider frontend (0.001 - 0.2)
+            val = max(0.001, min(0.2, val))
             TRADING_CONFIG['ml_learning_rate'] = val
             updated['ml_learning_rate'] = val
             logger.info(f"✅ ML learning_rate: {val}")
@@ -5026,6 +5076,31 @@ async def export_datalogger_excel(
                 rows = cursor.fetchall()
                 headers = [desc.name for desc in cursor.description] if cursor.description else []
 
+                # 🔥 FIX: Pour scan_logs, décomposer params_snapshot et masquer reject_reason
+                if table_name == 'scan_logs':
+                    # Remplacer params_snapshot par colonnes config_* (déjà présentes)
+                    # Supprimer params_snapshot et reject_reason des headers
+                    headers = [h for h in headers if h not in ['params_snapshot', 'reject_reason']]
+                    # S'assurer que reject_reason_category est présent
+                    if 'reject_reason_category' not in headers:
+                        headers.append('reject_reason_category')
+                # 🔥 FIX: Pour trades, masquer config_snapshot et s'assurer que les colonnes config_* sont présentes
+                if table_name == 'trades':
+                    headers = [h for h in headers if h != 'config_snapshot']
+                    config_columns = [
+                        'config_min_score_required', 'config_snr_threshold',
+                        'config_optimal_atr_min_1m', 'config_optimal_atr_max_1m',
+                        'config_optimal_atr_min_5m', 'config_optimal_atr_max_5m',
+                        'config_volume_multiplier', 'config_use_confluence'
+                    ]
+                    for col in config_columns:
+                        if col not in headers:
+                            headers.append(col)
+                    
+                    # 🔥 NOUVEAU: Ajouter colonne "data_complete" pour identifier trades complets
+                    if 'data_complete' not in headers:
+                        headers.append('data_complete')
+
                 if headers:
                     ws.append(headers)
                     for cell in ws[1]:
@@ -5036,7 +5111,14 @@ async def export_datalogger_excel(
                     # Convertir valeurs complexes (arrays, dicts) en string JSON pour Excel
                     excel_row = []
                     for h in headers:
-                        value = row[h]
+                        # 🔥 NOUVEAU: Calculer data_complete pour trades
+                        if h == 'data_complete' and table_name == 'trades':
+                            # Complet si scan_log_id n'est pas NULL
+                            is_complete = row.get('scan_log_id') is not None
+                            value = '✅ Complet' if is_complete else '⚠️ Incomplet (ancien)'
+                        else:
+                            value = row.get(h)  # Utiliser .get() car certaines clés peuvent ne pas exister
+                        
                         # Convertir types non-supportés par Excel
                         if isinstance(value, (list, dict)):
                             excel_row.append(json.dumps(value, ensure_ascii=False))

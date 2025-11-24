@@ -609,6 +609,7 @@ class PositionManager:
         
         # 🔥 FIX: TOUJOURS stocker les indicateurs dans la position (pour PostgreSQL)
         self.active_position._scan_log_id = scan_uuid
+        self.active_position._opportunity_id = opportunity_id  # 🔥 FIX: Stocker opportunity_id
         self.active_position._entry_indicators = entry_indicators
         self.active_position._entry_conditions = entry_conditions
         self.active_position._entry_scalability = entry_scalability
@@ -1100,6 +1101,50 @@ class PositionManager:
         # Calculer durée
         duration = int(time.time() - self.active_position.start_time)
 
+        # 🔥 FIX CRITIQUE: Limiter exit_price au SL + slippage maximum (éviter pertes > SL configuré)
+        # Problème: Un trade a perdu -2.10% alors que SL = 0.20% (facteur x10 inacceptable)
+        # Cause: Latence entre vérification et execution, prix peut dépasser largement le SL
+        if reason in ['SL', 'EARLY_INVALIDATION']:
+            from config import TRADING_CONFIG
+            max_slippage_on_sl = TRADING_CONFIG.get('max_slippage_pct', 0.03)  # 0.03% max par défaut
+            sl = self.active_position.sl
+            entry = self.active_position.entry
+            direction = self.active_position.direction
+            
+            if direction == 'LONG':
+                # SL est en dessous de entry
+                # Accepter max 0.03% de slippage sous le SL
+                min_exit = sl * (1 - max_slippage_on_sl / 100)
+                if exit_price < min_exit:
+                    original_exit = exit_price
+                    exit_price = min_exit  # Plafonner à SL - slippage max
+                    exit_pnl = ((exit_price - entry) / entry) * 100
+                    original_pnl = ((original_exit - entry) / entry) * 100
+                    logger.warning(
+                        f"🔴 SLIPPAGE EXTRÊME détecté sur SL: "
+                        f"{self.active_position.symbol} | "
+                        f"Prix original={original_exit:.8f} ({original_pnl:.2f}%) < "
+                        f"SL={sl:.8f} ({((sl-entry)/entry)*100:.2f}%) | "
+                        f"Prix plafonné={exit_price:.8f} ({exit_pnl:.2f}%) | "
+                        f"Slippage max autorisé: {max_slippage_on_sl}%"
+                    )
+            else:  # SHORT
+                # SL est au-dessus de entry
+                max_exit = sl * (1 + max_slippage_on_sl / 100)
+                if exit_price > max_exit:
+                    original_exit = exit_price
+                    exit_price = max_exit
+                    exit_pnl = ((entry - exit_price) / entry) * 100
+                    original_pnl = ((entry - original_exit) / entry) * 100
+                    logger.warning(
+                        f"🔴 SLIPPAGE EXTRÊME détecté sur SL: "
+                        f"{self.active_position.symbol} | "
+                        f"Prix original={original_exit:.8f} ({original_pnl:.2f}%) > "
+                        f"SL={sl:.8f} ({((entry-sl)/entry)*100:.2f}%) | "
+                        f"Prix plafonné={exit_price:.8f} ({exit_pnl:.2f}%) | "
+                        f"Slippage max autorisé: {max_slippage_on_sl}%"
+                    )
+
         # 🔥 FIX: Calculer PnL réalisé avec fees à 0% (scan scalabilité uniquement sur paires 0% fee)
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
             position=self.active_position.to_dict(),
@@ -1180,18 +1225,20 @@ class PositionManager:
             'entry': self.active_position.entry,
             'exit': exit_price,
             'exit_price': exit_price,  # 🔥 FIX: Alias pour compatibilité frontend
-            'pnl_pct': round(pnl_data['pnl_pct'], 2),
+            # 🔥 FIX PRECISION: Conserver 6 décimales pour les pourcentages (éviter arrondi trop agressif)
+            # Les petits trades gagnants (+0.05%) étaient affichés comme 0.00% après arrondi à 2 décimales
+            'pnl_pct': round(pnl_data['pnl_pct'], 6),
             'pnl_usdt': round(net_pnl_usdt, 4),
-            'gross_pnl_pct': round(pnl_data['pnl_pct'], 2),
-            'slippage': round(slippage_pct, 4),  # 🔥 FIX: Slippage en pourcentage
-            'slippage_pct': round(slippage_pct, 4),  # Alias
-            'slippage_usdt': round(slippage_usdt, 4),  # 🔥 FIX: Slippage en USDT
+            'gross_pnl_pct': round(pnl_data['pnl_pct'], 6),
+            'slippage': round(slippage_pct, 6),  # 6 décimales pour précision
+            'slippage_pct': round(slippage_pct, 6),  # Alias
+            'slippage_usdt': round(slippage_usdt, 4),
             'gross_pnl_usdt': round(pnl_data['pnl_usdt_gross'], 4),
-            'fees': round(pnl_data['fees'], 4),  # 🔥 FIX: Plus de précision pour les fees (devrait être 0.0000 pour paires 0% fee)
-            'total_costs': round(total_costs, 2),
+            'fees': round(pnl_data['fees'], 4),
+            'total_costs': round(total_costs, 4),  # 4 décimales au lieu de 2
             'total_costs_usdt': round(total_costs, 4),
-            'net_pnl': round(net_pnl_pct, 2),
-            'net_pnl_pct': round(net_pnl_pct, 2),  # 🔥 FIX: Alias pour compatibilité frontend
+            'net_pnl': round(net_pnl_pct, 6),  # 6 décimales pour précision
+            'net_pnl_pct': round(net_pnl_pct, 6),  # 6 décimales pour précision
             'net_pnl_usdt': round(net_pnl_usdt, 4),
             'duration': duration,
             'reason': reason,
@@ -1323,13 +1370,17 @@ class PositionManager:
                     config_snapshot['CIRCUIT_BREAKER_CONFIG'] = serialize_config_safe(CIRCUIT_BREAKER_CONFIG) if CIRCUIT_BREAKER_CONFIG else {}
                     config_snapshot['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
                     
-                    # Préparer indicateurs de sortie (scalabilité au moment de la sortie)
-                    exit_indicators = {
-                        'recent_volume': 0,  # TODO: Récupérer depuis API si disponible
-                        'vol5': 0,
-                        'vol15': 0,
-                        'score': 0
-                    }
+                    # Préparer indicateurs de sortie
+                    # 🔥 FIX: Utiliser les derniers indicateurs de la position (mis à jour périodiquement)
+                    # Note: Pour avoir les indicateurs exacts au moment de la sortie, il faudrait
+                    # appeler l'API pour récupérer les dernières klines et recalculer les indicateurs,
+                    # mais cela ajouterait de la latence. On utilise donc les derniers connus.
+                    exit_indicators = getattr(self.active_position, '_last_indicators', {}) or {}
+                    
+                    # Fallback: si aucun indicateur n'est disponible, utiliser un dict vide
+                    # (mieux que des valeurs 0 qui seraient trompeuses)
+                    if not exit_indicators:
+                        exit_indicators = {}
                     
                     trade_data = {
                         'symbol': self.active_position.symbol,

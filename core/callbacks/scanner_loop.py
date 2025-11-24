@@ -224,13 +224,21 @@ async def _scan_top_pairs():
                 errors.append(r)
             elif r and isinstance(r, dict):
                 # Setup valide = a 'direction' ET 'entry' (ou 'price')
-                if 'direction' in r and ('entry' in r or 'price' in r):
-                    # 🔥 DEBUG: Vérifier si le setup contient les indicateurs
-                    symbol_check = r.get('symbol', 'UNKNOWN')
-                    logger.info(f"🔍 DEBUG valid_setups.append({symbol_check}): contient indicators_1m: {'indicators_1m' in r}, indicators_5m: {'indicators_5m' in r}")
+                symbol_check = r.get('symbol', 'UNKNOWN')
+                has_direction = 'direction' in r
+                has_entry = 'entry' in r
+                has_price = 'price' in r
+                
+                # 🔥 DEBUG: Log détaillé pour CHAQUE résultat
+                logger.info(f"🔍 DEBUG result pour {symbol_check}: direction={has_direction}, entry={has_entry}, price={has_price}, keys={list(r.keys())[:10]}")
+                
+                if has_direction and (has_entry or has_price):
+                    logger.info(f"✅ {symbol_check} → VALID SETUP (direction={r.get('direction')}, entry={r.get('entry') or r.get('price')})")
                     valid_setups.append(r)
                 else:
                     # Rejet
+                    reason = r.get('reason', 'No reason')
+                    logger.info(f"❌ {symbol_check} → REJECTED (reason={reason}, has_direction={has_direction}, has_entry={has_entry})")
                     rejections.append(r)
             # else: None = aussi une erreur/skip
 
@@ -775,7 +783,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             # Ajouter les indicateurs à analysis
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
-            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
+            
+            # 🔥 DIAGNOSTIC: Vérifier intégrité des indicateurs
+            null_count_1m = sum(1 for v in indicators_1m.values() if v is None)
+            null_count_5m = sum(1 for v in indicators_5m.values() if v is None)
+            logger.info(
+                f"✅ Indicateurs ajoutés à analysis pour {symbol}: "
+                f"indicators_1m: {len(indicators_1m)} keys ({null_count_1m} NULL), "
+                f"indicators_5m: {len(indicators_5m)} keys ({null_count_5m} NULL)"
+            )
         else:
             logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
 
@@ -978,13 +994,32 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     # 🔥 FIX: Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict
                     'filters': _extract_filter_metrics(analysis) if analysis else {},
                     'scores': {
-                        'score_1m': analysis.get('score_1m') if analysis else None,
-                        'score_5m': analysis.get('score_5m') if analysis else None,
-                        'score_total': analysis.get('score_total') if analysis else None,
-                        'score_long_1m': analysis.get('score_long_1m') if analysis else None,
-                        'score_short_1m': analysis.get('score_short_1m') if analysis else None,
-                        'score_long_5m': analysis.get('score_long_5m') if analysis else None,
-                        'score_short_5m': analysis.get('score_short_5m') if analysis else None,
+                        # 🔥 Extraire scores depuis analysis_1m/5m si présents, sinon fallback
+                        'score_1m': (
+                            analysis.get('analysis_1m', {}).get('totalScore') if analysis and analysis.get('analysis_1m') 
+                            else analysis.get('score_1m') if analysis else None
+                        ),
+                        'score_5m': (
+                            analysis.get('analysis_5m', {}).get('totalScore') if analysis and analysis.get('analysis_5m')
+                            else analysis.get('score_5m') if analysis else None
+                        ),
+                        'score_total': analysis.get('score_total') or analysis.get('totalScore') if analysis else None,
+                        'score_long_1m': (
+                            analysis.get('analysis_1m', {}).get('long_score') if analysis and analysis.get('analysis_1m')
+                            else analysis.get('score_long_1m') or analysis.get('long_score') if analysis else None
+                        ),
+                        'score_short_1m': (
+                            analysis.get('analysis_1m', {}).get('short_score') if analysis and analysis.get('analysis_1m')
+                            else analysis.get('score_short_1m') or analysis.get('short_score') if analysis else None
+                        ),
+                        'score_long_5m': (
+                            analysis.get('analysis_5m', {}).get('long_score') if analysis and analysis.get('analysis_5m')
+                            else analysis.get('score_long_5m') if analysis else None
+                        ),
+                        'score_short_5m': (
+                            analysis.get('analysis_5m', {}).get('short_score') if analysis and analysis.get('analysis_5m')
+                            else analysis.get('score_short_5m') if analysis else None
+                        ),
                     },
                     'patterns': {
                         'pattern_1m': analysis.get('pattern_1m') if analysis else None,
@@ -1028,15 +1063,45 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     }
                 }
                 
-                # Logger le scan (mode batch par défaut)
-                logger.info(f"📝 Appel log_scan() pour {symbol}")
-                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
+                # 🔥 DIAGNOSTIC: Vérifier intégrité des données avant log
+                indicators_1m_check = scan_data.get('indicators_1m', {})
+                params_check = scan_data.get('params_snapshot', {})
+                
+                if not indicators_1m_check or not any(indicators_1m_check.values()):
+                    logger.warning(
+                        f"⚠️ {symbol}: indicators_1m VIDE avant log_scan! "
+                        f"analysis présent: {bool(analysis)}, "
+                        f"analysis keys: {list(analysis.keys()) if analysis else 'N/A'}"
+                    )
+                
+                if not params_check:
+                    logger.warning(f"⚠️ {symbol}: params_snapshot VIDE avant log_scan!")
+                
+                if indicators_1m_check:
+                    null_indicators = [k for k, v in indicators_1m_check.items() if v is None]
+                    if len(null_indicators) > 10:  # Si plus de 10 indicateurs NULL
+                        logger.warning(
+                            f"⚠️ {symbol}: {len(null_indicators)}/{len(indicators_1m_check)} "
+                            f"indicators_1m sont NULL (ex: {null_indicators[:5]})"
+                        )
+                
+                # 🔥 FIX: Désactiver batch mode pour opportunities (besoin ID immédiat)
+                # Les opportunities sont rares (~1:255) donc impact performance négligeable
+                is_opportunity = scan_data.get('is_opportunity', False)
+                use_batch_mode = not is_opportunity  # False si opportunity, True sinon
+                
+                logger.info(f"📝 Appel log_scan() pour {symbol} (batch={use_batch_mode})")
+                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=use_batch_mode)
                 logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
                 
+                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
+                if analysis and isinstance(analysis, dict) and scan_id:
+                    analysis['_scan_uuid'] = scan_id
+                    logger.info(f"✅ scan_id ajouté à analysis: {scan_id}")
+                
                 # Si c'est une opportunité, logger aussi dans opportunities
-                # Note: En mode batch, scan_id est None, mais l'opportunité sera loggée
-                # avec scan_id=None temporairement (sera mis à jour lors du flush)
-                if scan_data['is_opportunity'] and analysis:
+                opportunity_id = None
+                if is_opportunity and analysis:
                     condition_list = analysis.get('condition_types', [])
                     score_long = analysis.get('score_long_1m') or analysis.get('score_long_5m')
                     score_short = analysis.get('score_short_1m') or analysis.get('score_short_5m')
@@ -1069,14 +1134,20 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
                     }
-                    # En mode batch, on passe scan_id=None temporairement
-                    # Le scan_id sera résolu lors du flush batch
-                    pg_datalogger.log_opportunity(
-                        scan_id or 0,  # 0 = temporaire, sera mis à jour
+                    # 🔥 FIX: Mode direct (pas de batch) pour obtenir opportunity_id immédiatement
+                    opportunity_id = pg_datalogger.log_opportunity(
+                        scan_id,  # scan_id déjà disponible (mode direct utilisé ci-dessus)
                         symbol, 
                         opportunity_data,
-                        use_batch=True
+                        use_batch=False  # Mode direct pour avoir l'ID immédiatement
                     )
+                    
+                    # 🔥 FIX: Ajouter opportunity_id à analysis pour qu'il soit disponible dans best_setup
+                    if opportunity_id:
+                        analysis['_opportunity_id'] = opportunity_id
+                        logger.info(f"✅ Opportunity loggée pour {symbol} (opportunity_id={opportunity_id})")
+                    else:
+                        logger.warning(f"⚠️ opportunity_id est None pour {symbol} !")
                     
             except Exception as e:
                 logger.error(f"❌ Erreur logging PostgreSQL pour {symbol}: {e}")

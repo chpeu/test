@@ -432,13 +432,13 @@ class PostgreSQLDataLogger:
         
         # Mode direct (fallback)
         try:
-            # Extraire les données du scan
-            indicators_1m = scan_data.get('indicators_1m', {})
-            indicators_5m = scan_data.get('indicators_5m', {})
-            filters = scan_data.get('filters', {})
-            scores = scan_data.get('scores', {})
-            patterns = scan_data.get('patterns', {})
-            market_data = scan_data.get('market_data', {})
+            # 🔥 FIX: Assurer des dicts non-vides avec defaults explicites
+            indicators_1m = scan_data.get('indicators_1m') or {}
+            indicators_5m = scan_data.get('indicators_5m') or {}
+            filters = scan_data.get('filters') or {}
+            scores = scan_data.get('scores') or {}
+            patterns = scan_data.get('patterns') or {}
+            market_data = scan_data.get('market_data') or {}
             
             # Requête d'insertion
             query = """
@@ -495,7 +495,13 @@ class PostgreSQLDataLogger:
                     is_opportunity, opportunity_direction, reject_reason, reject_reason_category,
                     
                     -- Params snapshot
-                    params_snapshot
+                    params_snapshot,
+                    
+                    -- Config extracted from params
+                    config_min_score_required, config_snr_threshold,
+                    config_atr_min_1m, config_atr_max_1m,
+                    config_atr_min_5m, config_atr_max_5m,
+                    config_volume_multiplier, config_use_confluence
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
@@ -546,9 +552,19 @@ class PostgreSQLDataLogger:
                 logger.error(f"❌ Prix manquant pour {symbol} dans log_scan, insertion annulée")
                 return None
             
+            # 🔥 FIX: Assurer des valeurs par défaut pour éviter les NULL critiques
+            scan_duration = scan_data.get('scan_duration_ms')
+            if scan_duration is None:
+                scan_duration = 0.0  # Défaut si non fourni
+            
+            # Assurer params_snapshot sérialisable (même si vide)
+            params_snap = scan_data.get('params_snapshot')
+            if not params_snap or not isinstance(params_snap, dict):
+                params_snap = {}
+            
             # Préparer les paramètres
             params = (
-                session_id, symbol, scan_data.get('scan_duration_ms'),
+                session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
                 market_data.get('bid_vol'), market_data.get('ask_vol'),
@@ -589,22 +605,22 @@ class PostgreSQLDataLogger:
                 indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
                 indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
                 
-                # Filtres
+                # Filtres (avec defaults pour booléens False si absent)
                 filters.get('snr_1m'), filters.get('snr_5m'),
-                filters.get('snr_passed_1m'), filters.get('snr_passed_5m'),
+                filters.get('snr_passed_1m', False), filters.get('snr_passed_5m', False),
                 filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
-                filters.get('breakout_passed_1m'), filters.get('breakout_passed_5m'),
+                filters.get('breakout_passed_1m', False), filters.get('breakout_passed_5m', False),
                 filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
-                filters.get('wick_passed_1m'), filters.get('wick_passed_5m'),
-                filters.get('atr_optimal_passed_1m'), filters.get('atr_optimal_passed_5m'),
-                filters.get('volume_filter_passed_1m'), filters.get('volume_filter_passed_5m'),
+                filters.get('wick_passed_1m', False), filters.get('wick_passed_5m', False),
+                filters.get('atr_optimal_passed_1m', False), filters.get('atr_optimal_passed_5m', False),
+                filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
                 
                 # Confluence
-                scan_data.get('use_confluence'), scan_data.get('confluence_met'),
+                scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
                 scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                scores.get('score_long_1m'), scores.get('score_short_1m'),
-                scores.get('score_long_5m'), scores.get('score_short_5m'),
-                scan_data.get('timeframes_aligned'),
+                scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
+                scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
+                scan_data.get('timeframes_aligned', False),
                 
                 # Patterns
                 patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
@@ -613,7 +629,7 @@ class PostgreSQLDataLogger:
                 # Trend
                 scan_data.get('trend_timeframe', '15m'),
                 scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                scan_data.get('trend_bonus'),
+                scan_data.get('trend_bonus', 0),
                 
                 # Divergence
                 scan_data.get('divergence_detected', False),
@@ -625,7 +641,17 @@ class PostgreSQLDataLogger:
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 
                 # Params
-                json.dumps(scan_data.get('params_snapshot', {}))
+                json.dumps(params_snap),
+                
+                # Config extracted
+                params_snap.get('min_score_required'),
+                params_snap.get('snr_threshold'),
+                params_snap.get('optimal_atr_min_1m'),
+                params_snap.get('optimal_atr_max_1m'),
+                params_snap.get('optimal_atr_min_5m'),
+                params_snap.get('optimal_atr_max_5m'),
+                params_snap.get('volume_multiplier'),
+                params_snap.get('use_confluence')
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -1028,18 +1054,38 @@ class PostgreSQLDataLogger:
             slippage_pct = _extract_numeric_value(slippage_pct_raw) if slippage_pct_raw is not None else 0
             slippage_usdt = (slippage_pct / 100) * (size_usdt or 0) if slippage_pct and size_usdt else 0
             
-            # Extraire config_snapshot
-            # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
-            config_snapshot = trade_data.get('config_snapshot', {})
-            if config_snapshot:
+            # 🔥 FIX: Extraire config_snapshot + colonnes config_*
+            config_snapshot_raw = trade_data.get('config_snapshot') or {}
+            config_snapshot_dict: Dict[str, Any] = {}
+            if isinstance(config_snapshot_raw, str):
                 try:
-                    config_snapshot_safe = serialize_config_safe(config_snapshot)
+                    config_snapshot_dict = json.loads(config_snapshot_raw)
+                except Exception:
+                    config_snapshot_dict = {}
+            elif isinstance(config_snapshot_raw, dict):
+                config_snapshot_dict = config_snapshot_raw
+
+            config_min_score_required = _extract_numeric_value(config_snapshot_dict.get('min_score_required'))
+            config_snr_threshold = _extract_numeric_value(config_snapshot_dict.get('snr_threshold'))
+            config_optimal_atr_min_1m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_min_1m'))
+            config_optimal_atr_max_1m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_1m'))
+            config_optimal_atr_min_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_min_5m'))
+            config_optimal_atr_max_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_5m'))
+            config_volume_multiplier = _extract_numeric_value(config_snapshot_dict.get('volume_multiplier'))
+            config_use_confluence = config_snapshot_dict.get('use_confluence')
+            if isinstance(config_use_confluence, str):
+                config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
+            elif config_use_confluence is None:
+                config_use_confluence = None
+
+            config_snapshot = None
+            if config_snapshot_dict:
+                try:
+                    config_snapshot_safe = serialize_config_safe(config_snapshot_dict)
                     config_snapshot = json.dumps(config_snapshot_safe)
                 except Exception as e:
                     logger.error(f"❌ Erreur sérialisation config_snapshot pour trade: {e}", exc_info=True)
                     config_snapshot = None
-            else:
-                config_snapshot = None
             
             # Convertir entry_conditions en liste de strings pour PostgreSQL TEXT[]
             # (doit être fait avant de créer params)
@@ -1215,6 +1261,15 @@ class PostgreSQLDataLogger:
                 ('entry_vol5', entry_vol5),
                 ('entry_vol15', entry_vol15),
                 ('entry_scalability_score', entry_scalability_score),
+                # Config snapshot décomposé
+                ('config_min_score_required', config_min_score_required),
+                ('config_snr_threshold', config_snr_threshold),
+                ('config_optimal_atr_min_1m', config_optimal_atr_min_1m),
+                ('config_optimal_atr_max_1m', config_optimal_atr_max_1m),
+                ('config_optimal_atr_min_5m', config_optimal_atr_min_5m),
+                ('config_optimal_atr_max_5m', config_optimal_atr_max_5m),
+                ('config_volume_multiplier', config_volume_multiplier),
+                ('config_use_confluence', config_use_confluence),
                 ('config_snapshot', config_snapshot),
                 ('win', win)
             ])
@@ -1340,12 +1395,13 @@ class PostgreSQLDataLogger:
                 symbol = scan_item['symbol']
                 scan_data = scan_item['scan_data']
                 
-                indicators_1m = scan_data.get('indicators_1m', {})
-                indicators_5m = scan_data.get('indicators_5m', {})
-                filters = scan_data.get('filters', {})
-                scores = scan_data.get('scores', {})
-                patterns = scan_data.get('patterns', {})
-                market_data = scan_data.get('market_data', {})
+                # 🔥 FIX: Assurer des dicts non-vides avec defaults explicites
+                indicators_1m = scan_data.get('indicators_1m') or {}
+                indicators_5m = scan_data.get('indicators_5m') or {}
+                filters = scan_data.get('filters') or {}
+                scores = scan_data.get('scores') or {}
+                patterns = scan_data.get('patterns') or {}
+                market_data = scan_data.get('market_data') or {}
                 
                 # 🔥 FIX: Récupérer le prix avec fallbacks multiples (pour éviter NULL)
                 price = market_data.get('price')
@@ -1377,9 +1433,19 @@ class PostgreSQLDataLogger:
                     logger.error(f"❌ Prix manquant pour {symbol} dans batch insert, scan ignoré")
                     continue
                 
+                # 🔥 FIX: Assurer des valeurs par défaut pour éviter les NULL critiques
+                scan_duration = scan_data.get('scan_duration_ms')
+                if scan_duration is None:
+                    scan_duration = 0.0  # Défaut si non fourni
+                
+                # Assurer params_snapshot sérialisable (même si vide)
+                params_snap = scan_data.get('params_snapshot')
+                if not params_snap or not isinstance(params_snap, dict):
+                    params_snap = {}
+                
                 # Construire tuple de valeurs (même ordre que dans log_scan)
                 value_tuple = (
-                    session_id, symbol, scan_data.get('scan_duration_ms'),
+                    session_id, symbol, scan_duration,
                     price, market_data.get('spread_pct'),
                     market_data.get('book_depth'), market_data.get('balance_score'),
                     market_data.get('bid_vol'), market_data.get('ask_vol'),
@@ -1417,28 +1483,28 @@ class PostgreSQLDataLogger:
                     indicators_5m.get('bb_distance_to_lower'), indicators_5m.get('bb_distance_to_upper'),
                     indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
                     indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
-                    # Filters
+                    # Filters (avec defaults pour booléens False si absent)
                     filters.get('snr_1m'), filters.get('snr_5m'),
-                    filters.get('snr_passed_1m'), filters.get('snr_passed_5m'),
+                    filters.get('snr_passed_1m', False), filters.get('snr_passed_5m', False),
                     filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
-                    filters.get('breakout_passed_1m'), filters.get('breakout_passed_5m'),
+                    filters.get('breakout_passed_1m', False), filters.get('breakout_passed_5m', False),
                     filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
-                    filters.get('wick_passed_1m'), filters.get('wick_passed_5m'),
-                    filters.get('atr_optimal_passed_1m'), filters.get('atr_optimal_passed_5m'),
-                    filters.get('volume_filter_passed_1m'), filters.get('volume_filter_passed_5m'),
+                    filters.get('wick_passed_1m', False), filters.get('wick_passed_5m', False),
+                    filters.get('atr_optimal_passed_1m', False), filters.get('atr_optimal_passed_5m', False),
+                    filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
                     # Confluence
-                    scan_data.get('use_confluence'), scan_data.get('confluence_met'),
+                    scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
                     scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                    scores.get('score_long_1m'), scores.get('score_short_1m'),
-                    scores.get('score_long_5m'), scores.get('score_short_5m'),
-                    scan_data.get('timeframes_aligned'),
+                    scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
+                    scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
+                    scan_data.get('timeframes_aligned', False),
                     # Patterns
                     patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
                     patterns.get('pattern_5m'), patterns.get('pattern_multi_5m'),
                     # Trend
                     scan_data.get('trend_timeframe', '15m'),
                     scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                    scan_data.get('trend_bonus'),
+                    scan_data.get('trend_bonus', 0),
                     # Divergence
                     scan_data.get('divergence_detected', False),
                     scan_data.get('divergence_type'), scan_data.get('divergence_bonus', 0),
@@ -1447,7 +1513,16 @@ class PostgreSQLDataLogger:
                     scan_data.get('opportunity_direction'),
                     scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                     # Params
-                    json.dumps(scan_data.get('params_snapshot', {}))
+                    json.dumps(params_snap),
+                    # Config extracted
+                    params_snap.get('min_score_required'),
+                    params_snap.get('snr_threshold'),
+                    params_snap.get('optimal_atr_min_1m'),
+                    params_snap.get('optimal_atr_max_1m'),
+                    params_snap.get('optimal_atr_min_5m'),
+                    params_snap.get('optimal_atr_max_5m'),
+                    params_snap.get('volume_multiplier'),
+                    params_snap.get('use_confluence')
                 )
                 values.append(value_tuple)
             
@@ -1487,7 +1562,11 @@ class PostgreSQLDataLogger:
                 'trend_timeframe', 'trend_direction', 'trend_strength', 'trend_bonus',
                 'divergence_detected', 'divergence_type', 'divergence_bonus',
                 'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
-                'params_snapshot'
+                'params_snapshot',
+                'config_min_score_required', 'config_snr_threshold',
+                'config_atr_min_1m', 'config_atr_max_1m',
+                'config_atr_min_5m', 'config_atr_max_5m',
+                'config_volume_multiplier', 'config_use_confluence'
             )
             
             # Utiliser execute_values pour batch insert
