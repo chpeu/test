@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import OptimizationPanel from '$lib/components/ml/OptimizationPanel.svelte';
+	import MLCONTENT_V2_Variables from '$lib/components/ml/MLCONTENT_V2_Variables.svelte';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -65,10 +66,10 @@
 		trailing_atr_multiplier: 0.4,
 		trailing_min_distance: 0.08,
 		trailing_max_distance: 0.25,
-		// Machine Learning
+		// Machine Learning V1
 		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
 		ml_min_confidence: 0.60,  // 60% (si réactivé plus tard)
-		// Hyperparamètres XGBoost
+		// Hyperparamètres XGBoost V1
 		ml_max_depth: 6,
 		ml_min_child_weight: 3,
 		ml_reg_alpha: 0.5,
@@ -79,13 +80,33 @@
 		ml_gamma: 0.0,
 		ml_scale_pos_weight: 1.0,
 		ml_n_estimators: 300,
-		ml_learning_rate: 0.03
+		ml_learning_rate: 0.03,
+		// Machine Learning V2 (Régression PNL%)
+		ml_v2_filter_enabled: false,
+		ml_v2_min_confidence: 0.60,
+		ml_v2_timeframe_days: 270,
+		ml_v2_max_features: 40,
+		ml_v2_marginal_threshold: 0.20,
+		ml_v2_filter_marginal_trades: true,
+		ml_v2_test_size: 0.2,
+		ml_v2_validation_size: 0.1,
+		// Hyperparamètres XGBoost V2 (Régression)
+		ml_v2_n_estimators: 600,
+		ml_v2_max_depth: 4,
+		ml_v2_learning_rate: 0.03,
+		ml_v2_min_child_weight: 5,
+		ml_v2_reg_alpha: 1.0,
+		ml_v2_reg_lambda: 3.0,
+		ml_v2_subsample: 0.7,
+		ml_v2_colsample_bytree: 0.7,
+		ml_v2_gamma: 0.5
 	};
 
 	let config = { ...DEFAULTS };
 	let loading = false;
 	let saveMessage = '';
 	let activeSubTab = 'setups';
+	let mlVersion = 'v1'; // 'v1' ou 'v2' pour les sous-onglets ML
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
 	
 	// 🔥 NOUVEAU: Système de sauvegarde automatique avec debounce
@@ -132,6 +153,7 @@
 				config[`escalier_level${l}_size`] = Math.max(0, Math.round(currentValue - reduction));
 			});
 		}
+
 	}
 
 	function autoAdjustEscalierPnL(changedLevel) {
@@ -183,10 +205,12 @@
 					const response = await fetch('/api/config/complete');
 					if (response.ok) {
 						const data = await response.json();
-						// Vérifier si les paramètres ML sont présents
-						if (data.trading_config && data.trading_config.ml_max_depth !== undefined) {
+						// Vérifier si les paramètres ML (V1 ou V2) sont présents
+						if (data.trading_config && 
+							(data.trading_config.ml_max_depth !== undefined || 
+							 data.trading_config.ml_v2_max_depth !== undefined)) {
 							configUpdated = true;
-							console.log(`✅ Config backend mise à jour (tentative ${attempts})`);
+							console.log(` Config backend mise à jour (tentative ${attempts})`);
 						}
 					}
 				} catch (e) {
@@ -195,14 +219,17 @@
 			}
 			
 			if (!configUpdated) {
-				console.warn('⚠️ Timeout: config backend non confirmée après 3s');
+				console.warn(' Timeout: config backend non confirmée après 3s');
 			}
 			
 			// Recharger la configuration locale et "Variables en cours" en forçant le reload
+			console.log('🔄 Rechargement config après Apply...');
 			await loadConfig(true); // force = true pour bypasser le guard
 			await loadCompleteConfig();
 			
 			console.log('✅ Paramètres optimisés appliqués et synchronisés via REST');
+			console.log('🎯 Config.ml_v2_max_depth après reload:', config.ml_v2_max_depth);
+			console.log('🎯 Config.ml_v2_learning_rate après reload:', config.ml_v2_learning_rate);
 			saveMessage = '✅ Paramètres optimisés appliqués - sliders mis à jour';
 			setTimeout(() => { saveMessage = ''; }, 3000);
 		} catch (error) {
@@ -422,7 +449,7 @@
 				top_pairs_limit: tradingConfig.top_pairs_limit,
 				balance_score_min: tradingConfig.balance_score_min,
 			},
-			'🤖 Machine Learning': {
+			'🤖 Machine Learning V1': {
 				ml_filter_enabled: tradingConfig.ml_filter_enabled,
 				ml_min_confidence: tradingConfig.ml_min_confidence,
 				ml_max_depth: tradingConfig.ml_max_depth,
@@ -436,6 +463,25 @@
 				ml_scale_pos_weight: tradingConfig.ml_scale_pos_weight,
 				ml_n_estimators: tradingConfig.ml_n_estimators,
 				ml_learning_rate: tradingConfig.ml_learning_rate,
+			},
+			'🚀 Machine Learning V2 (Régression)': {
+				ml_v2_filter_enabled: tradingConfig.ml_v2_filter_enabled,
+				ml_v2_min_confidence: tradingConfig.ml_v2_min_confidence,
+				ml_v2_timeframe_days: tradingConfig.ml_v2_timeframe_days,
+				ml_v2_max_features: tradingConfig.ml_v2_max_features,
+				ml_v2_marginal_threshold: tradingConfig.ml_v2_marginal_threshold,
+				ml_v2_filter_marginal_trades: tradingConfig.ml_v2_filter_marginal_trades,
+				ml_v2_test_size: tradingConfig.ml_v2_test_size,
+				ml_v2_validation_size: tradingConfig.ml_v2_validation_size,
+				ml_v2_n_estimators: tradingConfig.ml_v2_n_estimators,
+				ml_v2_max_depth: tradingConfig.ml_v2_max_depth,
+				ml_v2_learning_rate: tradingConfig.ml_v2_learning_rate,
+				ml_v2_min_child_weight: tradingConfig.ml_v2_min_child_weight,
+				ml_v2_reg_alpha: tradingConfig.ml_v2_reg_alpha,
+				ml_v2_reg_lambda: tradingConfig.ml_v2_reg_lambda,
+				ml_v2_subsample: tradingConfig.ml_v2_subsample,
+				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
+				ml_v2_gamma: tradingConfig.ml_v2_gamma,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -502,8 +548,8 @@
 				});
 				config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 				viewMode = config.tp_sl_mode || 'FIXE';
-				console.log('✅ Config chargée depuis backend via REST API:', config);
-				console.log('✅ ML params chargés:', {
+				console.log('✅ Config chargée depuis backend via REST API');
+				console.log('✅ ML V1 params:', {
 					ml_max_depth: config.ml_max_depth,
 					ml_min_child_weight: config.ml_min_child_weight,
 					ml_reg_alpha: config.ml_reg_alpha,
@@ -515,6 +561,19 @@
 					ml_scale_pos_weight: config.ml_scale_pos_weight,
 					ml_n_estimators: config.ml_n_estimators,
 					ml_learning_rate: config.ml_learning_rate
+				});
+				console.log('✅ ML V2 params:', {
+					ml_v2_filter_enabled: config.ml_v2_filter_enabled,
+					ml_v2_min_confidence: config.ml_v2_min_confidence,
+					ml_v2_n_estimators: config.ml_v2_n_estimators,
+					ml_v2_max_depth: config.ml_v2_max_depth,
+					ml_v2_learning_rate: config.ml_v2_learning_rate,
+					ml_v2_min_child_weight: config.ml_v2_min_child_weight,
+					ml_v2_reg_alpha: config.ml_v2_reg_alpha,
+					ml_v2_reg_lambda: config.ml_v2_reg_lambda,
+					ml_v2_gamma: config.ml_v2_gamma,
+					ml_v2_subsample: config.ml_v2_subsample,
+					ml_v2_colsample_bytree: config.ml_v2_colsample_bytree
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -829,7 +888,7 @@
 	
 	// Fonction pour logger les changements (pour historique backend)
 	async function logConfigChange(key: string, change: any) {
-		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif uniquement
+		// MIGRATION COMPLÈTE: Envoyer log via WebSocket natif uniquement
 		try {
 			await sendCommandViaWS('log_config', {
 				key,
@@ -2270,6 +2329,31 @@
 		{/if}
 
 	{#if activeSubTab === 'ml'}
+	<!-- Titre et sélecteurs Version ML -->
+	<div class="ml-header">
+		<h3 class="ml-title">🤖 Machine Learning</h3>
+		<div class="ml-version-selector-compact">
+			<button
+				class="version-btn-compact"
+				class:active={mlVersion === 'v1'}
+				on:click={() => (mlVersion = 'v1')}
+			>
+				<span class="version-icon-compact">📊</span>
+				<span class="version-label-compact">XGBoost V1</span>
+			</button>
+
+			<button
+				class="version-btn-compact"
+				class:active={mlVersion === 'v2'}
+				on:click={() => (mlVersion = 'v2')}
+			>
+				<span class="version-icon-compact">🚀</span>
+				<span class="version-label-compact">XGBoost V2</span>
+			</button>
+		</div>
+	</div>
+
+	{#if mlVersion === 'v1'}
 	<!-- 1. Section Filtrage ML (inchangée) -->
 	<section class="variable-section">
 		<h3>🎯 Filtrage ML des Trades</h3>
@@ -2653,6 +2737,10 @@
 			</p>
 		</div>
 	</section>
+	{:else if mlVersion === 'v2'}
+	<!-- Contenu XGBoost V2 -->
+	<MLCONTENT_V2_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
+	{/if}
 	{/if}
 
 	{#if activeSubTab === 'current'}
@@ -2803,6 +2891,154 @@
 </div>
 
 <style>
+	/* Sélecteurs Version ML */
+	.ml-version-selector {
+		display: flex;
+		gap: 1rem;
+		margin-bottom: 2rem;
+		padding: 1rem;
+		background: rgba(42, 58, 107, 0.3);
+		border-radius: 12px;
+	}
+
+	.ml-version-selector .version-btn {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		padding: 1rem 1.5rem;
+		background: rgba(255, 255, 255, 0.05);
+		border: 2px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
+		color: #a0aec0;
+		font-size: 1rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.ml-version-selector .version-btn:hover {
+		border-color: #667eea;
+		transform: translateY(-2px);
+		background: rgba(102, 126, 234, 0.1);
+	}
+
+	.ml-version-selector .version-btn.active {
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		color: white;
+		border-color: #667eea;
+		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+	}
+
+	.ml-version-selector .version-icon {
+		font-size: 1.5rem;
+	}
+
+	.ml-version-selector .version-label {
+		font-size: 1rem;
+	}
+
+	.ml-version-selector .version-badge {
+		padding: 0.25rem 0.75rem;
+		border-radius: 12px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		background: rgba(0, 0, 0, 0.2);
+		color: white;
+	}
+
+	.ml-version-selector .version-btn:not(.active) .version-badge {
+		background: rgba(255, 255, 255, 0.1);
+		color: #a0aec0;
+	}
+
+	.ml-version-selector .version-badge.new {
+		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+		color: white;
+		animation: pulse-badge 2s infinite;
+	}
+
+	.ml-version-selector .version-btn:not(.active) .version-badge.new {
+		background: #10b981;
+		color: white;
+	}
+
+	@keyframes pulse-badge {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.7;
+		}
+	}
+
+	/* ML Header avec sélecteur compact */
+	.ml-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.5rem;
+		background: rgba(42, 58, 107, 0.2);
+		border-radius: 10px;
+		border: 1px solid rgba(102, 126, 234, 0.2);
+	}
+
+	.ml-title {
+		margin: 0;
+		font-size: 1.25rem;
+		color: #00ff88;
+		font-weight: 700;
+	}
+
+	.ml-version-selector-compact {
+		display: flex;
+		gap: 0.5rem;
+		background: rgba(0, 0, 0, 0.2);
+		padding: 0.25rem;
+		border-radius: 8px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.version-btn-compact {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.5rem 1rem;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		border-radius: 6px;
+		color: #a0aec0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.version-btn-compact:hover {
+		border-color: #667eea;
+		background: rgba(102, 126, 234, 0.1);
+		transform: translateY(-1px);
+	}
+
+	.version-btn-compact.active {
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		color: white;
+		border-color: #667eea;
+		box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+	}
+
+	.version-icon-compact {
+		font-size: 1.1rem;
+	}
+
+	.version-label-compact {
+		font-size: 0.875rem;
+		white-space: nowrap;
+	}
+
 	.variables-panel {
 		background: #1e2749;
 		border-radius: 12px;
@@ -3082,18 +3318,20 @@
 	.slider-container {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		background: #1e2749;
-		padding: 12px;
-		border-radius: 8px;
-		border: 2px solid #2a3a6b;
+		gap: 14px;
+		padding: 10px 16px;
+		background: rgba(255, 255, 255, 0.04);
+		border-radius: 14px;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 	}
 
 	.slider-container input[type='range'] {
 		flex: 1;
-		height: 6px;
-		background: #2a3a6b;
-		border-radius: 3px;
+		height: 8px;
+		background: linear-gradient(90deg, rgba(0, 255, 136, 0.9) 0%, rgba(102, 126, 234, 0.9) 100%);
+		border-radius: 999px;
+		border: none;
 		outline: none;
 		-webkit-appearance: none;
 	}
@@ -3137,7 +3375,11 @@
 		font-family: 'Courier New', monospace;
 		font-size: 14px;
 		font-weight: bold;
-		color: #00ff88;
+		color: #0f172a;
+		background: linear-gradient(135deg, #00ff88, #06b6d4);
+		padding: 6px 14px;
+		border-radius: 999px;
+		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 		min-width: 80px;
 		text-align: right;
 	}
@@ -3233,6 +3475,16 @@
 		.btn-primary,
 		.btn-secondary {
 			flex: 1;
+		}
+
+		.slider-container {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 8px;
+		}
+
+		.slider-container input[type='range'] {
+			width: 100%;
 		}
 
 		.slider-value {

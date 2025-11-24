@@ -1,0 +1,24 @@
+================================================================================
+  RAPPORT ENTRAÎNEMENT XGBOOST V2 FINAL
+================================================================================
+
+Date: N/A
+Dataset: 1150 trades (timeframe=270 days)
+Distribution: WIN=509 (44.3%), LOSS=641
+
+MÉTRIQUES TRAIN:
+  Accuracy:  0.610
+  ROC-AUC:   0.672
+  F1 Score:  0.000
+
+MÉTRIQUES TEST:
+  Accuracy:  0.525
+  ROC-AUC:   0.510
+  F1 Score:  0.000
+
+GAPS (OVERFITTING):
+  Accuracy:  0.084
+  ROC-AUC:   0.163
+
+VERDICT:
+  INSUFFISANT - Inutilisable

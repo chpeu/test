@@ -411,10 +411,12 @@ class PostgreSQLDataLogger:
                 logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan (batch): {price} (type: {type(price)})")
                 price = None
         
-        # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
-        if price is None:
-            logger.error(f"❌ Prix manquant pour {symbol} dans log_scan (batch), scan non ajouté au buffer")
-            return None
+        # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
+        if price is None or price == 0:
+            if price is None:
+                price = 0.0
+                logger.warning(f"⚠️ Prix manquant pour {symbol} dans log_scan (batch), utilisation price=0")
+            # Continuer le logging avec price=0 pour ne pas bloquer l'analyse ML
         
         # 🔥 PHASE 3: Utiliser batch insert si activé
         if use_batch:
@@ -547,10 +549,12 @@ class PostgreSQLDataLogger:
                     logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan: {price} (type: {type(price)})")
                     price = None
             
-            # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
-            if price is None:
-                logger.error(f"❌ Prix manquant pour {symbol} dans log_scan, insertion annulée")
-                return None
+            # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
+            if price is None or price == 0:
+                if price is None:
+                    price = 0.0
+                    logger.warning(f"⚠️ Prix manquant pour {symbol} dans log_scan, utilisation price=0")
+                # Continuer le logging avec price=0 pour ne pas bloquer l'analyse ML
             
             # 🔥 FIX: Assurer des valeurs par défaut pour éviter les NULL critiques
             scan_duration = scan_data.get('scan_duration_ms')
@@ -1757,3 +1761,76 @@ class PostgreSQLDataLogger:
             except Exception as e:
                 logger.error(f"❌ Erreur fermeture pool: {e}")
 
+
+# ============================================================================
+# Singleton global pour accès facile
+# ============================================================================
+_pg_datalogger_instance = None
+
+
+def get_pg_datalogger():
+    """
+    Récupérer l'instance singleton PostgreSQLDataLogger
+    
+    Returns:
+        PostgreSQLDataLogger ou None si non initialisé/désactivé
+    """
+    global _pg_datalogger_instance
+    
+    # Si une instance existe déjà, la retourner
+    if _pg_datalogger_instance is not None:
+        return _pg_datalogger_instance
+    
+    # Sinon, tenter de créer une nouvelle instance avec config par défaut
+    if not PSYCOPG2_AVAILABLE:
+        logger.warning("⚠️ psycopg2 non disponible, PostgreSQL DataLogger désactivé")
+        return None
+    
+    try:
+        # Charger config depuis variables d'environnement
+        import os
+        from dotenv import load_dotenv
+        from pathlib import Path
+        
+        env_path = Path(__file__).parent.parent / '.env'
+        if env_path.exists():
+            load_dotenv(env_path)
+        
+        enabled = os.getenv('POSTGRES_ENABLED', 'true').lower() == 'true'
+        
+        if not enabled:
+            logger.info("ℹ️ PostgreSQL DataLogger désactivé dans .env")
+            return None
+        
+        _pg_datalogger_instance = PostgreSQLDataLogger(
+            host=os.getenv('POSTGRES_HOST', 'localhost'),
+            port=int(os.getenv('POSTGRES_PORT', '5432')),
+            database=os.getenv('POSTGRES_DB', 'tradebot'),
+            user=os.getenv('POSTGRES_USER', 'postgres'),
+            password=os.getenv('POSTGRES_PASSWORD', ''),
+            min_conn=int(os.getenv('POSTGRES_MIN_CONN', '2')),
+            max_conn=int(os.getenv('POSTGRES_MAX_CONN', '10'))
+        )
+        
+        if _pg_datalogger_instance and _pg_datalogger_instance.enabled:
+            logger.info("✅ PostgreSQL DataLogger singleton créé")
+        else:
+            logger.warning("⚠️ PostgreSQL DataLogger créé mais désactivé")
+        
+        return _pg_datalogger_instance
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur création PostgreSQL DataLogger singleton: {e}")
+        return None
+
+
+def set_pg_datalogger(instance):
+    """
+    Définir manuellement l'instance singleton PostgreSQLDataLogger
+    
+    Args:
+        instance: Instance de PostgreSQLDataLogger
+    """
+    global _pg_datalogger_instance
+    _pg_datalogger_instance = instance
+    logger.info("✅ Instance PostgreSQL DataLogger définie manuellement")

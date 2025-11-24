@@ -4016,6 +4016,50 @@ async def handle_client_command(command: str, params: dict):
             updated['ml_learning_rate'] = val
             logger.info(f"✅ ML learning_rate: {val}")
 
+        # 🤖🔥 ML V2 (Régression PNL%)
+        # --- Filtres / toggles ---
+        if 'ml_v2_filter_enabled' in params:
+            TRADING_CONFIG['ml_v2_filter_enabled'] = bool(params['ml_v2_filter_enabled'])
+            updated['ml_v2_filter_enabled'] = TRADING_CONFIG['ml_v2_filter_enabled']
+
+        if 'ml_v2_filter_marginal_trades' in params:
+            TRADING_CONFIG['ml_v2_filter_marginal_trades'] = bool(params['ml_v2_filter_marginal_trades'])
+            updated['ml_v2_filter_marginal_trades'] = TRADING_CONFIG['ml_v2_filter_marginal_trades']
+
+        # --- Training params ---
+        ml_v2_int_params = {
+            'ml_v2_timeframe_days': (30, 730),
+            'ml_v2_max_features': (5, 300),
+            'ml_v2_n_estimators': (100, 2000),
+            'ml_v2_max_depth': (2, 10),
+            'ml_v2_min_child_weight': (1, 100)
+        }
+        for key, (min_val, max_val) in ml_v2_int_params.items():
+            if key in params:
+                val = int(params[key])
+                val = max(min_val, min(max_val, val))
+                TRADING_CONFIG[key] = val
+                updated[key] = val
+
+        ml_v2_float_params = {
+            'ml_v2_min_confidence': (0.0, 1.0),
+            'ml_v2_marginal_threshold': (0.01, 2.0),
+            'ml_v2_test_size': (0.05, 0.45),
+            'ml_v2_validation_size': (0.05, 0.35),
+            'ml_v2_learning_rate': (0.0005, 0.5),
+            'ml_v2_reg_alpha': (0.0, 10.0),
+            'ml_v2_reg_lambda': (0.0, 15.0),
+            'ml_v2_subsample': (0.3, 1.0),
+            'ml_v2_colsample_bytree': (0.3, 1.0),
+            'ml_v2_gamma': (0.0, 5.0)
+        }
+        for key, (min_val, max_val) in ml_v2_float_params.items():
+            if key in params:
+                val = float(params[key])
+                val = max(min_val, min(max_val, val))
+                TRADING_CONFIG[key] = val
+                updated[key] = val
+
 
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")

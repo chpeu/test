@@ -262,6 +262,42 @@ class XGBoostTrainerV2:
         )
 
         logger.info(f"\n💾 Modèle et metadata sauvegardés")
+        
+        # 11. Logger dans PostgreSQL
+        try:
+            from optimization.models.model_logger import log_model_to_db
+            
+            model_id = log_model_to_db(
+                model_name=self.model_name,
+                model_type="XGBClassifier_V2_Temporal",
+                version="2.0",
+                model_path=str(self.model_dir / f"{self.model_name}.pkl"),
+                preprocessor_path=str(self.model_dir / f"{self.model_name}_preprocessor.pkl"),
+                metrics=metrics,
+                training_info={
+                    "timeframe_days": timeframe_days,
+                    "min_trades": min_trades,
+                    "total_samples": len(df),
+                    "train_samples": len(X_train),
+                    "val_samples": len(X_val),
+                    "test_samples": len(X_test),
+                    "training_time_seconds": training_time,
+                    "trained_at": start_time.isoformat(),
+                    "filter_marginal_trades": filter_marginal_trades,
+                    "marginal_threshold": marginal_threshold,
+                    "split_type": "temporal",
+                    "max_features": len(selected_features) if selected_features else None,
+                },
+                model_params=model_params,
+                feature_importance=feature_importance,
+                is_active=False  # Ne pas activer automatiquement
+            )
+            
+            if model_id:
+                logger.info(f"✅ Modèle enregistré dans PostgreSQL (ID={model_id})")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible d'enregistrer dans PostgreSQL: {e}")
+        
         logger.info("=" * 80)
 
         return {

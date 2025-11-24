@@ -23,7 +23,7 @@
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
-	import MLDashboard from '$lib/components/ml/MLDashboard.svelte';
+	import MLVersionTabs from '$lib/components/ml/MLVersionTabs.svelte';
 	import { recentLogs } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
@@ -575,7 +575,7 @@
 				</div>
 			{:else if activeTab === 'ml'}
 				<div class="tab-content">
-					<MLDashboard />
+					<MLVersionTabs />
 				</div>
 			{:else if activeTab === 'logs'}
 				<div class="tab-content">

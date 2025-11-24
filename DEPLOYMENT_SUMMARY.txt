@@ -1,0 +1,50 @@
+================================================================================
+  RESUME DEPLOIEMENT XGBOOST V2
+================================================================================
+
+Date: 2025-11-24 20:15:12
+
+INFRASTRUCTURE:
+  [OK] PostgreSQL connexion
+  [OK] Table ml_models
+  [OK] Colonnes config_* (scan_logs, trades)
+  [OK] Vue ml_features
+  [OK] Fonction get_pg_datalogger()
+  [OK] Fallback prix (price_provider)
+
+CODE:
+  [OK] API endpoint /api/ml/train_v2
+  [OK] XGBoostTrainerV2 avec split temporel
+  [OK] Class weights automatiques
+  [OK] Feature selection top-K
+  [OK] Model logger PostgreSQL
+
+SCRIPTS DISPONIBLES:
+  - train_final_optimized.py : Entrainement avec meilleurs params
+  - analyze_win_loss.py : Analyse distribution WIN/LOSS
+  - fix_db_simple.py : Correction auto compatibilite DB
+  - validate_xgboost_v2.py : Validation prerequis
+
+DOCUMENTATION:
+  - SYNTHESE_FINALE_COMPLETE.md : Resume complet (10 pages)
+  - NEXT_STEPS.md : Prochaines actions (feature engineering)
+  - FIX_PRIX_MANQUANTS.md : Fix price provider
+  - FINAL_SUMMARY_V2.md : Infrastructure V2
+
+STATUS MODELE ML:
+  Test Accuracy: 45.9% (insuffisant)
+  F1 Score: 0.000 (ne detecte pas WIN)
+  Action requise: Feature engineering (voir NEXT_STEPS.md)
+
+PROCHAINES ETAPES:
+  1. Feature engineering approfondi (2-3h)
+  2. Augmenter dataset (1h)
+  3. Tester regression (1h)
+  Total: 4-5h travail cible
+
+COMMANDES UTILES:
+  python train_final_optimized.py   # Entrainer modele
+  python analyze_win_loss.py        # Analyser distribution
+  python fix_db_simple.py           # Verifier DB
+
+================================================================================

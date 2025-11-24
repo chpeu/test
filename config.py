@@ -259,6 +259,24 @@ TRADING_CONFIG = {
     "ml_n_estimators": 300,
     "ml_learning_rate": 0.03,
 
+    # 🤖 XGBoost V2 (Régression PNL%) - Paramètres frontend/backend
+    "ml_v2_filter_enabled": False,
+    "ml_v2_min_confidence": 0.60,
+    "ml_v2_timeframe_days": 270,
+    "ml_v2_max_features": 40,
+    "ml_v2_marginal_threshold": 0.20,
+    "ml_v2_filter_marginal_trades": True,
+    "ml_v2_test_size": 0.20,
+    "ml_v2_validation_size": 0.10,
+    "ml_v2_n_estimators": 600,
+    "ml_v2_max_depth": 4,
+    "ml_v2_learning_rate": 0.03,
+    "ml_v2_min_child_weight": 5,
+    "ml_v2_reg_alpha": 1.0,
+    "ml_v2_reg_lambda": 3.0,
+    "ml_v2_subsample": 0.70,
+    "ml_v2_colsample_bytree": 0.70,
+    "ml_v2_gamma": 0.50,
 }
 
 # Risk management
