@@ -40,6 +40,9 @@ try:
     from core.scheduler import Scheduler
     from core.metrics import get_metrics_collector
     from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
+    # 🔥 LIVE TRADING: Imports pour live trading
+    from api.live_trading_endpoints import router as live_router, register_websocket_commands
+    from trading.live_order_manager import LiveOrderManager
 except ImportError as e:
     logging.error(f"Import error: {e}")
     # Fallback pour les dépendances manquantes
@@ -180,6 +183,13 @@ if api_router:
     app.include_router(api_router)
     logger.info("✅ API REST routes incluses: /api/*")
 
+# 🔥 LIVE TRADING: Inclure les routes live trading
+try:
+    app.include_router(live_router)
+    logger.info("✅ Live trading routes incluses: /api/live/*")
+except Exception as e:
+    logger.warning(f"⚠️ Impossible d'inclure live trading routes: {e}")
+
 # 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
 # Socket.IO complètement retiré pour performances maximales
 
@@ -190,6 +200,13 @@ ws_manager = get_websocket_manager()
 if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
+
+# 🔥 LIVE TRADING: Enregistrer les commandes WebSocket pour live trading
+try:
+    register_websocket_commands(ws_manager)
+    logger.info("✅ Commandes WebSocket live trading enregistrées")
+except Exception as e:
+    logger.warning(f"⚠️ Impossible d'enregistrer commandes WebSocket live trading: {e}")
 
 from contextlib import asynccontextmanager
 
@@ -450,6 +467,9 @@ backend_reboot_in_progress = False
 analytics_db = None
 notification_manager = None
 session_id = None  # ID unique de cette session
+
+# 🔥 LIVE TRADING: Instance globale LiveOrderManager
+live_order_manager = None
 
 # 🔥 Simple Logger: Logger ultra-simple sans batch pour debugging
 _simple_logger = None
@@ -1941,7 +1961,7 @@ async def scalability_refresh_loop_callback():
 def init_instances():
     """Initialiser les instances (après import)"""
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
-    global analytics_db, notification_manager, session_id
+    global analytics_db, notification_manager, session_id, live_order_manager
     
     # 🔥 FIX: Configurer le logger avec WebSocket handler pour envoyer les logs au frontend
     try:
@@ -2212,6 +2232,42 @@ def init_instances():
         # 🔥 NOUVEAU: Injecter Position Manager dans API routes (pour webhook Telegram)
         if set_position_manager and position_manager:
             set_position_manager(position_manager)
+
+    # 🔥 LIVE TRADING: Initialiser LiveOrderManager si mode LIVE
+    if not live_order_manager and LiveOrderManager:
+        from api.live_trading_endpoints import load_live_config
+
+        try:
+            live_config = load_live_config()
+
+            if live_config.get('trading_mode') == 'LIVE':
+                api_key = live_config.get('api_key_mexc', '')
+                api_secret = live_config.get('api_secret_mexc', '')
+
+                if api_key and api_secret:
+                    live_order_manager = LiveOrderManager(
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        dry_run=live_config.get('dry_run', True)
+                    )
+
+                    logger.info(
+                        f"✅ LiveOrderManager initialisé | "
+                        f"Mode: {'DRY_RUN' if live_config.get('dry_run') else 'LIVE RÉEL'}"
+                    )
+
+                    # Injecter LiveOrderManager dans PositionManager
+                    if position_manager:
+                        position_manager.live_order_manager = live_order_manager
+                        logger.info("💾 LiveOrderManager injecté dans Position Manager")
+                else:
+                    logger.warning("⚠️ Mode LIVE activé mais API keys manquantes")
+            else:
+                logger.info(f"📝 Mode trading: {live_config.get('trading_mode', 'PAPER')} (LiveOrderManager non initialisé)")
+        except Exception as e:
+            logger.error(f"❌ Erreur initialisation LiveOrderManager: {e}")
+            live_order_manager = None
+
     if not price_provider and get_price_provider:
         price_provider = get_price_provider()
     # 🔥 JOUR 3: Initialiser scheduler et configurer les callbacks
