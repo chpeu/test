@@ -330,17 +330,11 @@ class HybridPriceProvider:
                     )
                     return expired_cache
                 
-                # Dernier fallback: prix par défaut pour permettre le logging
+                # Pas de cache disponible, retourner None
                 logger.warning(
-                    f"⚠️ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol} - Retour prix par défaut"
+                    f"⚠️ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol} - Pas de cache disponible"
                 )
-                return {
-                    "symbol": symbol,
-                    "lastPrice": 0.0,
-                    "volume24": 0,
-                    "timestamp": time.time(),
-                    "fallback": True
-                }
+                return None
             
             if ticker:
                 return {
@@ -367,29 +361,15 @@ class HybridPriceProvider:
                 )
                 return expired_cache
             
-            # Si pas de cache, alors logger l'erreur complète
+            # Si pas de cache, alors logger l'erreur complète et retourner None
             if DEBUG_ENABLED:
                 logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
-            
-            # Dernier fallback: prix par défaut pour permettre le logging
-            logger.warning(f"⚠️ Aucun prix disponible pour {symbol}, retour prix par défaut")
-            return {
-                "symbol": symbol,
-                "lastPrice": 0.0,
-                "volume24": 0,
-                "timestamp": time.time(),
-                "fallback": True
-            }
-        
-        return {
-            "symbol": symbol,
-            "lastPrice": 0.0,
-            "volume24": 0,
-            "timestamp": time.time(),
-            "fallback": True
-        }
+
+            return None
+
+        return None
     
     def is_websocket_connected(self) -> bool:
         """Vérifier si WebSocket est connecté"""
