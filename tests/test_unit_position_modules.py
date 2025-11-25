@@ -630,13 +630,14 @@ class TestPartialTPManager:
         assert 'profit_usdt' in result
         assert 'size_remaining' in result
 
-        # 50% of size should be sold
-        assert abs(result['size_sold'] - 500.0) < 0.1
-        assert abs(result['size_remaining'] - 500.0) < 0.1
+        # partial_tp_percent from config (currently 65%) of size should be sold
+        # 1000.0 * 0.65 = 650.0 sold, 350.0 remaining
+        assert abs(result['size_sold'] - 650.0) < 0.1
+        assert abs(result['size_remaining'] - 350.0) < 0.1
 
         # Position should be updated
         assert position['partial_tp_sold'] is True
-        assert abs(position['size_remaining'] - 500.0) < 0.1
+        assert abs(position['size_remaining'] - 350.0) < 0.1
 
     def test_update_sl_after_partial_tp(self):
         """Test SL moved to break-even after partial TP"""
