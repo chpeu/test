@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { initWebSocket } from '$lib/utils/websocket';
+	import { initWebSocket, sendCommandViaWS } from '$lib/utils/websocket';
 
 	// États principaux
 	let tradingMode = 'PAPER';
@@ -37,8 +37,7 @@
 	let activeTab: 'config' | 'risk' = 'config';
 	let emergencyConfirm = false;
 
-	// Risk Settings
-	let maxSlippagePct = 0.15;
+	// Risk Settings (slippage géré dans VariablesPanel via config.max_slippage_pct)
 	let maxLatencyMs = 1000;
 
 	// Note: Trailing Stop est configuré dans l'onglet Variables (trailing_enabled, etc.)
@@ -70,16 +69,32 @@
 		if (refreshInterval) clearInterval(refreshInterval);
 	});
 
+	// 🔥 Indicateurs visuels pour API keys configurées
+	let apiKeyConfigured = false;
+	let apiSecretConfigured = false;
+
 	async function loadConfig() {
 		try {
-			const res = await fetch('/api/live/config');
-			if (res.ok) {
-				const data = await res.json();
+			// 1. Charger config live (API keys, mode, etc.)
+			const liveRes = await fetch('/api/live/config');
+			if (liveRes.ok) {
+				const data = await liveRes.json();
 				tradingMode = data.trading_mode || 'PAPER';
 				dryRunMode = data.dry_run !== false;
-				maxSlippagePct = data.max_slippage_pct || 0.15;
-				maxLatencyMs = data.max_latency_ms || 1000;
-				defaultLeverage = data.default_leverage || 10;
+				// 🔥 FIX: Indiquer si les API keys sont configurées (masquées côté backend)
+				apiKeyConfigured = data.api_key_mexc && data.api_key_mexc !== '' && data.api_key_mexc !== '***';
+				apiSecretConfigured = data.api_secret_mexc && data.api_secret_mexc === '***';
+			}
+
+			// 2. 🔥 Charger valeurs persistées depuis TRADING_CONFIG
+			const configRes = await fetch('/api/config/complete');
+			if (configRes.ok) {
+				const { trading_config } = await configRes.json();
+				if (trading_config) {
+					defaultLeverage = trading_config.default_leverage ?? 10;
+					maxLatencyMs = trading_config.max_latency_ms ?? 1000;
+					// 🔥 FIX: Utiliser uniquement config.max_slippage_pct (pas de doublon)
+				}
 			}
 		} catch (e) {
 			console.error('Erreur chargement config:', e);
@@ -107,18 +122,29 @@
 		saving = true;
 		saveStatus = '';
 		try {
+			// 1. Sauvegarder config live (API keys, mode, etc.)
 			const result = await ws?.sendCommand('update_live_config', {
 				trading_mode: tradingMode,
 				dry_run: dryRunMode,
 				api_key_mexc: apiKeyMexc || undefined,
 				api_secret_mexc: apiSecretMexc || undefined,
-				max_slippage_pct: maxSlippagePct,
 				max_latency_ms: maxLatencyMs,
 				default_leverage: defaultLeverage
 			});
 
+			// 2. 🔥 Persister dans config_overrides.json via update_config
+			// Note: max_slippage_pct est géré uniquement dans VariablesPanel
+			await sendCommandViaWS('update_config', {
+				default_leverage: defaultLeverage,
+				max_latency_ms: maxLatencyMs
+			});
+
+			// 🔥 FIX: Marquer les clés comme configurées après sauvegarde
+			if (apiKeyMexc) apiKeyConfigured = true;
+			if (apiSecretMexc) apiSecretConfigured = true;
+
 			if (result?.success) {
-				saveStatus = 'Configuration sauvegardée';
+				saveStatus = '✅ Configuration sauvegardée et persistée';
 				setTimeout(() => saveStatus = '', 3000);
 				await refreshData();
 			} else {
@@ -135,19 +161,20 @@
 		saving = true;
 		saveStatus = 'Test connexion...';
 		try {
+			// 🔥 FIX: Si aucune clé saisie, utiliser les clés du backend (déjà configurées)
 			const result = await ws?.sendCommand('test_mexc_connection', {
-				api_key: apiKeyMexc,
-				api_secret: apiSecretMexc
+				api_key: apiKeyMexc || undefined,  // undefined = utiliser clé backend
+				api_secret: apiSecretMexc || undefined  // undefined = utiliser clé backend
 			});
 
 			if (result?.success) {
-				saveStatus = `Connexion OK | Balance: ${result.balance_usdt?.toFixed(2)} USDT | ${result.latency_ms?.toFixed(0)}ms`;
+				saveStatus = `✅ Connexion OK | Balance: ${result.balance_usdt?.toFixed(2)} USDT | ${result.latency_ms?.toFixed(0)}ms`;
 				balance = result.balance_usdt || 0;
 			} else {
-				saveStatus = 'Échec: ' + (result?.error || 'Inconnue');
+				saveStatus = '❌ Échec: ' + (result?.error || 'Inconnue');
 			}
 		} catch (e: any) {
-			saveStatus = 'Erreur: ' + e.message;
+			saveStatus = '❌ Erreur: ' + e.message;
 		} finally {
 			saving = false;
 		}
@@ -276,20 +303,26 @@
 					<div class="api-section">
 						<div class="input-row">
 							{#if apiKeyVisible}
-								<input type="text" bind:value={apiKeyMexc} placeholder="API Key" />
-							{:else}
-								<input type="password" bind:value={apiKeyMexc} placeholder="API Key" />
-							{/if}
+							<input type="text" bind:value={apiKeyMexc} placeholder={apiKeyConfigured ? '••••••••' : 'API Key'} />
+						{:else}
+							<input type="password" bind:value={apiKeyMexc} placeholder={apiKeyConfigured ? '••••••••' : 'API Key'} />
+						{/if}
+						{#if apiKeyConfigured && !apiKeyMexc}
+							<span class="key-status configured">✓ Configurée</span>
+						{/if}
 							<button class="icon-btn" on:click={() => apiKeyVisible = !apiKeyVisible}>
 								{apiKeyVisible ? '👁️' : '🙈'}
 							</button>
 						</div>
 						<div class="input-row">
 							{#if apiSecretVisible}
-								<input type="text" bind:value={apiSecretMexc} placeholder="API Secret" />
-							{:else}
-								<input type="password" bind:value={apiSecretMexc} placeholder="API Secret" />
-							{/if}
+							<input type="text" bind:value={apiSecretMexc} placeholder={apiSecretConfigured ? '••••••••' : 'API Secret'} />
+						{:else}
+							<input type="password" bind:value={apiSecretMexc} placeholder={apiSecretConfigured ? '••••••••' : 'API Secret'} />
+						{/if}
+						{#if apiSecretConfigured && !apiSecretMexc}
+							<span class="key-status configured">✓ Configurée</span>
+						{/if}
 							<button class="icon-btn" on:click={() => apiSecretVisible = !apiSecretVisible}>
 								{apiSecretVisible ? '👁️' : '🙈'}
 							</button>
@@ -297,9 +330,13 @@
 						<div class="api-note">
 							Permissions: Futures Trading Read/Trade | Pas de Withdrawal
 						</div>
-						<button class="test-btn" on:click={testConnection} disabled={saving || !apiKeyMexc || !apiSecretMexc}>
-							🧪 Tester Connexion
-						</button>
+						<button 
+						class="test-btn" 
+						on:click={testConnection} 
+						disabled={saving || ((!apiKeyMexc || !apiSecretMexc) && (!apiKeyConfigured || !apiSecretConfigured))}
+					>
+						🧪 Tester Connexion
+					</button>
 					</div>
 				{/if}
 			{/if}
@@ -328,14 +365,11 @@
 			
 			<div class="risk-grid">
 				<div class="risk-item">
-					<label>Slippage Max (%)</label>
-					<input type="number" bind:value={maxSlippagePct} step="0.01" min="0" max="1" />
-				</div>
-				<div class="risk-item">
 					<label>Latence Max (ms)</label>
 					<input type="number" bind:value={maxLatencyMs} step="100" min="100" max="5000" />
 				</div>
 			</div>
+			<p class="info-note">💡 Slippage Max configuré dans l'onglet Variables (config.max_slippage_pct)</p>
 
 			{#if liveStats.live_enabled}
 				<div class="stats-mini">
@@ -438,6 +472,9 @@
 	.api-note { font-size: 11px; color: #6b7280; margin: 12px 0; padding: 8px; background: rgba(245, 158, 11, 0.1); border-radius: 4px; }
 	.test-btn { width: 100%; padding: 10px; background: linear-gradient(135deg, #10b981, #059669); border: none; border-radius: 6px; color: #000; font-weight: 600; font-size: 13px; cursor: pointer; }
 	.test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+	.key-status { font-size: 11px; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+	.key-status.configured { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+	.info-note { font-size: 12px; color: #9ca3af; padding: 8px 12px; background: rgba(99, 102, 241, 0.1); border-radius: 6px; margin-top: 8px; }
 
 	/* Actions */
 	.actions { display: flex; gap: 10px; margin-top: 20px; }

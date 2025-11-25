@@ -619,7 +619,7 @@ class LiveOrderManagerFutures:
                     params={
                         'stopPrice': stop_loss_price,
                         'reduceOnly': True,
-                        'positionSide': 'LONG' if direction == 'LONG' else 'SHORT'
+                        # 🔥 FIX: Pas de positionSide en mode one-way
                     }
                 )
                 logger.info(f"✅ Stop Loss configuré: {symbol} @ {stop_loss_price}")
@@ -634,7 +634,7 @@ class LiveOrderManagerFutures:
                     params={
                         'stopPrice': take_profit_price,
                         'reduceOnly': True,
-                        'positionSide': 'LONG' if direction == 'LONG' else 'SHORT'
+                        # 🔥 FIX: Pas de positionSide en mode one-way
                     }
                 )
                 logger.info(f"✅ Take Profit configuré: {symbol} @ {take_profit_price}")
@@ -719,7 +719,7 @@ class LiveOrderManagerFutures:
                         amount=size,
                         params={
                             'reduceOnly': True,
-                            'positionSide': 'LONG' if side == 'long' else 'SHORT'
+                            # 🔥 FIX: Pas de positionSide en mode one-way
                         }
                     )
                     

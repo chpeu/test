@@ -218,7 +218,7 @@ async def test_mexc_connection(data: Dict[str, Any]):
     Tester la connexion API MEXC FUTURES
 
     Args:
-        data: Dict avec api_key, api_secret
+        data: Dict avec api_key, api_secret (optionnels si déjà configurés)
 
     Returns:
         JSONResponse avec success, latency_ms, balance, error
@@ -230,8 +230,16 @@ async def test_mexc_connection(data: Dict[str, Any]):
         api_key = data.get('api_key', '')
         api_secret = data.get('api_secret', '')
 
+        # 🔥 FIX: Si aucune clé passée, utiliser les clés configurées
         if not api_key or not api_secret:
-            raise HTTPException(status_code=400, detail="API key et secret requis")
+            config = load_live_config()
+            if not api_key:
+                api_key = config.get('api_key_mexc', '')
+            if not api_secret:
+                api_secret = config.get('api_secret_mexc', '')
+        
+        if not api_key or not api_secret:
+            raise HTTPException(status_code=400, detail="API key et secret requis (non configurés)")
 
         # 🔥 FUTURES: Initialiser exchange avec defaultType: swap
         exchange = ccxt.mexc({

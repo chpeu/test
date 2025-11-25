@@ -108,6 +108,9 @@ TRADING_CONFIG = {
     # 🔥 FIX: Validation slippage avant ouverture position
     "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
     
+    # 🔥 Live Trading: Latence max API (alerter si dépassée)
+    "max_latency_ms": 1000,  # 1000ms par défaut
+    
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
         "enabled": True,

@@ -79,5 +79,7 @@
   "ml_v2_min_confidence": 0.6,
   "ml_v2_marginal_threshold": 0.1,
   "ml_v2_test_size": 0.35,
-  "ml_v2_validation_size": 0.15
+  "ml_v2_validation_size": 0.15,
+  "default_leverage": 1,
+  "max_latency_ms": 1000
 }

@@ -1862,8 +1862,7 @@ async def position_check_loop_callback():
                 if result:
                     result['timestamp'] = datetime.now().isoformat()
                     app_state['trade_history'].append(result)
-                    if len(app_state['trade_history']) > 1000:
-                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
                     save_trade_history()
                 
                 # 🔥 FIX: Désactiver callback WebSocket si position fermée
@@ -3151,8 +3150,7 @@ async def api_close_position():
             if result:
                 result['timestamp'] = datetime.now().isoformat()
                 app_state['trade_history'].append(result)
-                if len(app_state['trade_history']) > 1000:
-                    app_state['trade_history'] = app_state['trade_history'][-1000:]
+                # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
                 save_trade_history()
             
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
@@ -3396,37 +3394,34 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'winrate': 0.0
                             }
                             
-                            # 🔥 SESSION-BASED: Filtrer les trades par session_id actuelle (seulement cette session)
-                            # Stats et historique affichés = session actuelle UNIQUEMENT
-                            # PostgreSQL conserve TOUS les trades de toutes les sessions
-                            current_session_trades = []
+                            # 🔥 FIX: Utiliser app_state['trade_history'] comme source principale
+                            # L'historique persiste tant que le backend tourne (pas de limite)
+                            current_session_trades = app_state.get('trade_history', [])
+                            
+                            # Si analytics_db disponible, essayer de récupérer les trades de la session
                             if analytics_db and session_id:
                                 try:
                                     # Récupérer seulement les trades de la session actuelle
                                     all_trades = analytics_db.get_trades(limit=10000)
-                                    current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
-
-                                    # Recalculer stats pour cette session seulement
-                                    if current_session_trades:
-                                        total = len(current_session_trades)
-                                        wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0)
-                                        losses = total - wins
-                                        winrate = (wins / total * 100) if total > 0 else 0.0
-                                        stats_dict = {
-                                            'total_trades': total,
-                                            'wins': wins,
-                                            'losses': losses,
-                                            'winrate': winrate
-                                        }
-                                    else:
-                                        stats_dict = {
-                                            'total_trades': 0,
-                                            'wins': 0,
-                                            'losses': 0,
-                                            'winrate': 0.0
-                                        }
+                                    db_trades = [t for t in all_trades if t.get('session_id') == session_id]
+                                    # Utiliser les trades DB si plus complets, sinon garder app_state
+                                    if len(db_trades) > len(current_session_trades):
+                                        current_session_trades = db_trades
                                 except Exception as e:
-                                    logger.error(f"❌ Erreur filtrage trades par session: {e}")
+                                    logger.error(f"❌ Erreur récupération trades depuis DB: {e}")
+                            
+                            # Recalculer stats depuis l'historique
+                            if current_session_trades:
+                                total = len(current_session_trades)
+                                wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                                losses = total - wins
+                                winrate = (wins / total * 100) if total > 0 else 0.0
+                                stats_dict = {
+                                    'total_trades': total,
+                                    'wins': wins,
+                                    'losses': losses,
+                                    'winrate': winrate
+                                }
                             
                             # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
                             from config import (
@@ -3779,6 +3774,19 @@ async def handle_client_command(command: str, params: dict):
             val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
             TRADING_CONFIG['risk_per_trade'] = val
             updated['risk_per_trade'] = val
+        
+        # 🔥 Live Trading: default_leverage et max_latency_ms
+        if 'default_leverage' in params:
+            val = int(params['default_leverage'])
+            val = max(1, min(50, val))  # Clamp 1-50x
+            TRADING_CONFIG['default_leverage'] = val
+            updated['default_leverage'] = val
+        
+        if 'max_latency_ms' in params:
+            val = int(params['max_latency_ms'])
+            val = max(100, min(5000, val))  # Clamp 100-5000ms
+            TRADING_CONFIG['max_latency_ms'] = val
+            updated['max_latency_ms'] = val
         
         # 🔥 FIX: Support min_score_required dans update_config WebSocket
         if 'min_score_required' in params:
@@ -4214,8 +4222,7 @@ async def handle_client_command(command: str, params: dict):
                 if result:
                     result['timestamp'] = datetime.now().isoformat()
                     app_state['trade_history'].append(result)
-                    if len(app_state['trade_history']) > 1000:
-                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
                     save_trade_history()
                 
                 # Désactiver callback WebSocket
@@ -5366,8 +5373,12 @@ if __name__ == '__main__':
     import uvicorn
     import socket
     
-    # 🔥 PHASE 4: Charger l'historique au démarrage
-    load_trade_history()
+    # 🔥 FIX: Ne PAS charger l'historique au démarrage
+    # L'historique est réinitialisé à chaque redémarrage du backend
+    # mais persiste pendant toute la session tant que le backend tourne
+    # load_trade_history()  # Désactivé: reset à chaque démarrage
+    app_state['trade_history'] = []
+    logger.info("📝 Historique trades réinitialisé (nouvelle session backend)")
     
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000

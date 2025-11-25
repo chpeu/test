@@ -38,6 +38,9 @@
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
+		// 🔥 Live Trading (persistés dans config_overrides.json)
+		default_leverage: 10,
+		max_latency_ms: 1000,
 		// TP/SL Mode
 		tp_sl_mode: 'FIXE',
 		// Mode FIXE
@@ -1712,6 +1715,56 @@
 								data-debug-name="config.risk_per_trade"
 							/>
 							<span class="slider-value" data-debug-name="config.risk_per_trade">{Number(config.risk_per_trade).toFixed(1)}%</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- 🔥 Section Live Trading -->
+				<h3>🔴 Live Trading</h3>
+				<div class="variables-list">
+					<div class="variable-item" data-debug-name="config.default_leverage">
+						<div class="var-header" data-debug-name="config.default_leverage">
+							<label for="default-leverage" data-debug-name="config.default_leverage">
+								<span class="var-name" data-debug-name="config.default_leverage">Levier par défaut</span>
+								<span class="var-desc" data-debug-name="config.default_leverage">Levier utilisé pour les positions Futures (1-50x)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('default_leverage')} title="Réinitialiser" data-debug-name="config.default_leverage.reset">⟲</button>
+						</div>
+						<div class="slider-container" data-debug-name="config.default_leverage">
+							<input
+								id="default-leverage"
+								type="range"
+								step="1"
+								min="1"
+								max="50"
+								bind:value={config.default_leverage}
+								on:change={() => triggerAutoSave('default_leverage', `${config.default_leverage}x`)}
+								data-debug-name="config.default_leverage"
+							/>
+							<span class="slider-value" data-debug-name="config.default_leverage">{Number(config.default_leverage).toFixed(0)}x</span>
+						</div>
+					</div>
+
+					<div class="variable-item" data-debug-name="config.max_latency_ms">
+						<div class="var-header" data-debug-name="config.max_latency_ms">
+							<label for="max-latency" data-debug-name="config.max_latency_ms">
+								<span class="var-name" data-debug-name="config.max_latency_ms">Latence Max (ms)</span>
+								<span class="var-desc" data-debug-name="config.max_latency_ms">Alerter si latence API dépasse ce seuil</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('max_latency_ms')} title="Réinitialiser" data-debug-name="config.max_latency_ms.reset">⟲</button>
+						</div>
+						<div class="slider-container" data-debug-name="config.max_latency_ms">
+							<input
+								id="max-latency"
+								type="range"
+								step="100"
+								min="100"
+								max="5000"
+								bind:value={config.max_latency_ms}
+								on:change={() => triggerAutoSave('max_latency_ms', `${config.max_latency_ms}ms`)}
+								data-debug-name="config.max_latency_ms"
+							/>
+							<span class="slider-value" data-debug-name="config.max_latency_ms">{Number(config.max_latency_ms).toFixed(0)}ms</span>
 						</div>
 					</div>
 				</div>

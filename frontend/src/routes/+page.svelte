@@ -77,6 +77,9 @@
 	let tpSlMode = 'FIXE'; // Mode TP/SL actif du bot
 	let tpSlModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	const TP_SL_MODE_SAVE_DELAY = 2500; // 2.5 secondes d'inactivité avant sauvegarde automatique
+	
+	// 🔥 FIX: Session ID pour détecter les redémarrages du backend
+	let currentSessionId: string | null = null;
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -341,12 +344,9 @@
 		ws.on('disconnect', async () => {
 			console.warn('⚠️ WebSocket déconnecté');
 			backendConnected = false;
-			// 🔥 FIX: Reset trades à la fermeture du backend
-			const { clearHistory } = await import('$lib/stores/trades');
-			clearHistory();
-			// 🔥 FIX: Reset stats session
-			const { resetSessionStats } = await import('$lib/stores/stats');
-			resetSessionStats();
+			// 🔥 FIX: NE PAS effacer l'historique lors de la déconnexion
+			// L'historique doit persister tant que le backend tourne
+			// On ne clear que si le backend émet explicitement 'reset_session'
 			// 🔥 NOUVEAU: Mettre à jour la phase du bot
 			const { setBotPhase } = await import('$lib/stores/botPhase');
 			setBotPhase('arrêt');
@@ -359,6 +359,17 @@
 		// (BotControls utilise le store isScanning mis à jour via WebSocket natif)
 		if (data.is_scanning !== undefined) {
 			// L'état sera mis à jour via WebSocket natif ou le composant BotControls
+		}
+		
+		// 🔥 FIX: Détecter changement de session (redémarrage backend)
+		const { clearHistory, setTradeHistory } = await import('$lib/stores/trades');
+		const newSessionId = data.session_id;
+		if (newSessionId && newSessionId !== currentSessionId) {
+			console.log(`🔄 Nouvelle session détectée: ${newSessionId} (ancienne: ${currentSessionId})`);
+			// Reset l'historique des trades lors d'un nouveau backend
+			clearHistory();
+			currentSessionId = newSessionId;
+			console.log('📝 Historique trades réinitialisé (nouveau backend)');
 		}
 		
 		// 🔥 FIX: Mettre à jour la position active si présente
@@ -374,15 +385,13 @@
 			clearPosition();
 		}
 		
-		// 🔥 FIX: Nettoyer et charger l'historique des trades depuis le backend
-		const { setTradeHistory, clearHistory } = await import('$lib/stores/trades');
-		const tradeHistory = data.trade_history || (data.position?.data ? [] : []);
+		// 🔥 FIX: Charger l'historique des trades depuis le backend
+		const tradeHistory = data.trade_history;
 		if (tradeHistory && Array.isArray(tradeHistory) && tradeHistory.length > 0) {
 			setTradeHistory(tradeHistory);
-		} else {
-			// Nettoyer si pas de trades ou liste vide
-			clearHistory();
+			console.log(`✅ Historique chargé: ${tradeHistory.length} trades`);
 		}
+		// L'historique persiste pendant la session backend
 		
 		// 🔥 FIX: Charger les stats depuis le backend (remplace les anciennes stats)
 		const stats = data.stats || {};
@@ -400,12 +409,6 @@
 				avg_trade_duration: Number(stats.avg_trade_duration || 0)
 			};
 			updateStats(cleanStats);
-		}
-		
-		// 🔥 FIX: Nettoyer les graphiques PnL au démarrage si pas de trades
-		if (!tradeHistory || tradeHistory.length === 0) {
-			const { clearHistory: clearTrades } = await import('$lib/stores/trades');
-			clearTrades();
 		}
 	}
 
