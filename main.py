@@ -2512,17 +2512,17 @@ async def api_get_complete_state():
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats app_state: {e}")
         
-        # Récupérer historique trades
+        # Récupérer historique trades (tous les trades)
         trades_history = []
         if analytics_db:
             try:
-                trades_history = analytics_db.get_trades(limit=50)
+                trades_history = analytics_db.get_trades(limit=10000)  # Limite élevée pour récupérer tous les trades
             except Exception as e:
                 logger.error(f"❌ Erreur récupération historique analytics_db: {e}")
-        
+
         # Fallback: utiliser app_state['trade_history']
         if not trades_history and app_state.get('trade_history'):
-            trades_history = app_state['trade_history'][:50]
+            trades_history = app_state['trade_history']  # Tous les trades, pas de limite
         
         # 🔥 NOUVEAU: Filtrer les trades par session_id actuelle (seulement cette session)
         current_session_trades = []
@@ -2600,7 +2600,7 @@ async def api_get_complete_state():
                 'data': active_position_dict
             },
             'stats': stats_dict,
-            'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
+            'trades': current_session_trades if current_session_trades else trades_history,  # Tous les trades, pas de limite
             'timestamp': time.time()
         })
     except Exception as e:
@@ -3367,16 +3367,16 @@ async def websocket_endpoint(websocket: WebSocket):
                                 except Exception as e:
                                     logger.error(f"❌ Erreur récupération stats app_state: {e}")
                             
-                            # Récupérer historique trades
+                            # Récupérer historique trades (tous les trades)
                             trades_history = []
                             if analytics_db:
                                 try:
-                                    trades_history = analytics_db.get_trades(limit=50)
+                                    trades_history = analytics_db.get_trades(limit=10000)  # Tous les trades
                                 except Exception as e:
                                     logger.error(f"❌ Erreur récupération historique: {e}")
-                            
+
                             if not trades_history and app_state.get('trade_history'):
-                                trades_history = app_state['trade_history'][:50]
+                                trades_history = app_state['trade_history']  # Tous les trades, pas de limite
                             
                             # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
                             from config import (
@@ -4902,8 +4902,8 @@ async def get_dashboard_summary():
     })
 
 @app.get("/api/dashboard/trades-history")
-async def get_trades_history(limit: int = 50):
-    """Historique des trades récents"""
+async def get_trades_history(limit: int = 10000):
+    """Historique des trades récents (tous par défaut)"""
     trades = app_state['trade_history']
     # Retourner les plus récents en premier
     recent_trades = list(reversed(trades[-limit:]))
