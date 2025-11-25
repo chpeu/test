@@ -4326,7 +4326,12 @@ async def handle_client_command(command: str, params: dict):
         return await initiate_backend_reboot(reason=reason)
     
     else:
-        raise ValueError(f"Unknown command: {command}")
+        # 🔥 LIVE TRADING: Vérifier si la commande est enregistrée via ws_manager
+        if ws_manager and command in ws_manager._command_handlers:
+            # Exécuter la commande enregistrée (live trading, etc.)
+            return await ws_manager.handle_command(command, params, None)
+        else:
+            raise ValueError(f"Unknown command: {command}")
 
 
 # Configuration endpoints

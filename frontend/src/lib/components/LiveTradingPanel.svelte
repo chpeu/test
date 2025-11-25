@@ -28,6 +28,8 @@
 	let saving = false;
 	let saveStatus = '';
 	let showApiKeysSection = false;
+	let showLiveConfigInfo = false;
+	let liveConfigErrorMsg = '';
 
 	// Alertes
 	let maxSlippagePct = 0.15;
@@ -47,18 +49,28 @@
 
 	async function loadLiveConfig() {
 		try {
-			const ws = initWebSocket();
-			const result = await ws.sendCommand('get_live_config');
+			const response = await fetch('/api/live/config');
 
-			if (result && result.success) {
-				tradingMode = result.trading_mode || 'PAPER';
-				dryRunMode = result.dry_run !== false; // Par défaut true
-				maxSlippagePct = result.max_slippage_pct || 0.15;
-				maxLatencyMs = result.max_latency_ms || 1000;
-				maxPnlDiscrepancyPct = result.max_pnl_discrepancy_pct || 20;
+			if (response.ok) {
+				const result = await response.json();
+				if (result && result.success !== false) {
+					tradingMode = result.trading_mode || 'PAPER';
+					dryRunMode = result.dry_run !== false; // Par défaut true
+					maxSlippagePct = result.max_slippage_pct || 0.15;
+					maxLatencyMs = result.max_latency_ms || 1000;
+					maxPnlDiscrepancyPct = result.max_pnl_discrepancy_pct || 20;
+					showLiveConfigInfo = false;
+					liveConfigErrorMsg = '';
+					return;
+				}
 			}
+
+			liveConfigErrorMsg = "Impossible de charger la configuration live (endpoint /api/live/config indisponible ou clés absentes).";
+			showLiveConfigInfo = true;
 		} catch (err) {
 			console.error('Erreur chargement config live:', err);
+			liveConfigErrorMsg = 'La connexion au backend a échoué. Vérifie que `python main.py` est lancé puis recharge l\'onglet.';
+			showLiveConfigInfo = true;
 		}
 	}
 
@@ -188,6 +200,21 @@
 		{/if}
 	</div>
 
+	{#if showLiveConfigInfo}
+        <div class="info-banner">
+            <div class="info-icon">ℹ️</div>
+            <div class="info-content">
+                <p>{liveConfigErrorMsg}</p>
+                <ul>
+                    <li>Vérifie que le backend est démarré (`python main.py`).</li>
+                    <li>Renseigne tes clés API MEXC dans `.env` puis recharge la page.</li>
+                    <li>Sinon, ouvre l'onglet Live après avoir exécuté `python setup_parallel.py`.</li>
+                </ul>
+            </div>
+            <button class="info-close" on:click={() => showLiveConfigInfo = false}>✕</button>
+        </div>
+    {/if}
+
 	<!-- Configuration Mode -->
 	<div class="config-section">
 		<h3>⚙️ Mode de Trading</h3>
@@ -252,11 +279,19 @@
 					<div class="input-group">
 						<label>API Key</label>
 						<div class="password-input">
-							<input
-								type={apiKeyVisible ? 'text' : 'password'}
-								bind:value={apiKeyMexc}
-								placeholder="Votre API Key MEXC"
-							/>
+							{#if apiKeyVisible}
+								<input
+									type="text"
+									bind:value={apiKeyMexc}
+									placeholder="Votre API Key MEXC"
+								/>
+							{:else}
+								<input
+									type="password"
+									bind:value={apiKeyMexc}
+									placeholder="Votre API Key MEXC"
+								/>
+							{/if}
 							<button
 								class="toggle-visibility"
 								on:click={() => apiKeyVisible = !apiKeyVisible}
@@ -269,11 +304,19 @@
 					<div class="input-group">
 						<label>API Secret</label>
 						<div class="password-input">
-							<input
-								type={apiSecretVisible ? 'text' : 'password'}
-								bind:value={apiSecretMexc}
-								placeholder="Votre API Secret MEXC"
-							/>
+							{#if apiSecretVisible}
+								<input
+									type="text"
+									bind:value={apiSecretMexc}
+									placeholder="Votre API Secret MEXC"
+								/>
+							{:else}
+								<input
+									type="password"
+									bind:value={apiSecretMexc}
+									placeholder="Votre API Secret MEXC"
+								/>
+							{/if}
 							<button
 								class="toggle-visibility"
 								on:click={() => apiSecretVisible = !apiSecretVisible}
@@ -297,7 +340,7 @@
 					</button>
 				</div>
 			{/if}
-		</div}
+		</div>
 	{/if}
 
 	<!-- Alertes et Limites -->
@@ -870,6 +913,58 @@
 		padding: 6px 0;
 		font-size: 13px;
 		color: #888;
+	}
+
+	/* Info Banner pour erreurs/warnings */
+	.info-banner {
+		display: flex;
+		align-items: flex-start;
+		gap: 15px;
+		padding: 20px;
+		background: rgba(0, 102, 204, 0.15);
+		border: 2px solid #0066cc;
+		border-radius: 10px;
+		margin-bottom: 20px;
+	}
+
+	.info-icon {
+		font-size: 24px;
+		flex-shrink: 0;
+	}
+
+	.info-content {
+		flex: 1;
+	}
+
+	.info-content p {
+		margin: 0 0 10px 0;
+		color: #00aaff;
+		font-weight: bold;
+	}
+
+	.info-content ul {
+		margin: 0;
+		padding-left: 20px;
+		color: #888;
+		font-size: 13px;
+	}
+
+	.info-content li {
+		margin-bottom: 5px;
+	}
+
+	.info-close {
+		background: transparent;
+		border: none;
+		color: #888;
+		font-size: 18px;
+		cursor: pointer;
+		padding: 5px;
+		transition: color 0.3s;
+	}
+
+	.info-close:hover {
+		color: #ff4444;
 	}
 
 	@media (max-width: 768px) {

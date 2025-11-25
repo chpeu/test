@@ -866,6 +866,129 @@ async def predict_batch(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ========== V2 PREDICTIONS (REGRESSION PNL%) ==========
+
+@router.post("/predict_v2")
+async def predict_pnl_v2(
+    features: Dict[str, Any],
+    model_name: str = Query('xgboost_v2_latest'),
+):
+    """
+    Faire une prédiction PNL% (V2 Régression) sur une opportunité
+    
+    Args:
+        features: Dictionnaire avec toutes les features (RSI, MACD, BB, etc.)
+        model_name: Nom du modèle V2 à utiliser (défaut: xgboost_v2_latest)
+        
+    Returns:
+        Prédiction avec PNL% prédit, classification WIN/LOSS, et metadata
+    """
+    try:
+        from optimization.predictor_v2 import predict_pnl
+        
+        # Faire prédiction V2
+        prediction = predict_pnl(features, model_name)
+        
+        if prediction is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Modèle V2 '{model_name}' non disponible. Entraînez d'abord le modèle V2."
+            )
+        
+        return prediction
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur predict_pnl_v2: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/predict_v2/batch")
+async def predict_pnl_v2_batch(
+    opportunities: List[Dict[str, Any]],
+    model_name: str = Query('xgboost_v2_latest'),
+):
+    """
+    Faire des prédictions PNL% V2 en batch sur plusieurs opportunités
+    
+    Args:
+        opportunities: Liste de dictionnaires de features
+        model_name: Nom du modèle V2 à utiliser
+        
+    Returns:
+        Liste de prédictions PNL%
+    """
+    try:
+        from optimization.predictor_v2 import get_predictor_v2
+        
+        predictor = get_predictor_v2(model_name)
+        predictions = predictor.batch_predict(opportunities)
+        
+        # Filtrer les None
+        results = [p for p in predictions if p is not None]
+        
+        # Statistiques
+        predicted_pnls = [p['predicted_pnl'] for p in results]
+        avg_pnl = sum(predicted_pnls) / len(predicted_pnls) if predicted_pnls else 0
+        profitable_count = sum(1 for pnl in predicted_pnls if pnl > 0)
+        
+        return {
+            'predictions': results,
+            'total': len(opportunities),
+            'successful': len(results),
+            'failed': len(opportunities) - len(results),
+            'stats': {
+                'avg_predicted_pnl': round(avg_pnl, 3),
+                'profitable_count': profitable_count,
+                'loss_count': len(predicted_pnls) - profitable_count,
+                'profitable_pct': round((profitable_count / len(predicted_pnls) * 100), 1) if predicted_pnls else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur predict_pnl_v2_batch: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/predict_v2/filter")
+async def filter_setup_with_v2(
+    features: Dict[str, Any],
+    min_expected_pnl: float = Query(0.3, ge=0.0, le=10.0)
+):
+    """
+    Vérifier si un setup doit être filtré basé sur le PNL% prédit V2
+    
+    Args:
+        features: Dictionnaire avec toutes les features
+        min_expected_pnl: PNL minimum requis (%) pour accepter le trade
+        
+    Returns:
+        Résultat du filtrage avec prédiction
+    """
+    try:
+        from optimization.predictor_v2 import get_predictor_v2
+        
+        predictor = get_predictor_v2()
+        should_reject, predicted_pnl, reason = predictor.should_reject_trade(
+            features=features,
+            min_expected_pnl=min_expected_pnl
+        )
+        
+        return {
+            'should_reject': should_reject,
+            'predicted_pnl': predicted_pnl,
+            'predicted_pnl_formatted': f"{predicted_pnl:+.2f}%" if predicted_pnl else None,
+            'reason': reason,
+            'min_expected_pnl': min_expected_pnl,
+            'recommendation': 'reject' if should_reject else 'accept'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur filter_setup_with_v2: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== ALERTS ==========
 
 @router.get("/alerts/history")
@@ -1702,6 +1825,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         from sklearn.feature_selection import mutual_info_regression
         import numpy as np
         import pandas as pd
+        import json
         
         # Update status
         ml_tasks[task_id]['status'] = 'running'
@@ -1881,17 +2005,144 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         
         logger.info(f"📊 R² Test: {test_r2:.3f}, MAE Test: {test_mae:.3f}%, F1: {test_f1:.3f}")
         
-        # Sauvegarder modèle (TODO: implémenter sauvegarde)
-        ml_tasks[task_id]['progress'] = 95
-        ml_tasks[task_id]['stage'] = 'saving'
+        # ========== SAUVEGARDE MODÈLE V2 ==========
+        ml_tasks[task_id]['progress'] = 90
+        ml_tasks[task_id]['stage'] = 'saving_files'
         
-        # TODO: Sauvegarder dans PostgreSQL ml_models table
+        import joblib
+        from pathlib import Path
+        from datetime import datetime
+        
+        # Créer dossier si nécessaire
+        models_dir = Path("optimization/saved_models")
+        models_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Timestamp pour version
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = f"xgboost_v2_{timestamp}"
+        
+        # Sauvegarder modèle
+        model_path = models_dir / f"{model_name}.pkl"
+        joblib.dump(model, model_path)
+        logger.info(f"💾 Modèle sauvegardé: {model_path}")
+        
+        # Sauvegarder preprocessor
+        preprocessor_path = models_dir / f"{model_name}_preprocessor.pkl"
+        joblib.dump(preprocessor, preprocessor_path)
+        logger.info(f"💾 Preprocessor sauvegardé: {preprocessor_path}")
+        
+        # Sauvegarder aussi comme "latest"
+        latest_model_path = models_dir / "xgboost_v2_latest.pkl"
+        latest_preprocessor_path = models_dir / "xgboost_v2_latest_preprocessor.pkl"
+        joblib.dump(model, latest_model_path)
+        joblib.dump(preprocessor, latest_preprocessor_path)
+        
+        # ========== SAUVEGARDE POSTGRESQL ==========
+        ml_tasks[task_id]['progress'] = 95
+        ml_tasks[task_id]['stage'] = 'saving_database'
+        
+        try:
+            from database.db_manager import DatabaseManager
+            db = DatabaseManager()
+            
+            # Désactiver anciens modèles V2
+            await db.execute("""
+                UPDATE ml_models 
+                SET is_active = FALSE 
+                WHERE model_name LIKE 'xgboost_v2%'
+            """)
+            
+            # Préparer hyperparamètres
+            model_params = {
+                'n_estimators': n_estimators,
+                'max_depth': max_depth,
+                'learning_rate': learning_rate,
+                'min_child_weight': min_child_weight,
+                'reg_alpha': reg_alpha,
+                'reg_lambda': reg_lambda,
+                'subsample': subsample,
+                'colsample_bytree': colsample_bytree,
+                'gamma': gamma,
+                'objective': 'reg:squarederror',
+                'eval_metric': 'mae'
+            }
+            
+            # Feature importance (top 20)
+            feature_importance = dict(zip(
+                selected_features[:20],
+                model.feature_importances_[:20].tolist()
+            ))
+            
+            # Scores de sélection (top 20)
+            feature_selection_scores = mi_df.head(20).set_index('feature')['mi_score'].to_dict()
+            
+            # Insérer nouveau modèle
+            await db.execute("""
+                INSERT INTO ml_models (
+                    model_name, model_type, version, model_path, preprocessor_path,
+                    train_r2, val_r2, test_r2,
+                    train_mae, val_mae, test_mae,
+                    train_mse, val_mse, test_mse,
+                    test_f1, test_accuracy,
+                    timeframe_days, min_trades,
+                    total_samples, train_samples, val_samples, test_samples,
+                    filter_marginal_trades, marginal_threshold,
+                    split_type, max_features,
+                    model_params, feature_importance,
+                    selected_features, feature_selection_scores,
+                    is_active, trained_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5,
+                    $6, $7, $8,
+                    $9, $10, $11,
+                    $12, $13, $14,
+                    $15, $16,
+                    $17, $18,
+                    $19, $20, $21, $22,
+                    $23, $24,
+                    $25, $26,
+                    $27, $28,
+                    $29, $30,
+                    $31, $32
+                )
+            """,
+                model_name,                           # $1
+                'XGBRegressor',                       # $2
+                '2.0',                                # $3
+                str(model_path),                      # $4
+                str(preprocessor_path),               # $5
+                train_r2, val_r2, test_r2,           # $6-$8
+                train_mae, val_mae, test_mae,        # $9-$11
+                mean_squared_error(y_train, y_train_pred),  # $12
+                mean_squared_error(y_val, y_val_pred),      # $13
+                mean_squared_error(y_test, y_test_pred),    # $14
+                test_f1, test_accuracy,              # $15-$16
+                timeframe_days, 50,                  # $17-$18
+                len(df), len(X_train), len(X_val), len(X_test),  # $19-$22
+                filter_marginal, marginal_threshold, # $23-$24
+                'temporal', max_features,            # $25-$26
+                json.dumps(model_params),            # $27
+                json.dumps(feature_importance),      # $28
+                json.dumps(selected_features),       # $29
+                json.dumps(feature_selection_scores),# $30
+                True,                                # $31 (is_active)
+                datetime.now()                       # $32
+            )
+            
+            logger.info(f"✅ Modèle V2 sauvegardé dans PostgreSQL: {model_name}")
+            
+        except Exception as db_error:
+            logger.error(f"❌ Erreur sauvegarde PostgreSQL: {db_error}", exc_info=True)
+            # Continuer même si erreur DB (fichiers .pkl sont sauvegardés)
         
         # Success
         ml_tasks[task_id].update({
             'status': 'completed',
             'progress': 100,
             'stage': 'completed',
+            'model_name': model_name,
+            'model_path': str(model_path),
+            'preprocessor_path': str(preprocessor_path),
             'metrics': {
                 'train': {'mae': train_mae, 'r2': train_r2},
                 'val': {'mae': val_mae, 'r2': val_r2},
