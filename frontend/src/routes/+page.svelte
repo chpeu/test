@@ -24,6 +24,7 @@
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
 	import MLVersionTabs from '$lib/components/ml/MLVersionTabs.svelte';
+	import LiveTradingPanel from '$lib/components/LiveTradingPanel.svelte';
 	import { recentLogs } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
@@ -81,6 +82,7 @@
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
 		{ id: 'variables', label: 'Variables', icon: '⚙️' },
 		{ id: 'ml', label: 'ML', icon: '🤖' },
+		{ id: 'live', label: 'Live Trading', icon: '🔴' },
 		{ id: 'logs', label: 'Logs', icon: '📝' },
 		{ id: 'charts', label: 'Graphiques', icon: '📉' },
 		{ id: 'history', label: 'Historique', icon: '📜' },
@@ -576,6 +578,10 @@
 			{:else if activeTab === 'ml'}
 				<div class="tab-content">
 					<MLVersionTabs />
+				</div>
+			{:else if activeTab === 'live'}
+				<div class="tab-content">
+					<LiveTradingPanel />
 				</div>
 			{:else if activeTab === 'logs'}
 				<div class="tab-content">
