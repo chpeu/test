@@ -2524,14 +2524,16 @@ async def api_get_complete_state():
         if not trades_history and app_state.get('trade_history'):
             trades_history = app_state['trade_history']  # Tous les trades, pas de limite
         
-        # 🔥 NOUVEAU: Filtrer les trades par session_id actuelle (seulement cette session)
+        # 🔥 SESSION-BASED: Filtrer les trades par session_id actuelle (seulement cette session)
+        # Stats et historique affichés = session actuelle UNIQUEMENT
+        # PostgreSQL conserve TOUS les trades de toutes les sessions
         current_session_trades = []
         if analytics_db and session_id:
             try:
                 # Récupérer seulement les trades de la session actuelle
                 all_trades = analytics_db.get_trades(limit=10000)
                 current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
-                
+
                 # Recalculer stats pour cette session seulement
                 if current_session_trades:
                     total = len(current_session_trades)
@@ -2553,7 +2555,7 @@ async def api_get_complete_state():
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur filtrage trades par session: {e}")
-        
+
         return JSONResponse({
             'success': True,
             'session_id': session_id or f"live_{int(time.time())}",  # 🔥 FIX: Fallback si session_id None
@@ -2600,7 +2602,7 @@ async def api_get_complete_state():
                 'data': active_position_dict
             },
             'stats': stats_dict,
-            'trades': current_session_trades if current_session_trades else trades_history,  # Tous les trades, pas de limite
+            'trades': current_session_trades,  # 🔥 SESSION-BASED: Seulement les trades de la session actuelle (pas de fallback)
             'timestamp': time.time()
         })
     except Exception as e:
@@ -3332,51 +3334,37 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'winrate': 0.0
                             }
                             
-                            if analytics_db:
+                            # 🔥 SESSION-BASED: Filtrer les trades par session_id actuelle (seulement cette session)
+                            # Stats et historique affichés = session actuelle UNIQUEMENT
+                            # PostgreSQL conserve TOUS les trades de toutes les sessions
+                            current_session_trades = []
+                            if analytics_db and session_id:
                                 try:
-                                    trades = analytics_db.get_trades(limit=10000)
-                                    if trades:
-                                        total = len(trades)
-                                        wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
-                                        losses = total - wins
-                                        winrate = (wins / total * 100) if total > 0 else 0.0
-                                        stats_dict = {
-                                            'total_trades': total,
-                                            'wins': wins,
-                                            'losses': losses,
-                                            'winrate': winrate
-                                        }
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur récupération stats: {e}")
-                            
-                            # Fallback app_state
-                            if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
-                                try:
-                                    trades = app_state['trade_history']
-                                    if trades:
-                                        total = len(trades)
-                                        wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
-                                        losses = total - wins
-                                        winrate = (wins / total * 100) if total > 0 else 0.0
-                                        stats_dict = {
-                                            'total_trades': total,
-                                            'wins': wins,
-                                            'losses': losses,
-                                            'winrate': winrate
-                                        }
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur récupération stats app_state: {e}")
-                            
-                            # Récupérer historique trades (tous les trades)
-                            trades_history = []
-                            if analytics_db:
-                                try:
-                                    trades_history = analytics_db.get_trades(limit=10000)  # Tous les trades
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur récupération historique: {e}")
+                                    # Récupérer seulement les trades de la session actuelle
+                                    all_trades = analytics_db.get_trades(limit=10000)
+                                    current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
 
-                            if not trades_history and app_state.get('trade_history'):
-                                trades_history = app_state['trade_history']  # Tous les trades, pas de limite
+                                    # Recalculer stats pour cette session seulement
+                                    if current_session_trades:
+                                        total = len(current_session_trades)
+                                        wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0)
+                                        losses = total - wins
+                                        winrate = (wins / total * 100) if total > 0 else 0.0
+                                        stats_dict = {
+                                            'total_trades': total,
+                                            'wins': wins,
+                                            'losses': losses,
+                                            'winrate': winrate
+                                        }
+                                    else:
+                                        stats_dict = {
+                                            'total_trades': 0,
+                                            'wins': 0,
+                                            'losses': 0,
+                                            'winrate': 0.0
+                                        }
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur filtrage trades par session: {e}")
                             
                             # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
                             from config import (
@@ -3496,7 +3484,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'data': active_position_dict
                                 },
                                 'stats': stats_dict,
-                                'trade_history': trades_history,
+                                'trade_history': current_session_trades,  # 🔥 SESSION-BASED: Seulement les trades de la session actuelle
                                 'timestamp': time.time()
                             }
                             
@@ -4903,10 +4891,23 @@ async def get_dashboard_summary():
 
 @app.get("/api/dashboard/trades-history")
 async def get_trades_history(limit: int = 10000):
-    """Historique des trades récents (tous par défaut)"""
-    trades = app_state['trade_history']
+    """
+    🔥 SESSION-BASED: Historique des trades de la session actuelle uniquement
+
+    Les stats et l'historique affichés sont réinitialisés à chaque redémarrage du backend,
+    mais TOUS les trades sont conservés dans PostgreSQL de façon permanente.
+    """
+    # Récupérer les trades de la session actuelle uniquement
+    current_session_trades = []
+    if analytics_db and session_id:
+        try:
+            all_trades = analytics_db.get_trades(limit=limit)
+            current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération trades session: {e}")
+
     # Retourner les plus récents en premier
-    recent_trades = list(reversed(trades[-limit:]))
+    recent_trades = list(reversed(current_session_trades))
     return JSONResponse(recent_trades)
 
 
