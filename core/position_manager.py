@@ -494,10 +494,10 @@ class PositionManager:
                 if order_result.success:
                     # Mettre à jour position avec prix réel et slippage
                     self.active_position.entry = order_result.filled_price
-                    self.active_position.actual_slippage_pct = order_result.slippage_pct
+                    self.active_position.actual_slippage_pct = order_result.actual_slippage_pct
 
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
-                    if abs(order_result.slippage_pct) > 0.01:  # > 0.01%
+                    if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
                         price_diff = order_result.filled_price - entry
                         self.active_position.tp += price_diff if direction == 'LONG' else -price_diff
                         self.active_position.sl += price_diff if direction == 'LONG' else -price_diff
@@ -505,12 +505,12 @@ class PositionManager:
                     logger.info(
                         f"✅ Ordre LIVE placé: {symbol} | "
                         f"Prix rempli: {order_result.filled_price:.8f} | "
-                        f"Slippage: {order_result.slippage_pct:.4f}%"
+                        f"Slippage: {order_result.actual_slippage_pct or 0:.4f}%"
                     )
                 else:
                     logger.error(
                         f"❌ Ordre LIVE échoué: {symbol} | "
-                        f"Erreur: {order_result.error} | "
+                        f"Erreur: {order_result.error_message} | "
                         f"Revert to paper trading"
                     )
             except Exception as e:
@@ -1209,31 +1209,22 @@ class PositionManager:
                 if order_result.success:
                     # Utiliser le prix réel et slippage réel
                     actual_exit_price = order_result.filled_price
-                    actual_slippage_pct = order_result.slippage_pct
+                    actual_slippage_pct = order_result.actual_slippage_pct or 0.0
+
+                    # Calculer PnL réalisé depuis order_result
+                    realized_pnl_usdt = order_result.actual_pnl_usdt or 0.0
+                    realized_pnl_pct = (realized_pnl_usdt / self.active_position.size * 100) if self.active_position.size > 0 else 0.0
 
                     logger.info(
                         f"✅ Ordre LIVE fermé: {self.active_position.symbol} | "
                         f"Prix rempli: {order_result.filled_price:.8f} | "
-                        f"Slippage: {order_result.slippage_pct:.4f}% | "
-                        f"PnL réalisé: {order_result.realized_pnl_usdt:.2f} USDT ({order_result.realized_pnl_pct:.2f}%)"
+                        f"Slippage: {actual_slippage_pct:.4f}% | "
+                        f"PnL réalisé: {realized_pnl_usdt:.2f} USDT ({realized_pnl_pct:.2f}%)"
                     )
-
-                    # Vérifier résultat du trade
-                    verification = self.live_order_manager.verify_trade_result(
-                        expected_pnl_pct=((actual_exit_price - self.active_position.entry) / self.active_position.entry) * 100,
-                        actual_pnl_pct=order_result.realized_pnl_pct,
-                        expected_slippage_pct=0.1,  # Tolerance
-                        actual_slippage_pct=order_result.slippage_pct
-                    )
-
-                    if not verification['all_ok']:
-                        logger.warning(
-                            f"⚠️ Vérification trade: {', '.join(verification['warnings'])}"
-                        )
                 else:
                     logger.error(
                         f"❌ Ordre LIVE fermeture échoué: {self.active_position.symbol} | "
-                        f"Erreur: {order_result.error} | "
+                        f"Erreur: {order_result.error_message} | "
                         f"Using paper trading exit price"
                     )
             except Exception as e:

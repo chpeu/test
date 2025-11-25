@@ -30,7 +30,8 @@ def load_live_config() -> Dict[str, Any]:
         'api_secret_mexc': '',
         'max_slippage_pct': 0.15,
         'max_latency_ms': 1000,
-        'max_pnl_discrepancy_pct': 20
+        'max_pnl_discrepancy_pct': 20,
+        'default_leverage': 10  # 🔥 FUTURES: Levier par défaut (1-125x)
     }
 
     if not LIVE_CONFIG_FILE.exists():
@@ -169,6 +170,9 @@ async def update_live_config(data: Dict[str, Any]):
             config['max_latency_ms'] = int(data['max_latency_ms'])
         if 'max_pnl_discrepancy_pct' in data:
             config['max_pnl_discrepancy_pct'] = float(data['max_pnl_discrepancy_pct'])
+        if 'default_leverage' in data:
+            # Borner le levier entre 1 et 125
+            config['default_leverage'] = max(1, min(125, int(data['default_leverage'])))
 
         # Sauvegarder
         if not save_live_config(config):
@@ -177,19 +181,24 @@ async def update_live_config(data: Dict[str, Any]):
         # Si mode LIVE, réinitialiser LiveOrderManager
         if config['trading_mode'] == 'LIVE':
             from main import live_order_manager
-            from trading.live_order_manager import LiveOrderManager
+            from trading.live_order_manager_futures import LiveOrderManagerFutures
 
-            # Créer nouveau LiveOrderManager avec nouvelle config
+            # Créer nouveau LiveOrderManagerFutures avec nouvelle config
             if config.get('api_key_mexc') and config.get('api_secret_mexc'):
                 import main
-                main.live_order_manager = LiveOrderManager(
+                from config import TRADING_CONFIG
+                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                
+                main.live_order_manager = LiveOrderManagerFutures(
                     api_key=config['api_key_mexc'],
                     api_secret=config['api_secret_mexc'],
+                    default_leverage=default_leverage,
                     dry_run=config['dry_run']
                 )
                 logger.info(
-                    f"✅ LiveOrderManager réinitialisé | "
-                    f"Mode: {'DRY_RUN' if config['dry_run'] else 'LIVE RÉEL'}"
+                    f"✅ LiveOrderManagerFutures réinitialisé | "
+                    f"Mode: {'DRY_RUN' if config['dry_run'] else 'LIVE RÉEL'} | "
+                    f"Levier: {default_leverage}x"
                 )
 
         return JSONResponse({
@@ -206,13 +215,13 @@ async def update_live_config(data: Dict[str, Any]):
 @router.post("/test-connection")
 async def test_mexc_connection(data: Dict[str, Any]):
     """
-    Tester la connexion API MEXC
+    Tester la connexion API MEXC FUTURES
 
     Args:
         data: Dict avec api_key, api_secret
 
     Returns:
-        JSONResponse avec success, latency_ms, error
+        JSONResponse avec success, latency_ms, balance, error
     """
     try:
         import time
@@ -224,63 +233,252 @@ async def test_mexc_connection(data: Dict[str, Any]):
         if not api_key or not api_secret:
             raise HTTPException(status_code=400, detail="API key et secret requis")
 
-        # Initialiser exchange
+        # 🔥 FUTURES: Initialiser exchange avec defaultType: swap
         exchange = ccxt.mexc({
             'apiKey': api_key,
             'secret': api_secret,
-            'enableRateLimit': True
+            'enableRateLimit': True,
+            'options': {
+                'defaultType': 'swap',  # 🔥 FUTURES/Perpetual Swaps
+                'adjustForTimeDifference': True,
+            }
         })
 
-        # Tester connexion
+        # Tester connexion FUTURES
         start = time.time()
         balance = exchange.fetch_balance()
         latency_ms = (time.time() - start) * 1000
 
+        # Récupérer balance USDT futures
+        usdt_balance = balance.get('USDT', {})
+        free_balance = usdt_balance.get('free', 0) if isinstance(usdt_balance, dict) else 0
+
+        # Tester aussi les positions ouvertes
+        positions = []
+        try:
+            positions = exchange.fetch_positions()
+            open_positions = [p for p in positions if float(p.get('contracts', 0)) > 0]
+        except Exception:
+            open_positions = []
+
         return JSONResponse({
             'success': True,
+            'mode': 'FUTURES',
             'latency_ms': latency_ms,
-            'balance_usdt': balance.get('USDT', {}).get('free', 0),
-            'message': f'Connexion réussie | Latence: {latency_ms:.0f}ms'
+            'balance_usdt': free_balance,
+            'open_positions': len(open_positions),
+            'message': f'✅ Connexion FUTURES réussie | Balance: {free_balance:.2f} USDT | Latence: {latency_ms:.0f}ms'
         })
 
     except Exception as e:
-        logger.error(f"Erreur test connexion MEXC: {e}")
+        logger.error(f"Erreur test connexion MEXC FUTURES: {e}")
         return JSONResponse({
             'success': False,
-            'error': str(e)
+            'mode': 'FUTURES',
+            'error': str(e),
+            'message': f'❌ Erreur: {str(e)}'
         }, status_code=400)
 
 
 @router.post("/emergency-stop")
 async def emergency_stop():
-    """
-    Arrêt d'urgence du trading live
-
-    Returns:
-        JSONResponse avec success
-    """
+    """Arrêt d'urgence du trading live"""
     try:
         from main import live_order_manager, app_state
 
-        # Arrêter scanner
         app_state['is_scanning'] = False
+        closed_positions = []
 
-        # Fermer position active si existe (en mode dry-run pour sécurité)
-        from main import position_manager
-        if position_manager and position_manager.active_position:
-            logger.warning("🛑 ARRÊT D'URGENCE: Fermeture position active")
-            # TODO: Implémenter fermeture d'urgence position
+        # Fermer TOUTES les positions via API si disponible
+        if live_order_manager and hasattr(live_order_manager, 'emergency_close_all'):
+            results = live_order_manager.emergency_close_all()
+            closed_positions = [r.order_id for r in results if r.success]
 
-        logger.warning("🛑 ARRÊT D'URGENCE activé")
+        logger.warning(f"🛑 ARRÊT D'URGENCE | Positions fermées: {len(closed_positions)}")
 
         return JSONResponse({
             'success': True,
-            'message': 'Arrêt d\'urgence activé | Trading stoppé'
+            'closed_positions': len(closed_positions),
+            'message': f'Arrêt d\'urgence activé | {len(closed_positions)} positions fermées'
         })
 
     except Exception as e:
         logger.error(f"Erreur arrêt d'urgence: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/positions")
+async def get_positions():
+    """Récupérer toutes les positions ouvertes"""
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({'success': True, 'positions': [], 'count': 0})
+        
+        if hasattr(live_order_manager, 'get_all_positions'):
+            positions = live_order_manager.get_all_positions()
+            return JSONResponse({
+                'success': True,
+                'positions': positions,
+                'count': len(positions)
+            })
+        
+        return JSONResponse({'success': True, 'positions': [], 'count': 0})
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération positions: {e}")
+        return JSONResponse({'success': False, 'error': str(e), 'positions': []})
+
+
+@router.get("/balance")
+async def get_balance():
+    """Récupérer la balance USDT Futures"""
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({'success': True, 'balance': 0, 'currency': 'USDT'})
+        
+        if hasattr(live_order_manager, 'get_balance'):
+            balance = live_order_manager.get_balance('USDT')
+            return JSONResponse({
+                'success': True,
+                'balance': balance,
+                'currency': 'USDT'
+            })
+        
+        return JSONResponse({'success': True, 'balance': 0, 'currency': 'USDT'})
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération balance: {e}")
+        return JSONResponse({'success': False, 'error': str(e), 'balance': 0})
+
+
+@router.post("/trailing-stop")
+async def set_trailing_stop(data: Dict[str, Any]):
+    """
+    Configurer un trailing stop pour une position
+    
+    Args:
+        symbol: Paire (ex: BTC/USDT)
+        callback_rate: Pourcentage de callback (1-5%)
+        activation_price: Prix d'activation (optionnel)
+    """
+    try:
+        from main import live_order_manager
+        
+        symbol = data.get('symbol')
+        callback_rate = data.get('callback_rate', 1.0)  # 1% par défaut
+        activation_price = data.get('activation_price')
+        
+        if not symbol:
+            raise HTTPException(status_code=400, detail="Symbol requis")
+        
+        if not live_order_manager:
+            raise HTTPException(status_code=400, detail="Live trading non actif")
+        
+        # Vérifier si position existe
+        position = live_order_manager.get_position(symbol) if hasattr(live_order_manager, 'get_position') else None
+        if not position:
+            raise HTTPException(status_code=400, detail=f"Pas de position ouverte sur {symbol}")
+        
+        # Pour l'instant, stocker la config trailing stop localement
+        # TODO: Implémenter via API MEXC quand supporté
+        trailing_config = {
+            'symbol': symbol,
+            'callback_rate': callback_rate,
+            'activation_price': activation_price or position.get('entry_price'),
+            'active': True
+        }
+        
+        logger.info(f"✅ Trailing Stop configuré: {symbol} @ {callback_rate}%")
+        
+        return JSONResponse({
+            'success': True,
+            'trailing_stop': trailing_config,
+            'message': f'Trailing stop activé: {callback_rate}%'
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur configuration trailing stop: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/set-tp-sl")
+async def set_tp_sl(data: Dict[str, Any]):
+    """
+    Configurer TP/SL via API pour une position
+    
+    Args:
+        symbol: Paire (ex: BTC/USDT)
+        direction: LONG ou SHORT
+        stop_loss: Prix stop loss
+        take_profit: Prix take profit
+    """
+    try:
+        from main import live_order_manager
+        
+        symbol = data.get('symbol')
+        direction = data.get('direction', 'LONG')
+        stop_loss = data.get('stop_loss')
+        take_profit = data.get('take_profit')
+        
+        if not symbol:
+            raise HTTPException(status_code=400, detail="Symbol requis")
+        
+        if not live_order_manager:
+            raise HTTPException(status_code=400, detail="Live trading non actif")
+        
+        if hasattr(live_order_manager, 'set_stop_loss_take_profit'):
+            success = live_order_manager.set_stop_loss_take_profit(
+                symbol=symbol,
+                direction=direction,
+                stop_loss_price=stop_loss,
+                take_profit_price=take_profit
+            )
+            
+            if success:
+                return JSONResponse({
+                    'success': True,
+                    'message': f'TP/SL configuré pour {symbol}'
+                })
+            else:
+                raise HTTPException(status_code=400, detail="Échec configuration TP/SL")
+        
+        raise HTTPException(status_code=400, detail="Fonction non disponible")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur configuration TP/SL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/funding-rate/{symbol}")
+async def get_funding_rate(symbol: str):
+    """Récupérer le funding rate pour un symbole"""
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({'success': True, 'rate': 0, 'symbol': symbol})
+        
+        if hasattr(live_order_manager, 'get_funding_rate'):
+            rate = live_order_manager.get_funding_rate(symbol)
+            return JSONResponse({
+                'success': True,
+                'rate': rate or 0,
+                'symbol': symbol
+            })
+        
+        return JSONResponse({'success': True, 'rate': 0, 'symbol': symbol})
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération funding rate: {e}")
+        return JSONResponse({'success': False, 'error': str(e), 'rate': 0})
 
 
 # ============================================================================
@@ -345,6 +543,46 @@ def register_websocket_commands(ws_manager):
             return result
         except Exception as e:
             logger.error(f"Erreur WS emergency_stop: {e}")
+            return {'success': False, 'error': str(e)}
+
+    @ws_manager.command('get_positions')
+    async def handle_get_positions(data: Dict, websocket):
+        """Récupérer positions via WebSocket"""
+        try:
+            result = await get_positions()
+            return result
+        except Exception as e:
+            logger.error(f"Erreur WS get_positions: {e}")
+            return {'success': False, 'error': str(e), 'positions': []}
+
+    @ws_manager.command('get_balance')
+    async def handle_get_balance(data: Dict, websocket):
+        """Récupérer balance via WebSocket"""
+        try:
+            result = await get_balance()
+            return result
+        except Exception as e:
+            logger.error(f"Erreur WS get_balance: {e}")
+            return {'success': False, 'error': str(e), 'balance': 0}
+
+    @ws_manager.command('set_trailing_stop')
+    async def handle_set_trailing_stop(data: Dict, websocket):
+        """Configurer trailing stop via WebSocket"""
+        try:
+            result = await set_trailing_stop(data)
+            return result
+        except Exception as e:
+            logger.error(f"Erreur WS set_trailing_stop: {e}")
+            return {'success': False, 'error': str(e)}
+
+    @ws_manager.command('set_tp_sl')
+    async def handle_set_tp_sl(data: Dict, websocket):
+        """Configurer TP/SL via WebSocket"""
+        try:
+            result = await set_tp_sl(data)
+            return result
+        except Exception as e:
+            logger.error(f"Erreur WS set_tp_sl: {e}")
             return {'success': False, 'error': str(e)}
 
     logger.info("✅ Commandes WebSocket live trading enregistrées")

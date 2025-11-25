@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Live Order Manager FUTURES - Trade Cursor v7.0
+Live Order Manager FUTURES - Trade Cursor v7.1
 Gestion des ordres réels sur MEXC Futures (Perpetual Swaps)
 
 SUPPORT:
@@ -8,16 +8,58 @@ SUPPORT:
 - Levier configurable (1x à 125x)
 - Ordres Market et Limit
 - Fermeture partielle/totale
+- TP/SL via API (protection même si bot crash)
+- Retry avec backoff exponentiel
+- Synchronisation position réelle
+- Emergency close
 """
 
 import logging
 import time
+import asyncio
 import ccxt
-from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from typing import Optional, Dict, Any, List, Tuple
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import wraps
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# RETRY DECORATOR avec Backoff Exponentiel
+# ============================================================================
+def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 30.0):
+    """
+    Décorateur pour retry avec backoff exponentiel
+    
+    Args:
+        max_retries: Nombre max de tentatives
+        base_delay: Délai initial en secondes
+        max_delay: Délai maximum en secondes
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except (ccxt.NetworkError, ccxt.ExchangeNotAvailable, 
+                        ccxt.RequestTimeout, ccxt.DDoSProtection) as e:
+                    last_exception = e
+                    delay = min(base_delay * (2 ** attempt), max_delay)
+                    logger.warning(
+                        f"⚠️ Retry {attempt + 1}/{max_retries} après erreur: {e} | "
+                        f"Attente: {delay:.1f}s"
+                    )
+                    time.sleep(delay)
+                except Exception as e:
+                    # Erreurs non-réseau: ne pas retry
+                    raise e
+            raise last_exception
+        return wrapper
+    return decorator
 
 
 @dataclass
@@ -86,6 +128,7 @@ class LiveOrderManagerFutures:
             'options': {
                 'defaultType': 'swap',  # 🔥 FUTURES/Perpetual Swaps
                 'adjustForTimeDifference': True,
+                'defaultMarginMode': 'isolated',  # 🔥 Mode marge ISOLÉE (jamais croisé)
             }
         })
 
@@ -234,23 +277,24 @@ class LiveOrderManagerFutures:
                     executed_at=datetime.now(timezone.utc).isoformat()
                 )
 
-            # LIVE: Configurer le levier d'abord
+            # LIVE: Configurer marge isolée + levier
             if futures_symbol not in self._leverage_cache or self._leverage_cache[futures_symbol] != leverage:
                 try:
+                    # 🔥 Mode marge ISOLÉE (pas croisé)
+                    self.exchange.set_margin_mode('isolated', futures_symbol)
                     self.exchange.set_leverage(leverage, futures_symbol)
                     self._leverage_cache[futures_symbol] = leverage
+                    logger.info(f"✅ {futures_symbol}: Marge ISOLÉE + Levier {leverage}x configurés")
                 except Exception as e:
-                    logger.warning(f"⚠️ Impossible de configurer levier: {e}")
+                    logger.warning(f"⚠️ Impossible de configurer marge/levier: {e}")
 
-            # LIVE: Passer ordre réel
+            # LIVE: Passer ordre MARKET (pas de limit, pas de hedge)
             order = self.exchange.create_order(
                 symbol=futures_symbol,
-                type=order_type,
+                type=order_type,  # 'market'
                 side=side,
-                amount=amount,
-                params={
-                    'positionSide': 'LONG' if direction == 'LONG' else 'SHORT',
-                }
+                amount=amount
+                # 🔥 Pas de positionSide = mode one-way (pas hedge)
             )
 
             latency_ms = (time.time() - start_time) * 1000
@@ -383,16 +427,16 @@ class LiveOrderManagerFutures:
                     executed_at=datetime.now(timezone.utc).isoformat()
                 )
 
-            # LIVE: Fermer position réelle
+            # LIVE: Fermer position réelle (mode one-way, pas hedge)
             order = self.exchange.create_order(
                 symbol=futures_symbol,
-                type=order_type,
+                type=order_type,  # 'market'
                 side=side,
                 amount=amount,
                 params={
-                    'positionSide': 'LONG' if direction == 'LONG' else 'SHORT',
                     'reduceOnly': True,  # Important: fermeture uniquement
                 }
+                # 🔥 Pas de positionSide = mode one-way (pas hedge)
             )
 
             latency_ms = (time.time() - start_time) * 1000
@@ -509,6 +553,298 @@ class LiveOrderManagerFutures:
                 if self.stats['orders_placed'] > 0 else 0.0
             )
         }
+
+    # ========================================================================
+    # 🔥 NOUVELLES FONCTIONNALITÉS v7.1
+    # ========================================================================
+
+    @retry_with_backoff(max_retries=3)
+    def set_stop_loss_take_profit(
+        self,
+        symbol: str,
+        direction: str,
+        stop_loss_price: Optional[float] = None,
+        take_profit_price: Optional[float] = None
+    ) -> bool:
+        """
+        Définir TP/SL via API MEXC (protection même si bot crash)
+        
+        Args:
+            symbol: Paire (ex: BTC/USDT)
+            direction: LONG ou SHORT
+            stop_loss_price: Prix stop loss
+            take_profit_price: Prix take profit
+            
+        Returns:
+            True si succès
+        """
+        try:
+            if self.dry_run:
+                logger.info(
+                    f"✅ [DRY_RUN] TP/SL configuré: {symbol} | "
+                    f"SL: {stop_loss_price} | TP: {take_profit_price}"
+                )
+                return True
+
+            futures_symbol = self._convert_symbol_to_futures(symbol)
+            
+            # Récupérer position existante
+            positions = self.exchange.fetch_positions([futures_symbol])
+            position = None
+            for pos in positions:
+                if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                    position = pos
+                    break
+            
+            if not position:
+                logger.warning(f"⚠️ Pas de position ouverte pour {symbol}")
+                return False
+
+            # Créer ordres SL/TP via MEXC API
+            params = {}
+            if stop_loss_price:
+                params['stopLossPrice'] = stop_loss_price
+            if take_profit_price:
+                params['takeProfitPrice'] = take_profit_price
+
+            # Utiliser l'endpoint de modification de position
+            # Note: MEXC utilise des ordres conditionnels pour TP/SL
+            if stop_loss_price:
+                sl_side = 'sell' if direction == 'LONG' else 'buy'
+                self.exchange.create_order(
+                    symbol=futures_symbol,
+                    type='stop_market',
+                    side=sl_side,
+                    amount=float(position.get('contracts', 0)),
+                    params={
+                        'stopPrice': stop_loss_price,
+                        'reduceOnly': True,
+                        'positionSide': 'LONG' if direction == 'LONG' else 'SHORT'
+                    }
+                )
+                logger.info(f"✅ Stop Loss configuré: {symbol} @ {stop_loss_price}")
+
+            if take_profit_price:
+                tp_side = 'sell' if direction == 'LONG' else 'buy'
+                self.exchange.create_order(
+                    symbol=futures_symbol,
+                    type='take_profit_market',
+                    side=tp_side,
+                    amount=float(position.get('contracts', 0)),
+                    params={
+                        'stopPrice': take_profit_price,
+                        'reduceOnly': True,
+                        'positionSide': 'LONG' if direction == 'LONG' else 'SHORT'
+                    }
+                )
+                logger.info(f"✅ Take Profit configuré: {symbol} @ {take_profit_price}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Erreur configuration TP/SL: {e}")
+            return False
+
+    def sync_position(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Synchroniser position locale avec position réelle sur MEXC
+        
+        Args:
+            symbol: Paire à synchroniser
+            
+        Returns:
+            Dict avec position réelle ou None si pas de position
+        """
+        try:
+            if self.dry_run:
+                return None
+
+            real_position = self.get_position(symbol)
+            
+            if real_position:
+                logger.info(
+                    f"🔄 Position synchronisée: {symbol} | "
+                    f"Size: {real_position['size']} | "
+                    f"Entry: {real_position['entry_price']} | "
+                    f"PnL: {real_position['unrealized_pnl']:+.2f} USDT"
+                )
+            else:
+                logger.info(f"🔄 Aucune position ouverte sur {symbol}")
+                
+            return real_position
+
+        except Exception as e:
+            logger.error(f"❌ Erreur synchronisation: {e}")
+            return None
+
+    @retry_with_backoff(max_retries=5, base_delay=0.5)
+    def emergency_close_all(self) -> List[FuturesOrderResult]:
+        """
+        🚨 FERMETURE D'URGENCE de toutes les positions
+        
+        Returns:
+            Liste des résultats de fermeture
+        """
+        results = []
+        
+        try:
+            if self.dry_run:
+                logger.warning("🚨 [DRY_RUN] Emergency close simulé")
+                return [FuturesOrderResult(success=True, order_id="emergency_dry_run")]
+
+            # Récupérer toutes les positions ouvertes
+            positions = self.exchange.fetch_positions()
+            open_positions = [p for p in positions if float(p.get('contracts', 0)) > 0]
+
+            if not open_positions:
+                logger.info("✅ Aucune position à fermer")
+                return []
+
+            logger.warning(f"🚨 EMERGENCY CLOSE: {len(open_positions)} positions à fermer")
+
+            for pos in open_positions:
+                symbol = pos.get('symbol')
+                size = float(pos.get('contracts', 0))
+                side = pos.get('side')  # 'long' ou 'short'
+                entry_price = float(pos.get('entryPrice', 0))
+
+                # Fermer avec ordre market
+                close_side = 'sell' if side == 'long' else 'buy'
+                
+                try:
+                    order = self.exchange.create_order(
+                        symbol=symbol,
+                        type='market',
+                        side=close_side,
+                        amount=size,
+                        params={
+                            'reduceOnly': True,
+                            'positionSide': 'LONG' if side == 'long' else 'SHORT'
+                        }
+                    )
+                    
+                    results.append(FuturesOrderResult(
+                        success=True,
+                        order_id=order.get('id'),
+                        filled_price=order.get('average'),
+                        filled_amount=size
+                    ))
+                    
+                    logger.warning(
+                        f"🚨 Position fermée: {symbol} | "
+                        f"Size: {size} | Entry: {entry_price}"
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erreur fermeture {symbol}: {e}")
+                    results.append(FuturesOrderResult(
+                        success=False,
+                        error_message=str(e)
+                    ))
+
+            return results
+
+        except Exception as e:
+            logger.error(f"❌ Erreur emergency close: {e}")
+            return [FuturesOrderResult(success=False, error_message=str(e))]
+
+    def get_all_positions(self) -> List[Dict[str, Any]]:
+        """
+        Récupérer toutes les positions ouvertes
+        
+        Returns:
+            Liste des positions avec détails
+        """
+        try:
+            if self.dry_run:
+                return []
+
+            positions = self.exchange.fetch_positions()
+            open_positions = []
+            
+            for pos in positions:
+                if float(pos.get('contracts', 0)) > 0:
+                    open_positions.append({
+                        'symbol': pos.get('symbol'),
+                        'side': pos.get('side'),
+                        'size': float(pos.get('contracts', 0)),
+                        'entry_price': float(pos.get('entryPrice', 0)),
+                        'mark_price': float(pos.get('markPrice', 0)),
+                        'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
+                        'liquidation_price': float(pos.get('liquidationPrice', 0)),
+                        'leverage': int(pos.get('leverage', 1)),
+                        'margin': float(pos.get('initialMargin', 0)),
+                        'margin_ratio': float(pos.get('marginRatio', 0)),
+                    })
+
+            return open_positions
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération positions: {e}")
+            return []
+
+    def get_funding_rate(self, symbol: str) -> Optional[float]:
+        """
+        Récupérer le funding rate actuel
+        
+        Args:
+            symbol: Paire (ex: BTC/USDT)
+            
+        Returns:
+            Funding rate en % ou None
+        """
+        try:
+            futures_symbol = self._convert_symbol_to_futures(symbol)
+            funding = self.exchange.fetch_funding_rate(futures_symbol)
+            rate = funding.get('fundingRate', 0) * 100  # Convertir en %
+            
+            logger.debug(f"📊 Funding rate {symbol}: {rate:+.4f}%")
+            return rate
+
+        except Exception as e:
+            logger.error(f"❌ Erreur funding rate: {e}")
+            return None
+
+    def check_liquidation_risk(self, symbol: str, threshold_pct: float = 5.0) -> Tuple[bool, float]:
+        """
+        Vérifier le risque de liquidation
+        
+        Args:
+            symbol: Paire
+            threshold_pct: Seuil d'alerte en % (distance au prix de liquidation)
+            
+        Returns:
+            (is_at_risk, distance_pct)
+        """
+        try:
+            position = self.get_position(symbol)
+            
+            if not position:
+                return (False, 100.0)
+
+            entry_price = position['entry_price']
+            liq_price = position['liquidation_price']
+            mark_price = position.get('mark_price', entry_price)
+            side = position['side']
+
+            if side == 'long':
+                distance_pct = ((mark_price - liq_price) / mark_price) * 100
+            else:
+                distance_pct = ((liq_price - mark_price) / mark_price) * 100
+
+            is_at_risk = distance_pct < threshold_pct
+
+            if is_at_risk:
+                logger.warning(
+                    f"⚠️ RISQUE LIQUIDATION: {symbol} | "
+                    f"Distance: {distance_pct:.2f}% (seuil: {threshold_pct}%)"
+                )
+
+            return (is_at_risk, distance_pct)
+
+        except Exception as e:
+            logger.error(f"❌ Erreur vérification liquidation: {e}")
+            return (False, 100.0)
 
 
 # ============================================================================

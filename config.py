@@ -102,6 +102,9 @@ TRADING_CONFIG = {
     "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
     
+    # 🔥 FUTURES: Levier par défaut (1-125x pour MEXC)
+    "default_leverage": 10,  # Levier 10x par défaut (recommandé pour débuter)
+    
     # 🔥 FIX: Validation slippage avant ouverture position
     "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
     

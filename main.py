@@ -42,7 +42,7 @@ try:
     from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
     # 🔥 LIVE TRADING: Imports pour live trading
     from api.live_trading_endpoints import router as live_router, register_websocket_commands
-    from trading.live_order_manager import LiveOrderManager
+    from trading.live_order_manager_futures import LiveOrderManagerFutures as LiveOrderManager
 except ImportError as e:
     logging.error(f"Import error: {e}")
     # Fallback pour les dépendances manquantes
@@ -2245,15 +2245,21 @@ def init_instances():
                 api_secret = live_config.get('api_secret_mexc', '')
 
                 if api_key and api_secret:
+                    # 🔥 FUTURES: Récupérer levier depuis config
+                    from config import TRADING_CONFIG
+                    default_leverage = live_config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                    
                     live_order_manager = LiveOrderManager(
                         api_key=api_key,
                         api_secret=api_secret,
+                        default_leverage=default_leverage,
                         dry_run=live_config.get('dry_run', True)
                     )
 
                     logger.info(
-                        f"✅ LiveOrderManager initialisé | "
-                        f"Mode: {'DRY_RUN' if live_config.get('dry_run') else 'LIVE RÉEL'}"
+                        f"✅ LiveOrderManagerFutures initialisé | "
+                        f"Mode: {'DRY_RUN' if live_config.get('dry_run') else 'LIVE RÉEL'} | "
+                        f"Levier: {default_leverage}x"
                     )
 
                     # Injecter LiveOrderManager dans PositionManager
