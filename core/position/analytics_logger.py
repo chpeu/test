@@ -23,7 +23,8 @@ class AnalyticsLogger:
         exit_price: float,
         reason: str,
         pnl_data: Dict[str, float],
-        mode: str = 'LIVE'
+        mode: str = 'LIVE',
+        is_dry_run: Optional[bool] = None
     ) -> None:
         """
         Logger trade dans Analytics DB
@@ -34,6 +35,7 @@ class AnalyticsLogger:
             reason: Raison fermeture
             pnl_data: Dict avec pnl_pct, net_pnl, fees
             mode: LIVE, PAPER ou BACKTEST
+            is_dry_run: True si mode DRY_RUN (simulation), False si réel, None pour auto-detect
         """
         if not self.analytics_db:
             logger.warning("Analytics DB non disponible")
@@ -122,9 +124,11 @@ class AnalyticsLogger:
                 'backtest_id': position.get('backtest_id'),
                 'config_hash': position.get('config_hash'),
                 
-                # 🔥 LIVE TRADING: Ajouter colonnes manquantes avec valeurs par défaut
-                'is_live_trade': position.get('is_live_trade', False),
-                'is_dry_run': position.get('is_dry_run', True),
+                # 🔥 LIVE TRADING: Déterminer is_live_trade et is_dry_run
+                # is_live_trade = True si mode LIVE (vs PAPER/BACKTEST)
+                # is_dry_run = True si simulation (vs ordres réels)
+                'is_live_trade': position.get('is_live_trade', mode == 'LIVE'),
+                'is_dry_run': position.get('is_dry_run', is_dry_run if is_dry_run is not None else (mode != 'LIVE')),
                 'live_execution_mode': position.get('live_execution_mode'),
                 'entry_order_id': position.get('entry_order_id'),
                 'entry_order_type': position.get('entry_order_type'),
@@ -200,6 +204,7 @@ class AnalyticsLogger:
                 'trade_tags': position.get('trade_tags', []),
                 'user_rating': position.get('user_rating'),
                 'metadata': position.get('metadata', {})
+                # instance_port est ajouté automatiquement par analytics_database.py
             }
 
             self.analytics_db.insert_trade(trade_data)

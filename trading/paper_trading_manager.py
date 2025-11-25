@@ -39,6 +39,7 @@ class PaperTradingManager(AbstractTradingManager):
         initial_capital: float = 1000.0,
         price_provider=None,
         analytics_db=None,
+        analytics_logger=None,
         simulate_latency: bool = False,
         latency_ms: int = 100
     ):
@@ -49,6 +50,7 @@ class PaperTradingManager(AbstractTradingManager):
             initial_capital: Capital initial USDT
             price_provider: Provider pour prix réels
             analytics_db: Analytics DB pour logging
+            analytics_logger: Analytics Logger pour logging trades complets
             simulate_latency: Simuler latence exécution
             latency_ms: Latence en ms
         """
@@ -56,6 +58,7 @@ class PaperTradingManager(AbstractTradingManager):
         
         self.price_provider = price_provider
         self.analytics_db = analytics_db
+        self.analytics_logger = analytics_logger
         self.simulate_latency = simulate_latency
         self.latency_ms = latency_ms
         
@@ -191,19 +194,51 @@ class PaperTradingManager(AbstractTradingManager):
         """Hook après fermeture (log + analytics DB)"""
         super().on_position_closed(position, result)
         
-        # Logger trade dans Analytics DB
-        if self.analytics_db:
+        # 🔥 FIX: Utiliser analytics_logger au lieu d'appeler directement insert_trade
+        # pour garantir que tous les 113 champs requis sont présents
+        if hasattr(self, 'analytics_logger') and self.analytics_logger:
             try:
-                trade_data = {
-                    **result,
-                    'trading_mode': 'PAPER',
-                    'setup_id': position.setup_id,
-                    'is_backtest': False
+                # Construire le dict position à partir de TradingPosition
+                position_dict = {
+                    'symbol': position.symbol,
+                    'direction': position.direction,
+                    'entry': position.entry_price,
+                    'opened_at': position.start_time,
+                    'confirmed_by': position.confirmed_by if hasattr(position, 'confirmed_by') else '',
+                    'tp_sl_mode': position.tp_sl_mode if hasattr(position, 'tp_sl_mode') else None,
+                    'break_even_triggered': position.break_even_triggered if hasattr(position, 'break_even_triggered') else False,
+                    'trailing_stop_triggered': position.trailing_triggered if hasattr(position, 'trailing_triggered') else False,
+                    'partial_tp_sold': position.partial_tp_sold if hasattr(position, 'partial_tp_sold') else False,
+                    'tp_escalier_enabled': position.tp_escalier_enabled if hasattr(position, 'tp_escalier_enabled') else False,
+                    'tp_escalier_levels_hit': position.tp_escalier_levels_hit if hasattr(position, 'tp_escalier_levels_hit') else [],
+                    'tp_escalier_profits': position.tp_escalier_profits if hasattr(position, 'tp_escalier_profits') else [],
+                    'max_pnl_reached': position.max_pnl_reached if hasattr(position, 'max_pnl_reached') else None,
+                    'min_pnl_reached': position.min_pnl_reached if hasattr(position, 'min_pnl_reached') else None,
+                    'setup_id': position.setup_id if hasattr(position, 'setup_id') else None,
+                    'session_id': position.session_id if hasattr(position, 'session_id') else None,
                 }
-                trade_id = self.analytics_db.insert_trade(trade_data)
-                logger.debug(f"✅ Trade loggé (ID: {trade_id})")
+                
+                # Extraire PNL data du result
+                pnl_data = {
+                    'pnl_pct': result.get('gross_pnl_pct', result.get('pnl_pct', 0)),
+                    'net_pnl': result.get('net_pnl_usdt', 0),
+                    'fees': result.get('fees', 0),
+                    'slippage': result.get('slippage', 0),
+                }
+                
+                self.analytics_logger.log_trade(
+                    position=position_dict,
+                    exit_price=result.get('exit', position.entry_price),
+                    reason=result.get('reason', 'UNKNOWN'),
+                    pnl_data=pnl_data,
+                    mode='PAPER'
+                )
+                logger.debug(f"✅ Trade loggé via analytics_logger")
             except Exception as e:
-                logger.error(f"❌ Erreur log trade: {e}")
+                logger.error(f"❌ Erreur log trade via analytics_logger: {e}")
+        elif self.analytics_db:
+            # Fallback si analytics_logger n'est pas disponible
+            logger.warning("⚠️ analytics_logger non disponible, skip logging pour éviter erreur colonnes")
     
     # ==================== MÉTHODES PUBLIQUES ====================
     
@@ -270,7 +305,8 @@ class PaperTradingManager(AbstractTradingManager):
 def create_paper_trading_manager(
     initial_capital: float = 1000.0,
     price_provider=None,
-    analytics_db=None
+    analytics_db=None,
+    analytics_logger=None
 ) -> PaperTradingManager:
     """
     Factory pour créer Paper Trading Manager
@@ -279,6 +315,7 @@ def create_paper_trading_manager(
         initial_capital: Capital initial
         price_provider: Provider prix réels
         analytics_db: Analytics DB
+        analytics_logger: Analytics Logger pour logging trades complets
     
     Returns:
         Instance PaperTradingManager
@@ -286,6 +323,7 @@ def create_paper_trading_manager(
     return PaperTradingManager(
         initial_capital=initial_capital,
         price_provider=price_provider,
-        analytics_db=analytics_db
+        analytics_db=analytics_db,
+        analytics_logger=analytics_logger
     )
 

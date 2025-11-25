@@ -122,6 +122,10 @@
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
 	
+	// 🔥 Variables Live Trading
+	let liveConfig = null;
+	let loadingLiveConfig = false;
+	
 	// Variables pour export Excel et reset DB
 	let exportingExcel = false;
 	let retrainingML = false;
@@ -252,11 +256,32 @@
 			}
 			completeConfig = await response.json();
 			console.log('✅ Configuration complète chargée:', completeConfig);
+			
+			// 🔥 Charger également la config live pour afficher dans "Variables en cours"
+			await loadLiveConfig();
 		} catch (err) {
 			console.error('❌ Erreur chargement config complète:', err);
 			completeConfigError = err.message || 'Impossible de charger la configuration complète';
 		} finally {
 			loadingCompleteConfig = false;
+		}
+	}
+	
+	async function loadLiveConfig() {
+		loadingLiveConfig = true;
+		try {
+			const response = await fetch('/api/live/config');
+			if (!response.ok) {
+				throw new Error(`Erreur HTTP: ${response.status}`);
+			}
+			liveConfig = await response.json();
+			console.log('✅ Config Live chargée:', liveConfig);
+		} catch (err) {
+			console.error('❌ Erreur chargement config live:', err);
+			// Ne pas afficher d'erreur, juste ne pas afficher la config live
+			liveConfig = null;
+		} finally {
+			loadingLiveConfig = false;
 		}
 	}
 	
@@ -486,6 +511,10 @@
 				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
 				ml_v2_gamma: tradingConfig.ml_v2_gamma,
 			},
+			'💎 Live Trading': {
+				default_leverage: tradingConfig.default_leverage,
+				max_latency_ms: tradingConfig.max_latency_ms,
+			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
 				trailing_stop: tradingConfig.trailing_stop,
@@ -495,6 +524,35 @@
 				correlation_filter: tradingConfig.correlation_filter,
 				recovery_mode: tradingConfig.recovery_mode,
 				tp_escalier: tradingConfig.tp_escalier,
+			},
+		};
+	}
+	
+	// Fonction pour organiser Live Config en sections
+	function organizeLiveConfig(live: any) {
+		if (!live) return {};
+		
+		// Badge pour le mode
+		let modeBadge = '📄 PAPER';
+		if (live.trading_mode === 'LIVE') {
+			modeBadge = live.dry_run ? '🧪 LIVE DRY-RUN' : '🔴 LIVE RÉEL';
+		}
+		
+		return {
+			'🎯 Mode Trading': {
+				'Mode actuel': modeBadge,
+				trading_mode: live.trading_mode,
+				dry_run: live.dry_run,
+			},
+			'🔑 API Configuration': {
+				api_key_configured: live.api_key_mexc !== '' && live.api_key_mexc !== undefined,
+				api_secret_configured: live.api_secret_mexc === '***',
+			},
+			'⚙️ Paramètres Live': {
+				default_leverage: live.default_leverage,
+				max_latency_ms: live.max_latency_ms,
+				max_slippage_pct: live.max_slippage_pct,
+				max_pnl_discrepancy_pct: live.max_pnl_discrepancy_pct,
 			},
 		};
 	}
@@ -2929,6 +2987,26 @@
 							</div>
 						</div>
 
+						<!-- 🔥 LIVE TRADING CONFIG -->
+						{#if liveConfig}
+							<div class="config-category live-config-highlight" data-debug-name="completeConfig.live_config">
+								<h4 class="category-title" data-debug-name="completeConfig.live_config.title">🔴 LIVE TRADING CONFIG</h4>
+								{#each Object.entries(organizeLiveConfig(liveConfig)) as [categoryName, categoryVars]}
+									<div class="config-subcategory" data-debug-name="completeConfig.live_config.{categoryName}">
+										<h5 class="subcategory-title" data-debug-name="completeConfig.live_config.{categoryName}.title">{categoryName}</h5>
+										<div class="config-grid" data-debug-name="completeConfig.live_config.{categoryName}">
+											{#each Object.entries(categoryVars) as [key, value]}
+												<div class="config-item" data-debug-name="completeConfig.live_config.{categoryName}.{key}">
+													<span class="config-key" data-debug-name="completeConfig.live_config.{categoryName}.{key}">{key}:</span>
+													<span class="config-value" data-debug-name="completeConfig.live_config.{categoryName}.{key}">{formatValue(value)}</span>
+												</div>
+											{/each}
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
+
 						<div class="config-timestamp" data-debug-name="completeConfig.timestamp">
 							<small data-debug-name="completeConfig.timestamp">Dernière mise à jour: {new Date(completeConfig.timestamp * 1000).toLocaleString('fr-FR')}</small>
 						</div>
@@ -3813,6 +3891,12 @@
 	.config-category.main-category {
 		background: rgba(0, 170, 255, 0.08);
 		border: 2px solid rgba(0, 170, 255, 0.3);
+	}
+
+	.config-category.live-config-highlight {
+		background: rgba(0, 170, 255, 0.03);
+		border: 2px solid rgba(0, 170, 255, 0.2);
+		box-shadow: 0 0 10px rgba(0, 170, 255, 0.1);
 	}
 
 	.category-title {

@@ -1613,6 +1613,11 @@ class PositionManager:
         # 🔥 DEBUG: Log pour vérifier les valeurs avant enregistrement
         logger.debug(f"💾 Enregistrement trade: net_pnl_pct={net_pnl_pct:.4f}%, net_pnl_usdt={net_pnl_usdt:.4f} USDT, slippage_pct={slippage_pct:.4f}%")
         
+        # 🔥 FIX: Déterminer is_dry_run depuis live_order_manager si actif
+        is_dry_run_mode = None
+        if self.live_order_manager:
+            is_dry_run_mode = self.live_order_manager.dry_run
+        
         self.analytics_logger.log_trade(
             position=position.to_dict(),
             exit_price=exit_price,
@@ -1627,7 +1632,8 @@ class PositionManager:
                 'slippage_usdt': slippage_usdt,  # Slippage en USDT
                 'gross_pnl': pnl_data['pnl_usdt_gross']  # PnL brut en USDT
             },
-            mode='LIVE'
+            mode='LIVE' if self.live_order_manager else 'PAPER',
+            is_dry_run=is_dry_run_mode
         )
 
         # Réinitialiser position

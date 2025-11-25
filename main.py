@@ -327,23 +327,10 @@ def save_trade_history():
             except:
                 pass
     
-    # 🔥 PHASE 8: Sauvegarder aussi en SQLite (si activé)
-    if trade_db and app_state['trade_history']:
-        try:
-            # Sauvegarder uniquement le dernier trade (éviter doublons)
-            last_trade = app_state['trade_history'][0] if app_state['trade_history'] else None
-            if last_trade:
-                # Vérifier si déjà en DB (par timestamp)
-                existing = trade_db.get_trades_by_date_range(
-                    last_trade.get('date', ''),
-                    last_trade.get('date', '')
-                )
-                # Si pas déjà présent, insérer
-                if not any(t.get('timestamp') == last_trade.get('timestamp') for t in existing):
-                    trade_db.insert_trade(last_trade)
-                    logger.debug(f"✅ Trade sauvegardé en DB: {last_trade.get('symbol')}")
-        except Exception as e:
-            logger.error(f"❌ Erreur sauvegarde DB: {e}")
+    # 🔥 PHASE 8: Sauvegarde SQLite via AnalyticsLogger uniquement
+    # Les insertions directes ici provoquaient des erreurs car trade_history ne contient
+    # pas toutes les colonnes requises (114). Les trades sont déjà loggés ailleurs via
+    # analytics_logger, donc on évite toute duplication.
 
 def load_trade_history():
     """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
@@ -372,20 +359,10 @@ def load_trade_history():
                 app_state['trade_history'] = json.load(f)
             logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
             
-            # 🔥 PHASE 8: Migrer JSON → SQLite si DB disponible
-            if trade_db and app_state['trade_history']:
-                try:
-                    for trade in app_state['trade_history']:
-                        # Vérifier si déjà en DB
-                        existing = trade_db.get_trades_by_date_range(
-                            trade.get('date', ''),
-                            trade.get('date', '')
-                        )
-                        if not any(t.get('timestamp') == trade.get('timestamp') for t in existing):
-                            trade_db.insert_trade(trade)
-                    logger.info(f"✅ Migration JSON → SQLite: {len(app_state['trade_history'])} trades")
-                except Exception as e:
-                    logger.error(f"❌ Erreur migration DB: {e}")
+            # 🔥 PHASE 8: Migration JSON → SQLite désactivée
+            # Les trades JSON n'ont pas toutes les 114 colonnes requises par la nouvelle structure
+            # Les trades sont déjà loggés correctement via analytics_logger lors de leur fermeture
+            # La migration manuelle n'est plus nécessaire et causait des erreurs "107 values for 114 columns"
         else:
             app_state['trade_history'] = []
             logger.info(f"📝 Nouveau fichier historique créé: {TRADE_HISTORY_FILE}")
