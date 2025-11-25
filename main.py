@@ -77,15 +77,12 @@ logger = logging.getLogger(__name__)
 # 🔥 FIX: Configurer le logger avec WebSocket handler après l'initialisation de ws_manager
 # (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
-# Initialisation FastAPI
-app = FastAPI(title="Trade Cursor v7.0")
-
-
-# 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
+# 🔥 IMPORTANT: FastAPI imports (app sera créé après définition du lifespan)
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-@app.exception_handler(Exception)
+# 🔥 FIX: Exception handler global (défini comme fonction, sera attaché après création de app)
 async def global_exception_handler(request, exc):
     """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503 pour /api/state"""
     import time
@@ -146,7 +143,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             logger.error(f"❌ Exception dans middleware pour {path}: {e} ({process_time:.3f}s)", exc_info=True)
             raise
 
-app.add_middleware(LoggingMiddleware)
+# Middleware sera attaché APRES la création de app (ligne ~280)
 
 # 🔒 Security Middleware: Ajout des headers de sécurité
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -174,21 +171,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         return response
 
-app.add_middleware(SecurityHeadersMiddleware)
+# Middleware sera attaché APRES la création de app (ligne ~280)
 
 # 🔥 CLEANUP: Fichiers statiques supprimés - Frontend Svelte gère l'interface
 # Plus besoin de servir des fichiers statiques, le frontend Svelte est indépendant
 
-if api_router:
-    app.include_router(api_router)
-    logger.info("✅ API REST routes incluses: /api/*")
-
-# 🔥 LIVE TRADING: Inclure les routes live trading
-try:
-    app.include_router(live_router)
-    logger.info("✅ Live trading routes incluses: /api/live/*")
-except Exception as e:
-    logger.warning(f"⚠️ Impossible d'inclure live trading routes: {e}")
+# Les routers seront inclus APRES la création de app (ligne ~280)
 
 # 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
 # Socket.IO complètement retiré pour performances maximales
@@ -213,6 +201,8 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Lifespan context manager pour initialiser et fermer proprement les ressources"""
+    logger.info("🚀 LIFESPAN STARTUP: Initialisation...")
     data_logger = None
     try:
         try:
@@ -226,6 +216,7 @@ async def lifespan(app: FastAPI):
             app.state.data_logger = None
 
         init_instances()
+        logger.info("✅ LIFESPAN: init_instances() terminé")
 
         try:
             await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
@@ -272,7 +263,30 @@ async def lifespan(app: FastAPI):
             logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
 
 
-app.router.lifespan_context = lifespan
+# 🔥 CRITICAL: Créer FastAPI avec lifespan attaché (orchestrera startup/shutdown)
+app = FastAPI(title="Trade Cursor v7.0", lifespan=lifespan)
+logger.info("✅ FastAPI créé avec lifespan attaché (init_instances exécuté au démarrage)")
+
+# Attacher l'exception handler
+app.add_exception_handler(Exception, global_exception_handler)
+logger.info("✅ Exception handler global attaché")
+
+# Attacher les middlewares (doivent être attachés APRES la création de app)
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+logger.info("✅ Middlewares attachés (Logging + Security)")
+
+# Inclure les routers
+if api_router:
+    app.include_router(api_router)
+    logger.info("✅ API REST routes incluses: /api/*")
+
+# 🔥 LIVE TRADING: Inclure les routes live trading
+try:
+    app.include_router(live_router)
+    logger.info("✅ Live trading routes incluses: /api/live/*")
+except Exception as e:
+    logger.warning(f"⚠️ Impossible d'inclure live trading routes: {e}")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -2210,11 +2224,13 @@ def init_instances():
             set_position_manager(position_manager)
 
     # 🔥 LIVE TRADING: Initialiser LiveOrderManager si mode LIVE
+    logger.info(f"🔍 DEBUG: live_order_manager={live_order_manager}, LiveOrderManager disponible={LiveOrderManager is not None}")
     if not live_order_manager and LiveOrderManager:
         from api.live_trading_endpoints import load_live_config
 
         try:
             live_config = load_live_config()
+            logger.info(f"🔍 DEBUG: live_config loaded: trading_mode={live_config.get('trading_mode')}, dry_run={live_config.get('dry_run')}")
 
             if live_config.get('trading_mode') == 'LIVE':
                 api_key = live_config.get('api_key_mexc', '')
@@ -2243,12 +2259,19 @@ def init_instances():
                         position_manager.live_order_manager = live_order_manager
                         logger.info("💾 LiveOrderManager injecté dans Position Manager")
                 else:
-                    logger.warning("⚠️ Mode LIVE activé mais API keys manquantes")
+                    logger.warning(f"⚠️ Mode LIVE activé mais API keys manquantes: api_key={bool(api_key)}, api_secret={bool(api_secret)}")
             else:
-                logger.info(f"📝 Mode trading: {live_config.get('trading_mode', 'PAPER')} (LiveOrderManager non initialisé)")
+                logger.info(f"📝 Mode trading: {live_config.get('trading_mode', 'PAPER')} (LiveOrderManager non initialisé car mode != LIVE)")
         except Exception as e:
             logger.error(f"❌ Erreur initialisation LiveOrderManager: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             live_order_manager = None
+    else:
+        if not LiveOrderManager:
+            logger.warning("⚠️ LiveOrderManager class non disponible (import failed?)")
+        if live_order_manager:
+            logger.info(f"✅ LiveOrderManager déjà initialisé (dry_run={getattr(live_order_manager, 'dry_run', '?')})")
 
     if not price_provider and get_price_provider:
         price_provider = get_price_provider()
