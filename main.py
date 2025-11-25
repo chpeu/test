@@ -202,6 +202,7 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager pour initialiser et fermer proprement les ressources"""
+    logger.info("🚀 LIFESPAN ENTER: Début du context manager (avant initialisation)")
     logger.info("🚀 LIFESPAN STARTUP: Initialisation...")
     data_logger = None
     try:
@@ -232,6 +233,8 @@ async def lifespan(app: FastAPI):
 
         yield
 
+        logger.info("🟢 LIFESPAN YIELD: Execution principale terminée, début du shutdown")
+
     finally:
         try:
             if hasattr(app.state, 'data_logger') and app.state.data_logger:
@@ -261,6 +264,8 @@ async def lifespan(app: FastAPI):
 
         except Exception as e:
             logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
+
+        logger.info("🏁 LIFESPAN EXIT: Contexte fermé")
 
 
 # 🔥 CRITICAL: Créer FastAPI avec lifespan attaché (orchestrera startup/shutdown)
@@ -2096,9 +2101,14 @@ def init_instances():
                         logger.warning(f"Erreur tâche contexte marché: {e}")
                         await asyncio.sleep(60)  # Attendre avant de réessayer
             
-            # Démarrer la tâche périodique
-            asyncio.create_task(log_market_context_periodic())
-            logger.info("✅ Tâche périodique contexte marché démarrée")
+            # Démarrer la tâche périodique (seulement si boucle événements disponible)
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(log_market_context_periodic())
+                logger.info("✅ Tâche périodique contexte marché démarrée")
+            except RuntimeError:
+                # Pas de boucle d'événements, la tâche sera créée plus tard
+                logger.debug("📝 Tâche contexte marché reportée (pas de boucle événements)")
             
             # 🔥 PHASE 3: Tâche périodique pour flush forcé des buffers
             async def flush_buffers_periodic():
@@ -2118,9 +2128,14 @@ def init_instances():
                         logger.warning(f"Erreur tâche flush périodique: {e}")
                         await asyncio.sleep(30)  # Attendre avant de réessayer
             
-            # Démarrer la tâche de flush périodique
-            asyncio.create_task(flush_buffers_periodic())
-            logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
+            # Démarrer la tâche de flush périodique (seulement si boucle événements disponible)
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(flush_buffers_periodic())
+                logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
+            except RuntimeError:
+                # Pas de boucle d'événements, la tâche sera créée plus tard
+                logger.debug("📝 Tâche flush buffers reportée (pas de boucle événements)")
         
         # 🔥 Simple Logger: Initialiser SimplePGLogger pour debugging
         global _simple_logger
@@ -5431,9 +5446,33 @@ if __name__ == '__main__':
     if port != original_port:
         logger.info(f"✅ Port changé de {original_port} à {port}")
     
+    # 🔥 FIX CRITIQUE: Forcer l'initialisation ICI car le lifespan FastAPI ne s'exécute pas
+    # Cette approche garantit que init_instances() est TOUJOURS appelé au démarrage
+    print("🚀 INIT FORCÉ: Initialisation de init_instances() AVANT uvicorn.run()...")
+    logger.info("🚀 INIT FORCÉ: Initialisation de init_instances() AVANT uvicorn.run()...")
+    try:
+        init_instances()
+        print("✅ INIT FORCÉ: init_instances() terminé avec succès")
+        logger.info("✅ INIT FORCÉ: init_instances() terminé avec succès")
+        
+        # Vérifier que live_order_manager est bien initialisé
+        if live_order_manager:
+            dry_run_status = getattr(live_order_manager, 'dry_run', None)
+            mode_str = 'DRY_RUN' if dry_run_status else 'LIVE RÉEL'
+            print(f"✅ LiveOrderManager actif | Mode: {mode_str}")
+            logger.info(f"✅ LiveOrderManager actif | Mode: {mode_str}")
+        else:
+            print("📝 LiveOrderManager non initialisé (mode PAPER ou config manquante)")
+            logger.info("📝 LiveOrderManager non initialisé (mode PAPER ou config manquante)")
+    except Exception as e:
+        print(f"❌ INIT FORCÉ: Erreur initialisation: {e}")
+        logger.error(f"❌ INIT FORCÉ: Erreur initialisation: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
     try:
         # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
-        uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+        uvicorn.run(app, host='0.0.0.0', port=port, log_level="info", lifespan="on")
     except OSError as e:
         logger.error(f"❌ Erreur binding port {port}: {e}")
         logger.error(f"Vérifiez que le port {port} n'est pas déjà utilisé")
