@@ -159,18 +159,25 @@ async def auto_retrain_if_needed(
         logger.info(f"🚀 Lancement ré-entraînement automatique du modèle {model_name}")
         
         from optimization.models.xgboost_trainer import XGBoostTrainer
+        from config import TRADING_CONFIG
         
         trainer = XGBoostTrainer(model_name=model_name)
         
-        # Ré-entraîner avec paramètres optimisés
+        # 🔥 FIX: Utiliser les hyperparamètres de TRADING_CONFIG (configurables via UI)
         result = trainer.train(
             timeframe_days=90,  # Plus de données
             min_trades=50,
             feature_selection=True,
             max_features=30,
-            max_depth=4,  # Réduit pour moins d'overfitting
-            learning_rate=0.05,
-            n_estimators=150
+            # Hyperparamètres depuis TRADING_CONFIG
+            max_depth=TRADING_CONFIG.get('ml_max_depth', 6),
+            min_child_weight=TRADING_CONFIG.get('ml_min_child_weight', 3),
+            learning_rate=TRADING_CONFIG.get('ml_learning_rate', 0.03),
+            n_estimators=TRADING_CONFIG.get('ml_n_estimators', 300),
+            reg_alpha=TRADING_CONFIG.get('ml_reg_alpha', 0.5),
+            reg_lambda=TRADING_CONFIG.get('ml_reg_lambda', 2.0),
+            subsample=TRADING_CONFIG.get('ml_subsample', 0.8),
+            colsample_bytree=TRADING_CONFIG.get('ml_colsample_bytree', 0.8)
         )
         
         logger.info(f"✅ Ré-entraînement terminé avec succès")

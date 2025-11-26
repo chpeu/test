@@ -313,7 +313,7 @@ class HybridPriceProvider:
             
             # 🔥 FIX: Vérifier que ticker est un dict AVANT utilisation
             if not isinstance(ticker, dict) or ticker is None:
-                # Essayer le cache avant de logger l'erreur
+                # Essayer le cache avant de logger l'erreur (même périmé)
                 cached = await self._get_cached_price(symbol)
                 if cached:
                     if DEBUG_ENABLED:
@@ -321,7 +321,16 @@ class HybridPriceProvider:
                             f"⚠️ Ticker invalide pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s)"
                         )
                     return cached
-                # Si pas de cache, alors logger l'erreur
+                
+                # Essayer le cache sans restriction de temps
+                if symbol in self.price_cache:
+                    expired_cache = self.price_cache[symbol]
+                    logger.warning(
+                        f"⚠️ Format ticker invalide pour {symbol}, utilisation cache périmé (age={time.time() - expired_cache.get('timestamp', 0):.1f}s)"
+                    )
+                    return expired_cache
+                
+                # Pas de cache disponible, retourner None
                 logger.warning(
                     f"⚠️ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol} - Pas de cache disponible"
                 )
@@ -343,12 +352,23 @@ class HybridPriceProvider:
                         f"⚠️ REST erreur pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s): {e}"
                     )
                 return cached
-            # Si pas de cache, alors logger l'erreur complète
+            
+            # Essayer le cache sans restriction de temps
+            if symbol in self.price_cache:
+                expired_cache = self.price_cache[symbol]
+                logger.warning(
+                    f"⚠️ REST erreur pour {symbol}, utilisation cache périmé (age={time.time() - expired_cache.get('timestamp', 0):.1f}s)"
+                )
+                return expired_cache
+            
+            # Si pas de cache, alors logger l'erreur complète et retourner None
             if DEBUG_ENABLED:
                 logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
-        
+
+            return None
+
         return None
     
     def is_websocket_connected(self) -> bool:

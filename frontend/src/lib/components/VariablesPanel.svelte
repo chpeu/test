@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
+	import OptimizationPanel from '$lib/components/ml/OptimizationPanel.svelte';
+	import MLCONTENT_V2_Variables from '$lib/components/ml/MLCONTENT_V2_Variables.svelte';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -17,9 +19,9 @@
 		use_morning_star: true,
 		use_evening_star: true,
 		// Indicateurs Techniques
-		snr_threshold: 0.25,
-		breakout_threshold: 0.35,
-		wick_ratio_max: 2.8,
+		snr_threshold: 0.15,  // 🔥 PHASE 1 : 0.15 (était 0.25)
+		breakout_threshold: 0.25,  // 🔥 PHASE 1 : 0.25 (était 0.35)
+		wick_ratio_max: 4.5,  // 🔥 PHASE 1 : 4.5 (était 2.8)
 		di_gap_min: 4.0,
 		di_gap_adx_threshold: 25,
 		trend_timeframe: '15m',
@@ -31,16 +33,19 @@
 		// Validation Setups (déplacé depuis Stratégie)
 		use_confluence: false,
 		volume_multiplier: 0.95,
-		min_score_required: 7.5,
+		min_score_required: 6.5,  // 🔥 PHASE 1 : 6.5 (était 7.5)
 		max_slippage_pct: 0.03,
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
+		// 🔥 Live Trading (persistés dans config_overrides.json)
+		default_leverage: 10,
+		max_latency_ms: 1000,
 		// TP/SL Mode
 		tp_sl_mode: 'FIXE',
 		// Mode FIXE
-		tp_percent: 0.6,
-		sl_percent: 0.25,
+		tp_percent: 0.50,  // 🔥 PHASE 3 : 0.50 (était 0.6)
+		sl_percent: 0.20,  // 🔥 PHASE 3 : 0.20 (était 0.25)
 		partial_tp_percent: 50,
 		break_even_trigger: 0.3,
 		trailing_distance: 0.15,
@@ -60,16 +65,51 @@
 		escalier_level4_size: 25,
 		// Trailing Stop Adaptatif (tous modes)
 		trailing_enabled: true,
-		trailing_trigger_pnl: 0.25,
+		trailing_trigger_pnl: 0.15,  // 🔥 PHASE 2 : 0.15 (était 0.25)
 		trailing_atr_multiplier: 0.4,
 		trailing_min_distance: 0.08,
-		trailing_max_distance: 0.25
+		trailing_max_distance: 0.25,
+		// Machine Learning V1
+		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
+		ml_min_confidence: 0.60,  // 60% (si réactivé plus tard)
+		// Hyperparamètres XGBoost V1
+		ml_max_depth: 6,
+		ml_min_child_weight: 3,
+		ml_reg_alpha: 0.5,
+		ml_reg_lambda: 2.0,
+		ml_subsample: 0.8,
+		ml_colsample_bytree: 0.8,
+		ml_colsample_bylevel: 0.8,
+		ml_gamma: 0.0,
+		ml_scale_pos_weight: 1.0,
+		ml_n_estimators: 300,
+		ml_learning_rate: 0.03,
+		// Machine Learning V2 (Régression PNL%)
+		ml_v2_filter_enabled: false,
+		ml_v2_min_confidence: 0.60,
+		ml_v2_timeframe_days: 270,
+		ml_v2_max_features: 40,
+		ml_v2_marginal_threshold: 0.20,
+		ml_v2_filter_marginal_trades: true,
+		ml_v2_test_size: 0.2,
+		ml_v2_validation_size: 0.1,
+		// Hyperparamètres XGBoost V2 (Régression)
+		ml_v2_n_estimators: 600,
+		ml_v2_max_depth: 4,
+		ml_v2_learning_rate: 0.03,
+		ml_v2_min_child_weight: 5,
+		ml_v2_reg_alpha: 1.0,
+		ml_v2_reg_lambda: 3.0,
+		ml_v2_subsample: 0.7,
+		ml_v2_colsample_bytree: 0.7,
+		ml_v2_gamma: 0.5
 	};
 
 	let config = { ...DEFAULTS };
 	let loading = false;
 	let saveMessage = '';
 	let activeSubTab = 'setups';
+	let mlVersion = 'v1'; // 'v1' ou 'v2' pour les sous-onglets ML
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
 	
 	// 🔥 NOUVEAU: Système de sauvegarde automatique avec debounce
@@ -82,9 +122,23 @@
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
 	
+	// 🔥 Variables Live Trading
+	let liveConfig = null;
+	let loadingLiveConfig = false;
+	
 	// Variables pour export Excel et reset DB
 	let exportingExcel = false;
+	let retrainingML = false;
 	let resettingDB = false;
+	
+	// 🔥 FIX: Variables pour métriques ML dynamiques
+	let mlMetrics = {
+		test_accuracy: 55.3,
+		roc_auc: 55.4,
+		overfitting_gap: 33.1,
+		trades_count: 940
+	};
+	let loadingMLMetrics = false;
 
 	// Auto-ajustement sliders Escalier pour que la somme = 100%
 	function autoAdjustEscalierSize(changedLevel) {
@@ -106,6 +160,7 @@
 				config[`escalier_level${l}_size`] = Math.max(0, Math.round(currentValue - reduction));
 			});
 		}
+
 	}
 
 	function autoAdjustEscalierPnL(changedLevel) {
@@ -131,6 +186,66 @@
 	});
 	
 	// Fonction pour charger la configuration complète
+	async function handleParamsApplied() {
+		try {
+			saveMessage = '⏳ Synchronisation des paramètres...';
+			
+			// Annuler le debounce timer si en cours
+			if (debounceTimer) {
+				clearTimeout(debounceTimer);
+				debounceTimer = null;
+			}
+			
+			// Forcer hasUnsavedChanges à false AVANT de recharger
+			hasUnsavedChanges = false;
+			
+			// Polling: attendre que le backend ait écrit config_overrides.json
+			let attempts = 0;
+			const maxAttempts = 10;
+			let configUpdated = false;
+			
+			while (attempts < maxAttempts && !configUpdated) {
+				await new Promise(resolve => setTimeout(resolve, 300));
+				attempts++;
+				
+				try {
+					const response = await fetch('/api/config/complete');
+					if (response.ok) {
+						const data = await response.json();
+						// Vérifier si les paramètres ML (V1 ou V2) sont présents
+						if (data.trading_config && 
+							(data.trading_config.ml_max_depth !== undefined || 
+							 data.trading_config.ml_v2_max_depth !== undefined)) {
+							configUpdated = true;
+							console.log(` Config backend mise à jour (tentative ${attempts})`);
+						}
+					}
+				} catch (e) {
+					console.warn(`Tentative ${attempts} échouée:`, e);
+				}
+			}
+			
+			if (!configUpdated) {
+				console.warn(' Timeout: config backend non confirmée après 3s');
+			}
+			
+			// Recharger la configuration locale et "Variables en cours" en forçant le reload
+			console.log('🔄 Rechargement config après Apply...');
+			await loadConfig(true); // force = true pour bypasser le guard
+			await loadCompleteConfig();
+			
+			console.log('✅ Paramètres optimisés appliqués et synchronisés via REST');
+			console.log('🎯 Config.ml_v2_max_depth après reload:', config.ml_v2_max_depth);
+			console.log('🎯 Config.ml_v2_learning_rate après reload:', config.ml_v2_learning_rate);
+			saveMessage = '✅ Paramètres optimisés appliqués - sliders mis à jour';
+			setTimeout(() => { saveMessage = ''; }, 3000);
+		} catch (error) {
+			console.error('❌ Erreur handleParamsApplied:', error);
+			saveMessage = '❌ Erreur lors de l\'application des paramètres';
+			setTimeout(() => { saveMessage = ''; }, 5000);
+		}
+	}
+	
 	async function loadCompleteConfig() {
 		loadingCompleteConfig = true;
 		completeConfigError = null;
@@ -141,6 +256,9 @@
 			}
 			completeConfig = await response.json();
 			console.log('✅ Configuration complète chargée:', completeConfig);
+			
+			// 🔥 Charger également la config live pour afficher dans "Variables en cours"
+			await loadLiveConfig();
 		} catch (err) {
 			console.error('❌ Erreur chargement config complète:', err);
 			completeConfigError = err.message || 'Impossible de charger la configuration complète';
@@ -149,9 +267,90 @@
 		}
 	}
 	
+	async function loadLiveConfig() {
+		loadingLiveConfig = true;
+		try {
+			const response = await fetch('/api/live/config');
+			if (!response.ok) {
+				throw new Error(`Erreur HTTP: ${response.status}`);
+			}
+			liveConfig = await response.json();
+			console.log('✅ Config Live chargée:', liveConfig);
+		} catch (err) {
+			console.error('❌ Erreur chargement config live:', err);
+			// Ne pas afficher d'erreur, juste ne pas afficher la config live
+			liveConfig = null;
+		} finally {
+			loadingLiveConfig = false;
+		}
+	}
+	
+	// Fonction pour charger les métriques ML depuis l'API
+	let mlMetricsLoadAttempts = 0;
+	let mlMetricsLoaded = false;
+	const MAX_ML_METRICS_ATTEMPTS = 3;
+	
+	async function loadMLMetrics() {
+		// 🔥 FIX: Empêcher les tentatives infinies si le backend n'est pas prêt
+		if (loadingMLMetrics || mlMetricsLoadAttempts >= MAX_ML_METRICS_ATTEMPTS) {
+			return;
+		}
+		
+		loadingMLMetrics = true;
+		mlMetricsLoadAttempts++;
+		
+		try {
+			const response = await fetch('/api/ml/models/overview');
+			if (!response.ok) {
+				throw new Error(`Erreur HTTP: ${response.status}`);
+			}
+			const data = await response.json();
+			
+			// Extraire les métriques du modèle actuel (xgboost_v1)
+			const currentModel = data.models?.find(m => m.name === 'xgboost_v1');
+			if (currentModel && currentModel.metrics) {
+				mlMetrics = {
+					test_accuracy: (currentModel.metrics.test?.accuracy || 0) * 100,
+					roc_auc: (currentModel.metrics.test?.roc_auc || 0) * 100,
+					overfitting_gap: currentModel.overfitting_gap || 0,
+					trades_count: currentModel.dataset_info?.total_samples || 0
+				};
+				console.log('✅ Métriques ML chargées:', mlMetrics);
+				mlMetricsLoadAttempts = 0; // Reset sur succès
+				mlMetricsLoaded = true;
+			}
+		} catch (err) {
+			console.error(`❌ Erreur chargement métriques ML (tentative ${mlMetricsLoadAttempts}/${MAX_ML_METRICS_ATTEMPTS}):`, err);
+			if (mlMetricsLoadAttempts >= MAX_ML_METRICS_ATTEMPTS) {
+				saveMessage = '⚠️ Impossible de charger les métriques ML. Backend non accessible.';
+				setTimeout(() => saveMessage = '', 5000);
+			}
+		} finally {
+			loadingMLMetrics = false;
+		}
+	}
+	
 	// Charger la config complète quand on active l'onglet
-	$: if (activeSubTab === 'current' && !completeConfig && !loadingCompleteConfig) {
+	// 🔥 FIX: Ne recharger que si pas de changements non sauvegardés pour préserver les modifications locales
+	$: if (activeSubTab === 'current' && !completeConfig && !loadingCompleteConfig && !hasUnsavedChanges) {
 		loadCompleteConfig();
+	}
+	
+	// 🔥 FIX: Charger les métriques ML quand on active l'onglet Machine Learning une seule fois
+	$: if (activeSubTab === 'ml' && !loadingMLMetrics && !mlMetricsLoaded && mlMetricsLoadAttempts === 0) {
+		loadMLMetrics();
+	}
+	
+	// 🔥 FIX: Mettre à jour completeConfig.trading_config avec les valeurs locales si on a des changements non sauvegardés
+	$: if (activeSubTab === 'current' && completeConfig && hasUnsavedChanges) {
+		// Synchroniser les valeurs locales dans completeConfig pour affichage en temps réel
+		if (completeConfig.trading_config) {
+			Object.keys(config).forEach(key => {
+				if (config[key] !== completeConfig.trading_config[key]) {
+					completeConfig.trading_config[key] = config[key];
+				}
+			});
+		}
 	}
 	
 	// Fonction pour formater une valeur selon son type
@@ -278,6 +477,44 @@
 				top_pairs_limit: tradingConfig.top_pairs_limit,
 				balance_score_min: tradingConfig.balance_score_min,
 			},
+			'🤖 Machine Learning V1': {
+				ml_filter_enabled: tradingConfig.ml_filter_enabled,
+				ml_min_confidence: tradingConfig.ml_min_confidence,
+				ml_max_depth: tradingConfig.ml_max_depth,
+				ml_min_child_weight: tradingConfig.ml_min_child_weight,
+				ml_reg_alpha: tradingConfig.ml_reg_alpha,
+				ml_reg_lambda: tradingConfig.ml_reg_lambda,
+				ml_subsample: tradingConfig.ml_subsample,
+				ml_colsample_bytree: tradingConfig.ml_colsample_bytree,
+				ml_colsample_bylevel: tradingConfig.ml_colsample_bylevel,
+				ml_gamma: tradingConfig.ml_gamma,
+				ml_scale_pos_weight: tradingConfig.ml_scale_pos_weight,
+				ml_n_estimators: tradingConfig.ml_n_estimators,
+				ml_learning_rate: tradingConfig.ml_learning_rate,
+			},
+			'🚀 Machine Learning V2 (Régression)': {
+				ml_v2_filter_enabled: tradingConfig.ml_v2_filter_enabled,
+				ml_v2_min_confidence: tradingConfig.ml_v2_min_confidence,
+				ml_v2_timeframe_days: tradingConfig.ml_v2_timeframe_days,
+				ml_v2_max_features: tradingConfig.ml_v2_max_features,
+				ml_v2_marginal_threshold: tradingConfig.ml_v2_marginal_threshold,
+				ml_v2_filter_marginal_trades: tradingConfig.ml_v2_filter_marginal_trades,
+				ml_v2_test_size: tradingConfig.ml_v2_test_size,
+				ml_v2_validation_size: tradingConfig.ml_v2_validation_size,
+				ml_v2_n_estimators: tradingConfig.ml_v2_n_estimators,
+				ml_v2_max_depth: tradingConfig.ml_v2_max_depth,
+				ml_v2_learning_rate: tradingConfig.ml_v2_learning_rate,
+				ml_v2_min_child_weight: tradingConfig.ml_v2_min_child_weight,
+				ml_v2_reg_alpha: tradingConfig.ml_v2_reg_alpha,
+				ml_v2_reg_lambda: tradingConfig.ml_v2_reg_lambda,
+				ml_v2_subsample: tradingConfig.ml_v2_subsample,
+				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
+				ml_v2_gamma: tradingConfig.ml_v2_gamma,
+			},
+			'💎 Live Trading': {
+				default_leverage: tradingConfig.default_leverage,
+				max_latency_ms: tradingConfig.max_latency_ms,
+			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
 				trailing_stop: tradingConfig.trailing_stop,
@@ -290,29 +527,55 @@
 			},
 		};
 	}
+	
+	// Fonction pour organiser Live Config en sections
+	function organizeLiveConfig(live: any) {
+		if (!live) return {};
+		
+		// Badge pour le mode
+		let modeBadge = '📄 PAPER';
+		if (live.trading_mode === 'LIVE') {
+			modeBadge = live.dry_run ? '🧪 LIVE DRY-RUN' : '🔴 LIVE RÉEL';
+		}
+		
+		return {
+			'🎯 Mode Trading': {
+				'Mode actuel': modeBadge,
+				trading_mode: live.trading_mode,
+				dry_run: live.dry_run,
+			},
+			'🔑 API Configuration': {
+				api_key_configured: live.api_key_mexc !== '' && live.api_key_mexc !== undefined,
+				api_secret_configured: live.api_secret_mexc === '***',
+			},
+			'⚙️ Paramètres Live': {
+				default_leverage: live.default_leverage,
+				max_latency_ms: live.max_latency_ms,
+				max_slippage_pct: live.max_slippage_pct,
+				max_pnl_discrepancy_pct: live.max_pnl_discrepancy_pct,
+			},
+		};
+	}
 
-	async function loadConfig() {
+	async function loadConfig(force = false) {
 		try {
 			// 🔥 FIX: Ne JAMAIS recharger la config si on a des changements non sauvegardés
 			// Cela évite d'écraser les modifications lors des changements d'onglet
-			if (hasUnsavedChanges) {
+			// SAUF si force=true (utilisé après apply params depuis OptimizationPanel)
+			if (hasUnsavedChanges && !force) {
 				console.log('⚠️ Changements non sauvegardés détectés, chargement de la config ignoré pour préserver les modifications');
 				return;
 			}
 			
-			// 🔥 FIX: Ne pas recharger si on vient de changer d'onglet (évite les rechargements inutiles)
-			// On ne recharge que si explicitement demandé ou au montage initial
-			
-			// 🔥 BIDIRECTIONNEL: Utiliser WebSocket uniquement
-			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
-			const ws = getWebSocket();
-
-			if (!ws || !ws.connected) {
-				throw new Error('WebSocket non connecté');
+			// 🔥 NOUVEAU: Utiliser /api/config/complete REST au lieu de WebSocket
+			// pour garantir que les 11 paramètres ML sont correctement chargés
+			const response = await fetch('/api/config/complete');
+			if (!response.ok) {
+				throw new Error(`Erreur HTTP: ${response.status}`);
 			}
-
-			const response = await sendRequestViaWS('state', {});
-			const stateData = response?.data || response;
+			
+			const data = await response.json();
+			const stateData = { config: data.trading_config };
 			
 			if (stateData && stateData.config) {
 				// 🔥 FIX: Ne PAS écraser avec DEFAULTS, utiliser directement data.config
@@ -346,8 +609,33 @@
 				});
 				config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 				viewMode = config.tp_sl_mode || 'FIXE';
-				console.log('✅ Config chargée depuis backend via WebSocket:', config);
-				console.log('✅ break_even_trigger:', config.break_even_trigger, 'trailing_distance:', config.trailing_distance);
+				console.log('✅ Config chargée depuis backend via REST API');
+				console.log('✅ ML V1 params:', {
+					ml_max_depth: config.ml_max_depth,
+					ml_min_child_weight: config.ml_min_child_weight,
+					ml_reg_alpha: config.ml_reg_alpha,
+					ml_reg_lambda: config.ml_reg_lambda,
+					ml_subsample: config.ml_subsample,
+					ml_colsample_bytree: config.ml_colsample_bytree,
+					ml_colsample_bylevel: config.ml_colsample_bylevel,
+					ml_gamma: config.ml_gamma,
+					ml_scale_pos_weight: config.ml_scale_pos_weight,
+					ml_n_estimators: config.ml_n_estimators,
+					ml_learning_rate: config.ml_learning_rate
+				});
+				console.log('✅ ML V2 params:', {
+					ml_v2_filter_enabled: config.ml_v2_filter_enabled,
+					ml_v2_min_confidence: config.ml_v2_min_confidence,
+					ml_v2_n_estimators: config.ml_v2_n_estimators,
+					ml_v2_max_depth: config.ml_v2_max_depth,
+					ml_v2_learning_rate: config.ml_v2_learning_rate,
+					ml_v2_min_child_weight: config.ml_v2_min_child_weight,
+					ml_v2_reg_alpha: config.ml_v2_reg_alpha,
+					ml_v2_reg_lambda: config.ml_v2_reg_lambda,
+					ml_v2_gamma: config.ml_v2_gamma,
+					ml_v2_subsample: config.ml_v2_subsample,
+					ml_v2_colsample_bytree: config.ml_v2_colsample_bytree
+				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
 				// 🔥 NOUVEAU: Annuler le timer de debounce si en cours
@@ -439,6 +727,85 @@
 		config[key] = DEFAULTS[key];
 		// 🔥 MODIFIÉ: Utiliser triggerAutoSave au lieu de logConfigChange
 		triggerAutoSave(key, `${oldValue} → ${DEFAULTS[key]}`);
+	}
+
+	async function retrainModel() {
+		retrainingML = true;
+		saveMessage = '⏳ Réentraînement en cours...';
+		
+		try {
+			// 1. Déclencher le réentraînement
+			const response = await fetch('/api/ml/retrain?force=true', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' }
+			});
+
+			if (!response.ok) {
+				throw new Error('Erreur: ' + response.statusText);
+			}
+
+			const result = await response.json();
+			
+			// 🔥 FIX: L'API retourne un task_id, pas le résultat immédiatement
+			if (result.status === 'pending' && result.task_id) {
+				saveMessage = '⏳ Réentraînement démarré, vérification de l\'état...';
+				
+				// 2. Attendre la completion de la tâche (polling)
+				const taskId = result.task_id;
+				let attempts = 0;
+				const maxAttempts = 60; // 5 minutes max (60 * 5s)
+				
+				while (attempts < maxAttempts) {
+					await new Promise(resolve => setTimeout(resolve, 5000)); // Attendre 5 secondes
+					
+					// Vérifier l'état de la tâche
+					const statusResponse = await fetch(`/api/ml/tasks/${taskId}`);
+					if (!statusResponse.ok) {
+						throw new Error('Impossible de vérifier l\'état du réentraînement');
+					}
+					
+					const taskStatus = await statusResponse.json();
+					
+					if (taskStatus.status === 'completed' && taskStatus.result) {
+						// ✅ Réentraînement terminé avec succès
+						const metrics = taskStatus.result.metrics;
+						if (metrics && metrics.test) {
+							const accuracy = (metrics.test.accuracy * 100).toFixed(1);
+							const rocauc = (metrics.test.roc_auc * 100).toFixed(1);
+							const gap = ((metrics.train.accuracy - metrics.test.accuracy) * 100).toFixed(1);
+							
+							saveMessage = `✅ Modèle réentraîné! Accuracy: ${accuracy}%, ROC-AUC: ${rocauc}%, Gap: ${gap}%`;
+							
+							// 🔥 FIX: Recharger les métriques ML pour mettre à jour le tableau
+							await loadMLMetrics();
+							
+							setTimeout(() => {
+								alert(`Modèle réentraîné avec succès!\n\nAccuracy: ${accuracy}%\nROC-AUC: ${rocauc}%\nOverfitting Gap: ${gap}%`);
+								location.reload();
+							}, 1000);
+							return;
+						}
+					} else if (taskStatus.status === 'error') {
+						throw new Error(taskStatus.error || 'Erreur lors du réentraînement');
+					}
+					
+					// Mise à jour du message de progression
+					saveMessage = `⏳ Réentraînement en cours... (${Math.round(taskStatus.progress || 0)}%)`;
+					attempts++;
+				}
+				
+				throw new Error('Timeout: Le réentraînement prend trop de temps');
+			} else if (result.status === 'skipped') {
+				saveMessage = `ℹ️ ${result.message}`;
+				setTimeout(() => saveMessage = '', 5000);
+			}
+		} catch (err) {
+			console.error('Erreur réentraînement:', err);
+			saveMessage = `❌ Erreur: ${err.message}`;
+			setTimeout(() => saveMessage = '', 5000);
+		} finally {
+			retrainingML = false;
+		}
 	}
 
 	// 🔥 NOUVEAU: Fonction générique pour déclencher la sauvegarde automatique avec debounce
@@ -582,7 +949,7 @@
 	
 	// Fonction pour logger les changements (pour historique backend)
 	async function logConfigChange(key: string, change: any) {
-		// 🔥 MIGRATION COMPLÈTE: Envoyer log via WebSocket natif uniquement
+		// MIGRATION COMPLÈTE: Envoyer log via WebSocket natif uniquement
 		try {
 			await sendCommandViaWS('log_config', {
 				key,
@@ -719,6 +1086,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'} data-debug-name="activeSubTab">
 			🎯 TP/SL & Position
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'ml'} on:click={() => activeSubTab = 'ml'} data-debug-name="activeSubTab">
+			🤖 Machine Learning
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'current'} on:click={() => activeSubTab = 'current'} data-debug-name="activeSubTab">
 			📋 Variables en cours
@@ -1406,6 +1776,56 @@
 						</div>
 					</div>
 				</div>
+
+				<!-- 🔥 Section Live Trading -->
+				<h3>🔴 Live Trading</h3>
+				<div class="variables-list">
+					<div class="variable-item" data-debug-name="config.default_leverage">
+						<div class="var-header" data-debug-name="config.default_leverage">
+							<label for="default-leverage" data-debug-name="config.default_leverage">
+								<span class="var-name" data-debug-name="config.default_leverage">Levier par défaut</span>
+								<span class="var-desc" data-debug-name="config.default_leverage">Levier utilisé pour les positions Futures (1-50x)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('default_leverage')} title="Réinitialiser" data-debug-name="config.default_leverage.reset">⟲</button>
+						</div>
+						<div class="slider-container" data-debug-name="config.default_leverage">
+							<input
+								id="default-leverage"
+								type="range"
+								step="1"
+								min="1"
+								max="50"
+								bind:value={config.default_leverage}
+								on:change={() => triggerAutoSave('default_leverage', `${config.default_leverage}x`)}
+								data-debug-name="config.default_leverage"
+							/>
+							<span class="slider-value" data-debug-name="config.default_leverage">{Number(config.default_leverage).toFixed(0)}x</span>
+						</div>
+					</div>
+
+					<div class="variable-item" data-debug-name="config.max_latency_ms">
+						<div class="var-header" data-debug-name="config.max_latency_ms">
+							<label for="max-latency" data-debug-name="config.max_latency_ms">
+								<span class="var-name" data-debug-name="config.max_latency_ms">Latence Max (ms)</span>
+								<span class="var-desc" data-debug-name="config.max_latency_ms">Alerter si latence API dépasse ce seuil</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('max_latency_ms')} title="Réinitialiser" data-debug-name="config.max_latency_ms.reset">⟲</button>
+						</div>
+						<div class="slider-container" data-debug-name="config.max_latency_ms">
+							<input
+								id="max-latency"
+								type="range"
+								step="100"
+								min="100"
+								max="5000"
+								bind:value={config.max_latency_ms}
+								on:change={() => triggerAutoSave('max_latency_ms', `${config.max_latency_ms}ms`)}
+								data-debug-name="config.max_latency_ms"
+							/>
+							<span class="slider-value" data-debug-name="config.max_latency_ms">{Number(config.max_latency_ms).toFixed(0)}ms</span>
+						</div>
+					</div>
+				</div>
 			</section>
 		{/if}
 
@@ -2019,8 +2439,422 @@
 			</section>
 		{/if}
 
-		<!-- ONGLET VARIABLES EN COURS -->
-		{#if activeSubTab === 'current'}
+	{#if activeSubTab === 'ml'}
+	<!-- Titre et sélecteurs Version ML -->
+	<div class="ml-header">
+		<h3 class="ml-title">🤖 Machine Learning</h3>
+		<div class="ml-version-selector-compact">
+			<button
+				class="version-btn-compact"
+				class:active={mlVersion === 'v1'}
+				on:click={() => (mlVersion = 'v1')}
+			>
+				<span class="version-icon-compact">📊</span>
+				<span class="version-label-compact">XGBoost V1</span>
+			</button>
+
+			<button
+				class="version-btn-compact"
+				class:active={mlVersion === 'v2'}
+				on:click={() => (mlVersion = 'v2')}
+			>
+				<span class="version-icon-compact">🚀</span>
+				<span class="version-label-compact">XGBoost V2</span>
+			</button>
+		</div>
+	</div>
+
+	{#if mlVersion === 'v1'}
+	<!-- 1. Section Filtrage ML (inchangée) -->
+	<section class="variable-section">
+		<h3>🎯 Filtrage ML des Trades</h3>
+		<p class="section-desc">
+			Activez le filtrage pour que le bot rejette automatiquement les opportunités avec faible confiance ML.
+		</p>
+
+		<div class="variable-item">
+			<div class="variable-label-container">
+				<label for="ml_filter_enabled">
+					<span class="variable-name">Activer Filtrage ML</span>
+					<span class="variable-desc">Bloquer les trades avec faible prédiction</span>
+				</label>
+			</div>
+			<label class="toggle">
+				<input
+					type="checkbox"
+					id="ml_filter_enabled"
+					bind:checked={config.ml_filter_enabled}
+					on:change={() => triggerAutoSave('ml_filter_enabled', config.ml_filter_enabled ? 'Activé' : 'Désactivé')}
+				/>
+				<span class="toggle-slider"></span>
+			</label>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.ml_filter_enabled}>
+			<div class="variable-label-container">
+				<label for="ml_min_confidence">
+					<span class="variable-name">Seuil de Confiance Minimum</span>
+					<span class="variable-desc">Confiance minimale pour accepter un trade (50-90%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="ml_min_confidence"
+					min="0.50"
+					max="0.90"
+					step="0.05"
+					bind:value={config.ml_min_confidence}
+					on:change={() => triggerAutoSave('ml_min_confidence', Math.round(config.ml_min_confidence * 100) + '%')}
+					disabled={!config.ml_filter_enabled}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.ml_min_confidence * 100)}%</span>
+			</div>
+		</div>
+	</section>
+
+	<!-- 2. Métriques du Modèle Actuel (déplacée ici) -->
+	<section class="variable-section">
+		<h3>📊 Métriques du Modèle Actuel</h3>
+		{#if loadingMLMetrics}
+			<div class="loading-message">⏳ Chargement des métriques...</div>
+		{:else}
+			<div class="ml-metrics-grid">
+				<div class="metric-card">
+					<div class="metric-label">Test Accuracy</div>
+					<div class="metric-value">{mlMetrics.test_accuracy.toFixed(1)}%</div>
+					<div class="metric-status" class:poor={mlMetrics.test_accuracy < 60} class:ok={mlMetrics.test_accuracy >= 60 && mlMetrics.test_accuracy < 70} class:good={mlMetrics.test_accuracy >= 70}>
+						{mlMetrics.test_accuracy < 60 ? 'Faible' : mlMetrics.test_accuracy < 70 ? 'Moyen' : 'Bon'}
+					</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-label">ROC-AUC</div>
+					<div class="metric-value">{mlMetrics.roc_auc.toFixed(1)}%</div>
+					<div class="metric-status" class:poor={mlMetrics.roc_auc < 60} class:ok={mlMetrics.roc_auc >= 60 && mlMetrics.roc_auc < 70} class:good={mlMetrics.roc_auc >= 70}>
+						{mlMetrics.roc_auc < 60 ? 'Faible' : mlMetrics.roc_auc < 70 ? 'Moyen' : 'Bon'}
+					</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-label">Overfitting Gap</div>
+					<div class="metric-value" class:danger={mlMetrics.overfitting_gap > 20} class:warning={mlMetrics.overfitting_gap > 10 && mlMetrics.overfitting_gap <= 20} class:ok={mlMetrics.overfitting_gap <= 10}>
+						{mlMetrics.overfitting_gap.toFixed(1)}%
+					</div>
+					<div class="metric-status" class:danger={mlMetrics.overfitting_gap > 20} class:warning={mlMetrics.overfitting_gap > 10 && mlMetrics.overfitting_gap <= 20} class:ok={mlMetrics.overfitting_gap <= 10}>
+						{mlMetrics.overfitting_gap > 20 ? 'Élevé' : mlMetrics.overfitting_gap > 10 ? 'Modéré' : 'Faible'}
+					</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-label">Trades</div>
+					<div class="metric-value">{mlMetrics.trades_count}</div>
+					<div class="metric-status" class:poor={mlMetrics.trades_count < 100} class:ok={mlMetrics.trades_count >= 100 && mlMetrics.trades_count < 500} class:good={mlMetrics.trades_count >= 500}>
+						{mlMetrics.trades_count < 100 ? 'Insuffisant' : mlMetrics.trades_count < 500 ? 'Suffisant' : 'Excellent'}
+					</div>
+				</div>
+			</div>
+		{/if}
+	</section>
+
+	<!-- 3. Section Optimisation Automatique -->
+	<section class="variable-section optimization-section">
+		<h3>⚡ Optimisation Automatique des Hyperparamètres</h3>
+		<p class="section-desc">
+			Recherche automatique des meilleurs hyperparamètres par optimisation bayésienne (Optuna).
+			Nécessite 1000+ trades pour des résultats fiables.
+		</p>
+
+		<OptimizationPanel on:paramsApplied={handleParamsApplied} />
+	</section>
+
+	<!-- 4. Section Hyperparamètres (avec les 3 nouveaux params) -->
+	<section class="variable-section">
+		<h3>⚙️ Hyperparamètres XGBoost</h3>
+		<p class="section-desc">
+			Ajustez les hyperparamètres pour combattre l'overfitting et améliorer les performances du modèle.
+		</p>
+
+		<!-- Anti-Overfitting -->
+		<div class="subsection">
+			<h4>🛡️ Anti-Overfitting</h4>
+			
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_max_depth">
+						<span class="variable-name">Max Depth</span>
+						<span class="variable-desc">Profondeur max des arbres (↓ réduit overfitting)</span>
+					</label>
+				</div>
+				<select
+					id="ml_max_depth"
+					bind:value={config.ml_max_depth}
+					on:change={() => triggerAutoSave('ml_max_depth', config.ml_max_depth)}
+					class="select-input"
+				>
+					<option value={2}>2 (très conservateur)</option>
+					<option value={3}>3 (conservateur)</option>
+					<option value={4}>4 (équilibré)</option>
+					<option value={5}>5 (modéré)</option>
+					<option value={6}>6 (actuel)</option>
+					<option value={7}>7 (agressif)</option>
+					<option value={8}>8 (très agressif)</option>
+				</select>
+			</div>
+
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_min_child_weight">
+						<span class="variable-name">Min Child Weight</span>
+						<span class="variable-desc">Samples minimum par feuille (↑ réduit overfitting)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_min_child_weight"
+						min="1"
+						max="20"
+						step="1"
+						bind:value={config.ml_min_child_weight}
+						on:change={() => triggerAutoSave('ml_min_child_weight', config.ml_min_child_weight)}
+						class="slider"
+					/>
+					<span class="slider-value">{config.ml_min_child_weight}</span>
+				</div>
+			</div>
+
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_reg_alpha">
+						<span class="variable-name">Régularisation L1 (Alpha)</span>
+						<span class="variable-desc">Régularisation Lasso (↑ réduit overfitting)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_reg_alpha"
+						min="0.0"
+						max="15.0"
+						step="0.1"
+						bind:value={config.ml_reg_alpha}
+						on:change={() => triggerAutoSave('ml_reg_alpha', config.ml_reg_alpha.toFixed(1))}
+						class="slider"
+					/>
+					<span class="slider-value">{Number(config.ml_reg_alpha).toFixed(1)}</span>
+				</div>
+			</div>
+
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_reg_lambda">
+						<span class="variable-name">Régularisation L2 (Lambda)</span>
+						<span class="variable-desc">Régularisation Ridge (↑ réduit overfitting)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_reg_lambda"
+						min="0.0"
+						max="15.0"
+						step="0.1"
+						bind:value={config.ml_reg_lambda}
+						on:change={() => triggerAutoSave('ml_reg_lambda', config.ml_reg_lambda.toFixed(1))}
+						class="slider"
+					/>
+					<span class="slider-value">{Number(config.ml_reg_lambda).toFixed(1)}</span>
+				</div>
+			</div>
+
+			<!-- NOUVEAU: Gamma -->
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_gamma">
+						<span class="variable-name">Gamma</span>
+						<span class="variable-desc">Seuil minimum de gain pour split (↑ réduit overfitting)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_gamma"
+						min="0.0"
+						max="5.0"
+						step="0.1"
+						bind:value={config.ml_gamma}
+						on:change={() => triggerAutoSave('ml_gamma', config.ml_gamma.toFixed(1))}
+						class="slider"
+					/>
+					<span class="slider-value">{Number(config.ml_gamma).toFixed(1)}</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Sampling -->
+		<div class="subsection">
+			<h4>🎲 Sampling</h4>
+
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_subsample">
+						<span class="variable-name">Subsample</span>
+						<span class="variable-desc">% données par arbre (↓ réduit overfitting)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_subsample"
+						min="0.5"
+						max="1.0"
+						step="0.01"
+						bind:value={config.ml_subsample}
+						on:change={() => triggerAutoSave('ml_subsample', (config.ml_subsample * 100).toFixed(0) + '%')}
+						class="slider"
+					/>
+					<span class="slider-value">{(config.ml_subsample * 100).toFixed(0)}%</span>
+				</div>
+			</div>
+
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_colsample_bytree">
+						<span class="variable-name">Colsample by Tree</span>
+						<span class="variable-desc">% features par arbre (↓ réduit overfitting)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_colsample_bytree"
+						min="0.5"
+						max="1.0"
+						step="0.01"
+						bind:value={config.ml_colsample_bytree}
+						on:change={() => triggerAutoSave('ml_colsample_bytree', (config.ml_colsample_bytree * 100).toFixed(0) + '%')}
+						class="slider"
+					/>
+					<span class="slider-value">{(config.ml_colsample_bytree * 100).toFixed(0)}%</span>
+				</div>
+			</div>
+
+			<!-- NOUVEAU: Colsample by Level -->
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_colsample_bylevel">
+						<span class="variable-name">Colsample by Level</span>
+						<span class="variable-desc">% features par niveau de profondeur (↓ réduit overfitting)</span>
+				</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_colsample_bylevel"
+						min="0.5"
+						max="1.0"
+						step="0.01"
+						bind:value={config.ml_colsample_bylevel}
+						on:change={() => triggerAutoSave('ml_colsample_bylevel', (config.ml_colsample_bylevel * 100).toFixed(0) + '%')}
+						class="slider"
+					/>
+					<span class="slider-value">{(config.ml_colsample_bylevel * 100).toFixed(0)}%</span>
+				</div>
+			</div>
+
+			<!-- NOUVEAU: Scale Pos Weight -->
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_scale_pos_weight">
+						<span class="variable-name">Scale Pos Weight</span>
+						<span class="variable-desc">Équilibre classes déséquilibrées (1.0 = équilibré)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_scale_pos_weight"
+						min="0.5"
+						max="2.0"
+						step="0.01"
+						bind:value={config.ml_scale_pos_weight}
+						on:change={() => triggerAutoSave('ml_scale_pos_weight', config.ml_scale_pos_weight.toFixed(2))}
+						class="slider"
+					/>
+					<span class="slider-value">{Number(config.ml_scale_pos_weight).toFixed(2)}</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Apprentissage -->
+		<div class="subsection">
+			<h4>📚 Apprentissage</h4>
+
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_n_estimators">
+						<span class="variable-name">Nombre d'Arbres</span>
+						<span class="variable-desc">Plus d'arbres = meilleure performance (mais plus lent)</span>
+					</label>
+				</div>
+				<select
+					id="ml_n_estimators"
+					bind:value={config.ml_n_estimators}
+					on:change={() => triggerAutoSave('ml_n_estimators', config.ml_n_estimators)}
+					class="select-input"
+				>
+					<option value={50}>50 (rapide)</option>
+					<option value={100}>100 (équilibré)</option>
+					<option value={150}>150</option>
+					<option value={200}>200</option>
+					<option value={300}>300</option>
+					<option value={400}>400</option>
+					<option value={500}>500</option>
+					<option value={600}>600</option>
+					<option value={700}>700</option>
+					<option value={800}>800 (très lent)</option>
+				</select>
+			</div>
+
+			<div class="variable-item">
+				<div class="variable-label-container">
+					<label for="ml_learning_rate">
+						<span class="variable-name">Learning Rate</span>
+						<span class="variable-desc">Vitesse d'apprentissage (↓ plus stable mais plus lent)</span>
+					</label>
+				</div>
+				<div class="slider-container">
+					<input
+						type="range"
+						id="ml_learning_rate"
+						min="0.001"
+						max="0.2"
+						step="0.001"
+						bind:value={config.ml_learning_rate}
+						on:change={() => triggerAutoSave('ml_learning_rate', config.ml_learning_rate.toFixed(3))}
+						class="slider"
+					/>
+					<span class="slider-value">{Number(config.ml_learning_rate).toFixed(3)}</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Bouton Réentraîner -->
+		<div class="retrain-section">
+			<button class="btn-retrain" on:click={retrainModel} disabled={retrainingML}>
+				{retrainingML ? '⏳ Réentraînement en cours...' : '🚀 Réentraîner le Modèle'}
+			</button>
+			<p class="retrain-hint">
+				💡 Utilisez les hyperparamètres ci-dessus pour combattre l'overfitting
+			</p>
+		</div>
+	</section>
+	{:else if mlVersion === 'v2'}
+	<!-- Contenu XGBoost V2 -->
+	<MLCONTENT_V2_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
+	{/if}
+	{/if}
+
+	{#if activeSubTab === 'current'}
 			<section class="variable-section current-vars-section" data-debug-name="variablesPanel.current">
 				<div class="current-vars-header" data-debug-name="variablesPanel.current.header">
 					<h3 data-debug-name="variablesPanel.current.title">📋 Variables en cours</h3>
@@ -2153,6 +2987,26 @@
 							</div>
 						</div>
 
+						<!-- 🔥 LIVE TRADING CONFIG -->
+						{#if liveConfig}
+							<div class="config-category live-config-highlight" data-debug-name="completeConfig.live_config">
+								<h4 class="category-title" data-debug-name="completeConfig.live_config.title">🔴 LIVE TRADING CONFIG</h4>
+								{#each Object.entries(organizeLiveConfig(liveConfig)) as [categoryName, categoryVars]}
+									<div class="config-subcategory" data-debug-name="completeConfig.live_config.{categoryName}">
+										<h5 class="subcategory-title" data-debug-name="completeConfig.live_config.{categoryName}.title">{categoryName}</h5>
+										<div class="config-grid" data-debug-name="completeConfig.live_config.{categoryName}">
+											{#each Object.entries(categoryVars) as [key, value]}
+												<div class="config-item" data-debug-name="completeConfig.live_config.{categoryName}.{key}">
+													<span class="config-key" data-debug-name="completeConfig.live_config.{categoryName}.{key}">{key}:</span>
+													<span class="config-value" data-debug-name="completeConfig.live_config.{categoryName}.{key}">{formatValue(value)}</span>
+												</div>
+											{/each}
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
+
 						<div class="config-timestamp" data-debug-name="completeConfig.timestamp">
 							<small data-debug-name="completeConfig.timestamp">Dernière mise à jour: {new Date(completeConfig.timestamp * 1000).toLocaleString('fr-FR')}</small>
 						</div>
@@ -2168,6 +3022,154 @@
 </div>
 
 <style>
+	/* Sélecteurs Version ML */
+	.ml-version-selector {
+		display: flex;
+		gap: 1rem;
+		margin-bottom: 2rem;
+		padding: 1rem;
+		background: rgba(42, 58, 107, 0.3);
+		border-radius: 12px;
+	}
+
+	.ml-version-selector .version-btn {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		padding: 1rem 1.5rem;
+		background: rgba(255, 255, 255, 0.05);
+		border: 2px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
+		color: #a0aec0;
+		font-size: 1rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.ml-version-selector .version-btn:hover {
+		border-color: #667eea;
+		transform: translateY(-2px);
+		background: rgba(102, 126, 234, 0.1);
+	}
+
+	.ml-version-selector .version-btn.active {
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		color: white;
+		border-color: #667eea;
+		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+	}
+
+	.ml-version-selector .version-icon {
+		font-size: 1.5rem;
+	}
+
+	.ml-version-selector .version-label {
+		font-size: 1rem;
+	}
+
+	.ml-version-selector .version-badge {
+		padding: 0.25rem 0.75rem;
+		border-radius: 12px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		background: rgba(0, 0, 0, 0.2);
+		color: white;
+	}
+
+	.ml-version-selector .version-btn:not(.active) .version-badge {
+		background: rgba(255, 255, 255, 0.1);
+		color: #a0aec0;
+	}
+
+	.ml-version-selector .version-badge.new {
+		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+		color: white;
+		animation: pulse-badge 2s infinite;
+	}
+
+	.ml-version-selector .version-btn:not(.active) .version-badge.new {
+		background: #10b981;
+		color: white;
+	}
+
+	@keyframes pulse-badge {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.7;
+		}
+	}
+
+	/* ML Header avec sélecteur compact */
+	.ml-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.5rem;
+		background: rgba(42, 58, 107, 0.2);
+		border-radius: 10px;
+		border: 1px solid rgba(102, 126, 234, 0.2);
+	}
+
+	.ml-title {
+		margin: 0;
+		font-size: 1.25rem;
+		color: #00ff88;
+		font-weight: 700;
+	}
+
+	.ml-version-selector-compact {
+		display: flex;
+		gap: 0.5rem;
+		background: rgba(0, 0, 0, 0.2);
+		padding: 0.25rem;
+		border-radius: 8px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.version-btn-compact {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.5rem 1rem;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		border-radius: 6px;
+		color: #a0aec0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.version-btn-compact:hover {
+		border-color: #667eea;
+		background: rgba(102, 126, 234, 0.1);
+		transform: translateY(-1px);
+	}
+
+	.version-btn-compact.active {
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		color: white;
+		border-color: #667eea;
+		box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+	}
+
+	.version-icon-compact {
+		font-size: 1.1rem;
+	}
+
+	.version-label-compact {
+		font-size: 0.875rem;
+		white-space: nowrap;
+	}
+
 	.variables-panel {
 		background: #1e2749;
 		border-radius: 12px;
@@ -2447,18 +3449,20 @@
 	.slider-container {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		background: #1e2749;
-		padding: 12px;
-		border-radius: 8px;
-		border: 2px solid #2a3a6b;
+		gap: 14px;
+		padding: 10px 16px;
+		background: rgba(255, 255, 255, 0.04);
+		border-radius: 14px;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 	}
 
 	.slider-container input[type='range'] {
 		flex: 1;
-		height: 6px;
-		background: #2a3a6b;
-		border-radius: 3px;
+		height: 8px;
+		background: linear-gradient(90deg, rgba(0, 255, 136, 0.9) 0%, rgba(102, 126, 234, 0.9) 100%);
+		border-radius: 999px;
+		border: none;
 		outline: none;
 		-webkit-appearance: none;
 	}
@@ -2502,7 +3506,11 @@
 		font-family: 'Courier New', monospace;
 		font-size: 14px;
 		font-weight: bold;
-		color: #00ff88;
+		color: #0f172a;
+		background: linear-gradient(135deg, #00ff88, #06b6d4);
+		padding: 6px 14px;
+		border-radius: 999px;
+		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 		min-width: 80px;
 		text-align: right;
 	}
@@ -2598,6 +3606,16 @@
 		.btn-primary,
 		.btn-secondary {
 			flex: 1;
+		}
+
+		.slider-container {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 8px;
+		}
+
+		.slider-container input[type='range'] {
+			width: 100%;
 		}
 
 		.slider-value {
@@ -2875,6 +3893,12 @@
 		border: 2px solid rgba(0, 170, 255, 0.3);
 	}
 
+	.config-category.live-config-highlight {
+		background: rgba(0, 170, 255, 0.03);
+		border: 2px solid rgba(0, 170, 255, 0.2);
+		box-shadow: 0 0 10px rgba(0, 170, 255, 0.1);
+	}
+
 	.category-title {
 		font-size: 18px;
 		color: #00aaff;
@@ -2992,4 +4016,291 @@
 			text-align: left;
 		}
 	}
+	/* ML Section Styles */
+	.ml-info-box {
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		border-radius: 12px;
+		padding: 20px;
+		color: white;
+		margin-top: 20px;
+	}
+
+	.ml-info-box h4 {
+		margin: 0 0 15px 0;
+		font-size: 16px;
+		font-weight: 600;
+	}
+
+	.ml-metrics {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 15px;
+		margin-bottom: 15px;
+	}
+
+	.metric {
+		background: rgba(255, 255, 255, 0.15);
+		padding: 12px;
+		border-radius: 8px;
+		text-align: center;
+	}
+
+	.metric-label {
+		display: block;
+		font-size: 12px;
+		opacity: 0.9;
+		margin-bottom: 5px;
+	}
+
+	.metric-value {
+		display: block;
+		font-size: 20px;
+		font-weight: bold;
+	}
+
+	.metric-value.warning {
+		color: #fbbf24;
+	}
+
+	.metric-value.danger {
+		color: #f87171;
+	}
+
+	.ml-warning {
+		background: rgba(239, 68, 68, 0.2);
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		padding: 10px;
+		border-radius: 6px;
+		font-size: 14px;
+		margin: 0;
+	}
+
+	.recommendations-box {
+		background: #f9fafb;
+		border: 2px solid #e5e7eb;
+		border-radius: 12px;
+		padding: 20px;
+		margin-top: 20px;
+	}
+
+	.recommendations-box h4 {
+		margin: 0 0 15px 0;
+		color: #111827;
+		font-size: 16px;
+	}
+
+	.recommendations-box ul {
+		list-style: none;
+		padding: 0;
+		margin: 0 0 15px 0;
+	}
+
+	.recommendations-box li {
+		padding: 8px 0;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.recommendations-box li:last-child {
+		border-bottom: none;
+	}
+
+	.info-text {
+		background: #eff6ff;
+		border: 1px solid #93c5fd;
+		padding: 12px;
+		border-radius: 6px;
+		color: #1e40af;
+		font-size: 14px;
+		margin: 0;
+	}
+
+	.variable-item.disabled {
+		opacity: 0.5;
+		pointer-events: none;
+	}
+
+	/* Hyperparameters Subsections */
+	.subsection {
+		margin: 20px 0;
+		padding: 15px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 8px;
+		border-left: 3px solid #00ff88;
+	}
+
+	.subsection h4 {
+		margin: 0 0 15px 0;
+		color: #00ff88;
+		font-size: 15px;
+		font-weight: 600;
+	}
+
+	/* Select Input Styling */
+	.select-input {
+		width: 100%;
+		padding: 8px 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: 6px;
+		color: white;
+		font-size: 14px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.select-input:hover {
+		border-color: #00ff88;
+		background: rgba(0, 0, 0, 0.4);
+	}
+
+	.select-input:focus {
+		outline: none;
+		border-color: #00ff88;
+		box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
+	}
+
+	.select-input option {
+		background: #1a1a1a;
+		color: white;
+	}
+
+	/* Retrain Section */
+	.retrain-section {
+		margin-top: 25px;
+		padding: 20px;
+		background: rgba(0, 255, 136, 0.05);
+		border-radius: 8px;
+		border: 1px solid rgba(0, 255, 136, 0.2);
+		text-align: center;
+	}
+
+	.btn-retrain {
+		padding: 12px 30px;
+		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+		color: #000;
+		border: none;
+		border-radius: 8px;
+		font-size: 16px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+	}
+
+	.btn-retrain:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 16px rgba(0, 255, 136, 0.4);
+	}
+
+	.btn-retrain:active:not(:disabled) {
+		transform: translateY(0);
+	}
+
+	.btn-retrain:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.retrain-hint {
+		margin-top: 12px;
+		font-size: 13px;
+		color: #888;
+		line-height: 1.5;
+	}
+
+	/* ML Metrics Grid */
+	.ml-metrics-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 15px;
+		margin-top: 15px;
+	}
+
+	.metric-card {
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
+		padding: 15px;
+		text-align: center;
+		transition: all 0.2s;
+	}
+
+	.metric-card:hover {
+		border-color: rgba(0, 255, 136, 0.3);
+		background: rgba(0, 0, 0, 0.4);
+	}
+
+	.metric-card .metric-label {
+		display: block;
+		font-size: 12px;
+		color: #888;
+		margin-bottom: 8px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.metric-card .metric-value {
+		display: block;
+		font-size: 24px;
+		font-weight: bold;
+		color: white;
+		margin-bottom: 8px;
+	}
+
+	.metric-card .metric-value.danger {
+		color: #f87171;
+	}
+
+	.metric-status {
+		display: inline-block;
+		padding: 4px 12px;
+		border-radius: 12px;
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.metric-status.poor {
+		background: rgba(239, 68, 68, 0.2);
+		color: #f87171;
+		border: 1px solid rgba(239, 68, 68, 0.4);
+	}
+
+	.metric-status.ok {
+		background: rgba(59, 130, 246, 0.2);
+		color: #60a5fa;
+		border: 1px solid rgba(59, 130, 246, 0.4);
+	}
+
+	.metric-status.good {
+		background: rgba(16, 185, 129, 0.2);
+		color: #10b981;
+		border: 1px solid rgba(16, 185, 129, 0.4);
+	}
+
+	.metric-status.danger {
+		background: rgba(239, 68, 68, 0.2);
+		color: #f87171;
+		border: 1px solid rgba(239, 68, 68, 0.4);
+	}
+
+	/* Optimisation automatique */
+	.optimization-section {
+		margin-top: 2rem;
+	}
+
+	.optimization-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+		margin-top: 1rem;
+	}
+
+	@media (max-width: 1200px) {
+		.optimization-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
 </style>

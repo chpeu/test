@@ -21,6 +21,7 @@ class WebSocketManager:
     - Performance optimale
     - Support rooms/namespaces
     - Communication bidirectionnelle
+    - Système de commandes (handlers)
     """
     
     def __init__(self):
@@ -28,6 +29,65 @@ class WebSocketManager:
         self.connection_data: Dict[WebSocket, dict] = {}
         self.rooms: Dict[str, Set[WebSocket]] = {}  # Support rooms
         self._lock = asyncio.Lock()
+        # 🔥 LIVE TRADING: Système de commandes WebSocket
+        self._command_handlers: Dict[str, callable] = {}
+    
+    def command(self, name: str):
+        """
+        Décorateur pour enregistrer un handler de commande WebSocket
+        
+        Usage:
+            @ws_manager.command('get_live_config')
+            async def handle_get_live_config(data: dict, websocket):
+                return {'success': True, ...}
+        """
+        def decorator(func):
+            self._command_handlers[name] = func
+            logger.debug(f"📡 Commande WebSocket enregistrée: {name}")
+            return func
+        return decorator
+    
+    def register_command(self, name: str, handler: callable):
+        """Enregistrer un handler de commande programmatiquement"""
+        self._command_handlers[name] = handler
+        logger.debug(f"📡 Commande WebSocket enregistrée: {name}")
+    
+    async def handle_command(self, command_name: str, data: dict, websocket: WebSocket) -> dict:
+        """
+        Exécuter une commande WebSocket et retourner le résultat
+        
+        Args:
+            command_name: Nom de la commande
+            data: Données de la commande
+            websocket: WebSocket source
+            
+        Returns:
+            Résultat du handler (dict)
+        """
+        if command_name not in self._command_handlers:
+            logger.warning(f"⚠️ Commande WebSocket inconnue: {command_name}")
+            return {'success': False, 'error': f'Unknown command: {command_name}'}
+        
+        try:
+            handler = self._command_handlers[command_name]
+            # Appeler le handler (peut être async ou sync)
+            if asyncio.iscoroutinefunction(handler):
+                result = await handler(data, websocket)
+            else:
+                result = handler(data, websocket)
+            
+            # Gérer les résultats JSONResponse de FastAPI
+            if hasattr(result, 'body'):
+                import json
+                return json.loads(result.body)
+            return result if result else {'success': True}
+        except Exception as e:
+            logger.error(f"❌ Erreur commande {command_name}: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def get_registered_commands(self) -> list:
+        """Retourner la liste des commandes enregistrées"""
+        return list(self._command_handlers.keys())
     
     async def connect(self, websocket: WebSocket):
         """Accepter une nouvelle connexion WebSocket"""

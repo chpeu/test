@@ -37,8 +37,8 @@ TRADING_CONFIG = {
     "tp_sl_mode": "FIXE",  # FIXE ou ATR
     
     # FIXE mode
-    "tp_percent": 0.6,  # +0.6% (TP final pour les 50% restants après TP partiel)
-    "sl_percent": 0.25,  # -0.25%
+    "tp_percent": 0.50,  # 🔥 PHASE 3 : +0.50% (optimisé pour scalping, était 0.6%)
+    "sl_percent": 0.20,  # 🔥 PHASE 3 : -0.20% (SL serré, était 0.25%)
     "break_even_trigger": 0.3,  # +0.3%
     "trailing_distance": 0.15,  # 0.15%
     
@@ -58,9 +58,9 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 3: Pondération des conditions (système de score)
     "use_weighted_scoring": True,  # Activer le système de score pondéré
-    "min_score_required": 7.5,  # Score minimum requis (au lieu de min_conditions) - 🔥 Valeur mise à jour
-    "min_score_adx_high": 7.0,  # Score minimum si ADX > 30
-    "min_score_adx_low": 8.0,  # Score minimum si ADX < 25
+    "min_score_required": 6.5,  # 🔥 PHASE 1 : Score minimum (était 7.5, baissé pour plus d'opportunités)
+    "min_score_adx_high": 6.0,  # 🔥 PHASE 1 : Score si ADX > 30 (était 7.0)
+    "min_score_adx_low": 7.0,  # 🔥 PHASE 1 : Score si ADX < 25 (était 8.0)
     
     # ✅ Patterns Techniques (activés par défaut)
     "use_breakout": True,  # Cassure de niveaux clés
@@ -78,9 +78,9 @@ TRADING_CONFIG = {
     "use_evening_star": True,
 
     # Phase 1+2: New filters (configurable) - 🔥 Valeurs mises à jour
-    "snr_threshold": 0.25,  # Signal-to-Noise Ratio minimum (était 0.3)
-    "breakout_threshold": 0.35,  # Breakout multiplier (ATR * threshold) (était 0.3)
-    "wick_ratio_max": 2.8,  # Max wick ratio before rejection (était 2.5)
+    "snr_threshold": 0.15,  # 🔥 PHASE 1 : SNR minimum (était 0.25, baissé pour rebonds EMA)
+    "breakout_threshold": 0.25,  # 🔥 PHASE 1 : Breakout multiplier (était 0.35, baissé)
+    "wick_ratio_max": 4.5,  # 🔥 PHASE 1 : Max wick ratio (était 2.8, wicks normaux en scalping)
     "di_gap_min": 4.0,  # Minimum DI+ - DI- gap (était 5)
     "di_gap_adx_threshold": 25,  # ADX threshold for DI gap
     
@@ -101,22 +101,30 @@ TRADING_CONFIG = {
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
+    "min_risk_per_trade": 2.0,  # 🔥 Borne min = risk_per_trade pour sizing strict
+    "max_risk_per_trade": 2.0,  # 🔥 Borne max = risk_per_trade pour sizing strict
+    
+    # 🔥 FUTURES: Levier par défaut (1-125x pour MEXC)
+    "default_leverage": 10,  # Levier 10x par défaut (recommandé pour débuter)
     
     # 🔥 FIX: Validation slippage avant ouverture position
     "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
     
+    # 🔥 Live Trading: Latence max API (alerter si dépassée)
+    "max_latency_ms": 1000,  # 1000ms par défaut
+    
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
         "enabled": True,
-        "delay": 10,  # Attendre 10s minimum avant de vérifier
-        "threshold_15s": -0.12,  # -0.12% avant 15s (conservateur)
-        "threshold_30s": -0.08,  # -0.08% avant 30s
+        "delay": 15,  # 🔥 PHASE 2 : 15s au lieu de 10s (laisser plus de temps)
+        "threshold_15s": -0.15,  # 🔥 PHASE 2 : -0.15% (était -0.12%, moins agressif)
+        "threshold_30s": -0.12,  # 🔥 PHASE 2 : -0.12% (était -0.08%, moins agressif)
     },
     
     # 🔥 PHASE 2: Trailing stop adaptatif ATR
     "trailing_stop": {
         "enabled": True,
-        "trigger_pnl": 0.25,      # Déclencher à +0.25%
+        "trigger_pnl": 0.15,      # 🔥 PHASE 2 : Déclencher à +0.15% (était 0.25%, protection plus tôt)
         "atr_multiplier": 0.4,   # Distance = ATR × 0.4
         "min_distance": 0.08,    # Minimum 0.08%
         "max_distance": 0.25,    # Maximum 0.25%
@@ -226,7 +234,7 @@ TRADING_CONFIG = {
 
     # ✅ Trailing Stop Adaptatif (paramètres individuels)
     "trailing_enabled": True,
-    "trailing_trigger_pnl": 0.25,
+    "trailing_trigger_pnl": 0.15,  # 🔥 PHASE 2 : 0.15% (était 0.25%)
     "trailing_atr_multiplier": 0.4,
     "trailing_min_distance": 0.08,
     "trailing_max_distance": 0.25,
@@ -242,6 +250,41 @@ TRADING_CONFIG = {
         ]
     },
 
+    # 🤖 Machine Learning Configuration
+    "ml_filter_enabled": False,  # 🔥 PHASE 4 : Désactivé (accuracy 51% = aléatoire)
+    "ml_min_confidence": 0.60,  # 60% (si réactivé plus tard)
+
+    # 🤖 Hyperparamètres XGBoost (ajustables via UI)
+    "ml_max_depth": 6,
+    "ml_min_child_weight": 3,
+    "ml_reg_alpha": 0.5,
+    "ml_reg_lambda": 2.0,
+    "ml_subsample": 0.8,
+    "ml_colsample_bytree": 0.8,
+    "ml_colsample_bylevel": 0.8,
+    "ml_gamma": 0.0,
+    "ml_scale_pos_weight": 1.0,
+    "ml_n_estimators": 300,
+    "ml_learning_rate": 0.03,
+
+    # 🤖 XGBoost V2 (Régression PNL%) - Paramètres frontend/backend
+    "ml_v2_filter_enabled": False,
+    "ml_v2_min_confidence": 0.60,
+    "ml_v2_timeframe_days": 270,
+    "ml_v2_max_features": 40,
+    "ml_v2_marginal_threshold": 0.20,
+    "ml_v2_filter_marginal_trades": True,
+    "ml_v2_test_size": 0.20,
+    "ml_v2_validation_size": 0.10,
+    "ml_v2_n_estimators": 600,
+    "ml_v2_max_depth": 4,
+    "ml_v2_learning_rate": 0.03,
+    "ml_v2_min_child_weight": 5,
+    "ml_v2_reg_alpha": 1.0,
+    "ml_v2_reg_lambda": 3.0,
+    "ml_v2_subsample": 0.70,
+    "ml_v2_colsample_bytree": 0.70,
+    "ml_v2_gamma": 0.50,
 }
 
 # Risk management
@@ -364,4 +407,53 @@ POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
 POSTGRES_USE_SSL = os.getenv('POSTGRES_USE_SSL', 'false').lower() == 'true'
 POSTGRES_MIN_CONN = int(os.getenv('POSTGRES_MIN_CONN', '1'))
 POSTGRES_MAX_CONN = int(os.getenv('POSTGRES_MAX_CONN', '5'))
+
+# ============================================================================
+# ML Configuration (Machine Learning Predictions)
+# ============================================================================
+ML_CONFIG = {
+    # Activation du filtre ML pour le trading
+    "enabled": os.getenv('ML_FILTER_ENABLED', 'false').lower() == 'true',
+
+    # Modèle à utiliser
+    "model_name": os.getenv('ML_MODEL_NAME', 'xgboost_v1'),
+
+    # Seuil de confiance minimum pour accepter un trade
+    "min_confidence": float(os.getenv('ML_MIN_CONFIDENCE', '0.60')),  # 60% par défaut
+
+    # Seuil de confiance pour rejeter un trade (prédiction loss)
+    "max_loss_confidence": float(os.getenv('ML_MAX_LOSS_CONFIDENCE', '0.70')),  # 70% par défaut
+
+    # Mode de fonctionnement
+    # - "STRICT": Accepter uniquement les prédictions 'win' avec confiance >= min_confidence
+    # - "SOFT": Rejeter seulement les prédictions 'loss' avec confiance >= max_loss_confidence
+    "mode": os.getenv('ML_MODE', 'STRICT'),
+
+    # Logger les prédictions dans PostgreSQL
+    "log_predictions": True,
+
+    # Envoyer des alertes ML (Telegram) quand confiance >= seuil
+    "send_alerts": False,
+    "alert_confidence_threshold": 0.75,
+}
+
+
+# 🔥 FIX: Appliquer les overrides persistés depuis config_overrides.json
+# Permet de conserver les modifications faites via l'UI entre redémarrages
+try:
+    from utils.config_persistence import apply_config_overrides
+    TRADING_CONFIG = apply_config_overrides(TRADING_CONFIG)
+    
+    # 🔥 FIX: Synchroniser ML_CONFIG avec TRADING_CONFIG après chargement des overrides
+    if 'ml_filter_enabled' in TRADING_CONFIG:
+        ML_CONFIG['enabled'] = TRADING_CONFIG['ml_filter_enabled']
+    if 'ml_min_confidence' in TRADING_CONFIG:
+        ML_CONFIG['min_confidence'] = TRADING_CONFIG['ml_min_confidence']
+    
+    import logging
+    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}")
+    
+except Exception as e:
+    import logging
+    logging.warning(f"⚠️ Impossible d'appliquer config overrides: {e}")
 

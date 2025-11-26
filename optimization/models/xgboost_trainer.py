@@ -73,16 +73,24 @@ class XGBoostTrainer:
     
     def train(
         self,
-        timeframe_days: int = 60,
-        min_trades: int = 50,
+        timeframe_days: int = 120,
+        min_trades: int = 100,  # 🔥 Augmenté: Plus de données pour meilleur apprentissage
         test_size: float = 0.2,
-        n_estimators: int = 150,
-        max_depth: int = 4,  # Reduced from 6 to reduce overfitting
-        learning_rate: float = 0.05,  # Reduced for better generalization
-        early_stopping_rounds: int = 15,
+        n_estimators: Optional[int] = None,
+        max_depth: Optional[int] = None,
+        learning_rate: Optional[float] = None,
+        early_stopping_rounds: int = 30,  # 🔥 Augmenté: Plus de patience avant arrêt
         random_state: int = 42,
         feature_selection: bool = True,
-        max_features: int = 30,  # Keep only top 30 features
+        max_features: int = 50,  # 🔥 Augmenté: Plus de features avec nouvelles discriminantes
+        min_child_weight: Optional[int] = None,
+        reg_alpha: Optional[float] = None,
+        reg_lambda: Optional[float] = None,
+        subsample: Optional[float] = None,
+        colsample_bytree: Optional[float] = None,
+        colsample_bylevel: Optional[float] = None,
+        gamma: Optional[float] = None,
+        scale_pos_weight: Optional[float] = None,
         **xgb_params,
     ) -> Dict:
         """
@@ -105,6 +113,26 @@ class XGBoostTrainer:
         logger.info("🚀 Démarrage entraînement XGBoost")
         logger.info(f"📊 Paramètres: timeframe={timeframe_days}d, min_trades={min_trades}")
         
+        # Charger hyperparamètres depuis TRADING_CONFIG si non fournis
+        from config import TRADING_CONFIG
+        n_estimators = n_estimators or TRADING_CONFIG.get('ml_n_estimators', 300)
+        max_depth = max_depth or TRADING_CONFIG.get('ml_max_depth', 6)
+        learning_rate = learning_rate or TRADING_CONFIG.get('ml_learning_rate', 0.03)
+        min_child_weight = min_child_weight or TRADING_CONFIG.get('ml_min_child_weight', 3)
+        reg_alpha = reg_alpha or TRADING_CONFIG.get('ml_reg_alpha', 0.5)
+        reg_lambda = reg_lambda or TRADING_CONFIG.get('ml_reg_lambda', 2.0)
+        subsample = subsample or TRADING_CONFIG.get('ml_subsample', 0.8)
+        colsample_bytree = colsample_bytree or TRADING_CONFIG.get('ml_colsample_bytree', 0.8)
+        colsample_bylevel = colsample_bylevel or TRADING_CONFIG.get('ml_colsample_bylevel', 0.8)
+        gamma = gamma or TRADING_CONFIG.get('ml_gamma', 0.1)
+        scale_pos_weight = scale_pos_weight or TRADING_CONFIG.get('ml_scale_pos_weight', 1.0)
+        
+        logger.info(
+            f"🎯 Hyperparamètres ML: n_estimators={n_estimators}, max_depth={max_depth}, "
+            f"lr={learning_rate:.4f}, min_child_weight={min_child_weight}, "
+            f"reg_alpha={reg_alpha}, reg_lambda={reg_lambda}"
+        )
+        
         start_time = datetime.now()
         
         # 1. Charger et préparer données
@@ -126,17 +154,42 @@ class XGBoostTrainer:
             stratify=True,
         )
         
-        logger.info(f"✂️ Split: {len(X_train)} train, {len(X_test)} test")
+        win_pct_train = (y_train == 1).mean() * 100
+        win_pct_test = (y_test == 1).mean() * 100
+        logger.info(
+            "✂️ Split: %s train / %s test | Win%% train=%.1f%% | Win%% test=%.1f%%",
+            len(X_train),
+            len(X_test),
+            win_pct_train,
+            win_pct_test
+        )
+        logger.info(
+            "📊 Distribution y_train: %s",
+            y_train.value_counts().to_dict()
+        )
+        logger.info(
+            "📊 Distribution y_test: %s",
+            y_test.value_counts().to_dict()
+        )
         
         # 3. Calculer class weights
         class_weights = compute_class_weights(y_train, strategy="balanced")
         scale_pos_weight = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
-        
-        # 4. Configurer modèle
+        logger.info("⚖️ Class weights: %s | scale_pos_weight=%.2f", class_weights, scale_pos_weight)
+
+        # 4. Configurer modèle avec hyperparamètres optimisés et régularisation
         model_params = {
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "learning_rate": learning_rate,
+            "early_stopping_rounds": early_stopping_rounds,
+            "min_child_weight": min_child_weight,  # Anti-overfitting
+            "reg_alpha": reg_alpha,  # Régularisation L1 (Lasso)
+            "reg_lambda": reg_lambda,  # Régularisation L2 (Ridge)
+            "subsample": subsample,  # Bagging
+            "colsample_bytree": colsample_bytree,  # Feature sampling per tree
+            "colsample_bylevel": colsample_bylevel,  # Feature sampling per level
+            "gamma": gamma,  # Régularisation min split gain
             "scale_pos_weight": scale_pos_weight,
             "random_state": random_state,
             "eval_metric": "logloss",
@@ -154,7 +207,12 @@ class XGBoostTrainer:
             logger.info(f"🔍 Feature selection: training initial model to identify top {max_features} features...")
             
             # Train initial model to get feature importances
-            initial_model = XGBClassifier(**model_params)
+            initial_model_params = {
+                key: value
+                for key, value in model_params.items()
+                if key != "early_stopping_rounds"
+            }
+            initial_model = XGBClassifier(**initial_model_params)
             initial_model.fit(X_train, y_train, verbose=False)
             
             # Get feature importances
@@ -226,15 +284,54 @@ class XGBoostTrainer:
             X_train,
             y_train,
             eval_set=eval_set,
-            early_stopping_rounds=early_stopping_rounds,
             verbose=False,
         )
-        
+
         training_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"✅ Entraînement terminé en {training_time:.2f}s")
-        
+
+        # 6.5. Cross-validation pour validation de stabilité
+        logger.info("🔄 Validation croisée (5-fold CV)...")
+        from sklearn.model_selection import cross_val_score
+
+        # Créer un modèle temporaire pour CV (même hyperparams)
+        cv_model_params = {
+            key: value
+            for key, value in model_params.items()
+            if key != "early_stopping_rounds"
+        }
+        cv_model = XGBClassifier(**cv_model_params)
+
+        # Cross-validation sur données combinées (train + test)
+        X_full = pd.concat([X_train, X_test])
+        y_full = pd.concat([y_train, y_test])
+
+        cv_scores_accuracy = cross_val_score(
+            cv_model, X_full, y_full,
+            cv=5, scoring='accuracy', n_jobs=-1
+        )
+        cv_scores_roc_auc = cross_val_score(
+            cv_model, X_full, y_full,
+            cv=5, scoring='roc_auc', n_jobs=-1
+        )
+
+        logger.info(
+            f"📊 CV Accuracy: {cv_scores_accuracy.mean():.3f} (+/- {cv_scores_accuracy.std() * 2:.3f})"
+        )
+        logger.info(
+            f"📊 CV ROC-AUC: {cv_scores_roc_auc.mean():.3f} (+/- {cv_scores_roc_auc.std() * 2:.3f})"
+        )
+
+        cv_metrics = {
+            'accuracy_mean': float(cv_scores_accuracy.mean()),
+            'accuracy_std': float(cv_scores_accuracy.std()),
+            'roc_auc_mean': float(cv_scores_roc_auc.mean()),
+            'roc_auc_std': float(cv_scores_roc_auc.std()),
+        }
+
         # 7. Évaluer modèle
         metrics = self._evaluate_model(X_train, X_test, y_train, y_test)
+        metrics['cross_validation'] = cv_metrics
         
         # 8. Feature importance
         if selected_features:
@@ -259,6 +356,17 @@ class XGBoostTrainer:
             },
         )
         
+        if feature_importance:
+            top_features = feature_importance[:10]
+            logger.info(
+                "📈 Top features (importance): %s",
+                {item['feature']: round(item['importance'], 4) for item in top_features}
+            )
+            logger.info(
+                "📈 Importance moyenne=%.4f | max=%.4f",
+                np.mean([item['importance'] for item in feature_importance]),
+                max([item['importance'] for item in feature_importance]) if feature_importance else 0.0
+            )
         logger.info("💾 Modèle et metadata sauvegardés")
         
         return {
@@ -311,13 +419,39 @@ class XGBoostTrainer:
         # Classification report
         report = classification_report(y_test, y_test_pred, output_dict=True)
         
+        # Calculer écart train-test (overfitting indicator)
+        accuracy_gap = train_metrics['accuracy'] - test_metrics['accuracy']
+        roc_auc_gap = train_metrics['roc_auc'] - test_metrics['roc_auc']
+
+        logger.info(f"✅ Train Accuracy: {train_metrics['accuracy']:.3f}")
         logger.info(f"✅ Test Accuracy: {test_metrics['accuracy']:.3f}")
-        logger.info(f"✅ Test F1: {test_metrics['f1']:.3f}")
+        logger.info(f"📊 Accuracy Gap (train-test): {accuracy_gap:.3f}")
+
+        logger.info(f"✅ Train ROC-AUC: {train_metrics['roc_auc']:.3f}")
         logger.info(f"✅ Test ROC-AUC: {test_metrics['roc_auc']:.3f}")
-        
+        logger.info(f"📊 ROC-AUC Gap (train-test): {roc_auc_gap:.3f}")
+
+        logger.info(f"✅ Test F1: {test_metrics['f1']:.3f}")
+        logger.info(f"✅ Test Precision: {test_metrics['precision']:.3f}")
+        logger.info(f"✅ Test Recall: {test_metrics['recall']:.3f}")
+
+        # Alertes de diagnostic
+        if accuracy_gap > 0.15:
+            logger.warning("⚠️ OVERFITTING DÉTECTÉ: Gap train-test > 15% - Augmenter régularisation")
+        elif accuracy_gap < 0.05 and test_metrics['accuracy'] < 0.60:
+            logger.warning("⚠️ UNDERFITTING DÉTECTÉ: Gap < 5% et accuracy < 60% - Réduire régularisation")
+        elif test_metrics['accuracy'] >= 0.70:
+            logger.info("🎉 EXCELLENT: Test accuracy >= 70% - Objectif atteint!")
+        elif test_metrics['accuracy'] >= 0.65:
+            logger.info("✅ BON: Test accuracy >= 65% - Performance satisfaisante")
+
         return {
             "train": train_metrics,
             "test": test_metrics,
+            "gaps": {
+                "accuracy": float(accuracy_gap),
+                "roc_auc": float(roc_auc_gap),
+            },
             "confusion_matrix": cm.tolist(),
             "classification_report": report,
         }
@@ -418,14 +552,14 @@ class XGBoostTrainer:
 def train_xgboost_cli(
     timeframe_days: int = 60,
     min_trades: int = 50,
-    n_estimators: int = 100,
-    max_depth: int = 6,
-    learning_rate: float = 0.1,
+    n_estimators: int = 50,  # Optimisé: 50 au lieu de 100
+    max_depth: int = 2,  # Optimisé: 2 au lieu de 6
+    learning_rate: float = 0.05,  # Optimisé: 0.05 au lieu de 0.1
 ):
-    """Helper pour entraînement CLI"""
-    
+    """Helper pour entraînement CLI avec paramètres optimisés"""
+
     trainer = XGBoostTrainer()
-    
+
     results = trainer.train(
         timeframe_days=timeframe_days,
         min_trades=min_trades,
@@ -434,22 +568,34 @@ def train_xgboost_cli(
         learning_rate=learning_rate,
     )
     
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
     print("🎯 ENTRAÎNEMENT XGBOOST TERMINÉ")
-    print("=" * 60)
+    print("=" * 70)
+
     print(f"\n📊 Métriques Test:")
     print(f"  - Accuracy:  {results['metrics']['test']['accuracy']:.3f}")
     print(f"  - Precision: {results['metrics']['test']['precision']:.3f}")
     print(f"  - Recall:    {results['metrics']['test']['recall']:.3f}")
     print(f"  - F1 Score:  {results['metrics']['test']['f1']:.3f}")
     print(f"  - ROC-AUC:   {results['metrics']['test']['roc_auc']:.3f}")
-    
+
+    if 'gaps' in results['metrics']:
+        print(f"\n📈 Gaps Train-Test (Overfitting Indicators):")
+        print(f"  - Accuracy Gap: {results['metrics']['gaps']['accuracy']:.3f}")
+        print(f"  - ROC-AUC Gap:  {results['metrics']['gaps']['roc_auc']:.3f}")
+
+    if 'cross_validation' in results['metrics']:
+        cv = results['metrics']['cross_validation']
+        print(f"\n🔄 Cross-Validation (5-fold):")
+        print(f"  - Accuracy: {cv['accuracy_mean']:.3f} (+/- {cv['accuracy_std'] * 2:.3f})")
+        print(f"  - ROC-AUC:  {cv['roc_auc_mean']:.3f} (+/- {cv['roc_auc_std'] * 2:.3f})")
+
     print(f"\n🔝 Top 10 Features:")
     for i, feat in enumerate(results['feature_importance'], 1):
         print(f"  {i}. {feat['feature']}: {feat['importance']:.4f}")
-    
+
     print(f"\n💾 Modèle sauvegardé: {results['model_name']}")
-    print("=" * 60 + "\n")
+    print("=" * 70 + "\n")
     
     return results
 

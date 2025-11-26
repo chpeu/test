@@ -3,7 +3,9 @@ Système de logging pour Trade Cursor
 """
 import logging
 import sys
+import os
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from config import DEBUG_ENABLED
 
 # 🔥 FIX: Handler personnalisé pour envoyer les logs au frontend
@@ -102,7 +104,7 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manager=None) -> logging.Logger:
+def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manager=None, log_to_file: bool = True) -> logging.Logger:
     """
     Configure le logger avec formatage et couleurs
     
@@ -110,6 +112,7 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
         name: Nom du logger
         level: Niveau de log (INFO, DEBUG, etc.)
         ws_manager: WebSocket manager pour envoyer les logs au frontend (optionnel)
+        log_to_file: Si True, sauvegarde les logs WARNING+ dans logs/app.log (défaut: True)
         
     Returns:
         Logger configuré
@@ -133,6 +136,37 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     console_handler.setFormatter(formatter)
     
     logger.addHandler(console_handler)
+    
+    # 🔥 NOUVEAU: File handler pour sauvegarder les logs WARNING/ERROR/CRITICAL
+    if log_to_file:
+        try:
+            # Créer le dossier logs/ s'il n'existe pas
+            log_dir = 'logs'
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+            
+            # RotatingFileHandler avec rotation à 10 MB, 5 fichiers max
+            file_handler = RotatingFileHandler(
+                os.path.join(log_dir, 'app.log'),
+                maxBytes=10*1024*1024,  # 10 MB
+                backupCount=5,  # Garder 5 fichiers de rotation
+                encoding='utf-8'
+            )
+            
+            # 🎯 Niveau WARNING+ uniquement (optimisé pour production)
+            file_handler.setLevel(logging.WARNING)
+            
+            # Format sans couleurs ANSI pour fichier
+            file_formatter = logging.Formatter(
+                '[%(asctime)s] %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            file_handler.setFormatter(file_formatter)
+            
+            logger.addHandler(file_handler)
+            logger.info(f"✅ File logging activé: {os.path.join(log_dir, 'app.log')} (niveau WARNING+)")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible d'activer file logging: {e}")
     
     # 🔥 FIX: Ajouter handler WebSocket pour envoyer les logs au frontend
     if ws_manager:
