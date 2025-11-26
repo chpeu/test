@@ -163,6 +163,35 @@ class AccountAsset:
     unrealized_pnl: float
 
 
+@dataclass
+class ContractSpec:
+    """Spécifications d'un contrat futures"""
+    symbol: str
+    min_vol: float          # Volume minimum
+    max_vol: float          # Volume maximum
+    vol_unit: float         # Unité de volume (step)
+    price_unit: float       # Unité de prix (tick size)
+    price_precision: int    # Décimales prix
+    vol_precision: int      # Décimales volume
+    
+    def round_volume(self, vol: float) -> float:
+        """Arrondir le volume selon les specs du contrat"""
+        # Arrondir au vol_unit le plus proche (vers le bas)
+        if self.vol_unit > 0:
+            vol = (vol // self.vol_unit) * self.vol_unit
+        # Appliquer la précision
+        vol = round(vol, self.vol_precision)
+        # Respecter les limites
+        vol = max(self.min_vol, min(self.max_vol, vol))
+        return vol
+    
+    def round_price(self, price: float) -> float:
+        """Arrondir le prix selon les specs du contrat"""
+        if self.price_unit > 0:
+            price = round(price / self.price_unit) * self.price_unit
+        return round(price, self.price_precision)
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -309,6 +338,7 @@ class MexcFuturesBypass:
         self.timeout = timeout
         self.debug = debug
         self._session: Optional[aiohttp.ClientSession] = None
+        self._contract_specs: Dict[str, ContractSpec] = {}  # Cache des specs contrats
         
     async def _get_session(self) -> aiohttp.ClientSession:
         """Obtenir ou créer la session HTTP"""
@@ -395,7 +425,11 @@ class MexcFuturesBypass:
                         return {"success": False, "code": 403, "message": "Access denied - check token"}
                     data = await resp.json()
             else:  # POST
-                async with session.post(url, headers=headers, json=body) as resp:
+                # 🔥 IMPORTANT: Utiliser le même format JSON que la signature (compact, sans espaces)
+                body_str = json.dumps(body, separators=(',', ':')) if body else None
+                post_headers = headers.copy()
+                post_headers["content-type"] = "application/json"
+                async with session.post(url, headers=post_headers, data=body_str) as resp:
                     if resp.status == 429:
                         logger.warning("⚠️ Rate limit atteint (429) - attente 5s")
                         await asyncio.sleep(5)
@@ -721,6 +755,60 @@ class MexcFuturesBypass:
         if symbol:
             params["symbol"] = symbol
         return await self._request("GET", ENDPOINTS["CONTRACT_DETAIL"], params=params)
+    
+    async def get_contract_spec(self, symbol: str) -> Optional[ContractSpec]:
+        """
+        Récupérer et cacher les spécifications d'un contrat
+        
+        Args:
+            symbol: Symbole (ex: "BTC_USDT")
+            
+        Returns:
+            ContractSpec ou None si erreur
+        """
+        # Vérifier le cache
+        if symbol in self._contract_specs:
+            return self._contract_specs[symbol]
+        
+        # Récupérer depuis l'API
+        response = await self.get_contract_detail(symbol)
+        
+        if not response.get("success") or response.get("code") != 0:
+            logger.warning(f"⚠️ Impossible de récupérer specs pour {symbol}")
+            return None
+        
+        data = response.get("data", {})
+        
+        try:
+            # Calculer la précision à partir des unités
+            vol_unit = float(data.get("volUnit", 1))
+            price_unit = float(data.get("priceUnit", 0.01))
+            
+            # Calculer le nombre de décimales
+            vol_precision = len(str(vol_unit).split('.')[-1]) if '.' in str(vol_unit) else 0
+            price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
+            
+            spec = ContractSpec(
+                symbol=symbol,
+                min_vol=float(data.get("minVol", 1)),
+                max_vol=float(data.get("maxVol", 1000000)),
+                vol_unit=vol_unit,
+                price_unit=price_unit,
+                price_precision=price_precision,
+                vol_precision=vol_precision,
+            )
+            
+            # Cacher
+            self._contract_specs[symbol] = spec
+            
+            if self.debug:
+                logger.debug(f"📋 ContractSpec {symbol}: minVol={spec.min_vol}, maxVol={spec.max_vol}, volUnit={spec.vol_unit}")
+            
+            return spec
+            
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(f"❌ Error parsing contract spec {symbol}: {e}")
+            return None
     
     async def get_contract_depth(self, symbol: str, limit: int = 20) -> Dict:
         """

@@ -469,6 +469,34 @@ class LiveOrderManagerFutures:
             if self.use_bypass and self.bypass_client:
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
                 
+                # 🔥 Récupérer les specs du contrat pour arrondir correctement
+                contract_spec = run_async_safely(
+                    self.bypass_client.get_contract_spec(bypass_symbol)
+                )
+                
+                if contract_spec:
+                    # Arrondir volume et prix selon les specs
+                    amount = contract_spec.round_volume(amount)
+                    entry_price = contract_spec.round_price(entry_price)
+                    
+                    # Vérifier volume minimum
+                    if amount < contract_spec.min_vol:
+                        logger.error(
+                            f"❌ Volume insuffisant {bypass_symbol}: {amount} < min {contract_spec.min_vol} | "
+                            f"Capital requis: {contract_spec.min_vol * entry_price:.2f} USDT"
+                        )
+                        return FuturesOrderResult(
+                            success=False,
+                            error_message=f"Volume insuffisant: {amount} < min {contract_spec.min_vol}",
+                            latency_ms=(time.time() - start_time) * 1000
+                        )
+                    
+                    logger.debug(f"📋 Specs {bypass_symbol}: minVol={contract_spec.min_vol}, volUnit={contract_spec.vol_unit}")
+                else:
+                    # Fallback: arrondi basique
+                    amount = round(amount, 4)
+                    logger.warning(f"⚠️ Specs non disponibles pour {bypass_symbol}, arrondi basique")
+                
                 # Déterminer side pour bypass
                 # 1=open long, 2=close short, 3=open short, 4=close long
                 if direction == 'LONG':
@@ -478,7 +506,7 @@ class LiveOrderManagerFutures:
                 
                 logger.info(
                     f"🔥 [BYPASS] Ouverture {direction}: {bypass_symbol} | "
-                    f"Side: {bypass_side} | Vol: {amount:.6f} | Leverage: {leverage}x"
+                    f"Side: {bypass_side} | Vol: {amount:.6f} | Price: {entry_price} | Leverage: {leverage}x"
                 )
                 
                 # Appeler le client bypass (async) via helper thread-safe
@@ -810,6 +838,18 @@ class LiveOrderManagerFutures:
             if self.use_bypass and self.bypass_client:
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
                 
+                # 🔥 Récupérer les specs du contrat pour arrondir correctement
+                contract_spec = run_async_safely(
+                    self.bypass_client.get_contract_spec(bypass_symbol)
+                )
+                
+                if contract_spec:
+                    amount = contract_spec.round_volume(amount)
+                    current_price = contract_spec.round_price(current_price)
+                else:
+                    amount = round(amount, 4)
+                    logger.warning(f"⚠️ Specs non disponibles pour {bypass_symbol}, arrondi basique")
+                
                 # Déterminer side pour bypass (fermeture)
                 # 1=open long, 2=close short, 3=open short, 4=close long
                 if direction == 'LONG':
@@ -819,7 +859,7 @@ class LiveOrderManagerFutures:
                 
                 logger.info(
                     f"🔥 [BYPASS] Fermeture {direction}: {bypass_symbol} | "
-                    f"Side: {bypass_side} | Vol: {amount:.6f}"
+                    f"Side: {bypass_side} | Vol: {amount:.6f} | Price: {current_price}"
                 )
                 
                 # Appeler le client bypass (async) via helper thread-safe
