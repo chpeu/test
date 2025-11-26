@@ -27,24 +27,9 @@
     "f1_score": {
       "metric": "f1_score",
       "last_run": {
+        "score": 0.85,
+        "timestamp": "2025-11-26T13:17:56.336326",
         "metric": "f1_score",
-        "score": 0.4982698961937716,
-        "params": {
-          "max_depth": 2,
-          "min_child_weight": 8,
-          "reg_alpha": 7.9063372096981395,
-          "reg_lambda": 12.865312722188863,
-          "subsample": 0.8891728249086615,
-          "colsample_bytree": 0.8170671319391468,
-          "colsample_bylevel": 0.609737508410738,
-          "learning_rate": 0.008359241143004069,
-          "n_estimators": 300,
-          "gamma": 3.8896040603487028,
-          "scale_pos_weight": 1.3806836278234995
-        },
-        "trial_number": 4499,
-        "total_trials": 4500,
-        "datetime": "2025-11-23T16:51:06.557901",
         "source": "latest"
       }
     },
