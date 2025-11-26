@@ -13,6 +13,10 @@ import numpy as np
 from datetime import datetime
 import joblib
 
+# Imports pour feature engineering et logging
+from optimization.data.feature_engineering import calculate_derived_features
+from optimization.prediction_logger import log_prediction
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,14 +54,18 @@ class MLPredictorV2:
             
             self.preprocessor = joblib.load(preprocessor_path)
             logger.info(f"✅ Preprocessor V2 chargé: {preprocessor_path}")
-            
+
             # Charger metadata (optionnel, peut venir de PostgreSQL)
             metadata_path = f"{models_dir}/{self.model_name}_metadata.json"
             if os.path.exists(metadata_path):
-                with open(metadata_path, 'r') as f:
-                    self.metadata = json.load(f)
-                logger.info(f"✅ Metadata V2 chargée")
-            
+                try:
+                    with open(metadata_path, 'r') as f:
+                        self.metadata = json.load(f)
+                    logger.info(f"✅ Metadata V2 chargée")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur chargement metadata (non bloquant): {e}")
+                    self.metadata = None
+
             # Récupérer features sélectionnées
             if self.metadata and 'selected_features' in self.metadata:
                 self.selected_features = self.metadata['selected_features']
@@ -67,7 +75,7 @@ class MLPredictorV2:
             else:
                 logger.warning("⚠️ Impossible de déterminer les features du modèle")
                 self.feature_names = []
-            
+
             self.loaded = True
             logger.info(f"✅ Modèle V2 {self.model_name} prêt ({len(self.feature_names)} features)")
             return True
@@ -410,8 +418,6 @@ def predict_pnl(
     # Logger dans DB si demandé
     if prediction and log_to_db and symbol:
         try:
-            from optimization.prediction_logger import log_prediction
-            
             # Adapter format pour prediction_logger
             prediction_adapted = {
                 **prediction,
@@ -419,7 +425,7 @@ def predict_pnl(
                 'prediction_value': prediction['classification_value'],
                 'confidence': abs(prediction['predicted_pnl']) / 5.0  # Pseudo-confidence basée sur magnitude
             }
-            
+
             prediction_id = log_prediction(
                 prediction_data=prediction_adapted,
                 symbol=symbol,
@@ -427,7 +433,7 @@ def predict_pnl(
                 opportunity_timestamp=datetime.now(),
                 metadata={'model_type': 'v2_regression'}
             )
-            
+
             if prediction_id:
                 prediction['prediction_id'] = prediction_id
                 logger.info(f"✅ Prédiction V2 loggée: ID={prediction_id}")
