@@ -101,6 +101,8 @@ TRADING_CONFIG = {
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
+    "min_risk_per_trade": 2.0,  # 🔥 Borne min = risk_per_trade pour sizing strict
+    "max_risk_per_trade": 2.0,  # 🔥 Borne max = risk_per_trade pour sizing strict
     
     # 🔥 FUTURES: Levier par défaut (1-125x pour MEXC)
     "default_leverage": 10,  # Levier 10x par défaut (recommandé pour débuter)

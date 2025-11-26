@@ -102,6 +102,8 @@ LIVE_TRADING_CONFIG = {
     # ========================================================================
     "account_size": 1000.0,     # Taille compte
     "risk_per_trade": 1.0,      # 1.0% par trade (au lieu de 2.0%)
+    "min_risk_per_trade": 1.0,  # Borne min = risk_per_trade pour sizing strict
+    "max_risk_per_trade": 1.0,  # Borne max = risk_per_trade pour sizing strict
     "max_daily_loss": -3.0,     # -3.0% max par jour
     "max_concurrent_positions": 1,  # 1 position max (scalping focus)
 

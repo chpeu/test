@@ -283,6 +283,21 @@ class LiveOrderManagerFutures:
                     executed_at=datetime.now(timezone.utc).isoformat()
                 )
 
+            # 🔥 Vérifier solde disponible AVANT d'ouvrir position
+            margin_required = size_usdt / leverage
+            balance = self.get_balance('USDT')
+            
+            if balance < margin_required:
+                logger.error(
+                    f"❌ Solde insuffisant: {balance:.2f} USDT disponible, "
+                    f"{margin_required:.2f} USDT requis (size={size_usdt:.2f}, leverage={leverage}x)"
+                )
+                return FuturesOrderResult(
+                    success=False,
+                    error_message=f"Solde insuffisant: {balance:.2f} USDT disponible, {margin_required:.2f} USDT requis",
+                    latency_ms=(time.time() - start_time) * 1000
+                )
+
             # LIVE: Passer ordre MARKET avec tous les paramètres MEXC requis
             # 🔥 FIX: MEXC requiert leverage, openType ET positionType dans params
             # openType: 1=isolated, 2=cross
@@ -386,21 +401,24 @@ class LiveOrderManagerFutures:
             latency_ms = (time.time() - start_time) * 1000
             self.stats['orders_failed'] += 1
 
-            # 🔥 Log détaillé pour diagnostic
-            error_details = str(e)
+            # 🔥 Log détaillé avec message d'erreur complet
+            error_msg = str(e)
+            # Extraire le message d'erreur s'il est dans un tuple
             if hasattr(e, 'args') and len(e.args) > 0:
-                error_details = str(e.args)
+                if isinstance(e.args[0], str):
+                    error_msg = e.args[0]
             
             logger.error(
-                f"❌ Erreur ouverture position futures: {error_details} | "
+                f"❌ Erreur ouverture position futures: {error_msg} | "
                 f"Symbol: {symbol} → {futures_symbol} | "
                 f"Side: {side} | Amount: {amount:.6f} | Leverage: {leverage}x | "
+                f"Size USDT: {size_usdt:.2f} | "
                 f"Latence: {latency_ms:.0f}ms"
             )
 
             return FuturesOrderResult(
                 success=False,
-                error_message=str(e),
+                error_message=error_msg,
                 latency_ms=latency_ms
             )
 
