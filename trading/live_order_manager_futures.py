@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Live Order Manager FUTURES - Trade Cursor v7.1
+Live Order Manager FUTURES - Trade Cursor v7.2
 Gestion des ordres réels sur MEXC Futures (Perpetual Swaps)
 
 SUPPORT:
@@ -12,6 +12,11 @@ SUPPORT:
 - Retry avec backoff exponentiel
 - Synchronisation position réelle
 - Emergency close
+
+🔥 v7.2: BYPASS MODE
+- Utilise les endpoints browser pour bypasser le blocage API MEXC
+- Basé sur https://github.com/oboshto/mexc-futures-sdk
+- Requiert un browser_token (WEB_xxx...) récupéré depuis DevTools
 """
 
 import logging
@@ -23,6 +28,37 @@ from dataclasses import dataclass, field
 import json
 from datetime import datetime, timezone
 from functools import wraps
+import threading
+
+# 🔥 Helper pour exécuter du code async depuis un contexte sync sans bloquer la loop principale
+_bypass_loop = asyncio.new_event_loop()
+
+def _run_bypass_loop():
+    asyncio.set_event_loop(_bypass_loop)
+    _bypass_loop.run_forever()
+
+_bypass_thread = threading.Thread(target=_run_bypass_loop, name="bypass_async_loop", daemon=True)
+_bypass_thread.start()
+
+def run_async_safely(coro, timeout: float = 30.0):
+    """Planifier une coroutine sur la loop dédiée et attendre son résultat."""
+    future = asyncio.run_coroutine_threadsafe(coro, _bypass_loop)
+    return future.result(timeout=timeout)
+
+# 🔥 Import du client bypass
+try:
+    from trading.mexc_futures_bypass import (
+        MexcFuturesBypass,
+        MexcFuturesWebSocket,
+        OrderSide,
+        OrderType,
+        OpenType,
+        OrderResult as BypassOrderResult,
+        Position as BypassPosition,
+    )
+    BYPASS_AVAILABLE = True
+except ImportError:
+    BYPASS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +133,10 @@ class LiveOrderManagerFutures:
     3. Fermer position partielle/totale
     4. Récupérer infos position (PnL, liquidation, etc.)
 
+    MODES:
+    - BYPASS (recommandé): Utilise browser token pour bypasser blocage API
+    - CCXT (legacy): Utilise API keys classiques (peut être bloqué)
+
     DIFFÉRENCES VS SPOT:
     - Utilise 'swap' au lieu de 'spot'
     - Gère le levier et la marge
@@ -106,42 +146,102 @@ class LiveOrderManagerFutures:
 
     def __init__(
         self,
-        api_key: str,
-        api_secret: str,
+        api_key: str = None,
+        api_secret: str = None,
+        browser_token: str = None,
         default_leverage: int = 10,
         testnet: bool = False,
-        dry_run: bool = True
+        dry_run: bool = True,
+        use_bypass: bool = True
     ):
         """
         Initialiser le gestionnaire d'ordres futures
 
         Args:
-            api_key: Clé API MEXC Futures
-            api_secret: Secret API MEXC Futures
+            api_key: Clé API MEXC Futures (mode CCXT)
+            api_secret: Secret API MEXC Futures (mode CCXT)
+            browser_token: Token browser WEB_xxx... (mode BYPASS)
             default_leverage: Levier par défaut (1-125)
             testnet: Utiliser testnet (si disponible)
             dry_run: Mode simulation (pas d'ordres réels)
+            use_bypass: Utiliser le mode bypass (recommandé)
         """
         self.dry_run = dry_run
         self.testnet = testnet
         self.default_leverage = min(125, max(1, default_leverage))
+        
+        # 🔥 DEBUG: Tracer les valeurs pour diagnostiquer le mode bypass
+        print(f"🔍 DEBUG LiveOrderManagerFutures.__init__:")
+        print(f"   use_bypass param: {use_bypass}")
+        print(f"   BYPASS_AVAILABLE: {BYPASS_AVAILABLE}")
+        print(f"   browser_token: {browser_token[:20] if browser_token else 'None'}...")
+        print(f"   Résultat use_bypass: {use_bypass and BYPASS_AVAILABLE and bool(browser_token)}")
+        
+        self.use_bypass = use_bypass and BYPASS_AVAILABLE and bool(browser_token)
+        
+        # 🔥 Mode BYPASS: Client avec browser token
+        self.bypass_client: Optional[MexcFuturesBypass] = None
+        self.bypass_ws: Optional[MexcFuturesWebSocket] = None
+        
+        # Mode CCXT: Exchange classique
+        self.exchange = None
+        
+        if self.use_bypass:
+            # 🔥 BYPASS MODE: Utiliser les endpoints browser
+            self.bypass_client = MexcFuturesBypass(
+                browser_token=browser_token,
+                debug=False
+            )
+            print(
+                f"✅ LiveOrderManagerFutures initialisé en mode BYPASS | "
+                f"Mode: {'DRY_RUN' if dry_run else 'LIVE BYPASS'} | "
+                f"Levier défaut: {self.default_leverage}x"
+            )
+            logger.info(
+                f"✅ LiveOrderManagerFutures initialisé en mode BYPASS | "
+                f"Mode: {'DRY_RUN' if dry_run else 'LIVE BYPASS'} | "
+                f"Levier défaut: {self.default_leverage}x"
+            )
+            
+            # Initialiser WebSocket si API keys fournis
+            if api_key and api_secret:
+                self.bypass_ws = MexcFuturesWebSocket(
+                    api_key=api_key,
+                    secret_key=api_secret,
+                    auto_reconnect=True
+                )
+                logger.info("✅ WebSocket bypass initialisé (pour updates temps réel)")
+        else:
+            # Mode CCXT classique (peut être bloqué par MEXC)
+            if not api_key or not api_secret:
+                raise ValueError("api_key et api_secret requis en mode CCXT")
+            
+            self.exchange = ccxt.mexc({
+                'apiKey': api_key,
+                'secret': api_secret,
+                'enableRateLimit': True,
+                'timeout': 10000,
+                'options': {
+                    'defaultType': 'swap',
+                    'adjustForTimeDifference': True,
+                    'defaultMarginMode': 'isolated',
+                }
+            })
 
-        # Initialiser exchange MEXC Futures
-        self.exchange = ccxt.mexc({
-            'apiKey': api_key,
-            'secret': api_secret,
-            'enableRateLimit': True,
-            'timeout': 10000,  # 🔥 Timeout réduit à 10s (au lieu de défaut ~30s)
-            'options': {
-                'defaultType': 'swap',  # 🔥 FUTURES/Perpetual Swaps
-                'adjustForTimeDifference': True,
-                'defaultMarginMode': 'isolated',  # 🔥 Mode marge ISOLÉE (jamais croisé)
-            }
-        })
-
-        if testnet:
-            self.exchange.set_sandbox_mode(True)
-            logger.warning("⚠️ MEXC Futures testnet - utiliser dry_run=True pour tests")
+            if testnet:
+                self.exchange.set_sandbox_mode(True)
+                logger.warning("⚠️ MEXC Futures testnet - utiliser dry_run=True pour tests")
+            
+            print(
+                f"✅ LiveOrderManagerFutures initialisé en mode CCXT | "
+                f"Mode: {'DRY_RUN' if dry_run else 'LIVE CCXT'} | "
+                f"Levier défaut: {self.default_leverage}x"
+            )
+            logger.info(
+                f"✅ LiveOrderManagerFutures initialisé en mode CCXT | "
+                f"Mode: {'DRY_RUN' if dry_run else 'LIVE CCXT'} | "
+                f"Levier défaut: {self.default_leverage}x"
+            )
 
         # Statistiques
         self.stats = {
@@ -155,18 +255,15 @@ class LiveOrderManagerFutures:
 
         # Cache des leviers par symbole
         self._leverage_cache: Dict[str, int] = {}
-
-        logger.info(
-            f"✅ LiveOrderManagerFutures initialisé | "
-            f"Mode: {'DRY_RUN' if dry_run else 'LIVE FUTURES'} | "
-            f"Levier défaut: {self.default_leverage}x"
-        )
         
         # 🔥 Vérifier connectivité API en mode LIVE
         if not dry_run:
             try:
                 balance = self.get_balance('USDT')
-                logger.info(f"✅ API MEXC connectée | Balance USDT: {balance:.2f}")
+                if balance is not None:
+                    logger.info(f"✅ API MEXC connectée | Balance USDT: {balance:.2f}")
+                else:
+                    logger.warning("⚠️ Balance non disponible - vérifiez vos credentials")
             except Exception as api_error:
                 logger.error(
                     f"❌ ERREUR API MEXC au démarrage: {api_error} | "
@@ -216,6 +313,18 @@ class LiveOrderManagerFutures:
             if len(base_quote) == 2:
                 return f"{symbol}:{base_quote[1]}"
         return symbol
+    
+    def _convert_symbol_to_bypass(self, symbol: str) -> str:
+        """
+        Convertir symbole standard en format bypass MEXC
+        
+        Ex: BTC/USDT:USDT → BTC_USDT
+            BTC/USDT → BTC_USDT
+        """
+        # Retirer :USDT si présent
+        clean = symbol.replace(":USDT", "")
+        # Remplacer / par _
+        return clean.replace("/", "_")
 
     def open_position(
         self,
@@ -249,42 +358,46 @@ class LiveOrderManagerFutures:
             # Pour MEXC Futures: amount = size_usdt / entry_price
             amount = size_usdt / entry_price
 
-            # 🔢 Ajuster quantité selon la précision/limites du marché
-            try:
-                if not getattr(self.exchange, 'markets', None):
-                    self.exchange.load_markets()
-                market = self.exchange.market(futures_symbol)
+            # 🔢 Ajuster quantité selon la précision/limites du marché (CCXT uniquement)
+            if self.exchange:
+                try:
+                    if not getattr(self.exchange, 'markets', None):
+                        self.exchange.load_markets()
+                    market = self.exchange.market(futures_symbol)
 
-                amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
+                    amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
 
-                limits = (market or {}).get('limits', {}) if market else {}
-                min_amount = limits.get('amount', {}).get('min')
-                max_amount = limits.get('amount', {}).get('max')
+                    limits = (market or {}).get('limits', {}) if market else {}
+                    min_amount = limits.get('amount', {}).get('min')
+                    max_amount = limits.get('amount', {}).get('max')
 
-                # 🔥 Rejeter si quantité < min après arrondi (pas assez de capital)
-                if min_amount and amount < float(min_amount):
-                    logger.error(
-                        f"❌ Quantité insuffisante {futures_symbol}: {amount:.8f} < min {min_amount} | "
-                        f"Capital requis: {float(min_amount) * entry_price:.2f} USDT (vous avez {size_usdt:.2f} USDT)"
-                    )
-                    return FuturesOrderResult(
-                        success=False,
-                        error_message=f"Quantité insuffisante: {amount:.8f} < min {min_amount}",
-                        latency_ms=(time.time() - start_time) * 1000
-                    )
-                
-                if max_amount and amount > float(max_amount):
-                    logger.debug(
-                        f"🔧 Ajustement quantité {futures_symbol}: {amount} > max {max_amount}, arrondi au maximum"
-                    )
-                    amount = float(max_amount)
+                    # 🔥 Rejeter si quantité < min après arrondi (pas assez de capital)
+                    if min_amount and amount < float(min_amount):
+                        logger.error(
+                            f"❌ Quantité insuffisante {futures_symbol}: {amount:.8f} < min {min_amount} | "
+                            f"Capital requis: {float(min_amount) * entry_price:.2f} USDT (vous avez {size_usdt:.2f} USDT)"
+                        )
+                        return FuturesOrderResult(
+                            success=False,
+                            error_message=f"Quantité insuffisante: {amount:.8f} < min {min_amount}",
+                            latency_ms=(time.time() - start_time) * 1000
+                        )
+                    
+                    if max_amount and amount > float(max_amount):
+                        logger.debug(
+                            f"🔧 Ajustement quantité {futures_symbol}: {amount} > max {max_amount}, arrondi au maximum"
+                        )
+                        amount = float(max_amount)
 
-                if amount <= 0:
-                    raise ValueError(
-                        f"Quantité arrondie invalide ({amount}) pour {futures_symbol}. Vérifier size_usdt={size_usdt}"
-                    )
-            except Exception as precision_err:
-                logger.warning(f"⚠️ Impossible d'ajuster la quantité {futures_symbol}: {precision_err}")
+                    if amount <= 0:
+                        raise ValueError(
+                            f"Quantité arrondie invalide ({amount}) pour {futures_symbol}. Vérifier size_usdt={size_usdt}"
+                        )
+                except Exception as precision_err:
+                    logger.warning(f"⚠️ Impossible d'ajuster la quantité {futures_symbol}: {precision_err}")
+            else:
+                # En mode bypass pur, on laisse la quantité calculée telle quelle (MEXC accepte le flottant brut)
+                amount = round(amount, 8)
 
             # Type d'ordre
             # LONG = buy, SHORT = sell (pour ouvrir)
@@ -336,7 +449,7 @@ class LiveOrderManagerFutures:
             margin_required = size_usdt / leverage
             balance = self.get_balance('USDT')
             
-            if balance < margin_required:
+            if balance is not None and balance < margin_required:
                 logger.error(
                     f"❌ Solde insuffisant: {balance:.2f} USDT disponible, "
                     f"{margin_required:.2f} USDT requis (size={size_usdt:.2f}, leverage={leverage}x)"
@@ -347,14 +460,94 @@ class LiveOrderManagerFutures:
                     latency_ms=(time.time() - start_time) * 1000
                 )
 
-            # LIVE: Passer ordre MARKET avec tous les paramètres MEXC requis
+            # Stocker levier dans cache pour la fermeture
+            self._leverage_cache[futures_symbol] = leverage
+            
+            # ================================================================
+            # 🔥 MODE BYPASS: Utiliser les endpoints browser
+            # ================================================================
+            if self.use_bypass and self.bypass_client:
+                bypass_symbol = self._convert_symbol_to_bypass(symbol)
+                
+                # Déterminer side pour bypass
+                # 1=open long, 2=close short, 3=open short, 4=close long
+                if direction == 'LONG':
+                    bypass_side = OrderSide.OPEN_LONG
+                else:
+                    bypass_side = OrderSide.OPEN_SHORT
+                
+                logger.info(
+                    f"🔥 [BYPASS] Ouverture {direction}: {bypass_symbol} | "
+                    f"Side: {bypass_side} | Vol: {amount:.6f} | Leverage: {leverage}x"
+                )
+                
+                # Appeler le client bypass (async) via helper thread-safe
+                bypass_result = run_async_safely(
+                    self.bypass_client.submit_order(
+                        symbol=bypass_symbol,
+                        side=bypass_side,
+                        vol=amount,
+                        price=entry_price,
+                        order_type=OrderType.MARKET,
+                        open_type=OpenType.ISOLATED,
+                        leverage=leverage
+                    )
+                )
+                
+                latency_ms = (time.time() - start_time) * 1000
+                
+                if bypass_result.success:
+                    # Calculer prix de liquidation estimé
+                    margin = size_usdt / leverage
+                    if direction == 'LONG':
+                        liq_price = entry_price * (1 - 1/leverage + 0.005)
+                    else:
+                        liq_price = entry_price * (1 + 1/leverage - 0.005)
+                    
+                    # Mettre à jour stats
+                    self.stats['orders_placed'] += 1
+                    self.stats['orders_filled'] += 1
+                    self.stats['total_latency_ms'] += latency_ms
+                    self.stats['avg_latency_ms'] = self.stats['total_latency_ms'] / self.stats['orders_placed']
+                    
+                    logger.info(
+                        f"✅ [BYPASS] Position {direction} ouverte | "
+                        f"Order ID: {bypass_result.order_id} | "
+                        f"Latence: {latency_ms:.0f}ms"
+                    )
+                    
+                    return FuturesOrderResult(
+                        success=True,
+                        order_id=str(bypass_result.order_id),
+                        filled_price=entry_price,  # Prix théorique (market order)
+                        filled_amount=amount,
+                        actual_fees_usdt=0.0,  # Fees non disponibles immédiatement
+                        actual_slippage_pct=0.0,
+                        margin_used=margin,
+                        leverage=leverage,
+                        liquidation_price=liq_price,
+                        latency_ms=latency_ms,
+                        executed_at=datetime.now(timezone.utc).isoformat(),
+                        raw_api_response=bypass_result.data
+                    )
+                else:
+                    self.stats['orders_failed'] += 1
+                    logger.error(
+                        f"❌ [BYPASS] Échec ouverture: {bypass_result.error_message}"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=bypass_result.error_message,
+                        latency_ms=latency_ms
+                    )
+            
+            # ================================================================
+            # MODE CCXT: Utiliser l'API classique (peut être bloquée)
+            # ================================================================
             # 🔥 FIX: MEXC requiert leverage, openType ET positionType dans params
             # openType: 1=isolated, 2=cross
             # positionType: 1=long, 2=short
             position_type = 1 if direction == 'LONG' else 2
-            
-            # Stocker levier dans cache pour la fermeture
-            self._leverage_cache[futures_symbol] = leverage
             
             # 🔥 DEBUG: Activer verbose pour capturer réponse MEXC complète
             self.exchange.verbose = True
@@ -550,23 +743,26 @@ class LiveOrderManagerFutures:
             order_type = 'market'
 
             # 🔢 Ajuster quantité fermée selon précision
-            try:
-                futures_symbol = self._convert_symbol_to_futures(symbol)
-                if not getattr(self.exchange, 'markets', None):
-                    self.exchange.load_markets()
-                market = self.exchange.market(futures_symbol)
-                amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
+            if self.exchange:
+                try:
+                    futures_symbol = self._convert_symbol_to_futures(symbol)
+                    if not getattr(self.exchange, 'markets', None):
+                        self.exchange.load_markets()
+                    market = self.exchange.market(futures_symbol)
+                    amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
 
-                limits = (market or {}).get('limits', {}) if market else {}
-                min_amount = limits.get('amount', {}).get('min')
-                if min_amount and amount < float(min_amount):
-                    amount = float(min_amount)
-                if amount <= 0:
-                    raise ValueError(
-                        f"Quantité fermée invalide ({amount}) pour {futures_symbol}."
-                    )
-            except Exception as precision_err:
-                logger.warning(f"⚠️ Impossible d'ajuster la quantité close {symbol}: {precision_err}")
+                    limits = (market or {}).get('limits', {}) if market else {}
+                    min_amount = limits.get('amount', {}).get('min')
+                    if min_amount and amount < float(min_amount):
+                        amount = float(min_amount)
+                    if amount <= 0:
+                        raise ValueError(
+                            f"Quantité fermée invalide ({amount}) pour {futures_symbol}."
+                        )
+                except Exception as precision_err:
+                    logger.warning(f"⚠️ Impossible d'ajuster la quantité close {symbol}: {precision_err}")
+            else:
+                amount = round(amount, 8)
 
             logger.info(
                 f"📤 FERMETURE FUTURES {direction}: {futures_symbol} | "
@@ -605,10 +801,91 @@ class LiveOrderManagerFutures:
                     executed_at=datetime.now(timezone.utc).isoformat()
                 )
 
-            # LIVE: Fermer position réelle (mode one-way, pas hedge)
-            # 🔥 FIX: MEXC requiert leverage même pour fermeture en isolated margin
+            # LIVE: Fermer position réelle
             leverage = self._leverage_cache.get(futures_symbol, self.default_leverage)
-            # positionType: 1=long, 2=short (inverse de direction pour fermeture)
+            
+            # ================================================================
+            # 🔥 MODE BYPASS: Utiliser les endpoints browser
+            # ================================================================
+            if self.use_bypass and self.bypass_client:
+                bypass_symbol = self._convert_symbol_to_bypass(symbol)
+                
+                # Déterminer side pour bypass (fermeture)
+                # 1=open long, 2=close short, 3=open short, 4=close long
+                if direction == 'LONG':
+                    bypass_side = OrderSide.CLOSE_LONG
+                else:
+                    bypass_side = OrderSide.CLOSE_SHORT
+                
+                logger.info(
+                    f"🔥 [BYPASS] Fermeture {direction}: {bypass_symbol} | "
+                    f"Side: {bypass_side} | Vol: {amount:.6f}"
+                )
+                
+                # Appeler le client bypass (async) via helper thread-safe
+                bypass_result = run_async_safely(
+                    self.bypass_client.submit_order(
+                        symbol=bypass_symbol,
+                        side=bypass_side,
+                        vol=amount,
+                        price=current_price,
+                        order_type=OrderType.MARKET,
+                        open_type=OpenType.ISOLATED,
+                        leverage=leverage,
+                        reduce_only=True
+                    )
+                )
+                
+                latency_ms = (time.time() - start_time) * 1000
+                
+                if bypass_result.success:
+                    # Calculer PnL
+                    if direction == 'LONG':
+                        pnl_usdt = (current_price - entry_price) * amount
+                    else:
+                        pnl_usdt = (entry_price - current_price) * amount
+                    
+                    # Mettre à jour stats
+                    self.stats['orders_placed'] += 1
+                    self.stats['orders_filled'] += 1
+                    self.stats['total_latency_ms'] += latency_ms
+                    self.stats['avg_latency_ms'] = self.stats['total_latency_ms'] / self.stats['orders_placed']
+                    self.stats['total_pnl_usdt'] += pnl_usdt
+                    
+                    logger.info(
+                        f"✅ [BYPASS] Position {direction} fermée | "
+                        f"Order ID: {bypass_result.order_id} | "
+                        f"PnL: {pnl_usdt:+.2f} USDT | "
+                        f"Latence: {latency_ms:.0f}ms"
+                    )
+                    
+                    return FuturesOrderResult(
+                        success=True,
+                        order_id=str(bypass_result.order_id),
+                        filled_price=current_price,
+                        filled_amount=amount,
+                        actual_pnl_usdt=pnl_usdt,
+                        actual_fees_usdt=0.0,
+                        actual_slippage_pct=0.0,
+                        latency_ms=latency_ms,
+                        executed_at=datetime.now(timezone.utc).isoformat(),
+                        raw_api_response=bypass_result.data
+                    )
+                else:
+                    self.stats['orders_failed'] += 1
+                    logger.error(
+                        f"❌ [BYPASS] Échec fermeture: {bypass_result.error_message}"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=bypass_result.error_message,
+                        latency_ms=latency_ms
+                    )
+            
+            # ================================================================
+            # MODE CCXT: Utiliser l'API classique (peut être bloquée)
+            # ================================================================
+            # positionType: 1=long, 2=short
             position_type = 1 if direction == 'LONG' else 2
             
             # 🔥 Retry avec backoff pour fermeture aussi
@@ -724,6 +1001,29 @@ class LiveOrderManagerFutures:
             if self.dry_run:
                 return None
 
+            # 🔥 MODE BYPASS
+            if self.use_bypass and self.bypass_client:
+                bypass_symbol = self._convert_symbol_to_bypass(symbol)
+                
+                positions = run_async_safely(
+                    self.bypass_client.get_open_positions(bypass_symbol)
+                )
+                
+                for pos in positions:
+                    if pos.hold_vol > 0:
+                        return {
+                            'symbol': symbol,
+                            'side': 'long' if pos.position_type == 1 else 'short',
+                            'size': pos.hold_vol,
+                            'entry_price': pos.hold_avg_price,
+                            'unrealized_pnl': pos.unrealized_pnl,
+                            'liquidation_price': pos.liquidate_price,
+                            'margin': pos.margin,
+                            'leverage': pos.leverage,
+                        }
+                return None
+            
+            # MODE CCXT
             futures_symbol = self._convert_symbol_to_futures(symbol)
             positions = self.exchange.fetch_positions([futures_symbol])
 
@@ -746,18 +1046,28 @@ class LiveOrderManagerFutures:
             logger.error(f"❌ Erreur récupération position: {e}")
             return None
 
-    def get_balance(self, currency: str = 'USDT') -> float:
+    def get_balance(self, currency: str = 'USDT') -> Optional[float]:
         """Récupérer balance disponible futures"""
         try:
             if self.dry_run:
                 return 0.0
 
+            # 🔥 MODE BYPASS
+            if self.use_bypass and self.bypass_client:
+                asset = run_async_safely(
+                    self.bypass_client.get_account_asset(currency)
+                )
+                if asset:
+                    return asset.available_balance
+                return None
+            
+            # MODE CCXT
             balance = self.exchange.fetch_balance()
             return float(balance.get(currency, {}).get('free', 0.0))
 
         except Exception as e:
             logger.error(f"❌ Erreur récupération balance futures: {e}")
-            return 0.0
+            return None
 
     def get_stats(self) -> Dict[str, Any]:
         """Récupérer statistiques d'utilisation"""

@@ -2257,21 +2257,29 @@ def init_instances():
                 api_secret = live_config.get('api_secret_mexc', '')
 
                 if api_key and api_secret:
-                    # 🔥 FUTURES: Récupérer levier depuis config
+                    # 🔥 FUTURES: Récupérer levier + token depuis config
                     from config import TRADING_CONFIG
                     default_leverage = live_config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                    browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
+                    use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
+                    
+                    if use_bypass_mode and not browser_token:
+                        logger.warning("⚠️ Mode BYPASS activé mais aucun browser token fourni (MEXC_BROWSER_TOKEN). Retour en mode CCXT.")
                     
                     live_order_manager = LiveOrderManager(
                         api_key=api_key,
                         api_secret=api_secret,
+                        browser_token=browser_token if browser_token else None,
                         default_leverage=default_leverage,
-                        dry_run=live_config.get('dry_run', True)
+                        dry_run=live_config.get('dry_run', True),
+                        use_bypass=use_bypass_mode and bool(browser_token)
                     )
 
                     logger.info(
                         f"✅ LiveOrderManagerFutures initialisé | "
                         f"Mode: {'DRY_RUN' if live_config.get('dry_run') else 'LIVE RÉEL'} | "
-                        f"Levier: {default_leverage}x"
+                        f"Levier: {default_leverage}x | "
+                        f"Bypass: {'ON' if use_bypass_mode and browser_token else 'OFF'}"
                     )
 
                     # Injecter LiveOrderManager dans PositionManager

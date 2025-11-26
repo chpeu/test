@@ -107,6 +107,12 @@ TRADING_CONFIG = {
     # 🔥 FUTURES: Levier par défaut (1-125x pour MEXC)
     "default_leverage": 10,  # Levier 10x par défaut (recommandé pour débuter)
     
+    # 🔥 BYPASS MODE: Token browser pour bypasser blocage API MEXC Futures
+    # Récupérer depuis DevTools > Network > Headers > authorization (commence par "WEB_")
+    # ⚠️ Le token expire après quelques heures, nécessite refresh manuel
+    "mexc_browser_token": os.getenv("MEXC_BROWSER_TOKEN", ""),
+    "use_bypass_mode": True,  # Utiliser le mode bypass (recommandé si API bloquée)
+    
     # 🔥 FIX: Validation slippage avant ouverture position
     "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
     
