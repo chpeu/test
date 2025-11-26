@@ -81,5 +81,6 @@
   "ml_v2_test_size": 0.35,
   "ml_v2_validation_size": 0.15,
   "default_leverage": 1,
-  "max_latency_ms": 1000
+  "max_latency_ms": 1000,
+  "ml_metric": "accuracy"
 }
