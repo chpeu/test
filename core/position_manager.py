@@ -85,6 +85,49 @@ class Position:
     # Price precision from API (for accurate price formatting)
     price_precision: Optional[int] = None
     tick_size: Optional[float] = None
+    actual_slippage_pct: Optional[float] = None
+
+    # 🔥 LIVE TRADING METADATA (ordres & exécution)
+    live_execution_mode: Optional[str] = None
+    entry_order_id: Optional[str] = None
+    entry_order_type: Optional[str] = None
+    entry_requested_price: Optional[float] = None
+    entry_fill_price: Optional[float] = None
+    entry_slippage_pct: Optional[float] = None
+    entry_latency_ms: Optional[float] = None
+    entry_timestamp: Optional[str] = None
+    entry_api_response: Optional[Any] = None
+    exit_order_id: Optional[str] = None
+    exit_order_type: Optional[str] = None
+    exit_requested_price: Optional[float] = None
+    exit_fill_price: Optional[float] = None
+    exit_slippage_pct: Optional[float] = None
+    exit_latency_ms: Optional[float] = None
+    exit_timestamp: Optional[str] = None
+    exit_api_response: Optional[Any] = None
+    leverage_used: Optional[int] = None
+    margin_mode: Optional[str] = None
+    position_size_usdt: Optional[float] = None
+    position_size_contracts: Optional[float] = None
+    liquidation_price: Optional[float] = None
+    margin_used: Optional[float] = None
+    maker_fee_rate: Optional[float] = None
+    taker_fee_rate: Optional[float] = None
+    entry_fee_usdt: Optional[float] = None
+    exit_fee_usdt: Optional[float] = None
+    total_fees_usdt: Optional[float] = None
+    funding_rate_at_entry: Optional[float] = None
+    funding_rate_at_exit: Optional[float] = None
+    funding_paid_usdt: Optional[float] = None
+    time_to_fill_entry_ms: Optional[float] = None
+    time_to_fill_exit_ms: Optional[float] = None
+    price_at_signal: Optional[float] = None
+    price_at_order_sent: Optional[float] = None
+    signal_to_fill_slippage_pct: Optional[float] = None
+    api_errors: Optional[Any] = None
+    retry_count: int = 0
+    exchange_latency_ms: Optional[float] = None
+    ws_latency_ms: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
@@ -118,7 +161,37 @@ class Position:
             'tp_escalier_levels': self.tp_escalier_levels if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else [],  # 🔥 FIX: Retourner la liste native pour éviter erreurs de type
             'current_price': getattr(self, 'current_price', None),  # 🔥 FIX: Ajouter prix actuel si disponible
             'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
-            'tick_size': self.tick_size  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
+            'tick_size': self.tick_size,  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
+            # Live meta
+            'live_execution_mode': self.live_execution_mode,
+            'entry_order_id': self.entry_order_id,
+            'entry_order_type': self.entry_order_type,
+            'entry_requested_price': self.entry_requested_price,
+            'entry_fill_price': self.entry_fill_price,
+            'entry_slippage_pct': self.entry_slippage_pct,
+            'entry_latency_ms': self.entry_latency_ms,
+            'entry_timestamp': self.entry_timestamp,
+            'exit_order_id': self.exit_order_id,
+            'exit_order_type': self.exit_order_type,
+            'exit_requested_price': self.exit_requested_price,
+            'exit_fill_price': self.exit_fill_price,
+            'exit_slippage_pct': self.exit_slippage_pct,
+            'exit_latency_ms': self.exit_latency_ms,
+            'exit_timestamp': self.exit_timestamp,
+            'leverage_used': self.leverage_used,
+            'margin_mode': self.margin_mode,
+            'position_size_usdt': self.position_size_usdt,
+            'position_size_contracts': self.position_size_contracts,
+            'liquidation_price': self.liquidation_price,
+            'margin_used': self.margin_used,
+            'entry_fee_usdt': self.entry_fee_usdt,
+            'exit_fee_usdt': self.exit_fee_usdt,
+            'total_fees_usdt': self.total_fees_usdt,
+            'funding_rate_at_entry': self.funding_rate_at_entry,
+            'funding_rate_at_exit': self.funding_rate_at_exit,
+            'funding_paid_usdt': self.funding_paid_usdt,
+            'time_to_fill_entry_ms': self.time_to_fill_entry_ms,
+            'time_to_fill_exit_ms': self.time_to_fill_exit_ms,
         }
 
 
@@ -492,9 +565,30 @@ class PositionManager:
                 )
 
                 if order_result.success:
+                    # 💾 Stocker métadonnées ordre d'entrée
+                    requested_entry_price = entry
                     # Mettre à jour position avec prix réel et slippage
                     self.active_position.entry = order_result.filled_price
                     self.active_position.actual_slippage_pct = order_result.actual_slippage_pct
+                    self.active_position.live_execution_mode = 'DRY_RUN' if self.live_order_manager.dry_run else 'LIVE_REAL'
+                    self.active_position.entry_order_id = order_result.order_id
+                    self.active_position.entry_order_type = 'market'
+                    self.active_position.entry_requested_price = requested_entry_price
+                    self.active_position.entry_fill_price = order_result.filled_price
+                    self.active_position.entry_slippage_pct = order_result.actual_slippage_pct
+                    self.active_position.entry_latency_ms = order_result.latency_ms
+                    self.active_position.entry_timestamp = order_result.executed_at
+                    self.active_position.entry_fee_usdt = getattr(order_result, 'actual_fees_usdt', None)
+                    self.active_position.position_size_usdt = size
+                    self.active_position.position_size_contracts = size_amount
+                    self.active_position.margin_mode = 'isolated'
+                    self.active_position.leverage_used = getattr(order_result, 'leverage', None) or getattr(self.live_order_manager, 'default_leverage', None)
+                    self.active_position.margin_used = getattr(order_result, 'margin_used', None)
+                    self.active_position.liquidation_price = getattr(order_result, 'liquidation_price', None)
+                    self.active_position.time_to_fill_entry_ms = order_result.latency_ms
+                    self.active_position.maker_fee_rate = getattr(order_result, 'maker_fee_rate', None)
+                    self.active_position.taker_fee_rate = getattr(order_result, 'taker_fee_rate', None)
+                    self.active_position.price_at_signal = self.active_position.price_at_signal or requested_entry_price
 
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
                     if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
@@ -1191,6 +1285,7 @@ class PositionManager:
         # 🔥 LIVE TRADING: Fermer ordre réel si LiveOrderManager actif
         actual_exit_price = exit_price  # Prix par défaut (paper trading)
         actual_slippage_pct = 0.0
+        requested_exit_price = exit_price
 
         if self.live_order_manager:
             try:
@@ -1210,6 +1305,19 @@ class PositionManager:
                     # Utiliser le prix réel et slippage réel
                     actual_exit_price = order_result.filled_price
                     actual_slippage_pct = order_result.actual_slippage_pct or 0.0
+                    # 💾 Stocker métadonnées ordre de sortie
+                    self.active_position.exit_order_id = order_result.order_id
+                    self.active_position.exit_order_type = 'market'
+                    self.active_position.exit_requested_price = requested_exit_price
+                    self.active_position.exit_fill_price = order_result.filled_price
+                    self.active_position.exit_slippage_pct = actual_slippage_pct
+                    self.active_position.exit_latency_ms = order_result.latency_ms
+                    self.active_position.exit_timestamp = order_result.executed_at
+                    self.active_position.exit_fee_usdt = getattr(order_result, 'actual_fees_usdt', None)
+                    self.active_position.time_to_fill_exit_ms = order_result.latency_ms
+                    entry_fees = self.active_position.entry_fee_usdt or 0.0
+                    exit_fees = getattr(order_result, 'actual_fees_usdt', None) or 0.0
+                    self.active_position.total_fees_usdt = entry_fees + exit_fees
 
                     # Calculer PnL réalisé depuis order_result
                     realized_pnl_usdt = order_result.actual_pnl_usdt or 0.0
@@ -1522,7 +1630,33 @@ class PositionManager:
                         'entry_scalability': entry_scalability,
                         'exit_indicators': exit_indicators,  # Vide pour l'instant, sera rempli plus tard
                         'config_snapshot': config_snapshot,  # Toutes les variables de configuration
-                        'is_backtest': False
+                        'is_backtest': False,
+                        # Métadonnées LIVE (si disponibles)
+                        'entry_order_id': getattr(self.active_position, 'entry_order_id', None),
+                        'entry_order_type': getattr(self.active_position, 'entry_order_type', None),
+                        'entry_requested_price': getattr(self.active_position, 'entry_requested_price', None),
+                        'entry_fill_price': getattr(self.active_position, 'entry_fill_price', None),
+                        'entry_slippage_pct': getattr(self.active_position, 'entry_slippage_pct', None),
+                        'entry_latency_ms': getattr(self.active_position, 'entry_latency_ms', None),
+                        'entry_timestamp': getattr(self.active_position, 'entry_timestamp', None),
+                        'exit_order_id': getattr(self.active_position, 'exit_order_id', None),
+                        'exit_order_type': getattr(self.active_position, 'exit_order_type', None),
+                        'exit_requested_price': getattr(self.active_position, 'exit_requested_price', None),
+                        'exit_fill_price': getattr(self.active_position, 'exit_fill_price', None),
+                        'exit_slippage_pct': getattr(self.active_position, 'exit_slippage_pct', None),
+                        'exit_latency_ms': getattr(self.active_position, 'exit_latency_ms', None),
+                        'exit_timestamp': getattr(self.active_position, 'exit_timestamp', None),
+                        'entry_fee_usdt': getattr(self.active_position, 'entry_fee_usdt', None),
+                        'exit_fee_usdt': getattr(self.active_position, 'exit_fee_usdt', None),
+                        'total_fees_usdt': getattr(self.active_position, 'total_fees_usdt', None),
+                        'position_size_usdt': getattr(self.active_position, 'position_size_usdt', None),
+                        'position_size_contracts': getattr(self.active_position, 'position_size_contracts', None),
+                        'margin_mode': getattr(self.active_position, 'margin_mode', None),
+                        'margin_used': getattr(self.active_position, 'margin_used', None),
+                        'leverage_used': getattr(self.active_position, 'leverage_used', None),
+                        'liquidation_price': getattr(self.active_position, 'liquidation_price', None),
+                        'time_to_fill_entry_ms': getattr(self.active_position, 'time_to_fill_entry_ms', None),
+                        'time_to_fill_exit_ms': getattr(self.active_position, 'time_to_fill_exit_ms', None)
                     }
                     
                     # Récupérer opportunity_id et scan_log_id si disponibles
