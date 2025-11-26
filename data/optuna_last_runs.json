@@ -28,7 +28,7 @@
       "metric": "f1_score",
       "last_run": {
         "score": 0.85,
-        "timestamp": "2025-11-26T12:38:27.731425",
+        "timestamp": "2025-11-26T13:17:56.336326",
         "metric": "f1_score",
         "source": "latest"
       }
