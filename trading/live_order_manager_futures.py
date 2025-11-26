@@ -20,6 +20,7 @@ import asyncio
 import ccxt
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass, field
+import json
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -79,6 +80,11 @@ class FuturesOrderResult:
     error_message: Optional[str] = None
     latency_ms: Optional[float] = None
     executed_at: Optional[str] = None
+    # 🔥 Nouvelles métadonnées LIVE
+    maker_fee_rate: Optional[float] = None
+    taker_fee_rate: Optional[float] = None
+    funding_rate: Optional[float] = None
+    raw_api_response: Optional[Dict[str, Any]] = None
 
 
 class LiveOrderManagerFutures:
@@ -277,24 +283,25 @@ class LiveOrderManagerFutures:
                     executed_at=datetime.now(timezone.utc).isoformat()
                 )
 
-            # LIVE: Configurer marge isolée + levier
-            if futures_symbol not in self._leverage_cache or self._leverage_cache[futures_symbol] != leverage:
-                try:
-                    # 🔥 Mode marge ISOLÉE (pas croisé)
-                    self.exchange.set_margin_mode('isolated', futures_symbol)
-                    self.exchange.set_leverage(leverage, futures_symbol)
-                    self._leverage_cache[futures_symbol] = leverage
-                    logger.info(f"✅ {futures_symbol}: Marge ISOLÉE + Levier {leverage}x configurés")
-                except Exception as e:
-                    logger.warning(f"⚠️ Impossible de configurer marge/levier: {e}")
-
-            # LIVE: Passer ordre MARKET (pas de limit, pas de hedge)
+            # LIVE: Passer ordre MARKET avec tous les paramètres MEXC requis
+            # 🔥 FIX: MEXC requiert leverage, openType ET positionType dans params
+            # openType: 1=isolated, 2=cross
+            # positionType: 1=long, 2=short
+            position_type = 1 if direction == 'LONG' else 2
+            
+            # Stocker levier dans cache pour la fermeture
+            self._leverage_cache[futures_symbol] = leverage
+            
             order = self.exchange.create_order(
                 symbol=futures_symbol,
                 type=order_type,  # 'market'
                 side=side,
-                amount=amount
-                # 🔥 Pas de positionSide = mode one-way (pas hedge)
+                amount=amount,
+                params={
+                    'leverage': str(leverage),
+                    'openType': 1,  # isolated margin
+                    'positionType': position_type,  # 1=long, 2=short
+                }
             )
 
             latency_ms = (time.time() - start_time) * 1000
@@ -303,10 +310,44 @@ class LiveOrderManagerFutures:
             order_id = order.get('id')
             filled_price = order.get('average') or order.get('price') or entry_price
             filled_amount = order.get('filled') or amount
-            fees = order.get('fee', {}).get('cost', 0.0)
+            fee_info = order.get('fee', {})
+            fees = fee_info.get('cost', 0.0) or 0.0
 
             # Calculer slippage
             slippage_pct = abs((filled_price - entry_price) / entry_price) * 100 if filled_price else 0
+
+            # Calculer marge utilisée
+            margin_used = size_usdt / leverage
+
+            # 🔥 Récupérer infos position pour liquidation price
+            liquidation_price = None
+            funding_rate = None
+            try:
+                positions = self.exchange.fetch_positions([futures_symbol])
+                for pos in positions:
+                    if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                        liquidation_price = float(pos.get('liquidationPrice', 0)) or None
+                        break
+                # Récupérer funding rate
+                try:
+                    funding_info = self.exchange.fetch_funding_rate(futures_symbol)
+                    funding_rate = funding_info.get('fundingRate')
+                except:
+                    pass
+            except Exception as e:
+                logger.debug(f"Impossible de récupérer position/funding: {e}")
+
+            # 🔥 Récupérer taux de frais
+            maker_fee_rate = None
+            taker_fee_rate = None
+            try:
+                markets = self.exchange.load_markets()
+                if futures_symbol in markets:
+                    market = markets[futures_symbol]
+                    maker_fee_rate = market.get('maker')
+                    taker_fee_rate = market.get('taker')
+            except:
+                pass
 
             # Mettre à jour stats
             self.stats['orders_placed'] += 1
@@ -319,6 +360,7 @@ class LiveOrderManagerFutures:
                 f"Order ID: {order_id} | "
                 f"Prix rempli: {filled_price} | "
                 f"Slippage: {slippage_pct:.3f}% | "
+                f"Fees: {fees:.4f} USDT | "
                 f"Latence: {latency_ms:.0f}ms"
             )
 
@@ -329,17 +371,30 @@ class LiveOrderManagerFutures:
                 filled_amount=filled_amount,
                 actual_fees_usdt=fees,
                 actual_slippage_pct=slippage_pct,
+                margin_used=margin_used,
                 leverage=leverage,
+                liquidation_price=liquidation_price,
                 latency_ms=latency_ms,
-                executed_at=datetime.now(timezone.utc).isoformat()
+                executed_at=datetime.now(timezone.utc).isoformat(),
+                maker_fee_rate=maker_fee_rate,
+                taker_fee_rate=taker_fee_rate,
+                funding_rate=funding_rate,
+                raw_api_response=order
             )
 
         except Exception as e:
             latency_ms = (time.time() - start_time) * 1000
             self.stats['orders_failed'] += 1
 
+            # 🔥 Log détaillé pour diagnostic
+            error_details = str(e)
+            if hasattr(e, 'args') and len(e.args) > 0:
+                error_details = str(e.args)
+            
             logger.error(
-                f"❌ Erreur ouverture position futures: {e} | "
+                f"❌ Erreur ouverture position futures: {error_details} | "
+                f"Symbol: {symbol} → {futures_symbol} | "
+                f"Side: {side} | Amount: {amount:.6f} | Leverage: {leverage}x | "
                 f"Latence: {latency_ms:.0f}ms"
             )
 
@@ -428,15 +483,22 @@ class LiveOrderManagerFutures:
                 )
 
             # LIVE: Fermer position réelle (mode one-way, pas hedge)
+            # 🔥 FIX: MEXC requiert leverage même pour fermeture en isolated margin
+            leverage = self._leverage_cache.get(futures_symbol, self.default_leverage)
+            # positionType: 1=long, 2=short (inverse de direction pour fermeture)
+            position_type = 1 if direction == 'LONG' else 2
+            
             order = self.exchange.create_order(
                 symbol=futures_symbol,
                 type=order_type,  # 'market'
                 side=side,
                 amount=amount,
                 params={
-                    'reduceOnly': True,  # Important: fermeture uniquement
+                    'reduceOnly': True,
+                    'leverage': str(leverage),
+                    'openType': 1,  # isolated margin
+                    'positionType': position_type,  # même position_type que l'ouverture
                 }
-                # 🔥 Pas de positionSide = mode one-way (pas hedge)
             )
 
             latency_ms = (time.time() - start_time) * 1000
@@ -445,7 +507,8 @@ class LiveOrderManagerFutures:
             order_id = order.get('id')
             filled_price = order.get('average') or order.get('price') or current_price
             filled_amount = order.get('filled') or amount
-            fees = order.get('fee', {}).get('cost', 0.0)
+            fee_info = order.get('fee', {})
+            fees = fee_info.get('cost', 0.0) or 0.0
 
             # Calculer PnL réel
             if direction == 'LONG':
@@ -457,6 +520,14 @@ class LiveOrderManagerFutures:
 
             # Slippage
             slippage_pct = abs((filled_price - current_price) / current_price) * 100 if filled_price else 0
+
+            # 🔥 Récupérer funding rate à la sortie
+            funding_rate = None
+            try:
+                funding_info = self.exchange.fetch_funding_rate(futures_symbol)
+                funding_rate = funding_info.get('fundingRate')
+            except:
+                pass
 
             # Mettre à jour stats
             self.stats['orders_placed'] += 1
@@ -483,7 +554,9 @@ class LiveOrderManagerFutures:
                 actual_fees_usdt=fees,
                 actual_slippage_pct=slippage_pct,
                 latency_ms=latency_ms,
-                executed_at=datetime.now(timezone.utc).isoformat()
+                executed_at=datetime.now(timezone.utc).isoformat(),
+                funding_rate=funding_rate,
+                raw_api_response=order
             )
 
         except Exception as e:

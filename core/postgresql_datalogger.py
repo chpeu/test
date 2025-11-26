@@ -1298,6 +1298,11 @@ class PostgreSQLDataLogger:
                     ('exit_fill_price', _extract_numeric_value(trade_data.get('exit_fill_price'))),
                     ('exit_slippage_pct', _extract_numeric_value(trade_data.get('exit_slippage_pct'))),
                     ('exit_latency_ms', trade_data.get('exit_latency_ms')),
+                    # Timestamps LIVE & API responses
+                    ('entry_timestamp_live', trade_data.get('entry_timestamp')),
+                    ('exit_timestamp_live', trade_data.get('exit_timestamp')),
+                    ('entry_api_response', json.dumps(trade_data.get('entry_api_response')) if trade_data.get('entry_api_response') else None),
+                    ('exit_api_response', json.dumps(trade_data.get('exit_api_response')) if trade_data.get('exit_api_response') else None),
                     # Futures / Levier
                     ('leverage_used', trade_data.get('leverage_used', 1)),
                     ('margin_mode', trade_data.get('margin_mode', 'isolated')),

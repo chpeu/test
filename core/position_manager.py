@@ -588,6 +588,8 @@ class PositionManager:
                     self.active_position.time_to_fill_entry_ms = order_result.latency_ms
                     self.active_position.maker_fee_rate = getattr(order_result, 'maker_fee_rate', None)
                     self.active_position.taker_fee_rate = getattr(order_result, 'taker_fee_rate', None)
+                    self.active_position.funding_rate_at_entry = getattr(order_result, 'funding_rate', None)
+                    self.active_position.entry_api_response = getattr(order_result, 'raw_api_response', None)
                     self.active_position.price_at_signal = self.active_position.price_at_signal or requested_entry_price
 
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
@@ -843,11 +845,27 @@ class PositionManager:
         Returns:
             Taille position en USDT
         """
-        # ✅ Lire risk_per_trade depuis TRADING_CONFIG
+        # ✅ Lire risk_per_trade et bornes depuis TRADING_CONFIG
         from config import TRADING_CONFIG
-        risk_per_trade = TRADING_CONFIG.get('risk_per_trade', 2.0) / 100.0  # Convertir % en décimal
+        risk_per_trade_pct = float(TRADING_CONFIG.get('risk_per_trade', 2.0))
+        risk_per_trade = risk_per_trade_pct / 100.0  # Convertir % en décimal
         base_risk = risk_per_trade  # Utiliser risk_per_trade au lieu de base_risk par défaut
-        
+
+        # Bornes dynamiques (overridable via config)
+        min_risk_pct_cfg = TRADING_CONFIG.get('min_risk_per_trade')
+        max_risk_pct_cfg = TRADING_CONFIG.get('max_risk_per_trade')
+
+        min_risk = (
+            max(0.001, float(min_risk_pct_cfg) / 100.0)
+            if min_risk_pct_cfg is not None else
+            max(0.001, base_risk * 0.5)
+        )
+        max_risk = (
+            max(min_risk, float(max_risk_pct_cfg) / 100.0)
+            if max_risk_pct_cfg is not None else
+            max(base_risk, base_risk * 2.0)
+        )
+
         score = setup.get('score', 5.0)
 
         # Taille de base
@@ -884,8 +902,8 @@ class PositionManager:
         final_size = base_size * multiplier * streak_mult
 
         # Bornes
-        min_size = capital * min_risk
-        max_size = capital * max_risk
+        min_size = capital * min_risk if min_risk else 0.0
+        max_size = capital * max_risk if max_risk else final_size
         final_size = max(min_size, min(max_size, final_size))
 
         logger.debug(
@@ -1315,6 +1333,8 @@ class PositionManager:
                     self.active_position.exit_timestamp = order_result.executed_at
                     self.active_position.exit_fee_usdt = getattr(order_result, 'actual_fees_usdt', None)
                     self.active_position.time_to_fill_exit_ms = order_result.latency_ms
+                    self.active_position.funding_rate_at_exit = getattr(order_result, 'funding_rate', None)
+                    self.active_position.exit_api_response = getattr(order_result, 'raw_api_response', None)
                     entry_fees = self.active_position.entry_fee_usdt or 0.0
                     exit_fees = getattr(order_result, 'actual_fees_usdt', None) or 0.0
                     self.active_position.total_fees_usdt = entry_fees + exit_fees
@@ -1656,7 +1676,14 @@ class PositionManager:
                         'leverage_used': getattr(self.active_position, 'leverage_used', None),
                         'liquidation_price': getattr(self.active_position, 'liquidation_price', None),
                         'time_to_fill_entry_ms': getattr(self.active_position, 'time_to_fill_entry_ms', None),
-                        'time_to_fill_exit_ms': getattr(self.active_position, 'time_to_fill_exit_ms', None)
+                        'time_to_fill_exit_ms': getattr(self.active_position, 'time_to_fill_exit_ms', None),
+                        # Nouvelles métadonnées LIVE
+                        'maker_fee_rate': getattr(self.active_position, 'maker_fee_rate', None),
+                        'taker_fee_rate': getattr(self.active_position, 'taker_fee_rate', None),
+                        'funding_rate_at_entry': getattr(self.active_position, 'funding_rate_at_entry', None),
+                        'funding_rate_at_exit': getattr(self.active_position, 'funding_rate_at_exit', None),
+                        'entry_api_response': getattr(self.active_position, 'entry_api_response', None),
+                        'exit_api_response': getattr(self.active_position, 'exit_api_response', None)
                     }
                     
                     # Récupérer opportunity_id et scan_log_id si disponibles
