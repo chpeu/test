@@ -943,7 +943,12 @@ async def scanner_loop_callback():
                                             logger.debug(traceback.format_exc())
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
-                                    await add_log('INFO', 'Position ouverte automatiquement', 
+                                    # 🔥 Afficher le mode de trading clairement
+                                    if live_order_manager:
+                                        mode_str = "🟡 LIVE DRY-RUN" if live_order_manager.dry_run else "🔴 LIVE RÉEL"
+                                    else:
+                                        mode_str = "📝 PAPER"
+                                    await add_log('INFO', f'Position ouverte [{mode_str}]', 
                                         f"{direction} {symbol} @ {entry_price:.6f} | Size: {position_size:.2f} USDT")
                                     
                                     # 🔥 FIX: Émettre l'événement UNE SEULE FOIS avec gestion d'erreur pour éviter les déconnexions
@@ -3178,7 +3183,12 @@ async def api_close_position():
                 f"position_manager.active_position={position_manager.active_position}"
             )
             
-            await add_log('INFO', 'Position clôturée', 'Manuel')
+            # 🔥 Afficher le mode de trading clairement
+            if live_order_manager:
+                mode_str = "🟡 LIVE DRY-RUN" if live_order_manager.dry_run else "🔴 LIVE RÉEL"
+            else:
+                mode_str = "📝 PAPER"
+            await add_log('INFO', f'Position clôturée [{mode_str}]', 'Manuel')
             await ws_manager.emit('position_closed', result)
             
             # 🔥 FIX: Émettre stats_update après fermeture manuelle de position
@@ -4244,7 +4254,12 @@ async def handle_client_command(command: str, params: dict):
                 if price_provider:
                     price_provider.set_socketio_callback(None, None)
                 
-                await add_log('INFO', 'Position clôturée', params.get('reason', 'MANUAL'))
+                # 🔥 Afficher le mode de trading clairement
+                if live_order_manager:
+                    mode_str = "🟡 LIVE DRY-RUN" if live_order_manager.dry_run else "🔴 LIVE RÉEL"
+                else:
+                    mode_str = "📝 PAPER"
+                await add_log('INFO', f'Position clôturée [{mode_str}]', params.get('reason', 'MANUAL'))
                 await ws_manager.emit('position_closed', result)
                 
                 # Émettre stats_update après fermeture

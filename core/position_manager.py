@@ -1470,6 +1470,11 @@ class PositionManager:
                     if not exit_indicators:
                         exit_indicators = {}
                     
+                    # 🔥 Déterminer le mode de trading (Live/Paper et Dry-Run)
+                    is_live_trade = self.live_order_manager is not None
+                    is_dry_run = getattr(self.live_order_manager, 'dry_run', True) if self.live_order_manager else False
+                    live_execution_mode = 'DRY_RUN' if is_dry_run else ('LIVE_REAL' if is_live_trade else 'PAPER')
+                    
                     trade_data = {
                         'symbol': self.active_position.symbol,
                         'direction': self.active_position.direction,
@@ -1480,6 +1485,10 @@ class PositionManager:
                         'size_usdt': self.active_position.size,
                         'timestamp_entry': timestamp_entry,
                         'timestamp_exit': timestamp_exit,
+                        # 🔥 LIVE TRADING MODE
+                        'is_live_trade': is_live_trade,
+                        'is_dry_run': is_dry_run,
+                        'live_execution_mode': live_execution_mode,
                         'gross_pnl_usdt': result['gross_pnl_usdt'],
                         'gross_pnl_pct': result['gross_pnl_pct'],
                         'net_pnl_usdt': result['net_pnl_usdt'],
