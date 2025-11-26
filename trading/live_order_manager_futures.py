@@ -106,6 +106,7 @@ class FuturesOrderResult:
     order_id: Optional[str] = None
     filled_price: Optional[float] = None
     filled_amount: Optional[float] = None
+    filled_size_usdt: Optional[float] = None
     actual_pnl_usdt: Optional[float] = None
     actual_fees_usdt: Optional[float] = None
     actual_slippage_pct: Optional[float] = None
@@ -435,6 +436,7 @@ class LiveOrderManagerFutures:
                     order_id=f"dry_run_futures_{int(time.time())}",
                     filled_price=entry_price,
                     filled_amount=amount,
+                    filled_size_usdt=amount * entry_price,
                     actual_pnl_usdt=0.0,
                     actual_fees_usdt=0.0,
                     actual_slippage_pct=0.0,
@@ -549,6 +551,7 @@ class LiveOrderManagerFutures:
                         order_id=str(bypass_result.order_id),
                         filled_price=entry_price,  # Prix théorique (market order)
                         filled_amount=amount,
+                        filled_size_usdt=amount * entry_price,
                         actual_fees_usdt=0.0,  # Fees non disponibles immédiatement
                         actual_slippage_pct=0.0,
                         margin_used=margin,
@@ -561,7 +564,7 @@ class LiveOrderManagerFutures:
                 else:
                     self.stats['orders_failed'] += 1
                     logger.error(
-                        f"❌ [BYPASS] Échec ouverture: {bypass_result.error_message}"
+                        f"[BYPASS] Échec ouverture: {bypass_result.error_message}"
                     )
                     return FuturesOrderResult(
                         success=False,
@@ -572,15 +575,15 @@ class LiveOrderManagerFutures:
             # ================================================================
             # MODE CCXT: Utiliser l'API classique (peut être bloquée)
             # ================================================================
-            # 🔥 FIX: MEXC requiert leverage, openType ET positionType dans params
+            # FIX: MEXC requiert leverage, openType ET positionType dans params
             # openType: 1=isolated, 2=cross
             # positionType: 1=long, 2=short
             position_type = 1 if direction == 'LONG' else 2
             
-            # 🔥 DEBUG: Activer verbose pour capturer réponse MEXC complète
+            # DEBUG: Activer verbose pour capturer réponse MEXC complète
             self.exchange.verbose = True
             
-            # 🔥 Retry avec backoff sur timeout/network errors
+            # Retry avec backoff sur timeout/network errors
             max_retries = 2
             last_error = None
             
@@ -595,7 +598,7 @@ class LiveOrderManagerFutures:
                             'leverage': str(leverage),
                             'openType': 1,  # isolated margin
                             'positionType': position_type,  # 1=long, 2=short
-                            'type': 5,  # 🔥 FIX: Forcer type 5 (market) pour MEXC API native
+                            'type': 5,  # FIX: Forcer type 5 (market) pour MEXC API native
                         }
                     )
                     break  # Succès, sortir de la boucle
@@ -604,14 +607,14 @@ class LiveOrderManagerFutures:
                     if attempt < max_retries - 1:
                         wait_time = 2 ** attempt  # 1s, 2s
                         logger.warning(
-                            f"⚠️ Timeout/Network error (tentative {attempt + 1}/{max_retries}), "
+                            f"Timeout/Network error (tentative {attempt + 1}/{max_retries}), "
                             f"retry dans {wait_time}s..."
                         )
                         time.sleep(wait_time)
                     else:
                         raise last_error
             
-            # 🔥 DEBUG: Désactiver verbose après ordre
+            # DEBUG: Désactiver verbose après ordre
             self.exchange.verbose = False
 
             latency_ms = (time.time() - start_time) * 1000
@@ -629,7 +632,7 @@ class LiveOrderManagerFutures:
             # Calculer marge utilisée
             margin_used = size_usdt / leverage
 
-            # 🔥 Récupérer infos position pour liquidation price
+            # Récupérer infos position pour liquidation price
             liquidation_price = None
             funding_rate = None
             try:
@@ -647,7 +650,7 @@ class LiveOrderManagerFutures:
             except Exception as e:
                 logger.debug(f"Impossible de récupérer position/funding: {e}")
 
-            # 🔥 Récupérer taux de frais
+            # Récupérer taux de frais
             maker_fee_rate = None
             taker_fee_rate = None
             try:
@@ -666,7 +669,7 @@ class LiveOrderManagerFutures:
             self.stats['avg_latency_ms'] = self.stats['total_latency_ms'] / self.stats['orders_placed']
 
             logger.info(
-                f"✅ Position FUTURES {direction} ouverte | "
+                f"Position FUTURES {direction} ouverte | "
                 f"Order ID: {order_id} | "
                 f"Prix rempli: {filled_price} | "
                 f"Slippage: {slippage_pct:.3f}% | "
@@ -679,6 +682,7 @@ class LiveOrderManagerFutures:
                 order_id=order_id,
                 filled_price=filled_price,
                 filled_amount=filled_amount,
+                filled_size_usdt=filled_amount * filled_price if filled_price else filled_amount * entry_price,
                 actual_fees_usdt=fees,
                 actual_slippage_pct=slippage_pct,
                 margin_used=margin_used,
@@ -696,7 +700,7 @@ class LiveOrderManagerFutures:
             latency_ms = (time.time() - start_time) * 1000
             self.stats['orders_failed'] += 1
 
-            # 🔥 Log détaillé avec message d'erreur complet
+            # Log détaillé avec message d'erreur complet
             error_msg = str(e)
             # Extraire le message d'erreur s'il est dans un tuple
             if hasattr(e, 'args') and len(e.args) > 0:
@@ -712,7 +716,7 @@ class LiveOrderManagerFutures:
                 pass
 
             logger.error(
-                f"❌ Erreur ouverture position futures: {error_msg} | "
+                f"Erreur ouverture position futures: {error_msg} | "
                 f"Symbol: {symbol} → {futures_symbol} | "
                 f"Side: {side} | Amount: {amount:.6f} | Leverage: {leverage}x | "
                 f"Size USDT: {size_usdt:.2f} | "
@@ -721,7 +725,7 @@ class LiveOrderManagerFutures:
             )
 
             if mexc_response:
-                logger.error(f"📩 Réponse MEXC: {mexc_response}")
+                logger.error(f"Réponse MEXC: {mexc_response}")
 
             return FuturesOrderResult(
                 success=False,
@@ -761,16 +765,16 @@ class LiveOrderManagerFutures:
             # Calcul quantité à fermer
             if partial_pct:
                 amount = size_amount * (partial_pct / 100)
-                logger.info(f"🔸 FERMETURE PARTIELLE {partial_pct}%: {amount:.6f}")
+                logger.info(f"FERMETURE PARTIELLE {partial_pct}%: {amount:.6f}")
             else:
                 amount = size_amount
-                logger.info(f"🔸 FERMETURE TOTALE: {amount:.6f}")
+                logger.info(f"FERMETURE TOTALE: {amount:.6f}")
 
             # Pour fermer: LONG → sell, SHORT → buy
             side = 'sell' if direction == 'LONG' else 'buy'
             order_type = 'market'
 
-            # 🔢 Ajuster quantité fermée selon précision
+            # Ajuster quantité fermée selon précision
             if self.exchange:
                 try:
                     futures_symbol = self._convert_symbol_to_futures(symbol)
@@ -788,12 +792,12 @@ class LiveOrderManagerFutures:
                             f"Quantité fermée invalide ({amount}) pour {futures_symbol}."
                         )
                 except Exception as precision_err:
-                    logger.warning(f"⚠️ Impossible d'ajuster la quantité close {symbol}: {precision_err}")
+                    logger.warning(f"Impossible d'ajuster la quantité close {symbol}: {precision_err}")
             else:
                 amount = round(amount, 8)
 
             logger.info(
-                f"📤 FERMETURE FUTURES {direction}: {futures_symbol} | "
+                f"FERMETURE FUTURES {direction}: {futures_symbol} | "
                 f"Prix théorique: {current_price} | "
                 f"Quantité: {amount:.6f} | "
                 f"Mode: {'DRY_RUN' if self.dry_run else 'LIVE'}"
@@ -812,7 +816,7 @@ class LiveOrderManagerFutures:
                 self.stats['total_pnl_usdt'] += pnl_usdt
 
                 logger.info(
-                    f"✅ [DRY_RUN] Fermeture {direction} simulée | "
+                    f"[DRY_RUN] Fermeture {direction} simulée | "
                     f"PnL: {pnl_usdt:+.2f} USDT | "
                     f"Latence: {latency_ms:.0f}ms"
                 )
@@ -822,6 +826,7 @@ class LiveOrderManagerFutures:
                     order_id=f"dry_run_close_futures_{int(time.time())}",
                     filled_price=current_price,
                     filled_amount=amount,
+                    filled_size_usdt=amount * current_price,
                     actual_pnl_usdt=pnl_usdt,
                     actual_fees_usdt=0.0,
                     actual_slippage_pct=0.0,
@@ -833,12 +838,12 @@ class LiveOrderManagerFutures:
             leverage = self._leverage_cache.get(futures_symbol, self.default_leverage)
             
             # ================================================================
-            # 🔥 MODE BYPASS: Utiliser les endpoints browser
+            # MODE BYPASS: Utiliser les endpoints browser
             # ================================================================
             if self.use_bypass and self.bypass_client:
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
                 
-                # 🔥 Récupérer les specs du contrat pour arrondir correctement
+                # Récupérer les specs du contrat pour arrondir correctement
                 contract_spec = run_async_safely(
                     self.bypass_client.get_contract_spec(bypass_symbol)
                 )
@@ -848,7 +853,7 @@ class LiveOrderManagerFutures:
                     current_price = contract_spec.round_price(current_price)
                 else:
                     amount = round(amount, 4)
-                    logger.warning(f"⚠️ Specs non disponibles pour {bypass_symbol}, arrondi basique")
+                    logger.warning(f"Specs non disponibles pour {bypass_symbol}, arrondi basique")
                 
                 # Déterminer side pour bypass (fermeture)
                 # 1=open long, 2=close short, 3=open short, 4=close long
@@ -858,7 +863,7 @@ class LiveOrderManagerFutures:
                     bypass_side = OrderSide.CLOSE_SHORT
                 
                 logger.info(
-                    f"🔥 [BYPASS] Fermeture {direction}: {bypass_symbol} | "
+                    f"[BYPASS] Fermeture {direction}: {bypass_symbol} | "
                     f"Side: {bypass_side} | Vol: {amount:.6f} | Price: {current_price}"
                 )
                 
@@ -893,7 +898,7 @@ class LiveOrderManagerFutures:
                     self.stats['total_pnl_usdt'] += pnl_usdt
                     
                     logger.info(
-                        f"✅ [BYPASS] Position {direction} fermée | "
+                        f"[BYPASS] Position {direction} fermée | "
                         f"Order ID: {bypass_result.order_id} | "
                         f"PnL: {pnl_usdt:+.2f} USDT | "
                         f"Latence: {latency_ms:.0f}ms"
@@ -904,6 +909,7 @@ class LiveOrderManagerFutures:
                         order_id=str(bypass_result.order_id),
                         filled_price=current_price,
                         filled_amount=amount,
+                        filled_size_usdt=amount * current_price,
                         actual_pnl_usdt=pnl_usdt,
                         actual_fees_usdt=0.0,
                         actual_slippage_pct=0.0,
@@ -914,7 +920,7 @@ class LiveOrderManagerFutures:
                 else:
                     self.stats['orders_failed'] += 1
                     logger.error(
-                        f"❌ [BYPASS] Échec fermeture: {bypass_result.error_message}"
+                        f"[BYPASS] Échec fermeture: {bypass_result.error_message}"
                     )
                     return FuturesOrderResult(
                         success=False,
@@ -928,7 +934,7 @@ class LiveOrderManagerFutures:
             # positionType: 1=long, 2=short
             position_type = 1 if direction == 'LONG' else 2
             
-            # 🔥 Retry avec backoff pour fermeture aussi
+            # Retry avec backoff pour fermeture aussi
             max_retries = 2
             last_error = None
             
@@ -944,7 +950,7 @@ class LiveOrderManagerFutures:
                             'leverage': str(leverage),
                             'openType': 1,  # isolated margin
                             'positionType': position_type,  # même position_type que l'ouverture
-                            'type': 5,  # 🔥 FIX: Forcer type 5 (market) pour MEXC API native
+                            'type': 5,  # FIX: Forcer type 5 (market) pour MEXC API native
                         }
                     )
                     break  # Succès
@@ -953,7 +959,7 @@ class LiveOrderManagerFutures:
                     if attempt < max_retries - 1:
                         wait_time = 2 ** attempt
                         logger.warning(
-                            f"⚠️ Timeout fermeture (tentative {attempt + 1}/{max_retries}), "
+                            f"Timeout fermeture (tentative {attempt + 1}/{max_retries}), "
                             f"retry dans {wait_time}s..."
                         )
                         time.sleep(wait_time)
@@ -980,7 +986,7 @@ class LiveOrderManagerFutures:
             # Slippage
             slippage_pct = abs((filled_price - current_price) / current_price) * 100 if filled_price else 0
 
-            # 🔥 Récupérer funding rate à la sortie
+            # Récupérer funding rate à la sortie
             funding_rate = None
             try:
                 funding_info = self.exchange.fetch_funding_rate(futures_symbol)
@@ -996,7 +1002,7 @@ class LiveOrderManagerFutures:
             self.stats['total_pnl_usdt'] += pnl_usdt
 
             logger.info(
-                f"✅ Position FUTURES {direction} fermée | "
+                f"Position FUTURES {direction} fermée | "
                 f"Order ID: {order_id} | "
                 f"Prix rempli: {filled_price} | "
                 f"PnL: {pnl_usdt:+.2f} USDT | "
@@ -1009,6 +1015,7 @@ class LiveOrderManagerFutures:
                 order_id=order_id,
                 filled_price=filled_price,
                 filled_amount=filled_amount,
+                filled_size_usdt=filled_amount * filled_price,
                 actual_pnl_usdt=pnl_usdt,
                 actual_fees_usdt=fees,
                 actual_slippage_pct=slippage_pct,

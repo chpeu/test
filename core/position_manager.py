@@ -39,6 +39,8 @@ from core.position.analytics_logger import AnalyticsLogger
 
 logger = logging.getLogger(__name__)
 
+MIN_LIVE_TRADE_DURATION_SEC = 10
+
 
 @dataclass
 class Position:
@@ -552,6 +554,8 @@ class PositionManager:
             self.active_position.tp_escalier_levels = levels_config
 
         # 🔥 LIVE TRADING: Passer ordre réel si LiveOrderManager actif
+        executed_size_usdt = size
+
         if self.live_order_manager:
             try:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
@@ -579,8 +583,19 @@ class PositionManager:
                     self.active_position.entry_latency_ms = order_result.latency_ms
                     self.active_position.entry_timestamp = order_result.executed_at
                     self.active_position.entry_fee_usdt = getattr(order_result, 'actual_fees_usdt', None)
-                    self.active_position.position_size_usdt = size
-                    self.active_position.position_size_contracts = size_amount
+
+                    filled_amount = getattr(order_result, 'filled_amount', None) or size_amount
+                    filled_size_usdt = getattr(order_result, 'filled_size_usdt', None)
+                    if filled_size_usdt is None:
+                        reference_price = order_result.filled_price or entry
+                        filled_size_usdt = filled_amount * reference_price
+
+                    executed_size_usdt = filled_size_usdt
+
+                    self.active_position.size = filled_size_usdt
+                    self.active_position.position_size_usdt = filled_size_usdt
+                    self.active_position.position_size_contracts = filled_amount
+                    self.active_position.size_remaining = filled_size_usdt
                     self.active_position.margin_mode = 'isolated'
                     self.active_position.leverage_used = getattr(order_result, 'leverage', None) or getattr(self.live_order_manager, 'default_leverage', None)
                     self.active_position.margin_used = getattr(order_result, 'margin_used', None)
@@ -601,7 +616,8 @@ class PositionManager:
                     logger.info(
                         f"✅ Ordre LIVE placé: {symbol} | "
                         f"Prix rempli: {order_result.filled_price:.8f} | "
-                        f"Slippage: {order_result.actual_slippage_pct or 0:.4f}%"
+                        f"Slippage: {order_result.actual_slippage_pct or 0:.4f}% | "
+                        f"Taille réelle: {filled_size_usdt:.2f} USDT ({filled_amount:.4f} contrats)"
                     )
                 else:
                     logger.error(
@@ -616,7 +632,7 @@ class PositionManager:
             f"🟢 POSITION OUVERTE: {direction} {symbol} | "
             f"Entry: {self._format_price(entry)} | "
             f"SL: {self._format_price(sl)} | TP: {self._format_price(tp)} | "
-            f"Size: {size:.2f} USDT | Mode: {'ATR' if self.config.use_atr else 'FIXE'}"
+            f"Size: {executed_size_usdt:.2f} USDT | Mode: {'ATR' if self.config.use_atr else 'FIXE'}"
             + (f" | TP Escalier: {len(levels_config)} niveaux" if levels_config else "")
             + (f" | LIVE: {self.live_order_manager.dry_run and 'DRY-RUN' or 'RÉEL'}" if self.live_order_manager else " | PAPER")
         )
@@ -1036,6 +1052,48 @@ class PositionManager:
                 current_price=current_price
             )
             if level_result:
+                # 🔥 LIVE TRADING: Exécuter l'ordre TP Escalier réel sur MEXC
+                if self.live_order_manager and not self.live_order_manager.dry_run:
+                    try:
+                        size_contracts = self.active_position.position_size_contracts
+                        if not size_contracts:
+                            entry_price = self.active_position.entry or 1
+                            size_contracts = self.active_position.size / entry_price
+                        
+                        # Calculer le % à vendre pour ce niveau
+                        level_pct = level_result['size_pct'] * 100  # Convertir en %
+                        
+                        escalier_order_result = self.live_order_manager.close_position(
+                            symbol=self.active_position.symbol,
+                            direction=self.active_position.direction,
+                            entry_price=self.active_position.entry,
+                            current_price=current_price,
+                            size_amount=size_contracts,
+                            partial_pct=level_pct
+                        )
+                        
+                        if escalier_order_result.success:
+                            filled_amount = escalier_order_result.filled_amount or (size_contracts * level_pct / 100)
+                            
+                            # Mettre à jour les contrats restants
+                            remaining_contracts = size_contracts - filled_amount
+                            self.active_position.position_size_contracts = remaining_contracts
+                            
+                            level_result['profit_usdt'] = escalier_order_result.actual_pnl_usdt or level_result['profit_usdt']
+                            
+                            logger.info(
+                                f"💰 [LIVE] TP Escalier niveau {level_result.get('level', '?')} exécuté: "
+                                f"{self.active_position.symbol} | "
+                                f"Vendu: {filled_amount:.4f} contrats | "
+                                f"PnL: {level_result['profit_usdt']:.2f} USDT"
+                            )
+                        else:
+                            logger.error(
+                                f"❌ [LIVE] Échec TP Escalier: {escalier_order_result.error_message}"
+                            )
+                    except Exception as e:
+                        logger.error(f"❌ Erreur TP Escalier LIVE: {e}")
+                
                 # Mettre à jour position avec résultats TP Escalier
                 self.active_position.tp_escalier_current_level = self.active_position.to_dict()['tp_escalier_current_level'] + 1
                 self.active_position.tp_escalier_size_remaining = self.active_position.to_dict()['tp_escalier_size_remaining'] - level_result['size_pct']
@@ -1052,14 +1110,65 @@ class PositionManager:
                 current_price=current_price,
                 trigger_pct=break_even_trigger  # Utiliser break_even_trigger au lieu de partial_tp_trigger
             ):
-                partial_result = self.partial_tp.execute_partial_tp(
-                    position=self.active_position.to_dict(),
-                    current_price=current_price
-                )
-                # Mettre à jour position
-                self.active_position.partial_tp_sold = True
-                self.active_position.size_remaining = partial_result['size_remaining']
-                self.active_position.partial_profit_usdt = partial_result['profit_usdt']
+                # Calculer le pourcentage à vendre
+                partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0)
+                
+                # 🔥 LIVE TRADING: Exécuter l'ordre partiel réel sur MEXC
+                if self.live_order_manager and not self.live_order_manager.dry_run:
+                    try:
+                        # Calculer la taille en contrats à vendre
+                        size_contracts = self.active_position.position_size_contracts
+                        if not size_contracts:
+                            entry_price = self.active_position.entry or 1
+                            size_contracts = self.active_position.size / entry_price
+                        
+                        partial_order_result = self.live_order_manager.close_position(
+                            symbol=self.active_position.symbol,
+                            direction=self.active_position.direction,
+                            entry_price=self.active_position.entry,
+                            current_price=current_price,
+                            size_amount=size_contracts,
+                            partial_pct=partial_tp_percent
+                        )
+                        
+                        if partial_order_result.success:
+                            # Utiliser les valeurs réelles de l'exécution
+                            filled_amount = partial_order_result.filled_amount or (size_contracts * partial_tp_percent / 100)
+                            filled_size_usdt = partial_order_result.filled_size_usdt or (filled_amount * current_price)
+                            
+                            # Mettre à jour les contrats restants
+                            remaining_contracts = size_contracts - filled_amount
+                            remaining_usdt = self.active_position.size - filled_size_usdt
+                            
+                            self.active_position.partial_tp_sold = True
+                            self.active_position.size_remaining = remaining_usdt
+                            self.active_position.position_size_contracts = remaining_contracts
+                            self.active_position.partial_profit_usdt = partial_order_result.actual_pnl_usdt or 0.0
+                            
+                            logger.info(
+                                f"💰 [LIVE] TP Partiel exécuté: {self.active_position.symbol} | "
+                                f"Vendu: {filled_amount:.4f} contrats ({filled_size_usdt:.2f} USDT) | "
+                                f"Restant: {remaining_contracts:.4f} contrats ({remaining_usdt:.2f} USDT) | "
+                                f"PnL: {partial_order_result.actual_pnl_usdt or 0:.2f} USDT"
+                            )
+                        else:
+                            logger.error(
+                                f"❌ [LIVE] Échec TP Partiel: {partial_order_result.error_message}"
+                            )
+                            # Ne pas marquer comme vendu si l'ordre a échoué
+                            return None
+                    except Exception as e:
+                        logger.error(f"❌ Erreur TP Partiel LIVE: {e}")
+                        return None
+                else:
+                    # Mode paper/dry-run: calcul local
+                    partial_result = self.partial_tp.execute_partial_tp(
+                        position=self.active_position.to_dict(),
+                        current_price=current_price
+                    )
+                    self.active_position.partial_tp_sold = True
+                    self.active_position.size_remaining = partial_result['size_remaining']
+                    self.active_position.partial_profit_usdt = partial_result['profit_usdt']
 
                 # Déplacer SL à break-even après le 1er TP
                 new_sl = self.partial_tp.update_sl_after_partial_tp(
@@ -1256,6 +1365,16 @@ class PositionManager:
         # Calculer durée
         duration = int(time.time() - self.active_position.start_time)
 
+        if duration < MIN_LIVE_TRADE_DURATION_SEC and reason != 'SL':
+            wait_time = MIN_LIVE_TRADE_DURATION_SEC - duration
+            if wait_time > 0:
+                logger.info(
+                    f"⏳ Durée position {duration}s < {MIN_LIVE_TRADE_DURATION_SEC}s (raison={reason}). "
+                    f"Attente {wait_time:.1f}s avant fermeture."
+                )
+                time.sleep(wait_time)
+                duration = int(time.time() - self.active_position.start_time)
+
         # 🔥 FIX CRITIQUE: Limiter exit_price au SL + slippage maximum (éviter pertes > SL configuré)
         # Problème: Un trade a perdu -2.10% alors que SL = 0.20% (facteur x10 inacceptable)
         # Cause: Latence entre vérification et execution, prix peut dépasser largement le SL
@@ -1308,7 +1427,10 @@ class PositionManager:
         if self.live_order_manager:
             try:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
-                size_amount = self.active_position.size / self.active_position.entry
+                size_amount = self.active_position.position_size_contracts
+                if not size_amount:
+                    entry_price = self.active_position.entry or 1
+                    size_amount = (self.active_position.size / entry_price) if entry_price else 0
 
                 order_result = self.live_order_manager.close_position(
                     symbol=self.active_position.symbol,
