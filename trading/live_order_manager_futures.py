@@ -131,6 +131,7 @@ class LiveOrderManagerFutures:
             'apiKey': api_key,
             'secret': api_secret,
             'enableRateLimit': True,
+            'timeout': 10000,  # 🔥 Timeout réduit à 10s (au lieu de défaut ~30s)
             'options': {
                 'defaultType': 'swap',  # 🔥 FUTURES/Perpetual Swaps
                 'adjustForTimeDifference': True,
@@ -160,6 +161,17 @@ class LiveOrderManagerFutures:
             f"Mode: {'DRY_RUN' if dry_run else 'LIVE FUTURES'} | "
             f"Levier défaut: {self.default_leverage}x"
         )
+        
+        # 🔥 Vérifier connectivité API en mode LIVE
+        if not dry_run:
+            try:
+                balance = self.get_balance('USDT')
+                logger.info(f"✅ API MEXC connectée | Balance USDT: {balance:.2f}")
+            except Exception as api_error:
+                logger.error(
+                    f"❌ ERREUR API MEXC au démarrage: {api_error} | "
+                    f"Vérifiez vos credentials et permissions Futures"
+                )
 
     async def set_leverage(self, symbol: str, leverage: int) -> bool:
         """
@@ -237,6 +249,43 @@ class LiveOrderManagerFutures:
             # Pour MEXC Futures: amount = size_usdt / entry_price
             amount = size_usdt / entry_price
 
+            # 🔢 Ajuster quantité selon la précision/limites du marché
+            try:
+                if not getattr(self.exchange, 'markets', None):
+                    self.exchange.load_markets()
+                market = self.exchange.market(futures_symbol)
+
+                amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
+
+                limits = (market or {}).get('limits', {}) if market else {}
+                min_amount = limits.get('amount', {}).get('min')
+                max_amount = limits.get('amount', {}).get('max')
+
+                # 🔥 Rejeter si quantité < min après arrondi (pas assez de capital)
+                if min_amount and amount < float(min_amount):
+                    logger.error(
+                        f"❌ Quantité insuffisante {futures_symbol}: {amount:.8f} < min {min_amount} | "
+                        f"Capital requis: {float(min_amount) * entry_price:.2f} USDT (vous avez {size_usdt:.2f} USDT)"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Quantité insuffisante: {amount:.8f} < min {min_amount}",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
+                
+                if max_amount and amount > float(max_amount):
+                    logger.debug(
+                        f"🔧 Ajustement quantité {futures_symbol}: {amount} > max {max_amount}, arrondi au maximum"
+                    )
+                    amount = float(max_amount)
+
+                if amount <= 0:
+                    raise ValueError(
+                        f"Quantité arrondie invalide ({amount}) pour {futures_symbol}. Vérifier size_usdt={size_usdt}"
+                    )
+            except Exception as precision_err:
+                logger.warning(f"⚠️ Impossible d'ajuster la quantité {futures_symbol}: {precision_err}")
+
             # Type d'ordre
             # LONG = buy, SHORT = sell (pour ouvrir)
             side = 'buy' if direction == 'LONG' else 'sell'
@@ -307,17 +356,42 @@ class LiveOrderManagerFutures:
             # Stocker levier dans cache pour la fermeture
             self._leverage_cache[futures_symbol] = leverage
             
-            order = self.exchange.create_order(
-                symbol=futures_symbol,
-                type=order_type,  # 'market'
-                side=side,
-                amount=amount,
-                params={
-                    'leverage': str(leverage),
-                    'openType': 1,  # isolated margin
-                    'positionType': position_type,  # 1=long, 2=short
-                }
-            )
+            # 🔥 DEBUG: Activer verbose pour capturer réponse MEXC complète
+            self.exchange.verbose = True
+            
+            # 🔥 Retry avec backoff sur timeout/network errors
+            max_retries = 2
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    order = self.exchange.create_order(
+                        symbol=futures_symbol,
+                        type=order_type,  # 'market'
+                        side=side,
+                        amount=amount,
+                        params={
+                            'leverage': str(leverage),
+                            'openType': 1,  # isolated margin
+                            'positionType': position_type,  # 1=long, 2=short
+                            'type': 5,  # 🔥 FIX: Forcer type 5 (market) pour MEXC API native
+                        }
+                    )
+                    break  # Succès, sortir de la boucle
+                except (ccxt.NetworkError, ccxt.RequestTimeout) as retry_error:
+                    last_error = retry_error
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt  # 1s, 2s
+                        logger.warning(
+                            f"⚠️ Timeout/Network error (tentative {attempt + 1}/{max_retries}), "
+                            f"retry dans {wait_time}s..."
+                        )
+                        time.sleep(wait_time)
+                    else:
+                        raise last_error
+            
+            # 🔥 DEBUG: Désactiver verbose après ordre
+            self.exchange.verbose = False
 
             latency_ms = (time.time() - start_time) * 1000
 
@@ -408,13 +482,25 @@ class LiveOrderManagerFutures:
                 if isinstance(e.args[0], str):
                     error_msg = e.args[0]
             
+            mexc_response = None
+            mexc_status = None
+            try:
+                mexc_response = getattr(e, 'response', None) or getattr(e, 'body', None)
+                mexc_status = getattr(e, 'http_status', None)
+            except Exception:
+                pass
+
             logger.error(
                 f"❌ Erreur ouverture position futures: {error_msg} | "
                 f"Symbol: {symbol} → {futures_symbol} | "
                 f"Side: {side} | Amount: {amount:.6f} | Leverage: {leverage}x | "
                 f"Size USDT: {size_usdt:.2f} | "
                 f"Latence: {latency_ms:.0f}ms"
+                + (f" | HTTP {mexc_status}" if mexc_status else "")
             )
+
+            if mexc_response:
+                logger.error(f"📩 Réponse MEXC: {mexc_response}")
 
             return FuturesOrderResult(
                 success=False,
@@ -463,6 +549,25 @@ class LiveOrderManagerFutures:
             side = 'sell' if direction == 'LONG' else 'buy'
             order_type = 'market'
 
+            # 🔢 Ajuster quantité fermée selon précision
+            try:
+                futures_symbol = self._convert_symbol_to_futures(symbol)
+                if not getattr(self.exchange, 'markets', None):
+                    self.exchange.load_markets()
+                market = self.exchange.market(futures_symbol)
+                amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
+
+                limits = (market or {}).get('limits', {}) if market else {}
+                min_amount = limits.get('amount', {}).get('min')
+                if min_amount and amount < float(min_amount):
+                    amount = float(min_amount)
+                if amount <= 0:
+                    raise ValueError(
+                        f"Quantité fermée invalide ({amount}) pour {futures_symbol}."
+                    )
+            except Exception as precision_err:
+                logger.warning(f"⚠️ Impossible d'ajuster la quantité close {symbol}: {precision_err}")
+
             logger.info(
                 f"📤 FERMETURE FUTURES {direction}: {futures_symbol} | "
                 f"Prix théorique: {current_price} | "
@@ -506,18 +611,37 @@ class LiveOrderManagerFutures:
             # positionType: 1=long, 2=short (inverse de direction pour fermeture)
             position_type = 1 if direction == 'LONG' else 2
             
-            order = self.exchange.create_order(
-                symbol=futures_symbol,
-                type=order_type,  # 'market'
-                side=side,
-                amount=amount,
-                params={
-                    'reduceOnly': True,
-                    'leverage': str(leverage),
-                    'openType': 1,  # isolated margin
-                    'positionType': position_type,  # même position_type que l'ouverture
-                }
-            )
+            # 🔥 Retry avec backoff pour fermeture aussi
+            max_retries = 2
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    order = self.exchange.create_order(
+                        symbol=futures_symbol,
+                        type=order_type,  # 'market'
+                        side=side,
+                        amount=amount,
+                        params={
+                            'reduceOnly': True,
+                            'leverage': str(leverage),
+                            'openType': 1,  # isolated margin
+                            'positionType': position_type,  # même position_type que l'ouverture
+                            'type': 5,  # 🔥 FIX: Forcer type 5 (market) pour MEXC API native
+                        }
+                    )
+                    break  # Succès
+                except (ccxt.NetworkError, ccxt.RequestTimeout) as retry_error:
+                    last_error = retry_error
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        logger.warning(
+                            f"⚠️ Timeout fermeture (tentative {attempt + 1}/{max_retries}), "
+                            f"retry dans {wait_time}s..."
+                        )
+                        time.sleep(wait_time)
+                    else:
+                        raise last_error
 
             latency_ms = (time.time() - start_time) * 1000
 
