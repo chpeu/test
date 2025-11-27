@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764283956.931165,
+  "timestamp": 1764285067.175681,
   "specs": {
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -88,6 +88,15 @@
       "max_vol": 250000.0,
       "vol_unit": 1.0,
       "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1
+    },
+    "SHIB_USDT": {
+      "symbol": "SHIB_USDT",
+      "min_vol": 1.0,
+      "max_vol": 150000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-09,
       "price_precision": 0,
       "vol_precision": 1
     }

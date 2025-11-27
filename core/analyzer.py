@@ -1177,6 +1177,8 @@ class TechnicalAnalyzer:
                     return {
                         'reason': f"Spread trop élevé ({spread_check['spread_pct']:.3f}% > {spread_check['max_allowed']:.3f}%)",
                         'reject_category': 'spread',
+                        'spread_pct': spread_check.get('spread_pct'),
+                        'spread_quality': spread_check.get('quality'),
                         'analysis_1m': analysis_1m,
                         'analysis_5m': analysis_5m,
                         'indicators_1m': indicators_1m_reject,
