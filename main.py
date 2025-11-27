@@ -2262,17 +2262,25 @@ def init_instances():
                     default_leverage = live_config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
                     browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
                     use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
-                    
+
                     if use_bypass_mode and not browser_token:
                         logger.warning("⚠️ Mode BYPASS activé mais aucun browser token fourni (MEXC_BROWSER_TOKEN). Retour en mode CCXT.")
-                    
+
+                    # 🔥 v7.3: Récupérer telegram_notifier depuis notification_manager
+                    telegram_notif = None
+                    if notification_manager and hasattr(notification_manager, 'telegram_notifier'):
+                        telegram_notif = notification_manager.telegram_notifier
+
                     live_order_manager = LiveOrderManager(
                         api_key=api_key,
                         api_secret=api_secret,
                         browser_token=browser_token if browser_token else None,
                         default_leverage=default_leverage,
                         dry_run=live_config.get('dry_run', True),
-                        use_bypass=use_bypass_mode and bool(browser_token)
+                        use_bypass=use_bypass_mode and bool(browser_token),
+                        telegram_notifier=telegram_notif,  # 🔥 v7.3: Alertes Telegram
+                        enable_circuit_breaker=True,       # 🔥 v7.3: Circuit Breaker actif
+                        circuit_breaker_threshold=5        # 🔥 v7.3: 5 échecs → ouverture circuit
                     )
 
                     logger.info(

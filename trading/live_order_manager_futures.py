@@ -64,6 +64,129 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# CIRCUIT BREAKER
+# ============================================================================
+from enum import Enum
+
+class CircuitState(Enum):
+    """États du circuit breaker"""
+    CLOSED = "closed"      # Normal, requêtes passent
+    OPEN = "open"          # Échecs critiques, requêtes bloquées
+    HALF_OPEN = "half_open"  # Test de récupération
+
+
+class CircuitBreaker:
+    """
+    🔥 Circuit Breaker pour arrêter automatiquement le trading après échecs consécutifs
+
+    Protège contre:
+    - Perte de connexion répétée
+    - Token expiré non détecté
+    - Problèmes d'API
+    - Erreurs critiques en cascade
+
+    États:
+    - CLOSED: Normal (requêtes passent)
+    - OPEN: Arrêt d'urgence (requêtes bloquées pendant recovery_timeout)
+    - HALF_OPEN: Test si système est revenu (1 requête test)
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 300,  # 5 minutes
+        success_threshold: int = 2
+    ):
+        """
+        Initialiser le circuit breaker
+
+        Args:
+            failure_threshold: Nombre d'échecs consécutifs avant ouverture (défaut 5)
+            recovery_timeout: Temps d'attente avant test récupération en secondes (défaut 300s = 5min)
+            success_threshold: Nombre de succès en HALF_OPEN pour fermer circuit (défaut 2)
+        """
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.success_threshold = success_threshold
+
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = 0
+        self.opened_at = 0
+
+    def record_success(self):
+        """Enregistrer un succès"""
+        self.failure_count = 0
+
+        if self.state == CircuitState.HALF_OPEN:
+            self.success_count += 1
+            if self.success_count >= self.success_threshold:
+                logger.info("✅ Circuit Breaker FERMÉ - Système restauré")
+                self.state = CircuitState.CLOSED
+                self.success_count = 0
+
+    def record_failure(self):
+        """Enregistrer un échec"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        self.success_count = 0
+
+        if self.state == CircuitState.HALF_OPEN:
+            # Échec en test → réouvrir immédiatement
+            logger.warning(f"❌ Circuit Breaker RÉOUVERT - Test échoué")
+            self.state = CircuitState.OPEN
+            self.opened_at = time.time()
+
+        elif self.state == CircuitState.CLOSED:
+            if self.failure_count >= self.failure_threshold:
+                logger.error(
+                    f"🚨 Circuit Breaker OUVERT - {self.failure_count} échecs consécutifs | "
+                    f"Trading ARRÊTÉ pendant {self.recovery_timeout}s"
+                )
+                self.state = CircuitState.OPEN
+                self.opened_at = time.time()
+
+    def can_execute(self) -> Tuple[bool, str]:
+        """
+        Vérifier si une requête peut être exécutée
+
+        Returns:
+            Tuple (allowed, reason)
+        """
+        if self.state == CircuitState.CLOSED:
+            return (True, "Circuit fermé")
+
+        elif self.state == CircuitState.OPEN:
+            # Vérifier si timeout expiré
+            elapsed = time.time() - self.opened_at
+            if elapsed >= self.recovery_timeout:
+                logger.info(f"🔄 Circuit Breaker HALF-OPEN - Test de récupération (après {elapsed:.0f}s)")
+                self.state = CircuitState.HALF_OPEN
+                self.success_count = 0
+                return (True, "Test de récupération")
+            else:
+                remaining = self.recovery_timeout - elapsed
+                return (False, f"Circuit ouvert - attente {remaining:.0f}s avant test")
+
+        elif self.state == CircuitState.HALF_OPEN:
+            return (True, "Test en cours")
+
+        return (False, "État inconnu")
+
+    def get_status(self) -> Dict:
+        """Récupérer le statut du circuit breaker"""
+        return {
+            'state': self.state.value,
+            'failure_count': self.failure_count,
+            'success_count': self.success_count,
+            'last_failure_time': self.last_failure_time,
+            'opened_at': self.opened_at,
+            'threshold': self.failure_threshold
+        }
+
+
+# ============================================================================
 # RETRY DECORATOR avec Backoff Exponentiel
 # ============================================================================
 def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 30.0):
@@ -153,7 +276,10 @@ class LiveOrderManagerFutures:
         default_leverage: int = 10,
         testnet: bool = False,
         dry_run: bool = True,
-        use_bypass: bool = True
+        use_bypass: bool = True,
+        telegram_notifier: Optional[Any] = None,
+        enable_circuit_breaker: bool = True,
+        circuit_breaker_threshold: int = 5
     ):
         """
         Initialiser le gestionnaire d'ordres futures
@@ -166,11 +292,25 @@ class LiveOrderManagerFutures:
             testnet: Utiliser testnet (si disponible)
             dry_run: Mode simulation (pas d'ordres réels)
             use_bypass: Utiliser le mode bypass (recommandé)
+            telegram_notifier: 🔥 Instance TelegramNotifier pour alertes (optionnel)
+            enable_circuit_breaker: 🔥 Activer circuit breaker (défaut True)
+            circuit_breaker_threshold: 🔥 Seuil échecs consécutifs (défaut 5)
         """
         self.dry_run = dry_run
         self.testnet = testnet
         self.default_leverage = min(125, max(1, default_leverage))
-        
+        self.telegram_notifier = telegram_notifier
+
+        # 🔥 NOUVEAU: Circuit Breaker
+        self.circuit_breaker: Optional[CircuitBreaker] = None
+        if enable_circuit_breaker and not dry_run:
+            self.circuit_breaker = CircuitBreaker(
+                failure_threshold=circuit_breaker_threshold,
+                recovery_timeout=300,  # 5 minutes
+                success_threshold=2
+            )
+            logger.info(f"✅ Circuit Breaker activé (seuil: {circuit_breaker_threshold} échecs)")
+
         # 🔥 DEBUG: Tracer les valeurs pour diagnostiquer le mode bypass
         print(f"🔍 DEBUG LiveOrderManagerFutures.__init__:")
         print(f"   use_bypass param: {use_bypass}")
@@ -191,7 +331,10 @@ class LiveOrderManagerFutures:
             # 🔥 BYPASS MODE: Utiliser les endpoints browser
             self.bypass_client = MexcFuturesBypass(
                 browser_token=browser_token,
-                debug=False
+                debug=False,
+                enable_token_monitor=True,        # 🔥 Monitoring token actif
+                token_check_interval=300,         # 🔥 Vérif toutes les 5 minutes
+                telegram_notifier=telegram_notifier  # 🔥 Alertes Telegram
             )
             print(
                 f"✅ LiveOrderManagerFutures initialisé en mode BYPASS | "
@@ -354,6 +497,23 @@ class LiveOrderManagerFutures:
         """
         start_time = time.time()
         leverage = leverage or self.default_leverage
+
+        # 🔥 CIRCUIT BREAKER: Vérifier si trading autorisé
+        if self.circuit_breaker:
+            can_execute, reason = self.circuit_breaker.can_execute()
+            if not can_execute:
+                logger.error(f"🚨 Circuit Breaker BLOQUE l'ordre: {reason}")
+                if self.telegram_notifier:
+                    self.telegram_notifier.send_alert(
+                        f"🚨 CIRCUIT BREAKER OUVERT\n"
+                        f"Ordre bloqué: {symbol} {direction}\n"
+                        f"Raison: {reason}"
+                    )
+                return FuturesOrderResult(
+                    success=False,
+                    error_message=f"Circuit breaker ouvert: {reason}",
+                    latency_ms=(time.time() - start_time) * 1000
+                )
 
         try:
             # Convertir symbole au format futures
@@ -529,15 +689,19 @@ class LiveOrderManagerFutures:
                 )
                 
                 latency_ms = (time.time() - start_time) * 1000
-                
+
                 if bypass_result.success:
+                    # 🔥 Circuit Breaker: Enregistrer succès
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_success()
+
                     # Calculer prix de liquidation estimé
                     margin = size_usdt / leverage
                     if direction == 'LONG':
                         liq_price = entry_price * (1 - 1/leverage + 0.005)
                     else:
                         liq_price = entry_price * (1 + 1/leverage - 0.005)
-                    
+
                     # Mettre à jour stats
                     self.stats['orders_placed'] += 1
                     self.stats['orders_filled'] += 1
@@ -566,9 +730,13 @@ class LiveOrderManagerFutures:
                         raw_api_response=bypass_result.data
                     )
                 else:
+                    # 🔥 Circuit Breaker: Enregistrer échec
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_failure()
+
                     self.stats['orders_failed'] += 1
                     logger.error(
-                        f"[BYPASS] Échec ouverture: {bypass_result.error_message}"
+                        f"❌ [BYPASS] Échec ouverture: {bypass_result.error_message}"
                     )
                     return FuturesOrderResult(
                         success=False,
@@ -701,6 +869,10 @@ class LiveOrderManagerFutures:
             )
 
         except Exception as e:
+            # 🔥 Circuit Breaker: Enregistrer échec
+            if self.circuit_breaker:
+                self.circuit_breaker.record_failure()
+
             latency_ms = (time.time() - start_time) * 1000
             self.stats['orders_failed'] += 1
 
@@ -761,6 +933,17 @@ class LiveOrderManagerFutures:
             FuturesOrderResult avec PnL réel
         """
         start_time = time.time()
+
+        # 🔥 CIRCUIT BREAKER: Vérifier si trading autorisé
+        if self.circuit_breaker:
+            can_execute, reason = self.circuit_breaker.can_execute()
+            if not can_execute:
+                logger.error(f"🚨 Circuit Breaker BLOQUE la fermeture: {reason}")
+                return FuturesOrderResult(
+                    success=False,
+                    error_message=f"Circuit breaker ouvert: {reason}",
+                    latency_ms=(time.time() - start_time) * 1000
+                )
 
         try:
             # Convertir symbole
@@ -886,14 +1069,18 @@ class LiveOrderManagerFutures:
                 )
                 
                 latency_ms = (time.time() - start_time) * 1000
-                
+
                 if bypass_result.success:
+                    # 🔥 Circuit Breaker: Enregistrer succès
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_success()
+
                     # Calculer PnL
                     if direction == 'LONG':
                         pnl_usdt = (current_price - entry_price) * amount
                     else:
                         pnl_usdt = (entry_price - current_price) * amount
-                    
+
                     # Mettre à jour stats
                     self.stats['orders_placed'] += 1
                     self.stats['orders_filled'] += 1
@@ -922,9 +1109,13 @@ class LiveOrderManagerFutures:
                         raw_api_response=bypass_result.data
                     )
                 else:
+                    # 🔥 Circuit Breaker: Enregistrer échec
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_failure()
+
                     self.stats['orders_failed'] += 1
                     logger.error(
-                        f"[BYPASS] Échec fermeture: {bypass_result.error_message}"
+                        f"❌ [BYPASS] Échec fermeture: {bypass_result.error_message}"
                     )
                     return FuturesOrderResult(
                         success=False,
@@ -1030,6 +1221,10 @@ class LiveOrderManagerFutures:
             )
 
         except Exception as e:
+            # 🔥 Circuit Breaker: Enregistrer échec
+            if self.circuit_breaker:
+                self.circuit_breaker.record_failure()
+
             latency_ms = (time.time() - start_time) * 1000
             self.stats['orders_failed'] += 1
 
@@ -1187,6 +1382,84 @@ class LiveOrderManagerFutures:
                 if self.stats['orders_placed'] > 0 else 0.0
             )
         }
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        🔥 NOUVEAU: Dashboard de santé du système de trading
+
+        Returns:
+            Dict avec status complet du système:
+            - circuit_breaker: État du circuit breaker
+            - token_monitor: État du monitoring token (si bypass actif)
+            - rate_limiter: Stats du rate limiter (si bypass actif)
+            - system: Stats générales (success rate, latence, etc.)
+        """
+        health = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'mode': 'bypass' if self.use_bypass else 'ccxt',
+            'dry_run': self.dry_run,
+            'system': {
+                'orders_placed': self.stats['orders_placed'],
+                'orders_filled': self.stats['orders_filled'],
+                'orders_failed': self.stats['orders_failed'],
+                'success_rate_pct': (
+                    self.stats['orders_filled'] / self.stats['orders_placed'] * 100
+                    if self.stats['orders_placed'] > 0 else 0.0
+                ),
+                'avg_latency_ms': self.stats['avg_latency_ms'],
+                'total_pnl_usdt': self.stats['total_pnl_usdt'],
+            },
+            'circuit_breaker': None,
+            'token_monitor': None,
+            'rate_limiter': None,
+        }
+
+        # Circuit Breaker status
+        if self.circuit_breaker:
+            cb_status = self.circuit_breaker.get_status()
+            health['circuit_breaker'] = {
+                'enabled': True,
+                'state': cb_status['state'],
+                'failure_count': cb_status['failure_count'],
+                'success_count': cb_status['success_count'],
+                'threshold': cb_status['threshold'],
+                'last_failure_time': cb_status['last_failure_time'],
+                'opened_at': cb_status['opened_at'],
+            }
+        else:
+            health['circuit_breaker'] = {'enabled': False}
+
+        # Token Monitor + Rate Limiter status (bypass mode uniquement)
+        if self.use_bypass and self.bypass_client:
+            try:
+                # Récupérer le status du token monitor
+                if hasattr(self.bypass_client, 'token_monitor') and self.bypass_client.token_monitor:
+                    health['token_monitor'] = {
+                        'enabled': True,
+                        'last_check_time': self.bypass_client.token_monitor.last_check_time,
+                        'check_interval_sec': self.bypass_client.token_monitor.check_interval,
+                        'is_valid': self.bypass_client.token_monitor.is_token_valid,
+                    }
+                else:
+                    health['token_monitor'] = {'enabled': False}
+
+                # Récupérer le status du rate limiter
+                if hasattr(self.bypass_client, 'rate_limiter') and self.bypass_client.rate_limiter:
+                    rl = self.bypass_client.rate_limiter
+                    health['rate_limiter'] = {
+                        'enabled': True,
+                        'current_rate_per_sec': rl.current_rate,
+                        'min_rate': rl.min_rate,
+                        'max_rate': rl.max_rate,
+                        'consecutive_429s': rl.consecutive_429s,
+                        'consecutive_200s': rl.consecutive_200s,
+                    }
+                else:
+                    health['rate_limiter'] = {'enabled': False}
+            except Exception as e:
+                logger.debug(f"Impossible de récupérer status bypass: {e}")
+
+        return health
 
     # ========================================================================
     # 🔥 NOUVELLES FONCTIONNALITÉS v7.1

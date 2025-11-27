@@ -112,6 +112,72 @@ async def get_live_stats():
         })
 
 
+@router.get("/health")
+async def get_health_dashboard():
+    """
+    🔥 NOUVEAU: Dashboard de santé complet du système de trading
+
+    Retourne:
+    - État du Circuit Breaker
+    - État du Token Monitor (si bypass actif)
+    - Stats du Rate Limiter adaptatif (si bypass actif)
+    - Métriques système (success rate, latence, PnL)
+
+    Returns:
+        JSONResponse avec health status complet
+    """
+    try:
+        from main import live_order_manager
+
+        if not live_order_manager:
+            return JSONResponse({
+                'success': True,
+                'mode': 'PAPER',
+                'message': 'Live trading non actif (mode PAPER)',
+                'health': {
+                    'timestamp': None,
+                    'mode': 'paper',
+                    'dry_run': True,
+                    'circuit_breaker': {'enabled': False},
+                    'token_monitor': {'enabled': False},
+                    'rate_limiter': {'enabled': False},
+                    'system': {
+                        'orders_placed': 0,
+                        'orders_filled': 0,
+                        'orders_failed': 0,
+                        'success_rate_pct': 0.0,
+                        'avg_latency_ms': 0.0,
+                        'total_pnl_usdt': 0.0,
+                    }
+                }
+            })
+
+        # Récupérer le health status complet
+        if hasattr(live_order_manager, 'get_health_status'):
+            health_status = live_order_manager.get_health_status()
+
+            return JSONResponse({
+                'success': True,
+                'health': health_status,
+                'message': 'Health status récupéré avec succès'
+            })
+        else:
+            # Fallback si méthode non disponible
+            return JSONResponse({
+                'success': False,
+                'error': 'Méthode get_health_status() non disponible sur LiveOrderManager',
+                'message': 'Veuillez mettre à jour LiveOrderManager avec la v7.3'
+            }, status_code=501)
+
+    except Exception as e:
+        logger.error(f"Erreur récupération health status: {e}")
+        return JSONResponse({
+            'success': False,
+            'error': str(e),
+            'message': f'Erreur: {str(e)}'
+        }, status_code=500)
+
+
 @router.get("/config")
 async def get_live_config():
     """
@@ -193,14 +259,23 @@ async def update_live_config(data: Dict[str, Any]):
 
                 if use_bypass_mode and not browser_token:
                     logger.warning("⚠️ Mode BYPASS activé mais aucun browser token fourni (MEXC_BROWSER_TOKEN). Retour en mode CCXT.")
-                
+
+                # 🔥 v7.3: Récupérer telegram_notifier depuis notification_manager
+                telegram_notif = None
+                if hasattr(main, 'notification_manager') and main.notification_manager:
+                    if hasattr(main.notification_manager, 'telegram_notifier'):
+                        telegram_notif = main.notification_manager.telegram_notifier
+
                 main.live_order_manager = LiveOrderManagerFutures(
                     api_key=config['api_key_mexc'],
                     api_secret=config['api_secret_mexc'],
                     browser_token=browser_token if browser_token else None,
                     default_leverage=default_leverage,
                     dry_run=config['dry_run'],
-                    use_bypass=use_bypass_mode and bool(browser_token)
+                    use_bypass=use_bypass_mode and bool(browser_token),
+                    telegram_notifier=telegram_notif,  # 🔥 v7.3: Alertes Telegram
+                    enable_circuit_breaker=True,       # 🔥 v7.3: Circuit Breaker actif
+                    circuit_breaker_threshold=5        # 🔥 v7.3: 5 échecs → ouverture circuit
                 )
                 logger.info(
                     f"✅ LiveOrderManagerFutures réinitialisé | "
