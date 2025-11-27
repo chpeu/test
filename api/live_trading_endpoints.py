@@ -112,6 +112,97 @@ async def get_live_stats():
         })
 
 
+@router.get("/health")
+async def get_health_status():
+    """
+    🔥 NOUVEAU: Dashboard de santé complet du système de trading
+
+    Retourne:
+    - Mode (HYBRID / CCXT / DRY_RUN)
+    - Circuit Breaker status (state, failure_count)
+    - Token Monitor status (healthy, last_check)
+    - Rate Limiter stats (current_rate, 429_count)
+    - Statistics détaillées (bypass_success, ccxt_fallback, etc.)
+
+    Returns:
+        JSONResponse avec statut de santé complet
+    """
+    try:
+        from main import live_order_manager
+
+        if live_order_manager and hasattr(live_order_manager, 'get_health_status'):
+            health = live_order_manager.get_health_status()
+
+            # Calculer score de santé global (0-100)
+            health_score = 100
+
+            # Circuit Breaker
+            cb_state = health.get('circuit_breaker', {}).get('state', 'unknown')
+            if cb_state == 'open':
+                health_score -= 50  # Critique
+            elif cb_state == 'half_open':
+                health_score -= 25  # Warning
+
+            # Token Monitor
+            token_monitor = health.get('token_monitor', {})
+            if not token_monitor.get('token_healthy', True):
+                health_score -= 30  # Critique
+
+            # Rate Limiter
+            rate_limiter = health.get('rate_limiter', {})
+            if rate_limiter.get('disabled', False):
+                health_score -= 40  # Critique
+            elif rate_limiter.get('total_429', 0) > 10:
+                health_score -= 15  # Warning
+
+            # Stats ordres
+            stats = health.get('stats', {})
+            success_rate = (
+                stats.get('orders_filled', 0) / stats.get('orders_placed', 1) * 100
+                if stats.get('orders_placed', 0) > 0 else 100
+            )
+            if success_rate < 50:
+                health_score -= 20
+            elif success_rate < 80:
+                health_score -= 10
+
+            health_score = max(0, health_score)
+
+            # Déterminer statut global
+            if health_score >= 80:
+                overall_status = 'healthy'
+            elif health_score >= 50:
+                overall_status = 'degraded'
+            else:
+                overall_status = 'critical'
+
+            return JSONResponse({
+                'success': True,
+                'overall_status': overall_status,
+                'health_score': health_score,
+                **health
+            })
+        else:
+            # Live order manager non initialisé
+            return JSONResponse({
+                'success': True,
+                'overall_status': 'inactive',
+                'health_score': 0,
+                'mode': 'PAPER',
+                'bypass_enabled': False,
+                'message': 'Live trading not enabled'
+            })
+
+    except Exception as e:
+        logger.error(f"Erreur récupération health status: {e}")
+        return JSONResponse({
+            'success': False,
+            'overall_status': 'error',
+            'health_score': 0,
+            'error': str(e)
+        }, status_code=500)
+
+
 @router.get("/config")
 async def get_live_config():
     """

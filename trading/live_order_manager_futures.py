@@ -23,8 +23,130 @@ from dataclasses import dataclass, field
 import json
 from datetime import datetime, timezone
 from functools import wraps
+from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# CIRCUIT BREAKER
+# ============================================================================
+class CircuitState(Enum):
+    """États du circuit breaker"""
+    CLOSED = "closed"      # Normal, requêtes passent
+    OPEN = "open"          # Échecs critiques, requêtes bloquées
+    HALF_OPEN = "half_open"  # Test de récupération
+
+
+class CircuitBreaker:
+    """
+    Circuit Breaker pour arrêter automatiquement le trading après échecs consécutifs
+
+    Protège contre:
+    - Perte de connexion répétée
+    - Token expiré
+    - Problèmes d'API
+    - Erreurs critiques en cascade
+
+    États:
+    - CLOSED: Normal (requêtes passent)
+    - OPEN: Arrêt d'urgence (requêtes bloquées pendant recovery_timeout)
+    - HALF_OPEN: Test si système est revenu (1 requête test)
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 300,  # 5 minutes
+        success_threshold: int = 2
+    ):
+        """
+        Initialiser le circuit breaker
+
+        Args:
+            failure_threshold: Nombre d'échecs consécutifs avant ouverture (défaut 5)
+            recovery_timeout: Temps d'attente avant test récupération en secondes (défaut 300s = 5min)
+            success_threshold: Nombre de succès en HALF_OPEN pour fermer circuit (défaut 2)
+        """
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.success_threshold = success_threshold
+
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = 0
+        self.opened_at = 0
+
+    def record_success(self):
+        """Enregistrer un succès"""
+        self.failure_count = 0
+
+        if self.state == CircuitState.HALF_OPEN:
+            self.success_count += 1
+            if self.success_count >= self.success_threshold:
+                logger.info("✅ Circuit Breaker FERMÉ - Système restauré")
+                self.state = CircuitState.CLOSED
+                self.success_count = 0
+
+    def record_failure(self):
+        """Enregistrer un échec"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        self.success_count = 0
+
+        if self.state == CircuitState.HALF_OPEN:
+            # Échec en test → réouvrir immédiatement
+            logger.warning(f"❌ Circuit Breaker RÉOUVERT - Test échoué")
+            self.state = CircuitState.OPEN
+            self.opened_at = time.time()
+
+        elif self.state == CircuitState.CLOSED:
+            if self.failure_count >= self.failure_threshold:
+                logger.error(
+                    f"🚨 Circuit Breaker OUVERT - {self.failure_count} échecs consécutifs | "
+                    f"Trading ARRÊTÉ pendant {self.recovery_timeout}s"
+                )
+                self.state = CircuitState.OPEN
+                self.opened_at = time.time()
+
+    def can_execute(self) -> Tuple[bool, str]:
+        """
+        Vérifier si une requête peut être exécutée
+
+        Returns:
+            Tuple (allowed, reason)
+        """
+        if self.state == CircuitState.CLOSED:
+            return (True, "Circuit fermé")
+
+        elif self.state == CircuitState.OPEN:
+            # Vérifier si timeout expiré
+            elapsed = time.time() - self.opened_at
+            if elapsed >= self.recovery_timeout:
+                logger.info(f"🔄 Circuit Breaker HALF-OPEN - Test de récupération (après {elapsed:.0f}s)")
+                self.state = CircuitState.HALF_OPEN
+                self.success_count = 0
+                return (True, "Test de récupération")
+            else:
+                remaining = self.recovery_timeout - elapsed
+                return (False, f"Circuit ouvert - attente {remaining:.0f}s avant test")
+
+        elif self.state == CircuitState.HALF_OPEN:
+            return (True, "Test en cours")
+
+        return (False, "État inconnu")
+
+    def get_status(self) -> Dict:
+        """Récupérer le statut du circuit breaker"""
+        return {
+            'state': self.state.value,
+            'failure_count': self.failure_count,
+            'success_count': self.success_count,
+            'last_failure_time': self.last_failure_time,
+            'opened_at': self.opened_at,
+            'threshold': self.failure_threshold
+        }
 
 
 # ============================================================================
@@ -89,7 +211,15 @@ class FuturesOrderResult:
 
 class LiveOrderManagerFutures:
     """
+    🔥 GESTIONNAIRE HYBRIDE: Bypass (primary) + CCXT (fallback)
+
     Gestionnaire d'ordres FUTURES MEXC (Perpetual Swaps)
+
+    MODE HYBRIDE (si browser_token fourni):
+    1. BYPASS en priorité (endpoints browser, pas de blocage API)
+    2. CCXT en fallback automatique si bypass échoue
+    3. Circuit Breaker: arrêt auto après 5 échecs consécutifs
+    4. Token Health Monitor: check token toutes les 5min + alertes Telegram
 
     RESPONSABILITÉS:
     1. Configurer le levier
@@ -110,7 +240,11 @@ class LiveOrderManagerFutures:
         api_secret: str,
         default_leverage: int = 10,
         testnet: bool = False,
-        dry_run: bool = True
+        dry_run: bool = True,
+        browser_token: Optional[str] = None,
+        telegram_notifier: Optional[Any] = None,
+        enable_circuit_breaker: bool = True,
+        circuit_breaker_threshold: int = 5
     ):
         """
         Initialiser le gestionnaire d'ordres futures
@@ -121,12 +255,42 @@ class LiveOrderManagerFutures:
             default_leverage: Levier par défaut (1-125)
             testnet: Utiliser testnet (si disponible)
             dry_run: Mode simulation (pas d'ordres réels)
+            browser_token: 🔥 Token browser pour bypass (optionnel)
+            telegram_notifier: 🔥 Instance TelegramNotifier pour alertes (optionnel)
+            enable_circuit_breaker: 🔥 Activer circuit breaker (défaut True)
+            circuit_breaker_threshold: 🔥 Seuil échecs consécutifs (défaut 5)
         """
         self.dry_run = dry_run
         self.testnet = testnet
         self.default_leverage = min(125, max(1, default_leverage))
+        self.telegram_notifier = telegram_notifier
 
-        # Initialiser exchange MEXC Futures
+        # 🔥 NOUVEAU: Mode hybride bypass + CCXT
+        self.bypass_client = None
+        self.bypass_enabled = False
+
+        if browser_token and not dry_run:
+            try:
+                # Import dynamique pour éviter dépendance si pas utilisé
+                from trading.mexc_futures_bypass import MexcFuturesBypass
+
+                self.bypass_client = MexcFuturesBypass(
+                    browser_token=browser_token,
+                    timeout=10,
+                    debug=False,
+                    enable_token_monitor=True,
+                    token_check_interval=300,  # 5 minutes
+                    telegram_notifier=telegram_notifier
+                )
+                self.bypass_enabled = True
+                logger.info("✅ Mode HYBRIDE activé: Bypass (primary) + CCXT (fallback)")
+
+            except ImportError as e:
+                logger.warning(f"⚠️ Bypass non disponible (import error): {e} | Mode CCXT seul")
+            except Exception as e:
+                logger.error(f"❌ Erreur initialisation bypass: {e} | Mode CCXT seul")
+
+        # Initialiser exchange MEXC Futures (toujours disponible en fallback)
         self.exchange = ccxt.mexc({
             'apiKey': api_key,
             'secret': api_secret,
@@ -143,7 +307,17 @@ class LiveOrderManagerFutures:
             self.exchange.set_sandbox_mode(True)
             logger.warning("⚠️ MEXC Futures testnet - utiliser dry_run=True pour tests")
 
-        # Statistiques
+        # 🔥 NOUVEAU: Circuit Breaker
+        self.circuit_breaker = None
+        if enable_circuit_breaker:
+            self.circuit_breaker = CircuitBreaker(
+                failure_threshold=circuit_breaker_threshold,
+                recovery_timeout=300,  # 5 minutes
+                success_threshold=2
+            )
+            logger.info(f"✅ Circuit Breaker activé (seuil: {circuit_breaker_threshold} échecs)")
+
+        # Statistiques étendues
         self.stats = {
             'orders_placed': 0,
             'orders_filled': 0,
@@ -151,6 +325,11 @@ class LiveOrderManagerFutures:
             'total_latency_ms': 0,
             'avg_latency_ms': 0,
             'total_pnl_usdt': 0.0,
+            # 🔥 NOUVEAU: Stats bypass vs CCXT
+            'bypass_success': 0,
+            'bypass_failed': 0,
+            'ccxt_fallback_used': 0,
+            'circuit_breaker_blocks': 0,
         }
 
         # Cache des leviers par symbole
@@ -158,10 +337,10 @@ class LiveOrderManagerFutures:
 
         logger.info(
             f"✅ LiveOrderManagerFutures initialisé | "
-            f"Mode: {'DRY_RUN' if dry_run else 'LIVE FUTURES'} | "
+            f"Mode: {'DRY_RUN' if dry_run else ('HYBRID' if self.bypass_enabled else 'CCXT')} | "
             f"Levier défaut: {self.default_leverage}x"
         )
-        
+
         # 🔥 Vérifier connectivité API en mode LIVE
         if not dry_run:
             try:
@@ -217,6 +396,62 @@ class LiveOrderManagerFutures:
                 return f"{symbol}:{base_quote[1]}"
         return symbol
 
+    def _convert_symbol_to_bypass(self, symbol: str) -> str:
+        """
+        Convertir symbole standard en format bypass
+
+        Ex: BTC/USDT → BTC_USDT
+        """
+        # Retirer :USDT si présent
+        symbol = symbol.replace(":USDT", "")
+        # Remplacer / par _
+        return symbol.replace("/", "_")
+
+    async def start_monitoring(self):
+        """🔥 Démarrer le monitoring token (si bypass activé)"""
+        if self.bypass_client and hasattr(self.bypass_client, 'start_monitoring'):
+            await self.bypass_client.start_monitoring()
+            logger.info("✅ Token monitoring démarré")
+
+    async def close_bypass(self):
+        """🔥 Fermer le client bypass proprement"""
+        if self.bypass_client and hasattr(self.bypass_client, 'close'):
+            await self.bypass_client.close()
+            logger.info("✅ Bypass client fermé")
+
+    def get_health_status(self) -> Dict:
+        """
+        🔥 Récupérer le statut de santé complet du système
+
+        Returns:
+            Dict avec statuts circuit breaker, token monitor, rate limiter, etc.
+        """
+        health = {
+            'mode': 'DRY_RUN' if self.dry_run else ('HYBRID' if self.bypass_enabled else 'CCXT'),
+            'bypass_enabled': self.bypass_enabled,
+            'stats': self.stats.copy()
+        }
+
+        # Circuit Breaker status
+        if self.circuit_breaker:
+            health['circuit_breaker'] = self.circuit_breaker.get_status()
+        else:
+            health['circuit_breaker'] = {'state': 'disabled'}
+
+        # Token Monitor status (bypass)
+        if self.bypass_client and hasattr(self.bypass_client, 'get_monitor_status'):
+            health['token_monitor'] = self.bypass_client.get_monitor_status()
+        else:
+            health['token_monitor'] = {'running': False}
+
+        # Rate Limiter stats (bypass)
+        if self.bypass_client and hasattr(self.bypass_client, 'get_rate_limiter_stats'):
+            health['rate_limiter'] = self.bypass_client.get_rate_limiter_stats()
+        else:
+            health['rate_limiter'] = {}
+
+        return health
+
     def open_position(
         self,
         symbol: str,
@@ -226,7 +461,13 @@ class LiveOrderManagerFutures:
         leverage: int = None
     ) -> FuturesOrderResult:
         """
-        Ouvrir une position futures (LONG ou SHORT)
+        🔥 HYBRIDE: Ouvrir une position futures via Bypass (primary) ou CCXT (fallback)
+
+        Logique:
+        1. Vérifier Circuit Breaker
+        2. Tenter BYPASS si activé
+        3. Fallback CCXT si bypass échoue
+        4. Enregistrer succès/échec dans Circuit Breaker
 
         Args:
             symbol: Paire (ex: BTC/USDT)
@@ -241,81 +482,68 @@ class LiveOrderManagerFutures:
         start_time = time.time()
         leverage = leverage or self.default_leverage
 
+        # 🔥 CIRCUIT BREAKER: Vérifier si trading autorisé
+        if self.circuit_breaker:
+            can_execute, reason = self.circuit_breaker.can_execute()
+            if not can_execute:
+                self.stats['circuit_breaker_blocks'] += 1
+                logger.error(f"🚨 Circuit Breaker BLOQUE: {reason}")
+                return FuturesOrderResult(
+                    success=False,
+                    error_message=f"Circuit breaker ouvert: {reason}",
+                    latency_ms=(time.time() - start_time) * 1000
+                )
+
         try:
-            # Convertir symbole au format futures
+            # Convertir symboles
             futures_symbol = self._convert_symbol_to_futures(symbol)
+            bypass_symbol = self._convert_symbol_to_bypass(symbol)
 
             # Calcul quantité en contrats
-            # Pour MEXC Futures: amount = size_usdt / entry_price
             amount = size_usdt / entry_price
 
-            # 🔢 Ajuster quantité selon la précision/limites du marché
+            # Ajuster quantité selon précision
             try:
                 if not getattr(self.exchange, 'markets', None):
                     self.exchange.load_markets()
                 market = self.exchange.market(futures_symbol)
-
                 amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
 
                 limits = (market or {}).get('limits', {}) if market else {}
                 min_amount = limits.get('amount', {}).get('min')
                 max_amount = limits.get('amount', {}).get('max')
 
-                # 🔥 Rejeter si quantité < min après arrondi (pas assez de capital)
                 if min_amount and amount < float(min_amount):
                     logger.error(
-                        f"❌ Quantité insuffisante {futures_symbol}: {amount:.8f} < min {min_amount} | "
-                        f"Capital requis: {float(min_amount) * entry_price:.2f} USDT (vous avez {size_usdt:.2f} USDT)"
+                        f"❌ Quantité insuffisante {futures_symbol}: {amount:.8f} < min {min_amount}"
                     )
                     return FuturesOrderResult(
                         success=False,
                         error_message=f"Quantité insuffisante: {amount:.8f} < min {min_amount}",
                         latency_ms=(time.time() - start_time) * 1000
                     )
-                
+
                 if max_amount and amount > float(max_amount):
-                    logger.debug(
-                        f"🔧 Ajustement quantité {futures_symbol}: {amount} > max {max_amount}, arrondi au maximum"
-                    )
                     amount = float(max_amount)
 
                 if amount <= 0:
-                    raise ValueError(
-                        f"Quantité arrondie invalide ({amount}) pour {futures_symbol}. Vérifier size_usdt={size_usdt}"
-                    )
+                    raise ValueError(f"Quantité invalide ({amount}) pour {futures_symbol}")
             except Exception as precision_err:
-                logger.warning(f"⚠️ Impossible d'ajuster la quantité {futures_symbol}: {precision_err}")
+                logger.warning(f"⚠️ Impossible d'ajuster quantité {futures_symbol}: {precision_err}")
 
-            # Type d'ordre
-            # LONG = buy, SHORT = sell (pour ouvrir)
             side = 'buy' if direction == 'LONG' else 'sell'
-            order_type = 'market'
 
             logger.info(
-                f"📤 OUVERTURE FUTURES {direction}: {futures_symbol} | "
-                f"Prix théorique: {entry_price} | "
-                f"Taille: {size_usdt} USDT | "
-                f"Levier: {leverage}x | "
-                f"Quantité: {amount:.6f} | "
-                f"Mode: {'DRY_RUN' if self.dry_run else 'LIVE'}"
+                f"📤 OUVERTURE {direction}: {symbol} | "
+                f"Prix: {entry_price} | Size: {size_usdt} USDT | Leverage: {leverage}x | "
+                f"Mode: {'DRY_RUN' if self.dry_run else ('HYBRID' if self.bypass_enabled else 'CCXT')}"
             )
 
-            # DRY RUN: Simuler ordre
+            # DRY RUN: Simuler
             if self.dry_run:
                 latency_ms = (time.time() - start_time) * 1000
-
-                # Calculer prix de liquidation simulé
                 margin = size_usdt / leverage
-                if direction == 'LONG':
-                    liq_price = entry_price * (1 - 1/leverage + 0.005)  # ~0.5% buffer
-                else:
-                    liq_price = entry_price * (1 + 1/leverage - 0.005)
-
-                logger.info(
-                    f"✅ [DRY_RUN] Position {direction} simulée | "
-                    f"Latence: {latency_ms:.0f}ms | "
-                    f"Liq. price: {liq_price:.2f}"
-                )
+                liq_price = entry_price * (1 - 1/leverage + 0.005) if direction == 'LONG' else entry_price * (1 + 1/leverage - 0.005)
 
                 return FuturesOrderResult(
                     success=True,
@@ -332,124 +560,144 @@ class LiveOrderManagerFutures:
                     executed_at=datetime.now(timezone.utc).isoformat()
                 )
 
-            # 🔥 Vérifier solde disponible AVANT d'ouvrir position
+            # 🔥 MODE HYBRIDE: Tenter BYPASS puis fallback CCXT
+            bypass_tried = False
+            bypass_error = None
+
+            if self.bypass_enabled and self.bypass_client:
+                bypass_tried = True
+                try:
+                    logger.info(f"🔄 Tentative BYPASS: {bypass_symbol}")
+
+                    # Mapper direction → OrderSide
+                    from trading.mexc_futures_bypass import OrderSide, OrderType, OpenType
+
+                    order_side = OrderSide.OPEN_LONG if direction == 'LONG' else OrderSide.OPEN_SHORT
+
+                    # Appel bypass (async)
+                    result = asyncio.run(
+                        self.bypass_client.submit_order(
+                            symbol=bypass_symbol,
+                            side=order_side,
+                            vol=amount,
+                            price=entry_price,
+                            order_type=OrderType.MARKET,
+                            open_type=OpenType.ISOLATED,
+                            leverage=leverage
+                        )
+                    )
+
+                    if result.success:
+                        latency_ms = (time.time() - start_time) * 1000
+                        self.stats['bypass_success'] += 1
+                        self.stats['orders_placed'] += 1
+                        self.stats['orders_filled'] += 1
+                        self.stats['total_latency_ms'] += latency_ms
+                        self.stats['avg_latency_ms'] = self.stats['total_latency_ms'] / self.stats['orders_placed']
+
+                        # 🔥 Circuit Breaker: enregistrer succès
+                        if self.circuit_breaker:
+                            self.circuit_breaker.record_success()
+
+                        logger.info(
+                            f"✅ BYPASS succès | Order ID: {result.order_id} | "
+                            f"Latence: {latency_ms:.0f}ms"
+                        )
+
+                        return FuturesOrderResult(
+                            success=True,
+                            order_id=str(result.order_id),
+                            filled_price=entry_price,
+                            filled_amount=amount,
+                            actual_fees_usdt=0.0,  # Bypass ne retourne pas fees directement
+                            actual_slippage_pct=0.0,
+                            margin_used=size_usdt / leverage,
+                            leverage=leverage,
+                            latency_ms=latency_ms,
+                            executed_at=datetime.now(timezone.utc).isoformat()
+                        )
+                    else:
+                        bypass_error = result.error_message
+                        logger.warning(f"⚠️ BYPASS échec: {bypass_error} → Fallback CCXT")
+                        self.stats['bypass_failed'] += 1
+
+                except Exception as e:
+                    bypass_error = str(e)
+                    logger.warning(f"⚠️ BYPASS erreur: {e} → Fallback CCXT")
+                    self.stats['bypass_failed'] += 1
+
+            # 🔥 FALLBACK CCXT (toujours si bypass échoue ou désactivé)
+            if bypass_tried:
+                self.stats['ccxt_fallback_used'] += 1
+                logger.info("🔄 Fallback CCXT activé")
+
+            # Vérifier solde
             margin_required = size_usdt / leverage
             balance = self.get_balance('USDT')
-            
+
             if balance < margin_required:
-                logger.error(
-                    f"❌ Solde insuffisant: {balance:.2f} USDT disponible, "
-                    f"{margin_required:.2f} USDT requis (size={size_usdt:.2f}, leverage={leverage}x)"
-                )
                 return FuturesOrderResult(
                     success=False,
                     error_message=f"Solde insuffisant: {balance:.2f} USDT disponible, {margin_required:.2f} USDT requis",
                     latency_ms=(time.time() - start_time) * 1000
                 )
 
-            # LIVE: Passer ordre MARKET avec tous les paramètres MEXC requis
-            # 🔥 FIX: MEXC requiert leverage, openType ET positionType dans params
-            # openType: 1=isolated, 2=cross
-            # positionType: 1=long, 2=short
+            # Ordre CCXT
             position_type = 1 if direction == 'LONG' else 2
-            
-            # Stocker levier dans cache pour la fermeture
             self._leverage_cache[futures_symbol] = leverage
-            
-            # 🔥 DEBUG: Activer verbose pour capturer réponse MEXC complète
-            self.exchange.verbose = True
-            
-            # 🔥 Retry avec backoff sur timeout/network errors
+
+            # Retry avec backoff
             max_retries = 2
             last_error = None
-            
+
             for attempt in range(max_retries):
                 try:
                     order = self.exchange.create_order(
                         symbol=futures_symbol,
-                        type=order_type,  # 'market'
+                        type='market',
                         side=side,
                         amount=amount,
                         params={
                             'leverage': str(leverage),
-                            'openType': 1,  # isolated margin
-                            'positionType': position_type,  # 1=long, 2=short
-                            'type': 5,  # 🔥 FIX: Forcer type 5 (market) pour MEXC API native
+                            'openType': 1,
+                            'positionType': position_type,
+                            'type': 5,
                         }
                     )
-                    break  # Succès, sortir de la boucle
+                    break
                 except (ccxt.NetworkError, ccxt.RequestTimeout) as retry_error:
                     last_error = retry_error
                     if attempt < max_retries - 1:
-                        wait_time = 2 ** attempt  # 1s, 2s
-                        logger.warning(
-                            f"⚠️ Timeout/Network error (tentative {attempt + 1}/{max_retries}), "
-                            f"retry dans {wait_time}s..."
-                        )
+                        wait_time = 2 ** attempt
+                        logger.warning(f"⚠️ Retry {attempt + 1}/{max_retries} dans {wait_time}s...")
                         time.sleep(wait_time)
                     else:
                         raise last_error
-            
-            # 🔥 DEBUG: Désactiver verbose après ordre
-            self.exchange.verbose = False
 
             latency_ms = (time.time() - start_time) * 1000
 
-            # Extraire infos ordre
+            # Extraire infos
             order_id = order.get('id')
             filled_price = order.get('average') or order.get('price') or entry_price
             filled_amount = order.get('filled') or amount
             fee_info = order.get('fee', {})
             fees = fee_info.get('cost', 0.0) or 0.0
-
-            # Calculer slippage
             slippage_pct = abs((filled_price - entry_price) / entry_price) * 100 if filled_price else 0
-
-            # Calculer marge utilisée
             margin_used = size_usdt / leverage
 
-            # 🔥 Récupérer infos position pour liquidation price
-            liquidation_price = None
-            funding_rate = None
-            try:
-                positions = self.exchange.fetch_positions([futures_symbol])
-                for pos in positions:
-                    if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
-                        liquidation_price = float(pos.get('liquidationPrice', 0)) or None
-                        break
-                # Récupérer funding rate
-                try:
-                    funding_info = self.exchange.fetch_funding_rate(futures_symbol)
-                    funding_rate = funding_info.get('fundingRate')
-                except:
-                    pass
-            except Exception as e:
-                logger.debug(f"Impossible de récupérer position/funding: {e}")
-
-            # 🔥 Récupérer taux de frais
-            maker_fee_rate = None
-            taker_fee_rate = None
-            try:
-                markets = self.exchange.load_markets()
-                if futures_symbol in markets:
-                    market = markets[futures_symbol]
-                    maker_fee_rate = market.get('maker')
-                    taker_fee_rate = market.get('taker')
-            except:
-                pass
-
-            # Mettre à jour stats
+            # Stats
             self.stats['orders_placed'] += 1
             self.stats['orders_filled'] += 1
             self.stats['total_latency_ms'] += latency_ms
             self.stats['avg_latency_ms'] = self.stats['total_latency_ms'] / self.stats['orders_placed']
 
+            # 🔥 Circuit Breaker: enregistrer succès
+            if self.circuit_breaker:
+                self.circuit_breaker.record_success()
+
             logger.info(
-                f"✅ Position FUTURES {direction} ouverte | "
-                f"Order ID: {order_id} | "
-                f"Prix rempli: {filled_price} | "
-                f"Slippage: {slippage_pct:.3f}% | "
-                f"Fees: {fees:.4f} USDT | "
+                f"✅ CCXT succès | Order ID: {order_id} | "
+                f"Prix: {filled_price} | Slippage: {slippage_pct:.3f}% | "
                 f"Latence: {latency_ms:.0f}ms"
             )
 
@@ -462,12 +710,8 @@ class LiveOrderManagerFutures:
                 actual_slippage_pct=slippage_pct,
                 margin_used=margin_used,
                 leverage=leverage,
-                liquidation_price=liquidation_price,
                 latency_ms=latency_ms,
                 executed_at=datetime.now(timezone.utc).isoformat(),
-                maker_fee_rate=maker_fee_rate,
-                taker_fee_rate=taker_fee_rate,
-                funding_rate=funding_rate,
                 raw_api_response=order
             )
 
@@ -475,32 +719,19 @@ class LiveOrderManagerFutures:
             latency_ms = (time.time() - start_time) * 1000
             self.stats['orders_failed'] += 1
 
-            # 🔥 Log détaillé avec message d'erreur complet
+            # 🔥 Circuit Breaker: enregistrer échec
+            if self.circuit_breaker:
+                self.circuit_breaker.record_failure()
+
             error_msg = str(e)
-            # Extraire le message d'erreur s'il est dans un tuple
-            if hasattr(e, 'args') and len(e.args) > 0:
-                if isinstance(e.args[0], str):
-                    error_msg = e.args[0]
-            
-            mexc_response = None
-            mexc_status = None
-            try:
-                mexc_response = getattr(e, 'response', None) or getattr(e, 'body', None)
-                mexc_status = getattr(e, 'http_status', None)
-            except Exception:
-                pass
+            if hasattr(e, 'args') and len(e.args) > 0 and isinstance(e.args[0], str):
+                error_msg = e.args[0]
 
             logger.error(
-                f"❌ Erreur ouverture position futures: {error_msg} | "
-                f"Symbol: {symbol} → {futures_symbol} | "
-                f"Side: {side} | Amount: {amount:.6f} | Leverage: {leverage}x | "
-                f"Size USDT: {size_usdt:.2f} | "
-                f"Latence: {latency_ms:.0f}ms"
-                + (f" | HTTP {mexc_status}" if mexc_status else "")
+                f"❌ Erreur ouverture position: {error_msg} | "
+                f"Symbol: {symbol} | Direction: {direction} | "
+                f"Leverage: {leverage}x | Latence: {latency_ms:.0f}ms"
             )
-
-            if mexc_response:
-                logger.error(f"📩 Réponse MEXC: {mexc_response}")
 
             return FuturesOrderResult(
                 success=False,
