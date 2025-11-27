@@ -231,6 +231,14 @@ class ScalabilityScanner:
             
             logger.info(f"{len(futures_pairs)} paires 0% fees retrouvees")
             
+            excluded = set(TRADING_CONFIG.get("excluded_symbols", []))
+            if excluded:
+                before_len = len(futures_pairs)
+                futures_pairs = [p for p in futures_pairs if p['symbol'] not in excluded]
+                removed = before_len - len(futures_pairs)
+                if removed > 0:
+                    logger.info(f"{removed} paires exclues de la liste de trading: {', '.join(sorted(excluded))}")
+            
             # Scanner par batch
             BATCH_SIZE = 5
             total_batches = math.ceil(len(futures_pairs) / BATCH_SIZE)

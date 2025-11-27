@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764267401.973922,
+  "timestamp": 1764279890.393968,
   "specs": {
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -26,6 +26,60 @@
       "vol_unit": 1.0,
       "price_unit": 1e-05,
       "price_precision": 0,
+      "vol_precision": 1
+    },
+    "SUI_USDT": {
+      "symbol": "SUI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1
+    },
+    "APT_USDT": {
+      "symbol": "APT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 5400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1
+    },
+    "ZEC_USDT": {
+      "symbol": "ZEC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 440000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1
+    },
+    "WLD_USDT": {
+      "symbol": "WLD_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1
+    },
+    "INJ_USDT": {
+      "symbol": "INJ_USDT",
+      "min_vol": 1.0,
+      "max_vol": 64000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1
+    },
+    "SOL_USDT": {
+      "symbol": "SOL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 120000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
       "vol_precision": 1
     }
   }

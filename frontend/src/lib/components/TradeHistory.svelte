@@ -2,7 +2,7 @@
 	import { sortedTrades } from '$lib/stores/trades';
 	import { derived } from 'svelte/store';
 
-	import { formatAdaptive, formatPercent, formatUSDT } from '$lib/utils/format';
+	import { formatAdaptive, formatPercent, formatUSDT, formatPrice } from '$lib/utils/format';
 
 	// 🔥 PAGINATION: Variables de pagination
 	let currentPage = 1;
@@ -156,22 +156,16 @@
 									{trade.reason || trade.close_reason || 'N/A'}
 								{/if}
 							</td>
-							<!-- 🔥 NOUVEAU: Prix de sortie -->
 							<td class="exit-price" data-debug-name="trade.exit_price">
 								{(() => {
-									// Chercher le prix de sortie dans différents champs possibles
 									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price;
-									if (exitPrice) {
-										return formatAdaptive(exitPrice);
-									}
-									return 'N/A';
+									if (!exitPrice) return 'N/A';
+									return formatPrice(exitPrice, trade.entry_price);
 								})()}
 							</td>
-							<!-- 🔥 FIX: PnL Brut avec formatage adaptatif -->
 							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0} data-debug-name="trade.gross_pnl_pct">
 								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.gross_pnl_pct || trade.pnl_pct || 0)}%
 							</td>
-							<!-- 🔥 FIX: Slippage avec formatage adaptatif (calculé si manquant) -->
 							<td class="slippage" data-debug-name="trade.slippage">
 								{(() => {
 									// Essayer slippage_pct d'abord (en pourcentage)

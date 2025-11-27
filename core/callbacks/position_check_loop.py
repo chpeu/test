@@ -8,6 +8,8 @@ import logging
 from typing import Optional
 from datetime import datetime
 
+from utils.pricing import get_preferred_price
+
 logger = logging.getLogger(__name__)
 
 # Variables globales injectées par init_instances()
@@ -127,11 +129,12 @@ async def position_check_loop_callback():
             logger.debug(f"⚠️ Prix indisponible pour {symbol} (tentative suivante dans {_app_state.get('check_interval', 0.1)}s)")
             return
 
-        current_price = (
-            current_price_data.get('lastPrice', 0)
-            if isinstance(current_price_data, dict)
-            else current_price_data
-        )
+        fallback_price = getattr(position, 'entry', 0)
+        current_price = get_preferred_price(current_price_data, fallback_price)
+
+        if not current_price or current_price <= 0:
+            logger.debug(f"⚠️ Prix non exploitable pour {symbol}: {current_price}")
+            return
 
         # Vérifier la position (retourne None ou raison de fermeture)
         close_reason = await _position_manager.check_position(current_price)
@@ -259,6 +262,10 @@ async def _emit_position_update(position, current_price: float):
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
             'dynamic_sl': getattr(position, 'dynamic_sl', None),  # 🔥 FIX: Trailing stop
             'size_remaining': getattr(position, 'size_remaining', None),  # 🔥 FIX: Position restante
+            # 🔥 NOUVEAU: Exposer les tailles en contrats pour l'affichage restant / initial dans le frontend
+            'position_size_contracts': getattr(position, 'position_size_contracts', None),
+            'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
+            'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
             'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None  # 🔥 FIX: Niveaux TP escalier
         }
 

@@ -43,6 +43,7 @@ try:
     # 🔥 LIVE TRADING: Imports pour live trading
     from api.live_trading_endpoints import router as live_router, register_websocket_commands
     from trading.live_order_manager_futures import LiveOrderManagerFutures as LiveOrderManager
+    from utils.pricing import get_preferred_price
 except ImportError as e:
     logging.error(f"Import error: {e}")
     # Fallback pour les dépendances manquantes
@@ -682,15 +683,15 @@ async def scanner_loop_callback():
                                         await add_log('ERROR', 'Prix non disponible', symbol)
                                         continue
                                     
-                                    entry_price = price_data.get('lastPrice', setup.get('price', 0))
+                                    entry_price = get_preferred_price(price_data, setup.get('price', 0))
                                     if not entry_price or entry_price == 0:
                                         await add_log('ERROR', 'Prix invalide', f"{symbol}: {entry_price}")
                                         continue
                                     
                                     # 🔥 FIX: Log pour debug - vérifier le prix récupéré
                                     logger.info(
-                                        f"💰 Prix récupéré pour {symbol}: lastPrice={price_data.get('lastPrice')}, "
-                                        f"setup.get('price')={setup.get('price')}, entry_price={entry_price}"
+                                        f"💰 Prix récupéré pour {symbol}: refPrice={get_preferred_price(price_data)}, "
+                                        f"setup_price={setup.get('price')}, entry_price={entry_price}"
                                     )
                                     
                                     # Calculer taille de position (position sizing)
@@ -961,7 +962,7 @@ async def scanner_loop_callback():
                                     try:
                                         current_price_data = await price_provider.get_price(symbol)
                                         if current_price_data:
-                                            current_price = current_price_data.get('lastPrice', entry_price) if isinstance(current_price_data, dict) else entry_price
+                                            current_price = get_preferred_price(current_price_data, entry_price)
                                             # 🔥 FIX: Utiliser pnl_calculator au lieu de _calculate_pnl
                                             pnl = position_manager.pnl_calculator.calculate_pnl_percent(
                                                 entry=position.entry,
@@ -987,7 +988,10 @@ async def scanner_loop_callback():
                                                     'pnl_usdt': pnl_usdt,
                                                     'size': position.size,
                                                     'break_even_set': position.break_even_set,
-                                                    'partial_tp_sold': position.partial_tp_sold
+                                                    'partial_tp_sold': position.partial_tp_sold,
+                                                    'position_size_contracts': getattr(position, 'position_size_contracts', None),
+                                                    'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
+                                                    'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None)
                                                 })
                                                 logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
                                             except Exception as e:
@@ -1234,16 +1238,13 @@ async def scan_pair_for_setup(symbol: str):
                     try:
                         price_result = await price_provider.get_price(symbol)
                         # Extraire la valeur numérique si c'est un dict
-                        if isinstance(price_result, dict):
-                            scan_price = price_result.get('price') or price_result.get('lastPrice') or price_result.get('close')
-                        else:
-                            scan_price = price_result
+                        scan_price = get_preferred_price(price_result, setup.get('price'))
                     except Exception as price_error:
                         logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {price_error}")
                 
                 # Extraire la valeur numérique si scan_price est un dict
                 if isinstance(scan_price, dict):
-                    scan_price = scan_price.get('price') or scan_price.get('lastPrice') or scan_price.get('close') or scan_price.get('value')
+                    scan_price = get_preferred_price(scan_price)
                 
                 # Vérifier que scan_price est un nombre
                 if scan_price is not None and not isinstance(scan_price, (int, float)):
@@ -1530,17 +1531,13 @@ async def scan_pair_for_setup(symbol: str):
                 if scan_price is None and price_provider:
                     try:
                         price_result = await price_provider.get_price(symbol)
-                        # Extraire la valeur numérique si c'est un dict
-                        if isinstance(price_result, dict):
-                            scan_price = price_result.get('price') or price_result.get('lastPrice') or price_result.get('close')
-                        else:
-                            scan_price = price_result
+                        scan_price = get_preferred_price(price_result, setup.get('price'))
                     except Exception as price_error:
                         logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {price_error}")
                 
                 # Extraire la valeur numérique si scan_price est un dict
                 if isinstance(scan_price, dict):
-                    scan_price = scan_price.get('price') or scan_price.get('lastPrice') or scan_price.get('close') or scan_price.get('value')
+                    scan_price = get_preferred_price(scan_price)
                 
                 # Vérifier que scan_price est un nombre
                 if scan_price is not None and not isinstance(scan_price, (int, float)):
@@ -1767,7 +1764,7 @@ async def position_check_loop_callback():
         if not current_price_data:
             return
         
-        current_price = current_price_data.get('lastPrice', 0) if isinstance(current_price_data, dict) else current_price_data
+        current_price = get_preferred_price(current_price_data)
         
         # Check position (renvoie None ou raison de fermeture)
         close_reason = await position_manager.check_position(current_price)
@@ -1828,7 +1825,7 @@ async def position_check_loop_callback():
                     f"SL={position.sl:.6f} | TP={position.tp:.6f}"
                 )
                 
-                # Émettre update pour le frontend
+                # Émettre update pour le frontend (inclut aussi les tailles en contrats)
                 update_data = {
                     'symbol': position.symbol,
                     'direction': position.direction,
@@ -1840,7 +1837,10 @@ async def position_check_loop_callback():
                     'pnl_usdt': pnl_usdt,
                     'size': position.size,
                     'break_even_set': position.break_even_set,
-                    'partial_tp_sold': position.partial_tp_sold
+                    'partial_tp_sold': position.partial_tp_sold,
+                    'position_size_contracts': getattr(position, 'position_size_contracts', None),
+                    'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
+                    'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
                 }
                 await ws_manager.emit('position_update', update_data)
                 
@@ -2889,7 +2889,7 @@ async def api_get_live_prices():
             for symbol, price_data in price_provider.price_cache.items():
                 age = time.time() - price_data.get('timestamp', time.time())
                 result["prices"][symbol] = {
-                    "price": price_data.get('lastPrice', 0),
+                    "price": price_data.get('referencePrice') or get_preferred_price(price_data),
                     "volume24": price_data.get('volume24', 0),
                     "age_seconds": round(age, 2),
                     "timestamp": price_data.get('timestamp', 0)
@@ -3102,7 +3102,7 @@ async def api_check_position():
     try:
         # Récupérer prix actuel
         price_data = await price_provider.get_price(position_manager.active_position.symbol)
-        current_price = price_data.get('lastPrice') if price_data else None
+        current_price = get_preferred_price(price_data)
         
         if not current_price:
             return JSONResponse({'error': 'Price not available'}, status_code=500)
@@ -3176,7 +3176,7 @@ async def api_close_position():
         try:
             # Récupérer prix actuel
             price_data = await price_provider.get_price(position_manager.active_position.symbol)
-            exit_price = price_data.get('lastPrice') if price_data else None
+            exit_price = get_preferred_price(price_data)
             
             result = position_manager.close_position(exit_price=exit_price, reason='MANUAL')
             
@@ -4249,7 +4249,7 @@ async def handle_client_command(command: str, params: dict):
                 
                 # Récupérer prix actuel
                 price_data = await price_provider.get_price(position_manager.active_position.symbol)
-                exit_price = price_data.get('lastPrice') if price_data else None
+                exit_price = get_preferred_price(price_data)
                 
                 # Utiliser exit_price depuis params si fourni
                 if params.get('exit_price'):

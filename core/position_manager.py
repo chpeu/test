@@ -8,6 +8,7 @@ REFACTORISÉ avec architecture modulaire
 import asyncio
 import json
 import logging
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -111,6 +112,8 @@ class Position:
     margin_mode: Optional[str] = None
     position_size_usdt: Optional[float] = None
     position_size_contracts: Optional[float] = None
+    size_initial_contracts: Optional[float] = None
+    size_remaining_contracts: Optional[float] = None
     liquidation_price: Optional[float] = None
     margin_used: Optional[float] = None
     maker_fee_rate: Optional[float] = None
@@ -184,6 +187,8 @@ class Position:
             'margin_mode': self.margin_mode,
             'position_size_usdt': self.position_size_usdt,
             'position_size_contracts': self.position_size_contracts,
+            'size_initial_contracts': self.size_initial_contracts,
+            'size_remaining_contracts': self.size_remaining_contracts,
             'liquidation_price': self.liquidation_price,
             'margin_used': self.margin_used,
             'entry_fee_usdt': self.entry_fee_usdt,
@@ -292,6 +297,81 @@ class PositionManager:
 
         # Initialiser modules spécialisés
         self._init_modules(analytics_db)
+
+    def _schedule_position_sync(self, symbol: str, delay: Optional[float] = None) -> None:
+        if not self.live_order_manager:
+            return
+
+        dry_run = False
+        try:
+            dry_run = getattr(self.live_order_manager, 'dry_run', False)
+        except Exception:
+            dry_run = False
+
+        if dry_run:
+            return
+
+        from config import TRADING_CONFIG
+
+        if delay is None:
+            delay = float(TRADING_CONFIG.get('live_resync_delay_sec', 3))
+
+        def _worker():
+            try:
+                if delay and delay > 0:
+                    logger.debug(f"⏳ Resynchronisation position LIVE programmée dans {delay}s pour {symbol}...")
+                    time.sleep(delay)
+
+                live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
+                if not live_position:
+                    logger.warning(f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée")
+                    return
+
+                current_position = self.active_position
+                if not current_position or current_position.symbol != symbol:
+                    return
+
+                live_entry_price = float(live_position.get('entry_price') or 0)
+                live_contracts = float(live_position.get('size') or 0)
+
+                if live_entry_price > 0:
+                    previous_entry = current_position.entry
+                    if previous_entry and abs(live_entry_price - previous_entry) > 1e-8:
+                        price_diff = live_entry_price - previous_entry
+                        if current_position.direction == 'LONG':
+                            current_position.tp += price_diff
+                            current_position.sl += price_diff
+                        else:
+                            current_position.tp -= price_diff
+                            current_position.sl -= price_diff
+                        logger.info(
+                            f"🔁 [LIVE] Prix d'entrée resynchronisé: {previous_entry:.8f} -> {live_entry_price:.8f}"
+                        )
+                    current_position.entry = live_entry_price
+                    current_position.entry_fill_price = live_entry_price
+
+                if live_contracts > 0 and live_entry_price > 0:
+                    live_size_usdt = live_contracts * live_entry_price
+                    current_position.size = live_size_usdt
+                    current_position.position_size_usdt = live_size_usdt
+                    current_position.position_size_contracts = live_contracts
+                    if not current_position.size_initial_contracts:
+                        current_position.size_initial_contracts = live_contracts
+                    if not current_position.partial_tp_sold:
+                        current_position.size_remaining = live_size_usdt
+                        current_position.size_remaining_contracts = live_contracts
+
+                    logger.info(
+                        f"🔁 [LIVE] Taille resynchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Erreur resynchronisation différée position LIVE pour {symbol}: {e}")
+
+        thread = threading.Thread(target=_worker, name=f"position_sync_{symbol}", daemon=True)
+        try:
+            thread.start()
+        except RuntimeError as e:
+            logger.error(f"❌ Impossible de démarrer le thread de resynchronisation pour {symbol}: {e}")
 
     def _get_market_info(self, symbol: str) -> Optional[Dict]:
         """
@@ -456,14 +536,18 @@ class PositionManager:
                 f"fixed_tp_pct={self.config.fixed_tp_pct}%"
             )
 
-        # ✅ Mettre à jour config TP/SL avec valeurs depuis TRADING_CONFIG (dynamique)
         from config import TRADING_CONFIG
+        excluded_symbols = set(TRADING_CONFIG.get('excluded_symbols', []))
+        if symbol in excluded_symbols:
+            raise ValueError(f"Symbol {symbol} est exclu du trading (excluded_symbols)")
+
+        # Mettre à jour config TP/SL avec valeurs depuis TRADING_CONFIG (dynamique)
         self.tpsl_config.win_streak = self.config.win_streak
         self.tpsl_config.loss_streak = self.config.loss_streak
-        # 🔥 FIX: Mettre à jour paramètres FIXE depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
+        # FIX: Mettre à jour paramètres FIXE depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
         self.tpsl_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
         self.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
-        # ✅ Mettre à jour paramètres ATR depuis TRADING_CONFIG
+        # Mettre à jour paramètres ATR depuis TRADING_CONFIG
         self.tpsl_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
         self.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
         self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
@@ -530,6 +614,17 @@ class PositionManager:
             tick_size=tick_size
         )
 
+        # ✅ Initialiser les tailles en contrats même en mode paper/dry-run
+        try:
+            contracts = size / entry if entry else 0.0
+        except Exception:
+            contracts = 0.0
+
+        self.active_position.position_size_contracts = contracts
+        self.active_position.size_initial_contracts = contracts
+        self.active_position.size_remaining_contracts = contracts
+        self.active_position.size_remaining = size
+
         # ✅ Initialiser TP Escalier si mode TP_MULTI
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
         levels_config = None
@@ -595,6 +690,8 @@ class PositionManager:
                     self.active_position.size = filled_size_usdt
                     self.active_position.position_size_usdt = filled_size_usdt
                     self.active_position.position_size_contracts = filled_amount
+                    self.active_position.size_initial_contracts = filled_amount
+                    self.active_position.size_remaining_contracts = filled_amount
                     self.active_position.size_remaining = filled_size_usdt
                     self.active_position.margin_mode = 'isolated'
                     self.active_position.leverage_used = getattr(order_result, 'leverage', None) or getattr(self.live_order_manager, 'default_leverage', None)
@@ -643,9 +740,14 @@ class PositionManager:
                                 self.active_position.position_size_usdt = live_size_usdt
                                 self.active_position.position_size_contracts = live_contracts
                                 self.active_position.size_remaining = live_size_usdt
+                                if not self.active_position.size_initial_contracts:
+                                    self.active_position.size_initial_contracts = live_contracts
+                                self.active_position.size_remaining_contracts = live_contracts
                                 logger.info(
                                     f"🔁 [LIVE] Taille synchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
                                 )
+                        # Programmer une resynchronisation non bloquante
+                        self._schedule_position_sync(symbol)
 
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
                     if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
@@ -1177,12 +1279,15 @@ class PositionManager:
                             filled_size_usdt = partial_order_result.filled_size_usdt or (filled_amount * current_price)
                             
                             # Mettre à jour les contrats restants
-                            remaining_contracts = size_contracts - filled_amount
-                            remaining_usdt = self.active_position.size - filled_size_usdt
-                            
+                            remaining_contracts = max(size_contracts - filled_amount, 0)
+                            remaining_usdt = max(self.active_position.size - filled_size_usdt, 0)
+
                             self.active_position.partial_tp_sold = True
                             self.active_position.size_remaining = remaining_usdt
                             self.active_position.position_size_contracts = remaining_contracts
+                            self.active_position.size_remaining_contracts = remaining_contracts
+                            if not self.active_position.size_initial_contracts:
+                                self.active_position.size_initial_contracts = size_contracts
                             self.active_position.partial_profit_usdt = partial_order_result.actual_pnl_usdt or 0.0
                             
                             logger.info(
@@ -1209,6 +1314,13 @@ class PositionManager:
                     self.active_position.partial_tp_sold = True
                     self.active_position.size_remaining = partial_result['size_remaining']
                     self.active_position.partial_profit_usdt = partial_result['profit_usdt']
+                    entry_price = self.active_position.entry or current_price or 1
+                    remaining_contracts = self.active_position.size_remaining / entry_price
+                    initial_contracts = self.active_position.position_size_contracts or (self.active_position.size / entry_price)
+                    if not self.active_position.size_initial_contracts:
+                        self.active_position.size_initial_contracts = initial_contracts
+                    self.active_position.position_size_contracts = remaining_contracts
+                    self.active_position.size_remaining_contracts = remaining_contracts
 
                 # Déplacer SL à break-even après le 1er TP
                 new_sl = self.partial_tp.update_sl_after_partial_tp(
@@ -1216,6 +1328,7 @@ class PositionManager:
                 )
                 self.active_position.sl = new_sl
                 self.active_position.break_even_set = True
+                self._schedule_position_sync(symbol)
                 
                 logger.info(
                     f"💰 1er TP partiel déclenché à {break_even_trigger:.2f}% | "
@@ -1232,10 +1345,7 @@ class PositionManager:
                 if tp_sl_mode == 'FIXE':
                     # Mode FIXE : utiliser trailing_distance directement
                     trailing_distance = TRADING_CONFIG.get('trailing_distance', 0.15)
-                    new_sl = self._update_trailing_stop_fixe(
-                        current_price=current_price,
-                        trailing_distance=trailing_distance
-                    )
+                    new_sl = self._update_trailing_stop_fixe(current_price, trailing_distance)
                     if new_sl:
                         self.active_position.sl = new_sl
                         self.active_position.dynamic_sl = new_sl

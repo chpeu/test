@@ -228,6 +228,14 @@
 		return formatWithoutTrailingZeros(price, decimals);
 	}
 
+	function formatContracts(value) {
+		if (value === null || value === undefined || isNaN(value)) {
+			return '-';
+		}
+		// Utiliser un maximum de 4 décimales pour les contrats, sans zéros de fin
+		return formatWithoutTrailingZeros(value, 4);
+	}
+
 	// 🔥 FIX: Fonction pour clôturer la position manuellement
 	async function closePosition() {
 		if (!$activePosition) {
@@ -305,6 +313,13 @@
 			<div class="price-box" data-debug-name="activePosition.size">
 				<div class="price-label" data-debug-name="activePosition.size">Size</div>
 				<div class="price-value" data-debug-name="activePosition.size">{formatPrice($activePosition.size)} USDT</div>
+				{#if $activePosition.size_initial_contracts}
+					<div class="price-subvalue" data-debug-name="activePosition.size_contracts">
+						{formatContracts($activePosition.size_remaining_contracts ?? $activePosition.size_initial_contracts)}
+						/
+						{formatContracts($activePosition.size_initial_contracts)}
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -483,6 +498,14 @@
 		font-size: 14px;
 		font-weight: bold;
 		color: #00aaff;
+	}
+
+	.price-subvalue {
+		margin-top: 4px;
+		font-size: 12px;
+		color: #00ff88;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
 	}
 
 	.tpsl-grid {

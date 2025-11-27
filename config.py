@@ -29,6 +29,10 @@ TRADING_CONFIG = {
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
     "scan_interval": 45,  # 45 secondes pour position scan
     "scalability_interval": 90,  # 90 secondes pour scalability scan
+    # 🔥 Liste des paires à exclure manuellement (par exemple contraintes de taille minimale)
+    "excluded_symbols": [
+        "ZEC/USDT:USDT",
+    ],
 
     # BUG #14 FIX: Suppression doublon volume_multiplier (défini ligne 77 avec valeur ajustée 0.95)
     "volume_multiplier_range": (0.10, 2.00),
