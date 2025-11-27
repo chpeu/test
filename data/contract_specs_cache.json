@@ -1,0 +1,32 @@
+{
+  "timestamp": 1764267401.973922,
+  "specs": {
+    "ASTER_USDT": {
+      "symbol": "ASTER_USDT",
+      "min_vol": 1.0,
+      "max_vol": 275000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1
+    },
+    "AIA_USDT": {
+      "symbol": "AIA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 45000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1
+    },
+    "HBAR_USDT": {
+      "symbol": "HBAR_USDT",
+      "min_vol": 1.0,
+      "max_vol": 9800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1
+    }
+  }
+}
