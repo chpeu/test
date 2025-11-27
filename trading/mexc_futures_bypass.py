@@ -30,55 +30,125 @@ logger = logging.getLogger(__name__)
 # Rate Limiting & Protection Anti-Ban
 # ============================================================================
 
-class RateLimiter:
+class AdaptiveRateLimiter:
     """
-    Rate limiter pour éviter le bannissement MEXC
-    
+    🔥 AMÉLIORATION 1: Rate limiter ADAPTATIF pour éviter le bannissement MEXC
+
+    S'adapte automatiquement aux limites réelles de MEXC:
+    - Réduit agressivement si 429 détecté (-30%)
+    - Augmente progressivement si stable (+5% après 20 succès)
+    - Stop immédiat si 403 (token expiré/IP bannie)
+
     Limites estimées (non-documentées):
     - REST API: ~10 requêtes/seconde
     - WebSocket: ~5 messages/seconde
     """
-    
-    def __init__(self, max_requests_per_second: float = 5.0):
-        self.max_requests = max_requests_per_second
-        self.min_interval = 1.0 / max_requests_per_second
+
+    def __init__(self, initial_rate: float = 3.0, min_rate: float = 1.0, max_rate: float = 10.0):
+        self.max_requests = initial_rate
+        self.min_rate = min_rate
+        self.max_rate = max_rate
+        self.min_interval = 1.0 / initial_rate
         self.last_request_time = 0.0
         self._lock = asyncio.Lock()
         self.request_count = 0
         self.request_count_window_start = 0.0
-    
+
+        # 🔥 Adaptation automatique
+        self.consecutive_success = 0
+        self.consecutive_429 = 0
+        self.total_requests = 0
+        self.total_429 = 0
+        self.total_403 = 0
+        self.disabled = False  # Si 403, désactiver complètement
+
     async def acquire(self):
         """Attendre si nécessaire pour respecter le rate limit"""
+        if self.disabled:
+            logger.error("❌ Rate limiter désactivé (403 détecté)")
+            await asyncio.sleep(60)  # Attendre 60s avant retry
+            return
+
         async with self._lock:
             now = time.time()
-            
+
             # Reset compteur toutes les secondes
             if now - self.request_count_window_start >= 1.0:
                 self.request_count = 0
                 self.request_count_window_start = now
-            
-            # Vérifier si on dépasse la limite
+
+            # Vérifier si on dépasse la limite (adaptative)
             if self.request_count >= self.max_requests:
                 wait_time = 1.0 - (now - self.request_count_window_start)
                 if wait_time > 0:
-                    logger.debug(f"⏳ Rate limit: attente {wait_time:.2f}s")
+                    logger.debug(f"⏳ Rate limit: attente {wait_time:.2f}s (rate={self.max_requests:.2f} req/s)")
                     await asyncio.sleep(wait_time)
                     self.request_count = 0
                     self.request_count_window_start = time.time()
-            
+
+            # Recalculer min_interval selon rate actuel
+            self.min_interval = 1.0 / self.max_requests
+
             # Ajouter un délai minimum entre requêtes + jitter aléatoire
             elapsed = now - self.last_request_time
             if elapsed < self.min_interval:
                 jitter = random.uniform(0.05, 0.15)  # 50-150ms de jitter
                 wait_time = self.min_interval - elapsed + jitter
                 await asyncio.sleep(wait_time)
-            
+
             self.last_request_time = time.time()
             self.request_count += 1
+            self.total_requests += 1
+
+    def on_response_success(self):
+        """🔥 Appelé après requête réussie (200)"""
+        self.consecutive_success += 1
+        self.consecutive_429 = 0  # Reset compteur 429
+
+        # Augmenter progressivement le rate après 20 succès consécutifs
+        if self.consecutive_success >= 20:
+            old_rate = self.max_requests
+            self.max_requests = min(self.max_requests * 1.05, self.max_rate)  # +5%, max 10 req/s
+            if self.max_requests > old_rate:
+                logger.info(f"📈 Rate limite augmenté: {old_rate:.2f} → {self.max_requests:.2f} req/s")
+            self.consecutive_success = 0
+
+    def on_response_429(self):
+        """🔥 Appelé après détection 429 (rate limit exceeded)"""
+        self.consecutive_429 += 1
+        self.total_429 += 1
+        self.consecutive_success = 0  # Reset compteur succès
+
+        old_rate = self.max_requests
+        self.max_requests = max(self.max_requests * 0.7, self.min_rate)  # -30%, min 1 req/s
+        logger.warning(
+            f"⚠️ 429 détecté ({self.consecutive_429}x consécutif) - "
+            f"Rate limite réduit: {old_rate:.2f} → {self.max_requests:.2f} req/s"
+        )
+
+    def on_response_403(self):
+        """🔥 Appelé après détection 403 (token expiré ou IP bannie)"""
+        self.total_403 += 1
+        self.disabled = True
+        logger.error(
+            f"❌ 403 détecté - Rate limiter DÉSACTIVÉ | "
+            f"Token expiré ou IP bannie | Arrêt trading requis"
+        )
+
+    def get_stats(self) -> dict:
+        """Récupérer statistiques du rate limiter"""
+        return {
+            'current_rate': self.max_requests,
+            'total_requests': self.total_requests,
+            'total_429': self.total_429,
+            'total_403': self.total_403,
+            'consecutive_success': self.consecutive_success,
+            'disabled': self.disabled
+        }
 
 
-# Rate limiter global
-_rate_limiter = RateLimiter(max_requests_per_second=3.0)  # Conservateur: 3 req/s
+# Rate limiter global adaptatif
+_rate_limiter = AdaptiveRateLimiter(initial_rate=3.0, min_rate=1.0, max_rate=10.0)
 
 
 # ============================================================================
@@ -293,6 +363,219 @@ def ws_sign(api_key: str, secret_key: str) -> tuple:
 
 
 # ============================================================================
+# 🔥 AMÉLIORATION 2: Cache Persistant des Specs Contrats
+# ============================================================================
+
+SPECS_CACHE_FILE = "data/contract_specs_cache.json"
+
+
+def load_specs_cache() -> Dict[str, Dict]:
+    """
+    Charger le cache des specs contrats depuis fichier
+
+    Returns:
+        Dict des specs par symbole ou {} si cache invalide/expiré
+    """
+    from pathlib import Path
+
+    if not Path(SPECS_CACHE_FILE).exists():
+        return {}
+
+    try:
+        with open(SPECS_CACHE_FILE, 'r') as f:
+            cache = json.load(f)
+
+        # Vérifier age du cache (expire après 24h)
+        cache_time = cache.get('timestamp', 0)
+        if cache_time > time.time() - 86400:  # 24h
+            logger.info(f"✅ Cache specs chargé: {len(cache.get('specs', {}))} contrats")
+            return cache.get('specs', {})
+        else:
+            logger.warning(f"⚠️ Cache specs expiré ({(time.time() - cache_time) / 3600:.1f}h)")
+            return {}
+
+    except Exception as e:
+        logger.error(f"❌ Erreur lecture cache specs: {e}")
+        return {}
+
+
+def save_specs_cache(specs: Dict[str, Dict]):
+    """
+    Sauvegarder le cache des specs contrats dans fichier
+
+    Args:
+        specs: Dict des specs par symbole
+    """
+    from pathlib import Path
+
+    try:
+        # Créer répertoire data/ si inexistant
+        Path(SPECS_CACHE_FILE).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(SPECS_CACHE_FILE, 'w') as f:
+            json.dump({
+                'timestamp': time.time(),
+                'specs': specs
+            }, f, indent=2)
+
+        logger.debug(f"💾 Cache specs sauvegardé: {len(specs)} contrats")
+
+    except Exception as e:
+        logger.error(f"❌ Erreur sauvegarde cache specs: {e}")
+
+
+# ============================================================================
+# 🔥 AMÉLIORATION 3: Token Health Monitor
+# ============================================================================
+
+class TokenHealthMonitor:
+    """
+    Moniteur de santé du token browser
+
+    Vérifie périodiquement la validité du token et envoie des alertes si expiré.
+    Check toutes les 5 minutes (configurable).
+    """
+
+    def __init__(
+        self,
+        client: 'MexcFuturesBypass',
+        check_interval: int = 300,  # 5 minutes
+        telegram_notifier: Optional[Any] = None
+    ):
+        """
+        Initialiser le moniteur
+
+        Args:
+            client: Instance du client MexcFuturesBypass
+            check_interval: Intervalle de vérification en secondes (défaut 300s = 5min)
+            telegram_notifier: Instance du TelegramNotifier pour alertes
+        """
+        self.client = client
+        self.check_interval = check_interval
+        self.telegram_notifier = telegram_notifier
+        self._task: Optional[asyncio.Task] = None
+        self._running = False
+        self._last_check_time = 0
+        self._consecutive_failures = 0
+        self._token_healthy = True
+
+    async def start(self):
+        """Démarrer le monitoring"""
+        if self._running:
+            return
+
+        self._running = True
+        self._task = asyncio.create_task(self._monitor_loop())
+        logger.info(f"✅ Token Health Monitor démarré (check toutes les {self.check_interval}s)")
+
+    async def stop(self):
+        """Arrêter le monitoring"""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        logger.info("🛑 Token Health Monitor arrêté")
+
+    async def _monitor_loop(self):
+        """Boucle de monitoring principale"""
+        while self._running:
+            try:
+                await asyncio.sleep(self.check_interval)
+
+                if self._running:
+                    await self._check_token_health()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"❌ Erreur monitoring token: {e}")
+
+    async def _check_token_health(self):
+        """Vérifier la santé du token"""
+        try:
+            self._last_check_time = time.time()
+
+            # Tenter de récupérer l'asset USDT (requête simple)
+            response = await self.client.get_account_asset("USDT")
+
+            if response.get("code") == 403:
+                # Token expiré ou IP bannie
+                self._consecutive_failures += 1
+                self._token_healthy = False
+
+                error_msg = (
+                    f"🔴 TOKEN MEXC EXPIRÉ\n\n"
+                    f"Le token browser a expiré ou l'IP est bannie.\n"
+                    f"Échecs consécutifs: {self._consecutive_failures}\n\n"
+                    f"Actions requises:\n"
+                    f"1. Ouvrir DevTools sur mexc.com\n"
+                    f"2. Copier nouveau token (Headers > authorization)\n"
+                    f"3. Mettre à jour MEXC_BROWSER_TOKEN\n"
+                    f"4. Redémarrer le bot\n\n"
+                    f"⚠️ Trading ARRÊTÉ jusqu'au renouvellement"
+                )
+
+                logger.error(f"❌ {error_msg}")
+
+                # Envoyer notification Telegram si disponible
+                if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_message'):
+                    try:
+                        await self.telegram_notifier.send_message(
+                            error_msg,
+                            bypass_throttle=True
+                        )
+                    except Exception as e:
+                        logger.error(f"Erreur envoi notification Telegram: {e}")
+
+                # Désactiver le rate limiter (via callback)
+                _rate_limiter.on_response_403()
+
+            elif response.get("code") == 429:
+                # Rate limit atteint
+                logger.warning("⚠️ Rate limit atteint lors du check token")
+                _rate_limiter.on_response_429()
+
+            elif response.get("success") and response.get("code") == 0:
+                # Token OK
+                if not self._token_healthy:
+                    logger.info("✅ Token restauré et fonctionnel")
+
+                    if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_message'):
+                        try:
+                            await self.telegram_notifier.send_message(
+                                "✅ Token MEXC restauré\n\nLe trading peut reprendre.",
+                                bypass_throttle=True
+                            )
+                        except:
+                            pass
+
+                self._token_healthy = True
+                self._consecutive_failures = 0
+                logger.debug("✅ Token valide (health check OK)")
+
+            else:
+                # Autre erreur
+                logger.warning(f"⚠️ Health check token: réponse inattendue {response}")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur check token health: {e}")
+            self._consecutive_failures += 1
+
+    def get_status(self) -> Dict:
+        """Récupérer le statut du moniteur"""
+        return {
+            'running': self._running,
+            'token_healthy': self._token_healthy,
+            'consecutive_failures': self._consecutive_failures,
+            'last_check_time': self._last_check_time,
+            'next_check_in': max(0, self.check_interval - (time.time() - self._last_check_time))
+        }
+
+
+# ============================================================================
 # Client REST
 # ============================================================================
 
@@ -323,22 +606,47 @@ class MexcFuturesBypass:
         self,
         browser_token: str,
         timeout: int = 30,
-        debug: bool = False
+        debug: bool = False,
+        enable_token_monitor: bool = True,
+        token_check_interval: int = 300,  # 5 minutes
+        telegram_notifier: Optional[Any] = None
     ):
         """
         Initialiser le client
-        
+
         Args:
             browser_token: Token d'authentification browser (WEB_xxx...)
                           Récupérable depuis DevTools > Network > Headers > authorization
             timeout: Timeout des requêtes en secondes
             debug: Activer les logs de debug
+            enable_token_monitor: 🔥 Activer le monitoring token (check périodique)
+            token_check_interval: 🔥 Intervalle check token en secondes (défaut 300s = 5min)
+            telegram_notifier: 🔥 Instance TelegramNotifier pour alertes
         """
         self.browser_token = browser_token
         self.timeout = timeout
         self.debug = debug
         self._session: Optional[aiohttp.ClientSession] = None
-        self._contract_specs: Dict[str, ContractSpec] = {}  # Cache des specs contrats
+
+        # 🔥 AMÉLIORATION 2: Cache persistant chargé depuis fichier
+        cached_specs = load_specs_cache()
+        self._contract_specs: Dict[str, ContractSpec] = {}
+
+        # Convertir les dicts du cache en objets ContractSpec
+        for symbol, spec_dict in cached_specs.items():
+            try:
+                self._contract_specs[symbol] = ContractSpec(**spec_dict)
+            except Exception as e:
+                logger.warning(f"⚠️ Spec cache invalide pour {symbol}: {e}")
+
+        # 🔥 AMÉLIORATION 3: Token Health Monitor
+        self._token_monitor: Optional[TokenHealthMonitor] = None
+        if enable_token_monitor:
+            self._token_monitor = TokenHealthMonitor(
+                client=self,
+                check_interval=token_check_interval,
+                telegram_notifier=telegram_notifier
+            )
         
     async def _get_session(self) -> aiohttp.ClientSession:
         """Obtenir ou créer la session HTTP"""
@@ -349,7 +657,28 @@ class MexcFuturesBypass:
         return self._session
     
     async def close(self):
-        """Fermer la session HTTP"""
+        """Fermer la session HTTP et arrêter le monitoring"""
+        # 🔥 Arrêter le token monitor si actif
+        if self._token_monitor:
+            await self._token_monitor.stop()
+
+        # 🔥 Sauvegarder le cache des specs avant fermeture
+        if self._contract_specs:
+            specs_dict = {
+                symbol: {
+                    'symbol': spec.symbol,
+                    'min_vol': spec.min_vol,
+                    'max_vol': spec.max_vol,
+                    'vol_unit': spec.vol_unit,
+                    'price_unit': spec.price_unit,
+                    'price_precision': spec.price_precision,
+                    'vol_precision': spec.vol_precision
+                }
+                for symbol, spec in self._contract_specs.items()
+            }
+            save_specs_cache(specs_dict)
+
+        # Fermer session HTTP
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
@@ -415,12 +744,14 @@ class MexcFuturesBypass:
         try:
             if method == "GET":
                 async with session.get(url, headers=headers, params=params) as resp:
-                    # Vérifier le status HTTP
+                    # 🔥 Vérifier le status HTTP et notifier le rate limiter
                     if resp.status == 429:
+                        _rate_limiter.on_response_429()  # 🔥 Callback rate limiter
                         logger.warning("⚠️ Rate limit atteint (429) - attente 5s")
                         await asyncio.sleep(5)
                         return {"success": False, "code": 429, "message": "Rate limit exceeded"}
                     if resp.status == 403:
+                        _rate_limiter.on_response_403()  # 🔥 Callback rate limiter
                         logger.error("❌ Accès refusé (403) - token expiré ou IP bannie?")
                         return {"success": False, "code": 403, "message": "Access denied - check token"}
                     data = await resp.json()
@@ -431,17 +762,23 @@ class MexcFuturesBypass:
                 post_headers["content-type"] = "application/json"
                 async with session.post(url, headers=post_headers, data=body_str) as resp:
                     if resp.status == 429:
+                        _rate_limiter.on_response_429()  # 🔥 Callback rate limiter
                         logger.warning("⚠️ Rate limit atteint (429) - attente 5s")
                         await asyncio.sleep(5)
                         return {"success": False, "code": 429, "message": "Rate limit exceeded"}
                     if resp.status == 403:
+                        _rate_limiter.on_response_403()  # 🔥 Callback rate limiter
                         logger.error("❌ Accès refusé (403) - token expiré ou IP bannie?")
                         return {"success": False, "code": 403, "message": "Access denied - check token"}
                     data = await resp.json()
-            
+
+            # 🔥 Requête réussie → notifier le rate limiter
+            if data.get("success") and data.get("code") == 0:
+                _rate_limiter.on_response_success()
+
             if self.debug:
                 logger.debug(f"✅ Response: {json.dumps(data)}")
-            
+
             return data
             
         except aiohttp.ClientError as e:
@@ -798,14 +1135,29 @@ class MexcFuturesBypass:
                 vol_precision=vol_precision,
             )
             
-            # Cacher
+            # Cacher en mémoire
             self._contract_specs[symbol] = spec
-            
+
+            # 🔥 AMÉLIORATION 2: Sauvegarder dans cache persistant
+            specs_dict = {
+                s: {
+                    'symbol': sp.symbol,
+                    'min_vol': sp.min_vol,
+                    'max_vol': sp.max_vol,
+                    'vol_unit': sp.vol_unit,
+                    'price_unit': sp.price_unit,
+                    'price_precision': sp.price_precision,
+                    'vol_precision': sp.vol_precision
+                }
+                for s, sp in self._contract_specs.items()
+            }
+            save_specs_cache(specs_dict)
+
             if self.debug:
                 logger.debug(f"📋 ContractSpec {symbol}: minVol={spec.min_vol}, maxVol={spec.max_vol}, volUnit={spec.vol_unit}")
-            
+
             return spec
-            
+
         except (KeyError, TypeError, ValueError) as e:
             logger.error(f"❌ Error parsing contract spec {symbol}: {e}")
             return None
@@ -831,7 +1183,7 @@ class MexcFuturesBypass:
     async def test_connection(self) -> bool:
         """
         Tester la connexion API
-        
+
         Returns:
             True si connexion OK
         """
@@ -841,7 +1193,38 @@ class MexcFuturesBypass:
         except Exception as e:
             logger.error(f"❌ Connection test failed: {e}")
             return False
-    
+
+    async def start_monitoring(self):
+        """
+        🔥 AMÉLIORATION 3: Démarrer le monitoring token
+
+        À appeler après initialisation du client pour activer le check périodique du token.
+        """
+        if self._token_monitor:
+            await self._token_monitor.start()
+        else:
+            logger.warning("⚠️ Token monitor non initialisé (enable_token_monitor=False)")
+
+    def get_monitor_status(self) -> Optional[Dict]:
+        """
+        🔥 AMÉLIORATION 3: Récupérer le statut du token monitor
+
+        Returns:
+            Dict avec statut ou None si désactivé
+        """
+        if self._token_monitor:
+            return self._token_monitor.get_status()
+        return None
+
+    def get_rate_limiter_stats(self) -> Dict:
+        """
+        🔥 AMÉLIORATION 1: Récupérer les stats du rate limiter
+
+        Returns:
+            Dict avec stats du rate limiter
+        """
+        return _rate_limiter.get_stats()
+
     def convert_symbol(self, ccxt_symbol: str) -> str:
         """
         Convertir symbole format ccxt vers format MEXC
@@ -904,17 +1287,19 @@ class MexcFuturesWebSocket:
         auto_reconnect: bool = True,
         reconnect_interval: int = 5,
         ping_interval: int = 15,
+        pong_timeout: int = 60,  # 🔥 AMÉLIORATION 4: Timeout pong
         debug: bool = False
     ):
         """
         Initialiser le client WebSocket
-        
+
         Args:
             api_key: Clé API MEXC
             secret_key: Secret API MEXC
             auto_reconnect: Reconnexion automatique
             reconnect_interval: Délai reconnexion (secondes)
             ping_interval: Intervalle ping (secondes)
+            pong_timeout: 🔥 Timeout max sans pong (secondes) - déclenche reconnexion forcée
             debug: Mode debug
         """
         self.api_key = api_key
@@ -922,14 +1307,19 @@ class MexcFuturesWebSocket:
         self.auto_reconnect = auto_reconnect
         self.reconnect_interval = reconnect_interval
         self.ping_interval = ping_interval
+        self.pong_timeout = pong_timeout  # 🔥 AMÉLIORATION 4
         self.debug = debug
-        
+
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._connected = False
         self._logged_in = False
         self._ping_task: Optional[asyncio.Task] = None
         self._receive_task: Optional[asyncio.Task] = None
-        
+        self._watchdog_task: Optional[asyncio.Task] = None  # 🔥 AMÉLIORATION 4
+
+        # 🔥 AMÉLIORATION 4: Heartbeat monitoring
+        self.last_pong_time = 0.0
+
         # Callbacks
         self._on_order_update = None
         self._on_position_update = None
@@ -979,19 +1369,21 @@ class MexcFuturesWebSocket:
     async def connect(self):
         """Connecter au WebSocket"""
         logger.info("🔌 Connecting to MEXC Futures WebSocket...")
-        
+
         try:
             self._ws = await websockets.connect(self.WS_URL)
             self._connected = True
+            self.last_pong_time = time.time()  # 🔥 AMÉLIORATION 4: Init pong timestamp
             logger.info("✅ WebSocket connected")
-            
+
             # Démarrer les tâches
             self._ping_task = asyncio.create_task(self._ping_loop())
             self._receive_task = asyncio.create_task(self._receive_loop())
-            
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())  # 🔥 AMÉLIORATION 4
+
             if self._on_connected:
                 await self._call_callback(self._on_connected)
-                
+
         except Exception as e:
             logger.error(f"❌ WebSocket connection failed: {e}")
             if self._on_error:
@@ -1001,17 +1393,19 @@ class MexcFuturesWebSocket:
     async def disconnect(self):
         """Déconnecter du WebSocket"""
         logger.info("🔌 Disconnecting WebSocket...")
-        
+
         self.auto_reconnect = False
         self._connected = False
         self._logged_in = False
-        
+
         # Annuler les tâches
         if self._ping_task:
             self._ping_task.cancel()
         if self._receive_task:
             self._receive_task.cancel()
-        
+        if self._watchdog_task:  # 🔥 AMÉLIORATION 4
+            self._watchdog_task.cancel()
+
         # Fermer la connexion
         if self._ws:
             await self._ws.close()
@@ -1103,7 +1497,57 @@ class MexcFuturesWebSocket:
                 break
             except Exception as e:
                 logger.error(f"❌ Ping error: {e}")
-    
+
+    async def _watchdog_loop(self):
+        """
+        🔥 AMÉLIORATION 4: Watchdog pour détecter connexions zombies
+
+        Surveille le temps écoulé depuis le dernier pong.
+        Si pas de pong depuis pong_timeout secondes → reconnexion forcée.
+        """
+        while self._connected:
+            try:
+                await asyncio.sleep(10)  # Check toutes les 10s
+
+                if not self._connected:
+                    break
+
+                # Vérifier si pas de pong depuis trop longtemps
+                elapsed = time.time() - self.last_pong_time
+
+                if elapsed > self.pong_timeout:
+                    logger.error(
+                        f"❌ WebSocket zombie détecté ! "
+                        f"Pas de pong depuis {elapsed:.0f}s (max {self.pong_timeout}s) "
+                        f"→ Reconnexion forcée"
+                    )
+
+                    # Forcer reconnexion
+                    self._connected = False
+                    self._logged_in = False
+
+                    if self._on_disconnected:
+                        await self._call_callback(
+                            self._on_disconnected,
+                            Exception(f"Watchdog timeout: {elapsed:.0f}s sans pong")
+                        )
+
+                    if self.auto_reconnect:
+                        await self._reconnect()
+                    break
+
+                elif self.debug and elapsed > self.pong_timeout * 0.5:
+                    # Warning si on dépasse 50% du timeout
+                    logger.warning(
+                        f"⚠️ Watchdog: {elapsed:.0f}s depuis dernier pong "
+                        f"({elapsed / self.pong_timeout * 100:.0f}% du timeout)"
+                    )
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"❌ Watchdog error: {e}")
+
     async def _receive_loop(self):
         """Boucle de réception"""
         while self._connected:
@@ -1148,9 +1592,12 @@ class MexcFuturesWebSocket:
         
         channel = message.get("channel", "")
         data = message.get("data")
-        
-        # Pong
+
+        # 🔥 AMÉLIORATION 4: Pong reçu → mettre à jour timestamp
         if channel == "pong":
+            self.last_pong_time = time.time()
+            if self.debug:
+                logger.debug("💓 Pong reçu")
             return
         
         # Login response
