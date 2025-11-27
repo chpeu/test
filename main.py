@@ -40,6 +40,9 @@ try:
     from core.scheduler import Scheduler
     from core.metrics import get_metrics_collector
     from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
+    # 🔥 LIVE TRADING: Imports pour live trading
+    from api.live_trading_endpoints import router as live_router, register_websocket_commands
+    from trading.live_order_manager_futures import LiveOrderManagerFutures as LiveOrderManager
 except ImportError as e:
     logging.error(f"Import error: {e}")
     # Fallback pour les dépendances manquantes
@@ -74,15 +77,12 @@ logger = logging.getLogger(__name__)
 # 🔥 FIX: Configurer le logger avec WebSocket handler après l'initialisation de ws_manager
 # (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
-# Initialisation FastAPI
-app = FastAPI(title="Trade Cursor v7.0")
-
-
-# 🔥 FIX: Exception handler global pour éviter 503 sur /api/state
+# 🔥 IMPORTANT: FastAPI imports (app sera créé après définition du lifespan)
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-@app.exception_handler(Exception)
+# 🔥 FIX: Exception handler global (défini comme fonction, sera attaché après création de app)
 async def global_exception_handler(request, exc):
     """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503 pour /api/state"""
     import time
@@ -143,7 +143,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             logger.error(f"❌ Exception dans middleware pour {path}: {e} ({process_time:.3f}s)", exc_info=True)
             raise
 
-app.add_middleware(LoggingMiddleware)
+# Middleware sera attaché APRES la création de app (ligne ~280)
 
 # 🔒 Security Middleware: Ajout des headers de sécurité
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -171,14 +171,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         return response
 
-app.add_middleware(SecurityHeadersMiddleware)
+# Middleware sera attaché APRES la création de app (ligne ~280)
 
 # 🔥 CLEANUP: Fichiers statiques supprimés - Frontend Svelte gère l'interface
 # Plus besoin de servir des fichiers statiques, le frontend Svelte est indépendant
 
-if api_router:
-    app.include_router(api_router)
-    logger.info("✅ API REST routes incluses: /api/*")
+# Les routers seront inclus APRES la création de app (ligne ~280)
 
 # 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
 # Socket.IO complètement retiré pour performances maximales
@@ -191,11 +189,21 @@ if set_websocket_manager_routes:
     set_websocket_manager_routes(ws_manager)
     logger.info("✅ ws_manager injecté dans API routes")
 
+# 🔥 LIVE TRADING: Enregistrer les commandes WebSocket pour live trading
+try:
+    register_websocket_commands(ws_manager)
+    logger.info("✅ Commandes WebSocket live trading enregistrées")
+except Exception as e:
+    logger.warning(f"⚠️ Impossible d'enregistrer commandes WebSocket live trading: {e}")
+
 from contextlib import asynccontextmanager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Lifespan context manager pour initialiser et fermer proprement les ressources"""
+    logger.info("🚀 LIFESPAN ENTER: Début du context manager (avant initialisation)")
+    logger.info("🚀 LIFESPAN STARTUP: Initialisation...")
     data_logger = None
     try:
         try:
@@ -209,6 +217,7 @@ async def lifespan(app: FastAPI):
             app.state.data_logger = None
 
         init_instances()
+        logger.info("✅ LIFESPAN: init_instances() terminé")
 
         try:
             await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
@@ -223,6 +232,8 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
 
         yield
+
+        logger.info("🟢 LIFESPAN YIELD: Execution principale terminée, début du shutdown")
 
     finally:
         try:
@@ -254,8 +265,33 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
 
+        logger.info("🏁 LIFESPAN EXIT: Contexte fermé")
 
-app.router.lifespan_context = lifespan
+
+# 🔥 CRITICAL: Créer FastAPI avec lifespan attaché (orchestrera startup/shutdown)
+app = FastAPI(title="Trade Cursor v7.0", lifespan=lifespan)
+logger.info("✅ FastAPI créé avec lifespan attaché (init_instances exécuté au démarrage)")
+
+# Attacher l'exception handler
+app.add_exception_handler(Exception, global_exception_handler)
+logger.info("✅ Exception handler global attaché")
+
+# Attacher les middlewares (doivent être attachés APRES la création de app)
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+logger.info("✅ Middlewares attachés (Logging + Security)")
+
+# Inclure les routers
+if api_router:
+    app.include_router(api_router)
+    logger.info("✅ API REST routes incluses: /api/*")
+
+# 🔥 LIVE TRADING: Inclure les routes live trading
+try:
+    app.include_router(live_router)
+    logger.info("✅ Live trading routes incluses: /api/live/*")
+except Exception as e:
+    logger.warning(f"⚠️ Impossible d'inclure live trading routes: {e}")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -310,23 +346,10 @@ def save_trade_history():
             except:
                 pass
     
-    # 🔥 PHASE 8: Sauvegarder aussi en SQLite (si activé)
-    if trade_db and app_state['trade_history']:
-        try:
-            # Sauvegarder uniquement le dernier trade (éviter doublons)
-            last_trade = app_state['trade_history'][0] if app_state['trade_history'] else None
-            if last_trade:
-                # Vérifier si déjà en DB (par timestamp)
-                existing = trade_db.get_trades_by_date_range(
-                    last_trade.get('date', ''),
-                    last_trade.get('date', '')
-                )
-                # Si pas déjà présent, insérer
-                if not any(t.get('timestamp') == last_trade.get('timestamp') for t in existing):
-                    trade_db.insert_trade(last_trade)
-                    logger.debug(f"✅ Trade sauvegardé en DB: {last_trade.get('symbol')}")
-        except Exception as e:
-            logger.error(f"❌ Erreur sauvegarde DB: {e}")
+    # 🔥 PHASE 8: Sauvegarde SQLite via AnalyticsLogger uniquement
+    # Les insertions directes ici provoquaient des erreurs car trade_history ne contient
+    # pas toutes les colonnes requises (114). Les trades sont déjà loggés ailleurs via
+    # analytics_logger, donc on évite toute duplication.
 
 def load_trade_history():
     """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
@@ -355,20 +378,10 @@ def load_trade_history():
                 app_state['trade_history'] = json.load(f)
             logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
             
-            # 🔥 PHASE 8: Migrer JSON → SQLite si DB disponible
-            if trade_db and app_state['trade_history']:
-                try:
-                    for trade in app_state['trade_history']:
-                        # Vérifier si déjà en DB
-                        existing = trade_db.get_trades_by_date_range(
-                            trade.get('date', ''),
-                            trade.get('date', '')
-                        )
-                        if not any(t.get('timestamp') == trade.get('timestamp') for t in existing):
-                            trade_db.insert_trade(trade)
-                    logger.info(f"✅ Migration JSON → SQLite: {len(app_state['trade_history'])} trades")
-                except Exception as e:
-                    logger.error(f"❌ Erreur migration DB: {e}")
+            # 🔥 PHASE 8: Migration JSON → SQLite désactivée
+            # Les trades JSON n'ont pas toutes les 114 colonnes requises par la nouvelle structure
+            # Les trades sont déjà loggés correctement via analytics_logger lors de leur fermeture
+            # La migration manuelle n'est plus nécessaire et causait des erreurs "107 values for 114 columns"
         else:
             app_state['trade_history'] = []
             logger.info(f"📝 Nouveau fichier historique créé: {TRADE_HISTORY_FILE}")
@@ -450,6 +463,9 @@ backend_reboot_in_progress = False
 analytics_db = None
 notification_manager = None
 session_id = None  # ID unique de cette session
+
+# 🔥 LIVE TRADING: Instance globale LiveOrderManager
+live_order_manager = None
 
 # 🔥 Simple Logger: Logger ultra-simple sans batch pour debugging
 _simple_logger = None
@@ -927,7 +943,12 @@ async def scanner_loop_callback():
                                             logger.debug(traceback.format_exc())
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
-                                    await add_log('INFO', 'Position ouverte automatiquement', 
+                                    # 🔥 Afficher le mode de trading clairement
+                                    if live_order_manager:
+                                        mode_str = "🟡 LIVE DRY-RUN" if live_order_manager.dry_run else "🔴 LIVE RÉEL"
+                                    else:
+                                        mode_str = "📝 PAPER"
+                                    await add_log('INFO', f'Position ouverte [{mode_str}]', 
                                         f"{direction} {symbol} @ {entry_price:.6f} | Size: {position_size:.2f} USDT")
                                     
                                     # 🔥 FIX: Émettre l'événement UNE SEULE FOIS avec gestion d'erreur pour éviter les déconnexions
@@ -1842,8 +1863,7 @@ async def position_check_loop_callback():
                 if result:
                     result['timestamp'] = datetime.now().isoformat()
                     app_state['trade_history'].append(result)
-                    if len(app_state['trade_history']) > 1000:
-                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
                     save_trade_history()
                 
                 # 🔥 FIX: Désactiver callback WebSocket si position fermée
@@ -1941,7 +1961,7 @@ async def scalability_refresh_loop_callback():
 def init_instances():
     """Initialiser les instances (après import)"""
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
-    global analytics_db, notification_manager, session_id
+    global analytics_db, notification_manager, session_id, live_order_manager
     
     # 🔥 FIX: Configurer le logger avec WebSocket handler pour envoyer les logs au frontend
     try:
@@ -2086,9 +2106,14 @@ def init_instances():
                         logger.warning(f"Erreur tâche contexte marché: {e}")
                         await asyncio.sleep(60)  # Attendre avant de réessayer
             
-            # Démarrer la tâche périodique
-            asyncio.create_task(log_market_context_periodic())
-            logger.info("✅ Tâche périodique contexte marché démarrée")
+            # Démarrer la tâche périodique (seulement si boucle événements disponible)
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(log_market_context_periodic())
+                logger.info("✅ Tâche périodique contexte marché démarrée")
+            except RuntimeError:
+                # Pas de boucle d'événements, la tâche sera créée plus tard
+                logger.debug("📝 Tâche contexte marché reportée (pas de boucle événements)")
             
             # 🔥 PHASE 3: Tâche périodique pour flush forcé des buffers
             async def flush_buffers_periodic():
@@ -2108,9 +2133,14 @@ def init_instances():
                         logger.warning(f"Erreur tâche flush périodique: {e}")
                         await asyncio.sleep(30)  # Attendre avant de réessayer
             
-            # Démarrer la tâche de flush périodique
-            asyncio.create_task(flush_buffers_periodic())
-            logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
+            # Démarrer la tâche de flush périodique (seulement si boucle événements disponible)
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(flush_buffers_periodic())
+                logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
+            except RuntimeError:
+                # Pas de boucle d'événements, la tâche sera créée plus tard
+                logger.debug("📝 Tâche flush buffers reportée (pas de boucle événements)")
         
         # 🔥 Simple Logger: Initialiser SimplePGLogger pour debugging
         global _simple_logger
@@ -2212,6 +2242,65 @@ def init_instances():
         # 🔥 NOUVEAU: Injecter Position Manager dans API routes (pour webhook Telegram)
         if set_position_manager and position_manager:
             set_position_manager(position_manager)
+
+    # 🔥 LIVE TRADING: Initialiser LiveOrderManager si mode LIVE
+    logger.info(f"🔍 DEBUG: live_order_manager={live_order_manager}, LiveOrderManager disponible={LiveOrderManager is not None}")
+    if not live_order_manager and LiveOrderManager:
+        from api.live_trading_endpoints import load_live_config
+
+        try:
+            live_config = load_live_config()
+            logger.info(f"🔍 DEBUG: live_config loaded: trading_mode={live_config.get('trading_mode')}, dry_run={live_config.get('dry_run')}")
+
+            if live_config.get('trading_mode') == 'LIVE':
+                api_key = live_config.get('api_key_mexc', '')
+                api_secret = live_config.get('api_secret_mexc', '')
+
+                if api_key and api_secret:
+                    # 🔥 FUTURES: Récupérer levier + token depuis config
+                    from config import TRADING_CONFIG
+                    default_leverage = live_config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                    browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
+                    use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
+                    
+                    if use_bypass_mode and not browser_token:
+                        logger.warning("⚠️ Mode BYPASS activé mais aucun browser token fourni (MEXC_BROWSER_TOKEN). Retour en mode CCXT.")
+                    
+                    live_order_manager = LiveOrderManager(
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        browser_token=browser_token if browser_token else None,
+                        default_leverage=default_leverage,
+                        dry_run=live_config.get('dry_run', True),
+                        use_bypass=use_bypass_mode and bool(browser_token)
+                    )
+
+                    logger.info(
+                        f"✅ LiveOrderManagerFutures initialisé | "
+                        f"Mode: {'DRY_RUN' if live_config.get('dry_run') else 'LIVE RÉEL'} | "
+                        f"Levier: {default_leverage}x | "
+                        f"Bypass: {'ON' if use_bypass_mode and browser_token else 'OFF'}"
+                    )
+
+                    # Injecter LiveOrderManager dans PositionManager
+                    if position_manager:
+                        position_manager.live_order_manager = live_order_manager
+                        logger.info("💾 LiveOrderManager injecté dans Position Manager")
+                else:
+                    logger.warning(f"⚠️ Mode LIVE activé mais API keys manquantes: api_key={bool(api_key)}, api_secret={bool(api_secret)}")
+            else:
+                logger.info(f"📝 Mode trading: {live_config.get('trading_mode', 'PAPER')} (LiveOrderManager non initialisé car mode != LIVE)")
+        except Exception as e:
+            logger.error(f"❌ Erreur initialisation LiveOrderManager: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            live_order_manager = None
+    else:
+        if not LiveOrderManager:
+            logger.warning("⚠️ LiveOrderManager class non disponible (import failed?)")
+        if live_order_manager:
+            logger.info(f"✅ LiveOrderManager déjà initialisé (dry_run={getattr(live_order_manager, 'dry_run', '?')})")
+
     if not price_provider and get_price_provider:
         price_provider = get_price_provider()
     # 🔥 JOUR 3: Initialiser scheduler et configurer les callbacks
@@ -2512,26 +2601,28 @@ async def api_get_complete_state():
             except Exception as e:
                 logger.error(f"❌ Erreur récupération stats app_state: {e}")
         
-        # Récupérer historique trades
+        # Récupérer historique trades (tous les trades)
         trades_history = []
         if analytics_db:
             try:
-                trades_history = analytics_db.get_trades(limit=50)
+                trades_history = analytics_db.get_trades(limit=10000)  # Limite élevée pour récupérer tous les trades
             except Exception as e:
                 logger.error(f"❌ Erreur récupération historique analytics_db: {e}")
-        
+
         # Fallback: utiliser app_state['trade_history']
         if not trades_history and app_state.get('trade_history'):
-            trades_history = app_state['trade_history'][:50]
+            trades_history = app_state['trade_history']  # Tous les trades, pas de limite
         
-        # 🔥 NOUVEAU: Filtrer les trades par session_id actuelle (seulement cette session)
+        # 🔥 SESSION-BASED: Filtrer les trades par session_id actuelle (seulement cette session)
+        # Stats et historique affichés = session actuelle UNIQUEMENT
+        # PostgreSQL conserve TOUS les trades de toutes les sessions
         current_session_trades = []
         if analytics_db and session_id:
             try:
                 # Récupérer seulement les trades de la session actuelle
                 all_trades = analytics_db.get_trades(limit=10000)
                 current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
-                
+
                 # Recalculer stats pour cette session seulement
                 if current_session_trades:
                     total = len(current_session_trades)
@@ -2553,7 +2644,7 @@ async def api_get_complete_state():
                     }
             except Exception as e:
                 logger.error(f"❌ Erreur filtrage trades par session: {e}")
-        
+
         return JSONResponse({
             'success': True,
             'session_id': session_id or f"live_{int(time.time())}",  # 🔥 FIX: Fallback si session_id None
@@ -2600,7 +2691,7 @@ async def api_get_complete_state():
                 'data': active_position_dict
             },
             'stats': stats_dict,
-            'trades': current_session_trades[:50] if current_session_trades else trades_history[:50],  # 🔥 NOUVEAU: Utiliser trades de la session actuelle
+            'trades': current_session_trades,  # 🔥 SESSION-BASED: Seulement les trades de la session actuelle (pas de fallback)
             'timestamp': time.time()
         })
     except Exception as e:
@@ -3087,8 +3178,7 @@ async def api_close_position():
             if result:
                 result['timestamp'] = datetime.now().isoformat()
                 app_state['trade_history'].append(result)
-                if len(app_state['trade_history']) > 1000:
-                    app_state['trade_history'] = app_state['trade_history'][-1000:]
+                # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
                 save_trade_history()
             
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
@@ -3101,7 +3191,12 @@ async def api_close_position():
                 f"position_manager.active_position={position_manager.active_position}"
             )
             
-            await add_log('INFO', 'Position clôturée', 'Manuel')
+            # 🔥 Afficher le mode de trading clairement
+            if live_order_manager:
+                mode_str = "🟡 LIVE DRY-RUN" if live_order_manager.dry_run else "🔴 LIVE RÉEL"
+            else:
+                mode_str = "📝 PAPER"
+            await add_log('INFO', f'Position clôturée [{mode_str}]', 'Manuel')
             await ws_manager.emit('position_closed', result)
             
             # 🔥 FIX: Émettre stats_update après fermeture manuelle de position
@@ -3332,51 +3427,34 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'winrate': 0.0
                             }
                             
-                            if analytics_db:
-                                try:
-                                    trades = analytics_db.get_trades(limit=10000)
-                                    if trades:
-                                        total = len(trades)
-                                        wins = sum(1 for t in trades if t.get('pnl_usdt', 0) > 0)
-                                        losses = total - wins
-                                        winrate = (wins / total * 100) if total > 0 else 0.0
-                                        stats_dict = {
-                                            'total_trades': total,
-                                            'wins': wins,
-                                            'losses': losses,
-                                            'winrate': winrate
-                                        }
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur récupération stats: {e}")
+                            # 🔥 FIX: Utiliser app_state['trade_history'] comme source principale
+                            # L'historique persiste tant que le backend tourne (pas de limite)
+                            current_session_trades = app_state.get('trade_history', [])
                             
-                            # Fallback app_state
-                            if stats_dict['total_trades'] == 0 and app_state.get('trade_history'):
+                            # Si analytics_db disponible, essayer de récupérer les trades de la session
+                            if analytics_db and session_id:
                                 try:
-                                    trades = app_state['trade_history']
-                                    if trades:
-                                        total = len(trades)
-                                        wins = sum(1 for t in trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
-                                        losses = total - wins
-                                        winrate = (wins / total * 100) if total > 0 else 0.0
-                                        stats_dict = {
-                                            'total_trades': total,
-                                            'wins': wins,
-                                            'losses': losses,
-                                            'winrate': winrate
-                                        }
+                                    # Récupérer seulement les trades de la session actuelle
+                                    all_trades = analytics_db.get_trades(limit=10000)
+                                    db_trades = [t for t in all_trades if t.get('session_id') == session_id]
+                                    # Utiliser les trades DB si plus complets, sinon garder app_state
+                                    if len(db_trades) > len(current_session_trades):
+                                        current_session_trades = db_trades
                                 except Exception as e:
-                                    logger.error(f"❌ Erreur récupération stats app_state: {e}")
+                                    logger.error(f"❌ Erreur récupération trades depuis DB: {e}")
                             
-                            # Récupérer historique trades
-                            trades_history = []
-                            if analytics_db:
-                                try:
-                                    trades_history = analytics_db.get_trades(limit=50)
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur récupération historique: {e}")
-                            
-                            if not trades_history and app_state.get('trade_history'):
-                                trades_history = app_state['trade_history'][:50]
+                            # Recalculer stats depuis l'historique
+                            if current_session_trades:
+                                total = len(current_session_trades)
+                                wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+                                losses = total - wins
+                                winrate = (wins / total * 100) if total > 0 else 0.0
+                                stats_dict = {
+                                    'total_trades': total,
+                                    'wins': wins,
+                                    'losses': losses,
+                                    'winrate': winrate
+                                }
                             
                             # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
                             from config import (
@@ -3496,7 +3574,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'data': active_position_dict
                                 },
                                 'stats': stats_dict,
-                                'trade_history': trades_history,
+                                'trade_history': current_session_trades,  # 🔥 SESSION-BASED: Seulement les trades de la session actuelle
                                 'timestamp': time.time()
                             }
                             
@@ -3729,6 +3807,19 @@ async def handle_client_command(command: str, params: dict):
             val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0%
             TRADING_CONFIG['risk_per_trade'] = val
             updated['risk_per_trade'] = val
+        
+        # 🔥 Live Trading: default_leverage et max_latency_ms
+        if 'default_leverage' in params:
+            val = int(params['default_leverage'])
+            val = max(1, min(50, val))  # Clamp 1-50x
+            TRADING_CONFIG['default_leverage'] = val
+            updated['default_leverage'] = val
+        
+        if 'max_latency_ms' in params:
+            val = int(params['max_latency_ms'])
+            val = max(100, min(5000, val))  # Clamp 100-5000ms
+            TRADING_CONFIG['max_latency_ms'] = val
+            updated['max_latency_ms'] = val
         
         # 🔥 FIX: Support min_score_required dans update_config WebSocket
         if 'min_score_required' in params:
@@ -4016,6 +4107,50 @@ async def handle_client_command(command: str, params: dict):
             updated['ml_learning_rate'] = val
             logger.info(f"✅ ML learning_rate: {val}")
 
+        # 🤖🔥 ML V2 (Régression PNL%)
+        # --- Filtres / toggles ---
+        if 'ml_v2_filter_enabled' in params:
+            TRADING_CONFIG['ml_v2_filter_enabled'] = bool(params['ml_v2_filter_enabled'])
+            updated['ml_v2_filter_enabled'] = TRADING_CONFIG['ml_v2_filter_enabled']
+
+        if 'ml_v2_filter_marginal_trades' in params:
+            TRADING_CONFIG['ml_v2_filter_marginal_trades'] = bool(params['ml_v2_filter_marginal_trades'])
+            updated['ml_v2_filter_marginal_trades'] = TRADING_CONFIG['ml_v2_filter_marginal_trades']
+
+        # --- Training params ---
+        ml_v2_int_params = {
+            'ml_v2_timeframe_days': (30, 730),
+            'ml_v2_max_features': (5, 300),
+            'ml_v2_n_estimators': (100, 2000),
+            'ml_v2_max_depth': (2, 10),
+            'ml_v2_min_child_weight': (1, 100)
+        }
+        for key, (min_val, max_val) in ml_v2_int_params.items():
+            if key in params:
+                val = int(params[key])
+                val = max(min_val, min(max_val, val))
+                TRADING_CONFIG[key] = val
+                updated[key] = val
+
+        ml_v2_float_params = {
+            'ml_v2_min_confidence': (0.0, 1.0),
+            'ml_v2_marginal_threshold': (0.01, 2.0),
+            'ml_v2_test_size': (0.05, 0.45),
+            'ml_v2_validation_size': (0.05, 0.35),
+            'ml_v2_learning_rate': (0.0005, 0.5),
+            'ml_v2_reg_alpha': (0.0, 10.0),
+            'ml_v2_reg_lambda': (0.0, 15.0),
+            'ml_v2_subsample': (0.3, 1.0),
+            'ml_v2_colsample_bytree': (0.3, 1.0),
+            'ml_v2_gamma': (0.0, 5.0)
+        }
+        for key, (min_val, max_val) in ml_v2_float_params.items():
+            if key in params:
+                val = float(params[key])
+                val = max(min_val, min(max_val, val))
+                TRADING_CONFIG[key] = val
+                updated[key] = val
+
 
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
@@ -4120,15 +4255,19 @@ async def handle_client_command(command: str, params: dict):
                 if result:
                     result['timestamp'] = datetime.now().isoformat()
                     app_state['trade_history'].append(result)
-                    if len(app_state['trade_history']) > 1000:
-                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                    # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
                     save_trade_history()
                 
                 # Désactiver callback WebSocket
                 if price_provider:
                     price_provider.set_socketio_callback(None, None)
                 
-                await add_log('INFO', 'Position clôturée', params.get('reason', 'MANUAL'))
+                # 🔥 Afficher le mode de trading clairement
+                if live_order_manager:
+                    mode_str = "🟡 LIVE DRY-RUN" if live_order_manager.dry_run else "🔴 LIVE RÉEL"
+                else:
+                    mode_str = "📝 PAPER"
+                await add_log('INFO', f'Position clôturée [{mode_str}]', params.get('reason', 'MANUAL'))
                 await ws_manager.emit('position_closed', result)
                 
                 # Émettre stats_update après fermeture
@@ -4238,7 +4377,12 @@ async def handle_client_command(command: str, params: dict):
         return await initiate_backend_reboot(reason=reason)
     
     else:
-        raise ValueError(f"Unknown command: {command}")
+        # 🔥 LIVE TRADING: Vérifier si la commande est enregistrée via ws_manager
+        if ws_manager and command in ws_manager._command_handlers:
+            # Exécuter la commande enregistrée (live trading, etc.)
+            return await ws_manager.handle_command(command, params, None)
+        else:
+            raise ValueError(f"Unknown command: {command}")
 
 
 # Configuration endpoints
@@ -4858,11 +5002,24 @@ async def get_dashboard_summary():
     })
 
 @app.get("/api/dashboard/trades-history")
-async def get_trades_history(limit: int = 50):
-    """Historique des trades récents"""
-    trades = app_state['trade_history']
+async def get_trades_history(limit: int = 10000):
+    """
+    🔥 SESSION-BASED: Historique des trades de la session actuelle uniquement
+
+    Les stats et l'historique affichés sont réinitialisés à chaque redémarrage du backend,
+    mais TOUS les trades sont conservés dans PostgreSQL de façon permanente.
+    """
+    # Récupérer les trades de la session actuelle uniquement
+    current_session_trades = []
+    if analytics_db and session_id:
+        try:
+            all_trades = analytics_db.get_trades(limit=limit)
+            current_session_trades = [t for t in all_trades if t.get('session_id') == session_id]
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération trades session: {e}")
+
     # Retourner les plus récents en premier
-    recent_trades = list(reversed(trades[-limit:]))
+    recent_trades = list(reversed(current_session_trades))
     return JSONResponse(recent_trades)
 
 
@@ -5254,8 +5411,12 @@ if __name__ == '__main__':
     import uvicorn
     import socket
     
-    # 🔥 PHASE 4: Charger l'historique au démarrage
-    load_trade_history()
+    # 🔥 FIX: Ne PAS charger l'historique au démarrage
+    # L'historique est réinitialisé à chaque redémarrage du backend
+    # mais persiste pendant toute la session tant que le backend tourne
+    # load_trade_history()  # Désactivé: reset à chaque démarrage
+    app_state['trade_history'] = []
+    logger.info("📝 Historique trades réinitialisé (nouvelle session backend)")
     
     # Récupérer le port depuis les arguments (défaut: 5000)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
@@ -5308,9 +5469,33 @@ if __name__ == '__main__':
     if port != original_port:
         logger.info(f"✅ Port changé de {original_port} à {port}")
     
+    # 🔥 FIX CRITIQUE: Forcer l'initialisation ICI car le lifespan FastAPI ne s'exécute pas
+    # Cette approche garantit que init_instances() est TOUJOURS appelé au démarrage
+    print("🚀 INIT FORCÉ: Initialisation de init_instances() AVANT uvicorn.run()...")
+    logger.info("🚀 INIT FORCÉ: Initialisation de init_instances() AVANT uvicorn.run()...")
+    try:
+        init_instances()
+        print("✅ INIT FORCÉ: init_instances() terminé avec succès")
+        logger.info("✅ INIT FORCÉ: init_instances() terminé avec succès")
+        
+        # Vérifier que live_order_manager est bien initialisé
+        if live_order_manager:
+            dry_run_status = getattr(live_order_manager, 'dry_run', None)
+            mode_str = 'DRY_RUN' if dry_run_status else 'LIVE RÉEL'
+            print(f"✅ LiveOrderManager actif | Mode: {mode_str}")
+            logger.info(f"✅ LiveOrderManager actif | Mode: {mode_str}")
+        else:
+            print("📝 LiveOrderManager non initialisé (mode PAPER ou config manquante)")
+            logger.info("📝 LiveOrderManager non initialisé (mode PAPER ou config manquante)")
+    except Exception as e:
+        print(f"❌ INIT FORCÉ: Erreur initialisation: {e}")
+        logger.error(f"❌ INIT FORCÉ: Erreur initialisation: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
     try:
         # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
-        uvicorn.run(app, host='0.0.0.0', port=port, log_level="info")
+        uvicorn.run(app, host='0.0.0.0', port=port, log_level="info", lifespan="on")
     except OSError as e:
         logger.error(f"❌ Erreur binding port {port}: {e}")
         logger.error(f"Vérifiez que le port {port} n'est pas déjà utilisé")

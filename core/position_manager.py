@@ -39,6 +39,8 @@ from core.position.analytics_logger import AnalyticsLogger
 
 logger = logging.getLogger(__name__)
 
+MIN_LIVE_TRADE_DURATION_SEC = 10
+
 
 @dataclass
 class Position:
@@ -85,6 +87,49 @@ class Position:
     # Price precision from API (for accurate price formatting)
     price_precision: Optional[int] = None
     tick_size: Optional[float] = None
+    actual_slippage_pct: Optional[float] = None
+
+    # 🔥 LIVE TRADING METADATA (ordres & exécution)
+    live_execution_mode: Optional[str] = None
+    entry_order_id: Optional[str] = None
+    entry_order_type: Optional[str] = None
+    entry_requested_price: Optional[float] = None
+    entry_fill_price: Optional[float] = None
+    entry_slippage_pct: Optional[float] = None
+    entry_latency_ms: Optional[float] = None
+    entry_timestamp: Optional[str] = None
+    entry_api_response: Optional[Any] = None
+    exit_order_id: Optional[str] = None
+    exit_order_type: Optional[str] = None
+    exit_requested_price: Optional[float] = None
+    exit_fill_price: Optional[float] = None
+    exit_slippage_pct: Optional[float] = None
+    exit_latency_ms: Optional[float] = None
+    exit_timestamp: Optional[str] = None
+    exit_api_response: Optional[Any] = None
+    leverage_used: Optional[int] = None
+    margin_mode: Optional[str] = None
+    position_size_usdt: Optional[float] = None
+    position_size_contracts: Optional[float] = None
+    liquidation_price: Optional[float] = None
+    margin_used: Optional[float] = None
+    maker_fee_rate: Optional[float] = None
+    taker_fee_rate: Optional[float] = None
+    entry_fee_usdt: Optional[float] = None
+    exit_fee_usdt: Optional[float] = None
+    total_fees_usdt: Optional[float] = None
+    funding_rate_at_entry: Optional[float] = None
+    funding_rate_at_exit: Optional[float] = None
+    funding_paid_usdt: Optional[float] = None
+    time_to_fill_entry_ms: Optional[float] = None
+    time_to_fill_exit_ms: Optional[float] = None
+    price_at_signal: Optional[float] = None
+    price_at_order_sent: Optional[float] = None
+    signal_to_fill_slippage_pct: Optional[float] = None
+    api_errors: Optional[Any] = None
+    retry_count: int = 0
+    exchange_latency_ms: Optional[float] = None
+    ws_latency_ms: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
@@ -118,7 +163,37 @@ class Position:
             'tp_escalier_levels': self.tp_escalier_levels if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else [],  # 🔥 FIX: Retourner la liste native pour éviter erreurs de type
             'current_price': getattr(self, 'current_price', None),  # 🔥 FIX: Ajouter prix actuel si disponible
             'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
-            'tick_size': self.tick_size  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
+            'tick_size': self.tick_size,  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
+            # Live meta
+            'live_execution_mode': self.live_execution_mode,
+            'entry_order_id': self.entry_order_id,
+            'entry_order_type': self.entry_order_type,
+            'entry_requested_price': self.entry_requested_price,
+            'entry_fill_price': self.entry_fill_price,
+            'entry_slippage_pct': self.entry_slippage_pct,
+            'entry_latency_ms': self.entry_latency_ms,
+            'entry_timestamp': self.entry_timestamp,
+            'exit_order_id': self.exit_order_id,
+            'exit_order_type': self.exit_order_type,
+            'exit_requested_price': self.exit_requested_price,
+            'exit_fill_price': self.exit_fill_price,
+            'exit_slippage_pct': self.exit_slippage_pct,
+            'exit_latency_ms': self.exit_latency_ms,
+            'exit_timestamp': self.exit_timestamp,
+            'leverage_used': self.leverage_used,
+            'margin_mode': self.margin_mode,
+            'position_size_usdt': self.position_size_usdt,
+            'position_size_contracts': self.position_size_contracts,
+            'liquidation_price': self.liquidation_price,
+            'margin_used': self.margin_used,
+            'entry_fee_usdt': self.entry_fee_usdt,
+            'exit_fee_usdt': self.exit_fee_usdt,
+            'total_fees_usdt': self.total_fees_usdt,
+            'funding_rate_at_entry': self.funding_rate_at_entry,
+            'funding_rate_at_exit': self.funding_rate_at_exit,
+            'funding_paid_usdt': self.funding_paid_usdt,
+            'time_to_fill_entry_ms': self.time_to_fill_entry_ms,
+            'time_to_fill_exit_ms': self.time_to_fill_exit_ms,
         }
 
 
@@ -195,13 +270,14 @@ class PositionManager:
         else:
             return f"{price:.{min_decimals}f}"
 
-    def __init__(self, config: PositionConfig, analytics_db=None):
+    def __init__(self, config: PositionConfig, analytics_db=None, live_order_manager=None):
         """
         Initialiser PositionManager avec modules
 
         Args:
             config: Configuration position
             analytics_db: Base de données Analytics (optionnel)
+            live_order_manager: Gestionnaire ordres live (None = paper trading)
         """
         self.config = config
         self.active_position: Optional[Position] = None
@@ -210,6 +286,9 @@ class PositionManager:
         self.last_price = 0.0
         self.last_price_update = datetime.now().timestamp() * 1000
         self.market_info_cache: Dict[str, Dict] = {}  # 🔥 FIX: Cache pour informations de marché (précision)
+
+        # 🔥 LIVE TRADING: Gestionnaire ordres live (None = paper trading)
+        self.live_order_manager = live_order_manager
 
         # Initialiser modules spécialisés
         self._init_modules(analytics_db)
@@ -474,12 +553,128 @@ class PositionManager:
             self.active_position.tp_escalier_enabled = True
             self.active_position.tp_escalier_levels = levels_config
 
+        # 🔥 LIVE TRADING: Passer ordre réel si LiveOrderManager actif
+        executed_size_usdt = size
+
+        if self.live_order_manager:
+            try:
+                # Calculer la taille en tokens (amount) depuis la taille en USDT
+                size_amount = size / entry
+
+                order_result = self.live_order_manager.open_position(
+                    symbol=symbol,
+                    direction=direction,
+                    entry_price=entry,
+                    size_usdt=size
+                )
+
+                if order_result.success:
+                    # 💾 Stocker métadonnées ordre d'entrée
+                    requested_entry_price = entry
+                    # Mettre à jour position avec prix réel et slippage
+                    self.active_position.entry = order_result.filled_price
+                    self.active_position.actual_slippage_pct = order_result.actual_slippage_pct
+                    self.active_position.live_execution_mode = 'DRY_RUN' if self.live_order_manager.dry_run else 'LIVE_REAL'
+                    self.active_position.entry_order_id = order_result.order_id
+                    self.active_position.entry_order_type = 'market'
+                    self.active_position.entry_requested_price = requested_entry_price
+                    self.active_position.entry_fill_price = order_result.filled_price
+                    self.active_position.entry_slippage_pct = order_result.actual_slippage_pct
+                    self.active_position.entry_latency_ms = order_result.latency_ms
+                    self.active_position.entry_timestamp = order_result.executed_at
+                    self.active_position.entry_fee_usdt = getattr(order_result, 'actual_fees_usdt', None)
+
+                    filled_amount = getattr(order_result, 'filled_amount', None) or size_amount
+                    filled_size_usdt = getattr(order_result, 'filled_size_usdt', None)
+                    if filled_size_usdt is None:
+                        reference_price = order_result.filled_price or entry
+                        filled_size_usdt = filled_amount * reference_price
+
+                    executed_size_usdt = filled_size_usdt
+
+                    self.active_position.size = filled_size_usdt
+                    self.active_position.position_size_usdt = filled_size_usdt
+                    self.active_position.position_size_contracts = filled_amount
+                    self.active_position.size_remaining = filled_size_usdt
+                    self.active_position.margin_mode = 'isolated'
+                    self.active_position.leverage_used = getattr(order_result, 'leverage', None) or getattr(self.live_order_manager, 'default_leverage', None)
+                    self.active_position.margin_used = getattr(order_result, 'margin_used', None)
+                    self.active_position.liquidation_price = getattr(order_result, 'liquidation_price', None)
+                    self.active_position.time_to_fill_entry_ms = order_result.latency_ms
+                    self.active_position.maker_fee_rate = getattr(order_result, 'maker_fee_rate', None)
+                    self.active_position.taker_fee_rate = getattr(order_result, 'taker_fee_rate', None)
+                    self.active_position.funding_rate_at_entry = getattr(order_result, 'funding_rate', None)
+                    self.active_position.entry_api_response = getattr(order_result, 'raw_api_response', None)
+                    self.active_position.price_at_signal = self.active_position.price_at_signal or requested_entry_price
+
+                    # 🔄 Synchroniser avec la position réelle retournée par l'API MEXC (prix d'entrée & taille)
+                    if not self.live_order_manager.dry_run:
+                        # Attendre le délai configuré avant lecture (laisse le temps à MEXC d'enregistrer)
+                        sync_delay = TRADING_CONFIG.get('live_entry_sync_delay_sec', 2)
+                        if sync_delay > 0:
+                            logger.debug(f"⏳ Attente {sync_delay}s avant synchro position MEXC...")
+                            time.sleep(sync_delay)
+                        
+                        # prefer_ccxt=True pour utiliser CCXT en priorité (économise bypass)
+                        live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
+                        if live_position:
+                            live_entry_price = float(live_position.get('entry_price') or 0)
+                            live_contracts = float(live_position.get('size') or 0)
+
+                            if live_entry_price > 0:
+                                previous_entry = self.active_position.entry
+                                if abs(live_entry_price - previous_entry) > 1e-8:
+                                    price_diff = live_entry_price - previous_entry
+                                    if direction == 'LONG':
+                                        self.active_position.tp += price_diff
+                                        self.active_position.sl += price_diff
+                                    else:
+                                        self.active_position.tp -= price_diff
+                                        self.active_position.sl -= price_diff
+                                    logger.info(
+                                        f"🔁 [LIVE] Prix d'entrée synchronisé avec MEXC: {previous_entry:.8f} -> {live_entry_price:.8f}"
+                                    )
+                                self.active_position.entry = live_entry_price
+                                self.active_position.entry_fill_price = live_entry_price
+
+                            if live_contracts > 0 and live_entry_price > 0:
+                                live_size_usdt = live_contracts * live_entry_price
+                                self.active_position.size = live_size_usdt
+                                self.active_position.position_size_usdt = live_size_usdt
+                                self.active_position.position_size_contracts = live_contracts
+                                self.active_position.size_remaining = live_size_usdt
+                                logger.info(
+                                    f"🔁 [LIVE] Taille synchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
+                                )
+
+                    # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
+                    if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
+                        price_diff = order_result.filled_price - entry
+                        self.active_position.tp += price_diff if direction == 'LONG' else -price_diff
+                        self.active_position.sl += price_diff if direction == 'LONG' else -price_diff
+
+                    logger.info(
+                        f"✅ Ordre LIVE placé: {symbol} | "
+                        f"Prix rempli: {order_result.filled_price:.8f} | "
+                        f"Slippage: {order_result.actual_slippage_pct or 0:.4f}% | "
+                        f"Taille réelle: {filled_size_usdt:.2f} USDT ({filled_amount:.4f} contrats)"
+                    )
+                else:
+                    logger.error(
+                        f"❌ Ordre LIVE échoué: {symbol} | "
+                        f"Erreur: {order_result.error_message} | "
+                        f"Revert to paper trading"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Erreur passage ordre LIVE: {e}")
+
         logger.info(
             f"🟢 POSITION OUVERTE: {direction} {symbol} | "
             f"Entry: {self._format_price(entry)} | "
             f"SL: {self._format_price(sl)} | TP: {self._format_price(tp)} | "
-            f"Size: {size:.2f} USDT | Mode: {'ATR' if self.config.use_atr else 'FIXE'}"
+            f"Size: {executed_size_usdt:.2f} USDT | Mode: {'ATR' if self.config.use_atr else 'FIXE'}"
             + (f" | TP Escalier: {len(levels_config)} niveaux" if levels_config else "")
+            + (f" | LIVE: {self.live_order_manager.dry_run and 'DRY-RUN' or 'RÉEL'}" if self.live_order_manager else " | PAPER")
         )
 
         # ========================================
@@ -706,11 +901,27 @@ class PositionManager:
         Returns:
             Taille position en USDT
         """
-        # ✅ Lire risk_per_trade depuis TRADING_CONFIG
+        # ✅ Lire risk_per_trade et bornes depuis TRADING_CONFIG
         from config import TRADING_CONFIG
-        risk_per_trade = TRADING_CONFIG.get('risk_per_trade', 2.0) / 100.0  # Convertir % en décimal
+        risk_per_trade_pct = float(TRADING_CONFIG.get('risk_per_trade', 2.0))
+        risk_per_trade = risk_per_trade_pct / 100.0  # Convertir % en décimal
         base_risk = risk_per_trade  # Utiliser risk_per_trade au lieu de base_risk par défaut
-        
+
+        # Bornes dynamiques (overridable via config)
+        min_risk_pct_cfg = TRADING_CONFIG.get('min_risk_per_trade')
+        max_risk_pct_cfg = TRADING_CONFIG.get('max_risk_per_trade')
+
+        min_risk = (
+            max(0.001, float(min_risk_pct_cfg) / 100.0)
+            if min_risk_pct_cfg is not None else
+            max(0.001, base_risk * 0.5)
+        )
+        max_risk = (
+            max(min_risk, float(max_risk_pct_cfg) / 100.0)
+            if max_risk_pct_cfg is not None else
+            max(base_risk, base_risk * 2.0)
+        )
+
         score = setup.get('score', 5.0)
 
         # Taille de base
@@ -747,8 +958,8 @@ class PositionManager:
         final_size = base_size * multiplier * streak_mult
 
         # Bornes
-        min_size = capital * min_risk
-        max_size = capital * max_risk
+        min_size = capital * min_risk if min_risk else 0.0
+        max_size = capital * max_risk if max_risk else final_size
         final_size = max(min_size, min(max_size, final_size))
 
         logger.debug(
@@ -881,6 +1092,48 @@ class PositionManager:
                 current_price=current_price
             )
             if level_result:
+                # 🔥 LIVE TRADING: Exécuter l'ordre TP Escalier réel sur MEXC
+                if self.live_order_manager and not self.live_order_manager.dry_run:
+                    try:
+                        size_contracts = self.active_position.position_size_contracts
+                        if not size_contracts:
+                            entry_price = self.active_position.entry or 1
+                            size_contracts = self.active_position.size / entry_price
+                        
+                        # Calculer le % à vendre pour ce niveau
+                        level_pct = level_result['size_pct'] * 100  # Convertir en %
+                        
+                        escalier_order_result = self.live_order_manager.close_position(
+                            symbol=self.active_position.symbol,
+                            direction=self.active_position.direction,
+                            entry_price=self.active_position.entry,
+                            current_price=current_price,
+                            size_amount=size_contracts,
+                            partial_pct=level_pct
+                        )
+                        
+                        if escalier_order_result.success:
+                            filled_amount = escalier_order_result.filled_amount or (size_contracts * level_pct / 100)
+                            
+                            # Mettre à jour les contrats restants
+                            remaining_contracts = size_contracts - filled_amount
+                            self.active_position.position_size_contracts = remaining_contracts
+                            
+                            level_result['profit_usdt'] = escalier_order_result.actual_pnl_usdt or level_result['profit_usdt']
+                            
+                            logger.info(
+                                f"💰 [LIVE] TP Escalier niveau {level_result.get('level', '?')} exécuté: "
+                                f"{self.active_position.symbol} | "
+                                f"Vendu: {filled_amount:.4f} contrats | "
+                                f"PnL: {level_result['profit_usdt']:.2f} USDT"
+                            )
+                        else:
+                            logger.error(
+                                f"❌ [LIVE] Échec TP Escalier: {escalier_order_result.error_message}"
+                            )
+                    except Exception as e:
+                        logger.error(f"❌ Erreur TP Escalier LIVE: {e}")
+                
                 # Mettre à jour position avec résultats TP Escalier
                 self.active_position.tp_escalier_current_level = self.active_position.to_dict()['tp_escalier_current_level'] + 1
                 self.active_position.tp_escalier_size_remaining = self.active_position.to_dict()['tp_escalier_size_remaining'] - level_result['size_pct']
@@ -897,14 +1150,65 @@ class PositionManager:
                 current_price=current_price,
                 trigger_pct=break_even_trigger  # Utiliser break_even_trigger au lieu de partial_tp_trigger
             ):
-                partial_result = self.partial_tp.execute_partial_tp(
-                    position=self.active_position.to_dict(),
-                    current_price=current_price
-                )
-                # Mettre à jour position
-                self.active_position.partial_tp_sold = True
-                self.active_position.size_remaining = partial_result['size_remaining']
-                self.active_position.partial_profit_usdt = partial_result['profit_usdt']
+                # Calculer le pourcentage à vendre
+                partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0)
+                
+                # 🔥 LIVE TRADING: Exécuter l'ordre partiel réel sur MEXC
+                if self.live_order_manager and not self.live_order_manager.dry_run:
+                    try:
+                        # Calculer la taille en contrats à vendre
+                        size_contracts = self.active_position.position_size_contracts
+                        if not size_contracts:
+                            entry_price = self.active_position.entry or 1
+                            size_contracts = self.active_position.size / entry_price
+                        
+                        partial_order_result = self.live_order_manager.close_position(
+                            symbol=self.active_position.symbol,
+                            direction=self.active_position.direction,
+                            entry_price=self.active_position.entry,
+                            current_price=current_price,
+                            size_amount=size_contracts,
+                            partial_pct=partial_tp_percent
+                        )
+                        
+                        if partial_order_result.success:
+                            # Utiliser les valeurs réelles de l'exécution
+                            filled_amount = partial_order_result.filled_amount or (size_contracts * partial_tp_percent / 100)
+                            filled_size_usdt = partial_order_result.filled_size_usdt or (filled_amount * current_price)
+                            
+                            # Mettre à jour les contrats restants
+                            remaining_contracts = size_contracts - filled_amount
+                            remaining_usdt = self.active_position.size - filled_size_usdt
+                            
+                            self.active_position.partial_tp_sold = True
+                            self.active_position.size_remaining = remaining_usdt
+                            self.active_position.position_size_contracts = remaining_contracts
+                            self.active_position.partial_profit_usdt = partial_order_result.actual_pnl_usdt or 0.0
+                            
+                            logger.info(
+                                f"💰 [LIVE] TP Partiel exécuté: {self.active_position.symbol} | "
+                                f"Vendu: {filled_amount:.4f} contrats ({filled_size_usdt:.2f} USDT) | "
+                                f"Restant: {remaining_contracts:.4f} contrats ({remaining_usdt:.2f} USDT) | "
+                                f"PnL: {partial_order_result.actual_pnl_usdt or 0:.2f} USDT"
+                            )
+                        else:
+                            logger.error(
+                                f"❌ [LIVE] Échec TP Partiel: {partial_order_result.error_message}"
+                            )
+                            # Ne pas marquer comme vendu si l'ordre a échoué
+                            return None
+                    except Exception as e:
+                        logger.error(f"❌ Erreur TP Partiel LIVE: {e}")
+                        return None
+                else:
+                    # Mode paper/dry-run: calcul local
+                    partial_result = self.partial_tp.execute_partial_tp(
+                        position=self.active_position.to_dict(),
+                        current_price=current_price
+                    )
+                    self.active_position.partial_tp_sold = True
+                    self.active_position.size_remaining = partial_result['size_remaining']
+                    self.active_position.partial_profit_usdt = partial_result['profit_usdt']
 
                 # Déplacer SL à break-even après le 1er TP
                 new_sl = self.partial_tp.update_sl_after_partial_tp(
@@ -1101,6 +1405,16 @@ class PositionManager:
         # Calculer durée
         duration = int(time.time() - self.active_position.start_time)
 
+        if duration < MIN_LIVE_TRADE_DURATION_SEC and reason != 'SL':
+            wait_time = MIN_LIVE_TRADE_DURATION_SEC - duration
+            if wait_time > 0:
+                logger.info(
+                    f"⏳ Durée position {duration}s < {MIN_LIVE_TRADE_DURATION_SEC}s (raison={reason}). "
+                    f"Attente {wait_time:.1f}s avant fermeture."
+                )
+                time.sleep(wait_time)
+                duration = int(time.time() - self.active_position.start_time)
+
         # 🔥 FIX CRITIQUE: Limiter exit_price au SL + slippage maximum (éviter pertes > SL configuré)
         # Problème: Un trade a perdu -2.10% alors que SL = 0.20% (facteur x10 inacceptable)
         # Cause: Latence entre vérification et execution, prix peut dépasser largement le SL
@@ -1144,6 +1458,70 @@ class PositionManager:
                         f"Prix plafonné={exit_price:.8f} ({exit_pnl:.2f}%) | "
                         f"Slippage max autorisé: {max_slippage_on_sl}%"
                     )
+
+        # 🔥 LIVE TRADING: Fermer ordre réel si LiveOrderManager actif
+        actual_exit_price = exit_price  # Prix par défaut (paper trading)
+        actual_slippage_pct = 0.0
+        requested_exit_price = exit_price
+
+        if self.live_order_manager:
+            try:
+                # Calculer la taille en tokens (amount) depuis la taille en USDT
+                size_amount = self.active_position.position_size_contracts
+                if not size_amount:
+                    entry_price = self.active_position.entry or 1
+                    size_amount = (self.active_position.size / entry_price) if entry_price else 0
+
+                order_result = self.live_order_manager.close_position(
+                    symbol=self.active_position.symbol,
+                    direction=self.active_position.direction,
+                    entry_price=self.active_position.entry,
+                    current_price=exit_price,
+                    size_amount=size_amount,
+                    partial_pct=None  # Full close
+                )
+
+                if order_result.success:
+                    # Utiliser le prix réel et slippage réel
+                    actual_exit_price = order_result.filled_price
+                    actual_slippage_pct = order_result.actual_slippage_pct or 0.0
+                    # 💾 Stocker métadonnées ordre de sortie
+                    self.active_position.exit_order_id = order_result.order_id
+                    self.active_position.exit_order_type = 'market'
+                    self.active_position.exit_requested_price = requested_exit_price
+                    self.active_position.exit_fill_price = order_result.filled_price
+                    self.active_position.exit_slippage_pct = actual_slippage_pct
+                    self.active_position.exit_latency_ms = order_result.latency_ms
+                    self.active_position.exit_timestamp = order_result.executed_at
+                    self.active_position.exit_fee_usdt = getattr(order_result, 'actual_fees_usdt', None)
+                    self.active_position.time_to_fill_exit_ms = order_result.latency_ms
+                    self.active_position.funding_rate_at_exit = getattr(order_result, 'funding_rate', None)
+                    self.active_position.exit_api_response = getattr(order_result, 'raw_api_response', None)
+                    entry_fees = self.active_position.entry_fee_usdt or 0.0
+                    exit_fees = getattr(order_result, 'actual_fees_usdt', None) or 0.0
+                    self.active_position.total_fees_usdt = entry_fees + exit_fees
+
+                    # Calculer PnL réalisé depuis order_result
+                    realized_pnl_usdt = order_result.actual_pnl_usdt or 0.0
+                    realized_pnl_pct = (realized_pnl_usdt / self.active_position.size * 100) if self.active_position.size > 0 else 0.0
+
+                    logger.info(
+                        f"✅ Ordre LIVE fermé: {self.active_position.symbol} | "
+                        f"Prix rempli: {order_result.filled_price:.8f} | "
+                        f"Slippage: {actual_slippage_pct:.4f}% | "
+                        f"PnL réalisé: {realized_pnl_usdt:.2f} USDT ({realized_pnl_pct:.2f}%)"
+                    )
+                else:
+                    logger.error(
+                        f"❌ Ordre LIVE fermeture échoué: {self.active_position.symbol} | "
+                        f"Erreur: {order_result.error_message} | "
+                        f"Using paper trading exit price"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Erreur fermeture ordre LIVE: {e}")
+
+        # Utiliser le prix de sortie réel (paper ou live)
+        exit_price = actual_exit_price
 
         # 🔥 FIX: Calculer PnL réalisé avec fees à 0% (scan scalabilité uniquement sur paires 0% fee)
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
@@ -1382,6 +1760,11 @@ class PositionManager:
                     if not exit_indicators:
                         exit_indicators = {}
                     
+                    # 🔥 Déterminer le mode de trading (Live/Paper et Dry-Run)
+                    is_live_trade = self.live_order_manager is not None
+                    is_dry_run = getattr(self.live_order_manager, 'dry_run', True) if self.live_order_manager else False
+                    live_execution_mode = 'DRY_RUN' if is_dry_run else ('LIVE_REAL' if is_live_trade else 'PAPER')
+                    
                     trade_data = {
                         'symbol': self.active_position.symbol,
                         'direction': self.active_position.direction,
@@ -1392,6 +1775,10 @@ class PositionManager:
                         'size_usdt': self.active_position.size,
                         'timestamp_entry': timestamp_entry,
                         'timestamp_exit': timestamp_exit,
+                        # 🔥 LIVE TRADING MODE
+                        'is_live_trade': is_live_trade,
+                        'is_dry_run': is_dry_run,
+                        'live_execution_mode': live_execution_mode,
                         'gross_pnl_usdt': result['gross_pnl_usdt'],
                         'gross_pnl_pct': result['gross_pnl_pct'],
                         'net_pnl_usdt': result['net_pnl_usdt'],
@@ -1425,7 +1812,40 @@ class PositionManager:
                         'entry_scalability': entry_scalability,
                         'exit_indicators': exit_indicators,  # Vide pour l'instant, sera rempli plus tard
                         'config_snapshot': config_snapshot,  # Toutes les variables de configuration
-                        'is_backtest': False
+                        'is_backtest': False,
+                        # Métadonnées LIVE (si disponibles)
+                        'entry_order_id': getattr(self.active_position, 'entry_order_id', None),
+                        'entry_order_type': getattr(self.active_position, 'entry_order_type', None),
+                        'entry_requested_price': getattr(self.active_position, 'entry_requested_price', None),
+                        'entry_fill_price': getattr(self.active_position, 'entry_fill_price', None),
+                        'entry_slippage_pct': getattr(self.active_position, 'entry_slippage_pct', None),
+                        'entry_latency_ms': getattr(self.active_position, 'entry_latency_ms', None),
+                        'entry_timestamp': getattr(self.active_position, 'entry_timestamp', None),
+                        'exit_order_id': getattr(self.active_position, 'exit_order_id', None),
+                        'exit_order_type': getattr(self.active_position, 'exit_order_type', None),
+                        'exit_requested_price': getattr(self.active_position, 'exit_requested_price', None),
+                        'exit_fill_price': getattr(self.active_position, 'exit_fill_price', None),
+                        'exit_slippage_pct': getattr(self.active_position, 'exit_slippage_pct', None),
+                        'exit_latency_ms': getattr(self.active_position, 'exit_latency_ms', None),
+                        'exit_timestamp': getattr(self.active_position, 'exit_timestamp', None),
+                        'entry_fee_usdt': getattr(self.active_position, 'entry_fee_usdt', None),
+                        'exit_fee_usdt': getattr(self.active_position, 'exit_fee_usdt', None),
+                        'total_fees_usdt': getattr(self.active_position, 'total_fees_usdt', None),
+                        'position_size_usdt': getattr(self.active_position, 'position_size_usdt', None),
+                        'position_size_contracts': getattr(self.active_position, 'position_size_contracts', None),
+                        'margin_mode': getattr(self.active_position, 'margin_mode', None),
+                        'margin_used': getattr(self.active_position, 'margin_used', None),
+                        'leverage_used': getattr(self.active_position, 'leverage_used', None),
+                        'liquidation_price': getattr(self.active_position, 'liquidation_price', None),
+                        'time_to_fill_entry_ms': getattr(self.active_position, 'time_to_fill_entry_ms', None),
+                        'time_to_fill_exit_ms': getattr(self.active_position, 'time_to_fill_exit_ms', None),
+                        # Nouvelles métadonnées LIVE
+                        'maker_fee_rate': getattr(self.active_position, 'maker_fee_rate', None),
+                        'taker_fee_rate': getattr(self.active_position, 'taker_fee_rate', None),
+                        'funding_rate_at_entry': getattr(self.active_position, 'funding_rate_at_entry', None),
+                        'funding_rate_at_exit': getattr(self.active_position, 'funding_rate_at_exit', None),
+                        'entry_api_response': getattr(self.active_position, 'entry_api_response', None),
+                        'exit_api_response': getattr(self.active_position, 'exit_api_response', None)
                     }
                     
                     # Récupérer opportunity_id et scan_log_id si disponibles
@@ -1525,6 +1945,11 @@ class PositionManager:
         # 🔥 DEBUG: Log pour vérifier les valeurs avant enregistrement
         logger.debug(f"💾 Enregistrement trade: net_pnl_pct={net_pnl_pct:.4f}%, net_pnl_usdt={net_pnl_usdt:.4f} USDT, slippage_pct={slippage_pct:.4f}%")
         
+        # 🔥 FIX: Déterminer is_dry_run depuis live_order_manager si actif
+        is_dry_run_mode = None
+        if self.live_order_manager:
+            is_dry_run_mode = self.live_order_manager.dry_run
+        
         self.analytics_logger.log_trade(
             position=position.to_dict(),
             exit_price=exit_price,
@@ -1539,7 +1964,8 @@ class PositionManager:
                 'slippage_usdt': slippage_usdt,  # Slippage en USDT
                 'gross_pnl': pnl_data['pnl_usdt_gross']  # PnL brut en USDT
             },
-            mode='LIVE'
+            mode='LIVE' if self.live_order_manager else 'PAPER',
+            is_dry_run=is_dry_run_mode
         )
 
         # Réinitialiser position

@@ -10,7 +10,7 @@ import logging
 import os
 import threading
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body, Request
 from fastapi.responses import JSONResponse
 from typing import Optional, Dict, Any, List
 import pandas as pd
@@ -866,6 +866,129 @@ async def predict_batch(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ========== V2 PREDICTIONS (REGRESSION PNL%) ==========
+
+@router.post("/predict_v2")
+async def predict_pnl_v2(
+    features: Dict[str, Any],
+    model_name: str = Query('xgboost_v2_latest'),
+):
+    """
+    Faire une prédiction PNL% (V2 Régression) sur une opportunité
+    
+    Args:
+        features: Dictionnaire avec toutes les features (RSI, MACD, BB, etc.)
+        model_name: Nom du modèle V2 à utiliser (défaut: xgboost_v2_latest)
+        
+    Returns:
+        Prédiction avec PNL% prédit, classification WIN/LOSS, et metadata
+    """
+    try:
+        from optimization.predictor_v2 import predict_pnl
+        
+        # Faire prédiction V2
+        prediction = predict_pnl(features, model_name)
+        
+        if prediction is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Modèle V2 '{model_name}' non disponible. Entraînez d'abord le modèle V2."
+            )
+        
+        return prediction
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur predict_pnl_v2: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/predict_v2/batch")
+async def predict_pnl_v2_batch(
+    opportunities: List[Dict[str, Any]],
+    model_name: str = Query('xgboost_v2_latest'),
+):
+    """
+    Faire des prédictions PNL% V2 en batch sur plusieurs opportunités
+    
+    Args:
+        opportunities: Liste de dictionnaires de features
+        model_name: Nom du modèle V2 à utiliser
+        
+    Returns:
+        Liste de prédictions PNL%
+    """
+    try:
+        from optimization.predictor_v2 import get_predictor_v2
+        
+        predictor = get_predictor_v2(model_name)
+        predictions = predictor.batch_predict(opportunities)
+        
+        # Filtrer les None
+        results = [p for p in predictions if p is not None]
+        
+        # Statistiques
+        predicted_pnls = [p['predicted_pnl'] for p in results]
+        avg_pnl = sum(predicted_pnls) / len(predicted_pnls) if predicted_pnls else 0
+        profitable_count = sum(1 for pnl in predicted_pnls if pnl > 0)
+        
+        return {
+            'predictions': results,
+            'total': len(opportunities),
+            'successful': len(results),
+            'failed': len(opportunities) - len(results),
+            'stats': {
+                'avg_predicted_pnl': round(avg_pnl, 3),
+                'profitable_count': profitable_count,
+                'loss_count': len(predicted_pnls) - profitable_count,
+                'profitable_pct': round((profitable_count / len(predicted_pnls) * 100), 1) if predicted_pnls else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur predict_pnl_v2_batch: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/predict_v2/filter")
+async def filter_setup_with_v2(
+    features: Dict[str, Any],
+    min_expected_pnl: float = Query(0.3, ge=0.0, le=10.0)
+):
+    """
+    Vérifier si un setup doit être filtré basé sur le PNL% prédit V2
+    
+    Args:
+        features: Dictionnaire avec toutes les features
+        min_expected_pnl: PNL minimum requis (%) pour accepter le trade
+        
+    Returns:
+        Résultat du filtrage avec prédiction
+    """
+    try:
+        from optimization.predictor_v2 import get_predictor_v2
+        
+        predictor = get_predictor_v2()
+        should_reject, predicted_pnl, reason = predictor.should_reject_trade(
+            features=features,
+            min_expected_pnl=min_expected_pnl
+        )
+        
+        return {
+            'should_reject': should_reject,
+            'predicted_pnl': predicted_pnl,
+            'predicted_pnl_formatted': f"{predicted_pnl:+.2f}%" if predicted_pnl else None,
+            'reason': reason,
+            'min_expected_pnl': min_expected_pnl,
+            'recommendation': 'reject' if should_reject else 'accept'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur filter_setup_with_v2: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== ALERTS ==========
 
 @router.get("/alerts/history")
@@ -1176,8 +1299,6 @@ async def _train_xgboost_background(task_id: str, timeframe_days: int, min_trade
             'error': str(e),
             'failed_at': datetime.now().isoformat(),
         })
-
-
 # ========== TASKS ==========
 
 @router.get("/tasks/{task_id}")
@@ -1609,4 +1730,793 @@ async def apply_best_hyperparameters(
         raise
     except Exception as e:
         logger.error(f"❌ Erreur apply_best_hyperparameters: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+"""
+Endpoints ML V2 - À ajouter à api/routes/ml.py
+XGBoost V2 (Régression PNL%)
+"""
+
+# ========== V2: TRAIN REGRESSION MODEL ==========
+
+@router.post("/train_v2")
+async def train_xgboost_v2_model(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(False)
+):
+    """
+    Entraîner XGBoost V2 (Régression PNL%)
+    
+    Args:
+        force: Forcer réentraînement même si modèle récent existe
+        
+    Returns:
+        task_id pour suivre progression ou résultats si terminé
+    """
+    try:
+        from config import TRADING_CONFIG
+        
+        # Créer task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialiser task status
+        ml_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'pending',
+            'action': 'train_v2',
+            'created_at': datetime.now().isoformat(),
+            'progress': 0
+        }
+        
+        # Lancer entraînement en background
+        background_tasks.add_task(
+            _train_xgboost_v2_background,
+            task_id,
+            force
+        )
+        
+        logger.info(f"🚀 Entraînement XGBoost V2 démarré (task_id={task_id})")
+        
+        return {
+            'task_id': task_id,
+            'status': 'pending',
+            'message': 'Entraînement V2 démarré'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur train_v2: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/task/{task_id}")
+async def get_ml_task_status(task_id: str):
+    """
+    Récupérer le statut d'une tâche ML (entraînement, optimisation, etc.)
+    
+    Args:
+        task_id: ID de la tâche
+        
+    Returns:
+        Status et données de la tâche
+    """
+    try:
+        if task_id not in ml_tasks:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} introuvable")
+        
+        task_data = ml_tasks[task_id]
+        return task_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur get_ml_task_status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _train_xgboost_v2_background(task_id: str, force: bool):
+    """Fonction background pour entraînement V2"""
+    try:
+        from config import TRADING_CONFIG
+        from optimization.data.feature_loader import load_features_from_postgres
+        from optimization.data.feature_engineering import calculate_derived_features
+        from optimization.utils.temporal_split import temporal_train_test_split
+        from optimization.data.preprocessor import FeaturePreprocessor
+        from xgboost import XGBRegressor
+        from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
+        from sklearn.feature_selection import mutual_info_regression
+        import numpy as np
+        import pandas as pd
+        import json
+        
+        # Update status
+        ml_tasks[task_id]['status'] = 'running'
+        ml_tasks[task_id]['progress'] = 5
+        ml_tasks[task_id]['stage'] = 'loading_data'
+        
+        logger.info(f"🚀 Entraînement V2 en cours (task_id={task_id})")
+        
+        # Charger params depuis config
+        timeframe_days = TRADING_CONFIG.get('ml_v2_timeframe_days', 270)
+        max_features = TRADING_CONFIG.get('ml_v2_max_features', 40)
+        marginal_threshold = TRADING_CONFIG.get('ml_v2_marginal_threshold', 0.20)
+        filter_marginal = TRADING_CONFIG.get('ml_v2_filter_marginal_trades', True)
+        test_size = TRADING_CONFIG.get('ml_v2_test_size', 0.2)
+        validation_size = TRADING_CONFIG.get('ml_v2_validation_size', 0.1)
+        
+        # Hyperparams
+        n_estimators = TRADING_CONFIG.get('ml_v2_n_estimators', 600)
+        max_depth = TRADING_CONFIG.get('ml_v2_max_depth', 4)
+        learning_rate = TRADING_CONFIG.get('ml_v2_learning_rate', 0.03)
+        min_child_weight = TRADING_CONFIG.get('ml_v2_min_child_weight', 5)
+        reg_alpha = TRADING_CONFIG.get('ml_v2_reg_alpha', 1.0)
+        reg_lambda = TRADING_CONFIG.get('ml_v2_reg_lambda', 3.0)
+        subsample = TRADING_CONFIG.get('ml_v2_subsample', 0.7)
+        colsample_bytree = TRADING_CONFIG.get('ml_v2_colsample_bytree', 0.7)
+        gamma = TRADING_CONFIG.get('ml_v2_gamma', 0.5)
+        
+        logger.info(f"📊 Params V2: timeframe={timeframe_days}d, max_features={max_features}, filter_marginal={filter_marginal}")
+        
+        # Charger données
+        ml_tasks[task_id]['progress'] = 10
+        base_df = load_features_from_postgres(
+            timeframe_days=timeframe_days,
+            min_trades=50
+        )
+        
+        df = calculate_derived_features(base_df)
+        logger.info(f"✅ {len(df)} trades chargés")
+        
+        # Filtrer invalides
+        ml_tasks[task_id]['progress'] = 15
+        ml_tasks[task_id]['stage'] = 'filtering'
+        
+        initial_count = len(df)
+        
+        if 'price' in df.columns:
+            df = df[df['price'] > 0].copy()
+        
+        if filter_marginal and 'target_pnl' in df.columns:
+            df = df[abs(df['target_pnl']) >= marginal_threshold].copy()
+        
+        logger.info(f"✅ {len(df)} trades après filtrage ({len(df)/initial_count*100:.1f}%)")
+        
+        if len(df) < 100:
+            raise Exception(f"Dataset trop petit: {len(df)} trades (minimum 100)")
+        
+        # Split temporel
+        ml_tasks[task_id]['progress'] = 20
+        ml_tasks[task_id]['stage'] = 'splitting'
+        
+        train_df, val_df, test_df = temporal_train_test_split(
+            df,
+            target_col='target_pnl',
+            test_size=test_size,
+            validation_size=validation_size,
+            timestamp_col='timestamp'
+        )
+        
+        # Séparer X, y
+        exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity']
+        feature_cols = [col for col in train_df.columns if col not in exclude_cols]
+        
+        X_train = train_df[feature_cols].copy()
+        y_train = train_df['target_pnl'].copy()
+        
+        X_val = val_df[feature_cols].copy()
+        y_val = val_df['target_pnl'].copy()
+        
+        X_test = test_df[feature_cols].copy()
+        y_test = test_df['target_pnl'].copy()
+        
+        logger.info(f"✅ Split: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+        
+        # Feature selection
+        ml_tasks[task_id]['progress'] = 30
+        ml_tasks[task_id]['stage'] = 'feature_selection'
+        
+        mi_scores = mutual_info_regression(
+            X_train.fillna(0),
+            y_train,
+            random_state=42
+        )
+        
+        mi_df = pd.DataFrame({
+            'feature': feature_cols,
+            'mi_score': mi_scores
+        }).sort_values('mi_score', ascending=False)
+        
+        selected_features = mi_df.head(max_features)['feature'].tolist()
+        
+        X_train = X_train[selected_features]
+        X_val = X_val[selected_features]
+        X_test = X_test[selected_features]
+        
+        logger.info(f"✅ {max_features} features sélectionnées (top mutual info)")
+        
+        # Preprocessing
+        ml_tasks[task_id]['progress'] = 40
+        ml_tasks[task_id]['stage'] = 'preprocessing'
+        
+        preprocessor = FeaturePreprocessor(scaler_type='robust')
+        X_train_scaled, _ = preprocessor.fit_transform(
+            pd.concat([X_train, y_train.rename('target_pnl')], axis=1),
+            target_col='target_pnl'
+        )
+        
+        X_val_scaled = preprocessor.transform(X_val)
+        X_test_scaled = preprocessor.transform(X_test)
+        
+        # Entraîner modèle
+        ml_tasks[task_id]['progress'] = 50
+        ml_tasks[task_id]['stage'] = 'training'
+        
+        model = XGBRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            min_child_weight=min_child_weight,
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            gamma=gamma,
+            random_state=42,
+            objective='reg:squarederror',
+            eval_metric='mae',
+            n_jobs=-1
+        )
+        
+        eval_set = [(X_val_scaled, y_val)]
+        
+        model.fit(
+            X_train_scaled,
+            y_train,
+            eval_set=eval_set,
+            early_stopping_rounds=50,
+            verbose=False
+        )
+        
+        logger.info("✅ Entraînement terminé")
+        
+        # Évaluation régression
+        ml_tasks[task_id]['progress'] = 80
+        ml_tasks[task_id]['stage'] = 'evaluation'
+        
+        y_train_pred = model.predict(X_train_scaled)
+        y_val_pred = model.predict(X_val_scaled)
+        y_test_pred = model.predict(X_test_scaled)
+        
+        # Métriques régression
+        train_mae = mean_absolute_error(y_train, y_train_pred)
+        train_r2 = r2_score(y_train, y_train_pred)
+        
+        val_mae = mean_absolute_error(y_val, y_val_pred)
+        val_r2 = r2_score(y_val, y_val_pred)
+        
+        test_mae = mean_absolute_error(y_test, y_test_pred)
+        test_r2 = r2_score(y_test, y_test_pred)
+        
+        # Classification avec seuil
+        threshold = 0.0
+        y_test_class = (y_test > threshold).astype(int)
+        y_test_pred_class = (y_test_pred > threshold).astype(int)
+        
+        test_f1 = f1_score(y_test_class, y_test_pred_class, zero_division=0)
+        test_accuracy = accuracy_score(y_test_class, y_test_pred_class)
+        
+        logger.info(f"📊 R² Test: {test_r2:.3f}, MAE Test: {test_mae:.3f}%, F1: {test_f1:.3f}")
+        
+        # ========== SAUVEGARDE MODÈLE V2 ==========
+        ml_tasks[task_id]['progress'] = 90
+        ml_tasks[task_id]['stage'] = 'saving_files'
+        
+        import joblib
+        from pathlib import Path
+        from datetime import datetime
+        
+        # Créer dossier si nécessaire
+        models_dir = Path("optimization/saved_models")
+        models_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Timestamp pour version
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = f"xgboost_v2_{timestamp}"
+        
+        # Sauvegarder modèle
+        model_path = models_dir / f"{model_name}.pkl"
+        joblib.dump(model, model_path)
+        logger.info(f"💾 Modèle sauvegardé: {model_path}")
+        
+        # Sauvegarder preprocessor
+        preprocessor_path = models_dir / f"{model_name}_preprocessor.pkl"
+        joblib.dump(preprocessor, preprocessor_path)
+        logger.info(f"💾 Preprocessor sauvegardé: {preprocessor_path}")
+        
+        # Sauvegarder aussi comme "latest"
+        latest_model_path = models_dir / "xgboost_v2_latest.pkl"
+        latest_preprocessor_path = models_dir / "xgboost_v2_latest_preprocessor.pkl"
+        joblib.dump(model, latest_model_path)
+        joblib.dump(preprocessor, latest_preprocessor_path)
+        
+        # ========== SAUVEGARDE POSTGRESQL ==========
+        ml_tasks[task_id]['progress'] = 95
+        ml_tasks[task_id]['stage'] = 'saving_database'
+        
+        try:
+            from database.db_manager import DatabaseManager
+            db = DatabaseManager()
+            
+            # Désactiver anciens modèles V2
+            await db.execute("""
+                UPDATE ml_models 
+                SET is_active = FALSE 
+                WHERE model_name LIKE 'xgboost_v2%'
+            """)
+            
+            # Préparer hyperparamètres
+            model_params = {
+                'n_estimators': n_estimators,
+                'max_depth': max_depth,
+                'learning_rate': learning_rate,
+                'min_child_weight': min_child_weight,
+                'reg_alpha': reg_alpha,
+                'reg_lambda': reg_lambda,
+                'subsample': subsample,
+                'colsample_bytree': colsample_bytree,
+                'gamma': gamma,
+                'objective': 'reg:squarederror',
+                'eval_metric': 'mae'
+            }
+            
+            # Feature importance (top 20)
+            feature_importance = dict(zip(
+                selected_features[:20],
+                model.feature_importances_[:20].tolist()
+            ))
+            
+            # Scores de sélection (top 20)
+            feature_selection_scores = mi_df.head(20).set_index('feature')['mi_score'].to_dict()
+            
+            # Insérer nouveau modèle
+            await db.execute("""
+                INSERT INTO ml_models (
+                    model_name, model_type, version, model_path, preprocessor_path,
+                    train_r2, val_r2, test_r2,
+                    train_mae, val_mae, test_mae,
+                    train_mse, val_mse, test_mse,
+                    test_f1, test_accuracy,
+                    timeframe_days, min_trades,
+                    total_samples, train_samples, val_samples, test_samples,
+                    filter_marginal_trades, marginal_threshold,
+                    split_type, max_features,
+                    model_params, feature_importance,
+                    selected_features, feature_selection_scores,
+                    is_active, trained_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5,
+                    $6, $7, $8,
+                    $9, $10, $11,
+                    $12, $13, $14,
+                    $15, $16,
+                    $17, $18,
+                    $19, $20, $21, $22,
+                    $23, $24,
+                    $25, $26,
+                    $27, $28,
+                    $29, $30,
+                    $31, $32
+                )
+            """,
+                model_name,                           # $1
+                'XGBRegressor',                       # $2
+                '2.0',                                # $3
+                str(model_path),                      # $4
+                str(preprocessor_path),               # $5
+                train_r2, val_r2, test_r2,           # $6-$8
+                train_mae, val_mae, test_mae,        # $9-$11
+                mean_squared_error(y_train, y_train_pred),  # $12
+                mean_squared_error(y_val, y_val_pred),      # $13
+                mean_squared_error(y_test, y_test_pred),    # $14
+                test_f1, test_accuracy,              # $15-$16
+                timeframe_days, 50,                  # $17-$18
+                len(df), len(X_train), len(X_val), len(X_test),  # $19-$22
+                filter_marginal, marginal_threshold, # $23-$24
+                'temporal', max_features,            # $25-$26
+                json.dumps(model_params),            # $27
+                json.dumps(feature_importance),      # $28
+                json.dumps(selected_features),       # $29
+                json.dumps(feature_selection_scores),# $30
+                True,                                # $31 (is_active)
+                datetime.now()                       # $32
+            )
+            
+            logger.info(f"✅ Modèle V2 sauvegardé dans PostgreSQL: {model_name}")
+            
+        except Exception as db_error:
+            logger.error(f"❌ Erreur sauvegarde PostgreSQL: {db_error}", exc_info=True)
+            # Continuer même si erreur DB (fichiers .pkl sont sauvegardés)
+        
+        # Success
+        ml_tasks[task_id].update({
+            'status': 'completed',
+            'progress': 100,
+            'stage': 'completed',
+            'model_name': model_name,
+            'model_path': str(model_path),
+            'preprocessor_path': str(preprocessor_path),
+            'metrics': {
+                'train': {'mae': train_mae, 'r2': train_r2},
+                'val': {'mae': val_mae, 'r2': val_r2},
+                'test': {'mae': test_mae, 'r2': test_r2, 'f1': test_f1, 'accuracy': test_accuracy}
+            },
+            'test_mae': test_mae,
+            'test_r2': test_r2,
+            'test_f1': test_f1,
+            'total_samples': len(df),
+            'completed_at': datetime.now().isoformat()
+        })
+        
+        logger.info(f"✅ Entraînement V2 terminé (task_id={task_id})")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur _train_xgboost_v2_background: {e}", exc_info=True)
+        ml_tasks[task_id].update({
+            'status': 'error',
+            'error': str(e),
+            'failed_at': datetime.now().isoformat()
+        })
+
+
+# ========== V2: HYPERPARAMETER OPTIMIZATION ==========
+
+# State global pour Optuna V2
+optuna_v2_state = {
+    'is_running': False,
+    'study': None,
+    'progress': 0,
+    'current_trial': 0,
+    'total_trials': 0,
+    'best_params': None,
+    'best_value': None,
+    'run_best_params': None,
+    'run_best_score': None,
+    'run_best_trial': None,
+    'n_trials': 0
+}
+
+@router.post("/optimize_v2/start")
+async def start_hyperparameter_optimization_v2(
+    background_tasks: BackgroundTasks,
+    n_trials: int = Query(50, ge=10, le=200)
+):
+    """
+    Démarrer optimisation hyperparamètres V2 (Régression)
+    
+    Args:
+        n_trials: Nombre de trials (10-200)
+        
+    Returns:
+        Status de l'optimisation
+    """
+    try:
+        if optuna_v2_state['is_running']:
+            return {
+                'status': 'already_running',
+                'message': 'Optimisation V2 déjà en cours',
+                'progress': optuna_v2_state['progress']
+            }
+        
+        # Vérifier données suffisantes
+        from optimization.data.feature_loader import get_trades_count
+        trades_count = get_trades_count()
+        
+        if trades_count < 500:
+            raise HTTPException(
+                400,
+                f"Pas assez de données: {trades_count}/500 trades minimum requis"
+            )
+        
+        # Reset state
+        optuna_v2_state.update({
+            'is_running': True,
+            'progress': 0,
+            'current_trial': 0,
+            'total_trials': n_trials,
+            'best_params': None,
+            'best_value': None,
+            'run_best_params': None,
+            'run_best_score': None,
+            'run_best_trial': None
+        })
+        
+        # Lancer optimisation en background
+        background_tasks.add_task(
+            _optimize_hyperparameters_v2_background,
+            n_trials
+        )
+        
+        logger.info(f"🎯 Optimisation V2 démarrée ({n_trials} trials)")
+        
+        return {
+            'status': 'started',
+            'message': f'Optimisation V2 démarrée ({n_trials} trials)',
+            'n_trials': n_trials,
+            'trades_count': trades_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur start_optimization_v2: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _optimize_hyperparameters_v2_background(n_trials: int):
+    """Fonction background pour optimisation V2"""
+    try:
+        import optuna
+        from optuna.samplers import TPESampler
+        from config import TRADING_CONFIG
+        from optimization.data.feature_loader import load_features_from_postgres
+        from optimization.data.feature_engineering import calculate_derived_features
+        from optimization.utils.temporal_split import temporal_train_test_split
+        from optimization.data.preprocessor import FeaturePreprocessor
+        from xgboost import XGBRegressor
+        from sklearn.metrics import r2_score
+        from sklearn.feature_selection import mutual_info_regression
+        import pandas as pd
+        
+        logger.info(f"🚀 Optimisation V2 en cours")
+        
+        # Charger données
+        optuna_v2_state['progress'] = 5
+        
+        timeframe_days = TRADING_CONFIG.get('ml_v2_timeframe_days', 270)
+        base_df = load_features_from_postgres(timeframe_days=timeframe_days, min_trades=50)
+        df = calculate_derived_features(base_df)
+        
+        # Filtrer
+        if 'price' in df.columns:
+            df = df[df['price'] > 0].copy()
+        
+        marginal_threshold = TRADING_CONFIG.get('ml_v2_marginal_threshold', 0.20)
+        if 'target_pnl' in df.columns:
+            df = df[abs(df['target_pnl']) >= marginal_threshold].copy()
+        
+        # Split
+        train_df, val_df, test_df = temporal_train_test_split(
+            df,
+            target_col='target_pnl',
+            test_size=0.2,
+            validation_size=0.1,
+            timestamp_col='timestamp'
+        )
+        
+        exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity']
+        feature_cols = [col for col in train_df.columns if col not in exclude_cols]
+        
+        X_train = train_df[feature_cols].copy()
+        y_train = train_df['target_pnl'].copy()
+        X_val = val_df[feature_cols].copy()
+        y_val = val_df['target_pnl'].copy()
+        
+        # Feature selection (top 40)
+        mi_scores = mutual_info_regression(X_train.fillna(0), y_train, random_state=42)
+        mi_df = pd.DataFrame({'feature': feature_cols, 'mi_score': mi_scores}).sort_values('mi_score', ascending=False)
+        selected_features = mi_df.head(40)['feature'].tolist()
+        
+        X_train = X_train[selected_features]
+        X_val = X_val[selected_features]
+        
+        # Preprocessing
+        preprocessor = FeaturePreprocessor(scaler_type='robust')
+        X_train_scaled, _ = preprocessor.fit_transform(
+            pd.concat([X_train, y_train.rename('target_pnl')], axis=1),
+            target_col='target_pnl'
+        )
+        X_val_scaled = preprocessor.transform(X_val)
+        
+        optuna_v2_state['progress'] = 15
+        
+        # Créer étude Optuna
+        study_name = 'xgboost_v2_regression'
+        storage = 'sqlite:///data/optuna_v2.db'
+        
+        study = optuna.create_study(
+            study_name=study_name,
+            direction='maximize',
+            sampler=TPESampler(seed=42),
+            storage=storage,
+            load_if_exists=True
+        )
+        
+        optuna_v2_state['study'] = study
+        initial_trial_count = len(study.trials)
+        
+        # Objective function
+        def objective(trial):
+            params = {
+                'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=50),
+                'max_depth': trial.suggest_int('max_depth', 2, 6),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.3, log=True),
+                'min_child_weight': trial.suggest_int('min_child_weight', 1, 20),
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 10.0),
+                'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 10.0),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+                'gamma': trial.suggest_float('gamma', 0.0, 5.0)
+            }
+            
+            model = XGBRegressor(
+                **params,
+                random_state=42,
+                objective='reg:squarederror',
+                eval_metric='mae',
+                n_jobs=-1
+            )
+            
+            model.fit(
+                X_train_scaled,
+                y_train,
+                eval_set=[(X_val_scaled, y_val)],
+                early_stopping_rounds=50,
+                verbose=False
+            )
+            
+            y_val_pred = model.predict(X_val_scaled)
+            score = r2_score(y_val, y_val_pred)
+            
+            # Update progress
+            optuna_v2_state['current_trial'] = trial.number + 1
+            optuna_v2_state['progress'] = min(95, 15 + (trial.number / n_trials) * 80)
+            
+            return score
+        
+        # Callback pour tracker run best
+        run_best_trial = {'trial': None}
+        
+        def trial_callback(study, trial):
+            if trial.state == optuna.trial.TrialState.COMPLETE:
+                if trial.number >= initial_trial_count:
+                    current_best = run_best_trial['trial']
+                    if current_best is None or (trial.value is not None and trial.value > current_best.value):
+                        run_best_trial['trial'] = trial
+                        optuna_v2_state['run_best_params'] = trial.params
+                        optuna_v2_state['run_best_score'] = trial.value
+                        optuna_v2_state['run_best_trial'] = trial.number
+        
+        # Optimiser
+        study.optimize(
+            objective,
+            n_trials=n_trials,
+            callbacks=[trial_callback],
+            show_progress_bar=False
+        )
+        
+        # Success
+        optuna_v2_state.update({
+            'is_running': False,
+            'progress': 100,
+            'best_params': study.best_params,
+            'best_value': study.best_value,
+            'n_trials': len(study.trials)
+        })
+        
+        logger.info(f"✅ Optimisation V2 terminée: R²={study.best_value:.3f}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur _optimize_v2_background: {e}", exc_info=True)
+        optuna_v2_state.update({
+            'is_running': False,
+            'error': str(e)
+        })
+
+
+@router.get("/optimize_v2/status")
+async def get_optimization_v2_status():
+    """Status optimisation V2"""
+    try:
+        return {
+            'is_running': optuna_v2_state['is_running'],
+            'progress': optuna_v2_state['progress'],
+            'current_trial': optuna_v2_state['current_trial'],
+            'total_trials': optuna_v2_state['total_trials'],
+            'best_params': optuna_v2_state['best_params'],
+            'best_value': optuna_v2_state['best_value'],
+            'run_best_params': optuna_v2_state['run_best_params'],
+            'run_best_score': optuna_v2_state['run_best_score'],
+            'run_best_trial': optuna_v2_state['run_best_trial'],
+            'n_trials': optuna_v2_state['n_trials'],
+            'study_name': 'xgboost_v2_regression'
+        }
+    except Exception as e:
+        logger.error(f"❌ Erreur get_optimization_v2_status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/optimize_v2/apply")
+async def apply_best_hyperparameters_v2(params_dict: Dict[str, Any] = Body(None)):
+    """
+    Appliquer meilleurs hyperparamètres V2
+    
+    Args:
+        params_dict: Paramètres à appliquer (ou None pour global best)
+        
+    Returns:
+        Confirmation application
+    """
+    try:
+        from config import TRADING_CONFIG
+        
+        # Si params fournis, les utiliser, sinon prendre global best
+        if params_dict is None:
+            if optuna_v2_state['best_params'] is None:
+                raise HTTPException(400, "Aucun paramètre disponible")
+            params_dict = optuna_v2_state['best_params']
+            score = optuna_v2_state['best_value']
+        else:
+            score = params_dict.pop('score', None) if isinstance(params_dict, dict) else None
+        
+        logger.info(f"💾 Application params V2: {params_dict}")
+        
+        # Utiliser le même fichier que config_persistence.py
+        from utils.config_persistence import CONFIG_OVERRIDES_FILE
+        config_file = CONFIG_OVERRIDES_FILE
+        
+        # Charger config existante et nettoyer les clés parasites
+        if config_file.exists():
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+            # Nettoyer les anciennes clés parasites (ex: ml_params_to_apply)
+            parasites = ['ml_params_to_apply', 'params_to_apply']
+            for key in parasites:
+                if key in config:
+                    del config[key]
+                    logger.info(f"🧹 Clé parasite supprimée: {key}")
+        else:
+            config = {}
+        
+        # Whitelist des paramètres XGBoost V2 valides
+        valid_v2_params = {
+            'n_estimators', 'max_depth', 'learning_rate', 'min_child_weight',
+            'reg_alpha', 'reg_lambda', 'gamma', 'subsample', 'colsample_bytree'
+        }
+        
+        # Ajouter params V2 avec préfixe ml_v2_ (seulement les params valides)
+        for param, value in params_dict.items():
+            if param in ['score', 'source']:
+                continue
+            if param not in valid_v2_params:
+                logger.warning(f"⚠️ Paramètre V2 non-standard ignoré: {param}")
+                continue
+            config_key = f"ml_v2_{param}"
+            config[config_key] = value
+        
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        logger.info(f"💾 Paramètres V2 sauvegardés dans {config_file}")
+        
+        # Recharger TRADING_CONFIG
+        try:
+            from utils.config_persistence import apply_config_overrides
+            apply_config_overrides(TRADING_CONFIG)
+            logger.info("✅ TRADING_CONFIG rechargé avec params V2")
+            logger.info(f"🔍 Vérification: ml_v2_max_depth = {TRADING_CONFIG.get('ml_v2_max_depth')}")
+            logger.info(f"🔍 Vérification: ml_v2_learning_rate = {TRADING_CONFIG.get('ml_v2_learning_rate')}")
+        except Exception as reload_err:
+            logger.error(f"❌ Impossible de recharger TRADING_CONFIG: {reload_err}")
+        
+        return {
+            'success': True,
+            'message': f'Paramètres V2 appliqués à {config_file}',
+            'params': params_dict,
+            'score': score,
+            'config_file': str(config_file),
+            'warning': 'Relancer entraînement V2 pour appliquer les changements'
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur apply_v2_hyperparameters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

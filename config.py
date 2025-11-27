@@ -101,9 +101,26 @@ TRADING_CONFIG = {
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
+    "min_risk_per_trade": 2.0,  # 🔥 Borne min = risk_per_trade pour sizing strict
+    "max_risk_per_trade": 2.0,  # 🔥 Borne max = risk_per_trade pour sizing strict
+    
+    # 🔥 FUTURES: Levier par défaut (1-125x pour MEXC)
+    "default_leverage": 10,  # Levier 10x par défaut (recommandé pour débuter)
+    
+    # 🔥 BYPASS MODE: Token browser pour bypasser blocage API MEXC Futures
+    # Récupérer depuis DevTools > Network > Headers > authorization (commence par "WEB_")
+    # ⚠️ Le token expire après quelques heures, nécessite refresh manuel
+    "mexc_browser_token": os.getenv("MEXC_BROWSER_TOKEN", ""),
+    "use_bypass_mode": True,  # Utiliser le mode bypass (recommandé si API bloquée)
+    # 🔄 Synchronisation des entrées live (éviter décalages prix/size)
+    "live_entry_sync_delay_sec": 2,  # attendre 2s avant lecture de la position réelle
+    "live_entry_sync_use_ccxt": True,  # utiliser l'API clés (CCXT) pour lecture plutôt que bypass quand dispo
     
     # 🔥 FIX: Validation slippage avant ouverture position
     "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
+    
+    # 🔥 Live Trading: Latence max API (alerter si dépassée)
+    "max_latency_ms": 1000,  # 1000ms par défaut
     
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
@@ -259,6 +276,24 @@ TRADING_CONFIG = {
     "ml_n_estimators": 300,
     "ml_learning_rate": 0.03,
 
+    # 🤖 XGBoost V2 (Régression PNL%) - Paramètres frontend/backend
+    "ml_v2_filter_enabled": False,
+    "ml_v2_min_confidence": 0.60,
+    "ml_v2_timeframe_days": 270,
+    "ml_v2_max_features": 40,
+    "ml_v2_marginal_threshold": 0.20,
+    "ml_v2_filter_marginal_trades": True,
+    "ml_v2_test_size": 0.20,
+    "ml_v2_validation_size": 0.10,
+    "ml_v2_n_estimators": 600,
+    "ml_v2_max_depth": 4,
+    "ml_v2_learning_rate": 0.03,
+    "ml_v2_min_child_weight": 5,
+    "ml_v2_reg_alpha": 1.0,
+    "ml_v2_reg_lambda": 3.0,
+    "ml_v2_subsample": 0.70,
+    "ml_v2_colsample_bytree": 0.70,
+    "ml_v2_gamma": 0.50,
 }
 
 # Risk management

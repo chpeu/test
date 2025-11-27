@@ -4,8 +4,47 @@
 
 	import { formatAdaptive, formatPercent, formatUSDT } from '$lib/utils/format';
 
-	// 🔥 FIX: Calculer le PnL total de la session depuis les trades du frontend
-	// Cela garantit que tous les trades visibles dans le tableau sont inclus dans le calcul
+	// 🔥 PAGINATION: Variables de pagination
+	let currentPage = 1;
+	const tradesPerPage = 50;
+
+	// Trades paginés
+	const paginatedTrades = derived(sortedTrades, $trades => {
+		const start = (currentPage - 1) * tradesPerPage;
+		const end = start + tradesPerPage;
+		return $trades.slice(start, end);
+	});
+
+	// Nombre total de pages
+	const totalPages = derived(sortedTrades, $trades => {
+		return Math.ceil($trades.length / tradesPerPage);
+	});
+
+	// Navigation pagination
+	function nextPage() {
+		if (currentPage < $totalPages) {
+			currentPage++;
+		}
+	}
+
+	function prevPage() {
+		if (currentPage > 1) {
+			currentPage--;
+		}
+	}
+
+	function goToPage(page) {
+		if (page >= 1 && page <= $totalPages) {
+			currentPage = page;
+		}
+	}
+
+	// Reset page quand les trades changent
+	$: if ($sortedTrades.length > 0 && currentPage > $totalPages) {
+		currentPage = 1;
+	}
+
+	// 🔥 FIX: Calculer le PnL total de la session depuis TOUS les trades (pas seulement la page)
 	const sessionPnL = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
 		// Utiliser net_pnl_usdt directement (déjà calculé avec slippage et fees déduits)
@@ -98,9 +137,10 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each $sortedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
-						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0} data-debug-name="trade[{index}]">
-							<td class="index" data-debug-name="trade.index">{index + 1}</td>
+					{#each $paginatedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
+						{@const globalIndex = (currentPage - 1) * tradesPerPage + index}
+						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0} data-debug-name="trade[{globalIndex}]">
+							<td class="index" data-debug-name="trade.index">{globalIndex + 1}</td>
 							<td class="time" data-debug-name="trade.closed_at">{formatTime(trade.closed_at || trade.timestamp)}</td>
 							<td class="symbol" data-debug-name="trade.symbol">{trade.symbol}</td>
 							<td class="direction" data-debug-name="trade.direction">
@@ -193,6 +233,34 @@
 				</tbody>
 			</table>
 		</div>
+
+		<!-- 🔥 PAGINATION: Contrôles de pagination -->
+		{#if $totalPages > 1}
+			<div class="pagination">
+				<button
+					class="pagination-btn"
+					on:click={prevPage}
+					disabled={currentPage === 1}
+				>
+					« Précédent
+				</button>
+
+				<div class="pagination-info">
+					Page {currentPage} sur {$totalPages}
+					<span class="trades-range">
+						({(currentPage - 1) * tradesPerPage + 1}-{Math.min(currentPage * tradesPerPage, $sortedTrades.length)} sur {$sortedTrades.length} trades)
+					</span>
+				</div>
+
+				<button
+					class="pagination-btn"
+					on:click={nextPage}
+					disabled={currentPage === $totalPages}
+				>
+					Suivant »
+				</button>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -419,6 +487,61 @@
 		white-space: nowrap;
 	}
 
+	/* 🔥 PAGINATION: Styles */
+	.pagination {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-top: 20px;
+		padding: 15px 20px;
+		background: rgba(0, 170, 255, 0.1);
+		border-radius: 8px;
+		border: 1px solid #2a3a6b;
+	}
+
+	.pagination-btn {
+		background: #00aaff;
+		color: #0a0e27;
+		border: none;
+		padding: 10px 20px;
+		border-radius: 6px;
+		font-weight: bold;
+		font-size: 13px;
+		cursor: pointer;
+		transition: all 0.2s;
+		font-family: 'Courier New', monospace;
+	}
+
+	.pagination-btn:hover:not(:disabled) {
+		background: #00ff88;
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+	}
+
+	.pagination-btn:disabled {
+		background: #2a3a6b;
+		color: #666;
+		cursor: not-allowed;
+		opacity: 0.5;
+	}
+
+	.pagination-info {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 5px;
+		color: #00aaff;
+		font-weight: bold;
+		font-size: 13px;
+		font-family: 'Courier New', monospace;
+	}
+
+	.trades-range {
+		font-size: 11px;
+		color: #888;
+		font-weight: normal;
+	}
+
 	/* Mobile responsive */
 	@media (max-width: 1024px) {
 		.table-container {
@@ -438,6 +561,15 @@
 		.trades-table th,
 		.trades-table td {
 			padding: 8px 6px;
+		}
+
+		.pagination {
+			flex-direction: column;
+			gap: 10px;
+		}
+
+		.pagination-btn {
+			width: 100%;
 		}
 	}
 </style>

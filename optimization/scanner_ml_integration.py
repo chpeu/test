@@ -349,3 +349,83 @@ async def get_ml_prediction_for_opportunity(
     except Exception as e:
         logger.error(f"❌ Erreur get_ml_prediction_for_opportunity: {e}", exc_info=True)
         return None
+
+
+async def get_ml_v2_prediction_for_opportunity(
+    klines: List,
+    symbol: str,
+    scan_id: Optional[int] = None,
+    model_name: str = "xgboost_v2_latest"
+) -> Optional[Dict]:
+    """
+    Obtenir une prédiction PNL% (V2 Régression) pour une opportunité du scanner
+    
+    Args:
+        klines: Klines de l'opportunité
+        symbol: Symbole
+        scan_id: ID du scan
+        model_name: Modèle V2 à utiliser
+        
+    Returns:
+        Prédiction V2 (PNL% prédit) ou None
+    """
+    try:
+        # Calculer features
+        features = calculate_technical_indicators(klines, symbol)
+        if not features:
+            return None
+        
+        # Faire prédiction V2
+        from optimization.predictor_v2 import predict_pnl
+        
+        prediction = predict_pnl(
+            features=features,
+            model_name=model_name,
+            symbol=symbol,
+            scan_id=scan_id,
+            log_to_db=True  # Logger automatiquement
+        )
+        
+        return prediction
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_ml_v2_prediction_for_opportunity: {e}", exc_info=True)
+        return None
+
+
+def should_filter_setup_with_ml_v2(
+    klines: List,
+    symbol: str,
+    min_expected_pnl: float = 0.3
+) -> tuple[bool, Optional[str]]:
+    """
+    Filtrer un setup basé sur la prédiction PNL% V2
+    
+    Args:
+        klines: Klines de l'opportunité
+        symbol: Symbole
+        min_expected_pnl: PNL minimum requis (%)
+        
+    Returns:
+        (should_reject, reason)
+    """
+    try:
+        # Calculer features
+        features = calculate_technical_indicators(klines, symbol)
+        if not features:
+            return (False, None)
+        
+        # Vérifier avec predictor V2
+        from optimization.predictor_v2 import get_predictor_v2
+        
+        predictor = get_predictor_v2()
+        should_reject, predicted_pnl, reason = predictor.should_reject_trade(
+            features=features,
+            min_expected_pnl=min_expected_pnl
+        )
+        
+        return (should_reject, reason)
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur should_filter_setup_with_ml_v2: {e}")
+        return (False, None)

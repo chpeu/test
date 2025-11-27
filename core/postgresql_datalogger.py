@@ -411,10 +411,12 @@ class PostgreSQLDataLogger:
                 logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan (batch): {price} (type: {type(price)})")
                 price = None
         
-        # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
-        if price is None:
-            logger.error(f"❌ Prix manquant pour {symbol} dans log_scan (batch), scan non ajouté au buffer")
-            return None
+        # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
+        if price is None or price == 0:
+            if price is None:
+                price = 0.0
+                logger.warning(f"⚠️ Prix manquant pour {symbol} dans log_scan (batch), utilisation price=0")
+            # Continuer le logging avec price=0 pour ne pas bloquer l'analyse ML
         
         # 🔥 PHASE 3: Utiliser batch insert si activé
         if use_batch:
@@ -547,10 +549,12 @@ class PostgreSQLDataLogger:
                     logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan: {price} (type: {type(price)})")
                     price = None
             
-            # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
-            if price is None:
-                logger.error(f"❌ Prix manquant pour {symbol} dans log_scan, insertion annulée")
-                return None
+            # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
+            if price is None or price == 0:
+                if price is None:
+                    price = 0.0
+                    logger.warning(f"⚠️ Prix manquant pour {symbol} dans log_scan, utilisation price=0")
+                # Continuer le logging avec price=0 pour ne pas bloquer l'analyse ML
             
             # 🔥 FIX: Assurer des valeurs par défaut pour éviter les NULL critiques
             scan_duration = scan_data.get('scan_duration_ms')
@@ -1273,6 +1277,69 @@ class PostgreSQLDataLogger:
                 ('config_snapshot', config_snapshot),
                 ('win', win)
             ])
+            
+            # 🔥 LIVE TRADING COLUMNS (ajoutées conditionnellement si présentes)
+            if trade_data.get('is_live_trade') is not None:
+                fields.extend([
+                    ('is_live_trade', trade_data.get('is_live_trade', False)),
+                    ('is_dry_run', trade_data.get('is_dry_run', True)),
+                    ('live_execution_mode', trade_data.get('live_execution_mode')),
+                    # Ordre d'entrée
+                    ('entry_order_id', trade_data.get('entry_order_id')),
+                    ('entry_order_type', trade_data.get('entry_order_type')),
+                    ('entry_requested_price', _extract_numeric_value(trade_data.get('entry_requested_price'))),
+                    ('entry_fill_price', _extract_numeric_value(trade_data.get('entry_fill_price'))),
+                    ('entry_slippage_pct', _extract_numeric_value(trade_data.get('entry_slippage_pct'))),
+                    ('entry_latency_ms', trade_data.get('entry_latency_ms')),
+                    # Ordre de sortie
+                    ('exit_order_id', trade_data.get('exit_order_id')),
+                    ('exit_order_type', trade_data.get('exit_order_type')),
+                    ('exit_requested_price', _extract_numeric_value(trade_data.get('exit_requested_price'))),
+                    ('exit_fill_price', _extract_numeric_value(trade_data.get('exit_fill_price'))),
+                    ('exit_slippage_pct', _extract_numeric_value(trade_data.get('exit_slippage_pct'))),
+                    ('exit_latency_ms', trade_data.get('exit_latency_ms')),
+                    # Timestamps LIVE & API responses
+                    ('entry_timestamp_live', trade_data.get('entry_timestamp')),
+                    ('exit_timestamp_live', trade_data.get('exit_timestamp')),
+                    ('entry_api_response', json.dumps(trade_data.get('entry_api_response')) if trade_data.get('entry_api_response') else None),
+                    ('exit_api_response', json.dumps(trade_data.get('exit_api_response')) if trade_data.get('exit_api_response') else None),
+                    # Futures / Levier
+                    ('leverage_used', trade_data.get('leverage_used', 1)),
+                    ('margin_mode', trade_data.get('margin_mode', 'isolated')),
+                    ('position_size_contracts', _extract_numeric_value(trade_data.get('position_size_contracts'))),
+                    ('liquidation_price', _extract_numeric_value(trade_data.get('liquidation_price'))),
+                    ('margin_used', _extract_numeric_value(trade_data.get('margin_used'))),
+                    # Frais détaillés
+                    ('maker_fee_rate', _extract_numeric_value(trade_data.get('maker_fee_rate'))),
+                    ('taker_fee_rate', _extract_numeric_value(trade_data.get('taker_fee_rate'))),
+                    ('entry_fee_usdt', _extract_numeric_value(trade_data.get('entry_fee_usdt'))),
+                    ('exit_fee_usdt', _extract_numeric_value(trade_data.get('exit_fee_usdt'))),
+                    ('total_fees_usdt', _extract_numeric_value(trade_data.get('total_fees_usdt'))),
+                    ('funding_rate_at_entry', _extract_numeric_value(trade_data.get('funding_rate_at_entry'))),
+                    ('funding_rate_at_exit', _extract_numeric_value(trade_data.get('funding_rate_at_exit'))),
+                    ('funding_paid_usdt', _extract_numeric_value(trade_data.get('funding_paid_usdt'))),
+                    # Performance temps réel
+                    ('time_to_fill_entry_ms', trade_data.get('time_to_fill_entry_ms')),
+                    ('time_to_fill_exit_ms', trade_data.get('time_to_fill_exit_ms')),
+                    ('price_at_signal', _extract_numeric_value(trade_data.get('price_at_signal'))),
+                    ('signal_to_fill_slippage_pct', _extract_numeric_value(trade_data.get('signal_to_fill_slippage_pct'))),
+                    # API & Réseau
+                    ('api_errors', json.dumps(trade_data.get('api_errors', []))),
+                    ('retry_count', trade_data.get('retry_count', 0)),
+                    ('exchange_latency_ms', trade_data.get('exchange_latency_ms')),
+                    ('ws_latency_ms', trade_data.get('ws_latency_ms')),
+                    # Score & ML
+                    ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
+                    ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence'))),
+                    ('ml_prediction', trade_data.get('ml_prediction')),
+                    # Analyse post-trade
+                    ('risk_reward_actual', _extract_numeric_value(trade_data.get('risk_reward_actual'))),
+                    ('risk_reward_planned', _extract_numeric_value(trade_data.get('risk_reward_planned'))),
+                    # Notes & Tags
+                    ('trade_notes', trade_data.get('trade_notes')),
+                    ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),
+                    ('user_rating', trade_data.get('user_rating'))
+                ])
 
             columns_sql = ',\n                    '.join(name for name, _ in fields)
             placeholders_sql = ', '.join(['%s'] * len(fields))
@@ -1757,3 +1824,76 @@ class PostgreSQLDataLogger:
             except Exception as e:
                 logger.error(f"❌ Erreur fermeture pool: {e}")
 
+
+# ============================================================================
+# Singleton global pour accès facile
+# ============================================================================
+_pg_datalogger_instance = None
+
+
+def get_pg_datalogger():
+    """
+    Récupérer l'instance singleton PostgreSQLDataLogger
+    
+    Returns:
+        PostgreSQLDataLogger ou None si non initialisé/désactivé
+    """
+    global _pg_datalogger_instance
+    
+    # Si une instance existe déjà, la retourner
+    if _pg_datalogger_instance is not None:
+        return _pg_datalogger_instance
+    
+    # Sinon, tenter de créer une nouvelle instance avec config par défaut
+    if not PSYCOPG2_AVAILABLE:
+        logger.warning("⚠️ psycopg2 non disponible, PostgreSQL DataLogger désactivé")
+        return None
+    
+    try:
+        # Charger config depuis variables d'environnement
+        import os
+        from dotenv import load_dotenv
+        from pathlib import Path
+        
+        env_path = Path(__file__).parent.parent / '.env'
+        if env_path.exists():
+            load_dotenv(env_path)
+        
+        enabled = os.getenv('POSTGRES_ENABLED', 'true').lower() == 'true'
+        
+        if not enabled:
+            logger.info("ℹ️ PostgreSQL DataLogger désactivé dans .env")
+            return None
+        
+        _pg_datalogger_instance = PostgreSQLDataLogger(
+            host=os.getenv('POSTGRES_HOST', 'localhost'),
+            port=int(os.getenv('POSTGRES_PORT', '5432')),
+            database=os.getenv('POSTGRES_DB', 'tradebot'),
+            user=os.getenv('POSTGRES_USER', 'postgres'),
+            password=os.getenv('POSTGRES_PASSWORD', ''),
+            min_conn=int(os.getenv('POSTGRES_MIN_CONN', '2')),
+            max_conn=int(os.getenv('POSTGRES_MAX_CONN', '10'))
+        )
+        
+        if _pg_datalogger_instance and _pg_datalogger_instance.enabled:
+            logger.info("✅ PostgreSQL DataLogger singleton créé")
+        else:
+            logger.warning("⚠️ PostgreSQL DataLogger créé mais désactivé")
+        
+        return _pg_datalogger_instance
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur création PostgreSQL DataLogger singleton: {e}")
+        return None
+
+
+def set_pg_datalogger(instance):
+    """
+    Définir manuellement l'instance singleton PostgreSQLDataLogger
+    
+    Args:
+        instance: Instance de PostgreSQLDataLogger
+    """
+    global _pg_datalogger_instance
+    _pg_datalogger_instance = instance
+    logger.info("✅ Instance PostgreSQL DataLogger définie manuellement")
