@@ -257,6 +257,10 @@ class LiveOrderManagerFutures:
         # Cache des leviers par symbole
         self._leverage_cache: Dict[str, int] = {}
         
+        # 🔄 Rate limiting pour lectures (1 req/sec max sur bypass)
+        self._last_read_request_time: float = 0.0
+        self._read_rate_limit_sec: float = 1.0  # 1 seconde min entre lectures bypass
+        
         # 🔥 Vérifier connectivité API en mode LIVE
         if not dry_run:
             try:
@@ -1037,9 +1041,13 @@ class LiveOrderManagerFutures:
                 latency_ms=latency_ms
             )
 
-    def get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
+    def get_position(self, symbol: str, prefer_ccxt: bool = True) -> Optional[Dict[str, Any]]:
         """
         Récupérer infos position ouverte
+        
+        Args:
+            symbol: Paire (ex: BTC/USDT)
+            prefer_ccxt: Si True, utilise CCXT en priorité (recommandé pour lectures)
 
         Returns:
             Dict avec size, entryPrice, unrealizedPnl, liquidationPrice, etc.
@@ -1048,8 +1056,39 @@ class LiveOrderManagerFutures:
             if self.dry_run:
                 return None
 
-            # 🔥 MODE BYPASS
+            # 🔄 PRIORITÉ CCXT pour les lectures (économise les requêtes bypass)
+            if prefer_ccxt and self.exchange:
+                try:
+                    futures_symbol = self._convert_symbol_to_futures(symbol)
+                    positions = self.exchange.fetch_positions([futures_symbol])
+
+                    for pos in positions:
+                        if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                            return {
+                                'symbol': futures_symbol,
+                                'side': pos.get('side'),
+                                'size': float(pos.get('contracts', 0)),
+                                'entry_price': float(pos.get('entryPrice', 0)),
+                                'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
+                                'liquidation_price': float(pos.get('liquidationPrice', 0)),
+                                'margin': float(pos.get('initialMargin', 0)),
+                                'leverage': int(pos.get('leverage', 1)),
+                            }
+                    return None
+                except Exception as ccxt_err:
+                    logger.warning(f"⚠️ CCXT get_position failed, fallback bypass: {ccxt_err}")
+            
+            # 🔥 FALLBACK BYPASS (avec rate limiting)
             if self.use_bypass and self.bypass_client:
+                # Rate limiting: max 1 lecture/sec
+                now = time.time()
+                elapsed = now - self._last_read_request_time
+                if elapsed < self._read_rate_limit_sec:
+                    wait_time = self._read_rate_limit_sec - elapsed
+                    logger.debug(f"⏳ Rate limit lecture bypass: attente {wait_time:.2f}s")
+                    time.sleep(wait_time)
+                self._last_read_request_time = time.time()
+                
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
                 
                 positions = run_async_safely(
@@ -1070,7 +1109,7 @@ class LiveOrderManagerFutures:
                         }
                 return None
             
-            # MODE CCXT
+            # MODE CCXT seul (pas de bypass)
             futures_symbol = self._convert_symbol_to_futures(symbol)
             positions = self.exchange.fetch_positions([futures_symbol])
 
@@ -1093,14 +1132,37 @@ class LiveOrderManagerFutures:
             logger.error(f"❌ Erreur récupération position: {e}")
             return None
 
-    def get_balance(self, currency: str = 'USDT') -> Optional[float]:
-        """Récupérer balance disponible futures"""
+    def get_balance(self, currency: str = 'USDT', prefer_ccxt: bool = True) -> Optional[float]:
+        """
+        Récupérer balance disponible futures
+        
+        Args:
+            currency: Devise (défaut USDT)
+            prefer_ccxt: Si True, utilise CCXT en priorité (recommandé pour lectures)
+        """
         try:
             if self.dry_run:
                 return 0.0
 
-            # 🔥 MODE BYPASS
+            # 🔄 PRIORITÉ CCXT pour les lectures
+            if prefer_ccxt and self.exchange:
+                try:
+                    balance = self.exchange.fetch_balance()
+                    return float(balance.get(currency, {}).get('free', 0.0))
+                except Exception as ccxt_err:
+                    logger.warning(f"⚠️ CCXT get_balance failed, fallback bypass: {ccxt_err}")
+            
+            # 🔥 FALLBACK BYPASS (avec rate limiting)
             if self.use_bypass and self.bypass_client:
+                # Rate limiting: max 1 lecture/sec
+                now = time.time()
+                elapsed = now - self._last_read_request_time
+                if elapsed < self._read_rate_limit_sec:
+                    wait_time = self._read_rate_limit_sec - elapsed
+                    logger.debug(f"⏳ Rate limit lecture bypass: attente {wait_time:.2f}s")
+                    time.sleep(wait_time)
+                self._last_read_request_time = time.time()
+                
                 asset = run_async_safely(
                     self.bypass_client.get_account_asset(currency)
                 )
@@ -1108,7 +1170,7 @@ class LiveOrderManagerFutures:
                     return asset.available_balance
                 return None
             
-            # MODE CCXT
+            # MODE CCXT seul
             balance = self.exchange.fetch_balance()
             return float(balance.get(currency, {}).get('free', 0.0))
 

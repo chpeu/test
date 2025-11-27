@@ -607,6 +607,46 @@ class PositionManager:
                     self.active_position.entry_api_response = getattr(order_result, 'raw_api_response', None)
                     self.active_position.price_at_signal = self.active_position.price_at_signal or requested_entry_price
 
+                    # 🔄 Synchroniser avec la position réelle retournée par l'API MEXC (prix d'entrée & taille)
+                    if not self.live_order_manager.dry_run:
+                        # Attendre le délai configuré avant lecture (laisse le temps à MEXC d'enregistrer)
+                        sync_delay = TRADING_CONFIG.get('live_entry_sync_delay_sec', 2)
+                        if sync_delay > 0:
+                            logger.debug(f"⏳ Attente {sync_delay}s avant synchro position MEXC...")
+                            time.sleep(sync_delay)
+                        
+                        # prefer_ccxt=True pour utiliser CCXT en priorité (économise bypass)
+                        live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
+                        if live_position:
+                            live_entry_price = float(live_position.get('entry_price') or 0)
+                            live_contracts = float(live_position.get('size') or 0)
+
+                            if live_entry_price > 0:
+                                previous_entry = self.active_position.entry
+                                if abs(live_entry_price - previous_entry) > 1e-8:
+                                    price_diff = live_entry_price - previous_entry
+                                    if direction == 'LONG':
+                                        self.active_position.tp += price_diff
+                                        self.active_position.sl += price_diff
+                                    else:
+                                        self.active_position.tp -= price_diff
+                                        self.active_position.sl -= price_diff
+                                    logger.info(
+                                        f"🔁 [LIVE] Prix d'entrée synchronisé avec MEXC: {previous_entry:.8f} -> {live_entry_price:.8f}"
+                                    )
+                                self.active_position.entry = live_entry_price
+                                self.active_position.entry_fill_price = live_entry_price
+
+                            if live_contracts > 0 and live_entry_price > 0:
+                                live_size_usdt = live_contracts * live_entry_price
+                                self.active_position.size = live_size_usdt
+                                self.active_position.position_size_usdt = live_size_usdt
+                                self.active_position.position_size_contracts = live_contracts
+                                self.active_position.size_remaining = live_size_usdt
+                                logger.info(
+                                    f"🔁 [LIVE] Taille synchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
+                                )
+
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
                     if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
                         price_diff = order_result.filled_price - entry

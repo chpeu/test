@@ -112,6 +112,9 @@ TRADING_CONFIG = {
     # ⚠️ Le token expire après quelques heures, nécessite refresh manuel
     "mexc_browser_token": os.getenv("MEXC_BROWSER_TOKEN", ""),
     "use_bypass_mode": True,  # Utiliser le mode bypass (recommandé si API bloquée)
+    # 🔄 Synchronisation des entrées live (éviter décalages prix/size)
+    "live_entry_sync_delay_sec": 2,  # attendre 2s avant lecture de la position réelle
+    "live_entry_sync_use_ccxt": True,  # utiliser l'API clés (CCXT) pour lecture plutôt que bypass quand dispo
     
     # 🔥 FIX: Validation slippage avant ouverture position
     "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
