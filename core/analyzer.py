@@ -247,6 +247,16 @@ class TechnicalAnalyzer:
             Dict avec setup ou None
         """
         try:
+            # 🔥 FIX: Vérifier si le symbole est exclu AVANT toute analyse
+            excluded_symbols = set(TRADING_CONFIG.get('excluded_symbols', []))
+            if symbol in excluded_symbols:
+                reason = f"Symbole exclu de la liste de trading (excluded_symbols)"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe, 'reject_category': 'excluded_symbol'}
+                if DEBUG_ENABLED:
+                    logger.debug(f"❌ {symbol} {timeframe}: {reason}")
+                return None
+
             # Récupérer prix via WebSocket (prioritaire) ou REST
             ticker_data = await self.price_provider.get_price(symbol)
             if not ticker_data:

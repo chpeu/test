@@ -1624,6 +1624,26 @@ class PostgreSQLDataLogger:
                 conn.rollback()
                 self._return_connection(conn)
 
+    def close(self):
+        """
+        Fermer le pool de connexions PostgreSQL
+
+        Cette méthode doit être appelée avant de quitter l'application
+        pour libérer proprement les ressources.
+        """
+        if not self.enabled or not self.pool:
+            return
+
+        try:
+            # Flush les buffers avant de fermer
+            self._flush_buffers()
+
+            # Fermer toutes les connexions du pool
+            self.pool.closeall()
+            logger.info("✅ Pool de connexions PostgreSQL fermé")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la fermeture du pool PostgreSQL: {e}")
+
 
 # ============================================================================
 # Singleton global pour accès facile

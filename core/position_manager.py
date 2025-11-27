@@ -352,14 +352,19 @@ class PositionManager:
 
                 if live_contracts > 0 and live_entry_price > 0:
                     live_size_usdt = live_contracts * live_entry_price
+
+                    # 🔥 FIX: Toujours synchroniser size_remaining avec la position RÉELLE MEXC
+                    # Que ce soit après ouverture OU après TP partiel
+                    if not current_position.size_initial_contracts:
+                        # Première synchro (après ouverture): définir size initial
+                        current_position.size_initial_contracts = live_contracts
+
+                    # Mettre à jour la taille actuelle (TOUJOURS, même après TP partiel)
                     current_position.size = live_size_usdt
                     current_position.position_size_usdt = live_size_usdt
                     current_position.position_size_contracts = live_contracts
-                    if not current_position.size_initial_contracts:
-                        current_position.size_initial_contracts = live_contracts
-                    if not current_position.partial_tp_sold:
-                        current_position.size_remaining = live_size_usdt
-                        current_position.size_remaining_contracts = live_contracts
+                    current_position.size_remaining = live_size_usdt
+                    current_position.size_remaining_contracts = live_contracts
 
                     logger.info(
                         f"🔁 [LIVE] Taille resynchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
@@ -1328,7 +1333,7 @@ class PositionManager:
                 )
                 self.active_position.sl = new_sl
                 self.active_position.break_even_set = True
-                self._schedule_position_sync(symbol)
+                self._schedule_position_sync(self.active_position.symbol)
                 
                 logger.info(
                     f"💰 1er TP partiel déclenché à {break_even_trigger:.2f}% | "

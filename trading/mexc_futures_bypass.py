@@ -251,8 +251,11 @@ class ContractSpec:
             vol = (vol // self.vol_unit) * self.vol_unit
         # Appliquer la précision
         vol = round(vol, self.vol_precision)
-        # Respecter les limites
-        vol = max(self.min_vol, min(self.max_vol, vol))
+        # 🔥 FIX: Ne pas forcer min_vol ici, laisser le code appelant vérifier
+        # Si vol < min_vol, le code appelant doit rejeter l'ordre
+        # Seulement appliquer la limite max
+        if vol > self.max_vol:
+            vol = self.max_vol
         return vol
     
     def round_price(self, price: float) -> float:

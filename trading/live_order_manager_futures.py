@@ -185,6 +185,20 @@ class CircuitBreaker:
             'threshold': self.failure_threshold
         }
 
+    def reset(self):
+        """
+        Réinitialiser manuellement le circuit breaker
+
+        Utile pour forcer la fermeture du circuit après avoir résolu
+        les problèmes qui ont causé l'ouverture.
+        """
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = None
+        self.opened_at = None
+        logger.warning("🔄 Circuit Breaker RÉINITIALISÉ manuellement - Retour à l'état CLOSED")
+
 
 # ============================================================================
 # RETRY DECORATOR avec Backoff Exponentiel

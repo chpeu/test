@@ -398,6 +398,53 @@ async def emergency_stop():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/reset-circuit-breaker")
+async def reset_circuit_breaker():
+    """
+    Réinitialiser manuellement le Circuit Breaker
+
+    Utilisé pour débloquer le trading après que le Circuit Breaker
+    se soit ouvert suite à des erreurs consécutives.
+    """
+    try:
+        from main import live_order_manager
+
+        if not live_order_manager:
+            raise HTTPException(status_code=400, detail="Live Order Manager non disponible")
+
+        if not hasattr(live_order_manager, 'circuit_breaker') or not live_order_manager.circuit_breaker:
+            return JSONResponse({
+                'success': False,
+                'message': 'Circuit Breaker non activé'
+            })
+
+        # Récupérer l'état avant reset
+        status_before = live_order_manager.circuit_breaker.get_status()
+
+        # Réinitialiser le circuit breaker
+        live_order_manager.circuit_breaker.reset()
+
+        # Récupérer l'état après reset
+        status_after = live_order_manager.circuit_breaker.get_status()
+
+        logger.warning(
+            f"🔄 Circuit Breaker réinitialisé manuellement | "
+            f"État avant: {status_before['state']} ({status_before['failure_count']} échecs) | "
+            f"État après: {status_after['state']}"
+        )
+
+        return JSONResponse({
+            'success': True,
+            'message': 'Circuit Breaker réinitialisé avec succès',
+            'status_before': status_before,
+            'status_after': status_after
+        })
+
+    except Exception as e:
+        logger.error(f"Erreur réinitialisation Circuit Breaker: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/positions")
 async def get_positions():
     """Récupérer toutes les positions ouvertes"""

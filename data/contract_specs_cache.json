@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764279890.393968,
+  "timestamp": 1764283956.931165,
   "specs": {
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -80,6 +80,15 @@
       "vol_unit": 1.0,
       "price_unit": 0.01,
       "price_precision": 2,
+      "vol_precision": 1
+    },
+    "DOGE_USDT": {
+      "symbol": "DOGE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 250000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
       "vol_precision": 1
     }
   }
