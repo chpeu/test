@@ -1056,18 +1056,29 @@ class LiveOrderManagerFutures:
             if self.dry_run:
                 return None
 
+            def _extract_ccxt_size(position: Dict[str, Any]) -> float:
+                contracts = float(position.get('contracts', 0) or 0)
+                contract_size = position.get('contractSize')
+                if contract_size is None:
+                    contract_size = position.get('info', {}).get('contractSize') if position.get('info') else None
+                contract_size = float(contract_size or 1.0)
+                size = contracts * contract_size if contract_size else contracts
+                return size if size else contracts
+
             # 🔄 PRIORITÉ CCXT pour les lectures (économise les requêtes bypass)
             if prefer_ccxt and self.exchange:
                 try:
+                    logger.info(f"📡 [READ][CCXT] get_position {symbol}")
                     futures_symbol = self._convert_symbol_to_futures(symbol)
                     positions = self.exchange.fetch_positions([futures_symbol])
 
                     for pos in positions:
                         if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                            normalized_size = _extract_ccxt_size(pos)
                             return {
                                 'symbol': futures_symbol,
                                 'side': pos.get('side'),
-                                'size': float(pos.get('contracts', 0)),
+                                'size': normalized_size,
                                 'entry_price': float(pos.get('entryPrice', 0)),
                                 'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                                 'liquidation_price': float(pos.get('liquidationPrice', 0)),
@@ -1090,6 +1101,7 @@ class LiveOrderManagerFutures:
                 self._last_read_request_time = time.time()
                 
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
+                logger.info(f"📡 [READ][BYPASS] get_open_positions {bypass_symbol}")
                 
                 positions = run_async_safely(
                     self.bypass_client.get_open_positions(bypass_symbol)
@@ -1111,14 +1123,16 @@ class LiveOrderManagerFutures:
             
             # MODE CCXT seul (pas de bypass)
             futures_symbol = self._convert_symbol_to_futures(symbol)
+            logger.info(f"📡 [READ][CCXT] get_position {symbol} (fallback)")
             positions = self.exchange.fetch_positions([futures_symbol])
 
             for pos in positions:
                 if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                    normalized_size = _extract_ccxt_size(pos)
                     return {
                         'symbol': futures_symbol,
                         'side': pos.get('side'),
-                        'size': float(pos.get('contracts', 0)),
+                        'size': normalized_size,
                         'entry_price': float(pos.get('entryPrice', 0)),
                         'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                         'liquidation_price': float(pos.get('liquidationPrice', 0)),
@@ -1147,6 +1161,7 @@ class LiveOrderManagerFutures:
             # 🔄 PRIORITÉ CCXT pour les lectures
             if prefer_ccxt and self.exchange:
                 try:
+                    logger.info(f"📡 [READ][CCXT] get_balance {currency}")
                     balance = self.exchange.fetch_balance()
                     return float(balance.get(currency, {}).get('free', 0.0))
                 except Exception as ccxt_err:
@@ -1163,6 +1178,7 @@ class LiveOrderManagerFutures:
                     time.sleep(wait_time)
                 self._last_read_request_time = time.time()
                 
+                logger.info(f"📡 [READ][BYPASS] get_account_asset {currency}")
                 asset = run_async_safely(
                     self.bypass_client.get_account_asset(currency)
                 )
@@ -1172,6 +1188,7 @@ class LiveOrderManagerFutures:
             
             # MODE CCXT seul
             balance = self.exchange.fetch_balance()
+            logger.info(f"📡 [READ][CCXT] get_balance {currency} (fallback)")
             return float(balance.get(currency, {}).get('free', 0.0))
 
         except Exception as e:
