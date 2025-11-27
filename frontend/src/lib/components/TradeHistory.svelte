@@ -128,6 +128,7 @@
 						<th data-debug-name="tradeHistory.column.symbol">Paire</th>
 						<th data-debug-name="tradeHistory.column.direction">Dir</th>
 						<th data-debug-name="tradeHistory.column.reason">Raison</th>
+						<th data-debug-name="tradeHistory.column.exitPrice">Prix Sortie</th>
 						<th data-debug-name="tradeHistory.column.pnlGross">PnL Brut %</th>
 						<th data-debug-name="tradeHistory.column.slippage">Slippage</th>
 						<th data-debug-name="tradeHistory.column.pnlNet">PnL Net %</th>
@@ -154,6 +155,17 @@
 								{:else}
 									{trade.reason || trade.close_reason || 'N/A'}
 								{/if}
+							</td>
+							<!-- 🔥 NOUVEAU: Prix de sortie -->
+							<td class="exit-price" data-debug-name="trade.exit_price">
+								{(() => {
+									// Chercher le prix de sortie dans différents champs possibles
+									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price;
+									if (exitPrice) {
+										return formatAdaptive(exitPrice);
+									}
+									return 'N/A';
+								})()}
 							</td>
 							<!-- 🔥 FIX: PnL Brut avec formatage adaptatif -->
 							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0} data-debug-name="trade.gross_pnl_pct">
@@ -439,6 +451,12 @@
 	.price {
 		font-family: 'Courier New', monospace;
 		color: #00aaff;
+	}
+
+	.exit-price {
+		font-family: 'Courier New', monospace;
+		color: #00aaff;
+		font-weight: 500;
 	}
 
 	.size {
