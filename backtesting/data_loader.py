@@ -16,7 +16,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import time
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict
 import asyncio
 
 logger = logging.getLogger(__name__)

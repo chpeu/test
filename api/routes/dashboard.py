@@ -153,6 +153,8 @@ async def get_complete_state():
                 'data': active_position_dict
             },
             'stats': stats_dict,
+            # 🔥 FIX: Renvoyer l'historique des trades pour persistance frontend
+            'trade_history': _app_state.get('trade_history', []),
             'timestamp': time.time()
         })
 

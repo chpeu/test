@@ -10,8 +10,16 @@ from collections import deque
 from api.reliability import WebSocketManager
 from api.mexc import get_mexc_client
 from config import WEBSOCKET_CONFIG, DEBUG_ENABLED
+from utils.pricing import get_price_with_source
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class HybridPriceProvider:
@@ -76,18 +84,30 @@ class HybridPriceProvider:
                         ccxt_symbol = f"{base}/{quote}:{quote}"  # Format ccxt standard
                 
                 # Extraire prix
-                price = float(ticker_data.get("lastPrice", 0))
-                volume24 = float(ticker_data.get("volume24", 0))
+                last_price = _safe_float(ticker_data.get("lastPrice")) or 0.0
+                volume24 = _safe_float(ticker_data.get("volume24")) or 0.0
+                mark_price = _safe_float(ticker_data.get("markPrice"))
+                fair_price = _safe_float(ticker_data.get("fairPrice"))
+                index_price = _safe_float(ticker_data.get("indexPrice"))
                 
                 # Mettre en cache avec format ccxt
                 ticker_info = {
                     "symbol": ccxt_symbol,  # Format ccxt pour cohérence
-                    "lastPrice": price,
+                    "lastPrice": last_price,
+                    "markPrice": mark_price,
+                    "fairPrice": fair_price,
+                    "indexPrice": index_price,
                     "volume24": volume24,
-                    "high24": float(ticker_data.get("high24", 0)),
-                    "low24": float(ticker_data.get("low24", 0)),
+                    "high24": _safe_float(ticker_data.get("high24")) or 0.0,
+                    "low24": _safe_float(ticker_data.get("low24")) or 0.0,
                     "timestamp": time.time()
                 }
+
+                reference_price, ref_source = get_price_with_source(ticker_info)
+                if reference_price is not None:
+                    ticker_info["referencePrice"] = reference_price
+                if ref_source:
+                    ticker_info["referenceSource"] = ref_source
                 
                 # 🔥 FIX: Mise à jour thread-safe via asyncio task
                 # Utiliser _update_cache pour garantir la cohérence avec le lock
@@ -127,6 +147,18 @@ class HybridPriceProvider:
         async with self.cache_lock:
             self.price_cache[symbol] = data
             self.message_buffer.append(data)
+
+    def _ensure_reference_price(self, price_data: dict) -> dict:
+        """Guarantee referencePrice/referenceSource fields are populated."""
+        if price_data is None:
+            return price_data
+        if "referencePrice" not in price_data or price_data.get("referencePrice") in (None, 0):
+            price, source = get_price_with_source(price_data)
+            if price is not None:
+                price_data["referencePrice"] = price
+            if source:
+                price_data["referenceSource"] = source
+        return price_data
 
     async def _get_cached_price(self, symbol: str) -> Optional[Dict]:
         """Récupérer le dernier prix connu dans le cache (même si WS est down)."""
@@ -291,7 +323,7 @@ class HybridPriceProvider:
                 if symbol in self.price_cache:
                     if metrics:
                         metrics.ws_price_count += 1
-                    return self.price_cache[symbol]
+                    return self._ensure_reference_price(self.price_cache[symbol])
             
             # Pas en cache mais WS connecté → attendre un peu
             await asyncio.sleep(0.05)
@@ -313,27 +345,41 @@ class HybridPriceProvider:
             
             # 🔥 FIX: Vérifier que ticker est un dict AVANT utilisation
             if not isinstance(ticker, dict) or ticker is None:
-                # Essayer le cache avant de logger l'erreur
+                # Essayer le cache avant de logger l'erreur (même périmé)
                 cached = await self._get_cached_price(symbol)
                 if cached:
                     if DEBUG_ENABLED:
                         logger.debug(
                             f"⚠️ Ticker invalide pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s)"
                         )
-                    return cached
-                # Si pas de cache, alors logger l'erreur
+                    return self._ensure_reference_price(cached)
+                
+                # Essayer le cache sans restriction de temps
+                if symbol in self.price_cache:
+                    expired_cache = self.price_cache[symbol]
+                    logger.warning(
+                        f"⚠️ Format ticker invalide pour {symbol}, utilisation cache périmé (age={time.time() - expired_cache.get('timestamp', 0):.1f}s)"
+                    )
+                    return self._ensure_reference_price(expired_cache)
+                
+                # Pas de cache disponible, retourner None
                 logger.warning(
                     f"⚠️ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol} - Pas de cache disponible"
                 )
                 return None
             
             if ticker:
-                return {
+                info = ticker.get("info", {}) if isinstance(ticker, dict) else {}
+                rest_result = {
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),
+                    "markPrice": info.get("markPrice") or info.get("fairPrice"),
+                    "fairPrice": info.get("fairPrice"),
+                    "indexPrice": info.get("indexPrice"),
                     "volume24": ticker.get("quoteVolume", 0),
                     "timestamp": time.time()
                 }
+                return self._ensure_reference_price(rest_result)
         except Exception as e:
             # Essayer le cache avant de logger l'erreur
             cached = await self._get_cached_price(symbol)
@@ -342,13 +388,24 @@ class HybridPriceProvider:
                     logger.debug(
                         f"⚠️ REST erreur pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s): {e}"
                     )
-                return cached
-            # Si pas de cache, alors logger l'erreur complète
+                return self._ensure_reference_price(cached)
+            
+            # Essayer le cache sans restriction de temps
+            if symbol in self.price_cache:
+                expired_cache = self.price_cache[symbol]
+                logger.warning(
+                    f"⚠️ REST erreur pour {symbol}, utilisation cache périmé (age={time.time() - expired_cache.get('timestamp', 0):.1f}s)"
+                )
+                return self._ensure_reference_price(expired_cache)
+            
+            # Si pas de cache, alors logger l'erreur complète et retourner None
             if DEBUG_ENABLED:
                 logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
-        
+
+            return None
+
         return None
     
     def is_websocket_connected(self) -> bool:

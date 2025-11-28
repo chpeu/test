@@ -202,7 +202,19 @@ export function formatPrice(price, precision = null) {
 		return num.toFixed(4);
 	}
 
-	// For normal prices, use 2 decimals
+	// 🔥 FIX: Pour les prix crypto (>= 1 et < 100), utiliser 4 décimales pour plus de précision
+	// Exemples: ETH=2234.1500, SOL=142.0400, INJ=6.0700, BNB=350.5000
+	if (num < 100) {
+		return num.toFixed(4);
+	}
+
+	// 🔥 FIX: Pour les prix entre 100 et 10000, utiliser 2 décimales
+	// Exemples: BTC=42156.50, indices >100
+	if (num < 10000) {
+		return num.toFixed(2);
+	}
+
+	// Pour les très grands prix (>= 10000), utiliser 2 décimales
 	return num.toFixed(2);
 }
 

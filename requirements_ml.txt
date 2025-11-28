@@ -1,0 +1,25 @@
+# Requirements pour XGBoost V2 Enhanced
+
+# Core ML
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# XGBoost et LightGBM
+xgboost>=2.0.0
+lightgbm>=4.0.0
+
+# Utils
+joblib>=1.3.0
+
+# PostgreSQL
+psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0
+
+# Optuna (optionnel, pour hyperparameter tuning)
+optuna>=3.0.0
+
+# Visualisation (optionnel)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scipy>=1.11.0

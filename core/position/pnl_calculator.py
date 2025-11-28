@@ -117,16 +117,14 @@ class PnLCalculator:
         else:
             size_remaining = size
 
-        # PnL %
+        # PnL % basé sur la performance réelle (incluant profits partiels)
         if direction == 'LONG':
-            pnl_pct = ((exit_price - entry) / entry) * 100
             price_diff = exit_price - entry
         else:  # SHORT
-            pnl_pct = ((entry - exit_price) / entry) * 100
             price_diff = entry - exit_price
 
         # PnL USDT brut (partie non encore vendue)
-        pnl_usdt_unrealized = size_remaining * (price_diff / entry)
+        pnl_usdt_unrealized = size_remaining * (price_diff / entry) if entry else 0.0
 
         # 🔥 FIX BUG #1: Frais uniquement sur taille fermée (pas sur partie déjà vendue au TP partiel)
         # Si TP partiel déjà effectué, les fees d'entrée sur la partie vendue ont déjà été payés
@@ -138,13 +136,20 @@ class PnLCalculator:
 
         # PnL USDT net
         pnl_usdt_partial = position.get('partial_profit_usdt', 0.0)
-        net_pnl = pnl_usdt_unrealized + pnl_usdt_partial - total_fees
+        total_gross_usdt = pnl_usdt_unrealized + pnl_usdt_partial
+        net_pnl = total_gross_usdt - total_fees
+
+        # Calculer PnL % réel (sur la taille totale)
+        if size > 0:
+            pnl_pct = (total_gross_usdt / size) * 100
+        else:
+            pnl_pct = 0.0
 
         return {
-            'pnl_pct': round(pnl_pct, 2),
-            'pnl_usdt_gross': round(pnl_usdt_unrealized + pnl_usdt_partial, 2),
-            'fees': round(total_fees, 2),
-            'net_pnl': round(net_pnl, 2)
+            'pnl_pct': round(pnl_pct, 6),
+            'pnl_usdt_gross': round(total_gross_usdt, 4),
+            'fees': round(total_fees, 4),
+            'net_pnl': round(net_pnl, 4)
         }
 
     @staticmethod

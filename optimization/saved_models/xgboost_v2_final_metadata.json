@@ -1,0 +1,276 @@
+{
+  "model_name": "xgboost_v2_final",
+  "model_type": "XGBClassifier_V2_Temporal",
+  "model_path": "optimization\\saved_models\\xgboost_v2_final.pkl",
+  "preprocessor_path": "optimization\\saved_models\\xgboost_v2_final_preprocessor.pkl",
+  "model_params": {
+    "n_estimators": 600,
+    "max_depth": 4,
+    "learning_rate": 0.03,
+    "min_child_weight": 5,
+    "reg_alpha": 1.0,
+    "reg_lambda": 3.0,
+    "subsample": 0.7,
+    "colsample_bytree": 0.7,
+    "gamma": 0.5,
+    "scale_pos_weight": 1.4981884057971016,
+    "random_state": 42,
+    "eval_metric": "logloss",
+    "use_label_encoder": false
+  },
+  "metrics": {
+    "train": {
+      "accuracy": 0.6098622189992748,
+      "precision": 0.5093582887700535,
+      "recall": 0.6902173913043478,
+      "f1": 0.5861538461538461,
+      "roc_auc": 0.6723347440548165
+    },
+    "validation": {
+      "accuracy": 0.5228426395939086,
+      "precision": 0.5272727272727272,
+      "recall": 0.29896907216494845,
+      "f1": 0.3815789473684211,
+      "roc_auc": 0.482680412371134
+    },
+    "test": {
+      "accuracy": 0.5253807106598984,
+      "precision": 0.5042735042735043,
+      "recall": 0.31382978723404253,
+      "f1": 0.38688524590163936,
+      "roc_auc": 0.5097603800867588
+    },
+    "gaps": {
+      "accuracy": 0.0844815083393764,
+      "roc_auc": 0.1625743639680577
+    },
+    "confusion_matrix": [
+      [
+        148,
+        58
+      ],
+      [
+        129,
+        59
+      ]
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "strong_trend_1m",
+      "importance": 0.05067091062664986
+    },
+    {
+      "feature": "config_snr_threshold",
+      "importance": 0.05025012791156769
+    },
+    {
+      "feature": "di_plus_5m",
+      "importance": 0.05008940026164055
+    },
+    {
+      "feature": "di_minus_5m",
+      "importance": 0.04957099258899689
+    },
+    {
+      "feature": "macd_momentum_1m",
+      "importance": 0.04896185174584389
+    },
+    {
+      "feature": "ema_trend_strength_5m",
+      "importance": 0.048206765204668045
+    },
+    {
+      "feature": "snr_passed_5m",
+      "importance": 0.04422919079661369
+    },
+    {
+      "feature": "bb_width_5m",
+      "importance": 0.04354880005121231
+    },
+    {
+      "feature": "rsi_prev_5m",
+      "importance": 0.04242944344878197
+    },
+    {
+      "feature": "hour",
+      "importance": 0.04195757582783699
+    },
+    {
+      "feature": "ema_diff_pct_1m",
+      "importance": 0.04179950803518295
+    },
+    {
+      "feature": "european_session",
+      "importance": 0.04140942916274071
+    },
+    {
+      "feature": "di_gap_5m",
+      "importance": 0.04027848318219185
+    },
+    {
+      "feature": "rsi_divergence",
+      "importance": 0.039994094520807266
+    },
+    {
+      "feature": "quality_score_1m",
+      "importance": 0.038945142179727554
+    },
+    {
+      "feature": "adx_1m",
+      "importance": 0.03866060450673103
+    },
+    {
+      "feature": "di_plus_1m",
+      "importance": 0.038361962884664536
+    },
+    {
+      "feature": "momentum_divergence",
+      "importance": 0.03736760839819908
+    },
+    {
+      "feature": "trend_strength_5m",
+      "importance": 0.036796145141124725
+    },
+    {
+      "feature": "bb_distance_to_lower_5m",
+      "importance": 0.03583191707730293
+    },
+    {
+      "feature": "rsi_5m",
+      "importance": 0.03262830898165703
+    },
+    {
+      "feature": "us_session",
+      "importance": 0.03206292912364006
+    },
+    {
+      "feature": "ema_aligned",
+      "importance": 0.028398949652910233
+    },
+    {
+      "feature": "volume_filter_passed_1m",
+      "importance": 0.02397238463163376
+    },
+    {
+      "feature": "wick_passed_5m",
+      "importance": 0.023577455431222916
+    },
+    {
+      "feature": "trend_bearish_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_orderbook",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_snr_filter",
+      "importance": 0.0
+    },
+    {
+      "feature": "volatility_expanding",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_atr_filter",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_wick_filter",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_structure_swing",
+      "importance": 0.0
+    },
+    {
+      "feature": "strong_trend_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "trend_bullish_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "choppy_market",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_volume_quality",
+      "importance": 0.0
+    },
+    {
+      "feature": "macd_bullish_cross_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_reason_category",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_spread",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_recovery_mode",
+      "importance": 0.0
+    }
+  ],
+  "training_info": {
+    "timeframe_days": 270,
+    "min_trades": 50,
+    "total_samples": 1970,
+    "train_samples": 1379,
+    "val_samples": 197,
+    "test_samples": 394,
+    "training_time_seconds": 0.697489,
+    "trained_at": "2025-11-24T20:20:27.724433",
+    "filter_marginal_trades": false,
+    "marginal_threshold": 0.15,
+    "split_type": "temporal",
+    "selected_features": [
+      "us_session",
+      "volume_filter_passed_1m",
+      "macd_momentum_1m",
+      "trend_bearish_1m",
+      "ema_trend_strength_5m",
+      "hour",
+      "strong_trend_1m",
+      "rsi_5m",
+      "reject_orderbook",
+      "trend_strength_5m",
+      "rsi_divergence",
+      "momentum_divergence",
+      "bb_width_5m",
+      "bb_distance_to_lower_5m",
+      "reject_snr_filter",
+      "di_minus_5m",
+      "volatility_expanding",
+      "reject_atr_filter",
+      "reject_wick_filter",
+      "reject_structure_swing",
+      "di_plus_5m",
+      "strong_trend_5m",
+      "trend_bullish_1m",
+      "config_snr_threshold",
+      "choppy_market",
+      "reject_volume_quality",
+      "quality_score_1m",
+      "di_plus_1m",
+      "wick_passed_5m",
+      "macd_bullish_cross_1m",
+      "adx_1m",
+      "ema_aligned",
+      "rsi_prev_5m",
+      "reject_reason_category",
+      "reject_spread",
+      "di_gap_5m",
+      "reject_recovery_mode",
+      "european_session",
+      "ema_diff_pct_1m",
+      "snr_passed_5m"
+    ]
+  },
+  "version": "2.0"
+}

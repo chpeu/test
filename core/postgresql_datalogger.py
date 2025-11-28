@@ -14,6 +14,8 @@ import uuid
 from collections import deque
 import threading
 
+from utils.pricing import get_preferred_price
+
 try:
     import psycopg2
     from psycopg2.extras import execute_values, RealDictCursor
@@ -63,7 +65,7 @@ def _extract_numeric_value(value: Any) -> Optional[float]:
     # Si c'est un dict, essayer d'extraire une valeur numérique
     if isinstance(value, dict):
         # Essayer plusieurs clés communes
-        for key in ['value', 'price', 'score', 'rsi', 'macd', 'adx', 'atr', 'volume', 'spread', 'balance', 'depth', 'vol5', 'vol15']:
+        for key in ['value', 'price', 'referencePrice', 'lastPrice', 'score', 'rsi', 'macd', 'adx', 'atr', 'volume', 'spread', 'balance', 'depth', 'vol5', 'vol15']:
             if key in value:
                 nested_value = value[key]
                 if isinstance(nested_value, (int, float)):
@@ -387,34 +389,24 @@ class PostgreSQLDataLogger:
         
         # 🔥 FIX: Vérifier le prix AVANT d'ajouter au buffer (pour éviter les scans invalides)
         market_data = scan_data.get('market_data', {})
-        price = market_data.get('price')
+        price = get_preferred_price(market_data, None)
         if price is None:
-            # Fallback 1: Depuis scan_data directement
-            price = scan_data.get('price')
+            price = get_preferred_price(scan_data.get('price'), None)
         if price is None:
-            # Fallback 2: Depuis analysis_1m ou analysis_5m si disponible
             analysis_1m = scan_data.get('analysis_1m', {})
             if isinstance(analysis_1m, dict):
-                price = analysis_1m.get('price')
-            if price is None:
-                analysis_5m = scan_data.get('analysis_5m', {})
-                if isinstance(analysis_5m, dict):
-                    price = analysis_5m.get('price')
-        # Extraire la valeur numérique si c'est un dict
-        if isinstance(price, dict):
-            price = price.get('price') or price.get('lastPrice') or price.get('close') or price.get('value')
-        # Vérifier que price est un nombre
-        if price is not None and not isinstance(price, (int, float)):
-            try:
-                price = float(price)
-            except (ValueError, TypeError):
-                logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan (batch): {price} (type: {type(price)})")
-                price = None
-        
-        # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
+                price = get_preferred_price(analysis_1m, None)
         if price is None:
-            logger.error(f"❌ Prix manquant pour {symbol} dans log_scan (batch), scan non ajouté au buffer")
-            return None
+            analysis_5m = scan_data.get('analysis_5m', {})
+            if isinstance(analysis_5m, dict):
+                price = get_preferred_price(analysis_5m, None)
+
+        # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
+        if price is None or price == 0:
+            if price is None:
+                price = 0.0
+                logger.warning(f"⚠️ Prix manquant pour {symbol} dans log_scan (batch), utilisation price=0")
+            # Continuer le logging avec price=0 pour ne pas bloquer l'analyse ML
         
         # 🔥 PHASE 3: Utiliser batch insert si activé
         if use_batch:
@@ -432,13 +424,13 @@ class PostgreSQLDataLogger:
         
         # Mode direct (fallback)
         try:
-            # Extraire les données du scan
-            indicators_1m = scan_data.get('indicators_1m', {})
-            indicators_5m = scan_data.get('indicators_5m', {})
-            filters = scan_data.get('filters', {})
-            scores = scan_data.get('scores', {})
-            patterns = scan_data.get('patterns', {})
-            market_data = scan_data.get('market_data', {})
+            # 🔥 FIX: Assurer des dicts non-vides avec defaults explicites
+            indicators_1m = scan_data.get('indicators_1m') or {}
+            indicators_5m = scan_data.get('indicators_5m') or {}
+            filters = scan_data.get('filters') or {}
+            scores = scan_data.get('scores') or {}
+            patterns = scan_data.get('patterns') or {}
+            market_data = scan_data.get('market_data') or {}
             
             # Requête d'insertion
             query = """
@@ -495,7 +487,13 @@ class PostgreSQLDataLogger:
                     is_opportunity, opportunity_direction, reject_reason, reject_reason_category,
                     
                     -- Params snapshot
-                    params_snapshot
+                    params_snapshot,
+                    
+                    -- Config extracted from params
+                    config_min_score_required, config_snr_threshold,
+                    config_atr_min_1m, config_atr_max_1m,
+                    config_atr_min_5m, config_atr_max_5m,
+                    config_volume_multiplier, config_use_confluence
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
@@ -517,23 +515,17 @@ class PostgreSQLDataLogger:
             """
             
             # 🔥 FIX: Récupérer le prix avec fallbacks multiples (pour éviter NULL)
-            price = market_data.get('price')
+            price = get_preferred_price(market_data, None)
             if price is None:
-                # Fallback 1: Depuis scan_data directement
-                price = scan_data.get('price')
+                price = get_preferred_price(scan_data.get('price'), None)
             if price is None:
-                # Fallback 2: Depuis analysis_1m ou analysis_5m si disponible
                 analysis_1m = scan_data.get('analysis_1m', {})
                 if isinstance(analysis_1m, dict):
-                    price = analysis_1m.get('price')
-                if price is None:
-                    analysis_5m = scan_data.get('analysis_5m', {})
-                    if isinstance(analysis_5m, dict):
-                        price = analysis_5m.get('price')
-            # Extraire la valeur numérique si c'est un dict
-            if isinstance(price, dict):
-                price = price.get('price') or price.get('lastPrice') or price.get('close') or price.get('value')
-            # Vérifier que price est un nombre
+                    price = get_preferred_price(analysis_1m, None)
+            if price is None:
+                analysis_5m = scan_data.get('analysis_5m', {})
+                if isinstance(analysis_5m, dict):
+                    price = get_preferred_price(analysis_5m, None)
             if price is not None and not isinstance(price, (int, float)):
                 try:
                     price = float(price)
@@ -541,14 +533,26 @@ class PostgreSQLDataLogger:
                     logger.warning(f"⚠️ Prix invalide pour {symbol} dans log_scan: {price} (type: {type(price)})")
                     price = None
             
-            # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
-            if price is None:
-                logger.error(f"❌ Prix manquant pour {symbol} dans log_scan, insertion annulée")
-                return None
+            # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
+            if price is None or price == 0:
+                if price is None:
+                    price = 0.0
+                    logger.warning(f"⚠️ Prix manquant pour {symbol} dans log_scan, utilisation price=0")
+                # Continuer le logging avec price=0 pour ne pas bloquer l'analyse ML
+            
+            # 🔥 FIX: Assurer des valeurs par défaut pour éviter les NULL critiques
+            scan_duration = scan_data.get('scan_duration_ms')
+            if scan_duration is None:
+                scan_duration = 0.0  # Défaut si non fourni
+            
+            # Assurer params_snapshot sérialisable (même si vide)
+            params_snap = scan_data.get('params_snapshot')
+            if not params_snap or not isinstance(params_snap, dict):
+                params_snap = {}
             
             # Préparer les paramètres
             params = (
-                session_id, symbol, scan_data.get('scan_duration_ms'),
+                session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
                 market_data.get('bid_vol'), market_data.get('ask_vol'),
@@ -589,22 +593,22 @@ class PostgreSQLDataLogger:
                 indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
                 indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
                 
-                # Filtres
+                # Filtres (avec defaults pour booléens False si absent)
                 filters.get('snr_1m'), filters.get('snr_5m'),
-                filters.get('snr_passed_1m'), filters.get('snr_passed_5m'),
+                filters.get('snr_passed_1m', False), filters.get('snr_passed_5m', False),
                 filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
-                filters.get('breakout_passed_1m'), filters.get('breakout_passed_5m'),
+                filters.get('breakout_passed_1m', False), filters.get('breakout_passed_5m', False),
                 filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
-                filters.get('wick_passed_1m'), filters.get('wick_passed_5m'),
-                filters.get('atr_optimal_passed_1m'), filters.get('atr_optimal_passed_5m'),
-                filters.get('volume_filter_passed_1m'), filters.get('volume_filter_passed_5m'),
+                filters.get('wick_passed_1m', False), filters.get('wick_passed_5m', False),
+                filters.get('atr_optimal_passed_1m', False), filters.get('atr_optimal_passed_5m', False),
+                filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
                 
                 # Confluence
-                scan_data.get('use_confluence'), scan_data.get('confluence_met'),
+                scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
                 scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                scores.get('score_long_1m'), scores.get('score_short_1m'),
-                scores.get('score_long_5m'), scores.get('score_short_5m'),
-                scan_data.get('timeframes_aligned'),
+                scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
+                scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
+                scan_data.get('timeframes_aligned', False),
                 
                 # Patterns
                 patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
@@ -613,7 +617,7 @@ class PostgreSQLDataLogger:
                 # Trend
                 scan_data.get('trend_timeframe', '15m'),
                 scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                scan_data.get('trend_bonus'),
+                scan_data.get('trend_bonus', 0),
                 
                 # Divergence
                 scan_data.get('divergence_detected', False),
@@ -625,7 +629,17 @@ class PostgreSQLDataLogger:
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 
                 # Params
-                json.dumps(scan_data.get('params_snapshot', {}))
+                json.dumps(params_snap),
+                
+                # Config extracted
+                params_snap.get('min_score_required'),
+                params_snap.get('snr_threshold'),
+                params_snap.get('optimal_atr_min_1m'),
+                params_snap.get('optimal_atr_max_1m'),
+                params_snap.get('optimal_atr_min_5m'),
+                params_snap.get('optimal_atr_max_5m'),
+                params_snap.get('volume_multiplier'),
+                params_snap.get('use_confluence')
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -1028,18 +1042,38 @@ class PostgreSQLDataLogger:
             slippage_pct = _extract_numeric_value(slippage_pct_raw) if slippage_pct_raw is not None else 0
             slippage_usdt = (slippage_pct / 100) * (size_usdt or 0) if slippage_pct and size_usdt else 0
             
-            # Extraire config_snapshot
-            # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
-            config_snapshot = trade_data.get('config_snapshot', {})
-            if config_snapshot:
+            # 🔥 FIX: Extraire config_snapshot + colonnes config_*
+            config_snapshot_raw = trade_data.get('config_snapshot') or {}
+            config_snapshot_dict: Dict[str, Any] = {}
+            if isinstance(config_snapshot_raw, str):
                 try:
-                    config_snapshot_safe = serialize_config_safe(config_snapshot)
+                    config_snapshot_dict = json.loads(config_snapshot_raw)
+                except Exception:
+                    config_snapshot_dict = {}
+            elif isinstance(config_snapshot_raw, dict):
+                config_snapshot_dict = config_snapshot_raw
+
+            config_min_score_required = _extract_numeric_value(config_snapshot_dict.get('min_score_required'))
+            config_snr_threshold = _extract_numeric_value(config_snapshot_dict.get('snr_threshold'))
+            config_optimal_atr_min_1m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_min_1m'))
+            config_optimal_atr_max_1m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_1m'))
+            config_optimal_atr_min_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_min_5m'))
+            config_optimal_atr_max_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_5m'))
+            config_volume_multiplier = _extract_numeric_value(config_snapshot_dict.get('volume_multiplier'))
+            config_use_confluence = config_snapshot_dict.get('use_confluence')
+            if isinstance(config_use_confluence, str):
+                config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
+            elif config_use_confluence is None:
+                config_use_confluence = None
+
+            config_snapshot = None
+            if config_snapshot_dict:
+                try:
+                    config_snapshot_safe = serialize_config_safe(config_snapshot_dict)
                     config_snapshot = json.dumps(config_snapshot_safe)
                 except Exception as e:
                     logger.error(f"❌ Erreur sérialisation config_snapshot pour trade: {e}", exc_info=True)
                     config_snapshot = None
-            else:
-                config_snapshot = None
             
             # Convertir entry_conditions en liste de strings pour PostgreSQL TEXT[]
             # (doit être fait avant de créer params)
@@ -1215,9 +1249,81 @@ class PostgreSQLDataLogger:
                 ('entry_vol5', entry_vol5),
                 ('entry_vol15', entry_vol15),
                 ('entry_scalability_score', entry_scalability_score),
+                # Config snapshot décomposé
+                ('config_min_score_required', config_min_score_required),
+                ('config_snr_threshold', config_snr_threshold),
+                ('config_optimal_atr_min_1m', config_optimal_atr_min_1m),
+                ('config_optimal_atr_max_1m', config_optimal_atr_max_1m),
+                ('config_optimal_atr_min_5m', config_optimal_atr_min_5m),
+                ('config_optimal_atr_max_5m', config_optimal_atr_max_5m),
+                ('config_volume_multiplier', config_volume_multiplier),
+                ('config_use_confluence', config_use_confluence),
                 ('config_snapshot', config_snapshot),
                 ('win', win)
             ])
+            
+            # 🔥 LIVE TRADING COLUMNS (ajoutées conditionnellement si présentes)
+            if trade_data.get('is_live_trade') is not None:
+                fields.extend([
+                    ('is_live_trade', trade_data.get('is_live_trade', False)),
+                    ('is_dry_run', trade_data.get('is_dry_run', True)),
+                    ('live_execution_mode', trade_data.get('live_execution_mode')),
+                    # Ordre d'entrée
+                    ('entry_order_id', trade_data.get('entry_order_id')),
+                    ('entry_order_type', trade_data.get('entry_order_type')),
+                    ('entry_requested_price', _extract_numeric_value(trade_data.get('entry_requested_price'))),
+                    ('entry_fill_price', _extract_numeric_value(trade_data.get('entry_fill_price'))),
+                    ('entry_slippage_pct', _extract_numeric_value(trade_data.get('entry_slippage_pct'))),
+                    ('entry_latency_ms', trade_data.get('entry_latency_ms')),
+                    # Ordre de sortie
+                    ('exit_order_id', trade_data.get('exit_order_id')),
+                    ('exit_order_type', trade_data.get('exit_order_type')),
+                    ('exit_requested_price', _extract_numeric_value(trade_data.get('exit_requested_price'))),
+                    ('exit_fill_price', _extract_numeric_value(trade_data.get('exit_fill_price'))),
+                    ('exit_slippage_pct', _extract_numeric_value(trade_data.get('exit_slippage_pct'))),
+                    ('exit_latency_ms', trade_data.get('exit_latency_ms')),
+                    # Timestamps LIVE & API responses
+                    ('entry_timestamp_live', trade_data.get('entry_timestamp')),
+                    ('exit_timestamp_live', trade_data.get('exit_timestamp')),
+                    ('entry_api_response', json.dumps(trade_data.get('entry_api_response')) if trade_data.get('entry_api_response') else None),
+                    ('exit_api_response', json.dumps(trade_data.get('exit_api_response')) if trade_data.get('exit_api_response') else None),
+                    # Futures / Levier
+                    ('leverage_used', trade_data.get('leverage_used', 1)),
+                    ('margin_mode', trade_data.get('margin_mode', 'isolated')),
+                    ('position_size_contracts', _extract_numeric_value(trade_data.get('position_size_contracts'))),
+                    ('liquidation_price', _extract_numeric_value(trade_data.get('liquidation_price'))),
+                    ('margin_used', _extract_numeric_value(trade_data.get('margin_used'))),
+                    # Frais détaillés
+                    ('maker_fee_rate', _extract_numeric_value(trade_data.get('maker_fee_rate'))),
+                    ('taker_fee_rate', _extract_numeric_value(trade_data.get('taker_fee_rate'))),
+                    ('entry_fee_usdt', _extract_numeric_value(trade_data.get('entry_fee_usdt'))),
+                    ('exit_fee_usdt', _extract_numeric_value(trade_data.get('exit_fee_usdt'))),
+                    ('total_fees_usdt', _extract_numeric_value(trade_data.get('total_fees_usdt'))),
+                    ('funding_rate_at_entry', _extract_numeric_value(trade_data.get('funding_rate_at_entry'))),
+                    ('funding_rate_at_exit', _extract_numeric_value(trade_data.get('funding_rate_at_exit'))),
+                    ('funding_paid_usdt', _extract_numeric_value(trade_data.get('funding_paid_usdt'))),
+                    # Performance temps réel
+                    ('time_to_fill_entry_ms', trade_data.get('time_to_fill_entry_ms')),
+                    ('time_to_fill_exit_ms', trade_data.get('time_to_fill_exit_ms')),
+                    ('price_at_signal', _extract_numeric_value(trade_data.get('price_at_signal'))),
+                    ('signal_to_fill_slippage_pct', _extract_numeric_value(trade_data.get('signal_to_fill_slippage_pct'))),
+                    # API & Réseau
+                    ('api_errors', json.dumps(trade_data.get('api_errors', []))),
+                    ('retry_count', trade_data.get('retry_count', 0)),
+                    ('exchange_latency_ms', trade_data.get('exchange_latency_ms')),
+                    ('ws_latency_ms', trade_data.get('ws_latency_ms')),
+                    # Score & ML
+                    ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
+                    ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence'))),
+                    ('ml_prediction', trade_data.get('ml_prediction')),
+                    # Analyse post-trade
+                    ('risk_reward_actual', _extract_numeric_value(trade_data.get('risk_reward_actual'))),
+                    ('risk_reward_planned', _extract_numeric_value(trade_data.get('risk_reward_planned'))),
+                    # Notes & Tags
+                    ('trade_notes', trade_data.get('trade_notes')),
+                    ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),
+                    ('user_rating', trade_data.get('user_rating'))
+                ])
 
             columns_sql = ',\n                    '.join(name for name, _ in fields)
             placeholders_sql = ', '.join(['%s'] * len(fields))
@@ -1265,17 +1371,208 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur logging trade {trade_data.get('symbol')}: {e}")
             return None
     
+    def _batch_insert_scans(self, cursor, scan_items: List[Dict[str, Any]]) -> None:
+        """Insérer en batch les scans accumulés dans scan_buffer."""
+        if not scan_items:
+            return
+
+        values: List[tuple] = []
+
+        for item in scan_items:
+            session_id = item.get('session_id')
+            symbol = item.get('symbol')
+            scan_data = item.get('scan_data') or {}
+
+            if not symbol or not isinstance(scan_data, dict):
+                continue
+
+            market_data = scan_data.get('market_data') or {}
+            indicators_1m = scan_data.get('indicators_1m') or {}
+            indicators_5m = scan_data.get('indicators_5m') or {}
+            filters = scan_data.get('filters') or {}
+            scores = scan_data.get('scores') or {}
+            patterns = scan_data.get('patterns') or {}
+
+            # Prix via get_preferred_price avec fallbacks
+            price = get_preferred_price(market_data, None)
+            if price is None:
+                price = get_preferred_price(scan_data.get('price'), None)
+            if price is None:
+                analysis_1m = scan_data.get('analysis_1m', {})
+                if isinstance(analysis_1m, dict):
+                    price = get_preferred_price(analysis_1m, None)
+            if price is None:
+                analysis_5m = scan_data.get('analysis_5m', {})
+                if isinstance(analysis_5m, dict):
+                    price = get_preferred_price(analysis_5m, None)
+
+            if price is not None and not isinstance(price, (int, float)):
+                try:
+                    price = float(price)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        f"⚠️ Prix invalide pour {symbol} dans batch: {price} (type: {type(price)})"
+                    )
+                    price = None
+
+            if price is None or price == 0:
+                if price is None:
+                    price = 0.0
+                    logger.warning(
+                        f"⚠️ Prix manquant pour {symbol} dans log_scan (batch), utilisation price=0"
+                    )
+
+            scan_duration = scan_data.get('scan_duration_ms')
+            if scan_duration is None:
+                scan_duration = 0.0
+
+            params_snap = scan_data.get('params_snapshot')
+            if not params_snap or not isinstance(params_snap, dict):
+                params_snap = {}
+
+            value_tuple = (
+                # En-tête
+                session_id, symbol, scan_duration,
+                price, market_data.get('spread_pct'),
+                market_data.get('book_depth'), market_data.get('balance_score'),
+                market_data.get('bid_vol'), market_data.get('ask_vol'),
+                market_data.get('orderbook_imbalance_ratio'),
+                # Scalability
+                market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
+                market_data.get('vol5') or scan_data.get('vol5'),
+                market_data.get('vol15') or scan_data.get('vol15'),
+                market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                # 1m
+                indicators_1m.get('ema9'), indicators_1m.get('ema21'),
+                indicators_1m.get('ema_diff_pct'),
+                indicators_1m.get('rsi'), indicators_1m.get('rsi_prev'),
+                indicators_1m.get('macd'), indicators_1m.get('macd_signal'),
+                indicators_1m.get('macd_hist'), indicators_1m.get('macd_hist_prev'),
+                indicators_1m.get('adx'), indicators_1m.get('di_plus'),
+                indicators_1m.get('di_minus'), indicators_1m.get('di_gap'),
+                indicators_1m.get('atr'), indicators_1m.get('atr_pct'),
+                indicators_1m.get('bb_upper'), indicators_1m.get('bb_middle'),
+                indicators_1m.get('bb_lower'), indicators_1m.get('bb_width'),
+                indicators_1m.get('bb_distance_to_lower'), indicators_1m.get('bb_distance_to_upper'),
+                indicators_1m.get('volume'), indicators_1m.get('volume_avg'),
+                indicators_1m.get('volume_ratio'), indicators_1m.get('volume_spike'),
+                # 5m
+                indicators_5m.get('ema9'), indicators_5m.get('ema21'),
+                indicators_5m.get('ema_diff_pct'),
+                indicators_5m.get('rsi'), indicators_5m.get('rsi_prev'),
+                indicators_5m.get('macd'), indicators_5m.get('macd_signal'),
+                indicators_5m.get('macd_hist'), indicators_5m.get('macd_hist_prev'),
+                indicators_5m.get('adx'), indicators_5m.get('di_plus'),
+                indicators_5m.get('di_minus'), indicators_5m.get('di_gap'),
+                indicators_5m.get('atr'), indicators_5m.get('atr_pct'),
+                indicators_5m.get('bb_upper'), indicators_5m.get('bb_middle'),
+                indicators_5m.get('bb_lower'), indicators_5m.get('bb_width'),
+                indicators_5m.get('bb_distance_to_lower'), indicators_5m.get('bb_distance_to_upper'),
+                indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
+                indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
+                # Filtres
+                filters.get('snr_1m'), filters.get('snr_5m'),
+                filters.get('snr_passed_1m', False), filters.get('snr_passed_5m', False),
+                filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
+                filters.get('breakout_passed_1m', False), filters.get('breakout_passed_5m', False),
+                filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
+                filters.get('wick_passed_1m', False), filters.get('wick_passed_5m', False),
+                filters.get('atr_optimal_passed_1m', False), filters.get('atr_optimal_passed_5m', False),
+                filters.get('volume_filter_passed_1m', False), filters.get('volume_filter_passed_5m', False),
+                # Confluence
+                scan_data.get('use_confluence'), scan_data.get('confluence_met', False),
+                scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
+                scores.get('score_long_1m', 0), scores.get('score_short_1m', 0),
+                scores.get('score_long_5m', 0), scores.get('score_short_5m', 0),
+                scan_data.get('timeframes_aligned', False),
+                # Patterns
+                patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
+                patterns.get('pattern_5m'), patterns.get('pattern_multi_5m'),
+                # Trend
+                scan_data.get('trend_timeframe', '15m'),
+                scan_data.get('trend_direction'), scan_data.get('trend_strength'),
+                scan_data.get('trend_bonus', 0),
+                # Divergence
+                scan_data.get('divergence_detected', False),
+                scan_data.get('divergence_type'), scan_data.get('divergence_bonus', 0),
+                # Decision
+                scan_data.get('is_opportunity', False),
+                scan_data.get('opportunity_direction'),
+                scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
+                # Params
+                json.dumps(params_snap),
+                # Config
+                params_snap.get('min_score_required'),
+                params_snap.get('snr_threshold'),
+                params_snap.get('optimal_atr_min_1m'),
+                params_snap.get('optimal_atr_max_1m'),
+                params_snap.get('optimal_atr_min_5m'),
+                params_snap.get('optimal_atr_max_5m'),
+                params_snap.get('volume_multiplier'),
+                params_snap.get('use_confluence')
+            )
+
+            values.append(value_tuple)
+
+        if not values:
+            logger.warning("⚠️ Aucun scan valide à insérer dans _batch_insert_scans (tous sans prix)")
+            return
+
+        columns = (
+            'session_id', 'symbol', 'scan_duration_ms',
+            'price', 'spread_pct', 'book_depth', 'balance_score',
+            'bid_vol', 'ask_vol', 'orderbook_imbalance_ratio',
+            'recent_volume', 'vol5', 'vol15', 'scalability_score',
+            'ema9_1m', 'ema21_1m', 'ema_diff_pct_1m',
+            'rsi_1m', 'rsi_prev_1m',
+            'macd_1m', 'macd_signal_1m', 'macd_hist_1m', 'macd_hist_prev_1m',
+            'adx_1m', 'di_plus_1m', 'di_minus_1m', 'di_gap_1m',
+            'atr_1m', 'atr_pct_1m',
+            'bb_upper_1m', 'bb_middle_1m', 'bb_lower_1m', 'bb_width_1m',
+            'bb_distance_to_lower_1m', 'bb_distance_to_upper_1m',
+            'volume_1m', 'volume_avg_1m', 'volume_ratio_1m', 'volume_spike_1m',
+            'ema9_5m', 'ema21_5m', 'ema_diff_pct_5m',
+            'rsi_5m', 'rsi_prev_5m',
+            'macd_5m', 'macd_signal_5m', 'macd_hist_5m', 'macd_hist_prev_5m',
+            'adx_5m', 'di_plus_5m', 'di_minus_5m', 'di_gap_5m',
+            'atr_5m', 'atr_pct_5m',
+            'bb_upper_5m', 'bb_middle_5m', 'bb_lower_5m', 'bb_width_5m',
+            'bb_distance_to_lower_5m', 'bb_distance_to_upper_5m',
+            'volume_5m', 'volume_avg_5m', 'volume_ratio_5m', 'volume_spike_5m',
+            'snr_1m', 'snr_5m', 'snr_passed_1m', 'snr_passed_5m',
+            'breakout_distance_1m', 'breakout_distance_5m',
+            'breakout_passed_1m', 'breakout_passed_5m',
+            'wick_ratio_1m', 'wick_ratio_5m', 'wick_passed_1m', 'wick_passed_5m',
+            'atr_optimal_passed_1m', 'atr_optimal_passed_5m',
+            'volume_filter_passed_1m', 'volume_filter_passed_5m',
+            'use_confluence', 'confluence_met',
+            'score_1m', 'score_5m', 'score_total',
+            'score_long_1m', 'score_short_1m', 'score_long_5m', 'score_short_5m',
+            'timeframes_aligned',
+            'pattern_1m', 'pattern_multi_1m', 'pattern_5m', 'pattern_multi_5m',
+            'trend_timeframe', 'trend_direction', 'trend_strength', 'trend_bonus',
+            'divergence_detected', 'divergence_type', 'divergence_bonus',
+            'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
+            'params_snapshot',
+            'config_min_score_required', 'config_snr_threshold',
+            'config_atr_min_1m', 'config_atr_max_1m',
+            'config_atr_min_5m', 'config_atr_max_5m',
+            'config_volume_multiplier', 'config_use_confluence'
+        )
+
+        execute_values(
+            cursor,
+            f"INSERT INTO scan_logs (timestamp, {', '.join(columns)}) VALUES %s",
+            values,
+            template=f"(NOW(), {', '.join(['%s'] * len(columns))})",
+            page_size=len(values)
+        )
+
     def _flush_buffers(self, force: bool = False):
-        """
-        🔥 PHASE 3: Flush les buffers vers PostgreSQL
-        
-        Args:
-            force: Si True, flush même si buffer pas plein
-        """
+        """Flush les buffers de scans et d'opportunités vers PostgreSQL."""
         if not self.enabled:
             return
-        
-        # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
+
         now = datetime.now(timezone.utc)
         time_since_flush = (now - self.last_flush_time).total_seconds()
         should_flush = force or (
@@ -1283,398 +1580,140 @@ class PostgreSQLDataLogger:
             len(self.opportunity_buffer) >= self.batch_size or
             time_since_flush >= self.batch_flush_interval
         )
-        
+
         if not should_flush:
             return
-        
-        with self.buffer_lock:
-            scans_count = len(self.scan_buffer)
-            opportunities_count = len(self.opportunity_buffer)
-            
-            # Flush scans
-            if self.scan_buffer:
-                try:
-                    logger.info(f"🔄 Flush {scans_count} scan(s) vers PostgreSQL (force={force})")
-                    self._batch_insert_scans(list(self.scan_buffer))
-                    self.scan_buffer.clear()
-                    logger.info(f"✅ {scans_count} scan(s) flushés avec succès")
-                except Exception as e:
-                    logger.error(f"❌ Erreur flush scans: {e}")
-            
-            # Flush opportunities
-            if self.opportunity_buffer:
-                try:
-                    logger.info(f"🔄 Flush {opportunities_count} opportunité(s) vers PostgreSQL (force={force})")
-                    self._batch_insert_opportunities(list(self.opportunity_buffer))
-                    self.opportunity_buffer.clear()
-                    logger.info(f"✅ {opportunities_count} opportunité(s) flushées avec succès")
-                except Exception as e:
-                    logger.error(f"❌ Erreur flush opportunities: {e}")
-            
-            if scans_count > 0 or opportunities_count > 0:
-                logger.info(f"📊 Flush buffers: {scans_count} scan(s), {opportunities_count} opportunité(s)")
-            
-            self.last_flush_time = now
-    
-    def _batch_insert_scans(self, scans: List[Dict[str, Any]]):
-        """
-        🔥 PHASE 3: Insert batch de scans avec execute_values
-        
-        Args:
-            scans: Liste de dicts avec (session_id, symbol, scan_data)
-        """
-        if not scans:
-            return
-        
-        conn = self._get_connection()
-        if not conn:
-            return
-        
-        try:
-            cursor = conn.cursor()
-            
-            # Préparer les valeurs pour execute_values
-            values = []
-            for scan_item in scans:
-                session_id = scan_item['session_id']
-                symbol = scan_item['symbol']
-                scan_data = scan_item['scan_data']
-                
-                indicators_1m = scan_data.get('indicators_1m', {})
-                indicators_5m = scan_data.get('indicators_5m', {})
-                filters = scan_data.get('filters', {})
-                scores = scan_data.get('scores', {})
-                patterns = scan_data.get('patterns', {})
-                market_data = scan_data.get('market_data', {})
-                
-                # 🔥 FIX: Récupérer le prix avec fallbacks multiples (pour éviter NULL)
-                price = market_data.get('price')
-                if price is None:
-                    # Fallback 1: Depuis scan_data directement
-                    price = scan_data.get('price')
-                if price is None:
-                    # Fallback 2: Depuis analysis_1m ou analysis_5m si disponible
-                    analysis_1m = scan_data.get('analysis_1m', {})
-                    if isinstance(analysis_1m, dict):
-                        price = analysis_1m.get('price')
-                    if price is None:
-                        analysis_5m = scan_data.get('analysis_5m', {})
-                        if isinstance(analysis_5m, dict):
-                            price = analysis_5m.get('price')
-                # Extraire la valeur numérique si c'est un dict
-                if isinstance(price, dict):
-                    price = price.get('price') or price.get('lastPrice') or price.get('close') or price.get('value')
-                # Vérifier que price est un nombre
-                if price is not None and not isinstance(price, (int, float)):
-                    try:
-                        price = float(price)
-                    except (ValueError, TypeError):
-                        logger.warning(f"⚠️ Prix invalide pour {symbol} dans batch: {price} (type: {type(price)})")
-                        price = None
-                
-                # Si le prix est toujours None, on ne peut pas insérer (contrainte NOT NULL)
-                if price is None:
-                    logger.error(f"❌ Prix manquant pour {symbol} dans batch insert, scan ignoré")
-                    continue
-                
-                # Construire tuple de valeurs (même ordre que dans log_scan)
-                value_tuple = (
-                    session_id, symbol, scan_data.get('scan_duration_ms'),
-                    price, market_data.get('spread_pct'),
-                    market_data.get('book_depth'), market_data.get('balance_score'),
-                    market_data.get('bid_vol'), market_data.get('ask_vol'),
-                    market_data.get('orderbook_imbalance_ratio'),
-                    # Paramètres du scan de scalabilité
-                    market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
-                    market_data.get('vol5') or scan_data.get('vol5'),
-                    market_data.get('vol15') or scan_data.get('vol15'),
-                    market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
-                    # 1m indicators
-                    indicators_1m.get('ema9'), indicators_1m.get('ema21'),
-                    indicators_1m.get('ema_diff_pct'),
-                    indicators_1m.get('rsi'), indicators_1m.get('rsi_prev'),
-                    indicators_1m.get('macd'), indicators_1m.get('macd_signal'),
-                    indicators_1m.get('macd_hist'), indicators_1m.get('macd_hist_prev'),
-                    indicators_1m.get('adx'), indicators_1m.get('di_plus'),
-                    indicators_1m.get('di_minus'), indicators_1m.get('di_gap'),
-                    indicators_1m.get('atr'), indicators_1m.get('atr_pct'),
-                    indicators_1m.get('bb_upper'), indicators_1m.get('bb_middle'),
-                    indicators_1m.get('bb_lower'), indicators_1m.get('bb_width'),
-                    indicators_1m.get('bb_distance_to_lower'), indicators_1m.get('bb_distance_to_upper'),
-                    indicators_1m.get('volume'), indicators_1m.get('volume_avg'),
-                    indicators_1m.get('volume_ratio'), indicators_1m.get('volume_spike'),
-                    # 5m indicators
-                    indicators_5m.get('ema9'), indicators_5m.get('ema21'),
-                    indicators_5m.get('ema_diff_pct'),
-                    indicators_5m.get('rsi'), indicators_5m.get('rsi_prev'),
-                    indicators_5m.get('macd'), indicators_5m.get('macd_signal'),
-                    indicators_5m.get('macd_hist'), indicators_5m.get('macd_hist_prev'),
-                    indicators_5m.get('adx'), indicators_5m.get('di_plus'),
-                    indicators_5m.get('di_minus'), indicators_5m.get('di_gap'),
-                    indicators_5m.get('atr'), indicators_5m.get('atr_pct'),
-                    indicators_5m.get('bb_upper'), indicators_5m.get('bb_middle'),
-                    indicators_5m.get('bb_lower'), indicators_5m.get('bb_width'),
-                    indicators_5m.get('bb_distance_to_lower'), indicators_5m.get('bb_distance_to_upper'),
-                    indicators_5m.get('volume'), indicators_5m.get('volume_avg'),
-                    indicators_5m.get('volume_ratio'), indicators_5m.get('volume_spike'),
-                    # Filters
-                    filters.get('snr_1m'), filters.get('snr_5m'),
-                    filters.get('snr_passed_1m'), filters.get('snr_passed_5m'),
-                    filters.get('breakout_distance_1m'), filters.get('breakout_distance_5m'),
-                    filters.get('breakout_passed_1m'), filters.get('breakout_passed_5m'),
-                    filters.get('wick_ratio_1m'), filters.get('wick_ratio_5m'),
-                    filters.get('wick_passed_1m'), filters.get('wick_passed_5m'),
-                    filters.get('atr_optimal_passed_1m'), filters.get('atr_optimal_passed_5m'),
-                    filters.get('volume_filter_passed_1m'), filters.get('volume_filter_passed_5m'),
-                    # Confluence
-                    scan_data.get('use_confluence'), scan_data.get('confluence_met'),
-                    scores.get('score_1m'), scores.get('score_5m'), scores.get('score_total'),
-                    scores.get('score_long_1m'), scores.get('score_short_1m'),
-                    scores.get('score_long_5m'), scores.get('score_short_5m'),
-                    scan_data.get('timeframes_aligned'),
-                    # Patterns
-                    patterns.get('pattern_1m'), patterns.get('pattern_multi_1m'),
-                    patterns.get('pattern_5m'), patterns.get('pattern_multi_5m'),
-                    # Trend
-                    scan_data.get('trend_timeframe', '15m'),
-                    scan_data.get('trend_direction'), scan_data.get('trend_strength'),
-                    scan_data.get('trend_bonus'),
-                    # Divergence
-                    scan_data.get('divergence_detected', False),
-                    scan_data.get('divergence_type'), scan_data.get('divergence_bonus', 0),
-                    # Decision
-                    scan_data.get('is_opportunity', False),
-                    scan_data.get('opportunity_direction'),
-                    scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
-                    # Params
-                    json.dumps(scan_data.get('params_snapshot', {}))
-                )
-                values.append(value_tuple)
-            
-            # Colonnes pour execute_values (même ordre que dans log_scan)
-            columns = (
-                'session_id', 'symbol', 'scan_duration_ms',
-                'price', 'spread_pct', 'book_depth', 'balance_score',
-                'bid_vol', 'ask_vol', 'orderbook_imbalance_ratio',
-                'recent_volume', 'vol5', 'vol15', 'scalability_score',
-                'ema9_1m', 'ema21_1m', 'ema_diff_pct_1m',
-                'rsi_1m', 'rsi_prev_1m',
-                'macd_1m', 'macd_signal_1m', 'macd_hist_1m', 'macd_hist_prev_1m',
-                'adx_1m', 'di_plus_1m', 'di_minus_1m', 'di_gap_1m',
-                'atr_1m', 'atr_pct_1m',
-                'bb_upper_1m', 'bb_middle_1m', 'bb_lower_1m', 'bb_width_1m',
-                'bb_distance_to_lower_1m', 'bb_distance_to_upper_1m',
-                'volume_1m', 'volume_avg_1m', 'volume_ratio_1m', 'volume_spike_1m',
-                'ema9_5m', 'ema21_5m', 'ema_diff_pct_5m',
-                'rsi_5m', 'rsi_prev_5m',
-                'macd_5m', 'macd_signal_5m', 'macd_hist_5m', 'macd_hist_prev_5m',
-                'adx_5m', 'di_plus_5m', 'di_minus_5m', 'di_gap_5m',
-                'atr_5m', 'atr_pct_5m',
-                'bb_upper_5m', 'bb_middle_5m', 'bb_lower_5m', 'bb_width_5m',
-                'bb_distance_to_lower_5m', 'bb_distance_to_upper_5m',
-                'volume_5m', 'volume_avg_5m', 'volume_ratio_5m', 'volume_spike_5m',
-                'snr_1m', 'snr_5m', 'snr_passed_1m', 'snr_passed_5m',
-                'breakout_distance_1m', 'breakout_distance_5m',
-                'breakout_passed_1m', 'breakout_passed_5m',
-                'wick_ratio_1m', 'wick_ratio_5m', 'wick_passed_1m', 'wick_passed_5m',
-                'atr_optimal_passed_1m', 'atr_optimal_passed_5m',
-                'volume_filter_passed_1m', 'volume_filter_passed_5m',
-                'use_confluence', 'confluence_met',
-                'score_1m', 'score_5m', 'score_total',
-                'score_long_1m', 'score_short_1m', 'score_long_5m', 'score_short_5m',
-                'timeframes_aligned',
-                'pattern_1m', 'pattern_multi_1m', 'pattern_5m', 'pattern_multi_5m',
-                'trend_timeframe', 'trend_direction', 'trend_strength', 'trend_bonus',
-                'divergence_detected', 'divergence_type', 'divergence_bonus',
-                'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
-                'params_snapshot'
-            )
-            
-            # Utiliser execute_values pour batch insert
-            execute_values(
-                cursor,
-                f"INSERT INTO scan_logs (timestamp, {', '.join(columns)}) VALUES %s",
-                values,
-                template=f"(NOW(), {', '.join(['%s'] * len(columns))})",
-                page_size=len(values)
-            )
-            
-            conn.commit()
-            cursor.close()
-            logger.debug(f"📊 Batch insert: {len(scans)} scans insérés")
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur batch insert scans: {e}")
-            if conn:
-                conn.rollback()
-        finally:
-            self._return_connection(conn)
-    
-    def _batch_insert_opportunities(self, opportunities: List[Dict[str, Any]]):
-        """
-        🔥 PHASE 3: Insert batch d'opportunités avec execute_values
-        
-        Args:
-            opportunities: Liste de dicts avec (scan_id, session_id, symbol, opportunity_data)
-        """
-        if not opportunities:
-            return
-        
-        conn = self._get_connection()
-        if not conn:
-            return
-        
-        try:
-            cursor = conn.cursor()
-            
-            values = []
-            for opp_item in opportunities:
-                scan_id = opp_item['scan_id']
-                symbol = opp_item['symbol']
-                
-                # 🔥 FIX: Si scan_id = 0 (temporaire), essayer de le résoudre depuis scan_logs
-                if scan_id == 0 or scan_id is None:
-                    # Chercher le scan_log_id correspondant dans scan_logs
-                    # en utilisant symbol et timestamp récent (dernières 5 minutes)
-                    resolve_query = """
-                        SELECT id FROM scan_logs 
-                        WHERE symbol = %s 
-                          AND is_opportunity = true
-                          AND timestamp > NOW() - INTERVAL '5 minutes'
-                        ORDER BY timestamp DESC 
-                        LIMIT 1
-                    """
-                    cursor.execute(resolve_query, (symbol,))
-                    result = cursor.fetchone()
-                    if result:
-                        scan_id = result[0]
-                        logger.debug(f"✅ scan_id résolu pour {symbol}: {scan_id}")
-                    else:
-                        logger.warning(f"⚠️ Impossible de résoudre scan_id pour {symbol}, utilisation de 0")
-                        scan_id = 0
-                
-                session_id = opp_item['session_id']
-                opp_data = opp_item['opportunity_data']
-                
-                # Convertir conditions_matched en liste de strings
-                conditions_matched = opp_data.get('conditions_matched', [])
-                if isinstance(conditions_matched, dict):
-                    # Si c'est un dict, prendre les clés ou les valeurs selon le cas
-                    conditions_matched = [str(k) for k in conditions_matched.keys()] if conditions_matched else []
-                elif isinstance(conditions_matched, list):
-                    # S'assurer que tous les éléments sont des strings
-                    conditions_matched = [str(item) for item in conditions_matched if item is not None]
-                else:
-                    # Autre type (str, int, etc.) -> convertir en liste
-                    conditions_matched = [str(conditions_matched)] if conditions_matched is not None else []
-                
-                # Extraire et valider les valeurs (s'assurer qu'elles ne sont pas des dicts)
-                entry_price = opp_data.get('entry_price') or opp_data.get('entry_suggested')
-                tp_price = opp_data.get('tp_price') or opp_data.get('tp_suggested')
-                sl_price = opp_data.get('sl_price') or opp_data.get('sl_suggested')
-                tp_sl_mode = opp_data.get('tp_sl_mode', 'FIXE')
-                setup_score = opp_data.get('setup_score')
-                direction = opp_data.get('direction')
-                status = opp_data.get('status', 'PENDING')
-                
-                # S'assurer que les prix sont des nombres, pas des dicts
-                if isinstance(entry_price, dict):
-                    entry_price = entry_price.get('price') or entry_price.get('value')
-                if isinstance(tp_price, dict):
-                    tp_price = tp_price.get('price') or tp_price.get('value')
-                if isinstance(sl_price, dict):
-                    sl_price = sl_price.get('price') or sl_price.get('value')
-                if isinstance(tp_sl_mode, dict):
-                    tp_sl_mode = tp_sl_mode.get('mode') or 'FIXE'
-                # S'assurer que setup_score est un nombre, pas un dict
-                if isinstance(setup_score, dict):
-                    setup_score = setup_score.get('score') or setup_score.get('value') or setup_score.get('totalScore')
-                # S'assurer que direction est une string, pas un dict
-                if isinstance(direction, dict):
-                    direction = direction.get('direction') or direction.get('value') or str(direction)
-                # S'assurer que status est une string, pas un dict
-                if isinstance(status, dict):
-                    status = status.get('status') or status.get('value') or 'PENDING'
-                
-                # 🔥 FIX: Extraire les champs manquants
-                score_long = opp_data.get('score_long')
-                score_short = opp_data.get('score_short')
-                score_min_required = opp_data.get('score_min_required')
-                trend_bonus = opp_data.get('trend_bonus')
-                divergence_bonus = opp_data.get('divergence_bonus')
-                condition_count = opp_data.get('condition_count')
-                setup_reason = opp_data.get('setup_reason')
-                
-                value_tuple = (
-                    scan_id, session_id, symbol,
-                    str(status) if status else 'PENDING',
-                    str(direction) if direction else None,
-                    float(setup_score) if setup_score is not None and not isinstance(setup_score, dict) else None,
-                    float(score_long) if score_long is not None else None,
-                    float(score_short) if score_short is not None else None,
-                    float(score_min_required) if score_min_required is not None else None,
-                    float(trend_bonus) if trend_bonus is not None else None,
-                    float(divergence_bonus) if divergence_bonus is not None else None,
-                    conditions_matched,  # TEXT[] - liste de strings
-                    int(condition_count) if condition_count is not None else None,
-                    str(setup_reason) if setup_reason else None,
-                    float(entry_price) if entry_price is not None and not isinstance(entry_price, dict) else None,  # entry_suggested
-                    float(tp_price) if tp_price is not None and not isinstance(tp_price, dict) else None,  # tp_suggested
-                    float(sl_price) if sl_price is not None and not isinstance(sl_price, dict) else None,  # sl_suggested
-                    str(tp_sl_mode) if tp_sl_mode else 'FIXE'  # tp_sl_mode
-                )
-                values.append(value_tuple)
-            
-            columns = (
-                'scan_log_id', 'session_id', 'symbol',
-                'status', 'direction', 'setup_score',
-                'score_long', 'score_short', 'score_min_required',
-                'trend_bonus', 'divergence_bonus',
-                'conditions_matched', 'condition_count', 'setup_reason',
-                'entry_suggested', 'tp_suggested', 'sl_suggested',
-                'tp_sl_mode'
-            )
-            
-            execute_values(
-                cursor,
-                f"INSERT INTO opportunities (timestamp, {', '.join(columns)}) VALUES %s",
-                values,
-                template=f"(NOW(), {', '.join(['%s'] * len(columns))})",
-                page_size=len(values)
-            )
-            
-            conn.commit()
-            cursor.close()
-            logger.debug(f"📊 Batch insert: {len(opportunities)} opportunités insérées")
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur batch insert opportunities: {e}")
-            if conn:
-                conn.rollback()
-        finally:
-            self._return_connection(conn)
-    
-    def close(self):
-        """Fermer le pool de connexions et flush les buffers"""
-        if not self.enabled:
-            return
-        
-        # Flush final des buffers
-        logger.info("🔄 Flush final des buffers PostgreSQL...")
-        scans_before = len(self.scan_buffer)
-        opportunities_before = len(self.opportunity_buffer)
-        
-        self._flush_buffers(force=True)
-        
-        if scans_before > 0 or opportunities_before > 0:
-            logger.info(f"✅ Flush final terminé: {scans_before} scan(s) et {opportunities_before} opportunité(s) flushés")
-        else:
-            logger.info("✅ Flush final terminé: aucun élément en attente")
-        
-        if self.pool:
-            try:
-                self.pool.closeall()
-                logger.info("✅ Pool PostgreSQL fermé")
-            except Exception as e:
-                logger.error(f"❌ Erreur fermeture pool: {e}")
 
+        self.last_flush_time = now
+
+        conn = self._get_connection()
+        if not conn:
+            return
+
+        try:
+            cursor = conn.cursor()
+
+            with self.buffer_lock:
+                scan_items = list(self.scan_buffer)
+                self.scan_buffer.clear()
+                opportunity_items = list(self.opportunity_buffer)
+                self.opportunity_buffer.clear()
+
+            if scan_items:
+                self._batch_insert_scans(cursor, scan_items)
+
+            # Opportunités : pour l'instant, utiliser log_opportunity en mode direct
+            for item in opportunity_items:
+                try:
+                    self.log_opportunity(
+                        scan_id=item.get('scan_id'),
+                        symbol=item.get('symbol'),
+                        opportunity_data=item.get('opportunity_data') or {},
+                        session_id=item.get('session_id'),
+                        use_batch=False
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Erreur batch insert opportunity pour {item.get('symbol')}: {e}")
+
+            conn.commit()
+            cursor.close()
+            self._return_connection(conn)
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du flush des buffers PostgreSQL: {e}")
+            if conn:
+                conn.rollback()
+                self._return_connection(conn)
+
+    def close(self):
+        """
+        Fermer le pool de connexions PostgreSQL
+
+        Cette méthode doit être appelée avant de quitter l'application
+        pour libérer proprement les ressources.
+        """
+        if not self.enabled or not self.pool:
+            return
+
+        try:
+            # Flush les buffers avant de fermer
+            self._flush_buffers()
+
+            # Fermer toutes les connexions du pool
+            self.pool.closeall()
+            logger.info("✅ Pool de connexions PostgreSQL fermé")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la fermeture du pool PostgreSQL: {e}")
+
+
+# ============================================================================
+# Singleton global pour accès facile
+# ============================================================================
+_pg_datalogger_instance = None
+
+
+def get_pg_datalogger():
+    """
+    Récupérer l'instance singleton PostgreSQLDataLogger
+    
+    Returns:
+        PostgreSQLDataLogger ou None si non initialisé/désactivé
+    """
+    global _pg_datalogger_instance
+    
+    # Si une instance existe déjà, la retourner
+    if _pg_datalogger_instance is not None:
+        return _pg_datalogger_instance
+    
+    # Sinon, tenter de créer une nouvelle instance avec config par défaut
+    if not PSYCOPG2_AVAILABLE:
+        logger.warning("⚠️ psycopg2 non disponible, PostgreSQL DataLogger désactivé")
+        return None
+    
+    try:
+        # Charger config depuis variables d'environnement
+        import os
+        from dotenv import load_dotenv
+        from pathlib import Path
+        
+        env_path = Path(__file__).parent.parent / '.env'
+        if env_path.exists():
+            load_dotenv(env_path)
+        
+        enabled = os.getenv('POSTGRES_ENABLED', 'true').lower() == 'true'
+        
+        if not enabled:
+            logger.info("ℹ️ PostgreSQL DataLogger désactivé dans .env")
+            return None
+        
+        _pg_datalogger_instance = PostgreSQLDataLogger(
+            host=os.getenv('POSTGRES_HOST', 'localhost'),
+            port=int(os.getenv('POSTGRES_PORT', '5432')),
+            database=os.getenv('POSTGRES_DB', 'tradebot'),
+            user=os.getenv('POSTGRES_USER', 'postgres'),
+            password=os.getenv('POSTGRES_PASSWORD', ''),
+            min_conn=int(os.getenv('POSTGRES_MIN_CONN', '2')),
+            max_conn=int(os.getenv('POSTGRES_MAX_CONN', '10'))
+        )
+        
+        if _pg_datalogger_instance and _pg_datalogger_instance.enabled:
+            logger.info("✅ PostgreSQL DataLogger singleton créé")
+        else:
+            logger.warning("⚠️ PostgreSQL DataLogger créé mais désactivé")
+        
+        return _pg_datalogger_instance
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur création PostgreSQL DataLogger singleton: {e}")
+        return None
+
+
+def set_pg_datalogger(instance):
+    """
+    Définir manuellement l'instance singleton PostgreSQLDataLogger
+    
+    Args:
+        instance: Instance de PostgreSQLDataLogger
+    """
+    global _pg_datalogger_instance
+    _pg_datalogger_instance = instance
+    logger.info("✅ Instance PostgreSQL DataLogger définie manuellement")

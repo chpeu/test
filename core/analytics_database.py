@@ -236,7 +236,7 @@ class AnalyticsDatabase:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_validated_trade_id ON setups_validated(trade_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_validated_config ON setups_validated(config_hash)')
         
-        # ==================== TABLE 3: TRADES (Extension existante) ====================
+        # ==================== TABLE 3: TRADES (Extension existante + LIVE TRADING) ====================
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -289,6 +289,113 @@ class AnalyticsDatabase:
                 config_hash TEXT,
                 session_id TEXT,
                 
+                -- ==================== 🔥 LIVE TRADING COLUMNS ====================
+                -- Mode & Type
+                is_live_trade BOOLEAN DEFAULT FALSE,
+                is_dry_run BOOLEAN DEFAULT TRUE,
+                live_execution_mode TEXT,
+                
+                -- Ordre d'entrée
+                entry_order_id TEXT,
+                entry_order_type TEXT,
+                entry_requested_price REAL,
+                entry_fill_price REAL,
+                entry_slippage_pct REAL,
+                entry_latency_ms INTEGER,
+                entry_timestamp TEXT,
+                entry_api_response TEXT,
+                
+                -- Ordre de sortie
+                exit_order_id TEXT,
+                exit_order_type TEXT,
+                exit_requested_price REAL,
+                exit_fill_price REAL,
+                exit_slippage_pct REAL,
+                exit_latency_ms INTEGER,
+                exit_timestamp TEXT,
+                exit_api_response TEXT,
+                
+                -- Futures / Levier
+                leverage_used INTEGER DEFAULT 1,
+                margin_mode TEXT DEFAULT 'isolated',
+                position_size_usdt REAL,
+                position_size_contracts REAL,
+                liquidation_price REAL,
+                margin_used REAL,
+                
+                -- Frais détaillés
+                maker_fee_rate REAL,
+                taker_fee_rate REAL,
+                entry_fee_usdt REAL,
+                exit_fee_usdt REAL,
+                total_fees_usdt REAL,
+                funding_rate_at_entry REAL,
+                funding_rate_at_exit REAL,
+                funding_paid_usdt REAL,
+                
+                -- Performance temps réel
+                time_to_fill_entry_ms INTEGER,
+                time_to_fill_exit_ms INTEGER,
+                price_at_signal REAL,
+                price_at_order_sent REAL,
+                signal_to_fill_slippage_pct REAL,
+                
+                -- API & Réseau
+                api_errors TEXT,
+                retry_count INTEGER DEFAULT 0,
+                exchange_latency_ms INTEGER,
+                ws_latency_ms INTEGER,
+                
+                -- Contexte marché à l'entrée
+                market_volatility_entry REAL,
+                spread_at_entry_pct REAL,
+                volume_24h_at_entry REAL,
+                orderbook_imbalance_entry REAL,
+                atr_at_entry REAL,
+                
+                -- Contexte marché à la sortie
+                market_volatility_exit REAL,
+                spread_at_exit_pct REAL,
+                volume_24h_at_exit REAL,
+                orderbook_imbalance_exit REAL,
+                atr_at_exit REAL,
+                
+                -- Indicateurs techniques à l'entrée
+                rsi_at_entry REAL,
+                macd_at_entry REAL,
+                bb_position_entry REAL,
+                adx_at_entry REAL,
+                di_plus_entry REAL,
+                di_minus_entry REAL,
+                
+                -- Indicateurs techniques à la sortie
+                rsi_at_exit REAL,
+                macd_at_exit REAL,
+                bb_position_exit REAL,
+                adx_at_exit REAL,
+                di_plus_exit REAL,
+                di_minus_exit REAL,
+                
+                -- Score & ML
+                setup_score REAL,
+                ml_confidence REAL,
+                ml_prediction TEXT,
+                ml_features TEXT,
+                
+                -- Analyse post-trade
+                optimal_exit_price REAL,
+                optimal_exit_time TEXT,
+                missed_profit_pct REAL,
+                risk_reward_actual REAL,
+                risk_reward_planned REAL,
+                
+                -- Notes & Tags
+                trade_notes TEXT,
+                trade_tags TEXT,
+                user_rating INTEGER,
+                
+                -- ==================== END LIVE TRADING ====================
+                
                 -- Metadata
                 instance_port INTEGER,
                 metadata TEXT,
@@ -303,6 +410,11 @@ class AnalyticsDatabase:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_mode ON trades(trading_mode)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_backtest ON trades(backtest_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_config ON trades(config_hash)')
+        # 🔥 Index pour live trading
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_is_live ON trades(is_live_trade)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_is_dry_run ON trades(is_dry_run)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_leverage ON trades(leverage_used)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_entry_order ON trades(entry_order_id)')
         
         # ==================== TABLE 4: TRADE BEHAVIOR ====================
         cursor.execute('''
@@ -607,18 +719,25 @@ class AnalyticsDatabase:
     # ==================== TRADES ====================
     
     def insert_trade(self, trade: Dict) -> int:
-        """Insérer un trade (extension table existante)"""
+        """Insérer un trade (extension table existante + LIVE TRADING)"""
         cursor = self.conn.cursor()
         
         config_hash = None
         if 'config' in trade:
             config_hash = self._calculate_config_hash(trade['config'])
         
+        # JSON fields
         condition_types_json = json.dumps(trade.get('condition_types', []))
         tp_escalier_levels_hit_json = json.dumps(trade.get('tp_escalier_levels_hit', []))
         tp_escalier_profits_json = json.dumps(trade.get('tp_escalier_profits', []))
         trailing_stop_updates_json = json.dumps(trade.get('trailing_stop_updates', []))
         metadata_json = json.dumps(trade.get('metadata', {}))
+        # 🔥 Live trading JSON fields
+        entry_api_response_json = json.dumps(trade.get('entry_api_response', {}))
+        exit_api_response_json = json.dumps(trade.get('exit_api_response', {}))
+        api_errors_json = json.dumps(trade.get('api_errors', []))
+        ml_features_json = json.dumps(trade.get('ml_features', {}))
+        trade_tags_json = json.dumps(trade.get('trade_tags', []))
         
         cursor.execute('''
             INSERT INTO trades (
@@ -632,9 +751,33 @@ class AnalyticsDatabase:
                 early_invalidation_threshold, early_invalidation_elapsed,
                 trailing_stop_updates,
                 is_backtest, backtest_id, config_hash, session_id,
+                -- 🔥 LIVE TRADING COLUMNS
+                is_live_trade, is_dry_run, live_execution_mode,
+                entry_order_id, entry_order_type, entry_requested_price, entry_fill_price,
+                entry_slippage_pct, entry_latency_ms, entry_timestamp, entry_api_response,
+                exit_order_id, exit_order_type, exit_requested_price, exit_fill_price,
+                exit_slippage_pct, exit_latency_ms, exit_timestamp, exit_api_response,
+                leverage_used, margin_mode, position_size_usdt, position_size_contracts,
+                liquidation_price, margin_used,
+                maker_fee_rate, taker_fee_rate, entry_fee_usdt, exit_fee_usdt, total_fees_usdt,
+                funding_rate_at_entry, funding_rate_at_exit, funding_paid_usdt,
+                time_to_fill_entry_ms, time_to_fill_exit_ms, price_at_signal, price_at_order_sent,
+                signal_to_fill_slippage_pct, api_errors, retry_count, exchange_latency_ms, ws_latency_ms,
+                market_volatility_entry, spread_at_entry_pct, volume_24h_at_entry, orderbook_imbalance_entry, atr_at_entry,
+                market_volatility_exit, spread_at_exit_pct, volume_24h_at_exit, orderbook_imbalance_exit, atr_at_exit,
+                rsi_at_entry, macd_at_entry, bb_position_entry, adx_at_entry, di_plus_entry, di_minus_entry,
+                rsi_at_exit, macd_at_exit, bb_position_exit, adx_at_exit, di_plus_exit, di_minus_exit,
+                setup_score, ml_confidence, ml_prediction, ml_features,
+                optimal_exit_price, optimal_exit_time, missed_profit_pct, risk_reward_actual, risk_reward_planned,
+                trade_notes, trade_tags, user_rating,
                 instance_port, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
         ''', (
+            # Base columns
             trade.get('timestamp'),
             trade.get('date'),
             trade.get('time'),
@@ -671,6 +814,83 @@ class AnalyticsDatabase:
             trade.get('backtest_id'),
             config_hash,
             trade.get('session_id'),
+            # 🔥 LIVE TRADING VALUES
+            trade.get('is_live_trade', False),
+            trade.get('is_dry_run', True),
+            trade.get('live_execution_mode'),
+            trade.get('entry_order_id'),
+            trade.get('entry_order_type'),
+            trade.get('entry_requested_price'),
+            trade.get('entry_fill_price'),
+            trade.get('entry_slippage_pct'),
+            trade.get('entry_latency_ms'),
+            trade.get('entry_timestamp'),
+            entry_api_response_json,
+            trade.get('exit_order_id'),
+            trade.get('exit_order_type'),
+            trade.get('exit_requested_price'),
+            trade.get('exit_fill_price'),
+            trade.get('exit_slippage_pct'),
+            trade.get('exit_latency_ms'),
+            trade.get('exit_timestamp'),
+            exit_api_response_json,
+            trade.get('leverage_used', 1),
+            trade.get('margin_mode', 'isolated'),
+            trade.get('position_size_usdt'),
+            trade.get('position_size_contracts'),
+            trade.get('liquidation_price'),
+            trade.get('margin_used'),
+            trade.get('maker_fee_rate'),
+            trade.get('taker_fee_rate'),
+            trade.get('entry_fee_usdt'),
+            trade.get('exit_fee_usdt'),
+            trade.get('total_fees_usdt'),
+            trade.get('funding_rate_at_entry'),
+            trade.get('funding_rate_at_exit'),
+            trade.get('funding_paid_usdt'),
+            trade.get('time_to_fill_entry_ms'),
+            trade.get('time_to_fill_exit_ms'),
+            trade.get('price_at_signal'),
+            trade.get('price_at_order_sent'),
+            trade.get('signal_to_fill_slippage_pct'),
+            api_errors_json,
+            trade.get('retry_count', 0),
+            trade.get('exchange_latency_ms'),
+            trade.get('ws_latency_ms'),
+            trade.get('market_volatility_entry'),
+            trade.get('spread_at_entry_pct'),
+            trade.get('volume_24h_at_entry'),
+            trade.get('orderbook_imbalance_entry'),
+            trade.get('atr_at_entry'),
+            trade.get('market_volatility_exit'),
+            trade.get('spread_at_exit_pct'),
+            trade.get('volume_24h_at_exit'),
+            trade.get('orderbook_imbalance_exit'),
+            trade.get('atr_at_exit'),
+            trade.get('rsi_at_entry'),
+            trade.get('macd_at_entry'),
+            trade.get('bb_position_entry'),
+            trade.get('adx_at_entry'),
+            trade.get('di_plus_entry'),
+            trade.get('di_minus_entry'),
+            trade.get('rsi_at_exit'),
+            trade.get('macd_at_exit'),
+            trade.get('bb_position_exit'),
+            trade.get('adx_at_exit'),
+            trade.get('di_plus_exit'),
+            trade.get('di_minus_exit'),
+            trade.get('setup_score'),
+            trade.get('ml_confidence'),
+            trade.get('ml_prediction'),
+            ml_features_json,
+            trade.get('optimal_exit_price'),
+            trade.get('optimal_exit_time'),
+            trade.get('missed_profit_pct'),
+            trade.get('risk_reward_actual'),
+            trade.get('risk_reward_planned'),
+            trade.get('trade_notes'),
+            trade_tags_json,
+            trade.get('user_rating'),
             self.instance_port,
             metadata_json
         ))

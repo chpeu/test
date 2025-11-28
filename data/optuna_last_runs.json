@@ -1,0 +1,85 @@
+{
+  "metrics": {
+    "trading_composite": {
+      "metric": "trading_composite",
+      "last_run": {
+        "metric": "trading_composite",
+        "score": 0.5219273203083282,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 8,
+          "reg_alpha": 9.270047355790838,
+          "reg_lambda": 3.460739058778201,
+          "subsample": 0.8936379182731425,
+          "colsample_bytree": 0.7985275835903958,
+          "colsample_bylevel": 0.7809349896211875,
+          "learning_rate": 0.018537756636869306,
+          "n_estimators": 300,
+          "gamma": 3.9361632612097948,
+          "scale_pos_weight": 1.3895692122580972
+        },
+        "trial_number": 6249,
+        "total_trials": 6250,
+        "datetime": "2025-11-24T19:50:44.993596",
+        "source": "latest"
+      }
+    },
+    "f1_score": {
+      "metric": "f1_score",
+      "last_run": {
+        "score": 0.85,
+        "timestamp": "2025-11-26T13:17:56.336326",
+        "metric": "f1_score",
+        "source": "latest"
+      }
+    },
+    "accuracy": {
+      "metric": "accuracy",
+      "last_run": {
+        "metric": "accuracy",
+        "score": 0.5279187817258884,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 9,
+          "reg_alpha": 9.76143724981311,
+          "reg_lambda": 3.460739058778201,
+          "subsample": 0.8936379182731425,
+          "colsample_bytree": 0.6920799982457168,
+          "colsample_bylevel": 0.7809349896211875,
+          "learning_rate": 0.016548487462207394,
+          "n_estimators": 300,
+          "gamma": 3.9361632612097948,
+          "scale_pos_weight": 1.3895692122580972
+        },
+        "trial_number": 6299,
+        "total_trials": 6300,
+        "datetime": "2025-11-24T20:13:47.400983",
+        "source": "latest"
+      }
+    },
+    "roc_auc": {
+      "metric": "roc_auc",
+      "last_run": {
+        "metric": "roc_auc",
+        "score": 0.5623151434486838,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 11,
+          "reg_alpha": 8.433430583533577,
+          "reg_lambda": 10.753802294740378,
+          "subsample": 0.8910313582802034,
+          "colsample_bytree": 0.7766458349687091,
+          "colsample_bylevel": 0.6871272147996271,
+          "learning_rate": 0.012207090804542063,
+          "n_estimators": 300,
+          "gamma": 3.8997137970868954,
+          "scale_pos_weight": 1.3840241490870164
+        },
+        "trial_number": 4899,
+        "total_trials": 4900,
+        "datetime": "2025-11-23T16:57:11.007101",
+        "source": "latest"
+      }
+    }
+  }
+}
