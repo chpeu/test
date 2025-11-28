@@ -658,19 +658,17 @@ class LiveOrderManagerFutures:
                     # Arrondir volume et prix selon les specs
                     amount = contract_spec.round_volume(amount)
                     entry_price = contract_spec.round_price(entry_price)
-                    
-                    # Vérifier volume minimum
+
+                    # 🔥 FIX: Ne PAS rejeter si amount < min_vol
+                    # MEXC accepte les ordres >= 5 USDT, pas besoin de vérifier min_vol ici
+                    # La synchronisation CCXT récupérera la taille réelle après exécution
                     if amount < contract_spec.min_vol:
-                        logger.error(
-                            f"❌ Volume insuffisant {bypass_symbol}: {amount} < min {contract_spec.min_vol} | "
-                            f"Capital requis: {contract_spec.min_vol * entry_price:.2f} USDT"
+                        logger.warning(
+                            f"⚠️ Volume {bypass_symbol}: {amount} < min_vol {contract_spec.min_vol} | "
+                            f"MEXC acceptera si >= 5 USDT ({size_usdt:.2f} USDT) | "
+                            f"Synchronisation CCXT après ouverture"
                         )
-                        return FuturesOrderResult(
-                            success=False,
-                            error_message=f"Volume insuffisant: {amount} < min {contract_spec.min_vol}",
-                            latency_ms=(time.time() - start_time) * 1000
-                        )
-                    
+
                     logger.debug(f"📋 Specs {bypass_symbol}: minVol={contract_spec.min_vol}, volUnit={contract_spec.vol_unit}")
                 else:
                     # Fallback: arrondi basique

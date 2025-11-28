@@ -103,7 +103,7 @@ TRADING_CONFIG = {
     "use_confluence": False,  # False = 1m OU 5m, True = 1m ET 5m
     
     # Position sizing (pour ouverture automatique)
-    "account_size": 10000.0,  # Capital total en USDT (augmenté pour tester SOL)
+    "account_size": 1000.0,  # Capital total en USDT
     "risk_per_trade": 2.0,  # % de capital risqué par trade (2% par défaut)
     "min_risk_per_trade": 2.0,  # 🔥 Borne min = risk_per_trade pour sizing strict
     "max_risk_per_trade": 2.0,  # 🔥 Borne max = risk_per_trade pour sizing strict

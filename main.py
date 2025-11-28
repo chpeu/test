@@ -4323,34 +4323,72 @@ async def handle_client_command(command: str, params: dict):
                 updated[key] = value
                 logger.info(f"✅ {key} mis à jour: {value}")
         
-        # Recharger la config depuis les variables d'environnement
-        from importlib import reload
-        import config
-        reload(config)
-        
         # Mettre à jour notification_manager si disponible
         if notification_manager:
-            from config import (
-                TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
-                TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
-                TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
-                TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
-                TELEGRAM_NOTIFY_SETUP_REJECTED
-            )
-            # 🔥 FIX: Mettre à jour les paramètres avec les nouvelles valeurs depuis params
+            # 🔥 FIX: Mettre à jour directement depuis params (pas besoin de reload config)
+            # Les valeurs booléennes arrivent déjà depuis le frontend
             notification_manager.telegram_notify_settings.update({
-                'position_opened': params.get('TELEGRAM_NOTIFY_POSITION_OPENED', TELEGRAM_NOTIFY_POSITION_OPENED),
-                'position_closed': params.get('TELEGRAM_NOTIFY_POSITION_CLOSED', TELEGRAM_NOTIFY_POSITION_CLOSED),
-                'tp_escalier_level': params.get('TELEGRAM_NOTIFY_TP_ESCALIER', TELEGRAM_NOTIFY_TP_ESCALIER),
-                'early_invalidation': params.get('TELEGRAM_NOTIFY_EARLY_INVALIDATION', TELEGRAM_NOTIFY_EARLY_INVALIDATION),
-                'error': params.get('TELEGRAM_NOTIFY_ERROR', TELEGRAM_NOTIFY_ERROR),
-                'reconnection': params.get('TELEGRAM_NOTIFY_RECONNECTION', TELEGRAM_NOTIFY_RECONNECTION),
-                'daily_summary': params.get('TELEGRAM_NOTIFY_DAILY_SUMMARY', TELEGRAM_NOTIFY_DAILY_SUMMARY),
-                'recovery_mode': params.get('TELEGRAM_NOTIFY_RECOVERY_MODE', TELEGRAM_NOTIFY_RECOVERY_MODE),
-                'setup_rejected': params.get('TELEGRAM_NOTIFY_SETUP_REJECTED', TELEGRAM_NOTIFY_SETUP_REJECTED)
+                'position_opened': bool(params.get('TELEGRAM_NOTIFY_POSITION_OPENED', True)),
+                'position_closed': bool(params.get('TELEGRAM_NOTIFY_POSITION_CLOSED', True)),
+                'tp_escalier_level': bool(params.get('TELEGRAM_NOTIFY_TP_ESCALIER', True)),
+                'early_invalidation': bool(params.get('TELEGRAM_NOTIFY_EARLY_INVALIDATION', True)),
+                'error': bool(params.get('TELEGRAM_NOTIFY_ERROR', True)),
+                'reconnection': bool(params.get('TELEGRAM_NOTIFY_RECONNECTION', True)),
+                'daily_summary': bool(params.get('TELEGRAM_NOTIFY_DAILY_SUMMARY', False)),
+                'recovery_mode': bool(params.get('TELEGRAM_NOTIFY_RECOVERY_MODE', True)),
+                'setup_rejected': bool(params.get('TELEGRAM_NOTIFY_SETUP_REJECTED', False))
             })
             logger.info(f"✅ Notification Manager mis à jour: {notification_manager.telegram_notify_settings}")
-        
+
+        # 🔥 PERSISTANCE: Sauvegarder dans le fichier .env
+        try:
+            import os
+            from pathlib import Path
+
+            env_file = Path('.env')
+            if env_file.exists():
+                # Lire le fichier .env existant
+                with open(env_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+
+                # Mettre à jour les lignes correspondantes
+                updated_lines = []
+                env_keys_updated = set()
+
+                for line in lines:
+                    line_stripped = line.strip()
+                    # Vérifier si la ligne correspond à un des paramètres Telegram
+                    updated_line = False
+                    for key, env_key in notify_types.items():
+                        if line_stripped.startswith(f'{env_key}='):
+                            if key in params:
+                                value = bool(params[key])
+                                updated_lines.append(f'{env_key}={"true" if value else "false"}\n')
+                                env_keys_updated.add(env_key)
+                                updated_line = True
+                                break
+
+                    if not updated_line:
+                        updated_lines.append(line)
+
+                # Ajouter les clés manquantes à la fin (si elles n'existaient pas)
+                for key, env_key in notify_types.items():
+                    if env_key not in env_keys_updated and key in params:
+                        value = bool(params[key])
+                        updated_lines.append(f'{env_key}={"true" if value else "false"}\n')
+
+                # Écrire le fichier .env mis à jour
+                with open(env_file, 'w', encoding='utf-8') as f:
+                    f.writelines(updated_lines)
+
+                logger.info(f"✅ Fichier .env mis à jour avec {len(updated)} paramètres Telegram")
+            else:
+                logger.warning("⚠️ Fichier .env introuvable, paramètres non persistés")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde .env: {e}")
+            # Ne pas faire échouer la requête si la sauvegarde échoue
+
         return {'updated': updated, 'success': True}
     
     elif command == 'test_telegram':

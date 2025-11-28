@@ -985,6 +985,36 @@ class PositionManager:
         # FIN POINT C
         # ========================================
 
+        # 📢 NOTIFICATION: Position ouverte
+        if hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                position_data = {
+                    'symbol': symbol,
+                    'direction': direction,
+                    'entry_price': entry,
+                    'size_usdt': executed_size_usdt,
+                    'sl': sl,
+                    'tp': tp,
+                    'atr': atr,
+                    'leverage': getattr(self.live_order_manager, 'leverage', 1) if self.live_order_manager else 1,
+                    'tp_escalier_levels': len(levels_config) if levels_config else 0
+                }
+                # Appel async non-bloquant
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(
+                            self.notification_manager.notify('position_opened', position_data, priority='info')
+                        )
+                    else:
+                        asyncio.run(self.notification_manager.notify('position_opened', position_data, priority='info'))
+                except RuntimeError:
+                    # Pas de loop, ignorer notification
+                    pass
+            except Exception as e:
+                logger.debug(f"Erreur envoi notification position_opened: {e}")
+
         return self.active_position
 
     def calculate_position_size(
@@ -1301,6 +1331,35 @@ class PositionManager:
                                 f"Restant: {remaining_contracts:.4f} contrats ({remaining_usdt:.2f} USDT) | "
                                 f"PnL: {partial_order_result.actual_pnl_usdt or 0:.2f} USDT"
                             )
+
+                            # 📢 NOTIFICATION: TP Escalier level hit
+                            if hasattr(self, 'notification_manager') and self.notification_manager:
+                                try:
+                                    import asyncio
+                                    tp_data = {
+                                        'symbol': self.active_position.symbol,
+                                        'direction': self.active_position.direction,
+                                        'level': 1,  # First TP partial
+                                        'entry_price': self.active_position.entry,
+                                        'exit_price': current_price,
+                                        'sold_usdt': filled_size_usdt,
+                                        'remaining_usdt': remaining_usdt,
+                                        'pnl_usdt': partial_order_result.actual_pnl_usdt or 0.0,
+                                        'pnl_pct': pnl
+                                    }
+                                    # Appel async non-bloquant
+                                    try:
+                                        loop = asyncio.get_event_loop()
+                                        if loop.is_running():
+                                            loop.create_task(
+                                                self.notification_manager.notify('tp_escalier_level', tp_data, priority='info')
+                                            )
+                                        else:
+                                            asyncio.run(self.notification_manager.notify('tp_escalier_level', tp_data, priority='info'))
+                                    except RuntimeError:
+                                        pass
+                                except Exception as e:
+                                    logger.debug(f"Erreur envoi notification tp_escalier_level: {e}")
                         else:
                             logger.error(
                                 f"❌ [LIVE] Échec TP Partiel: {partial_order_result.error_message}"
@@ -2091,6 +2150,61 @@ class PositionManager:
             f"Raison: {reason} | PnL net: {net_pnl_pct:.2f}% ({net_pnl_usdt:.4f} USDT) | "
             f"Slippage: {slippage_pct:.4f}% ({slippage_usdt:.4f} USDT)"
         )
+
+        # 📢 NOTIFICATION: Position fermée
+        if hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                notification_data = {
+                    'symbol': result['symbol'],
+                    'direction': result['direction'],
+                    'entry_price': result['entry'],
+                    'exit_price': result['exit'],
+                    'size_usdt': result['size'],
+                    'duration': result['duration'],
+                    'result': result  # Include full result for notification_manager
+                }
+                # Appel async non-bloquant
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(
+                            self.notification_manager.notify('position_closed', notification_data, priority='info')
+                        )
+                    else:
+                        asyncio.run(self.notification_manager.notify('position_closed', notification_data, priority='info'))
+                except RuntimeError:
+                    # Pas de loop, ignorer notification
+                    pass
+            except Exception as e:
+                logger.debug(f"Erreur envoi notification position_closed: {e}")
+
+        # 📢 NOTIFICATION: Early invalidation (si applicable)
+        if reason == 'EARLY_INVALIDATION' and hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                early_invalidation_data = {
+                    'symbol': result['symbol'],
+                    'direction': result['direction'],
+                    'entry_price': result['entry'],
+                    'exit_price': result['exit'],
+                    'pnl_pct': pnl_data['pnl_pct'],
+                    'duration': result['duration'],
+                    'reason': 'Invalidation précoce'
+                }
+                # Appel async non-bloquant
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(
+                            self.notification_manager.notify('early_invalidation', early_invalidation_data, priority='warning')
+                        )
+                    else:
+                        asyncio.run(self.notification_manager.notify('early_invalidation', early_invalidation_data, priority='warning'))
+                except RuntimeError:
+                    pass
+            except Exception as e:
+                logger.debug(f"Erreur envoi notification early_invalidation: {e}")
 
         return result
 
