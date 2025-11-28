@@ -776,16 +776,38 @@ class LiveOrderManagerFutures:
                     # ✅ Ordre valide
                     logger.debug(f"✅ Ordre confirmé existant: ID={bypass_result.order_id}, state={order_state}")
 
+                    # 🔥 OPT #2: Récupérer PRIX RÉEL de l'ordre rempli
+                    # MEXC retourne 'dealAvgPrice' (prix moyen d'exécution) dans order_data
+                    actual_filled_price = order_data.get('dealAvgPrice') or order_data.get('avgPrice')
+
+                    if actual_filled_price and actual_filled_price > 0:
+                        # Calculer slippage réel
+                        actual_slippage = abs((actual_filled_price - entry_price) / entry_price) * 100
+
+                        logger.info(
+                            f"📊 Prix rempli RÉEL: {actual_filled_price} (théorique: {entry_price}) | "
+                            f"Slippage: {actual_slippage:.3f}%"
+                        )
+
+                        # Utiliser prix réel
+                        final_filled_price = actual_filled_price
+                        final_slippage_pct = actual_slippage
+                    else:
+                        # Fallback: prix théorique si prix réel non disponible
+                        logger.warning(f"⚠️ Prix réel non disponible dans order_data, utilisation prix théorique")
+                        final_filled_price = entry_price
+                        final_slippage_pct = 0.0
+
                     # 🔥 Circuit Breaker: Enregistrer succès
                     if self.circuit_breaker:
                         self.circuit_breaker.record_success()
 
-                    # Calculer prix de liquidation estimé
+                    # Calculer prix de liquidation estimé (basé sur prix réel)
                     margin = size_usdt / leverage
                     if direction == 'LONG':
-                        liq_price = entry_price * (1 - 1/leverage + 0.005)
+                        liq_price = final_filled_price * (1 - 1/leverage + 0.005)
                     else:
-                        liq_price = entry_price * (1 + 1/leverage - 0.005)
+                        liq_price = final_filled_price * (1 + 1/leverage - 0.005)
 
                     # Mettre à jour stats
                     self.stats['orders_placed'] += 1
@@ -796,17 +818,19 @@ class LiveOrderManagerFutures:
                     logger.info(
                         f"✅ [BYPASS] Position {direction} ouverte | "
                         f"Order ID: {bypass_result.order_id} | "
+                        f"Prix: {final_filled_price} | "
+                        f"Slippage: {final_slippage_pct:.3f}% | "
                         f"Latence: {latency_ms:.0f}ms"
                     )
 
                     return FuturesOrderResult(
                         success=True,
                         order_id=str(bypass_result.order_id),
-                        filled_price=entry_price,  # Prix théorique (market order)
+                        filled_price=final_filled_price,  # 🔥 Prix RÉEL rempli
                         filled_amount=amount,
-                        filled_size_usdt=amount * entry_price,
-                        actual_fees_usdt=0.0,  # Fees non disponibles immédiatement
-                        actual_slippage_pct=0.0,
+                        filled_size_usdt=amount * final_filled_price,
+                        actual_fees_usdt=0.0,  # 0% fees sur paires scannées
+                        actual_slippage_pct=final_slippage_pct,  # 🔥 Slippage RÉEL calculé
                         margin_used=margin,
                         leverage=leverage,
                         liquidation_price=liq_price,
@@ -1209,15 +1233,34 @@ class LiveOrderManagerFutures:
 
                     logger.debug(f"✅ Fermeture confirmée: ID={bypass_result.order_id}, state={order_state}")
 
+                    # 🔥 OPT #2: Récupérer PRIX RÉEL de fermeture
+                    actual_exit_price = order_data.get('dealAvgPrice') or order_data.get('avgPrice')
+
+                    if actual_exit_price and actual_exit_price > 0:
+                        # Calculer slippage réel sur fermeture
+                        exit_slippage = abs((actual_exit_price - current_price) / current_price) * 100
+
+                        logger.info(
+                            f"📊 Prix sortie RÉEL: {actual_exit_price} (théorique: {current_price}) | "
+                            f"Slippage sortie: {exit_slippage:.3f}%"
+                        )
+
+                        final_exit_price = actual_exit_price
+                        final_exit_slippage = exit_slippage
+                    else:
+                        logger.warning(f"⚠️ Prix sortie réel non disponible, utilisation prix théorique")
+                        final_exit_price = current_price
+                        final_exit_slippage = 0.0
+
                     # 🔥 Circuit Breaker: Enregistrer succès
                     if self.circuit_breaker:
                         self.circuit_breaker.record_success()
 
-                    # Calculer PnL
+                    # Calculer PnL RÉEL basé sur prix réel
                     if direction == 'LONG':
-                        pnl_usdt = (current_price - entry_price) * amount
+                        pnl_usdt = (final_exit_price - entry_price) * amount
                     else:
-                        pnl_usdt = (entry_price - current_price) * amount
+                        pnl_usdt = (entry_price - final_exit_price) * amount
 
                     # Mettre à jour stats
                     self.stats['orders_placed'] += 1
@@ -1229,19 +1272,21 @@ class LiveOrderManagerFutures:
                     logger.info(
                         f"[BYPASS] Position {direction} fermée | "
                         f"Order ID: {bypass_result.order_id} | "
+                        f"Prix sortie: {final_exit_price} | "
                         f"PnL: {pnl_usdt:+.2f} USDT | "
+                        f"Slippage: {final_exit_slippage:.3f}% | "
                         f"Latence: {latency_ms:.0f}ms"
                     )
 
                     return FuturesOrderResult(
                         success=True,
                         order_id=str(bypass_result.order_id),
-                        filled_price=current_price,
+                        filled_price=final_exit_price,  # 🔥 Prix RÉEL sortie
                         filled_amount=amount,
-                        filled_size_usdt=amount * current_price,
-                        actual_pnl_usdt=pnl_usdt,
-                        actual_fees_usdt=0.0,
-                        actual_slippage_pct=0.0,
+                        filled_size_usdt=amount * final_exit_price,
+                        actual_pnl_usdt=pnl_usdt,  # 🔥 PnL basé sur prix RÉEL
+                        actual_fees_usdt=0.0,  # 0% fees
+                        actual_slippage_pct=final_exit_slippage,  # 🔥 Slippage RÉEL
                         latency_ms=latency_ms,
                         executed_at=datetime.now(timezone.utc).isoformat(),
                         raw_api_response=bypass_result.data

@@ -1186,8 +1186,14 @@ class PositionManager:
 
         # Calculer temps écoulé et PnL
         elapsed = time.time() - self.active_position.start_time
+
+        # 🔥 OPT #3: Utiliser prix RÉEL rempli pour calcul PnL (early invalidation)
+        # Si entry_fill_price est disponible (ordre réel exécuté), l'utiliser
+        # Sinon fallback sur entry (prix théorique, pour paper trading)
+        effective_entry = self.active_position.entry_fill_price or self.active_position.entry
+
         pnl = self.pnl_calculator.calculate_pnl_percent(
-            self.active_position.entry,
+            effective_entry,  # 🔥 Prix RÉEL au lieu de théorique
             current_price,
             self.active_position.direction
         )
@@ -1198,7 +1204,7 @@ class PositionManager:
             invalidation = self.early_invalidation.check_invalidation(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
-                pnl_percent=pnl
+                pnl_percent=pnl  # 🔥 PnL basé sur prix RÉEL
             )
             if invalidation:
                 # Stocker les détails de l'invalidation pour le logging
@@ -1221,6 +1227,16 @@ class PositionManager:
                 # Stocker dans la position pour le logging
                 self.active_position._early_invalidation_data = early_invalidation_data
                 return invalidation
+
+        # 🔥 OPT #13: Time-Based Exit - Fermer si position flat après 20min
+        if elapsed > 1200:  # 20 minutes = 1200 secondes
+            # Position considérée "flat" si PnL entre -0.1% et +0.1%
+            if -0.1 <= pnl <= 0.1:
+                logger.warning(
+                    f"⏱️ Time-Based Exit: Position {self.active_position.symbol} {self.active_position.direction} "
+                    f"ouverte depuis {elapsed/60:.1f}min avec PnL {pnl:+.2f}% (flat) → Fermeture"
+                )
+                return 'TIME_BASED_EXIT'
 
         # 2. TP Escalier - Vérifier niveaux
         if self.active_position.tp_escalier_enabled:
