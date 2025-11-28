@@ -713,6 +713,69 @@ class LiveOrderManagerFutures:
                 latency_ms = (time.time() - start_time) * 1000
 
                 if bypass_result.success:
+                    # 🔥 VÉRIFICATION POST-CRÉATION: S'assurer que l'ordre existe réellement
+                    # Attendre 300ms pour que MEXC traite l'ordre
+                    time.sleep(0.3)
+
+                    # Vérifier si l'ordre existe réellement
+                    order_check = run_async_safely(
+                        self.bypass_client.get_order(bypass_result.order_id)
+                    )
+
+                    # Analyser la réponse
+                    if not order_check or not order_check.get("success"):
+                        # Ordre introuvable = rejet silencieux par MEXC
+                        error_details = order_check.get("message", "Unknown") if order_check else "No response"
+                        error_code = order_check.get("code", -1) if order_check else -1
+
+                        logger.error(
+                            f"❌ [BYPASS] REJET SILENCIEUX détecté: {bypass_symbol} | "
+                            f"Order ID: {bypass_result.order_id} | "
+                            f"Code: {error_code} | Message: {error_details} | "
+                            f"Vol envoyé: {amount:.6f} | Prix envoyé: {entry_price} | "
+                            f"Specs: minVol={contract_spec.min_vol if contract_spec else 'N/A'}, "
+                            f"volUnit={contract_spec.vol_unit if contract_spec else 'N/A'}"
+                        )
+
+                        # 🔥 Circuit Breaker: Enregistrer échec
+                        if self.circuit_breaker:
+                            self.circuit_breaker.record_failure()
+
+                        self.stats['orders_failed'] += 1
+
+                        return FuturesOrderResult(
+                            success=False,
+                            error_message=f"Rejet silencieux MEXC (code {error_code}): {error_details}",
+                            latency_ms=latency_ms
+                        )
+
+                    # Ordre confirmé existant
+                    order_data = order_check.get("data", {})
+                    order_state = order_data.get("state", 0)  # 1=pending, 2=filled, 3=cancelled, 4=rejected
+
+                    if order_state == 4:
+                        # Ordre explicitement rejeté
+                        logger.error(
+                            f"❌ [BYPASS] Ordre REJETÉ par MEXC: {bypass_symbol} | "
+                            f"Order ID: {bypass_result.order_id} | "
+                            f"State: {order_state} | "
+                            f"Vol: {amount:.6f} | Prix: {entry_price}"
+                        )
+
+                        if self.circuit_breaker:
+                            self.circuit_breaker.record_failure()
+
+                        self.stats['orders_failed'] += 1
+
+                        return FuturesOrderResult(
+                            success=False,
+                            error_message=f"Ordre rejeté par MEXC (state={order_state})",
+                            latency_ms=latency_ms
+                        )
+
+                    # ✅ Ordre valide
+                    logger.debug(f"✅ Ordre confirmé existant: ID={bypass_result.order_id}, state={order_state}")
+
                     # 🔥 Circuit Breaker: Enregistrer succès
                     if self.circuit_breaker:
                         self.circuit_breaker.record_success()
@@ -729,13 +792,13 @@ class LiveOrderManagerFutures:
                     self.stats['orders_filled'] += 1
                     self.stats['total_latency_ms'] += latency_ms
                     self.stats['avg_latency_ms'] = self.stats['total_latency_ms'] / self.stats['orders_placed']
-                    
+
                     logger.info(
                         f"✅ [BYPASS] Position {direction} ouverte | "
                         f"Order ID: {bypass_result.order_id} | "
                         f"Latence: {latency_ms:.0f}ms"
                     )
-                    
+
                     return FuturesOrderResult(
                         success=True,
                         order_id=str(bypass_result.order_id),
@@ -1094,6 +1157,58 @@ class LiveOrderManagerFutures:
                 latency_ms = (time.time() - start_time) * 1000
 
                 if bypass_result.success:
+                    # 🔥 VÉRIFICATION POST-CRÉATION: S'assurer que l'ordre existe réellement
+                    time.sleep(0.3)
+
+                    order_check = run_async_safely(
+                        self.bypass_client.get_order(bypass_result.order_id)
+                    )
+
+                    # Analyser la réponse
+                    if not order_check or not order_check.get("success"):
+                        error_details = order_check.get("message", "Unknown") if order_check else "No response"
+                        error_code = order_check.get("code", -1) if order_check else -1
+
+                        logger.error(
+                            f"❌ [BYPASS] REJET SILENCIEUX fermeture: {bypass_symbol} | "
+                            f"Order ID: {bypass_result.order_id} | "
+                            f"Code: {error_code} | Message: {error_details} | "
+                            f"Vol envoyé: {amount:.6f} | Prix envoyé: {current_price}"
+                        )
+
+                        if self.circuit_breaker:
+                            self.circuit_breaker.record_failure()
+
+                        self.stats['orders_failed'] += 1
+
+                        return FuturesOrderResult(
+                            success=False,
+                            error_message=f"Rejet silencieux fermeture (code {error_code}): {error_details}",
+                            latency_ms=latency_ms
+                        )
+
+                    order_data = order_check.get("data", {})
+                    order_state = order_data.get("state", 0)
+
+                    if order_state == 4:
+                        logger.error(
+                            f"❌ [BYPASS] Fermeture REJETÉE: {bypass_symbol} | "
+                            f"Order ID: {bypass_result.order_id} | State: {order_state}"
+                        )
+
+                        if self.circuit_breaker:
+                            self.circuit_breaker.record_failure()
+
+                        self.stats['orders_failed'] += 1
+
+                        return FuturesOrderResult(
+                            success=False,
+                            error_message=f"Fermeture rejetée (state={order_state})",
+                            latency_ms=latency_ms
+                        )
+
+                    logger.debug(f"✅ Fermeture confirmée: ID={bypass_result.order_id}, state={order_state}")
+
                     # 🔥 Circuit Breaker: Enregistrer succès
                     if self.circuit_breaker:
                         self.circuit_breaker.record_success()
@@ -1110,14 +1225,14 @@ class LiveOrderManagerFutures:
                     self.stats['total_latency_ms'] += latency_ms
                     self.stats['avg_latency_ms'] = self.stats['total_latency_ms'] / self.stats['orders_placed']
                     self.stats['total_pnl_usdt'] += pnl_usdt
-                    
+
                     logger.info(
                         f"[BYPASS] Position {direction} fermée | "
                         f"Order ID: {bypass_result.order_id} | "
                         f"PnL: {pnl_usdt:+.2f} USDT | "
                         f"Latence: {latency_ms:.0f}ms"
                     )
-                    
+
                     return FuturesOrderResult(
                         success=True,
                         order_id=str(bypass_result.order_id),
