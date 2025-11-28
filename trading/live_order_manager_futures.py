@@ -540,6 +540,9 @@ class LiveOrderManagerFutures:
                 )
 
         try:
+            if not entry_price or entry_price <= 0:
+                raise ValueError(f"Prix d'entrée invalide pour {symbol}: {entry_price}")
+
             # Convertir symbole au format futures
             futures_symbol = self._convert_symbol_to_futures(symbol)
 
@@ -665,18 +668,43 @@ class LiveOrderManagerFutures:
                 )
                 
                 if contract_spec:
+                    original_entry_price = entry_price
                     # Arrondir volume et prix selon les specs
                     amount = contract_spec.round_volume(amount)
                     entry_price = contract_spec.round_price(entry_price)
 
-                    # 🔥 FIX: Ne PAS rejeter si amount < min_vol
-                    # MEXC accepte les ordres >= 5 USDT, pas besoin de vérifier min_vol ici
-                    # La synchronisation CCXT récupérera la taille réelle après exécution
-                    if amount < contract_spec.min_vol:
+                    if entry_price <= 0:
+                        entry_price = max(original_entry_price, contract_spec.price_unit or 0.0)
+                        if entry_price <= 0:
+                            raise ValueError(
+                                f"Prix arrondi invalide pour {bypass_symbol}: {original_entry_price} → {entry_price}"
+                            )
+
+                    # 🔥 FIX: Vérifier que la valeur en USDT après arrondi est >= 5.5 USDT (minimum MEXC + marge)
+                    MIN_ORDER_USDT = 5.5  # 5 USDT minimum MEXC + 0.5 marge sécurité
+                    actual_size_usdt = amount * entry_price
+                    
+                    if actual_size_usdt < MIN_ORDER_USDT:
+                        # 🔥 FIX: Augmenter la taille pour atteindre le minimum
+                        min_amount_needed = MIN_ORDER_USDT / entry_price
+                        # Arrondir vers le haut au vol_unit le plus proche
+                        if contract_spec.vol_unit > 0:
+                            import math
+                            min_amount_needed = math.ceil(min_amount_needed / contract_spec.vol_unit) * contract_spec.vol_unit
+                        min_amount_needed = round(min_amount_needed, contract_spec.vol_precision)
+                        
                         logger.warning(
-                            f"⚠️ Volume {bypass_symbol}: {amount} < min_vol {contract_spec.min_vol} | "
-                            f"MEXC acceptera si >= 5 USDT ({size_usdt:.2f} USDT) | "
-                            f"Synchronisation CCXT après ouverture"
+                            f"⚠️ Taille insuffisante {bypass_symbol}: {actual_size_usdt:.2f} USDT < {MIN_ORDER_USDT} USDT | "
+                            f"Augmentation automatique: {amount:.6f} → {min_amount_needed:.6f} contrats"
+                        )
+                        amount = min_amount_needed
+                        actual_size_usdt = amount * entry_price
+                    
+                    # Log si volume < min_vol (info uniquement)
+                    if amount < contract_spec.min_vol:
+                        logger.info(
+                            f"ℹ️ Volume {bypass_symbol}: {amount} < min_vol {contract_spec.min_vol} | "
+                            f"Valeur: {actual_size_usdt:.2f} USDT (minimum MEXC: 5 USDT)"
                         )
 
                     logger.debug(f"📋 Specs {bypass_symbol}: minVol={contract_spec.min_vol}, volUnit={contract_spec.vol_unit}")
@@ -781,8 +809,12 @@ class LiveOrderManagerFutures:
                     actual_filled_price = order_data.get('dealAvgPrice') or order_data.get('avgPrice')
 
                     if actual_filled_price and actual_filled_price > 0:
-                        # Calculer slippage réel
-                        actual_slippage = abs((actual_filled_price - entry_price) / entry_price) * 100
+                        # Calculer slippage réel (protection division par zéro)
+                        if entry_price and entry_price > 0:
+                            actual_slippage = abs((actual_filled_price - entry_price) / entry_price) * 100
+                        else:
+                            actual_slippage = 0.0
+                            logger.warning(f"⚠️ entry_price=0, slippage non calculable")
 
                         logger.info(
                             f"📊 Prix rempli RÉEL: {actual_filled_price} (théorique: {entry_price}) | "
@@ -907,8 +939,11 @@ class LiveOrderManagerFutures:
             fee_info = order.get('fee', {})
             fees = fee_info.get('cost', 0.0) or 0.0
 
-            # Calculer slippage
-            slippage_pct = abs((filled_price - entry_price) / entry_price) * 100 if filled_price else 0
+            # Calculer slippage (protection division par zéro)
+            if filled_price and entry_price and entry_price > 0:
+                slippage_pct = abs((filled_price - entry_price) / entry_price) * 100
+            else:
+                slippage_pct = 0.0
 
             # Calculer marge utilisée
             margin_used = size_usdt / leverage

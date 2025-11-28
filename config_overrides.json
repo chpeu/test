@@ -28,7 +28,7 @@
   "account_size": 1000.0,
   "risk_per_trade": 2.0,
   "min_score_required": 6.5,
-  "max_slippage_pct": 0.02,
+  "max_slippage_pct": 0.1,
   "use_breakout": true,
   "use_snr": true,
   "use_wick": false,

@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764308498.3291714,
+  "timestamp": 1764356406.5403981,
   "specs": {
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -25,7 +25,7 @@
       "max_vol": 9800000.0,
       "vol_unit": 1.0,
       "price_unit": 1e-05,
-      "price_precision": 0,
+      "price_precision": 5,
       "vol_precision": 1
     },
     "SUI_USDT": {
@@ -88,7 +88,7 @@
       "max_vol": 250000.0,
       "vol_unit": 1.0,
       "price_unit": 1e-05,
-      "price_precision": 0,
+      "price_precision": 5,
       "vol_precision": 1
     },
     "SHIB_USDT": {
@@ -97,7 +97,43 @@
       "max_vol": 150000000.0,
       "vol_unit": 1.0,
       "price_unit": 1e-09,
-      "price_precision": 0,
+      "price_precision": 9,
+      "vol_precision": 1
+    },
+    "LINK_USDT": {
+      "symbol": "LINK_USDT",
+      "min_vol": 1.0,
+      "max_vol": 850000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1
+    },
+    "TIA_USDT": {
+      "symbol": "TIA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 550000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1
+    },
+    "ZEN_USDT": {
+      "symbol": "ZEN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 180000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1
+    },
+    "SPX_USDT": {
+      "symbol": "SPX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 160000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
       "vol_precision": 1
     }
   }
