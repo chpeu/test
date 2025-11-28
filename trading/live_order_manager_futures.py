@@ -147,13 +147,23 @@ class CircuitBreaker:
                 self.state = CircuitState.OPEN
                 self.opened_at = time.time()
 
-    def can_execute(self) -> Tuple[bool, str]:
+    def can_execute(self, is_closing_order: bool = False) -> Tuple[bool, str]:
         """
         Vérifier si une requête peut être exécutée
+
+        Args:
+            is_closing_order: True pour ordres de fermeture (TP/SL) → toujours autorisés
 
         Returns:
             Tuple (allowed, reason)
         """
+        # 🔥 CRITIQUE: Les ordres de fermeture (TP/SL) passent TOUJOURS
+        # pour protéger les positions existantes, même si circuit ouvert
+        if is_closing_order:
+            if self.state == CircuitState.OPEN:
+                logger.warning(f"⚠️ Circuit Breaker OUVERT mais ordre de fermeture AUTORISÉ (protection capital)")
+            return (True, "Ordre de fermeture (prioritaire)")
+
         if self.state == CircuitState.CLOSED:
             return (True, "Circuit fermé")
 
@@ -946,10 +956,11 @@ class LiveOrderManagerFutures:
         """
         start_time = time.time()
 
-        # 🔥 CIRCUIT BREAKER: Vérifier si trading autorisé
+        # 🔥 CIRCUIT BREAKER: Ordres de fermeture TOUJOURS autorisés (is_closing_order=True)
         if self.circuit_breaker:
-            can_execute, reason = self.circuit_breaker.can_execute()
+            can_execute, reason = self.circuit_breaker.can_execute(is_closing_order=True)
             if not can_execute:
+                # Ne devrait jamais arriver car is_closing_order=True bypass le circuit breaker
                 logger.error(f"🚨 Circuit Breaker BLOQUE la fermeture: {reason}")
                 return FuturesOrderResult(
                     success=False,
