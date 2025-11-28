@@ -82,5 +82,20 @@
   "ml_v2_validation_size": 0.15,
   "default_leverage": 1,
   "max_latency_ms": 1000,
-  "ml_metric": "accuracy"
+  "ml_metric": "accuracy",
+  "scan_interval": 30,
+  "use_anti_whipsaw": true,
+  "whipsaw_lookback": 5,
+  "whipsaw_threshold_pct": 0.2,
+  "whipsaw_max_alternations": 3,
+  "use_retest_confirmation": false,
+  "retest_tolerance_pct": 0.1,
+  "retest_timeout_seconds": 300,
+  "use_cooldown": true,
+  "cooldown_seconds": 30,
+  "cooldown_same_symbol": 60,
+  "use_candle_close": false,
+  "candle_close_threshold_seconds": 5,
+  "use_momentum_continuity": true,
+  "momentum_lookback": 3
 }

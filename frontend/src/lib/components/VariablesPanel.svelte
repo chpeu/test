@@ -102,7 +102,28 @@
 		ml_v2_reg_lambda: 3.0,
 		ml_v2_subsample: 0.7,
 		ml_v2_colsample_bytree: 0.7,
-		ml_v2_gamma: 0.5
+		ml_v2_gamma: 0.5,
+		// 🔥 OPT #14: Scan Interval
+		scan_interval: 30,
+		// 🔥 OPT #15: Anti-Whipsaw Filter
+		use_anti_whipsaw: true,
+		whipsaw_lookback: 5,
+		whipsaw_threshold_pct: 0.2,
+		whipsaw_max_alternations: 3,
+		// 🔥 OPT #16: Retest Breakout Confirmation
+		use_retest_confirmation: false,
+		retest_tolerance_pct: 0.1,
+		retest_timeout_seconds: 300,
+		// 🔥 OPT #17: Cooldown Post-Trade
+		use_cooldown: true,
+		cooldown_seconds: 30,
+		cooldown_same_symbol: 60,
+		// 🔥 OPT #18: Candle Close Confirmation
+		use_candle_close: false,
+		candle_close_threshold_seconds: 5,
+		// 🔥 OPT #19: Momentum Continuity
+		use_momentum_continuity: true,
+		momentum_lookback: 3
 	};
 
 	let config = { ...DEFAULTS };
@@ -122,16 +143,17 @@
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
 	
-	// 🔥 Variables Live Trading
+	// Variables Live Trading
 	let liveConfig = null;
 	let loadingLiveConfig = false;
 	
 	// Variables pour export Excel et reset DB
 	let exportingExcel = false;
+	let exportingCurrentConfig = false;
 	let retrainingML = false;
 	let resettingDB = false;
 	
-	// 🔥 FIX: Variables pour métriques ML dynamiques
+	// FIX: Variables pour métriques ML dynamiques
 	let mlMetrics = {
 		test_accuracy: 55.3,
 		roc_auc: 55.4,
@@ -160,10 +182,40 @@
 				config[`escalier_level${l}_size`] = Math.max(0, Math.round(currentValue - reduction));
 			});
 		}
-
 	}
 
-	function autoAdjustEscalierPnL(changedLevel) {
+	// 🔥 Export XLSM des variables en cours
+	async function exportCurrentConfigXlsm() {
+		if (exportingCurrentConfig) return;
+		try {
+			exportingCurrentConfig = true;
+			saveMessage = '⏳ Export des variables en cours...';
+			const response = await fetch('/api/config/export-xlsm');
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}));
+				throw new Error(error.error || 'Erreur export variables en cours');
+			}
+			const blob = await response.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `trading_config_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.xlsm`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+			saveMessage = '✅ Export des variables en cours terminé';
+			setTimeout(() => (saveMessage = ''), 3000);
+		} catch (error: any) {
+			console.error('❌ Erreur export XLSM variables en cours:', error);
+			saveMessage = `❌ Erreur export variables en cours: ${error.message || error}`;
+			setTimeout(() => (saveMessage = ''), 5000);
+		} finally {
+			exportingCurrentConfig = false;
+		}
+	}
+
+	function autoAdjustEscalierPnL(changedLevel: number) {
 		// S'assurer que les niveaux suivants sont >= niveau actuel
 		const currentPnl = config[`escalier_level${changedLevel}_pnl`];
 
@@ -514,6 +566,27 @@
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
 				max_latency_ms: tradingConfig.max_latency_ms,
+			},
+			'🛡️ Filtres Avancés (OPT #15-19)': {
+				// OPT #15: Anti-Whipsaw
+				use_anti_whipsaw: tradingConfig.use_anti_whipsaw,
+				whipsaw_lookback: tradingConfig.whipsaw_lookback,
+				whipsaw_threshold_pct: tradingConfig.whipsaw_threshold_pct,
+				whipsaw_max_alternations: tradingConfig.whipsaw_max_alternations,
+				// OPT #16: Retest Breakout
+				use_retest_confirmation: tradingConfig.use_retest_confirmation,
+				retest_tolerance_pct: tradingConfig.retest_tolerance_pct,
+				retest_timeout_seconds: tradingConfig.retest_timeout_seconds,
+				// OPT #17: Cooldown
+				use_cooldown: tradingConfig.use_cooldown,
+				cooldown_seconds: tradingConfig.cooldown_seconds,
+				cooldown_same_symbol: tradingConfig.cooldown_same_symbol,
+				// OPT #18: Candle Close
+				use_candle_close: tradingConfig.use_candle_close,
+				candle_close_threshold_seconds: tradingConfig.candle_close_threshold_seconds,
+				// OPT #19: Momentum Continuity
+				use_momentum_continuity: tradingConfig.use_momentum_continuity,
+				momentum_lookback: tradingConfig.momentum_lookback,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -1604,7 +1677,318 @@
 				</div>
 			</section>
 
-			<!-- Section 4: Timeframes & ATR Optimal -->
+			<!-- Section 4: 🔥 Filtres Avancés (OPT #14-19) -->
+			<section class="variable-section">
+				<h3>🛡️ Filtres Avancés</h3>
+				<p class="section-subtitle">Protection contre whipsaw, confirmation breakout, cooldown et momentum</p>
+
+				<div class="variables-list">
+					<!-- Scan Interval -->
+					<div class="variable-item" data-debug-name="config.scan_interval">
+						<div class="var-header">
+							<label for="scan-interval">
+								<span class="var-name">⏱️ Scan Interval</span>
+								<span class="var-desc">Intervalle entre chaque scan (secondes)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('scan_interval')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="scan-interval"
+								type="range"
+								step="5"
+								min="15"
+								max="120"
+								bind:value={config.scan_interval}
+								on:change={() => triggerAutoSave('scan_interval', `${config.scan_interval}s`)}
+							/>
+							<span class="slider-value">{config.scan_interval}s</span>
+						</div>
+					</div>
+
+					<!-- Anti-Whipsaw -->
+					<div class="variable-item checkbox">
+						<label for="use-anti-whipsaw">
+							<input
+								id="use-anti-whipsaw"
+								type="checkbox"
+								bind:checked={config.use_anti_whipsaw}
+								on:change={() => triggerAutoSave('use_anti_whipsaw', config.use_anti_whipsaw ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⚡ Anti-Whipsaw</span>
+							<span class="var-desc">Rejeter les marchés en zigzag rapide</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_anti_whipsaw')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_anti_whipsaw}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-lookback">
+										<span class="var-name">Whipsaw Lookback</span>
+										<span class="var-desc">Nombre de bougies à analyser</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-lookback"
+										type="range"
+										step="1"
+										min="3"
+										max="10"
+										bind:value={config.whipsaw_lookback}
+										on:change={() => triggerAutoSave('whipsaw_lookback', config.whipsaw_lookback)}
+									/>
+									<span class="slider-value">{config.whipsaw_lookback}</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-threshold">
+										<span class="var-name">Whipsaw Threshold (%)</span>
+										<span class="var-desc">Amplitude min pour compter comme mouvement</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-threshold"
+										type="range"
+										step="0.05"
+										min="0.1"
+										max="0.5"
+										bind:value={config.whipsaw_threshold_pct}
+										on:change={() => triggerAutoSave('whipsaw_threshold_pct', config.whipsaw_threshold_pct.toFixed(2))}
+									/>
+									<span class="slider-value">{Number(config.whipsaw_threshold_pct).toFixed(2)}%</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-alternations">
+										<span class="var-name">Max Alternations</span>
+										<span class="var-desc">Nombre max d'alternances avant rejet</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-alternations"
+										type="range"
+										step="1"
+										min="2"
+										max="5"
+										bind:value={config.whipsaw_max_alternations}
+										on:change={() => triggerAutoSave('whipsaw_max_alternations', config.whipsaw_max_alternations)}
+									/>
+									<span class="slider-value">{config.whipsaw_max_alternations}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Cooldown Post-Trade -->
+					<div class="variable-item checkbox">
+						<label for="use-cooldown">
+							<input
+								id="use-cooldown"
+								type="checkbox"
+								bind:checked={config.use_cooldown}
+								on:change={() => triggerAutoSave('use_cooldown', config.use_cooldown ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⏸️ Cooldown Post-Trade</span>
+							<span class="var-desc">Délai entre trades pour éviter over-trading</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_cooldown')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_cooldown}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="cooldown-seconds">
+										<span class="var-name">Cooldown (s)</span>
+										<span class="var-desc">Délai minimum entre trades</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="cooldown-seconds"
+										type="range"
+										step="5"
+										min="10"
+										max="120"
+										bind:value={config.cooldown_seconds}
+										on:change={() => triggerAutoSave('cooldown_seconds', `${config.cooldown_seconds}s`)}
+									/>
+									<span class="slider-value">{config.cooldown_seconds}s</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="cooldown-same-symbol">
+										<span class="var-name">Cooldown Same Symbol (s)</span>
+										<span class="var-desc">Délai supplémentaire pour même symbole</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="cooldown-same-symbol"
+										type="range"
+										step="5"
+										min="30"
+										max="300"
+										bind:value={config.cooldown_same_symbol}
+										on:change={() => triggerAutoSave('cooldown_same_symbol', `${config.cooldown_same_symbol}s`)}
+									/>
+									<span class="slider-value">{config.cooldown_same_symbol}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Momentum Continuity -->
+					<div class="variable-item checkbox">
+						<label for="use-momentum-continuity">
+							<input
+								id="use-momentum-continuity"
+								type="checkbox"
+								bind:checked={config.use_momentum_continuity}
+								on:change={() => triggerAutoSave('use_momentum_continuity', config.use_momentum_continuity ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">📈 Momentum Continu</span>
+							<span class="var-desc">Vérifier que le momentum est dans la bonne direction</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_momentum_continuity')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_momentum_continuity}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="momentum-lookback">
+										<span class="var-name">Momentum Lookback</span>
+										<span class="var-desc">Nombre de bougies pour vérifier continuité</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="momentum-lookback"
+										type="range"
+										step="1"
+										min="2"
+										max="10"
+										bind:value={config.momentum_lookback}
+										on:change={() => triggerAutoSave('momentum_lookback', config.momentum_lookback)}
+									/>
+									<span class="slider-value">{config.momentum_lookback}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Candle Close Confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-candle-close">
+							<input
+								id="use-candle-close"
+								type="checkbox"
+								bind:checked={config.use_candle_close}
+								on:change={() => triggerAutoSave('use_candle_close', config.use_candle_close ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🕯️ Attendre Fermeture Bougie</span>
+							<span class="var-desc">N'entrer que proche de la fermeture de bougie</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_candle_close')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_candle_close}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="candle-close-threshold">
+										<span class="var-name">Seuil Fermeture (s)</span>
+										<span class="var-desc">Secondes avant fermeture pour considérer OK</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="candle-close-threshold"
+										type="range"
+										step="1"
+										min="3"
+										max="15"
+										bind:value={config.candle_close_threshold_seconds}
+										on:change={() => triggerAutoSave('candle_close_threshold_seconds', `${config.candle_close_threshold_seconds}s`)}
+									/>
+									<span class="slider-value">{config.candle_close_threshold_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Retest Breakout Confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-retest-confirmation">
+							<input
+								id="use-retest-confirmation"
+								type="checkbox"
+								bind:checked={config.use_retest_confirmation}
+								on:change={() => triggerAutoSave('use_retest_confirmation', config.use_retest_confirmation ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🔄 Confirmation Retest Breakout</span>
+							<span class="var-desc">Attendre retest du niveau cassé avant entrée (⚠️ Avancé)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_retest_confirmation')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_retest_confirmation}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="retest-tolerance">
+										<span class="var-name">Tolérance Retest (%)</span>
+										<span class="var-desc">Distance max pour valider le retest</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="retest-tolerance"
+										type="range"
+										step="0.05"
+										min="0.05"
+										max="0.5"
+										bind:value={config.retest_tolerance_pct}
+										on:change={() => triggerAutoSave('retest_tolerance_pct', config.retest_tolerance_pct.toFixed(2))}
+									/>
+									<span class="slider-value">{Number(config.retest_tolerance_pct).toFixed(2)}%</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="retest-timeout">
+										<span class="var-name">Timeout Retest (s)</span>
+										<span class="var-desc">Temps max pour attendre le retest</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="retest-timeout"
+										type="range"
+										step="30"
+										min="60"
+										max="600"
+										bind:value={config.retest_timeout_seconds}
+										on:change={() => triggerAutoSave('retest_timeout_seconds', `${config.retest_timeout_seconds}s`)}
+									/>
+									<span class="slider-value">{config.retest_timeout_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</section>
+
+			<!-- Section 5: Timeframes & ATR Optimal -->
 			<section class="variable-section">
 				<h3>⏱️ Timeframes & ATR Optimal</h3>
 				<p class="section-subtitle">Configuration des timeframes et plages ATR optimales pour filtrage</p>
@@ -2860,6 +3244,15 @@
 					<h3 data-debug-name="variablesPanel.current.title">📋 Variables en cours</h3>
 					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig} data-debug-name="variablesPanel.current.refreshButton">
 						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
+					</button>
+					<button
+						class="btn-export"
+						on:click={exportCurrentConfigXlsm}
+						disabled={exportingCurrentConfig}
+						title="Exporter l'ensemble des variables en .xlsm"
+						data-debug-name="variablesPanel.current.exportButton"
+					>
+						{exportingCurrentConfig ? '⏳ Export...' : '📤 Export XLSM'}
 					</button>
 				</div>
 				<p class="section-desc" data-debug-name="variablesPanel.current.description">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>

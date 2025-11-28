@@ -2222,6 +2222,15 @@ class PositionManager:
             except Exception as e:
                 logger.debug(f"Erreur envoi notification early_invalidation: {e}")
 
+        # 🔥 OPT #17: Enregistrer cooldown post-trade
+        try:
+            from core.analyzer.advanced_filters import get_cooldown_manager
+            cooldown_mgr = get_cooldown_manager()
+            cooldown_mgr.record_trade_close(result['symbol'], result['direction'])
+            logger.debug(f"⏱️ Cooldown enregistré pour {result['symbol']} {result['direction']}")
+        except Exception as e:
+            logger.debug(f"Erreur enregistrement cooldown: {e}")
+
         return result
 
     def update_price_cache(self, symbol: str, price: float, data: Any = None):

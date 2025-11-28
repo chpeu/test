@@ -27,7 +27,7 @@ TRADING_CONFIG = {
     "use_slippage_calculation": True,  # Calculer slippage estimé basé sur spread et profondeur
     "position_timeout": 300,  # 5 minutes
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
-    "scan_interval": 45,  # 45 secondes pour position scan
+    "scan_interval": 30,  # 🔥 OPT #14: 30 secondes pour capture plus rapide des setups
     "scalability_interval": 90,  # 90 secondes pour scalability scan
     # 🔥 Liste des paires à exclure manuellement (par exemple contraintes de taille minimale)
     "excluded_symbols": [
@@ -101,6 +101,30 @@ TRADING_CONFIG = {
     
     # Confluence
     "use_confluence": False,  # False = 1m OU 5m, True = 1m ET 5m
+    
+    # 🔥 OPT #15: Anti-Whipsaw Filter
+    "use_anti_whipsaw": True,  # Détecter et rejeter les marchés en zigzag
+    "whipsaw_lookback": 5,  # Nombre de bougies à analyser
+    "whipsaw_threshold_pct": 0.2,  # Amplitude min pour compter comme mouvement significatif
+    "whipsaw_max_alternations": 3,  # Nombre max d'alternances avant rejet
+    
+    # 🔥 OPT #16: Confirmation Retest Breakout
+    "use_retest_confirmation": False,  # Attendre retest du niveau cassé avant entrée
+    "retest_tolerance_pct": 0.1,  # Tolérance pour considérer un retest valide
+    "retest_timeout_seconds": 300,  # Timeout avant abandon du pending breakout (5 min)
+    
+    # 🔥 OPT #17: Cooldown Post-Trade
+    "use_cooldown": True,  # Activer cooldown entre trades
+    "cooldown_seconds": 30,  # Délai minimum entre fermeture et nouvelle ouverture
+    "cooldown_same_symbol": 60,  # Délai supplémentaire pour même symbole
+    
+    # 🔥 OPT #18: Candle Close Confirmation  
+    "use_candle_close": False,  # Attendre fermeture bougie avant entrée
+    "candle_close_threshold_seconds": 5,  # Seuil pour considérer proche de la fermeture
+    
+    # 🔥 OPT #19: Momentum Continuity Filter
+    "use_momentum_continuity": True,  # Vérifier que le momentum est croissant
+    "momentum_lookback": 3,  # Nombre de bougies pour vérifier continuité
     
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT

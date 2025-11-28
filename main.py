@@ -16,8 +16,9 @@ import os
 import csv
 import io
 import subprocess
+from collections import OrderedDict
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
@@ -180,15 +181,187 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # Les routers seront inclus APRES la création de app (ligne ~280)
 
 # 🔥 MIGRATION COMPLÈTE: Socket.IO supprimé - WebSocket natif uniquement
-# Socket.IO complètement retiré pour performances maximales
 
 # 🔥 WebSocket Natif - Instance globale
 ws_manager = get_websocket_manager()
 
 # 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les routes
-if set_websocket_manager_routes:
-    set_websocket_manager_routes(ws_manager)
-    logger.info("✅ ws_manager injecté dans API routes")
+def get_websocket_manager_for_routes():
+    return ws_manager
+
+def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> OrderedDict:
+    """Organise TRADING_CONFIG in the same categories as frontend for XLSM export."""
+    categories = OrderedDict()
+    categories['⚙️ Général'] = OrderedDict(
+        fee_per_trade=trading_config.get('fee_per_trade'),
+        use_slippage_calculation=trading_config.get('use_slippage_calculation'),
+        position_timeout=trading_config.get('position_timeout'),
+        check_interval=trading_config.get('check_interval'),
+        scan_interval=trading_config.get('scan_interval'),
+        scalability_interval=trading_config.get('scalability_interval')
+    )
+    categories['📊 Validation & Scoring'] = OrderedDict(
+        min_conditions=trading_config.get('min_conditions'),
+        use_weighted_scoring=trading_config.get('use_weighted_scoring'),
+        min_score_required=trading_config.get('min_score_required'),
+        max_slippage_pct=trading_config.get('max_slippage_pct'),
+        min_score_adx_high=trading_config.get('min_score_adx_high'),
+        min_score_adx_low=trading_config.get('min_score_adx_low'),
+        dynamic_tolerance_adx_high=trading_config.get('dynamic_tolerance_adx_high'),
+        dynamic_tolerance_adx_low=trading_config.get('dynamic_tolerance_adx_low')
+    )
+    categories['🎯 Patterns Techniques'] = OrderedDict(
+        use_breakout=trading_config.get('use_breakout'),
+        use_snr=trading_config.get('use_snr'),
+        use_wick=trading_config.get('use_wick'),
+        use_divergence=trading_config.get('use_divergence')
+    )
+    categories['🕯️ Patterns de Bougies'] = OrderedDict(
+        use_engulfing=trading_config.get('use_engulfing'),
+        use_hammer=trading_config.get('use_hammer'),
+        use_shooting_star=trading_config.get('use_shooting_star'),
+        use_doji=trading_config.get('use_doji'),
+        use_marubozu=trading_config.get('use_marubozu'),
+        use_morning_star=trading_config.get('use_morning_star'),
+        use_evening_star=trading_config.get('use_evening_star')
+    )
+    categories['📈 Seuils & Filtres'] = OrderedDict(
+        snr_threshold=trading_config.get('snr_threshold'),
+        breakout_threshold=trading_config.get('breakout_threshold'),
+        wick_ratio_max=trading_config.get('wick_ratio_max'),
+        di_gap_min=trading_config.get('di_gap_min'),
+        di_gap_adx_threshold=trading_config.get('di_gap_adx_threshold'),
+        optimal_atr_min_1m=trading_config.get('optimal_atr_min_1m'),
+        optimal_atr_max_1m=trading_config.get('optimal_atr_max_1m'),
+        optimal_atr_min_5m=trading_config.get('optimal_atr_min_5m'),
+        optimal_atr_max_5m=trading_config.get('optimal_atr_max_5m')
+    )
+    categories['💰 Money Management'] = OrderedDict(
+        account_size=trading_config.get('account_size'),
+        risk_per_trade=trading_config.get('risk_per_trade'),
+        volume_multiplier=trading_config.get('volume_multiplier'),
+        use_confluence=trading_config.get('use_confluence')
+    )
+    categories['🎯 TP/SL Configuration'] = OrderedDict(
+        tp_sl_mode=trading_config.get('tp_sl_mode'),
+        tp_percent=trading_config.get('tp_percent'),
+        sl_percent=trading_config.get('sl_percent'),
+        break_even_trigger=trading_config.get('break_even_trigger'),
+        trailing_distance=trading_config.get('trailing_distance')
+    )
+    categories['📐 Mode ATR'] = OrderedDict(
+        atr_mult_tp=trading_config.get('atr_mult_tp'),
+        atr_mult_sl=trading_config.get('atr_mult_sl'),
+        atr_min=trading_config.get('atr_min'),
+        atr_max=trading_config.get('atr_max')
+    )
+    categories['🪜 TP Escalier'] = OrderedDict(
+        partial_tp_percent=trading_config.get('partial_tp_percent'),
+        escalier_level1_pnl=trading_config.get('escalier_level1_pnl'),
+        escalier_level1_size=trading_config.get('escalier_level1_size'),
+        escalier_level2_pnl=trading_config.get('escalier_level2_pnl'),
+        escalier_level2_size=trading_config.get('escalier_level2_size'),
+        escalier_level3_pnl=trading_config.get('escalier_level3_pnl'),
+        escalier_level3_size=trading_config.get('escalier_level3_size'),
+        escalier_level4_pnl=trading_config.get('escalier_level4_pnl'),
+        escalier_level4_size=trading_config.get('escalier_level4_size')
+    )
+    categories['📉 Trailing Stop'] = OrderedDict(
+        trailing_enabled=trading_config.get('trailing_enabled'),
+        trailing_trigger_pnl=trading_config.get('trailing_trigger_pnl'),
+        trailing_atr_multiplier=trading_config.get('trailing_atr_multiplier'),
+        trailing_min_distance=trading_config.get('trailing_min_distance'),
+        trailing_max_distance=trading_config.get('trailing_max_distance')
+    )
+    categories['⏱️ Timeframe & Trend'] = OrderedDict(
+        trend_timeframe=trading_config.get('trend_timeframe'),
+        top_pairs_limit=trading_config.get('top_pairs_limit'),
+        balance_score_min=trading_config.get('balance_score_min')
+    )
+    categories['🤖 Machine Learning V1'] = OrderedDict(
+        ml_filter_enabled=trading_config.get('ml_filter_enabled'),
+        ml_min_confidence=trading_config.get('ml_min_confidence'),
+        ml_max_depth=trading_config.get('ml_max_depth'),
+        ml_min_child_weight=trading_config.get('ml_min_child_weight'),
+        ml_reg_alpha=trading_config.get('ml_reg_alpha'),
+        ml_reg_lambda=trading_config.get('ml_reg_lambda'),
+        ml_subsample=trading_config.get('ml_subsample'),
+        ml_colsample_bytree=trading_config.get('ml_colsample_bytree'),
+        ml_colsample_bylevel=trading_config.get('ml_colsample_bylevel'),
+        ml_gamma=trading_config.get('ml_gamma'),
+        ml_scale_pos_weight=trading_config.get('ml_scale_pos_weight'),
+        ml_n_estimators=trading_config.get('ml_n_estimators'),
+        ml_learning_rate=trading_config.get('ml_learning_rate')
+    )
+    categories['🚀 Machine Learning V2 (Régression)'] = OrderedDict(
+        ml_v2_filter_enabled=trading_config.get('ml_v2_filter_enabled'),
+        ml_v2_min_confidence=trading_config.get('ml_v2_min_confidence'),
+        ml_v2_timeframe_days=trading_config.get('ml_v2_timeframe_days'),
+        ml_v2_max_features=trading_config.get('ml_v2_max_features'),
+        ml_v2_marginal_threshold=trading_config.get('ml_v2_marginal_threshold'),
+        ml_v2_filter_marginal_trades=trading_config.get('ml_v2_filter_marginal_trades'),
+        ml_v2_test_size=trading_config.get('ml_v2_test_size'),
+        ml_v2_validation_size=trading_config.get('ml_v2_validation_size'),
+        ml_v2_n_estimators=trading_config.get('ml_v2_n_estimators'),
+        ml_v2_max_depth=trading_config.get('ml_v2_max_depth'),
+        ml_v2_learning_rate=trading_config.get('ml_v2_learning_rate'),
+        ml_v2_min_child_weight=trading_config.get('ml_v2_min_child_weight'),
+        ml_v2_reg_alpha=trading_config.get('ml_v2_reg_alpha'),
+        ml_v2_reg_lambda=trading_config.get('ml_v2_reg_lambda'),
+        ml_v2_subsample=trading_config.get('ml_v2_subsample'),
+        ml_v2_colsample_bytree=trading_config.get('ml_v2_colsample_bytree'),
+        ml_v2_gamma=trading_config.get('ml_v2_gamma')
+    )
+    categories['💎 Live Trading'] = OrderedDict(
+        default_leverage=trading_config.get('default_leverage'),
+        max_latency_ms=trading_config.get('max_latency_ms')
+    )
+    categories['🛡️ Filtres Avancés (OPT #15-19)'] = OrderedDict(
+        use_anti_whipsaw=trading_config.get('use_anti_whipsaw'),
+        whipsaw_lookback=trading_config.get('whipsaw_lookback'),
+        whipsaw_threshold_pct=trading_config.get('whipsaw_threshold_pct'),
+        whipsaw_max_alternations=trading_config.get('whipsaw_max_alternations'),
+        use_retest_confirmation=trading_config.get('use_retest_confirmation'),
+        retest_tolerance_pct=trading_config.get('retest_tolerance_pct'),
+        retest_timeout_seconds=trading_config.get('retest_timeout_seconds'),
+        use_cooldown=trading_config.get('use_cooldown'),
+        cooldown_seconds=trading_config.get('cooldown_seconds'),
+        cooldown_same_symbol=trading_config.get('cooldown_same_symbol'),
+        use_candle_close=trading_config.get('use_candle_close'),
+        candle_close_threshold_seconds=trading_config.get('candle_close_threshold_seconds'),
+        use_momentum_continuity=trading_config.get('use_momentum_continuity'),
+        momentum_lookback=trading_config.get('momentum_lookback')
+    )
+    categories['⚙️ Configurations Avancées'] = OrderedDict(
+        early_invalidation=trading_config.get('early_invalidation'),
+        trailing_stop=trading_config.get('trailing_stop'),
+        adaptive_thresholds=trading_config.get('adaptive_thresholds'),
+        dynamic_correlation=trading_config.get('dynamic_correlation'),
+        position_sizing=trading_config.get('position_sizing'),
+        correlation_filter=trading_config.get('correlation_filter'),
+        recovery_mode=trading_config.get('recovery_mode'),
+        tp_escalier=trading_config.get('tp_escalier')
+    )
+    return categories
+
+def _flatten_trading_config_for_excel(categories: OrderedDict) -> List[Dict[str, Any]]:
+    rows = []
+    for category, vars_dict in categories.items():
+        for key, value in vars_dict.items():
+            if value is None:
+                value_str = ''
+            elif isinstance(value, bool):
+                value_str = '✅' if value else '❌'
+            elif isinstance(value, (dict, list)):
+                value_str = json.dumps(value, ensure_ascii=False)
+            else:
+                value_str = value
+            rows.append({
+                'category': category,
+                'variable': key,
+                'value': value_str
+            })
+    return rows
 
 # 🔥 LIVE TRADING: Enregistrer les commandes WebSocket pour live trading
 try:
@@ -4159,6 +4332,93 @@ async def handle_client_command(command: str, params: dict):
                 TRADING_CONFIG[key] = val
                 updated[key] = val
 
+        # 🔥 OPT #14-19: Filtres Avancés
+        # --- OPT #14: Scan Interval ---
+        if 'scan_interval' in params:
+            val = int(params['scan_interval'])
+            val = max(15, min(120, val))  # Clamp 15-120s
+            TRADING_CONFIG['scan_interval'] = val
+            updated['scan_interval'] = val
+            logger.info(f"✅ scan_interval mis à jour: {val}s")
+        
+        # --- OPT #15: Anti-Whipsaw ---
+        if 'use_anti_whipsaw' in params:
+            TRADING_CONFIG['use_anti_whipsaw'] = bool(params['use_anti_whipsaw'])
+            updated['use_anti_whipsaw'] = TRADING_CONFIG['use_anti_whipsaw']
+        
+        if 'whipsaw_lookback' in params:
+            val = int(params['whipsaw_lookback'])
+            val = max(3, min(10, val))  # Clamp 3-10
+            TRADING_CONFIG['whipsaw_lookback'] = val
+            updated['whipsaw_lookback'] = val
+        
+        if 'whipsaw_threshold_pct' in params:
+            val = float(params['whipsaw_threshold_pct'])
+            val = max(0.1, min(0.5, val))  # Clamp 0.1-0.5%
+            TRADING_CONFIG['whipsaw_threshold_pct'] = val
+            updated['whipsaw_threshold_pct'] = val
+        
+        if 'whipsaw_max_alternations' in params:
+            val = int(params['whipsaw_max_alternations'])
+            val = max(2, min(5, val))  # Clamp 2-5
+            TRADING_CONFIG['whipsaw_max_alternations'] = val
+            updated['whipsaw_max_alternations'] = val
+        
+        # --- OPT #16: Retest Breakout Confirmation ---
+        if 'use_retest_confirmation' in params:
+            TRADING_CONFIG['use_retest_confirmation'] = bool(params['use_retest_confirmation'])
+            updated['use_retest_confirmation'] = TRADING_CONFIG['use_retest_confirmation']
+        
+        if 'retest_tolerance_pct' in params:
+            val = float(params['retest_tolerance_pct'])
+            val = max(0.05, min(0.5, val))  # Clamp 0.05-0.5%
+            TRADING_CONFIG['retest_tolerance_pct'] = val
+            updated['retest_tolerance_pct'] = val
+        
+        if 'retest_timeout_seconds' in params:
+            val = int(params['retest_timeout_seconds'])
+            val = max(60, min(600, val))  # Clamp 60-600s
+            TRADING_CONFIG['retest_timeout_seconds'] = val
+            updated['retest_timeout_seconds'] = val
+        
+        # --- OPT #17: Cooldown Post-Trade ---
+        if 'use_cooldown' in params:
+            TRADING_CONFIG['use_cooldown'] = bool(params['use_cooldown'])
+            updated['use_cooldown'] = TRADING_CONFIG['use_cooldown']
+        
+        if 'cooldown_seconds' in params:
+            val = int(params['cooldown_seconds'])
+            val = max(10, min(120, val))  # Clamp 10-120s
+            TRADING_CONFIG['cooldown_seconds'] = val
+            updated['cooldown_seconds'] = val
+        
+        if 'cooldown_same_symbol' in params:
+            val = int(params['cooldown_same_symbol'])
+            val = max(30, min(300, val))  # Clamp 30-300s
+            TRADING_CONFIG['cooldown_same_symbol'] = val
+            updated['cooldown_same_symbol'] = val
+        
+        # --- OPT #18: Candle Close Confirmation ---
+        if 'use_candle_close' in params:
+            TRADING_CONFIG['use_candle_close'] = bool(params['use_candle_close'])
+            updated['use_candle_close'] = TRADING_CONFIG['use_candle_close']
+        
+        if 'candle_close_threshold_seconds' in params:
+            val = int(params['candle_close_threshold_seconds'])
+            val = max(3, min(15, val))  # Clamp 3-15s
+            TRADING_CONFIG['candle_close_threshold_seconds'] = val
+            updated['candle_close_threshold_seconds'] = val
+        
+        # --- OPT #19: Momentum Continuity ---
+        if 'use_momentum_continuity' in params:
+            TRADING_CONFIG['use_momentum_continuity'] = bool(params['use_momentum_continuity'])
+            updated['use_momentum_continuity'] = TRADING_CONFIG['use_momentum_continuity']
+        
+        if 'momentum_lookback' in params:
+            val = int(params['momentum_lookback'])
+            val = max(2, min(10, val))  # Clamp 2-10
+            TRADING_CONFIG['momentum_lookback'] = val
+            updated['momentum_lookback'] = val
 
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
@@ -5374,6 +5634,96 @@ async def export_datalogger_excel(
             {"error": f"Erreur export Excel: {str(e)}"},
             status_code=500
         )
+
+
+@app.get("/api/config/export-xlsm")
+async def export_trading_config_xlsm():
+    """Exporter TRADING_CONFIG en XLSM pour l'onglet Variables en cours."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        from openpyxl.workbook.workbook import Workbook as OpenpyxlWorkbook
+    except ImportError:
+        return JSONResponse(
+            {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
+            status_code=500
+        )
+
+    try:
+        from config import TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
+        from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG
+    except Exception as e:
+        return JSONResponse({"error": f"Impossible de charger la configuration: {e}"}, status_code=500)
+
+    categories = _organize_trading_config_for_export(TRADING_CONFIG)
+    rows = _flatten_trading_config_for_excel(categories)
+
+    wb: OpenpyxlWorkbook = Workbook()
+    ws = wb.active
+    ws.title = "Trading_Config"
+
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+    alignment_center = Alignment(horizontal="center")
+
+    headers = ["Catégorie", "Variable", "Valeur"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = alignment_center
+
+    for row in rows:
+        ws.append([row['category'], row['variable'], row['value']])
+
+    for col_idx in range(1, len(headers) + 1):
+        column_letter = get_column_letter(col_idx)
+        ws.column_dimensions[column_letter].width = 35 if col_idx == 1 else 28
+
+    summary_sheet = wb.create_sheet("Autres_Config")
+    summary_sheet.append(["Section", "Clé", "Valeur"])
+    for cell in summary_sheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = alignment_center
+
+    def append_config_block(title: str, config_dict: Dict[str, Any]):
+        if not config_dict:
+            return
+        summary_sheet.append([title, "", ""])
+        last_row = summary_sheet.max_row
+        for cell in summary_sheet[last_row]:
+            cell.font = Font(bold=True)
+        for key, value in config_dict.items():
+            if isinstance(value, (dict, list)):
+                value_str = json.dumps(value, ensure_ascii=False)
+            else:
+                value_str = value
+            summary_sheet.append(["", key, value_str])
+
+    append_config_block("RISK_CONFIG", RISK_CONFIG)
+    append_config_block("CONDITION_WEIGHTS", CONDITION_WEIGHTS)
+    append_config_block("TREND_BONUS_CONFIG", TREND_BONUS_CONFIG)
+    append_config_block("RETRY_CONFIG", RETRY_CONFIG)
+    append_config_block("CIRCUIT_BREAKER_CONFIG", CIRCUIT_BREAKER_CONFIG)
+    append_config_block("WEBSOCKET_CONFIG", WEBSOCKET_CONFIG)
+
+    for col_idx in range(1, 4):
+        summary_sheet.column_dimensions[get_column_letter(col_idx)].width = 35 if col_idx == 1 else 30
+
+    from io import BytesIO
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"trading_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsm"
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.ms-excel.sheet.macroEnabled.12",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @app.delete("/api/datalogger/reset")

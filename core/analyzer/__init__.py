@@ -61,6 +61,18 @@ from .trend_calculator import (
     calculate_trend_data
 )
 
+# 🔥 OPT #15-19: Advanced Filters
+from .advanced_filters import (
+    check_whipsaw_filter,
+    check_momentum_continuity,
+    check_candle_close_filter,
+    is_candle_close_imminent,
+    get_retest_manager,
+    get_cooldown_manager,
+    RetestConfirmationManager,
+    CooldownManager
+)
+
 __all__ = [
     # Main Class
     'TechnicalAnalyzer',
@@ -94,5 +106,14 @@ __all__ = [
     'check_static_correlation',
     'check_dynamic_correlation',
     # Trend Calculator
-    'calculate_trend_data'
+    'calculate_trend_data',
+    # 🔥 Advanced Filters (OPT #15-19)
+    'check_whipsaw_filter',
+    'check_momentum_continuity',
+    'check_candle_close_filter',
+    'is_candle_close_imminent',
+    'get_retest_manager',
+    'get_cooldown_manager',
+    'RetestConfirmationManager',
+    'CooldownManager'
 ]

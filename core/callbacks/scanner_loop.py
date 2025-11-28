@@ -1,12 +1,21 @@
 """
 Callbacks pour la boucle de scanner automatique
-Exécuté toutes les 45 secondes pour scanner les setups
+Exécuté toutes les 30 secondes pour scanner les setups (🔥 OPT #14)
 """
 
 import asyncio
 import logging
+import time
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
+
+# 🔥 OPT #15-19: Import des filtres avancés
+from core.analyzer.advanced_filters import (
+    check_whipsaw_filter,
+    check_momentum_continuity,
+    check_candle_close_filter,
+    get_cooldown_manager
+)
 # from core.simple_pg_logger import SimplePGLogger  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger
 
 logger = logging.getLogger(__name__)
@@ -100,14 +109,15 @@ def get_pg_datalogger():
 
 async def scanner_loop_callback():
     """
-    Callback appelé toutes les 45 secondes pour scanner les setups
+    Callback appelé toutes les 30 secondes pour scanner les setups (🔥 OPT #14)
 
     Procédure:
-    1. Vérifier qu'aucune position n'est active
-    2. Si top_pairs vide, effectuer scan initial
-    3. Scanner les top N paires en parallèle
-    4. Analyser les résultats et ouvrir position si setup trouvé
-    5. Émettre événements SocketIO de mise à jour
+    1. 🔥 OPT #17: Vérifier cooldown post-trade
+    2. Vérifier qu'aucune position n'est active
+    3. Si top_pairs vide, effectuer scan initial
+    4. Scanner les top N paires en parallèle
+    5. Analyser les résultats et ouvrir position si setup trouvé
+    6. Émettre événements SocketIO de mise à jour
     """
     if not _scanner or not _app_state or not _scanner_lock:
         logger.debug("⚠️ Instances non disponibles pour scanner_loop_callback")
@@ -116,6 +126,13 @@ async def scanner_loop_callback():
     try:
         # Acquérir le lock pour éviter les scans multiples en parallèle
         async with _scanner_lock:
+            # 🔥 OPT #17: Vérifier cooldown post-trade
+            cooldown_mgr = get_cooldown_manager()
+            can_trade, cooldown_reason = cooldown_mgr.can_trade("")  # Check général
+            if not can_trade:
+                logger.info(f"⏸️ Scanner ignoré: {cooldown_reason}")
+                return
+            
             # Vérifier qu'on n'a pas déjà une position active
             if _app_state.get('active_position') or (
                 _position_manager and _position_manager.active_position
@@ -827,7 +844,58 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         #     logger.debug(f"Traceback: {traceback.format_exc()}")
 
         # 🔥 DEBUG: Vérifier que le code atteint cette section
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT calcul durée scan")
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT filtres avancés")
+
+        # =================================================================
+        # 🔥 OPT #15-19: Filtres Avancés
+        # =================================================================
+        if analysis and isinstance(analysis, dict) and 'direction' in analysis:
+            direction = analysis.get('direction')
+            
+            # 🔥 OPT #15: Anti-Whipsaw Filter
+            klines_1m = analysis.get('klines_1m') or analysis.get('klines')
+            if klines_1m:
+                whipsaw_result = check_whipsaw_filter(klines_1m, symbol)
+                if whipsaw_result:
+                    logger.info(f"⚡ {symbol} rejeté par filtre anti-whipsaw: {whipsaw_result.get('reason')}")
+                    # Retourner le rejet au lieu du setup
+                    return {
+                        'symbol': symbol,
+                        'reason': whipsaw_result.get('reason'),
+                        'reject_category': 'whipsaw_filter'
+                    }
+            
+            # 🔥 OPT #18: Candle Close Confirmation
+            candle_close_result = check_candle_close_filter(symbol, '1m')
+            if candle_close_result:
+                logger.info(f"⏰ {symbol} rejeté par filtre candle close: {candle_close_result.get('reason')}")
+                return {
+                    'symbol': symbol,
+                    'reason': candle_close_result.get('reason'),
+                    'reject_category': 'candle_close_filter'
+                }
+            
+            # 🔥 OPT #19: Momentum Continuity Filter
+            if klines_1m:
+                momentum_result = check_momentum_continuity(klines_1m, direction, symbol)
+                if momentum_result:
+                    logger.info(f"📉 {symbol} rejeté par filtre momentum: {momentum_result.get('reason')}")
+                    return {
+                        'symbol': symbol,
+                        'reason': momentum_result.get('reason'),
+                        'reject_category': 'momentum_filter'
+                    }
+            
+            # 🔥 OPT #17: Vérifier cooldown spécifique au symbole
+            cooldown_mgr = get_cooldown_manager()
+            can_trade, cooldown_reason = cooldown_mgr.can_trade(symbol)
+            if not can_trade:
+                logger.info(f"⏸️ {symbol} rejeté par cooldown: {cooldown_reason}")
+                return {
+                    'symbol': symbol,
+                    'reason': cooldown_reason,
+                    'reject_category': 'cooldown_filter'
+                }
 
         # 🔥 PHASE 3: Calculer durée du scan
         try:
