@@ -22,10 +22,6 @@ from utils.logger import get_logger
 
 logger = get_logger()
 
-# 🔥 OPT #7: Cache global pour orderbooks
-_orderbook_cache: Dict[str, Dict] = {}
-_orderbook_cache_timestamps: Dict[str, float] = {}
-
 
 class ScalabilityScanner:
     """Scanner de scalabilité pour identifier les meilleures paires"""
@@ -33,6 +29,11 @@ class ScalabilityScanner:
     def __init__(self):
         self.client = get_mexc_client()
         self.is_scanning = False
+        # 🔥 OPT #7: caches par instance (évite contamination tests)
+        self._orderbook_cache: Dict[str, Dict] = {}
+        self._orderbook_cache_timestamps: Dict[str, float] = {}
+        # 🔥 OPT #5: dernière raison de rejet (pour debug)
+        self._last_reject_reason: Optional[str] = None
     
     def calculate_volatility(self, closes: List[float], period: int) -> float:
         """
@@ -65,23 +66,22 @@ class ScalabilityScanner:
         Returns:
             Dict avec spread, bookDepth, balanceScore, directionBias
         """
-        global _orderbook_cache, _orderbook_cache_timestamps
-        
         cache_ttl = TRADING_CONFIG.get('scalability_orderbook_cache_ttl', 30)
         now = time.time()
-        
-        # 🔥 OPT #7: Vérifier cache
-        if symbol in _orderbook_cache:
-            cache_age = now - _orderbook_cache_timestamps.get(symbol, 0)
-            if cache_age < cache_ttl:
-                return _orderbook_cache[symbol]
+        cache_entry = self._orderbook_cache.get(symbol)
+        cache_age = now - self._orderbook_cache_timestamps.get(symbol, 0)
         
         try:
             orderbook = await self.client.fetch_order_book(symbol, limit=5)
             
             default_result = {
-                'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0, 
-                'bidVol': 0, 'askVol': 0, 'directionBias': 'NEUTRAL'
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'bidAskRatio': 0.5
             }
             
             if not orderbook or 'bids' not in orderbook or 'asks' not in orderbook:
@@ -130,22 +130,30 @@ class ScalabilityScanner:
                 'directionBias': direction_bias,
                 'bidAskRatio': bid_ask_ratio
             }
-            
+
             # 🔥 OPT #7: Mettre en cache
-            _orderbook_cache[symbol] = result
-            _orderbook_cache_timestamps[symbol] = now
-            
+            self._orderbook_cache[symbol] = result
+            self._orderbook_cache_timestamps[symbol] = now
+
             return result
-            
+
         except Exception as e:
             if DEBUG_ENABLED:
                 logger.error(f"Erreur spread pour {symbol}: {e}")
+            # 🔥 OPT #7: fallback sur cache si disponible
+            if cache_entry and cache_age < cache_ttl:
+                return cache_entry
             return {
-                'spread': float('nan'), 'bookDepth': 0, 'balanceScore': 0, 
-                'bidVol': 0, 'askVol': 0, 'directionBias': 'NEUTRAL'
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'bidAskRatio': 0.5
             }
     
-    def calculate_score(self, pair: Dict, max_volume: float, max_depth: float) -> Tuple[float, Optional[str]]:
+    def calculate_score(self, pair: Dict, max_volume: float, max_depth: float) -> float:
         """
         🔥 OPT #1/#4/#5: Calcule le score de scalabilité avec paramètres configurables
         
@@ -160,6 +168,7 @@ class ScalabilityScanner:
             Tuple (score, reject_reason) - reject_reason=None si accepté
         """
         symbol = pair.get('symbol', '?')
+        self._last_reject_reason = None
         spread = pair.get('spread', float('nan'))
         vol5 = pair.get('vol5', 0.0)
         recent_volume = pair.get('recentVolume', 0)
@@ -197,7 +206,8 @@ class ScalabilityScanner:
         if reject_reason:
             if log_rejected and DEBUG_ENABLED:
                 logger.debug(f"⏭️ {symbol} rejeté: {reject_reason}")
-            return (0.0, reject_reason)
+            self._last_reject_reason = reject_reason
+            return 0.0
         
         # Ratio volatilité/spread (plus élevé = mieux)
         vol_spread_ratio = (vol5 / spread) if (spread > 0 and not math.isnan(spread) and vol5 > 0) else 0.0
@@ -218,7 +228,8 @@ class ScalabilityScanner:
         
         # Retourner score limité
         final_score = round(raw_score, 2) if (math.isfinite(raw_score) and raw_score >= 0) else 0.0
-        return (final_score, None)
+        self._last_reject_reason = None
+        return final_score
     
     def calculate_adx(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> float:
         """
