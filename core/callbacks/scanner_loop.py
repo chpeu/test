@@ -31,6 +31,8 @@ _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
 _pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML (injection)
 _pg_datalogger_instance = None  # 🔥 Force Initialization: Instance créée automatiquement
+# Notifications
+_notification_manager = None
 # _simple_logger = SimplePGLogger()  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger pour les 46 features ML
 
 
@@ -75,6 +77,12 @@ def set_websocket_manager(ws_manager):
     _ws_manager = ws_manager
 
 
+def set_notification_manager(notification_manager):
+    """Injecter NotificationManager pour remonter les erreurs critiques"""
+    global _notification_manager
+    _notification_manager = notification_manager
+
+
 def set_scanner_lock(lock):
     """Injecter le lock du scanner"""
     global _scanner_lock
@@ -105,6 +113,29 @@ def get_pg_datalogger():
             return None
     
     return _pg_datalogger_instance
+
+
+async def _notify_error(error_type: str, details: str):
+    """Envoyer une notification Telegram d'erreur si configuré"""
+    if not _notification_manager:
+        return
+
+    try:
+        snippet = (details or "Unknown")
+        if len(snippet) > 500:
+            snippet = snippet[:500] + "..."
+
+        await _notification_manager.notify(
+            'error',
+            {
+                'error_type': error_type,
+                'details': snippet
+            },
+            priority='error',
+            channels=['telegram']
+        )
+    except Exception as notify_err:
+        logger.error(f"❌ Erreur notification Telegram (error_type={error_type}): {notify_err}")
 
 
 async def scanner_loop_callback():
@@ -153,6 +184,7 @@ async def scanner_loop_callback():
 
     except Exception as e:
         logger.error(f"❌ Erreur scanner_loop_callback: {e}")
+        await _notify_error('scanner_loop_callback', str(e))
 
 
 async def _scan_initial_top_pairs():
@@ -184,6 +216,7 @@ async def _scan_initial_top_pairs():
                         logger.info(f"✅ WebSocket démarré: {len(symbols)} symboles")
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur démarrage WebSocket: {e}")
+                        await _notify_error('start_websocket_top_pairs', str(e))
 
             # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
             if _ws_manager:
@@ -191,6 +224,7 @@ async def _scan_initial_top_pairs():
 
     except Exception as e:
         logger.error(f"❌ Erreur scan initial: {e}")
+        await _notify_error('scan_initial_top_pairs', str(e))
 
 
 async def _scan_top_pairs():
@@ -532,6 +566,7 @@ async def _scan_top_pairs():
                         logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
                         import traceback
                         logger.debug(traceback.format_exc())
+                        await _notify_error('restart_websocket_position', f"{symbol}: {e}")
 
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
@@ -541,6 +576,7 @@ async def _scan_top_pairs():
                 logger.error(f"❌ Erreur validation position: {e}")
             except Exception as e:
                 logger.error(f"❌ Erreur ouverture position: {e}", exc_info=True)
+                await _notify_error('open_position', f"{symbol}: {e}")
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
         if _ws_manager:
@@ -552,6 +588,7 @@ async def _scan_top_pairs():
 
     except Exception as e:
         logger.error(f"❌ Erreur scan top pairs: {e}")
+        await _notify_error('scan_top_pairs', str(e))
 
 
 def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -1251,6 +1288,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
 
     except Exception as e:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
+        await _notify_error('scan_pair_for_setup', f"{symbol}: {e}")
         
         # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
         # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire

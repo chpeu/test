@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764374147.2595341,
+  "timestamp": 1764377203.2252297,
   "specs": {
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -25,6 +25,46 @@
       "symbol": "ASTER_USDT",
       "min_vol": 1.0,
       "max_vol": 275000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "SUI_USDT": {
+      "symbol": "SUI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "INJ_USDT": {
+      "symbol": "INJ_USDT",
+      "min_vol": 1.0,
+      "max_vol": 64000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "HYPE_USDT": {
+      "symbol": "HYPE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 120000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "TIA_USDT": {
+      "symbol": "TIA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 550000.0,
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,

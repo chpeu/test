@@ -795,6 +795,13 @@ class LiveOrderManagerFutures:
                             f"volUnit={contract_spec.vol_unit if contract_spec else 'N/A'}"
                         )
 
+                        # 🔥 TELEGRAM: Notifier rejet silencieux
+                        if self.telegram_notifier:
+                            self.telegram_notifier.send_error_sync(
+                                "Rejet silencieux MEXC",
+                                f"{bypass_symbol} | Code: {error_code} | {error_details}"
+                            )
+
                         # 🔥 Circuit Breaker: Enregistrer échec
                         if self.circuit_breaker:
                             self.circuit_breaker.record_failure()
@@ -819,6 +826,13 @@ class LiveOrderManagerFutures:
                             f"State: {order_state} | "
                             f"Vol: {amount:.6f} | Prix: {entry_price}"
                         )
+
+                        # 🔥 TELEGRAM: Notifier rejet d'ordre
+                        if self.telegram_notifier:
+                            self.telegram_notifier.send_error_sync(
+                                "Ordre rejeté MEXC",
+                                f"{bypass_symbol} | State: {order_state} | Vol: {amount:.6f}"
+                            )
 
                         if self.circuit_breaker:
                             self.circuit_breaker.record_failure()
@@ -909,6 +923,14 @@ class LiveOrderManagerFutures:
                     logger.error(
                         f"❌ [BYPASS] Échec ouverture: {bypass_result.error_message}"
                     )
+
+                    # 🔥 TELEGRAM: Notifier échec ouverture
+                    if self.telegram_notifier:
+                        self.telegram_notifier.send_error_sync(
+                            "Échec ouverture position",
+                            f"{symbol} | {bypass_result.error_message}"
+                        )
+
                     return FuturesOrderResult(
                         success=False,
                         error_message=bypass_result.error_message,
@@ -1076,6 +1098,13 @@ class LiveOrderManagerFutures:
 
             if mexc_response:
                 logger.error(f"Réponse MEXC: {mexc_response}")
+
+            # 🔥 TELEGRAM: Notifier erreur critique
+            if self.telegram_notifier:
+                self.telegram_notifier.send_error_sync(
+                    "Erreur ouverture position",
+                    f"{symbol} | {error_msg[:200]}"
+                )
 
             return FuturesOrderResult(
                 success=False,
@@ -1265,6 +1294,13 @@ class LiveOrderManagerFutures:
                             f"Vol envoyé: {amount:.6f} | Prix envoyé: {current_price}"
                         )
 
+                        # 🔥 TELEGRAM: Notifier rejet silencieux fermeture
+                        if self.telegram_notifier:
+                            self.telegram_notifier.send_error_sync(
+                                "Rejet silencieux fermeture",
+                                f"{bypass_symbol} | Code: {error_code} | {error_details}"
+                            )
+
                         if self.circuit_breaker:
                             self.circuit_breaker.record_failure()
 
@@ -1284,6 +1320,13 @@ class LiveOrderManagerFutures:
                             f"❌ [BYPASS] Fermeture REJETÉE: {bypass_symbol} | "
                             f"Order ID: {bypass_result.order_id} | State: {order_state}"
                         )
+
+                        # 🔥 TELEGRAM: Notifier fermeture rejetée
+                        if self.telegram_notifier:
+                            self.telegram_notifier.send_error_sync(
+                                "Fermeture rejetée MEXC",
+                                f"{bypass_symbol} | State: {order_state}"
+                            )
 
                         if self.circuit_breaker:
                             self.circuit_breaker.record_failure()
@@ -1365,6 +1408,14 @@ class LiveOrderManagerFutures:
                     logger.error(
                         f"❌ [BYPASS] Échec fermeture: {bypass_result.error_message}"
                     )
+
+                    # 🔥 TELEGRAM: Notifier échec fermeture
+                    if self.telegram_notifier:
+                        self.telegram_notifier.send_error_sync(
+                            "Échec fermeture position",
+                            f"{symbol} | {bypass_result.error_message}"
+                        )
+
                     return FuturesOrderResult(
                         success=False,
                         error_message=bypass_result.error_message,
@@ -1477,6 +1528,13 @@ class LiveOrderManagerFutures:
             self.stats['orders_failed'] += 1
 
             logger.error(f"❌ Erreur fermeture position futures: {e}")
+
+            # 🔥 TELEGRAM: Notifier erreur fermeture critique
+            if self.telegram_notifier:
+                self.telegram_notifier.send_error_sync(
+                    "Erreur fermeture position",
+                    f"{symbol} | {str(e)[:200]}"
+                )
 
             return FuturesOrderResult(
                 success=False,

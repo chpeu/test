@@ -2612,6 +2612,21 @@ def init_instances():
         # 🔥 NOUVEAU: Injecter Notification Manager dans API routes (pour webhook Telegram)
         if set_notification_manager and notification_manager:
             set_notification_manager(notification_manager)
+
+        # 🔥 Injecter NotificationManager dans les callbacks (scanner & position check)
+        try:
+            from core.callbacks.scanner_loop import set_notification_manager as set_scanner_notification_manager
+            set_scanner_notification_manager(notification_manager)
+            logger.info("✅ NotificationManager injecté dans scanner_loop")
+        except ImportError as e:
+            logger.debug(f"ℹ️ Impossible d'injecter NotificationManager dans scanner_loop: {e}")
+
+        try:
+            from core.callbacks.position_check_loop import set_notification_manager as set_position_notification_manager
+            set_position_notification_manager(notification_manager)
+            logger.info("✅ NotificationManager injecté dans position_check_loop")
+        except ImportError as e:
+            logger.debug(f"ℹ️ Impossible d'injecter NotificationManager dans position_check_loop: {e}")
     
     if not scanner and ScalabilityScanner:
         scanner = ScalabilityScanner()

@@ -633,6 +633,9 @@ class MexcFuturesBypass:
         self.timeout = timeout
         self.debug = debug
         self._session: Optional[aiohttp.ClientSession] = None
+        
+        # 🔥 TELEGRAM: Stocker le notifier pour les erreurs critiques
+        self.telegram_notifier = telegram_notifier
 
         # 🔥 AMÉLIORATION 2: Cache persistant chargé depuis fichier
         cached_specs = load_specs_cache()
@@ -759,6 +762,12 @@ class MexcFuturesBypass:
                     if resp.status == 403:
                         _rate_limiter.on_response_403()  # 🔥 Callback rate limiter
                         logger.error("❌ Accès refusé (403) - token expiré ou IP bannie?")
+                        # 🔥 TELEGRAM: Notifier erreur 403
+                        if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_error_sync'):
+                            self.telegram_notifier.send_error_sync(
+                                "Token MEXC expiré (403)",
+                                "Accès refusé - token browser expiré ou IP bannie"
+                            )
                         return {"success": False, "code": 403, "message": "Access denied - check token"}
                     data = await resp.json()
             else:  # POST
@@ -775,6 +784,12 @@ class MexcFuturesBypass:
                     if resp.status == 403:
                         _rate_limiter.on_response_403()  # 🔥 Callback rate limiter
                         logger.error("❌ Accès refusé (403) - token expiré ou IP bannie?")
+                        # 🔥 TELEGRAM: Notifier erreur 403
+                        if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_error_sync'):
+                            self.telegram_notifier.send_error_sync(
+                                "Token MEXC expiré (403)",
+                                "Accès refusé - token browser expiré ou IP bannie"
+                            )
                         return {"success": False, "code": 403, "message": "Access denied - check token"}
                     data = await resp.json()
 
@@ -922,6 +937,16 @@ class MexcFuturesBypass:
             error_msg = response.get("message", "Unknown error")
             error_code = response.get("code", -1)
             logger.error(f"❌ Order failed: code={error_code}, message={error_msg}")
+            
+            # 🔥 TELEGRAM: Notifier erreurs critiques (401, 403, etc.)
+            if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_error_sync'):
+                # Erreurs d'authentification critiques
+                if error_code in [401, 403] or "login" in error_msg.lower() or "expired" in error_msg.lower():
+                    self.telegram_notifier.send_error_sync(
+                        f"Erreur MEXC ({error_code})",
+                        f"{symbol} | {error_msg}"
+                    )
+            
             return OrderResult(
                 success=False,
                 error_code=error_code,

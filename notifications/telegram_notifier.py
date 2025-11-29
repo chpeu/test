@@ -434,7 +434,7 @@ class TelegramNotifier:
     
     def get_stats(self) -> Dict:
         """
-        Obtenir statistiques notifications
+        Récupérer statistiques messages
         
         Returns:
             Dict avec nombre messages envoyés, erreurs, etc.
@@ -448,6 +448,64 @@ class TelegramNotifier:
             'enabled': self.enabled
         }
 
+    def send_alert(self, message: str) -> bool:
+        """
+        🔥 Wrapper SYNCHRONE pour envoyer une alerte d'erreur
+        Compatible avec les appels depuis du code synchrone (ex: LiveOrderManager)
+        
+        Args:
+            message: Message d'alerte à envoyer
+            
+        Returns:
+            True si envoyé (ou si disabled), False si erreur
+        """
+        if not self.enabled:
+            logger.debug(f"📱 [TELEGRAM DISABLED] Alert: {message[:100]}...")
+            return True
+        
+        try:
+            import asyncio
+            
+            # Créer une coroutine pour send_message
+            async def _send():
+                return await self.send_message(message, bypass_throttle=True)
+            
+            # Essayer d'obtenir la loop courante
+            try:
+                loop = asyncio.get_running_loop()
+                # Si une loop est active, planifier la tâche
+                asyncio.ensure_future(_send())
+                return True
+            except RuntimeError:
+                # Pas de loop active, en créer une temporaire
+                return asyncio.run(_send())
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur send_alert: {e}")
+            return False
+
+    def send_error_sync(self, error_type: str, details: str) -> bool:
+        """
+        🔥 Wrapper SYNCHRONE pour notify_error
+        
+        Args:
+            error_type: Type d'erreur
+            details: Détails de l'erreur
+            
+        Returns:
+            True si envoyé, False sinon
+        """
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
+        message = f"""
+🚨 **ERREUR SYSTÈME** {instance_info} 🚨
+
+❌ **Type**: {error_type}
+📝 **Détails**: {details}
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        return self.send_alert(message.strip())
 
 # ==================== HELPER ====================
 
