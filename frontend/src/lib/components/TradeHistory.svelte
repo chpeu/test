@@ -44,25 +44,15 @@
 		currentPage = 1;
 	}
 
-	// 🔥 FIX: Calculer le PnL total de la session depuis TOUS les trades (pas seulement la page)
+	// 🔥 FIX: Somme simple des colonnes (frais/slippage DÉJÀ déduits dans net_pnl_*)
 	const sessionPnL = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
-		// Utiliser net_pnl_usdt directement (déjà calculé avec slippage et fees déduits)
-		const totalPnL = $trades.reduce((sum, trade) => {
-			return sum + (trade.net_pnl_usdt || trade.pnl_usdt || 0);
-		}, 0);
-		return totalPnL;
+		return $trades.reduce((sum, trade) => sum + (trade.net_pnl_usdt || 0), 0);
 	});
 
 	const sessionPnLPct = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
-		// Utiliser net_pnl_pct directement (déjà calculé avec slippage et fees déduits)
-		// Somme totale, pas moyenne - doit correspondre exactement à la somme des trades visibles
-		const totalPnLPct = $trades.reduce((sum, trade) => {
-			// Utiliser uniquement net_pnl_pct ou pnl_pct (en pourcentage), pas net_pnl qui est en USDT
-			return sum + (trade.net_pnl_pct || trade.pnl_pct || 0);
-		}, 0);
-		return totalPnLPct; // Total, pas moyenne
+		return $trades.reduce((sum, trade) => sum + (trade.net_pnl_pct || 0), 0);
 	});
 
 	function formatTime(dateStr) {
@@ -190,9 +180,9 @@
 									return (slippageValue || 0).toFixed(3);
 								})()}%
 							</td>
-							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
-							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0} data-debug-name="trade.net_pnl_pct">
-								{((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0 ? '+' : ''}{formatPercent((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0))}%
+							<!-- PnL Net % (frais/slippage DÉJÀ déduits) -->
+							<td class="pnl-net" class:positive={(trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl_pct || 0) < 0} data-debug-name="trade.net_pnl_pct">
+								{(trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || 0)}%
 							</td>
 							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
 							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt">

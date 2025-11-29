@@ -518,6 +518,16 @@ async def _scan_top_pairs():
                         if hasattr(_price_provider, 'start_websocket'):
                             await _price_provider.start_websocket([symbol])
                             logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
+                        
+                        # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
+                        if hasattr(_price_provider, 'set_sl_check_callback') and position_result:
+                            try:
+                                from main import setup_realtime_sl_check
+                                await setup_realtime_sl_check(position_result, _price_provider)
+                            except ImportError:
+                                logger.warning("⚠️ Impossible d'importer setup_realtime_sl_check")
+                            except Exception as sl_err:
+                                logger.error(f"❌ Erreur configuration SL temps réel: {sl_err}")
                     except Exception as e:
                         logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
                         import traceback
@@ -1128,6 +1138,21 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),
                         'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+                        # OPT #15-19 : filtres avancés
+                        'use_anti_whipsaw': TRADING_CONFIG.get('use_anti_whipsaw'),
+                        'whipsaw_lookback': TRADING_CONFIG.get('whipsaw_lookback'),
+                        'whipsaw_threshold_pct': TRADING_CONFIG.get('whipsaw_threshold_pct'),
+                        'whipsaw_max_alternations': TRADING_CONFIG.get('whipsaw_max_alternations'),
+                        'use_retest_confirmation': TRADING_CONFIG.get('use_retest_confirmation'),
+                        'retest_tolerance_pct': TRADING_CONFIG.get('retest_tolerance_pct'),
+                        'retest_timeout_seconds': TRADING_CONFIG.get('retest_timeout_seconds'),
+                        'use_cooldown': TRADING_CONFIG.get('use_cooldown'),
+                        'cooldown_seconds': TRADING_CONFIG.get('cooldown_seconds'),
+                        'cooldown_same_symbol': TRADING_CONFIG.get('cooldown_same_symbol'),
+                        'use_candle_close': TRADING_CONFIG.get('use_candle_close'),
+                        'candle_close_threshold_seconds': TRADING_CONFIG.get('candle_close_threshold_seconds'),
+                        'use_momentum_continuity': TRADING_CONFIG.get('use_momentum_continuity'),
+                        'momentum_lookback': TRADING_CONFIG.get('momentum_lookback'),
                     }
                 }
                 

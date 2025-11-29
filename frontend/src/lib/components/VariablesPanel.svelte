@@ -184,13 +184,13 @@
 		}
 	}
 
-	// 🔥 Export XLSM des variables en cours
-	async function exportCurrentConfigXlsm() {
+	// 🔥 Export XLSX des variables en cours
+	async function exportCurrentConfigXlsx() {
 		if (exportingCurrentConfig) return;
 		try {
 			exportingCurrentConfig = true;
 			saveMessage = '⏳ Export des variables en cours...';
-			const response = await fetch('/api/config/export-xlsm');
+			const response = await fetch('/api/config/export-xlsx');
 			if (!response.ok) {
 				const error = await response.json().catch(() => ({}));
 				throw new Error(error.error || 'Erreur export variables en cours');
@@ -199,7 +199,7 @@
 			const url = window.URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = `trading_config_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.xlsm`;
+			a.download = `trading_config_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.xlsx`;
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
@@ -3246,14 +3246,14 @@
 						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
 					</button>
 					<button
-						class="btn-export"
-						on:click={exportCurrentConfigXlsm}
-						disabled={exportingCurrentConfig}
-						title="Exporter l'ensemble des variables en .xlsm"
-						data-debug-name="variablesPanel.current.exportButton"
-					>
-						{exportingCurrentConfig ? '⏳ Export...' : '📤 Export XLSM'}
-					</button>
+			class="btn-export"
+			on:click={exportCurrentConfigXlsx}
+			disabled={exportingCurrentConfig}
+			title="Exporter l'ensemble des variables en .xlsx"
+			data-debug-name="variablesPanel.current.exportButton"
+		>
+			{exportingCurrentConfig ? '⏳ Export...' : '📤 Export XLSX'}
+		</button>
 				</div>
 				<p class="section-desc" data-debug-name="variablesPanel.current.description">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
 

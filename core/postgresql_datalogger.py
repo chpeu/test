@@ -493,7 +493,14 @@ class PostgreSQLDataLogger:
                     config_min_score_required, config_snr_threshold,
                     config_atr_min_1m, config_atr_max_1m,
                     config_atr_min_5m, config_atr_max_5m,
-                    config_volume_multiplier, config_use_confluence
+                    config_volume_multiplier, config_use_confluence,
+                    config_use_anti_whipsaw, config_whipsaw_lookback,
+                    config_whipsaw_threshold_pct, config_whipsaw_max_alternations,
+                    config_use_retest_confirmation, config_retest_tolerance_pct,
+                    config_retest_timeout_seconds, config_use_cooldown,
+                    config_cooldown_seconds, config_cooldown_same_symbol,
+                    config_use_candle_close, config_candle_close_threshold_seconds,
+                    config_use_momentum_continuity, config_momentum_lookback
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
@@ -639,7 +646,21 @@ class PostgreSQLDataLogger:
                 params_snap.get('optimal_atr_min_5m'),
                 params_snap.get('optimal_atr_max_5m'),
                 params_snap.get('volume_multiplier'),
-                params_snap.get('use_confluence')
+                params_snap.get('use_confluence'),
+                params_snap.get('use_anti_whipsaw'),
+                params_snap.get('whipsaw_lookback'),
+                params_snap.get('whipsaw_threshold_pct'),
+                params_snap.get('whipsaw_max_alternations'),
+                params_snap.get('use_retest_confirmation'),
+                params_snap.get('retest_tolerance_pct'),
+                params_snap.get('retest_timeout_seconds'),
+                params_snap.get('use_cooldown'),
+                params_snap.get('cooldown_seconds'),
+                params_snap.get('cooldown_same_symbol'),
+                params_snap.get('use_candle_close'),
+                params_snap.get('candle_close_threshold_seconds'),
+                params_snap.get('use_momentum_continuity'),
+                params_snap.get('momentum_lookback')
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -1061,6 +1082,32 @@ class PostgreSQLDataLogger:
             config_optimal_atr_max_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_5m'))
             config_volume_multiplier = _extract_numeric_value(config_snapshot_dict.get('volume_multiplier'))
             config_use_confluence = config_snapshot_dict.get('use_confluence')
+            config_use_anti_whipsaw = config_snapshot_dict.get('use_anti_whipsaw')
+            config_whipsaw_lookback = _extract_numeric_value(config_snapshot_dict.get('whipsaw_lookback'))
+            config_whipsaw_threshold_pct = _extract_numeric_value(config_snapshot_dict.get('whipsaw_threshold_pct'))
+            config_whipsaw_max_alternations = _extract_numeric_value(config_snapshot_dict.get('whipsaw_max_alternations'))
+            config_use_retest_confirmation = config_snapshot_dict.get('use_retest_confirmation')
+            config_retest_tolerance_pct = _extract_numeric_value(config_snapshot_dict.get('retest_tolerance_pct'))
+            config_retest_timeout_seconds = _extract_numeric_value(config_snapshot_dict.get('retest_timeout_seconds'))
+            config_use_cooldown = config_snapshot_dict.get('use_cooldown')
+            config_cooldown_seconds = _extract_numeric_value(config_snapshot_dict.get('cooldown_seconds'))
+            config_cooldown_same_symbol = _extract_numeric_value(config_snapshot_dict.get('cooldown_same_symbol'))
+            config_use_candle_close = config_snapshot_dict.get('use_candle_close')
+            config_candle_close_threshold_seconds = _extract_numeric_value(config_snapshot_dict.get('candle_close_threshold_seconds'))
+            config_use_momentum_continuity = config_snapshot_dict.get('use_momentum_continuity')
+            config_momentum_lookback = _extract_numeric_value(config_snapshot_dict.get('momentum_lookback'))
+
+            def _normalize_bool(val):
+                if isinstance(val, str):
+                    return val.lower() in ('true', '1', 'yes')
+                return bool(val) if val is not None else None
+
+            config_use_confluence = _normalize_bool(config_use_confluence)
+            config_use_anti_whipsaw = _normalize_bool(config_use_anti_whipsaw)
+            config_use_retest_confirmation = _normalize_bool(config_use_retest_confirmation)
+            config_use_cooldown = _normalize_bool(config_use_cooldown)
+            config_use_candle_close = _normalize_bool(config_use_candle_close)
+            config_use_momentum_continuity = _normalize_bool(config_use_momentum_continuity)
             if isinstance(config_use_confluence, str):
                 config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
             elif config_use_confluence is None:
@@ -1258,6 +1305,20 @@ class PostgreSQLDataLogger:
                 ('config_optimal_atr_max_5m', config_optimal_atr_max_5m),
                 ('config_volume_multiplier', config_volume_multiplier),
                 ('config_use_confluence', config_use_confluence),
+                ('config_use_anti_whipsaw', config_use_anti_whipsaw),
+                ('config_whipsaw_lookback', config_whipsaw_lookback),
+                ('config_whipsaw_threshold_pct', config_whipsaw_threshold_pct),
+                ('config_whipsaw_max_alternations', config_whipsaw_max_alternations),
+                ('config_use_retest_confirmation', config_use_retest_confirmation),
+                ('config_retest_tolerance_pct', config_retest_tolerance_pct),
+                ('config_retest_timeout_seconds', config_retest_timeout_seconds),
+                ('config_use_cooldown', config_use_cooldown),
+                ('config_cooldown_seconds', config_cooldown_seconds),
+                ('config_cooldown_same_symbol', config_cooldown_same_symbol),
+                ('config_use_candle_close', config_use_candle_close),
+                ('config_candle_close_threshold_seconds', config_candle_close_threshold_seconds),
+                ('config_use_momentum_continuity', config_use_momentum_continuity),
+                ('config_momentum_lookback', config_momentum_lookback),
                 ('config_snapshot', config_snapshot),
                 ('win', win)
             ])
@@ -1509,7 +1570,22 @@ class PostgreSQLDataLogger:
                 params_snap.get('optimal_atr_min_5m'),
                 params_snap.get('optimal_atr_max_5m'),
                 params_snap.get('volume_multiplier'),
-                params_snap.get('use_confluence')
+                params_snap.get('use_confluence'),
+                # 🔥 FIX: Ajouter les nouvelles colonnes config_* (OPT #15-19)
+                params_snap.get('use_anti_whipsaw'),
+                params_snap.get('whipsaw_lookback'),
+                params_snap.get('whipsaw_threshold_pct'),
+                params_snap.get('whipsaw_max_alternations'),
+                params_snap.get('use_retest_confirmation'),
+                params_snap.get('retest_tolerance_pct'),
+                params_snap.get('retest_timeout_seconds'),
+                params_snap.get('use_cooldown'),
+                params_snap.get('cooldown_seconds'),
+                params_snap.get('cooldown_same_symbol'),
+                params_snap.get('use_candle_close'),
+                params_snap.get('candle_close_threshold_seconds'),
+                params_snap.get('use_momentum_continuity'),
+                params_snap.get('momentum_lookback')
             )
 
             values.append(value_tuple)
@@ -1557,7 +1633,15 @@ class PostgreSQLDataLogger:
             'config_min_score_required', 'config_snr_threshold',
             'config_atr_min_1m', 'config_atr_max_1m',
             'config_atr_min_5m', 'config_atr_max_5m',
-            'config_volume_multiplier', 'config_use_confluence'
+            'config_volume_multiplier', 'config_use_confluence',
+            # 🔥 FIX: Ajouter les nouvelles colonnes config_* (OPT #15-19)
+            'config_use_anti_whipsaw', 'config_whipsaw_lookback',
+            'config_whipsaw_threshold_pct', 'config_whipsaw_max_alternations',
+            'config_use_retest_confirmation', 'config_retest_tolerance_pct',
+            'config_retest_timeout_seconds', 'config_use_cooldown',
+            'config_cooldown_seconds', 'config_cooldown_same_symbol',
+            'config_use_candle_close', 'config_candle_close_threshold_seconds',
+            'config_use_momentum_continuity', 'config_momentum_lookback'
         )
 
         execute_values(

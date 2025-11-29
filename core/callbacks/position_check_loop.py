@@ -137,10 +137,19 @@ async def position_check_loop_callback():
             return
 
         # Vérifier la position (retourne None ou raison de fermeture)
+        # Stocker le SL avant pour détecter les changements
+        sl_before = position.sl if hasattr(position, 'sl') else None
+        
         close_reason = await _position_manager.check_position(current_price)
 
         # Si position toujours active, émettre mise à jour
         if not close_reason:
+            # 🔥 FIX SL MISMATCH: Mettre à jour SL temps réel si changé (trailing stop)
+            sl_after = position.sl if hasattr(position, 'sl') else None
+            if sl_before != sl_after and sl_after and _price_provider:
+                if hasattr(_price_provider, 'update_sl_level'):
+                    _price_provider.update_sl_level(sl_after)
+            
             await _emit_position_update(position, current_price)
             return
 
@@ -173,6 +182,19 @@ async def position_check_loop_callback():
                         await _price_provider.stop_websocket()
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
+                
+                # 🔥 FIX SL MISMATCH: Désactiver callback SL temps réel
+                if _price_provider and hasattr(_price_provider, 'set_sl_check_callback'):
+                    _price_provider.set_sl_check_callback(None)
+                
+                # 🔥 FIX SL MISMATCH V2: Annuler tâche SL en attente
+                try:
+                    from main import cancel_pending_sl_task
+                    closed_symbol = result.get('symbol') if result else None
+                    if closed_symbol:
+                        cancel_pending_sl_task(closed_symbol)
+                except ImportError:
+                    pass
 
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:

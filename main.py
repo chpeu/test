@@ -651,6 +651,225 @@ position_lock = asyncio.Lock()
 scanner_lock = asyncio.Lock()
 
 
+# 🔥 FIX SL MISMATCH: Fonction pour configurer vérification SL temps réel
+async def setup_realtime_sl_check(position, price_provider_instance):
+    """
+    Configure la vérification SL en temps réel via WebSocket.
+    
+    Cette fonction est appelée après l'ouverture d'une position pour garantir
+    que le SL sera détecté immédiatement à chaque tick, pas toutes les 2 secondes.
+    
+    Args:
+        position: Position active (objet Position ou dict)
+        price_provider_instance: Instance HybridPriceProvider
+    """
+    if not position or not price_provider_instance:
+        return
+    
+    # Extraire les paramètres de la position
+    symbol = position.symbol if hasattr(position, 'symbol') else position.get('symbol')
+    direction = position.direction if hasattr(position, 'direction') else position.get('direction')
+    sl_level = position.sl if hasattr(position, 'sl') else position.get('sl')
+    entry_price = position.entry if hasattr(position, 'entry') else position.get('entry')
+    
+    if not all([symbol, direction, sl_level, entry_price]):
+        logger.warning(f"⚠️ Impossible de configurer SL temps réel: paramètres manquants")
+        return
+    
+    # Callback appelé quand SL est touché
+    async def on_sl_triggered(exit_price: float, reason: str):
+        """Callback appelé immédiatement quand SL est touché via WebSocket"""
+        logger.info(f"⚡ SL temps réel déclenché: {symbol} @ {exit_price:.8f} | Raison: {reason}")
+        
+        # Acquérir le lock pour éviter les conditions de course
+        async with position_lock:
+            # Vérifier que la position est toujours active
+            if not position_manager or not position_manager.active_position:
+                logger.debug("Position déjà fermée, callback SL ignoré")
+                return
+            
+            # Fermer la position
+            try:
+                result = position_manager.close_position(exit_price=exit_price, reason=reason)
+                
+                # Mettre à jour l'état
+                app_state['active_position'] = None
+                
+                # Archiver dans l'historique
+                if result:
+                    result['timestamp'] = datetime.now().isoformat()
+                    if 'trade_history' not in app_state:
+                        app_state['trade_history'] = []
+                    app_state['trade_history'].append(result)
+                    
+                    # Limiter l'historique
+                    if len(app_state['trade_history']) > 1000:
+                        app_state['trade_history'] = app_state['trade_history'][-1000:]
+                
+                # Désactiver le callback SL (déjà fait dans price_provider)
+                if price_provider_instance:
+                    price_provider_instance.set_sl_check_callback(None)
+                
+                # 🔥 FIX SL MISMATCH V2: Annuler tâche SL en attente
+                cancel_pending_sl_task(symbol)
+                
+                # Émettre événement de fermeture
+                if ws_manager:
+                    await ws_manager.emit('position_closed', result)
+                    # Stats update
+                    await ws_manager.emit('stats_update', app_state.get('stats', {}))
+                
+                logger.info(
+                    f"✅ Position fermée via SL temps réel: {symbol} | "
+                    f"PnL: {result.get('pnl_percent', 0):+.2f}% | "
+                    f"Raison: {reason}"
+                )
+                
+            except Exception as e:
+                logger.error(f"❌ Erreur fermeture position SL temps réel: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+    
+    # Configurer le callback dans le price_provider
+    price_provider_instance.set_sl_check_callback(
+        callback=on_sl_triggered,
+        symbol=symbol,
+        direction=direction,
+        sl_level=sl_level,
+        entry_price=entry_price
+    )
+    
+    logger.info(
+        f"🛡️ SL temps réel configuré: {symbol} {direction} | "
+        f"SL={sl_level:.8f} | Entry={entry_price:.8f}"
+    )
+
+
+# 🔥 FIX SL MISMATCH V2: Tâches SL différées (placement sur exchange après 3s)
+_pending_sl_tasks: Dict[str, asyncio.Task] = {}
+
+
+async def schedule_sl_order_placement(position, delay_seconds: float = 3.0):
+    """
+    Planifie le placement d'un ordre SL sur l'exchange après un délai.
+    
+    Cette fonction attend que le prix d'entrée réel soit disponible (via ccxt),
+    puis place un ordre SL de protection sur MEXC.
+    
+    Args:
+        position: Position active (objet Position)
+        delay_seconds: Délai avant placement (défaut: 3 secondes)
+    """
+    global _pending_sl_tasks
+    
+    if not position:
+        return
+    
+    symbol = position.symbol if hasattr(position, 'symbol') else position.get('symbol')
+    if not symbol:
+        return
+    
+    # Annuler toute tâche précédente pour ce symbole
+    if symbol in _pending_sl_tasks:
+        old_task = _pending_sl_tasks[symbol]
+        if not old_task.done():
+            old_task.cancel()
+            logger.debug(f"🛑 Tâche SL précédente annulée pour {symbol}")
+    
+    async def _delayed_sl_placement():
+        """Tâche interne qui attend puis place l'ordre SL"""
+        try:
+            logger.info(f"⏳ Attente {delay_seconds}s avant placement ordre SL sur exchange pour {symbol}...")
+            await asyncio.sleep(delay_seconds)
+            
+            # Vérifier si la position est toujours active
+            if not position_manager or not position_manager.active_position:
+                logger.info(f"ℹ️ Position {symbol} déjà fermée, annulation placement SL exchange")
+                return
+            
+            active_pos = position_manager.active_position
+            if active_pos.symbol != symbol:
+                logger.info(f"ℹ️ Symbole actif différent ({active_pos.symbol} vs {symbol}), annulation")
+                return
+            
+            # Récupérer les paramètres actuels de la position
+            entry_price = active_pos.entry_fill_price or active_pos.entry
+            sl_level = active_pos.sl
+            direction = active_pos.direction
+            
+            if not all([entry_price, sl_level, direction]):
+                logger.warning(f"⚠️ Paramètres manquants pour SL exchange: entry={entry_price}, sl={sl_level}, dir={direction}")
+                return
+            
+            # Vérifier si le live_order_manager est disponible et pas en dry-run
+            if not live_order_manager:
+                logger.debug(f"ℹ️ Pas de live_order_manager, SL exchange non placé")
+                return
+            
+            if live_order_manager.dry_run:
+                logger.info(
+                    f"🛡️ [DRY_RUN] Ordre SL exchange simulé: {symbol} {direction} | "
+                    f"Entry={entry_price:.8f} | SL={sl_level:.8f}"
+                )
+                return
+            
+            # 🔥 Placer l'ordre SL via bypass
+            if hasattr(live_order_manager, 'place_stop_loss_order'):
+                result = await live_order_manager.place_stop_loss_order(
+                    symbol=symbol,
+                    direction=direction,
+                    sl_price=sl_level,
+                    entry_price=entry_price
+                )
+                if result and result.success:
+                    logger.info(
+                        f"✅ Ordre SL placé sur exchange: {symbol} | "
+                        f"SL={sl_level:.8f} | Order ID={result.order_id}"
+                    )
+                    # Stocker l'ID de l'ordre SL dans la position
+                    active_pos.sl_order_id = result.order_id
+                else:
+                    error_msg = result.error_message if result else "Méthode indisponible"
+                    logger.warning(f"⚠️ Échec placement SL exchange: {error_msg}")
+            else:
+                logger.debug(f"ℹ️ Méthode place_stop_loss_order non disponible")
+            
+        except asyncio.CancelledError:
+            logger.info(f"🛑 Tâche SL annulée pour {symbol}")
+        except Exception as e:
+            logger.error(f"❌ Erreur placement SL exchange: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+        finally:
+            # Nettoyer la tâche
+            if symbol in _pending_sl_tasks:
+                del _pending_sl_tasks[symbol]
+    
+    # Créer et stocker la tâche
+    task = asyncio.create_task(_delayed_sl_placement())
+    _pending_sl_tasks[symbol] = task
+    logger.debug(f"📋 Tâche SL programmée pour {symbol} dans {delay_seconds}s")
+
+
+def cancel_pending_sl_task(symbol: str):
+    """
+    Annule la tâche SL en attente pour un symbole.
+    
+    Appelé quand une position se ferme avant que l'ordre SL ne soit placé.
+    
+    Args:
+        symbol: Symbole de la position fermée
+    """
+    global _pending_sl_tasks
+    
+    if symbol in _pending_sl_tasks:
+        task = _pending_sl_tasks[symbol]
+        if not task.done():
+            task.cancel()
+            logger.info(f"🛑 Tâche SL annulée pour {symbol} (position fermée)")
+        del _pending_sl_tasks[symbol]
+
+
 # 🔥 JOUR 3: Callbacks pour le scheduler (doivent être définis avant init_instances)
 
 async def scanner_loop_callback():
@@ -1115,6 +1334,14 @@ async def scanner_loop_callback():
                                             logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
                                             import traceback
                                             logger.debug(traceback.format_exc())
+                                    
+                                    # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
+                                    if price_provider and position:
+                                        await setup_realtime_sl_check(position, price_provider)
+                                    
+                                    # 🔥 FIX SL MISMATCH V2: Planifier placement ordre SL sur exchange après 3s
+                                    if position:
+                                        await schedule_sl_order_placement(position, delay_seconds=3.0)
                                     
                                     # Logger et notifier (UNE SEULE FOIS)
                                     # 🔥 Afficher le mode de trading clairement
@@ -1800,6 +2027,21 @@ async def scan_pair_for_setup(symbol: str):
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),
                         'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+                        # OPT #15-19 : filtres avancés
+                        'use_anti_whipsaw': TRADING_CONFIG.get('use_anti_whipsaw'),
+                        'whipsaw_lookback': TRADING_CONFIG.get('whipsaw_lookback'),
+                        'whipsaw_threshold_pct': TRADING_CONFIG.get('whipsaw_threshold_pct'),
+                        'whipsaw_max_alternations': TRADING_CONFIG.get('whipsaw_max_alternations'),
+                        'use_retest_confirmation': TRADING_CONFIG.get('use_retest_confirmation'),
+                        'retest_tolerance_pct': TRADING_CONFIG.get('retest_tolerance_pct'),
+                        'retest_timeout_seconds': TRADING_CONFIG.get('retest_timeout_seconds'),
+                        'use_cooldown': TRADING_CONFIG.get('use_cooldown'),
+                        'cooldown_seconds': TRADING_CONFIG.get('cooldown_seconds'),
+                        'cooldown_same_symbol': TRADING_CONFIG.get('cooldown_same_symbol'),
+                        'use_candle_close': TRADING_CONFIG.get('use_candle_close'),
+                        'candle_close_threshold_seconds': TRADING_CONFIG.get('candle_close_threshold_seconds'),
+                        'use_momentum_continuity': TRADING_CONFIG.get('use_momentum_continuity'),
+                        'momentum_lookback': TRADING_CONFIG.get('momentum_lookback'),
                     }
                 }
                 
@@ -2042,6 +2284,13 @@ async def position_check_loop_callback():
                 # 🔥 FIX: Désactiver callback WebSocket si position fermée
                 if price_provider:
                     price_provider.set_socketio_callback(None, None)
+                    # 🔥 FIX SL MISMATCH: Désactiver callback SL temps réel
+                    price_provider.set_sl_check_callback(None)
+                
+                # 🔥 FIX SL MISMATCH V2: Annuler tâche SL en attente
+                closed_symbol = result.get('symbol') if result else None
+                if closed_symbol:
+                    cancel_pending_sl_task(closed_symbol)
                 
                 # 🔥 FIX: Log pour debug
                 logger.info(
@@ -3228,6 +3477,14 @@ async def api_open_position(request: Request):
             
             app_state['active_position'] = position
             
+            # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
+            if price_provider and position:
+                await setup_realtime_sl_check(position, price_provider)
+            
+            # 🔥 FIX SL MISMATCH V2: Planifier placement ordre SL sur exchange après 3s
+            if position:
+                await schedule_sl_order_placement(position, delay_seconds=3.0)
+            
             await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
             await ws_manager.emit('position_opened', position.to_dict())
             
@@ -3365,6 +3622,13 @@ async def api_close_position():
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
             if price_provider:
                 price_provider.set_socketio_callback(None, None)
+                # 🔥 FIX SL MISMATCH: Désactiver callback SL temps réel
+                price_provider.set_sl_check_callback(None)
+            
+            # 🔥 FIX SL MISMATCH V2: Annuler tâche SL en attente
+            closed_symbol = result.get('symbol') if result else None
+            if closed_symbol:
+                cancel_pending_sl_task(closed_symbol)
             
             logger.info(
                 f"🔒 Position fermée manuellement avec lock: "
@@ -4529,6 +4793,13 @@ async def handle_client_command(command: str, params: dict):
                 # Désactiver callback WebSocket
                 if price_provider:
                     price_provider.set_socketio_callback(None, None)
+                    # 🔥 FIX SL MISMATCH: Désactiver callback SL temps réel
+                    price_provider.set_sl_check_callback(None)
+                
+                # 🔥 FIX SL MISMATCH V2: Annuler tâche SL en attente
+                closed_symbol = result.get('symbol') if result else None
+                if closed_symbol:
+                    cancel_pending_sl_task(closed_symbol)
                 
                 # 🔥 Afficher le mode de trading clairement
                 if live_order_manager:
@@ -5554,7 +5825,14 @@ async def export_datalogger_excel(
                         'config_min_score_required', 'config_snr_threshold',
                         'config_optimal_atr_min_1m', 'config_optimal_atr_max_1m',
                         'config_optimal_atr_min_5m', 'config_optimal_atr_max_5m',
-                        'config_volume_multiplier', 'config_use_confluence'
+                        'config_volume_multiplier', 'config_use_confluence',
+                        'config_use_anti_whipsaw', 'config_whipsaw_lookback',
+                        'config_whipsaw_threshold_pct', 'config_whipsaw_max_alternations',
+                        'config_use_retest_confirmation', 'config_retest_tolerance_pct',
+                        'config_retest_timeout_seconds', 'config_use_cooldown',
+                        'config_cooldown_seconds', 'config_cooldown_same_symbol',
+                        'config_use_candle_close', 'config_candle_close_threshold_seconds',
+                        'config_use_momentum_continuity', 'config_momentum_lookback'
                     ]
                     for col in config_columns:
                         if col not in headers:
@@ -5636,25 +5914,20 @@ async def export_datalogger_excel(
         )
 
 
-@app.get("/api/config/export-xlsm")
-async def export_trading_config_xlsm():
-    """Exporter TRADING_CONFIG en XLSM pour l'onglet Variables en cours."""
+def _generate_trading_config_workbook():
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
         from openpyxl.utils import get_column_letter
         from openpyxl.workbook.workbook import Workbook as OpenpyxlWorkbook
-    except ImportError:
-        return JSONResponse(
-            {"error": "openpyxl non installé. Installez-le avec: pip install openpyxl"},
-            status_code=500
-        )
+    except ImportError as exc:
+        raise ImportError("openpyxl non installé. Installez-le avec: pip install openpyxl") from exc
 
     try:
         from config import TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
         from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG
-    except Exception as e:
-        return JSONResponse({"error": f"Impossible de charger la configuration: {e}"}, status_code=500)
+    except Exception as exc:
+        raise RuntimeError(f"Impossible de charger la configuration: {exc}") from exc
 
     categories = _organize_trading_config_for_export(TRADING_CONFIG)
     rows = _flatten_trading_config_for_excel(categories)
@@ -5717,13 +5990,36 @@ async def export_trading_config_xlsm():
     wb.save(output)
     output.seek(0)
 
-    filename = f"trading_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsm"
+    return output
+
+
+async def _export_trading_config_excel(extension: str = "xlsx"):
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    try:
+        output = _generate_trading_config_workbook()
+    except ImportError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    filename = f"trading_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{extension}"
 
     return StreamingResponse(
         output,
-        media_type="application/vnd.ms-excel.sheet.macroEnabled.12",
+        media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@app.get("/api/config/export-xlsx")
+async def export_trading_config_xlsx():
+    return await _export_trading_config_excel("xlsx")
+
+
+@app.get("/api/config/export-xlsm")
+async def export_trading_config_xlsm():
+    """Alias legacy vers l'export XLSX (compatibilité)."""
+    return await _export_trading_config_excel("xlsx")
 
 
 @app.delete("/api/datalogger/reset")

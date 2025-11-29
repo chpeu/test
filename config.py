@@ -30,9 +30,8 @@ TRADING_CONFIG = {
     "scan_interval": 30,  # 🔥 OPT #14: 30 secondes pour capture plus rapide des setups
     "scalability_interval": 90,  # 90 secondes pour scalability scan
     # 🔥 Liste des paires à exclure manuellement (par exemple contraintes de taille minimale)
-    "excluded_symbols": [
-        "ZEC/USDT:USDT",
-    ],
+    # ZEC retiré - bug contractSize corrigé le 29/11/2025
+    "excluded_symbols": [],
 
     # BUG #14 FIX: Suppression doublon volume_multiplier (défini ligne 77 avec valeur ajustée 0.95)
     "volume_multiplier_range": (0.10, 2.00),

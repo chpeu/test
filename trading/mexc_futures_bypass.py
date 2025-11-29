@@ -237,12 +237,13 @@ class AccountAsset:
 class ContractSpec:
     """Spécifications d'un contrat futures"""
     symbol: str
-    min_vol: float          # Volume minimum
-    max_vol: float          # Volume maximum
+    min_vol: float          # Volume minimum (en contrats)
+    max_vol: float          # Volume maximum (en contrats)
     vol_unit: float         # Unité de volume (step)
     price_unit: float       # Unité de prix (tick size)
     price_precision: int    # Décimales prix
     vol_precision: int      # Décimales volume
+    contract_size: float = 1.0  # 🔥 Taille du contrat (1 contrat = X tokens)
     
     def round_volume(self, vol: float) -> float:
         """Arrondir le volume selon les specs du contrat"""
@@ -279,6 +280,8 @@ ENDPOINTS = {
     "OPEN_POSITIONS": "/private/position/open_positions",
     "POSITION_HISTORY": "/private/position/list/history_positions",
     "ACCOUNT_ASSET": "/private/account/asset",
+    "CHANGE_LEVERAGE": "/private/position/change_leverage",  # 🔥 Changer levier (position existante)
+    "SET_LEVERAGE": "/private/account/change_leverage",  # 🔥 Changer levier par défaut (avant ouverture)
     
     # Public endpoints
     "TICKER": "/contract/ticker",
@@ -795,6 +798,60 @@ class MexcFuturesBypass:
     # Trading Methods
     # ========================================================================
     
+    async def set_leverage(
+        self,
+        symbol: str,
+        leverage: int,
+        open_type: Union[OpenType, int] = OpenType.ISOLATED,
+        position_type: int = 1  # 1=long, 2=short
+    ) -> bool:
+        """
+        🔥 Configurer le levier pour une paire AVANT d'ouvrir une position
+        
+        IMPORTANT: En mode marge isolée, le levier doit être configuré
+        sur le compte pour chaque paire avant de passer un ordre.
+        
+        Args:
+            symbol: Symbole (ex: "DOGE_USDT")
+            leverage: Levier souhaité (1-125)
+            open_type: Type de marge (1=isolated, 2=cross)
+            position_type: Type de position (1=long, 2=short)
+            
+        Returns:
+            True si succès, False sinon
+        """
+        leverage = min(125, max(1, leverage))
+        
+        # 🔥 Format MEXC: positionType + leverage + openType + symbol
+        body = {
+            "symbol": symbol,
+            "positionType": position_type,  # 1=long, 2=short
+            "leverage": leverage,
+            "openType": int(open_type),
+        }
+        
+        logger.info(f"⚙️ Configuration levier: {symbol} → {leverage}x (posType={position_type}, openType={open_type})")
+        
+        # Essayer d'abord l'endpoint account
+        response = await self._request("POST", ENDPOINTS.get("SET_LEVERAGE", ENDPOINTS["CHANGE_LEVERAGE"]), body=body)
+        
+        if response.get("success") and response.get("code") == 0:
+            logger.info(f"✅ Levier configuré: {symbol} = {leverage}x")
+            return True
+        
+        # Si échec, essayer l'endpoint position
+        if response.get("code") != 0:
+            response = await self._request("POST", ENDPOINTS["CHANGE_LEVERAGE"], body=body)
+            if response.get("success") and response.get("code") == 0:
+                logger.info(f"✅ Levier configuré (fallback): {symbol} = {leverage}x")
+                return True
+        
+        error_msg = response.get("message", "Unknown error")
+        error_code = response.get("code", -1)
+        logger.warning(f"⚠️ Échec configuration levier {symbol}: code={error_code}, msg={error_msg}")
+        # Ne pas bloquer - le levier dans l'ordre pourrait quand même fonctionner
+        return False
+    
     async def submit_order(
         self,
         symbol: str,
@@ -852,8 +909,10 @@ class MexcFuturesBypass:
             body["externalOid"] = external_oid
         
         logger.info(f"🚀 Submit order: {symbol} side={side} vol={vol} price={price} leverage={leverage}x")
+        logger.info(f"📋 Order body: {body}")
         
         response = await self._request("POST", ENDPOINTS["SUBMIT_ORDER"], body=body)
+        logger.info(f"📋 Order response: {response}")
         
         if response.get("success") and response.get("code") == 0:
             order_id = response.get("data")
@@ -1128,6 +1187,9 @@ class MexcFuturesBypass:
             vol_precision = len(str(vol_unit).split('.')[-1]) if '.' in str(vol_unit) else 0
             price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
             
+            # 🔥 Récupérer contractSize (taille du contrat en tokens)
+            contract_size = float(data.get("contractSize", 1))
+            
             spec = ContractSpec(
                 symbol=symbol,
                 min_vol=float(data.get("minVol", 1)),
@@ -1136,12 +1198,15 @@ class MexcFuturesBypass:
                 price_unit=price_unit,
                 price_precision=price_precision,
                 vol_precision=vol_precision,
+                contract_size=contract_size,
             )
+            
+            logger.info(f"📋 ContractSpec {symbol}: contractSize={contract_size}, minVol={spec.min_vol}")
             
             # Cacher en mémoire
             self._contract_specs[symbol] = spec
 
-            # 🔥 AMÉLIORATION 2: Sauvegarder dans cache persistant
+            # 🔥 AMÉLIORATION 2: Sauvegarder dans cache persistant (avec contract_size!)
             specs_dict = {
                 s: {
                     'symbol': sp.symbol,
@@ -1150,7 +1215,8 @@ class MexcFuturesBypass:
                     'vol_unit': sp.vol_unit,
                     'price_unit': sp.price_unit,
                     'price_precision': sp.price_precision,
-                    'vol_precision': sp.vol_precision
+                    'vol_precision': sp.vol_precision,
+                    'contract_size': sp.contract_size,  # 🔥 CRITIQUE
                 }
                 for s, sp in self._contract_specs.items()
             }
