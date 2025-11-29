@@ -1197,6 +1197,15 @@ class PositionManager:
             current_price,
             self.active_position.direction
         )
+        
+        # 🔥 FIX: Enregistrer le PnL dans l'historique pour calculer max_drawdown
+        pnl_usdt = (pnl / 100) * self.active_position.size if self.active_position.size else 0
+        self.active_position.pnl_history.append({
+            'timestamp': time.time(),
+            'price': current_price,
+            'pnl_pct': pnl,
+            'pnl_usdt': pnl_usdt
+        })
 
         # 1. Early Invalidation (10-30s)
         early_invalidation_data = None
@@ -1939,15 +1948,38 @@ class PositionManager:
                     config_snapshot['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
                     
                     # Préparer indicateurs de sortie
-                    # 🔥 FIX: Utiliser les derniers indicateurs de la position (mis à jour périodiquement)
-                    # Note: Pour avoir les indicateurs exacts au moment de la sortie, il faudrait
-                    # appeler l'API pour récupérer les dernières klines et recalculer les indicateurs,
-                    # mais cela ajouterait de la latence. On utilise donc les derniers connus.
-                    exit_indicators = getattr(self.active_position, '_last_indicators', {}) or {}
-                    
-                    # Fallback: si aucun indicateur n'est disponible, utiliser un dict vide
-                    # (mieux que des valeurs 0 qui seraient trompeuses)
-                    if not exit_indicators:
+                    # 🔥 FIX: Récupérer les indicateurs actuels via l'analyzer
+                    exit_indicators = {}
+                    try:
+                        from core.analyzer import TechnicalAnalyzer
+                        analyzer = TechnicalAnalyzer()
+                        
+                        # Récupérer les indicateurs 1m et 5m
+                        analysis_1m = await asyncio.get_event_loop().run_in_executor(
+                            None, 
+                            lambda: analyzer.analyze_timeframe(self.active_position.symbol, '1m', return_reason=True)
+                        )
+                        analysis_5m = await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda: analyzer.analyze_timeframe(self.active_position.symbol, '5m', return_reason=True)
+                        )
+                        
+                        # Extraire les indicateurs clés
+                        if analysis_1m and isinstance(analysis_1m, dict):
+                            exit_indicators['rsi_1m'] = analysis_1m.get('rsi')
+                            exit_indicators['adx_1m'] = analysis_1m.get('adx')
+                            exit_indicators['macd_hist_1m'] = analysis_1m.get('macd_hist')
+                            exit_indicators['atr_pct_1m'] = analysis_1m.get('atr_pct')
+                        
+                        if analysis_5m and isinstance(analysis_5m, dict):
+                            exit_indicators['rsi_5m'] = analysis_5m.get('rsi')
+                            exit_indicators['adx_5m'] = analysis_5m.get('adx')
+                            exit_indicators['macd_hist_5m'] = analysis_5m.get('macd_hist')
+                            exit_indicators['atr_pct_5m'] = analysis_5m.get('atr_pct')
+                            
+                        logger.debug(f"📊 Exit indicators récupérés: {exit_indicators}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Impossible de récupérer exit_indicators: {e}")
                         exit_indicators = {}
                     
                     # 🔥 Déterminer le mode de trading (Live/Paper et Dry-Run)
