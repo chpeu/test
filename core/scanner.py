@@ -535,9 +535,9 @@ class ScalabilityScanner:
             
             # 🔥 OPT #5: Calculer scores avec logging rejets
             for pair in filtered_pairs:
-                score, reject_reason = self.calculate_score(pair, max_volume, max_depth)
+                score = self.calculate_score(pair, max_volume, max_depth)
                 pair['score'] = score
-                pair['rejectReason'] = reject_reason
+                pair['rejectReason'] = self._last_reject_reason
                 if score == 0:
                     reject_stats['score_zero'] += 1
             
