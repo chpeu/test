@@ -651,6 +651,42 @@ position_lock = asyncio.Lock()
 scanner_lock = asyncio.Lock()
 
 
+# 🔥 NOUVEAU: Fonction helper pour notifier les erreurs via Telegram
+async def notify_error_telegram(error_type: str, details: str):
+    """
+    Notifier une erreur via Telegram si TELEGRAM_NOTIFY_ERROR est activé.
+    
+    Args:
+        error_type: Type d'erreur (ex: 'Scalability Data', 'API Error')
+        details: Détails de l'erreur
+    """
+    global notification_manager
+    try:
+        if notification_manager:
+            # Vérifier si les notifications d'erreur sont activées
+            if notification_manager.telegram_notify_settings.get('error', True):
+                await notification_manager.notify('error', {
+                    'error_type': error_type,
+                    'details': details
+                }, priority='high')
+    except Exception as e:
+        logger.debug(f"⚠️ Impossible de notifier l'erreur via Telegram: {e}")
+
+
+def notify_error_sync(error_type: str, details: str):
+    """
+    Version synchrone de notify_error_telegram.
+    Utilise asyncio pour envoyer la notification.
+    """
+    global notification_manager
+    try:
+        if notification_manager and notification_manager.telegram_notifier:
+            if notification_manager.telegram_notify_settings.get('error', True):
+                notification_manager.telegram_notifier.send_error_sync(error_type, details)
+    except Exception as e:
+        logger.debug(f"⚠️ Impossible de notifier l'erreur (sync): {e}")
+
+
 # 🔥 FIX SL MISMATCH: Fonction pour configurer vérification SL temps réel
 async def setup_realtime_sl_check(position, price_provider_instance):
     """
@@ -1210,7 +1246,10 @@ async def scanner_loop_callback():
                                                 }
                                                 logger.info(f"💹 Données scalabilité depuis setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                                             else:
-                                                logger.error(f"💹 ERREUR: Impossible de récupérer spread_pct depuis setup pour {symbol}")
+                                                error_msg = f"Impossible de récupérer spread_pct depuis setup pour {symbol}"
+                                                logger.error(f"💹 ERREUR: {error_msg}")
+                                                # 🔥 NOUVEAU: Notifier l'erreur via Telegram
+                                                await notify_error_telegram("Scalability Data", error_msg)
                                     else:
                                         logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
                                     
@@ -1282,6 +1321,65 @@ async def scanner_loop_callback():
                                             f"⚠️ {symbol} - Slippage détecté : {slippage_pct:.3f}% "
                                             f"(Setup: {setup_price:.6f} → Réel: {entry_price:.6f})"
                                         )
+                                    
+                                    # 🌳 FILTRE GRADIENTBOOSTING (modèle optimisé)
+                                    if TRADING_CONFIG.get('gb_filter_enabled', False):
+                                        logger.info(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
+                                        
+                                        try:
+                                            from optimization.predictor_optimized import get_predictor
+                                            
+                                            # Extraire features depuis setup
+                                            gb_features = {}
+                                            indicators_1m = setup.get('indicators_1m', {})
+                                            indicators_5m = setup.get('indicators_5m', {})
+                                            
+                                            # 🔥 Indicateurs techniques 1m et 5m
+                                            import math
+                                            for key, value in indicators_1m.items():
+                                                if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
+                                                    gb_features[f"{key}_1m" if not key.endswith('_1m') else key] = value
+                                            for key, value in indicators_5m.items():
+                                                if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
+                                                    gb_features[f"{key}_5m" if not key.endswith('_5m') else key] = value
+                                            
+                                            # 🔥 Scores et setup data (si disponibles)
+                                            scores = setup.get('scores', {})
+                                            if scores:
+                                                for key, value in scores.items():
+                                                    if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
+                                                        gb_features[f"score_{key}"] = value
+                                            
+                                            # 🔥 Direction (LONG=1, SHORT=0)
+                                            gb_features['direction'] = 1 if direction.upper() == 'LONG' else 0
+                                            
+                                            # 🔥 Total score et conditions
+                                            gb_features['totalScore'] = setup.get('totalScore', 0)
+                                            gb_features['conditions'] = setup.get('conditions', 0)
+                                            
+                                            logger.debug(f"🔍 GB Features extraites: {len(gb_features)} features")
+                                            
+                                            if gb_features:
+                                                predictor = get_predictor()
+                                                if predictor.is_loaded:
+                                                    gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.55)
+                                                    should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
+                                                    
+                                                    logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
+                                                    
+                                                    if not should_trade:
+                                                        logger.warning(f"❌ GradientBoosting REJETTE {symbol}: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
+                                                        continue  # Passer au setup suivant
+                                                    else:
+                                                        logger.info(f"✅ GradientBoosting APPROUVE {symbol} (confiance: {confidence*100:.1f}%)")
+                                                else:
+                                                    logger.warning(f"⚠️ Modèle GradientBoosting non chargé, trade autorisé par défaut")
+                                            else:
+                                                logger.warning(f"⚠️ Pas de features GB pour {symbol}, trade autorisé par défaut")
+                                                
+                                        except Exception as gb_error:
+                                            logger.error(f"❌ Erreur filtre GradientBoosting: {gb_error}")
+                                            logger.warning(f"⚠️ Trade autorisé malgré erreur GB (failsafe)")
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
@@ -4698,6 +4796,75 @@ async def handle_client_command(command: str, params: dict):
             val = max(2, min(10, val))  # Clamp 2-10
             TRADING_CONFIG['momentum_lookback'] = val
             updated['momentum_lookback'] = val
+
+        # 🔥 GradientBoosting (Modèle Optimisé 64-69% accuracy)
+        if 'gb_filter_enabled' in params:
+            TRADING_CONFIG['gb_filter_enabled'] = bool(params['gb_filter_enabled'])
+            updated['gb_filter_enabled'] = TRADING_CONFIG['gb_filter_enabled']
+            logger.info(f"✅ GB filter enabled: {TRADING_CONFIG['gb_filter_enabled']}")
+        
+        if 'gb_min_confidence' in params:
+            val = float(params['gb_min_confidence'])
+            val = max(0.40, min(0.80, val))  # Clamp 40%-80%
+            TRADING_CONFIG['gb_min_confidence'] = val
+            updated['gb_min_confidence'] = val
+            logger.info(f"✅ GB min confidence: {val*100:.0f}%")
+        
+        if 'gb_n_estimators' in params:
+            val = int(params['gb_n_estimators'])
+            val = max(50, min(500, val))  # Clamp 50-500
+            TRADING_CONFIG['gb_n_estimators'] = val
+            updated['gb_n_estimators'] = val
+            logger.info(f"✅ GB n_estimators: {val}")
+        
+        if 'gb_max_depth' in params:
+            val = int(params['gb_max_depth'])
+            val = max(2, min(6, val))  # Clamp 2-6
+            TRADING_CONFIG['gb_max_depth'] = val
+            updated['gb_max_depth'] = val
+            logger.info(f"✅ GB max_depth: {val}")
+        
+        if 'gb_learning_rate' in params:
+            val = float(params['gb_learning_rate'])
+            val = max(0.01, min(0.15, val))  # Clamp 0.01-0.15
+            TRADING_CONFIG['gb_learning_rate'] = val
+            updated['gb_learning_rate'] = val
+            logger.info(f"✅ GB learning_rate: {val}")
+        
+        if 'gb_min_samples_split' in params:
+            val = int(params['gb_min_samples_split'])
+            val = max(5, min(50, val))  # Clamp 5-50
+            TRADING_CONFIG['gb_min_samples_split'] = val
+            updated['gb_min_samples_split'] = val
+            logger.info(f"✅ GB min_samples_split: {val}")
+        
+        if 'gb_min_samples_leaf' in params:
+            val = int(params['gb_min_samples_leaf'])
+            val = max(5, min(30, val))  # Clamp 5-30
+            TRADING_CONFIG['gb_min_samples_leaf'] = val
+            updated['gb_min_samples_leaf'] = val
+            logger.info(f"✅ GB min_samples_leaf: {val}")
+        
+        if 'gb_subsample' in params:
+            val = float(params['gb_subsample'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['gb_subsample'] = val
+            updated['gb_subsample'] = val
+            logger.info(f"✅ GB subsample: {val}")
+        
+        if 'gb_max_features' in params:
+            val = float(params['gb_max_features'])
+            val = max(0.3, min(1.0, val))  # Clamp 0.3-1.0
+            TRADING_CONFIG['gb_max_features'] = val
+            updated['gb_max_features'] = val
+            logger.info(f"✅ GB max_features: {val}")
+        
+        if 'gb_model_type' in params:
+            val = str(params['gb_model_type'])
+            if val in ['gb', 'histgb']:
+                TRADING_CONFIG['gb_model_type'] = val
+                updated['gb_model_type'] = val
+                logger.info(f"✅ GB model_type: {val} ({'HistGradientBoosting' if val == 'histgb' else 'GradientBoosting'})")
 
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")

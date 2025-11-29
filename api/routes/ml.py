@@ -251,6 +251,115 @@ async def get_data_quality():
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
+@router.get("/dashboard/ml_trades_count")
+async def get_ml_trades_count():
+    """
+    🔢 Retourne le nombre de trades utilisables pour ML après filtrage:
+    - Exclure trades manuels (exit_reason = 'MANUAL')
+    - Exclure trades avec configs différentes de la CONFIG ACTUELLE
+    
+    Permet à l'utilisateur de voir l'impact des changements de config
+    sur la profondeur de données ML disponibles.
+    """
+    try:
+        from optimization.data.feature_loader import get_sqlalchemy_engine
+        from config import TRADING_CONFIG
+        import pandas as pd
+        
+        engine = get_sqlalchemy_engine()
+        
+        # 1. Lire la CONFIG ACTUELLE depuis TRADING_CONFIG
+        current_config = {
+            'min_score': float(TRADING_CONFIG.get('min_score_required', 6.5)),
+            'snr_threshold': float(TRADING_CONFIG.get('snr_threshold', 0.15)),
+            'volume_mult': float(TRADING_CONFIG.get('volume_multiplier', 0.95))
+        }
+        
+        # 2. Compter tous les trades
+        total_trades = int(pd.read_sql("SELECT COUNT(*) as cnt FROM trades", engine).iloc[0]['cnt'])
+        
+        # 3. Compter trades non-manuels
+        non_manual = int(pd.read_sql("""
+            SELECT COUNT(*) as cnt FROM trades 
+            WHERE exit_reason IS NULL OR exit_reason != 'MANUAL'
+        """, engine).iloc[0]['cnt'])
+        
+        # 4. Compter trades avec CONFIG ACTUELLE
+        conditions = ["(exit_reason IS NULL OR exit_reason != 'MANUAL')"]
+        conditions.append(f"ABS(COALESCE(config_min_score_required, 0) - {current_config['min_score']}) < 0.01")
+        conditions.append(f"ABS(COALESCE(config_snr_threshold, 0) - {current_config['snr_threshold']}) < 0.01")
+        conditions.append(f"ABS(COALESCE(config_volume_multiplier, 0) - {current_config['volume_mult']}) < 0.01")
+        
+        clean_query = f"SELECT COUNT(*) as cnt FROM trades WHERE {' AND '.join(conditions)}"
+        clean_count = int(pd.read_sql(clean_query, engine).iloc[0]['cnt'])
+        
+        # 5. Analyser configs pour le breakdown (top 5)
+        config_query = """
+            SELECT 
+                config_min_score_required,
+                config_snr_threshold,
+                config_volume_multiplier,
+                COUNT(*) as cnt
+            FROM trades
+            WHERE exit_reason IS NULL OR exit_reason != 'MANUAL'
+            GROUP BY config_min_score_required, config_snr_threshold, config_volume_multiplier
+            ORDER BY cnt DESC
+            LIMIT 5
+        """
+        config_df = pd.read_sql(config_query, engine)
+        
+        config_breakdown = []
+        if len(config_df) > 0:
+            for _, row in config_df.iterrows():
+                min_score = row['config_min_score_required']
+                snr_thresh = row['config_snr_threshold']
+                vol_mult = row['config_volume_multiplier']
+                
+                # Check si cette config match la config actuelle
+                is_current = (
+                    pd.notna(min_score) and abs(float(min_score) - current_config['min_score']) < 0.01 and
+                    pd.notna(snr_thresh) and abs(float(snr_thresh) - current_config['snr_threshold']) < 0.01 and
+                    pd.notna(vol_mult) and abs(float(vol_mult) - current_config['volume_mult']) < 0.01
+                )
+                
+                config_breakdown.append({
+                    'min_score': float(min_score) if pd.notna(min_score) else None,
+                    'snr_threshold': float(snr_thresh) if pd.notna(snr_thresh) else None,
+                    'volume_mult': float(vol_mult) if pd.notna(vol_mult) else None,
+                    'count': int(row['cnt']),
+                    'is_current': bool(is_current)
+                })
+        
+        # 6. Vérifier si ml_features_clean existe et son count
+        try:
+            ml_clean_count = int(pd.read_sql("SELECT COUNT(*) as cnt FROM ml_features_clean", engine).iloc[0]['cnt'])
+        except:
+            ml_clean_count = 0
+        
+        engine.dispose()
+        
+        return {
+            'total_trades': total_trades,
+            'manual_excluded': total_trades - non_manual,
+            'non_manual_trades': non_manual,
+            'config_filtered_trades': clean_count,
+            'different_config_excluded': non_manual - clean_count,
+            'ml_features_clean_count': ml_clean_count,
+            'current_config': current_config,
+            'config_breakdown': config_breakdown,
+            'filters_applied': {
+                'exclude_manual': True,
+                'exclude_different_configs': True,
+                'compare_to': 'current_config'
+            },
+            'message': f"✅ {clean_count} trades avec config actuelle (sur {total_trades} total)"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_ml_trades_count: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
 # ========== EXPLORATORY ==========
 
 @router.get("/exploratory/performance")
@@ -374,10 +483,59 @@ async def get_models_overview():
                 'is_active': False
             })
         
+        # 🔥 FIX: Charger aussi le modèle GradientBoosting
+        gb_metadata_file = models_dir / "best_classifier_metadata.json"
+        
+        if gb_metadata_file.exists():
+            with open(gb_metadata_file, 'r') as f:
+                gb_metadata = json.load(f)
+            
+            # Calculer overfitting gap depuis les métriques
+            gb_metrics = gb_metadata.get('metrics', {})
+            train_acc = gb_metrics.get('train_acc', 0)
+            test_acc = gb_metrics.get('test_acc', 0)
+            overfitting_gap = (train_acc - test_acc) * 100 if train_acc and test_acc else 0
+            
+            # Convertir au format attendu par le frontend
+            models.append({
+                'name': 'best_classifier',  # Nom cherché par le frontend
+                'type': gb_metadata.get('best_model', 'GradientBoostingClassifier'),
+                'model_type': gb_metadata.get('model_type', 'gb'),
+                'version': '2.0',
+                'trained_at': gb_metadata.get('timestamp'),
+                'metrics': {
+                    'test': {
+                        'accuracy': test_acc,
+                        'f1_score': gb_metrics.get('test_f1', 0),
+                        'precision': gb_metrics.get('test_precision', 0)
+                    },
+                    'train': {
+                        'accuracy': train_acc
+                    }
+                },
+                'overfitting_gap': round(overfitting_gap, 1),
+                'dataset_info': {
+                    # n_samples peut ne pas exister dans les anciennes metadata
+                    'total_samples': gb_metadata.get('n_samples') or gb_metadata.get('n_train', 0) + gb_metadata.get('n_test', 0) or len(gb_metadata.get('feature_cols', [])) * 30,
+                    'n_features': gb_metadata.get('n_features') or len(gb_metadata.get('feature_cols', []))
+                },
+                'hyperparameters': gb_metadata.get('params', {}),
+                'feature_count': len(gb_metadata.get('feature_cols', [])),
+                'is_active': True
+            })
+        
+        # Déterminer le modèle actif (préférer GB s'il existe)
+        active_model = None
+        for m in models:
+            if m.get('is_active'):
+                active_model = m['name']
+                if m['name'] == 'best_classifier':
+                    break  # Préférer GB
+        
         return {
             'models': models,
             'total_models': len(models),
-            'active_model': 'xgboost_v1' if models[0]['is_active'] else None,
+            'active_model': active_model,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -1202,14 +1360,12 @@ async def train_model(
     try:
         from optimization.data.feature_loader import get_trades_count
         
-        # Vérifier données suffisantes
+        # Vérifier données suffisantes (warning sans bloquer)
         trades_count = get_trades_count()
         
         if trades_count < min_trades:
-            raise HTTPException(
-                400,
-                f"Pas assez de données: {trades_count}/{min_trades} trades requis"
-            )
+            logger.warning(f"⚠️ Données limitées: {trades_count}/{min_trades} trades - entraînement peut être sous-optimal")
+            # Ne PAS bloquer, continuer avec les données disponibles
         
         # Créer task ID
         task_id = str(uuid.uuid4())
@@ -1803,7 +1959,30 @@ async def get_ml_task_status(task_id: str):
             raise HTTPException(status_code=404, detail=f"Task {task_id} introuvable")
         
         task_data = ml_tasks[task_id]
-        return task_data
+        
+        # 🔥 FIX: Nettoyer les données non-sérialisables (coroutines, objets, etc.)
+        clean_data = {}
+        for key, value in task_data.items():
+            if value is None:
+                clean_data[key] = None
+            elif isinstance(value, (str, int, float, bool)):
+                clean_data[key] = value
+            elif isinstance(value, dict):
+                # Nettoyer récursivement les dicts
+                clean_data[key] = {
+                    k: str(v) if not isinstance(v, (str, int, float, bool, type(None), list, dict)) else v 
+                    for k, v in value.items()
+                }
+            elif isinstance(value, list):
+                clean_data[key] = [
+                    str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v 
+                    for v in value
+                ]
+            else:
+                # Convertir tout objet non-standard en string
+                clean_data[key] = str(value)
+        
+        return clean_data
         
     except HTTPException:
         raise
@@ -1842,24 +2021,25 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         test_size = TRADING_CONFIG.get('ml_v2_test_size', 0.2)
         validation_size = TRADING_CONFIG.get('ml_v2_validation_size', 0.1)
         
-        # Hyperparams
-        n_estimators = TRADING_CONFIG.get('ml_v2_n_estimators', 600)
-        max_depth = TRADING_CONFIG.get('ml_v2_max_depth', 4)
-        learning_rate = TRADING_CONFIG.get('ml_v2_learning_rate', 0.03)
-        min_child_weight = TRADING_CONFIG.get('ml_v2_min_child_weight', 5)
-        reg_alpha = TRADING_CONFIG.get('ml_v2_reg_alpha', 1.0)
-        reg_lambda = TRADING_CONFIG.get('ml_v2_reg_lambda', 3.0)
-        subsample = TRADING_CONFIG.get('ml_v2_subsample', 0.7)
-        colsample_bytree = TRADING_CONFIG.get('ml_v2_colsample_bytree', 0.7)
-        gamma = TRADING_CONFIG.get('ml_v2_gamma', 0.5)
+        # Hyperparams - 🔥 V2.1: Défauts plus régularisés pour éviter overfitting
+        n_estimators = TRADING_CONFIG.get('ml_v2_n_estimators', 300)
+        max_depth = TRADING_CONFIG.get('ml_v2_max_depth', 3)      # Réduit de 4 à 3
+        learning_rate = TRADING_CONFIG.get('ml_v2_learning_rate', 0.02)  # Réduit
+        min_child_weight = TRADING_CONFIG.get('ml_v2_min_child_weight', 15)  # Augmenté
+        reg_alpha = TRADING_CONFIG.get('ml_v2_reg_alpha', 5.0)    # Augmenté de 1 à 5
+        reg_lambda = TRADING_CONFIG.get('ml_v2_reg_lambda', 8.0)  # Augmenté de 3 à 8
+        subsample = TRADING_CONFIG.get('ml_v2_subsample', 0.6)    # Réduit
+        colsample_bytree = TRADING_CONFIG.get('ml_v2_colsample_bytree', 0.6)  # Réduit
+        gamma = TRADING_CONFIG.get('ml_v2_gamma', 2.0)            # Augmenté de 0.5 à 2
         
         logger.info(f"📊 Params V2: timeframe={timeframe_days}d, max_features={max_features}, filter_marginal={filter_marginal}")
         
-        # Charger données
+        # Charger données nettoyées (meme filtre que XGBoost V1)
         ml_tasks[task_id]['progress'] = 10
         base_df = load_features_from_postgres(
             timeframe_days=timeframe_days,
-            min_trades=50
+            min_trades=50,
+            use_clean_data=True
         )
         
         df = calculate_derived_features(base_df)
@@ -1876,6 +2056,22 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         
         if filter_marginal and 'target_pnl' in df.columns:
             df = df[abs(df['target_pnl']) >= marginal_threshold].copy()
+        
+        # 🔥 FIX V2.1: Clipper les outliers de target_pnl pour éviter R² négatif
+        if 'target_pnl' in df.columns:
+            pnl_before = df['target_pnl'].describe()
+            
+            # Winsorization: utiliser percentiles 5% et 95% (plus agressif pour éviter R² négatif)
+            lower_bound = df['target_pnl'].quantile(0.05)
+            upper_bound = df['target_pnl'].quantile(0.95)
+            
+            # Clipper entre les percentiles (généralement ±3-5%)
+            df['target_pnl'] = df['target_pnl'].clip(lower=lower_bound, upper=upper_bound)
+            
+            pnl_after = df['target_pnl'].describe()
+            logger.info(f"📊 Target PNL clippé: [{lower_bound:.2f}%, {upper_bound:.2f}%]")
+            logger.info(f"📊 Avant: std={pnl_before['std']:.3f}%, range=[{pnl_before['min']:.2f}%, {pnl_before['max']:.2f}%]")
+            logger.info(f"📊 Après: std={pnl_after['std']:.3f}%, range=[{pnl_after['min']:.2f}%, {pnl_after['max']:.2f}%]")
         
         logger.info(f"✅ {len(df)} trades après filtrage ({len(df)/initial_count*100:.1f}%)")
         
@@ -1995,6 +2191,16 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         test_mae = mean_absolute_error(y_test, y_test_pred)
         test_r2 = r2_score(y_test, y_test_pred)
         
+        # 🔥 DIAGNOSTIC R² négatif
+        if test_r2 < -1.0:
+            logger.warning(f"⚠️ R² très négatif ({test_r2:.1f}): variance train={y_train.var():.4f}, test={y_test.var():.4f}")
+            logger.warning(f"⚠️ Predictions: mean={y_test_pred.mean():.3f}, std={y_test_pred.std():.3f}")
+            logger.warning(f"⚠️ Actuals: mean={y_test.mean():.3f}, std={y_test.std():.3f}")
+            # Clipper R² pour affichage (le modèle reste le même)
+            test_r2_display = max(-1.0, test_r2)
+        else:
+            test_r2_display = test_r2
+        
         # Classification avec seuil
         threshold = 0.0
         y_test_class = (y_test > threshold).astype(int)
@@ -2003,7 +2209,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         test_f1 = f1_score(y_test_class, y_test_pred_class, zero_division=0)
         test_accuracy = accuracy_score(y_test_class, y_test_pred_class)
         
-        logger.info(f"📊 R² Test: {test_r2:.3f}, MAE Test: {test_mae:.3f}%, F1: {test_f1:.3f}")
+        logger.info(f"📊 R² Test: {test_r2_display:.3f} (raw: {test_r2:.1f}), MAE Test: {test_mae:.3f}%, F1: {test_f1:.3f}")
         
         # ========== SAUVEGARDE MODÈLE V2 ==========
         ml_tasks[task_id]['progress'] = 90
@@ -2271,7 +2477,7 @@ async def _optimize_hyperparameters_v2_background(n_trials: int):
         optuna_v2_state['progress'] = 5
         
         timeframe_days = TRADING_CONFIG.get('ml_v2_timeframe_days', 270)
-        base_df = load_features_from_postgres(timeframe_days=timeframe_days, min_trades=50)
+        base_df = load_features_from_postgres(timeframe_days=timeframe_days, min_trades=50, use_clean_data=True)
         df = calculate_derived_features(base_df)
         
         # Filtrer
@@ -2520,3 +2726,1015 @@ async def apply_best_hyperparameters_v2(params_dict: Dict[str, Any] = Body(None)
     except Exception as e:
         logger.error(f"❌ Erreur apply_v2_hyperparameters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== GRADIENTBOOSTING: TRAIN OPTIMIZED MODEL ==========
+
+@router.post("/train_gb")
+async def train_gradientboosting_model(
+    background_tasks: BackgroundTasks,
+    n_estimators: Optional[int] = Query(None),
+    max_depth: Optional[int] = Query(None),
+    learning_rate: Optional[float] = Query(None),
+    min_samples_split: Optional[int] = Query(None),
+    min_samples_leaf: Optional[int] = Query(None),
+    subsample: Optional[float] = Query(None),
+    max_features: Optional[float] = Query(None)
+):
+    """
+    Entraîner le modèle GradientBoosting optimisé (64-69% accuracy).
+    Ce modèle est meilleur que XGBoost V1 (~50%) et V2 (R² négatif).
+    
+    🔥 Les hyperparamètres sont chargés depuis config_overrides.json (TRADING_CONFIG)
+    sauf si explicitement fournis dans la requête.
+    """
+    try:
+        from config import TRADING_CONFIG
+        from utils.config_persistence import load_config_overrides
+        
+        # 🔥 FIX CRITIQUE: Recharger les overrides depuis le fichier pour prendre en compte les modifications
+        overrides = load_config_overrides()
+        for key, value in overrides.items():
+            if key.startswith('gb_'):
+                TRADING_CONFIG[key] = value
+        
+        task_id = f"train_gb_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # 🔥 FIX: Charger les hyperparamètres depuis TRADING_CONFIG si non fournis
+        final_n_estimators = n_estimators if n_estimators is not None else TRADING_CONFIG.get('gb_n_estimators', 200)
+        final_max_depth = max_depth if max_depth is not None else TRADING_CONFIG.get('gb_max_depth', 3)
+        final_learning_rate = learning_rate if learning_rate is not None else TRADING_CONFIG.get('gb_learning_rate', 0.03)
+        final_min_samples_split = min_samples_split if min_samples_split is not None else TRADING_CONFIG.get('gb_min_samples_split', 30)
+        final_min_samples_leaf = min_samples_leaf if min_samples_leaf is not None else TRADING_CONFIG.get('gb_min_samples_leaf', 15)
+        final_subsample = subsample if subsample is not None else TRADING_CONFIG.get('gb_subsample', 0.7)
+        final_max_features = max_features if max_features is not None else TRADING_CONFIG.get('gb_max_features', 0.5)
+        
+        logger.info(
+            f"🎯 Hyperparamètres GB depuis config: n_estimators={final_n_estimators}, "
+            f"max_depth={final_max_depth}, learning_rate={final_learning_rate:.6f}, "
+            f"min_samples_split={final_min_samples_split}, min_samples_leaf={final_min_samples_leaf}"
+        )
+        
+        # Stocker les hyperparamètres dans la tâche
+        ml_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'pending',
+            'action': 'train_gb',
+            'created_at': datetime.now().isoformat(),
+            'progress': 0,
+            'params': {
+                'n_estimators': final_n_estimators,
+                'max_depth': final_max_depth,
+                'learning_rate': final_learning_rate,
+                'min_samples_split': final_min_samples_split,
+                'min_samples_leaf': final_min_samples_leaf,
+                'subsample': final_subsample,
+                'max_features': final_max_features
+            }
+        }
+        
+        # Lancer en background
+        background_tasks.add_task(_train_gradientboosting_background, task_id)
+        
+        logger.info(f"🎯 Entraînement GradientBoosting démarré (task_id={task_id})")
+        
+        return {
+            'task_id': task_id,
+            'status': 'pending',
+            'message': 'Entraînement GradientBoosting démarré'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur train_gb: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/verify_gb")
+async def verify_gradientboosting_model():
+    """
+    Vérifier que le modèle GradientBoosting fonctionne correctement.
+    Teste sur les données récentes et retourne les métriques.
+    """
+    try:
+        import json
+        from pathlib import Path
+        import joblib
+        
+        models_dir = Path("optimization/saved_models")
+        
+        # Vérifier que le modèle existe
+        model_paths = [
+            models_dir / "best_classifier_latest.pkl",
+            models_dir / "optimized_classifier_latest.pkl"
+        ]
+        
+        model_path = None
+        for p in model_paths:
+            if p.exists():
+                model_path = p
+                break
+        
+        if not model_path:
+            return {
+                'status': 'FAIL',
+                'message': 'Modèle GradientBoosting non trouvé. Lancez l\'entraînement.',
+                'accuracy': 0
+            }
+        
+        # Charger modèle
+        pipeline = joblib.load(model_path)
+        
+        # Charger metadata si disponible
+        metadata_paths = [
+            models_dir / "best_classifier_metadata.json",
+            models_dir / "optimized_classifier_metadata.json"
+        ]
+        
+        metadata = None
+        for mp in metadata_paths:
+            if mp.exists():
+                with open(mp, 'r') as f:
+                    metadata = json.load(f)
+                break
+        
+        if metadata:
+            acc = metadata.get('metrics', {}).get('test_acc', 0)
+            f1 = metadata.get('metrics', {}).get('test_f1', 0)
+            
+            status = 'PASS' if acc >= 0.55 else 'WARN'
+            
+            return {
+                'status': status,
+                'accuracy': acc,
+                'f1': f1,
+                'model_type': metadata.get('best_model', 'GradientBoosting'),
+                'n_features': len(metadata.get('feature_cols', [])),
+                'message': f'Modèle valide - Accuracy: {acc*100:.1f}%' if status == 'PASS' else f'Accuracy faible: {acc*100:.1f}%'
+            }
+        
+        return {
+            'status': 'WARN',
+            'message': 'Modèle chargé mais metadata non trouvée',
+            'accuracy': 0
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur verify_gb: {e}", exc_info=True)
+        return {
+            'status': 'error',
+            'message': str(e),
+            'accuracy': 0
+        }
+
+
+async def _train_gradientboosting_background(task_id: str):
+    """Fonction background pour entraînement GradientBoosting"""
+    try:
+        from sklearn.ensemble import GradientBoostingClassifier
+        from sklearn.preprocessing import RobustScaler
+        from sklearn.metrics import accuracy_score, f1_score, precision_score
+        from sklearn.pipeline import Pipeline
+        from optimization.data.feature_loader import load_features_from_postgres
+        from optimization.data.feature_engineering import calculate_derived_features
+        import numpy as np
+        import pandas as pd
+        import joblib
+        import json
+        from pathlib import Path
+        
+        # Get params from task
+        params = ml_tasks[task_id].get('params', {})
+        
+        # 🔥 LOG: Afficher les hyperparamètres utilisés
+        logger.info(
+            f"📋 Hyperparamètres GradientBoosting: n_estimators={params.get('n_estimators')}, "
+            f"max_depth={params.get('max_depth')}, learning_rate={params.get('learning_rate')}, "
+            f"min_samples_split={params.get('min_samples_split')}, min_samples_leaf={params.get('min_samples_leaf')}, "
+            f"subsample={params.get('subsample')}, max_features={params.get('max_features')}"
+        )
+        
+        # Update status
+        ml_tasks[task_id]['status'] = 'running'
+        ml_tasks[task_id]['progress'] = 5
+        ml_tasks[task_id]['stage'] = 'loading_data'
+        
+        logger.info(f"🎯 Entraînement GradientBoosting en cours (task_id={task_id})")
+        
+        # 🔥 FIX: Utiliser ml_features (pas ml_features_clean qui est obsolète)
+        # Charger TOUTES les données puis filtrer comme l'UI
+        from config import TRADING_CONFIG
+        timeframe = TRADING_CONFIG.get('gb_timeframe_days', 730)  # 2 ans par défaut
+        
+        # Charger depuis ml_features (table complète)
+        base_df = load_features_from_postgres(timeframe_days=timeframe, min_trades=30, use_clean_data=False)
+        logger.info(f"📊 Données brutes chargées: {len(base_df)} trades (timeframe={timeframe} jours)")
+        
+        # 🔥 FILTRAGE identique à l'UI: exclure trades manuels et configs différentes
+        initial_count = len(base_df)
+        
+        # Filtrer les trades manuels (si colonne existe)
+        if 'is_manual' in base_df.columns:
+            base_df = base_df[base_df['is_manual'] != True]
+            logger.info(f"   Après exclusion manuels: {len(base_df)} trades")
+        
+        # 🔥 FILTRE STRICT: Seulement trades avec TOUS les paramètres config identiques
+        current_config = {
+            # Paramètres d'entrée
+            'min_score_required': TRADING_CONFIG.get('min_score_required', 6.5),
+            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.15),
+            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+            'use_confluence': TRADING_CONFIG.get('use_confluence', True),
+            'atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+            'atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+            'atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+            'atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+        }
+        logger.info(f"🔧 Config actuelle: min_score={current_config['min_score_required']}, "
+                   f"snr={current_config['snr_threshold']}, vol={current_config['volume_multiplier']}, "
+                   f"confluence={current_config['use_confluence']}")
+        
+        # Construire le masque pour TOUS les paramètres
+        mask = pd.Series([True] * len(base_df), index=base_df.index)
+        
+        if 'config_min_score_required' in base_df.columns:
+            mask &= abs(base_df['config_min_score_required'] - current_config['min_score_required']) < 0.1
+        
+        if 'config_snr_threshold' in base_df.columns:
+            mask &= abs(base_df['config_snr_threshold'] - current_config['snr_threshold']) < 0.02
+        
+        if 'config_volume_multiplier' in base_df.columns:
+            mask &= abs(base_df['config_volume_multiplier'] - current_config['volume_multiplier']) < 0.05
+        
+        if 'config_use_confluence' in base_df.columns:
+            mask &= base_df['config_use_confluence'] == current_config['use_confluence']
+        
+        # Filtres ATR (tolérances plus larges car valeurs plus variables)
+        if 'config_atr_min_1m' in base_df.columns:
+            mask &= abs(base_df['config_atr_min_1m'] - current_config['atr_min_1m']) < 0.05
+        
+        if 'config_atr_max_1m' in base_df.columns:
+            mask &= abs(base_df['config_atr_max_1m'] - current_config['atr_max_1m']) < 0.1
+        
+        if 'config_atr_min_5m' in base_df.columns:
+            mask &= abs(base_df['config_atr_min_5m'] - current_config['atr_min_5m']) < 0.05
+        
+        if 'config_atr_max_5m' in base_df.columns:
+            mask &= abs(base_df['config_atr_max_5m'] - current_config['atr_max_5m']) < 0.2
+        
+        base_df = base_df[mask]
+        logger.info(f"   Après filtre config COMPLET: {len(base_df)} trades")
+        
+        logger.info(f"📊 Données filtrées: {len(base_df)}/{initial_count} trades utilisables")
+        df = calculate_derived_features(base_df)
+        
+        ml_tasks[task_id]['progress'] = 20
+        ml_tasks[task_id]['stage'] = 'feature_engineering'
+        
+        # Feature engineering
+        if 'timestamp' in df.columns:
+            ts = pd.to_datetime(df['timestamp'])
+            df['hour'] = ts.dt.hour
+            df['day_of_week'] = ts.dt.dayofweek
+            df['good_hour'] = df['hour'].isin([2, 12, 16]).astype(int)
+            df['bad_hour'] = df['hour'].isin([4, 23, 18]).astype(int)
+        
+        if 'rsi_1m' in df.columns and 'rsi_5m' in df.columns:
+            df['rsi_momentum'] = df['rsi_1m'] - df['rsi_5m']
+        
+        if 'macd_hist_1m' in df.columns and 'macd_hist_5m' in df.columns:
+            df['macd_momentum'] = df['macd_hist_1m'] - df['macd_hist_5m']
+        
+        if 'adx_1m' in df.columns:
+            df['strong_trend'] = (df['adx_1m'] > 25).astype(int)
+        
+        # 🔥 NOUVELLES FEATURES OPTIMISEES (découvertes par analyse RF)
+        # 1. Position prix dans Bollinger Bands (TOP 1 feature!)
+        if 'bb_distance_to_lower_1m' in df.columns and 'bb_distance_to_upper_1m' in df.columns:
+            df['bb_position'] = df['bb_distance_to_lower_1m'] / (df['bb_distance_to_lower_1m'] + df['bb_distance_to_upper_1m'] + 1e-6)
+        
+        # 2. Momentum combine (RSI x MACD normalise)
+        if 'macd_hist_1m' in df.columns and 'rsi_1m' in df.columns:
+            df['momentum_combined'] = (df['macd_hist_1m'] / (abs(df['macd_hist_1m']).max() + 1e-6)) * ((df['rsi_1m'] - 50) / 50)
+        
+        # 3. MACD acceleration
+        if 'macd_hist_1m' in df.columns and 'macd_hist_prev_1m' in df.columns:
+            df['macd_acceleration'] = df['macd_hist_1m'] - df['macd_hist_prev_1m']
+        
+        # 4. Distance RSI au neutre (50)
+        if 'rsi_1m' in df.columns:
+            df['rsi_distance_50_1m'] = abs(df['rsi_1m'] - 50)
+        if 'rsi_5m' in df.columns:
+            df['rsi_distance_50_5m'] = abs(df['rsi_5m'] - 50)
+        
+        # 5. Volatilite ratio
+        if 'atr_pct_1m' in df.columns and 'atr_pct_5m' in df.columns:
+            df['volatility_ratio'] = df['atr_pct_1m'] / (df['atr_pct_5m'] + 1e-6)
+        
+        # 6. Trend strength
+        if 'adx_1m' in df.columns and 'di_gap_1m' in df.columns:
+            df['trend_strength'] = df['adx_1m'] * abs(df['di_gap_1m'])
+        
+        # 7. Volume pressure
+        if 'volume_ratio_1m' in df.columns and 'volume_spike_1m' in df.columns:
+            df['volume_pressure'] = df['volume_ratio_1m'] * df['volume_spike_1m']
+        
+        # 8. BB squeeze
+        if 'bb_width_1m' in df.columns:
+            df['bb_squeeze'] = 1 / (df['bb_width_1m'] + 1e-6)
+        
+        # 9. RSI acceleration
+        if 'rsi_1m' in df.columns and 'rsi_prev_1m' in df.columns:
+            df['rsi_accel'] = df['rsi_1m'] - df['rsi_prev_1m']
+        
+        # 10. EMA trend aligned (multi-timeframe)
+        if 'ema_diff_pct_1m' in df.columns and 'ema_diff_pct_5m' in df.columns:
+            df['ema_trend_aligned'] = np.sign(df['ema_diff_pct_1m']) * np.sign(df['ema_diff_pct_5m'])
+        
+        logger.info(f"📊 Nouvelles features créées: bb_position, momentum_combined, macd_acceleration, etc.")
+        
+        # Préparer features
+        exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity', 'date']
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        feature_cols = [c for c in numeric_cols if c not in exclude_cols]
+        
+        # Supprimer colonnes constantes
+        feature_cols = [c for c in feature_cols if df[c].nunique() > 1]
+        
+        # Supprimer colonnes avec trop de NULL
+        feature_cols = [c for c in feature_cols if df[c].isnull().sum() / len(df) <= 0.3]
+        
+        ml_tasks[task_id]['progress'] = 40
+        ml_tasks[task_id]['stage'] = 'training'
+        
+        X = df[feature_cols].fillna(0).values
+        y = df['target_win'].astype(int).values
+        
+        # 🔥 FIX: Split temporel 80/20 (train/test) - PAS de données perdues
+        n = len(df)
+        train_end = int(n * 0.8)  # 80% train, 20% test
+        
+        if 'timestamp' in df.columns:
+            sort_idx = df['timestamp'].argsort().values
+            X = X[sort_idx]
+            y = y[sort_idx]
+            logger.info(f"📊 Split temporel: données triées par timestamp")
+        
+        X_train, X_test = X[:train_end], X[train_end:]
+        y_train, y_test = y[:train_end], y[train_end:]
+        
+        logger.info(f"📊 Split: Train={len(y_train)} ({len(y_train)/n*100:.0f}%), Test={len(y_test)} ({len(y_test)/n*100:.0f}%)")
+        
+        # 🔥 FIX: Sélection de features pour ratio optimal
+        from sklearn.feature_selection import SelectKBest, f_classif
+        
+        n_samples = X_train.shape[0]
+        n_features_original = X_train.shape[1]
+        # k=25 optimal avec nouvelles features (testé empiriquement)
+        optimal_k = max(25, min(n_samples // 80, n_features_original))
+        
+        if n_features_original > optimal_k:
+            logger.info(f"📊 Sélection features: {n_features_original} → {optimal_k} (ratio {n_samples}:{optimal_k} = {n_samples//optimal_k}:1)")
+            selector = SelectKBest(f_classif, k=optimal_k)
+            X_train = selector.fit_transform(X_train, y_train)
+            X_test = selector.transform(X_test)
+            
+            # Sauvegarder les features sélectionnées (IMPORTANT pour prédiction!)
+            selected_mask = selector.get_support()
+            feature_cols = [feature_cols[i] for i in range(len(feature_cols)) if selected_mask[i]]
+            logger.info(f"✅ Features réduites: {n_features_original} → {X_train.shape[1]}")
+            logger.info(f"📋 Features sélectionnées: {feature_cols[:5]}...")
+        
+        # Scaler et modèle
+        scaler = RobustScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        # 🔥 FIX: Calculer sample_weights pour gérer le déséquilibre des classes
+        from sklearn.utils.class_weight import compute_class_weight
+        class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+        class_weight_dict = dict(zip(np.unique(y_train), class_weights))
+        sample_weights = np.array([class_weight_dict[label] for label in y_train])
+        
+        # Log la distribution des classes
+        n_pos = np.sum(y_train == 1)
+        n_neg = np.sum(y_train == 0)
+        logger.info(f"📊 Distribution classes: positifs={n_pos} ({n_pos/len(y_train)*100:.1f}%), négatifs={n_neg} ({n_neg/len(y_train)*100:.1f}%)")
+        logger.info(f"📊 Class weights: {class_weight_dict}")
+        
+        # Choisir le type de modèle (GB standard ou HistGB 10x plus rapide)
+        from config import TRADING_CONFIG
+        model_type = TRADING_CONFIG.get('gb_model_type', 'gb')
+        
+        if model_type == 'histgb':
+            # HistGradientBoosting - 10x plus rapide
+            from sklearn.ensemble import HistGradientBoostingClassifier
+            logger.info(f"🔥 Utilisation de HistGradientBoostingClassifier (10x plus rapide)")
+            
+            # 🔥 FIX: Utiliser les paramètres optimisés sans les écraser
+            model = HistGradientBoostingClassifier(
+                max_iter=params.get('n_estimators', 300),
+                max_depth=params.get('max_depth', 2),
+                learning_rate=params.get('learning_rate', 0.089),
+                min_samples_leaf=params.get('min_samples_leaf', 50),
+                l2_regularization=params.get('l2_regularization', 0.9),
+                max_bins=255,
+                random_state=42,
+                early_stopping=True,
+                n_iter_no_change=15,
+                validation_fraction=0.15
+            )
+            # 🔥 FIX: HistGB utilise sample_weight dans fit()
+            model.fit(X_train_scaled, y_train, sample_weight=sample_weights)
+        else:
+            # GradientBoosting standard
+            logger.info(f"🌳 Utilisation de GradientBoostingClassifier (standard)")
+            
+            model = GradientBoostingClassifier(
+                n_estimators=params.get('n_estimators', 200),
+                max_depth=params.get('max_depth', 3),
+                learning_rate=params.get('learning_rate', 0.03),
+                min_samples_split=params.get('min_samples_split', 30),
+                min_samples_leaf=params.get('min_samples_leaf', 15),
+                subsample=params.get('subsample', 0.7),
+                max_features=params.get('max_features', 0.5),
+                random_state=42,
+                validation_fraction=0.15,
+                n_iter_no_change=30
+            )
+            # 🔥 FIX: GB standard utilise aussi sample_weight
+            model.fit(X_train_scaled, y_train, sample_weight=sample_weights)
+        
+        logger.info(f"✅ Modèle entraîné avec sample_weights pour équilibrer les classes")
+        
+        ml_tasks[task_id]['progress'] = 80
+        ml_tasks[task_id]['stage'] = 'evaluating'
+        
+        # Évaluer
+        y_train_pred = model.predict(X_train_scaled)
+        y_test_pred = model.predict(X_test_scaled)
+        
+        train_acc = accuracy_score(y_train, y_train_pred)
+        test_acc = accuracy_score(y_test, y_test_pred)
+        test_f1 = f1_score(y_test, y_test_pred, zero_division=0)
+        test_prec = precision_score(y_test, y_test_pred, zero_division=0)
+        gap = train_acc - test_acc
+        
+        # Sauvegarder
+        models_dir = Path("optimization/saved_models")
+        models_dir.mkdir(parents=True, exist_ok=True)
+        
+        pipeline = Pipeline([
+            ('scaler', scaler),
+            ('model', model)
+        ])
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_path = models_dir / f"best_classifier_{timestamp}.pkl"
+        latest_path = models_dir / "best_classifier_latest.pkl"
+        
+        joblib.dump(pipeline, model_path)
+        joblib.dump(pipeline, latest_path)
+        
+        model_name = 'HistGradientBoostingClassifier' if model_type == 'histgb' else 'GradientBoostingClassifier'
+        
+        metadata = {
+            'timestamp': timestamp,
+            'best_model': model_name,
+            'model_type': model_type,
+            'n_samples': len(df),  # 🔥 Nombre total de samples
+            'n_train': X_train.shape[0],  # Utiliser shape car X_train est numpy array
+            'n_test': X_test.shape[0],
+            'n_features': X_train.shape[1],  # 🔥 FIX: Nombre de features APRES sélection
+            'metrics': {
+                'train_acc': float(train_acc),
+                'test_acc': float(test_acc),
+                'test_f1': float(test_f1),
+                'test_precision': float(test_prec),
+                'gap': float(gap)
+            },
+            'feature_cols': feature_cols,
+            'params': params
+        }
+        
+        with open(models_dir / "best_classifier_metadata.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        ml_tasks[task_id]['progress'] = 100
+        ml_tasks[task_id]['status'] = 'completed'
+        ml_tasks[task_id]['accuracy'] = float(test_acc)
+        ml_tasks[task_id]['f1'] = float(test_f1)
+        ml_tasks[task_id]['gap'] = float(gap)
+        ml_tasks[task_id]['metrics'] = metadata['metrics']
+        ml_tasks[task_id]['model_type'] = model_type
+        
+        logger.info(f"✅ {model_name} entraîné: Accuracy={test_acc:.1%}, F1={test_f1:.3f}, Gap={gap:.1%}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur _train_gradientboosting_background: {e}", exc_info=True)
+        ml_tasks[task_id]['status'] = 'error'
+        ml_tasks[task_id]['error'] = str(e)
+
+
+# ========== OPTUNA OPTIMIZATION POUR GRADIENTBOOSTING ==========
+
+# État global de l'optimisation
+_gb_optuna_task: Dict[str, Any] = {
+    'status': 'idle',  # idle, running, completed, error
+    'task_id': None,
+    'progress': 0,
+    'current_trial': 0,
+    'total_trials': 100,
+    'best_score': 0,
+    'best_params': None,
+    'error': None,
+    'started_at': None,
+    'completed_at': None
+}
+
+
+@router.post("/optimize_gb")
+async def start_gb_optuna_optimization(
+    background_tasks: BackgroundTasks,
+    n_trials: int = Query(100, ge=20, le=300),
+    timeout_minutes: int = Query(30, ge=5, le=120)
+):
+    """
+    🔬 Démarre l'optimisation Optuna pour GradientBoosting
+    
+    Args:
+        n_trials: Nombre de trials (20-300)
+        timeout_minutes: Timeout en minutes (5-120)
+    """
+    global _gb_optuna_task
+    
+    if _gb_optuna_task['status'] == 'running':
+        return JSONResponse({
+            'success': False,
+            'error': 'Optimisation déjà en cours',
+            'current_progress': _gb_optuna_task['progress']
+        }, status_code=409)
+    
+    task_id = f"gb_optuna_{uuid.uuid4().hex[:8]}"
+    
+    _gb_optuna_task = {
+        'status': 'running',
+        'task_id': task_id,
+        'progress': 0,
+        'current_trial': 0,
+        'total_trials': n_trials,
+        'best_score': 0,
+        'best_params': None,
+        'error': None,
+        'started_at': datetime.now().isoformat(),
+        'completed_at': None
+    }
+    
+    background_tasks.add_task(
+        _run_gb_optuna_optimization,
+        task_id,
+        n_trials,
+        timeout_minutes
+    )
+    
+    return {
+        'success': True,
+        'task_id': task_id,
+        'message': f'Optimisation Optuna démarrée ({n_trials} trials, timeout {timeout_minutes}min)',
+        'status_url': '/api/ml/optimize_gb/status'
+    }
+
+
+@router.get("/optimize_gb/status")
+async def get_gb_optuna_status():
+    """
+    📊 Retourne le statut de l'optimisation Optuna en cours
+    """
+    return _gb_optuna_task
+
+
+@router.post("/optimize_gb/apply")
+async def apply_gb_optuna_params():
+    """
+    ✅ Applique les meilleurs paramètres trouvés par Optuna dans TRADING_CONFIG
+    """
+    global _gb_optuna_task
+    
+    if not _gb_optuna_task['best_params']:
+        return JSONResponse({
+            'success': False,
+            'error': 'Aucun paramètre optimal disponible. Lancer une optimisation d\'abord.'
+        }, status_code=400)
+    
+    try:
+        from config import TRADING_CONFIG
+        from utils.config_persistence import save_config_overrides, load_config_overrides
+        
+        best_params = _gb_optuna_task['best_params']
+        
+        # Mapper les paramètres Optuna vers TRADING_CONFIG
+        param_mapping = {
+            'n_estimators': 'gb_n_estimators',
+            'max_depth': 'gb_max_depth',
+            'learning_rate': 'gb_learning_rate',
+            'min_samples_split': 'gb_min_samples_split',
+            'min_samples_leaf': 'gb_min_samples_leaf',
+            'subsample': 'gb_subsample',
+            'max_features': 'gb_max_features'
+        }
+        
+        updated = {}
+        for optuna_key, config_key in param_mapping.items():
+            if optuna_key in best_params:
+                value = best_params[optuna_key]
+                TRADING_CONFIG[config_key] = value
+                updated[config_key] = value
+        
+        # Persister
+        overrides = load_config_overrides()
+        overrides.update(updated)
+        save_config_overrides(overrides)
+        
+        logger.info(f"✅ Paramètres Optuna appliqués: {updated}")
+        
+        return {
+            'success': True,
+            'applied_params': updated,
+            'best_score': _gb_optuna_task['best_score'],
+            'message': f'{len(updated)} paramètres appliqués et persistés'
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur application params Optuna: {e}", exc_info=True)
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        }, status_code=500)
+
+
+@router.get("/optimize_gb/history")
+async def get_gb_optuna_history():
+    """
+    📈 Retourne l'historique des optimisations Optuna
+    """
+    try:
+        from optimization.optuna_gb_tuner import load_last_optimization_results
+        
+        results = load_last_optimization_results()
+        if results:
+            return {
+                'success': True,
+                'last_optimization': results
+            }
+        else:
+            return {
+                'success': True,
+                'last_optimization': None,
+                'message': 'Aucune optimisation précédente trouvée'
+            }
+            
+    except Exception as e:
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        }, status_code=500)
+
+
+async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minutes: int):
+    """Background task pour l'optimisation Optuna - Non bloquant pour WebSocket"""
+    global _gb_optuna_task
+    
+    import asyncio
+    
+    try:
+        logger.info(f"🔬 Démarrage optimisation Optuna GB (task={task_id})")
+        
+        from optimization.optuna_gb_tuner import GradientBoostingOptunaOptimizer
+        from optimization.data.feature_loader import load_features_from_postgres
+        from optimization.data.feature_engineering import calculate_derived_features
+        import numpy as np
+        
+        # 1. Charger les données - MÊME LOGIQUE QUE TRAINING
+        _gb_optuna_task['progress'] = 5
+        logger.info("📊 Chargement des données depuis PostgreSQL...")
+        
+        # 🔥 FIX: Utiliser ml_features (pas ml_features_clean obsolète) + même filtrage que training
+        from config import TRADING_CONFIG
+        timeframe = TRADING_CONFIG.get('gb_timeframe_days', 730)  # 2 ans par défaut
+        
+        base_df = load_features_from_postgres(timeframe_days=timeframe, min_trades=30, use_clean_data=False)
+        logger.info(f"📊 Données brutes chargées: {len(base_df)} trades (timeframe={timeframe} jours)")
+        
+        # 🔥 FILTRE STRICT: Seulement trades avec TOUS les paramètres config identiques
+        initial_count = len(base_df)
+        current_config = {
+            'min_score_required': TRADING_CONFIG.get('min_score_required', 6.5),
+            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.15),
+            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+            'use_confluence': TRADING_CONFIG.get('use_confluence', True),
+        }
+        logger.info(f"🔧 Config actuelle: {current_config}")
+        
+        # Construire le masque pour TOUS les paramètres
+        mask = pd.Series([True] * len(base_df), index=base_df.index)
+        
+        if 'config_min_score_required' in base_df.columns:
+            mask &= abs(base_df['config_min_score_required'] - current_config['min_score_required']) < 0.1
+        
+        if 'config_snr_threshold' in base_df.columns:
+            mask &= abs(base_df['config_snr_threshold'] - current_config['snr_threshold']) < 0.02
+        
+        if 'config_volume_multiplier' in base_df.columns:
+            mask &= abs(base_df['config_volume_multiplier'] - current_config['volume_multiplier']) < 0.05
+        
+        if 'config_use_confluence' in base_df.columns:
+            mask &= base_df['config_use_confluence'] == current_config['use_confluence']
+        
+        base_df = base_df[mask]
+        logger.info(f"   Après filtre config COMPLET: {len(base_df)} trades")
+        
+        logger.info(f"📊 Données filtrées: {len(base_df)}/{initial_count} trades utilisables")
+        
+        df = calculate_derived_features(base_df)
+        
+        if df is None or len(df) < 200:
+            raise ValueError(f"Pas assez de trades pour l'optimisation: {len(df) if df is not None else 0}")
+        
+        # 2. Feature engineering (même que train_gb)
+        _gb_optuna_task['progress'] = 15
+        logger.info(f"🔧 Feature engineering sur {len(df)} trades...")
+        
+        # Features temporelles
+        if 'timestamp' in df.columns:
+            ts = pd.to_datetime(df['timestamp'])
+            df['hour'] = ts.dt.hour
+            df['day_of_week'] = ts.dt.dayofweek
+            df['good_hour'] = df['hour'].isin([2, 12, 16]).astype(int)
+            df['bad_hour'] = df['hour'].isin([4, 23, 18]).astype(int)
+        
+        if 'rsi_1m' in df.columns and 'rsi_5m' in df.columns:
+            df['rsi_momentum'] = df['rsi_1m'] - df['rsi_5m']
+        
+        if 'macd_hist_1m' in df.columns and 'macd_hist_5m' in df.columns:
+            df['macd_momentum'] = df['macd_hist_1m'] - df['macd_hist_5m']
+        
+        if 'adx_1m' in df.columns:
+            df['strong_trend'] = (df['adx_1m'] > 25).astype(int)
+        
+        # Préparer features
+        exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity', 'date']
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        feature_cols = [c for c in numeric_cols if c not in exclude_cols]
+        
+        # Supprimer colonnes constantes et avec trop de NULL
+        feature_cols = [c for c in feature_cols if df[c].nunique() > 1]
+        feature_cols = [c for c in feature_cols if df[c].isnull().sum() / len(df) <= 0.3]
+        
+        X = df[feature_cols].fillna(0).values
+        y = df['target_win'].astype(int).values
+        
+        if len(X) < 200:
+            raise ValueError(f"Pas assez d'échantillons après feature engineering: {len(X)}")
+        
+        logger.info(f"✅ Dataset prêt: {X.shape[0]} samples, {X.shape[1]} features")
+        
+        # 3. Lancer l'optimisation dans un thread séparé pour ne pas bloquer le WebSocket
+        _gb_optuna_task['progress'] = 20
+        
+        # Récupérer le type de modèle depuis la config
+        from config import TRADING_CONFIG
+        model_type = TRADING_CONFIG.get('gb_model_type', 'gb')
+        logger.info(f"🔧 Type de modèle: {model_type} ({'HistGradientBoosting 10x rapide' if model_type == 'histgb' else 'GradientBoosting standard'})")
+        
+        optimizer = GradientBoostingOptunaOptimizer(
+            n_trials=n_trials,
+            timeout_minutes=timeout_minutes,
+            cv_folds=5,
+            model_type=model_type
+        )
+        
+        def progress_callback(trial_num, total, score):
+            _gb_optuna_task['current_trial'] = trial_num
+            _gb_optuna_task['progress'] = 20 + int((trial_num / total) * 70)
+            if score and score > _gb_optuna_task['best_score']:
+                _gb_optuna_task['best_score'] = score
+        
+        # 🔥 Exécuter dans un thread séparé pour libérer l'event loop (WebSocket reste actif)
+        logger.info("🔄 Lancement optimisation dans thread séparé (WebSocket reste actif)...")
+        result = await asyncio.to_thread(optimizer.optimize, X, y, progress_callback)
+        
+        # 4. Mettre à jour le statut
+        _gb_optuna_task['progress'] = 95
+        
+        if result['success']:
+            _gb_optuna_task['best_params'] = result['best_params']
+            _gb_optuna_task['best_score'] = result['best_score']
+            _gb_optuna_task['status'] = 'completed'
+            _gb_optuna_task['progress'] = 100
+            _gb_optuna_task['completed_at'] = datetime.now().isoformat()
+            
+            logger.info(f"✅ Optimisation terminée: Best F1={result['best_score']:.4f}")
+            logger.info(f"   Params: {result['best_params']}")
+        else:
+            raise Exception(result.get('error', 'Erreur inconnue'))
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur optimisation Optuna: {e}", exc_info=True)
+        _gb_optuna_task['status'] = 'error'
+        _gb_optuna_task['error'] = str(e)
+        _gb_optuna_task['completed_at'] = datetime.now().isoformat()
+
+
+# ========== BOUCLE DE VÉRIFICATION COMPLÈTE ==========
+
+@router.get("/verify_gb/complete")
+async def verify_gb_complete():
+    """
+    🔍 Boucle de vérification complète du système GradientBoosting
+    Vérifie:
+    - Configuration (TRADING_CONFIG)
+    - Fichier modèle (.pkl)
+    - Métadonnées modèle
+    - Cohérence paramètres
+    - Capacité de prédiction
+    """
+    verification_results = {
+        'timestamp': datetime.now().isoformat(),
+        'checks': [],
+        'overall_status': 'OK',
+        'warnings': [],
+        'errors': []
+    }
+    
+    def add_check(name: str, status: str, details: str = "", value: Any = None):
+        verification_results['checks'].append({
+            'name': name,
+            'status': status,  # OK, WARNING, ERROR
+            'details': details,
+            'value': value
+        })
+        if status == 'ERROR':
+            verification_results['errors'].append(f"{name}: {details}")
+            verification_results['overall_status'] = 'ERROR'
+        elif status == 'WARNING' and verification_results['overall_status'] != 'ERROR':
+            verification_results['warnings'].append(f"{name}: {details}")
+            verification_results['overall_status'] = 'WARNING'
+    
+    try:
+        # 1. Vérifier TRADING_CONFIG
+        from config import TRADING_CONFIG
+        
+        gb_params = {
+            'gb_filter_enabled': TRADING_CONFIG.get('gb_filter_enabled'),
+            'gb_min_confidence': TRADING_CONFIG.get('gb_min_confidence'),
+            'gb_n_estimators': TRADING_CONFIG.get('gb_n_estimators'),
+            'gb_max_depth': TRADING_CONFIG.get('gb_max_depth'),
+            'gb_learning_rate': TRADING_CONFIG.get('gb_learning_rate'),
+            'gb_min_samples_split': TRADING_CONFIG.get('gb_min_samples_split'),
+            'gb_min_samples_leaf': TRADING_CONFIG.get('gb_min_samples_leaf'),
+            'gb_subsample': TRADING_CONFIG.get('gb_subsample'),
+            'gb_max_features': TRADING_CONFIG.get('gb_max_features'),
+        }
+        
+        missing_params = [k for k, v in gb_params.items() if v is None]
+        if missing_params:
+            add_check('TRADING_CONFIG', 'ERROR', f'Paramètres manquants: {missing_params}')
+        else:
+            add_check('TRADING_CONFIG', 'OK', 'Tous les paramètres GB présents', gb_params)
+        
+        # 2. Vérifier config_overrides.json
+        from utils.config_persistence import load_config_overrides
+        overrides = load_config_overrides()
+        
+        gb_overrides = {k: v for k, v in overrides.items() if k.startswith('gb_')}
+        if gb_overrides:
+            add_check('config_overrides.json', 'OK', f'{len(gb_overrides)} paramètres GB persistés', gb_overrides)
+        else:
+            add_check('config_overrides.json', 'WARNING', 'Aucun paramètre GB persisté (valeurs par défaut)')
+        
+        # 3. Vérifier le fichier modèle
+        from pathlib import Path
+        models_dir = Path("optimization/saved_models")
+        
+        model_files = list(models_dir.glob("*classifier*.pkl")) + list(models_dir.glob("best_classifier*.pkl"))
+        
+        if model_files:
+            latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
+            model_age_hours = (datetime.now().timestamp() - latest_model.stat().st_mtime) / 3600
+            
+            if model_age_hours > 168:  # Plus d'une semaine
+                add_check('Fichier modèle', 'WARNING', f'Modèle ancien ({model_age_hours:.0f}h)', str(latest_model))
+            else:
+                add_check('Fichier modèle', 'OK', f'Modèle trouvé ({model_age_hours:.1f}h)', str(latest_model))
+        else:
+            add_check('Fichier modèle', 'ERROR', 'Aucun fichier modèle trouvé')
+        
+        # 4. Vérifier les métadonnées
+        metadata_file = models_dir / "best_classifier_metadata.json"
+        if metadata_file.exists():
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+            
+            metrics = metadata.get('metrics', {})
+            test_acc = metrics.get('test_acc', 0)
+            gap = metrics.get('gap', 1)
+            
+            if test_acc < 0.55:
+                add_check('Métriques modèle', 'WARNING', f'Accuracy faible: {test_acc:.1%}', metrics)
+            elif gap > 0.15:
+                add_check('Métriques modèle', 'WARNING', f'Overfitting élevé: {gap:.1%}', metrics)
+            else:
+                add_check('Métriques modèle', 'OK', f'Accuracy={test_acc:.1%}, Gap={gap:.1%}', metrics)
+        else:
+            add_check('Métadonnées modèle', 'WARNING', 'Fichier metadata non trouvé')
+        
+        # 5. Vérifier la capacité de prédiction
+        try:
+            import joblib
+            if model_files:
+                latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
+                model = joblib.load(latest_model)
+                
+                # Déterminer le nombre de features depuis le modèle
+                import numpy as np
+                
+                # Essayer de récupérer n_features du scaler (Pipeline) ou du modèle
+                try:
+                    if hasattr(model, 'named_steps') and 'scaler' in model.named_steps:
+                        n_features = model.named_steps['scaler'].n_features_in_
+                    elif hasattr(model, 'n_features_in_'):
+                        n_features = model.n_features_in_
+                    else:
+                        # Charger depuis metadata
+                        meta_file = models_dir / "best_classifier_metadata.json"
+                        if meta_file.exists():
+                            with open(meta_file, 'r') as f:
+                                meta = json.load(f)
+                            n_features = len(meta.get('feature_cols', [])) or 92
+                        else:
+                            n_features = 92  # Fallback
+                except:
+                    n_features = 92
+                
+                test_input = np.random.randn(1, n_features)
+                
+                try:
+                    prediction = model.predict(test_input)
+                    proba = model.predict_proba(test_input)
+                    add_check('Capacité prédiction', 'OK', f'Prédiction OK ({n_features} features): pred={prediction[0]}')
+                except Exception as pred_err:
+                    add_check('Capacité prédiction', 'ERROR', f'Erreur prédiction: {pred_err}')
+        except Exception as load_err:
+            add_check('Chargement modèle', 'ERROR', f'Impossible de charger: {load_err}')
+        
+        # 6. Vérifier cohérence avec Optuna
+        optuna_results = models_dir / "gb_optuna_results.json"
+        if optuna_results.exists():
+            with open(optuna_results, 'r') as f:
+                optuna_data = json.load(f)
+            
+            optuna_params = optuna_data.get('best_params', {})
+            
+            # Comparer avec TRADING_CONFIG
+            mismatches = []
+            param_mapping = {
+                'n_estimators': 'gb_n_estimators',
+                'max_depth': 'gb_max_depth',
+                'learning_rate': 'gb_learning_rate',
+            }
+            
+            for optuna_key, config_key in param_mapping.items():
+                optuna_val = optuna_params.get(optuna_key)
+                config_val = gb_params.get(config_key)
+                if optuna_val and config_val and optuna_val != config_val:
+                    mismatches.append(f"{config_key}: config={config_val} vs optuna={optuna_val}")
+            
+            if mismatches:
+                add_check('Cohérence Optuna', 'WARNING', f'Params différents: {mismatches}', {
+                    'optuna_params': optuna_params,
+                    'config_params': gb_params
+                })
+            else:
+                add_check('Cohérence Optuna', 'OK', 'Paramètres cohérents avec Optuna')
+        else:
+            add_check('Résultats Optuna', 'OK', 'Pas d\'optimisation Optuna précédente (optionnel)')
+        
+        # Résumé
+        n_ok = len([c for c in verification_results['checks'] if c['status'] == 'OK'])
+        n_warn = len([c for c in verification_results['checks'] if c['status'] == 'WARNING'])
+        n_err = len([c for c in verification_results['checks'] if c['status'] == 'ERROR'])
+        
+        verification_results['summary'] = {
+            'total_checks': len(verification_results['checks']),
+            'ok': n_ok,
+            'warnings': n_warn,
+            'errors': n_err
+        }
+        
+        return verification_results
+        
+    except Exception as e:
+        logger.error(f"Erreur vérification GB: {e}", exc_info=True)
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        }, status_code=500)

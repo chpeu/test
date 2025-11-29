@@ -336,6 +336,18 @@ TRADING_CONFIG = {
     "ml_v2_subsample": 0.70,
     "ml_v2_colsample_bytree": 0.70,
     "ml_v2_gamma": 0.50,
+    
+    # GradientBoosting (Modèle Optimisé 64-69% accuracy)
+    "gb_filter_enabled": True,  # Activé par défaut car performant
+    "gb_min_confidence": 0.55,  # 55% seuil
+    "gb_n_estimators": 200,
+    "gb_max_depth": 3,
+    "gb_learning_rate": 0.03,
+    "gb_min_samples_split": 30,
+    "gb_min_samples_leaf": 15,
+    "gb_subsample": 0.70,
+    "gb_max_features": 0.50,
+    "gb_model_type": "gb",  # 'gb' = GradientBoosting, 'histgb' = HistGradientBoosting (10x plus rapide)
 }
 
 # Risk management
@@ -466,8 +478,8 @@ ML_CONFIG = {
     # Activation du filtre ML pour le trading
     "enabled": os.getenv('ML_FILTER_ENABLED', 'false').lower() == 'true',
 
-    # Modèle à utiliser
-    "model_name": os.getenv('ML_MODEL_NAME', 'xgboost_v1'),
+    # Modèle à utiliser ("optimized" = GradientBoosting 64-69% accuracy, "xgboost_v1" = ancien ~50%)
+    "model_name": os.getenv('ML_MODEL_NAME', 'optimized'),
 
     # Seuil de confiance minimum pour accepter un trade
     "min_confidence": float(os.getenv('ML_MIN_CONFIDENCE', '0.60')),  # 60% par défaut

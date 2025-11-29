@@ -640,16 +640,23 @@ class LiveOrderManagerFutures:
 
             # 🔥 Vérifier solde disponible AVANT d'ouvrir position
             margin_required = size_usdt / leverage
-            balance = self.get_balance('USDT')
+            balance_free = self.get_balance('USDT')
+            balance_total = self.get_balance_total('USDT')
             
-            if balance is not None and balance < margin_required:
+            if balance_free is not None and balance_free < margin_required:
+                # Calculer le levier minimum nécessaire
+                min_leverage_needed = int(size_usdt / balance_free) + 1 if balance_free > 0 else 999
+                margin_blocked = (balance_total or 0) - (balance_free or 0)
+                
                 logger.error(
-                    f"❌ Solde insuffisant: {balance:.2f} USDT disponible, "
-                    f"{margin_required:.2f} USDT requis (size={size_usdt:.2f}, leverage={leverage}x)"
+                    f"❌ Solde insuffisant: {balance_free:.2f} USDT disponible / {balance_total:.2f} USDT total | "
+                    f"Marge bloquée: {margin_blocked:.2f} USDT | "
+                    f"Requis: {margin_required:.2f} USDT (size={size_usdt:.2f}, leverage={leverage}x) | "
+                    f"💡 Levier min nécessaire: x{min_leverage_needed}"
                 )
                 return FuturesOrderResult(
                     success=False,
-                    error_message=f"Solde insuffisant: {balance:.2f} USDT disponible, {margin_required:.2f} USDT requis",
+                    error_message=f"Solde insuffisant: {balance_free:.2f} USDT disponible (total: {balance_total:.2f}), {margin_required:.2f} USDT requis. Augmenter levier à x{min_leverage_needed} ou fermer des positions.",
                     latency_ms=(time.time() - start_time) * 1000
                 )
 
@@ -695,25 +702,39 @@ class LiveOrderManagerFutures:
                             )
 
                     # 🔥 FIX: Vérifier que la valeur en USDT après arrondi est >= 5.5 USDT (minimum MEXC + marge)
-                    MIN_ORDER_USDT = 5.5  # 5 USDT minimum MEXC + 0.5 marge sécurité
+                    MIN_ORDER_USDT = 6.0  # 5 USDT minimum MEXC + 1.0 marge sécurité
                     # 🔥 Calcul correct: amount (contrats) * entry_price * contract_size = valeur en USDT
                     actual_size_usdt = amount * entry_price * contract_spec.contract_size
                     
+                    logger.debug(
+                        f"📊 DEBUG {bypass_symbol}: amount={amount:.6f} contrats, entry_price={entry_price}, "
+                        f"contract_size={contract_spec.contract_size}, value={actual_size_usdt:.2f} USDT"
+                    )
+                    
                     if actual_size_usdt < MIN_ORDER_USDT:
-                        # 🔥 FIX: Augmenter la taille pour atteindre le minimum (en contrats)
+                        import math
+                        # 🔥 FIX: Calculer le nombre EXACT de contrats pour atteindre MIN_ORDER_USDT
                         min_amount_needed = MIN_ORDER_USDT / (entry_price * contract_spec.contract_size)
+                        
                         # Arrondir vers le haut au vol_unit le plus proche
                         if contract_spec.vol_unit > 0:
-                            import math
                             min_amount_needed = math.ceil(min_amount_needed / contract_spec.vol_unit) * contract_spec.vol_unit
+                        
+                        # Arrondir selon la précision
                         min_amount_needed = round(min_amount_needed, contract_spec.vol_precision)
+                        
+                        # 🔥 FIX: Si après arrondi c'est toujours < minimum, augmenter d'un vol_unit
+                        recalc_usdt = min_amount_needed * entry_price * contract_spec.contract_size
+                        while recalc_usdt < MIN_ORDER_USDT and contract_spec.vol_unit > 0:
+                            min_amount_needed += contract_spec.vol_unit
+                            recalc_usdt = min_amount_needed * entry_price * contract_spec.contract_size
                         
                         logger.warning(
                             f"⚠️ Taille insuffisante {bypass_symbol}: {actual_size_usdt:.2f} USDT < {MIN_ORDER_USDT} USDT | "
-                            f"Augmentation automatique: {amount:.6f} → {min_amount_needed:.6f} contrats"
+                            f"Augmentation automatique: {amount:.6f} → {min_amount_needed:.6f} contrats ({recalc_usdt:.2f} USDT)"
                         )
                         amount = min_amount_needed
-                        actual_size_usdt = amount * entry_price * contract_spec.contract_size
+                        actual_size_usdt = recalc_usdt
                     
                     # Log si volume < min_vol (info uniquement)
                     if amount < contract_spec.min_vol:
@@ -735,9 +756,35 @@ class LiveOrderManagerFutures:
                 else:
                     bypass_side = OrderSide.OPEN_SHORT
                 
+                # 🔥 FIX: Validation finale avant envoi
+                if amount <= 0:
+                    logger.error(
+                        f"❌ [BYPASS] BLOQUE: amount={amount} <= 0 pour {bypass_symbol} | "
+                        f"size_usdt original={size_usdt}, entry_price={entry_price}"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Volume invalide: {amount} <= 0",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
+                
+                # 🔥 FIX: S'assurer que la valeur en USDT est >= 5 USDT
+                final_value_usdt = amount * entry_price * (contract_spec.contract_size if contract_spec else 1)
+                if final_value_usdt < 5.0:
+                    logger.error(
+                        f"❌ [BYPASS] BLOQUE: valeur finale {final_value_usdt:.2f} USDT < 5 USDT | "
+                        f"amount={amount}, price={entry_price}, contract_size={contract_spec.contract_size if contract_spec else 1}"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Valeur ordre trop petite: {final_value_usdt:.2f} USDT < 5 USDT minimum MEXC",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
+                
                 logger.info(
                     f"🔥 [BYPASS] Ouverture {direction}: {bypass_symbol} | "
-                    f"Side: {bypass_side} | Vol: {amount:.6f} | Price: {entry_price} | Leverage: {leverage}x"
+                    f"Side: {bypass_side} | Vol: {amount:.6f} | Price: {entry_price} | Leverage: {leverage}x | "
+                    f"Valeur: {final_value_usdt:.2f} USDT"
                 )
                 
                 # 🔥 FIX: Configurer le levier AVANT de passer l'ordre
@@ -878,6 +925,46 @@ class LiveOrderManagerFutures:
                     if self.circuit_breaker:
                         self.circuit_breaker.record_success()
 
+                    # 🔥 FIX: Calculer le VRAI volume en tokens (contrats * contract_size)
+                    # Exemple: 7 contrats * 10 contract_size = 70 tokens XLM
+                    real_contract_size = contract_spec.contract_size if contract_spec else 1.0
+                    real_filled_amount = amount * real_contract_size  # Volume réel en tokens
+                    real_filled_size_usdt = real_filled_amount * final_filled_price  # Valeur USDT réelle
+                    
+                    logger.info(
+                        f"📊 Volume RÉEL: {real_filled_amount:.4f} tokens ({amount:.2f} contrats × {real_contract_size} contract_size) = {real_filled_size_usdt:.4f} USDT"
+                    )
+                    
+                    # 🔥 VÉRIFICATION POST-ORDRE: Récupérer la position réelle depuis CCXT (2s délai)
+                    verified_amount = real_filled_amount
+                    try:
+                        time.sleep(2.0)  # Attendre propagation MEXC
+                        
+                        # Récupérer position réelle via bypass
+                        positions = run_async_safely(
+                            self.bypass_client.get_open_positions(bypass_symbol)
+                        )
+                        
+                        # Chercher notre position
+                        for pos in positions:
+                            if pos.symbol == bypass_symbol:
+                                # hold_vol est en contrats, convertir en tokens
+                                verified_amount = pos.hold_vol * real_contract_size
+                                verified_usdt = verified_amount * final_filled_price
+                                
+                                if abs(verified_amount - real_filled_amount) > 0.01:
+                                    logger.warning(
+                                        f"⚠️ ÉCART DÉTECTÉ: calculé={real_filled_amount:.4f} vs réel={verified_amount:.4f} tokens | "
+                                        f"({pos.hold_vol:.2f} contrats × {real_contract_size})"
+                                    )
+                                    real_filled_amount = verified_amount
+                                    real_filled_size_usdt = verified_usdt
+                                else:
+                                    logger.info(f"✅ Volume vérifié OK: {verified_amount:.4f} tokens")
+                                break
+                    except Exception as verify_err:
+                        logger.warning(f"⚠️ Impossible de vérifier position réelle: {verify_err} (utilisation valeur calculée)")
+
                     # Calculer prix de liquidation estimé (basé sur prix réel)
                     margin = size_usdt / leverage
                     if direction == 'LONG':
@@ -895,6 +982,7 @@ class LiveOrderManagerFutures:
                         f"✅ [BYPASS] Position {direction} ouverte | "
                         f"Order ID: {bypass_result.order_id} | "
                         f"Prix: {final_filled_price} | "
+                        f"Volume: {real_filled_amount:.4f} tokens ({real_filled_size_usdt:.4f} USDT) | "
                         f"Slippage: {final_slippage_pct:.3f}% | "
                         f"Latence: {latency_ms:.0f}ms"
                     )
@@ -903,8 +991,8 @@ class LiveOrderManagerFutures:
                         success=True,
                         order_id=str(bypass_result.order_id),
                         filled_price=final_filled_price,  # 🔥 Prix RÉEL rempli
-                        filled_amount=amount,
-                        filled_size_usdt=amount * final_filled_price,
+                        filled_amount=real_filled_amount,  # 🔥 FIX: Volume RÉEL en tokens
+                        filled_size_usdt=real_filled_size_usdt,  # 🔥 FIX: Valeur USDT RÉELLE
                         actual_fees_usdt=0.0,  # 0% fees sur paires scannées
                         actual_slippage_pct=final_slippage_pct,  # 🔥 Slippage RÉEL calculé
                         margin_used=margin,
@@ -1112,6 +1200,10 @@ class LiveOrderManagerFutures:
                 latency_ms=latency_ms
             )
 
+    # 🔥 FIX: Anti rate-limiting - timestamp de la dernière requête
+    _last_close_request_time: float = 0
+    _min_request_interval_sec: float = 1.0  # Minimum 1 seconde entre les requêtes
+    
     def close_position(
         self,
         symbol: str,
@@ -1136,6 +1228,14 @@ class LiveOrderManagerFutures:
             FuturesOrderResult avec PnL réel
         """
         start_time = time.time()
+        
+        # 🔥 FIX: Anti rate-limiting - attendre si nécessaire
+        time_since_last = time.time() - LiveOrderManagerFutures._last_close_request_time
+        if time_since_last < self._min_request_interval_sec:
+            wait_time = self._min_request_interval_sec - time_since_last
+            logger.debug(f"⏳ Anti rate-limit: attente {wait_time:.2f}s avant close_position")
+            time.sleep(wait_time)
+        LiveOrderManagerFutures._last_close_request_time = time.time()
 
         # 🔥 CIRCUIT BREAKER: Ordres de fermeture TOUJOURS autorisés (is_closing_order=True)
         if self.circuit_breaker:
@@ -1756,7 +1856,7 @@ class LiveOrderManagerFutures:
 
     def get_balance(self, currency: str = 'USDT', prefer_ccxt: bool = True) -> Optional[float]:
         """
-        Récupérer balance disponible futures
+        Récupérer balance DISPONIBLE futures (free)
         
         Args:
             currency: Devise (défaut USDT)
@@ -1798,6 +1898,44 @@ class LiveOrderManagerFutures:
 
         except Exception as e:
             logger.error(f"❌ Erreur récupération balance futures: {e}")
+            return None
+
+    def get_balance_total(self, currency: str = 'USDT', prefer_ccxt: bool = True) -> Optional[float]:
+        """
+        Récupérer balance TOTALE futures (total = available + marge utilisée)
+        
+        Args:
+            currency: Devise (défaut USDT)
+            prefer_ccxt: Si True, utilise CCXT en priorité
+        """
+        try:
+            if self.dry_run:
+                return 0.0
+
+            # 🔄 PRIORITÉ CCXT
+            if prefer_ccxt and self.exchange:
+                try:
+                    balance = self.exchange.fetch_balance()
+                    return float(balance.get(currency, {}).get('total', 0.0))
+                except Exception as ccxt_err:
+                    logger.warning(f"⚠️ CCXT get_balance_total failed, fallback bypass: {ccxt_err}")
+            
+            # 🔥 FALLBACK BYPASS
+            if self.use_bypass and self.bypass_client:
+                asset = run_async_safely(
+                    self.bypass_client.get_account_asset(currency)
+                )
+                if asset:
+                    # total = available + frozen (marge bloquée)
+                    return (asset.available_balance or 0) + (asset.frozen_balance or 0)
+                return None
+            
+            # MODE CCXT seul
+            balance = self.exchange.fetch_balance()
+            return float(balance.get(currency, {}).get('total', 0.0))
+
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération balance total futures: {e}")
             return None
 
     def get_stats(self) -> Dict[str, Any]:

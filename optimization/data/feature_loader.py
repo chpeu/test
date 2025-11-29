@@ -92,7 +92,8 @@ def load_features_from_postgres(
     min_trades: int = 50,
     timeframe_days: int = 30,
     max_trades: Optional[int] = None,
-    include_open_trades: bool = False
+    include_open_trades: bool = False,
+    use_clean_data: bool = True  # 🔥 Utiliser donnees nettoyees par defaut
 ) -> pd.DataFrame:
     """
     Charge features depuis PostgreSQL via vue ml_features
@@ -112,8 +113,21 @@ def load_features_from_postgres(
     try:
         engine = get_sqlalchemy_engine()
         
-        # Requête optimisée sur vue ml_features
-        query = """
+        # 🔥 Choisir table: ml_features_clean (nettoyee) ou ml_features (complete)
+        table_name = 'ml_features_clean' if use_clean_data else 'ml_features'
+        
+        # Verifier si table clean existe
+        if use_clean_data:
+            try:
+                check_query = "SELECT COUNT(*) FROM ml_features_clean LIMIT 1"
+                pd.read_sql(check_query, engine)
+                logger.info(f"📊 Utilisation table nettoyee: {table_name}")
+            except Exception:
+                logger.warning(f"⚠️ Table ml_features_clean non trouvee, fallback sur ml_features")
+                table_name = 'ml_features'
+        
+        # Requête optimisée
+        query = f"""
         SELECT 
             -- Identifiants
             scan_id,
@@ -163,7 +177,7 @@ def load_features_from_postgres(
             target_win,
             target_pnl
             
-        FROM ml_features
+        FROM {table_name}
         WHERE timestamp > NOW() - INTERVAL '%(days)s days'
         """
         
@@ -223,11 +237,12 @@ def load_features_from_postgres(
         
         logger.info(f"🔄 Conversion des types numériques effectuée")
         
-        # Validation minimum
+        # Validation minimum (warning au lieu de bloquer)
         if len(df) < min_trades:
-            raise ValueError(
-                f"❌ Pas assez de données: {len(df)}/{min_trades} trades requis"
+            logger.warning(
+                f"⚠️ Données limitées: {len(df)}/{min_trades} trades - résultats peuvent être sous-optimaux"
             )
+            # Ne PAS bloquer, continuer avec les données disponibles
         
         # Nettoyer NaN
         logger.info(f"🔍 Avant dropna: {len(df)} rows, target_win non-null: {df['target_win'].notna().sum() if 'target_win' in df.columns else 'N/A'}")

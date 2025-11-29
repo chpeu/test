@@ -531,6 +531,21 @@ class PositionManager:
         Returns:
             Position créée
         """
+        # 🔥 FIX: Log critique pour diagnostiquer size=0
+        logger.info(
+            f"📋 OPEN_POSITION reçu: {symbol} {direction} | "
+            f"entry={entry} | size={size} USDT"
+        )
+        
+        # 🔥 FIX: Validation size minimum AVANT de créer la position
+        MIN_SIZE_USDT = 7.0
+        if size < MIN_SIZE_USDT:
+            logger.warning(
+                f"⚠️ Position size trop petite: {size:.2f} USDT < {MIN_SIZE_USDT} USDT | "
+                f"Augmentation automatique à {MIN_SIZE_USDT} USDT"
+            )
+            size = MIN_SIZE_USDT
+        
         # Validation
         if not entry or entry <= 0:
             raise ValueError(f"Entry invalide: {entry}")
@@ -661,11 +676,22 @@ class PositionManager:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
                 size_amount = size / entry
 
+                # 🔥 FIX: Récupérer le levier depuis TRADING_CONFIG (pas celui de l'init)
+                configured_leverage = TRADING_CONFIG.get('default_leverage', 10)
+                
+                # 🔍 VÉRIFICATION LEVIER: Logger pour debug
+                logger.info(
+                    f"🔍 LEVIER CHECK: config={configured_leverage}x | "
+                    f"live_manager_default={self.live_order_manager.default_leverage}x | "
+                    f"Utilisation: {configured_leverage}x"
+                )
+
                 order_result = self.live_order_manager.open_position(
                     symbol=symbol,
                     direction=direction,
                     entry_price=entry,
-                    size_usdt=size
+                    size_usdt=size,
+                    leverage=configured_leverage  # 🔥 FIX: Passer le levier explicitement
                 )
 
                 if order_result.success:
@@ -766,12 +792,16 @@ class PositionManager:
                         f"Slippage: {order_result.actual_slippage_pct or 0:.4f}% | "
                         f"Taille réelle: {filled_size_usdt:.2f} USDT ({filled_amount:.4f} contrats)"
                     )
+                    # 🔥 FIX: Marquer la position comme ouverte sur l'exchange
+                    self.active_position.is_live_open = True
                 else:
                     logger.error(
                         f"❌ Ordre LIVE échoué: {symbol} | "
                         f"Erreur: {order_result.error_message} | "
                         f"Revert to paper trading"
                     )
+                    # 🔥 FIX: Position non ouverte sur exchange - empêcher TP partiels live
+                    self.active_position.is_live_open = False
             except Exception as e:
                 logger.error(f"❌ Erreur passage ordre LIVE: {e}")
 
@@ -1098,6 +1128,14 @@ class PositionManager:
         min_size = capital * min_risk if min_risk else 0.0
         max_size = capital * max_risk if max_risk else final_size
         final_size = max(min_size, min(max_size, final_size))
+        
+        # 🔥 FIX: Garantir une taille minimum de 7 USDT pour éviter les rejets MEXC (min 5 USDT)
+        MIN_POSITION_USDT = 7.0
+        if final_size < MIN_POSITION_USDT:
+            logger.warning(
+                f"⚠️ Taille position trop petite ({final_size:.2f} USDT), augmentation au minimum {MIN_POSITION_USDT} USDT"
+            )
+            final_size = MIN_POSITION_USDT
 
         logger.debug(
             f"📊 Position sizing: {setup.get('symbol', 'N/A')} | "
@@ -1316,13 +1354,20 @@ class PositionManager:
                 partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0)
                 
                 # 🔥 LIVE TRADING: Exécuter l'ordre partiel réel sur MEXC
-                if self.live_order_manager and not self.live_order_manager.dry_run:
+                # 🔥 FIX: Vérifier que la position existe réellement sur l'exchange
+                is_live_open = getattr(self.active_position, 'is_live_open', False)
+                if self.live_order_manager and not self.live_order_manager.dry_run and is_live_open:
                     try:
                         # Calculer la taille en contrats à vendre
                         size_contracts = self.active_position.position_size_contracts
                         if not size_contracts:
                             entry_price = self.active_position.entry or 1
                             size_contracts = self.active_position.size / entry_price
+                        
+                        # 🔥 FIX: Vérifier que size_contracts est valide
+                        if size_contracts <= 0:
+                            logger.warning(f"⚠️ TP Partiel ignoré: size_contracts={size_contracts} invalide")
+                            return None
                         
                         partial_order_result = self.live_order_manager.close_position(
                             symbol=self.active_position.symbol,

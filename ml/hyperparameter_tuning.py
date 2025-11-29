@@ -438,9 +438,12 @@ class HyperparameterTuner:
             max_trades=max_samples
         )
         
-        if df_features is None or len(df_features) < min_samples:
-            raise ValueError(
-                f"Pas assez de données: {len(df_features) if df_features is not None else 0} < {min_samples}"
+        if df_features is None or len(df_features) == 0:
+            raise ValueError("Aucune donnée disponible dans PostgreSQL")
+        
+        if len(df_features) < min_samples:
+            logger.warning(
+                f"⚠️ Données limitées: {len(df_features)}/{min_samples} samples - optimisation peut être sous-optimale"
             )
         
         logger.info(f"📊 Données chargées: {len(df_features)} samples")

@@ -1737,223 +1737,181 @@ class TechnicalAnalyzer:
                 return best_setup
 
             # Confluence ou mode permissif (ancien code pour compatibilité)
-            if use_confluence and analysis_1m and analysis_5m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
-                # MODE CONFLUENCE STRICTE
-                if analysis_1m['direction'] != analysis_5m['direction']:
-                    reason = f"Confluence: directions opposées (1m={analysis_1m['direction']}, 5m={analysis_5m['direction']})"
-                    if return_reason:
-                        # 🔥 Construire indicators_1m et indicators_5m depuis analysis
-                        indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
-                        indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
-                        return {
-                            'reason': reason, 
-                            'symbol': symbol, 
-                            'timeframe': '1m+5m',
-                            # 🔥 FIX: Ajouter les champs manquants même pour les rejets confluence
-                            'analysis_1m': analysis_1m,
-                            'analysis_5m': analysis_5m,
-                            'indicators_1m': indicators_1m_reject,
-                            'indicators_5m': indicators_5m_reject,
-                            'score_1m': analysis_1m.get('totalScore') if analysis_1m else None,
-                            'score_5m': analysis_5m.get('totalScore') if analysis_5m else None,
-                            'score_total': max(analysis_1m.get('totalScore', 0), analysis_5m.get('totalScore', 0)) if (analysis_1m and analysis_5m) else None,
-                            'pattern_1m': analysis_1m.get('pattern') if analysis_1m else None,
-                            'pattern_5m': analysis_5m.get('pattern') if analysis_5m else None,
-                            'pattern_multi_1m': analysis_1m.get('pattern_multi') if analysis_1m else None,
-                            'pattern_multi_5m': analysis_5m.get('pattern_multi') if analysis_5m else None,
-                            'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
-                            'divergence_bonus': 0,
-                            'divergence_detected': False,
-                            'divergence_type': None,
-                            'reject_category': 'confluence'
-                        }
-                    if DEBUG_ENABLED:
-                        logger.debug(reason)
-                    return None
+            valid_1m = analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m)
+            valid_5m = analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m)
 
-                strength_1m = len(analysis_1m['signals'])
-                strength_5m = len(analysis_5m['signals'])
+            strength_1m = len(analysis_1m['signals']) if valid_1m else 0
+            strength_5m = len(analysis_5m['signals']) if valid_5m else 0
 
-                if strength_5m < strength_1m * 0.8:
-                    reason = f"Confluence: 5m trop faible (1m={strength_1m} conds, 5m={strength_5m} conds, besoin ≥{strength_1m*0.8:.1f})"
-                    if return_reason:
-                        # 🔥 Construire indicators_1m et indicators_5m depuis analysis
-                        indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
-                        indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
-                        return {
-                            'reason': reason, 
-                            'symbol': symbol, 
-                            'timeframe': '1m+5m',
-                            # 🔥 FIX: Ajouter les champs manquants même pour les rejets confluence
-                            'analysis_1m': analysis_1m,
-                            'analysis_5m': analysis_5m,
-                            'indicators_1m': indicators_1m_reject,
-                            'indicators_5m': indicators_5m_reject,
-                            'score_1m': analysis_1m.get('totalScore') if analysis_1m else None,
-                            'score_5m': analysis_5m.get('totalScore') if analysis_5m else None,
-                            'score_total': max(analysis_1m.get('totalScore', 0), analysis_5m.get('totalScore', 0)) if (analysis_1m and analysis_5m) else None,
-                            'pattern_1m': analysis_1m.get('pattern') if analysis_1m else None,
-                            'pattern_5m': analysis_5m.get('pattern') if analysis_5m else None,
-                            'pattern_multi_1m': analysis_1m.get('pattern_multi') if analysis_1m else None,
-                            'pattern_multi_5m': analysis_5m.get('pattern_multi') if analysis_5m else None,
-                            'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
-                            'divergence_bonus': 0,
-                            'divergence_detected': False,
-                            'divergence_type': None,
-                            'reject_category': 'confluence'
-                        }
-                    if DEBUG_ENABLED:
-                        logger.debug(reason)
-                    return None
+            if use_confluence:
+                if valid_1m and valid_5m:
+                    # MODE CONFLUENCE STRICTE
+                    if analysis_1m['direction'] != analysis_5m['direction']:
+                        reason = f"Confluence: directions opposées (1m={analysis_1m['direction']}, 5m={analysis_5m['direction']})"
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m)
+                            indicators_5m_reject = self._extract_indicators(analysis_5m)
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'timeframe': '1m+5m',
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'score_1m': analysis_1m.get('totalScore'),
+                                'score_5m': analysis_5m.get('totalScore'),
+                                'score_total': max(analysis_1m.get('totalScore', 0), analysis_5m.get('totalScore', 0)),
+                                'pattern_1m': analysis_1m.get('pattern'),
+                                'pattern_5m': analysis_5m.get('pattern'),
+                                'pattern_multi_1m': analysis_1m.get('pattern_multi'),
+                                'pattern_multi_5m': analysis_5m.get('pattern_multi'),
+                                'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                                'divergence_bonus': 0,
+                                'divergence_detected': False,
+                                'divergence_type': None,
+                                'reject_category': 'confluence'
+                            }
+                        if DEBUG_ENABLED:
+                            logger.debug(reason)
+                        return None
 
-                # Retourner le meilleur
-                best = analysis_1m if strength_1m >= strength_5m else analysis_5m
-                best['confirmedBy'] = '1m + 5m confluence'
-                best['symbol'] = symbol
-                if analysis_1m and analysis_5m:
-                    best['atr5m'] = analysis_5m['atr']
-                
-                # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best pour qu'ils soient disponibles dans _last_setup
-                # Construire indicators_1m depuis analysis_1m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
-                indicators_1m = {}
-                if analysis_1m and isinstance(analysis_1m, dict):
-                    indicators_1m = {
-                        'rsi': analysis_1m.get('rsi'), 'rsi_prev': analysis_1m.get('rsi_prev'),
-                        'macd': analysis_1m.get('macd'), 'macd_signal': analysis_1m.get('macd_signal'),
-                        'macd_hist': analysis_1m.get('macd_hist'), 'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
-                        'adx': analysis_1m.get('adx'), 'di_plus': analysis_1m.get('di_plus'),
-                        'di_minus': analysis_1m.get('di_minus'),
-                        'di_gap': (analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0) if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None),
-                        'ema9': analysis_1m.get('ema9'), 'ema21': analysis_1m.get('ema21'),
-                        'ema_diff_pct': (((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) / analysis_1m.get('ema21', 1)) * 100 if analysis_1m.get('ema21') else None),
-                        'atr': analysis_1m.get('atr'), 'atr_pct': analysis_1m.get('atr_pct'),
-                        'bb_upper': analysis_1m.get('bb_upper'), 'bb_middle': analysis_1m.get('bb_middle'), 'bb_lower': analysis_1m.get('bb_lower'),
-                        'bb_width': analysis_1m.get('bb_width'), 'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
-                        'volume': analysis_1m.get('volume'), 'volume_avg': analysis_1m.get('volume_avg'),
-                        'volume_ratio': analysis_1m.get('volumeSpike'), 'volume_spike': analysis_1m.get('volumeSpike'),
-                    }
-                # Construire indicators_5m depuis analysis_5m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
-                indicators_5m = {}
-                if analysis_5m and isinstance(analysis_5m, dict):
-                    indicators_5m = {
-                        'rsi': analysis_5m.get('rsi'), 'rsi_prev': analysis_5m.get('rsi_prev'),
-                        'macd': analysis_5m.get('macd'), 'macd_signal': analysis_5m.get('macd_signal'),
-                        'macd_hist': analysis_5m.get('macd_hist'), 'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
-                        'adx': analysis_5m.get('adx'), 'di_plus': analysis_5m.get('di_plus'),
-                        'di_minus': analysis_5m.get('di_minus'),
-                        'di_gap': (analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0) if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None),
-                        'ema9': analysis_5m.get('ema9'), 'ema21': analysis_5m.get('ema21'),
-                        'ema_diff_pct': (((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) / analysis_5m.get('ema21', 1)) * 100 if analysis_5m.get('ema21') else None),
-                        'atr': analysis_5m.get('atr'), 'atr_pct': analysis_5m.get('atr_pct'),
-                        'bb_upper': analysis_5m.get('bb_upper'), 'bb_middle': analysis_5m.get('bb_middle'), 'bb_lower': analysis_5m.get('bb_lower'),
-                        'bb_width': analysis_5m.get('bb_width'), 'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
-                        'volume': analysis_5m.get('volume'), 'volume_avg': analysis_5m.get('volume_avg'),
-                        'volume_ratio': analysis_5m.get('volumeSpike'), 'volume_spike': analysis_5m.get('volumeSpike'),
-                    }
-                best['indicators_1m'] = indicators_1m
-                best['indicators_5m'] = indicators_5m
+                    if strength_5m < strength_1m * 0.8:
+                        reason = f"Confluence: 5m trop faible (1m={strength_1m} conds, 5m={strength_5m} conds, besoin ≥{strength_1m*0.8:.1f})"
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m)
+                            indicators_5m_reject = self._extract_indicators(analysis_5m)
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'timeframe': '1m+5m',
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'score_1m': analysis_1m.get('totalScore'),
+                                'score_5m': analysis_5m.get('totalScore'),
+                                'score_total': max(analysis_1m.get('totalScore', 0), analysis_5m.get('totalScore', 0)),
+                                'pattern_1m': analysis_1m.get('pattern'),
+                                'pattern_5m': analysis_5m.get('pattern'),
+                                'pattern_multi_1m': analysis_1m.get('pattern_multi'),
+                                'pattern_multi_5m': analysis_5m.get('pattern_multi'),
+                                'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                                'divergence_bonus': 0,
+                                'divergence_detected': False,
+                                'divergence_type': None,
+                                'reject_category': 'confluence'
+                            }
+                        if DEBUG_ENABLED:
+                            logger.debug(reason)
+                        return None
 
-                logger.info(
-                    f"✅ {symbol}: CONFLUENCE RÉUSSIE - {best['direction']} | "
-                    f"1m: {strength_1m} conditions | 5m: {strength_5m} conditions | "
-                    f"Meilleur: {best['timeframe']} | "
-                    f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
-                )
-
-                # 🔥 FIX: Ajouter patterns, scores détaillés, trend et divergence
-                best['pattern_1m'] = analysis_1m.get('pattern') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None
-                best['pattern_5m'] = analysis_5m.get('pattern') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
-                best['pattern_multi_1m'] = analysis_1m.get('pattern_multi') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None
-                best['pattern_multi_5m'] = analysis_5m.get('pattern_multi') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
-                best['trend_bonus'] = trend_data.get('bonus', 0) if trend_data else 0
-                best['divergence_bonus'] = divergence_bonus_value if 'divergence_bonus_value' in locals() else 0
-                best['divergence_detected'] = (divergence_bonus_value > 0) if 'divergence_bonus_value' in locals() else False
-                best['divergence_type'] = 'RSI_MACD' if (divergence_bonus_value > 0 if 'divergence_bonus_value' in locals() else False) else None
-                best['confluence_met'] = use_confluence
-                best['timeframes_aligned'] = True  # Les deux timeframes sont valides
-                
-                # 🔥 FIX: Toujours inclure analysis_1m et analysis_5m pour extraction des filtres
-                best['analysis_1m'] = analysis_1m
-                best['analysis_5m'] = analysis_5m
-                return best
-            else:
-                # MODE PERMISSIF avec priorité par force
-                valid_1m = analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m)
-                valid_5m = analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m)
-
-                strength_1m = len(analysis_1m['signals']) if valid_1m else 0
-                strength_5m = len(analysis_5m['signals']) if valid_5m else 0
-
-                if strength_1m > 0 or strength_5m > 0:
-                    best = analysis_1m if strength_1m > strength_5m else analysis_5m
-                    best['confirmedBy'] = f"{best['timeframe']} only ({len(best['signals'])} conds)"
+                    best = analysis_1m if strength_1m >= strength_5m else analysis_5m
+                    best['confirmedBy'] = '1m + 5m confluence'
                     best['symbol'] = symbol
-                    if analysis_1m and analysis_5m and valid_1m and valid_5m:
+                    if analysis_1m and analysis_5m:
                         best['atr5m'] = analysis_5m['atr']
-                    
-                    # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best pour qu'ils soient disponibles dans _last_setup
-                    # Construire indicators_1m depuis analysis_1m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
-                    indicators_1m = {}
-                    if analysis_1m and isinstance(analysis_1m, dict):
-                        indicators_1m = {
-                            'rsi': analysis_1m.get('rsi'), 'rsi_prev': analysis_1m.get('rsi_prev'),
-                            'macd': analysis_1m.get('macd'), 'macd_signal': analysis_1m.get('macd_signal'),
-                            'macd_hist': analysis_1m.get('macd_hist'), 'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
-                            'adx': analysis_1m.get('adx'), 'di_plus': analysis_1m.get('di_plus'),
-                            'di_minus': analysis_1m.get('di_minus'),
-                            'di_gap': (analysis_1m.get('di_plus', 0) - analysis_1m.get('di_minus', 0) if analysis_1m.get('di_plus') and analysis_1m.get('di_minus') else None),
-                            'ema9': analysis_1m.get('ema9'), 'ema21': analysis_1m.get('ema21'),
-                            'ema_diff_pct': (((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) / analysis_1m.get('ema21', 1)) * 100 if analysis_1m.get('ema21') else None),
-                            'atr': analysis_1m.get('atr'), 'atr_pct': analysis_1m.get('atr_pct'),
-                            'bb_upper': analysis_1m.get('bb_upper'), 'bb_middle': analysis_1m.get('bb_middle'), 'bb_lower': analysis_1m.get('bb_lower'),
-                            'bb_width': analysis_1m.get('bb_width'), 'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
-                            'volume': analysis_1m.get('volume'), 'volume_avg': analysis_1m.get('volume_avg'),
-                            'volume_ratio': analysis_1m.get('volumeSpike'), 'volume_spike': analysis_1m.get('volumeSpike'),
-                        }
-                    # Construire indicators_5m depuis analysis_5m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
-                    indicators_5m = {}
-                    if analysis_5m and isinstance(analysis_5m, dict):
-                        indicators_5m = {
-                            'rsi': analysis_5m.get('rsi'), 'rsi_prev': analysis_5m.get('rsi_prev'),
-                            'macd': analysis_5m.get('macd'), 'macd_signal': analysis_5m.get('macd_signal'),
-                            'macd_hist': analysis_5m.get('macd_hist'), 'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
-                            'adx': analysis_5m.get('adx'), 'di_plus': analysis_5m.get('di_plus'),
-                            'di_minus': analysis_5m.get('di_minus'),
-                            'di_gap': (analysis_5m.get('di_plus', 0) - analysis_5m.get('di_minus', 0) if analysis_5m.get('di_plus') and analysis_5m.get('di_minus') else None),
-                            'ema9': analysis_5m.get('ema9'), 'ema21': analysis_5m.get('ema21'),
-                            'ema_diff_pct': (((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) / analysis_5m.get('ema21', 1)) * 100 if analysis_5m.get('ema21') else None),
-                            'atr': analysis_5m.get('atr'), 'atr_pct': analysis_5m.get('atr_pct'),
-                            'bb_upper': analysis_5m.get('bb_upper'), 'bb_middle': analysis_5m.get('bb_middle'), 'bb_lower': analysis_5m.get('bb_lower'),
-                            'bb_width': analysis_5m.get('bb_width'), 'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'), 'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
-                            'volume': analysis_5m.get('volume'), 'volume_avg': analysis_5m.get('volume_avg'),
-                            'volume_ratio': analysis_5m.get('volumeSpike'), 'volume_spike': analysis_5m.get('volumeSpike'),
-                        }
+
+                    indicators_1m = self._extract_indicators(analysis_1m)
+                    indicators_5m = self._extract_indicators(analysis_5m)
                     best['indicators_1m'] = indicators_1m
                     best['indicators_5m'] = indicators_5m
 
                     logger.info(
-                        f"✅ {symbol}: SETUP (Mode permissif) - {best['direction']} | "
-                        f"Timeframe: {best['timeframe']} | Conditions: {len(best['signals'])} | "
-                        f"1m: {strength_1m} | 5m: {strength_5m} | "
+                        f"✅ {symbol}: CONFLUENCE RÉUSSIE - {best['direction']} | "
+                        f"1m: {strength_1m} conditions | 5m: {strength_5m} conditions | "
+                        f"Meilleur: {best['timeframe']} | "
                         f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
                     )
 
-                    # 🔥 FIX: Ajouter patterns, scores détaillés, trend et divergence
-                    best['pattern_1m'] = analysis_1m.get('pattern') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None
-                    best['pattern_5m'] = analysis_5m.get('pattern') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
-                    best['pattern_multi_1m'] = analysis_1m.get('pattern_multi') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None
-                    best['pattern_multi_5m'] = analysis_5m.get('pattern_multi') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
+                    best['pattern_1m'] = analysis_1m.get('pattern') if valid_1m else None
+                    best['pattern_5m'] = analysis_5m.get('pattern') if valid_5m else None
+                    best['pattern_multi_1m'] = analysis_1m.get('pattern_multi') if valid_1m else None
+                    best['pattern_multi_5m'] = analysis_5m.get('pattern_multi') if valid_5m else None
                     best['trend_bonus'] = trend_data.get('bonus', 0) if trend_data else 0
-                    best['divergence_bonus'] = 0  # Pas de divergence en mode permissif simple
-                    best['divergence_detected'] = False
-                    best['divergence_type'] = None
-                    best['confluence_met'] = False  # Mode permissif, pas de confluence
-                    best['timeframes_aligned'] = (valid_1m and valid_5m)  # Aligné si les deux valides
-                    
-                    # 🔥 FIX: Toujours inclure analysis_1m et analysis_5m pour extraction des filtres
+                    best['divergence_bonus'] = divergence_bonus_value if 'divergence_bonus_value' in locals() else 0
+                    best['divergence_detected'] = (divergence_bonus_value > 0) if 'divergence_bonus_value' in locals() else False
+                    best['divergence_type'] = 'RSI_MACD' if (divergence_bonus_value > 0 if 'divergence_bonus_value' in locals() else False) else None
+                    best['confluence_met'] = True
+                    best['timeframes_aligned'] = True
                     best['analysis_1m'] = analysis_1m
                     best['analysis_5m'] = analysis_5m
                     return best
+
+                # Confluence demandée mais au moins un timeframe invalide
+                missing_details = []
+                if not valid_1m:
+                    reason_1m = analysis_1m.get('reason') if isinstance(analysis_1m, dict) else 'analyse 1m indisponible'
+                    missing_details.append(f"1m: {reason_1m}")
+                if not valid_5m:
+                    reason_5m = analysis_5m.get('reason') if isinstance(analysis_5m, dict) else 'analyse 5m indisponible'
+                    missing_details.append(f"5m: {reason_5m}")
+                reason = "Confluence: timeframe(s) invalide(s) - " + " | ".join(missing_details) if missing_details else "Confluence: aucune timeframe valide"
+
+                if return_reason:
+                    indicators_1m_reject = self._extract_indicators(analysis_1m) if isinstance(analysis_1m, dict) else {}
+                    indicators_5m_reject = self._extract_indicators(analysis_5m) if isinstance(analysis_5m, dict) else {}
+                    score_1m = analysis_1m.get('totalScore') if isinstance(analysis_1m, dict) else None
+                    score_5m = analysis_5m.get('totalScore') if isinstance(analysis_5m, dict) else None
+                    return {
+                        'reason': reason,
+                        'symbol': symbol,
+                        'timeframe': '1m+5m',
+                        'analysis_1m': analysis_1m if isinstance(analysis_1m, dict) else None,
+                        'analysis_5m': analysis_5m if isinstance(analysis_5m, dict) else None,
+                        'indicators_1m': indicators_1m_reject,
+                        'indicators_5m': indicators_5m_reject,
+                        'score_1m': score_1m,
+                        'score_5m': score_5m,
+                        'score_total': max(filter(None, [score_1m, score_5m])) if any([score_1m, score_5m]) else None,
+                        'pattern_1m': analysis_1m.get('pattern') if isinstance(analysis_1m, dict) else None,
+                        'pattern_5m': analysis_5m.get('pattern') if isinstance(analysis_5m, dict) else None,
+                        'pattern_multi_1m': analysis_1m.get('pattern_multi') if isinstance(analysis_1m, dict) else None,
+                        'pattern_multi_5m': analysis_5m.get('pattern_multi') if isinstance(analysis_5m, dict) else None,
+                        'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                        'divergence_bonus': 0,
+                        'divergence_detected': False,
+                        'divergence_type': None,
+                        'reject_category': 'confluence'
+                    }
+
+                if DEBUG_ENABLED:
+                    logger.debug(reason)
+                return None
+
+            if strength_1m > 0 or strength_5m > 0:
+                # MODE PERMISSIF avec priorité par force
+                best = analysis_1m if strength_1m > strength_5m else analysis_5m
+                best['confirmedBy'] = f"{best['timeframe']} only ({len(best['signals'])} conds)"
+                best['symbol'] = symbol
+                if analysis_1m and analysis_5m and valid_1m and valid_5m:
+                    best['atr5m'] = analysis_5m['atr']
+
+                indicators_1m = self._extract_indicators(analysis_1m) if isinstance(analysis_1m, dict) else {}
+                indicators_5m = self._extract_indicators(analysis_5m) if isinstance(analysis_5m, dict) else {}
+                best['indicators_1m'] = indicators_1m
+                best['indicators_5m'] = indicators_5m
+
+                logger.info(
+                    f"✅ {symbol}: SETUP (Mode permissif) - {best['direction']} | "
+                    f"Timeframe: {best['timeframe']} | Conditions: {len(best['signals'])} | "
+                    f"1m: {strength_1m} | 5m: {strength_5m} | "
+                    f"Entry: {best['entry']:.6f} | SL: {best['sl']:.6f} | TP: {best['tp']:.6f}"
+                )
+
+                best['pattern_1m'] = analysis_1m.get('pattern') if valid_1m else None
+                best['pattern_5m'] = analysis_5m.get('pattern') if valid_5m else None
+                best['pattern_multi_1m'] = analysis_1m.get('pattern_multi') if valid_1m else None
+                best['pattern_multi_5m'] = analysis_5m.get('pattern_multi') if valid_5m else None
+                best['trend_bonus'] = trend_data.get('bonus', 0) if trend_data else 0
+                best['divergence_bonus'] = 0  # Pas de divergence en mode permissif simple
+                best['divergence_detected'] = False
+                best['divergence_type'] = None
+                best['confluence_met'] = False
+                best['timeframes_aligned'] = (valid_1m and valid_5m)
+                best['analysis_1m'] = analysis_1m
+                best['analysis_5m'] = analysis_5m
+                return best
 
             # Aucun timeframe valide
             reasons = []

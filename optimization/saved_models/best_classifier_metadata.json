@@ -1,0 +1,52 @@
+{
+  "timestamp": "20251129_195513",
+  "best_model": "HistGradientBoostingClassifier",
+  "model_type": "histgb",
+  "n_samples": 673,
+  "n_train": 471,
+  "n_test": 101,
+  "n_features": 25,
+  "metrics": {
+    "train_acc": 0.7983014861995754,
+    "test_acc": 0.6138613861386139,
+    "test_f1": 0.6722689075630253,
+    "test_precision": 0.6779661016949152,
+    "gap": 0.18444010006096156
+  },
+  "feature_cols": [
+    "macd_hist_1m",
+    "macd_hist_prev_1m",
+    "bb_width_1m",
+    "bb_distance_to_lower_1m",
+    "bb_distance_to_upper_1m",
+    "macd_hist_5m",
+    "adx_5m",
+    "bb_distance_to_upper_5m",
+    "wick_passed_1m",
+    "atr_optimal_passed_5m",
+    "momentum_1m",
+    "volatility_ratio",
+    "macd_momentum_5m",
+    "macd_divergence",
+    "macd_bearish_cross_1m",
+    "trend_strength_5m",
+    "strong_trend_5m",
+    "ema_trend_strength_1m",
+    "quality_score_total",
+    "bullish_confluence",
+    "is_weekend",
+    "week_edge",
+    "volatility_momentum_product",
+    "bb_position",
+    "bb_squeeze"
+  ],
+  "params": {
+    "n_estimators": 150,
+    "max_depth": 5,
+    "learning_rate": 0.08,
+    "min_samples_split": 15,
+    "min_samples_leaf": 20,
+    "subsample": 0.9,
+    "max_features": 0.9
+  }
+}

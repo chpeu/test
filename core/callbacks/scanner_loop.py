@@ -83,6 +83,26 @@ def set_notification_manager(notification_manager):
     _notification_manager = notification_manager
 
 
+async def notify_error_telegram(error_type: str, details: str):
+    """
+    🔥 NOUVEAU: Notifier une erreur via Telegram si TELEGRAM_NOTIFY_ERROR est activé.
+    
+    Args:
+        error_type: Type d'erreur (ex: 'Scalability Data', 'API Error')
+        details: Détails de l'erreur
+    """
+    global _notification_manager
+    try:
+        if _notification_manager:
+            if _notification_manager.telegram_notify_settings.get('error', True):
+                await _notification_manager.notify('error', {
+                    'error_type': error_type,
+                    'details': details
+                }, priority='high')
+    except Exception as e:
+        logger.debug(f"⚠️ Impossible de notifier l'erreur via Telegram: {e}")
+
+
 def set_scanner_lock(lock):
     """Injecter le lock du scanner"""
     global _scanner_lock
@@ -427,15 +447,69 @@ async def _scan_top_pairs():
                             }
                             logger.info(f"💹 Données scalabilité depuis best_setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                         else:
-                            logger.error(f"💹 ERREUR: Impossible de récupérer spread_pct depuis best_setup pour {symbol}")
+                            error_msg = f"Impossible de récupérer spread_pct depuis best_setup pour {symbol}"
+                            logger.error(f"💹 ERREUR: {error_msg}")
+                            # 🔥 NOUVEAU: Notifier l'erreur via Telegram
+                            await notify_error_telegram("Scalability Data", error_msg)
                 else:
                     logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 
                 # 🔥 NOUVEAU: Filtre ML avant ouverture de position
-                from config import ML_CONFIG
+                from config import ML_CONFIG, TRADING_CONFIG
                 
+                # 🌳 FILTRE GRADIENTBOOSTING (modèle optimisé 64-69% accuracy)
+                if TRADING_CONFIG.get('gb_filter_enabled', False):
+                    logger.info(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
+                    
+                    try:
+                        from optimization.predictor_optimized import get_predictor
+                        
+                        # Obtenir les features depuis best_setup
+                        features = {}
+                        
+                        # Extraire indicateurs 1m
+                        indicators_1m = best_setup.get('indicators_1m', {})
+                        for key, value in indicators_1m.items():
+                            if isinstance(value, (int, float)):
+                                features[f"{key}_1m" if not key.endswith('_1m') else key] = value
+                        
+                        # Extraire indicateurs 5m
+                        indicators_5m = best_setup.get('indicators_5m', {})
+                        for key, value in indicators_5m.items():
+                            if isinstance(value, (int, float)):
+                                features[f"{key}_5m" if not key.endswith('_5m') else key] = value
+                        
+                        # Ajouter scores et autres métriques
+                        if 'score_1m' in best_setup:
+                            features['score_1m'] = best_setup['score_1m']
+                        if 'score_5m' in best_setup:
+                            features['score_5m'] = best_setup['score_5m']
+                        
+                        if features:
+                            predictor = get_predictor()
+                            if predictor.is_loaded:
+                                gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.55)
+                                should_trade, confidence = predictor.predict(features, threshold=gb_min_confidence)
+                                
+                                logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
+                                
+                                if not should_trade:
+                                    logger.warning(f"❌ GradientBoosting REJETTE le trade: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
+                                    return  # Bloquer l'ouverture
+                                else:
+                                    logger.info(f"✅ GradientBoosting APPROUVE le trade (confiance: {confidence*100:.1f}%)")
+                            else:
+                                logger.warning(f"⚠️ Modèle GradientBoosting non chargé, trade autorisé par défaut")
+                        else:
+                            logger.warning(f"⚠️ Pas de features pour GradientBoosting, trade autorisé par défaut")
+                            
+                    except Exception as gb_error:
+                        logger.error(f"❌ Erreur filtre GradientBoosting: {gb_error}", exc_info=True)
+                        logger.warning(f"⚠️ Trade autorisé malgré erreur GB (failsafe)")
+                
+                # 🤖 FILTRE ML XGBoost V1 (ancien système)
                 logger.info(f"🔍 ML_CONFIG state: enabled={ML_CONFIG.get('enabled', False)}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}, mode={ML_CONFIG.get('mode', 'STRICT')}")
 
                 if ML_CONFIG.get('enabled', False):

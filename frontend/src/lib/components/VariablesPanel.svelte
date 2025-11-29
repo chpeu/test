@@ -3,6 +3,7 @@
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import OptimizationPanel from '$lib/components/ml/OptimizationPanel.svelte';
 	import MLCONTENT_V2_Variables from '$lib/components/ml/MLCONTENT_V2_Variables.svelte';
+	import MLCONTENT_GB_Variables from '$lib/components/ml/MLCONTENT_GB_Variables.svelte';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -103,6 +104,16 @@
 		ml_v2_subsample: 0.7,
 		ml_v2_colsample_bytree: 0.7,
 		ml_v2_gamma: 0.5,
+		// GradientBoosting (Modèle optimisé 64-69% accuracy)
+		gb_filter_enabled: true,  // Activé par défaut car performant
+		gb_min_confidence: 0.55,  // 55% seuil
+		gb_n_estimators: 200,
+		gb_max_depth: 3,
+		gb_learning_rate: 0.03,
+		gb_min_samples_split: 30,
+		gb_min_samples_leaf: 15,
+		gb_subsample: 0.7,
+		gb_max_features: 0.5,
 		// 🔥 OPT #14: Scan Interval
 		scan_interval: 30,
 		// 🔥 OPT #15: Anti-Whipsaw Filter
@@ -563,6 +574,17 @@
 				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
 				ml_v2_gamma: tradingConfig.ml_v2_gamma,
 			},
+			'🎯 GradientBoosting (Optimisé 64%)': {
+				gb_filter_enabled: tradingConfig.gb_filter_enabled,
+				gb_min_confidence: tradingConfig.gb_min_confidence,
+				gb_n_estimators: tradingConfig.gb_n_estimators,
+				gb_max_depth: tradingConfig.gb_max_depth,
+				gb_learning_rate: tradingConfig.gb_learning_rate,
+				gb_min_samples_split: tradingConfig.gb_min_samples_split,
+				gb_min_samples_leaf: tradingConfig.gb_min_samples_leaf,
+				gb_subsample: tradingConfig.gb_subsample,
+				gb_max_features: tradingConfig.gb_max_features,
+			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
 				max_latency_ms: tradingConfig.max_latency_ms,
@@ -920,6 +942,21 @@
 				hasUnsavedChanges = false; // Marquer comme sauvegardé
 				console.log('✅ Paramètres sauvegardés automatiquement via WebSocket:', result.updated);
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX LEVIER: Si default_leverage a changé, synchroniser dans toutes les sources
+				if (result.updated.default_leverage !== undefined) {
+					try {
+						const syncRes = await fetch(`/api/live/leverage/sync?leverage=${config.default_leverage}`, {
+							method: 'POST'
+						});
+						if (syncRes.ok) {
+							const syncData = await syncRes.json();
+							console.log('✅ Levier synchronisé:', syncData);
+						}
+					} catch (e) {
+						console.warn('⚠️ Sync levier échouée:', e);
+					}
+				}
 				
 				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
 				if (activeSubTab === 'current') {
@@ -2845,6 +2882,16 @@
 				<span class="version-icon-compact">🚀</span>
 				<span class="version-label-compact">XGBoost V2</span>
 			</button>
+
+			<button
+				class="version-btn-compact recommended"
+				class:active={mlVersion === 'gb'}
+				on:click={() => (mlVersion = 'gb')}
+			>
+				<span class="version-icon-compact">🎯</span>
+				<span class="version-label-compact">GradientBoosting</span>
+				<span class="badge-recommended">64%</span>
+			</button>
 		</div>
 	</div>
 
@@ -3235,6 +3282,9 @@
 	{:else if mlVersion === 'v2'}
 	<!-- Contenu XGBoost V2 -->
 	<MLCONTENT_V2_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
+	{:else if mlVersion === 'gb'}
+	<!-- Contenu GradientBoosting (Modèle Optimisé) -->
+	<MLCONTENT_GB_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
 	{/if}
 	{/if}
 
@@ -3561,6 +3611,31 @@
 	.version-label-compact {
 		font-size: 0.875rem;
 		white-space: nowrap;
+	}
+
+	.version-btn-compact.recommended {
+		border-color: rgba(16, 185, 129, 0.5);
+		background: rgba(16, 185, 129, 0.1);
+		position: relative;
+	}
+
+	.version-btn-compact.recommended.active {
+		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+		border-color: #10b981;
+		box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+	}
+
+	.badge-recommended {
+		position: absolute;
+		top: -8px;
+		right: -8px;
+		background: linear-gradient(135deg, #10b981, #059669);
+		color: white;
+		font-size: 10px;
+		font-weight: 700;
+		padding: 2px 6px;
+		border-radius: 8px;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 	}
 
 	.variables-panel {

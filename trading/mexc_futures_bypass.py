@@ -923,7 +923,11 @@ class MexcFuturesBypass:
         if external_oid:
             body["externalOid"] = external_oid
         
-        logger.info(f"🚀 Submit order: {symbol} side={side} vol={vol} price={price} leverage={leverage}x")
+        # 🔥 DEBUG: Log critique pour diagnostiquer les ordres qui echouent
+        logger.warning(
+            f"🚀 SUBMIT ORDER CRITIQUE: {symbol} | side={side} | vol={vol} | price={price} | "
+            f"leverage={leverage}x | valeur_usdt={vol * price:.2f} USDT"
+        )
         logger.info(f"📋 Order body: {body}")
         
         response = await self._request("POST", ENDPOINTS["SUBMIT_ORDER"], body=body)
@@ -1214,6 +1218,13 @@ class MexcFuturesBypass:
             
             # 🔥 Récupérer contractSize (taille du contrat en tokens)
             contract_size = float(data.get("contractSize", 1))
+            
+            # 🔥 FIX: Corriger contractSize pour certains symboles où MEXC retourne 1.0 mais utilise 0.01
+            # Ces symboles ont des "micro-contrats" sur MEXC Futures
+            MICRO_CONTRACT_SYMBOLS = {'ZEC_USDT', 'BCH_USDT', 'ETC_USDT', 'LTC_USDT'}
+            if symbol in MICRO_CONTRACT_SYMBOLS and contract_size == 1.0:
+                contract_size = 0.01
+                logger.warning(f"⚠️ Override contractSize pour {symbol}: 1.0 → 0.01 (micro-contrat MEXC)")
             
             spec = ContractSpec(
                 symbol=symbol,
