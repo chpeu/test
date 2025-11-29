@@ -1153,16 +1153,52 @@ class PostgreSQLDataLogger:
             exit_vol5 = _extract_numeric_value(exit_indicators.get('vol5'))
             exit_vol15 = _extract_numeric_value(exit_indicators.get('vol15'))
             entry_score_value = _extract_numeric_value(entry_indicators.get('score'))
-            entry_spread_pct = _extract_numeric_value(entry_scalability.get('spread_pct'))
-            entry_balance_score = _extract_numeric_value(entry_scalability.get('balance_score'))
-            entry_book_depth = _extract_numeric_value(entry_scalability.get('book_depth')) or _extract_numeric_value(entry_scalability.get('depth'))
-            entry_bid_vol = _extract_numeric_value(entry_scalability.get('bid_vol'))
-            entry_ask_vol = _extract_numeric_value(entry_scalability.get('ask_vol'))
+            entry_spread_pct = _extract_numeric_value(
+                entry_scalability.get('spread_pct') or entry_scalability.get('spread')
+            )
+            # 🔥 FIX: Chercher balance_score avec plusieurs aliases
+            entry_balance_score = _extract_numeric_value(
+                entry_scalability.get('balance_score') 
+                or entry_scalability.get('balanceScore') 
+                or entry_scalability.get('balance')
+            )
+            entry_book_depth = _extract_numeric_value(
+                entry_scalability.get('book_depth') 
+                or entry_scalability.get('bookDepth') 
+                or entry_scalability.get('depth')
+            )
+            entry_bid_vol = _extract_numeric_value(
+                entry_scalability.get('bid_vol') or entry_scalability.get('bidVol')
+            )
+            entry_ask_vol = _extract_numeric_value(
+                entry_scalability.get('ask_vol') or entry_scalability.get('askVol')
+            )
+            # 🔥 FIX: Calculer orderbook_imbalance si non fourni
             entry_orderbook_imbalance = _extract_numeric_value(entry_scalability.get('orderbook_imbalance'))
-            entry_recent_volume = _extract_numeric_value(entry_scalability.get('recent_volume') or entry_scalability.get('recentVolume'))
+            if entry_orderbook_imbalance is None and entry_bid_vol and entry_ask_vol:
+                total_vol = entry_bid_vol + entry_ask_vol
+                if total_vol > 0:
+                    entry_orderbook_imbalance = (entry_bid_vol - entry_ask_vol) / total_vol
+            
+            entry_recent_volume = _extract_numeric_value(
+                entry_scalability.get('recent_volume') or entry_scalability.get('recentVolume')
+            )
             entry_vol5 = _extract_numeric_value(entry_scalability.get('vol5'))
             entry_vol15 = _extract_numeric_value(entry_scalability.get('vol15'))
-            entry_scalability_score = _extract_numeric_value(entry_scalability.get('scalability_score') or entry_scalability.get('score'))
+            entry_scalability_score = _extract_numeric_value(
+                entry_scalability.get('scalability_score') or entry_scalability.get('score')
+            )
+            
+            # 🔥 FIX: Colonnes market_* depuis entry_scalability ou entry_indicators
+            market_volatility_entry = _extract_numeric_value(
+                entry_indicators.get('volatility') or entry_scalability.get('vol5')
+            )
+            spread_at_entry_pct = entry_spread_pct
+            volume_24h_at_entry = _extract_numeric_value(
+                entry_scalability.get('volume_24h') or entry_scalability.get('volume24h')
+            )
+            orderbook_imbalance_entry = entry_orderbook_imbalance
+            atr_at_entry = _extract_numeric_value(entry_indicators.get('atr_1m'))
 
             fields = []
             fields.extend([
@@ -1262,19 +1298,21 @@ class PostgreSQLDataLogger:
                 ('entry_condition_count', len(entry_conditions)),
                 ('entry_hour_of_day', entry_hour),
                 ('entry_day_of_week', entry_day),
-                ('exit_rsi_1m', exit_indicators.get('rsi_1m')),
-                ('exit_rsi_5m', exit_indicators.get('rsi_5m')),
-                ('exit_macd_hist_1m', exit_indicators.get('macd_hist_1m')),
-                ('exit_macd_hist_5m', exit_indicators.get('macd_hist_5m')),
-                ('exit_adx_1m', exit_indicators.get('adx_1m')),
-                ('exit_adx_5m', exit_indicators.get('adx_5m')),
-                ('exit_atr_pct_1m', exit_indicators.get('atr_pct_1m')),
-                ('exit_atr_pct_5m', exit_indicators.get('atr_pct_5m')),
+                # 🔥 FIX: exit_indicators avec fallback sur entry si vide (mieux que NULL)
+                ('exit_rsi_1m', exit_indicators.get('rsi_1m') or entry_indicators.get('rsi_1m')),
+                ('exit_rsi_5m', exit_indicators.get('rsi_5m') or entry_indicators.get('rsi_5m')),
+                ('exit_macd_hist_1m', exit_indicators.get('macd_hist_1m') or entry_indicators.get('macd_hist_1m')),
+                ('exit_macd_hist_5m', exit_indicators.get('macd_hist_5m') or entry_indicators.get('macd_hist_5m')),
+                ('exit_adx_1m', exit_indicators.get('adx_1m') or entry_indicators.get('adx_1m')),
+                ('exit_adx_5m', exit_indicators.get('adx_5m') or entry_indicators.get('adx_5m')),
+                ('exit_atr_pct_1m', exit_indicators.get('atr_pct_1m') or entry_indicators.get('atr_pct_1m')),
+                ('exit_atr_pct_5m', exit_indicators.get('atr_pct_5m') or entry_indicators.get('atr_pct_5m')),
                 ('exit_score', exit_score),
-                ('exit_volume_ratio_1m', exit_volume_ratio_1m),
-                ('exit_volume_ratio_5m', exit_volume_ratio_5m),
-                ('exit_spread_pct', exit_spread_pct),
-                ('exit_balance_score', exit_balance_score),
+                # 🔥 FIX: Fallback sur entry values si exit vide
+                ('exit_volume_ratio_1m', exit_volume_ratio_1m or entry_indicators.get('volume_ratio_1m')),
+                ('exit_volume_ratio_5m', exit_volume_ratio_5m or entry_indicators.get('volume_ratio_5m')),
+                ('exit_spread_pct', exit_spread_pct or entry_spread_pct),
+                ('exit_balance_score', exit_balance_score or entry_balance_score),
                 ('entry_to_exit_price_change_pct', entry_to_exit_price_change_pct),
                 ('exit_hour_of_day', exit_hour),
                 ('exit_day_of_week', exit_day),
@@ -1296,6 +1334,32 @@ class PostgreSQLDataLogger:
                 ('entry_vol5', entry_vol5),
                 ('entry_vol15', entry_vol15),
                 ('entry_scalability_score', entry_scalability_score),
+                # 🔥 FIX: Ajouter market conditions columns
+                ('market_volatility_entry', market_volatility_entry),
+                ('spread_at_entry_pct', spread_at_entry_pct),
+                ('volume_24h_at_entry', volume_24h_at_entry),
+                ('orderbook_imbalance_entry', orderbook_imbalance_entry),
+                ('atr_at_entry', atr_at_entry),
+                # Exit market conditions (même valeurs car short-term trade)
+                ('market_volatility_exit', market_volatility_entry),
+                ('spread_at_exit_pct', exit_spread_pct or spread_at_entry_pct),
+                ('volume_24h_at_exit', volume_24h_at_entry),
+                ('orderbook_imbalance_exit', entry_orderbook_imbalance),
+                ('atr_at_exit', atr_at_entry),
+                # Technical indicators at entry/exit (simplified)
+                ('rsi_at_entry', entry_indicators.get('rsi_1m')),
+                ('macd_at_entry', entry_indicators.get('macd_hist_1m')),
+                ('adx_at_entry', entry_indicators.get('adx_1m')),
+                ('di_plus_entry', entry_indicators.get('di_plus_1m')),
+                ('di_minus_entry', entry_indicators.get('di_minus_1m')),
+                ('rsi_at_exit', exit_indicators.get('rsi_1m') or entry_indicators.get('rsi_1m')),
+                ('macd_at_exit', exit_indicators.get('macd_hist_1m') or entry_indicators.get('macd_hist_1m')),
+                ('adx_at_exit', exit_indicators.get('adx_1m') or entry_indicators.get('adx_1m')),
+                ('di_plus_exit', exit_indicators.get('di_plus_1m') or entry_indicators.get('di_plus_1m')),
+                ('di_minus_exit', exit_indicators.get('di_minus_1m') or entry_indicators.get('di_minus_1m')),
+                # Risk/reward
+                ('risk_reward_planned', risk_reward_ratio),
+                ('risk_reward_actual', (net_pnl_pct_value / abs(max_adverse_excursion)) if max_adverse_excursion and max_adverse_excursion != 0 else None),
                 # Config snapshot décomposé
                 ('config_min_score_required', config_min_score_required),
                 ('config_snr_threshold', config_snr_threshold),
@@ -1377,9 +1441,7 @@ class PostgreSQLDataLogger:
                     ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
                     ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence'))),
                     ('ml_prediction', trade_data.get('ml_prediction')),
-                    # Analyse post-trade
-                    ('risk_reward_actual', _extract_numeric_value(trade_data.get('risk_reward_actual'))),
-                    ('risk_reward_planned', _extract_numeric_value(trade_data.get('risk_reward_planned'))),
+                    # Analyse post-trade (risk_reward déjà ajoutés plus haut)
                     # Notes & Tags
                     ('trade_notes', trade_data.get('trade_notes')),
                     ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),

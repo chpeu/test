@@ -1961,47 +1961,10 @@ class PositionManager:
                                 exit_indicators = last_indicators
                                 logger.debug(f"📊 Exit indicators depuis _last_indicators: {exit_indicators}")
                         
-                        # Si toujours vide, essayer d'appeler l'analyzer de façon synchrone
+                        # Si toujours vide, on laisse vide (évite RuntimeWarning en essayant d'appeler async depuis sync)
                         if not exit_indicators:
-                            try:
-                                from core.analyzer import TechnicalAnalyzer
-                                import asyncio
-                                
-                                analyzer = TechnicalAnalyzer()
-                                
-                                # Fonction helper pour exécuter async depuis sync
-                                def run_async(coro):
-                                    try:
-                                        loop = asyncio.get_running_loop()
-                                        # Si loop active, on ne peut pas utiliser asyncio.run
-                                        # On retourne None et on skip les indicateurs
-                                        return None
-                                    except RuntimeError:
-                                        # Pas de loop active, on peut utiliser asyncio.run
-                                        return asyncio.run(coro)
-                                
-                                analysis_1m = run_async(analyzer.analyze_timeframe(
-                                    self.active_position.symbol, '1m', return_reason=True
-                                ))
-                                analysis_5m = run_async(analyzer.analyze_timeframe(
-                                    self.active_position.symbol, '5m', return_reason=True
-                                ))
-
-                                if analysis_1m and isinstance(analysis_1m, dict):
-                                    exit_indicators['rsi_1m'] = analysis_1m.get('rsi')
-                                    exit_indicators['adx_1m'] = analysis_1m.get('adx')
-                                    exit_indicators['macd_hist_1m'] = analysis_1m.get('macd_hist')
-                                    exit_indicators['atr_pct_1m'] = analysis_1m.get('atr_pct')
-
-                                if analysis_5m and isinstance(analysis_5m, dict):
-                                    exit_indicators['rsi_5m'] = analysis_5m.get('rsi')
-                                    exit_indicators['adx_5m'] = analysis_5m.get('adx')
-                                    exit_indicators['macd_hist_5m'] = analysis_5m.get('macd_hist')
-                                    exit_indicators['atr_pct_5m'] = analysis_5m.get('atr_pct')
-
-                                logger.debug(f"📊 Exit indicators récupérés via analyzer: {exit_indicators}")
-                            except Exception as analyzer_err:
-                                logger.debug(f"⚠️ Impossible d'appeler analyzer: {analyzer_err}")
+                            logger.debug("⚠️ Pas d'indicateurs de sortie disponibles (async call skipped)")
+                            
                     except Exception as e:
                         logger.warning(f"⚠️ Impossible de récupérer exit_indicators: {e}")
                         exit_indicators = {}
