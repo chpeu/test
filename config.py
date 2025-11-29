@@ -98,6 +98,20 @@ TRADING_CONFIG = {
     "top_pairs_limit": 20,
     "balance_score_min": 0.7,
     
+    # 🔥 OPT SCALABILITY: Paramètres configurables (anciennement hardcodés)
+    "scalability_spread_min": 0.001,  # Spread minimum % (évite slippage nul)
+    "scalability_spread_max": 0.02,   # Spread maximum % (évite coûts excessifs)
+    "scalability_volume_min": 100000,  # Volume minimum USDT (5 dernières bougies)
+    "scalability_volume_24h_min": 500000,  # Volume 24h minimum pour pré-filtrage
+    "scalability_funding_rate_max": 0.05,  # Funding rate max % (évite coûts cachés)
+    "scalability_adx_bonus_threshold": 25,  # ADX > seuil = bonus trend
+    "scalability_adx_bonus_multiplier": 1.2,  # Multiplicateur bonus si trend fort
+    "scalability_klines_limit": 30,  # Nombre de klines à récupérer (était 60)
+    "scalability_orderbook_cache_ttl": 30,  # TTL cache orderbook en secondes
+    "scalability_interval_min": 60,  # Intervalle minimum en secondes
+    "scalability_interval_max": 180,  # Intervalle maximum en secondes
+    "scalability_log_rejected": True,  # Logger les paires rejetées avec raison
+    
     # Confluence
     "use_confluence": False,  # False = 1m OU 5m, True = 1m ET 5m
     
