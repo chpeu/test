@@ -475,13 +475,19 @@
 			
 			{#if mlTradesStats.current_config}
 				<div class="config-info">
-					<strong>Config actuelle:</strong>
+					<strong>Config actuelle (setup):</strong>
 					min_score={mlTradesStats.current_config.min_score}, 
 					snr={mlTradesStats.current_config.snr_threshold}, 
-					vol_mult={mlTradesStats.current_config.volume_mult}
+					vol_mult={mlTradesStats.current_config.volume_mult},
+					confluence={mlTradesStats.current_config.use_confluence ? 'ON' : 'OFF'}
+				</div>
+				<div class="config-info-atr">
+					<small>ATR: 1m=[{mlTradesStats.current_config.atr_min_1m}-{mlTradesStats.current_config.atr_max_1m}], 5m=[{mlTradesStats.current_config.atr_min_5m}-{mlTradesStats.current_config.atr_max_5m}]</small>
+				</div>
+				<div class="config-info-tpsl">
+					<small>TP/SL: mode={mlTradesStats.current_config.tp_sl_mode}, TP={mlTradesStats.current_config.tp_percent}%, SL={mlTradesStats.current_config.sl_percent}%</small>
 				</div>
 			{/if}
-			
 			<button class="refresh-btn" on:click={loadMLTradesStats} disabled={loadingTradesStats}>
 				🔄 Rafraîchir
 			</button>

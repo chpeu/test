@@ -1,13 +1,13 @@
 {
-  "timestamp": "2025-11-29T19:52:57.493368",
+  "timestamp": "2025-11-30T10:06:48.482826",
   "best_params": {
-    "n_estimators": 250,
-    "max_depth": 2,
-    "learning_rate": 0.01003084182397616,
+    "n_estimators": 100,
+    "max_depth": 3,
+    "learning_rate": 0.044509049755215364,
     "min_samples_leaf": 35,
-    "l2_regularization": 0.7300250593165947
+    "l2_regularization": 0.37203910813999397
   },
-  "best_score": 0.5580742152865223,
+  "best_score": 0.5815908814646262,
   "n_trials": 100,
-  "elapsed_seconds": 24.955857515335083
+  "elapsed_seconds": 26.44440793991089
 }

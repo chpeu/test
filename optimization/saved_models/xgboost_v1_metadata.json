@@ -4,215 +4,215 @@
   "model_path": "optimization\\saved_models\\xgboost_v1.pkl",
   "preprocessor_path": "optimization\\saved_models\\xgboost_v1_preprocessor.pkl",
   "model_params": {
-    "n_estimators": 300,
+    "n_estimators": 200,
     "max_depth": 2,
-    "learning_rate": 0.016548487462207394,
+    "learning_rate": 0.015871366404422785,
     "early_stopping_rounds": 30,
-    "min_child_weight": 9,
-    "reg_alpha": 9.76143724981311,
-    "reg_lambda": 3.460739058778201,
-    "subsample": 0.8936379182731425,
-    "colsample_bytree": 0.6920799982457168,
-    "colsample_bylevel": 0.7809349896211875,
-    "gamma": 3.9361632612097948,
-    "scale_pos_weight": 1.3522388059701491,
+    "min_child_weight": 10,
+    "reg_alpha": 11.974334868366029,
+    "reg_lambda": 14.299525915161514,
+    "subsample": 0.6958920514657898,
+    "colsample_bytree": 0.7906935485309322,
+    "colsample_bylevel": 0.702610666589851,
+    "gamma": 2.5106039146088905,
+    "scale_pos_weight": 1.0574162679425836,
     "random_state": 42,
     "eval_metric": "logloss",
     "use_label_encoder": false
   },
   "metrics": {
     "train": {
-      "accuracy": 0.6560913705583756,
-      "precision": 0.5927536231884057,
-      "recall": 0.6104477611940299,
-      "f1": 0.6014705882352941,
-      "roc_auc": 0.7057872887219532
+      "accuracy": 0.6023255813953489,
+      "precision": 0.5671378091872792,
+      "recall": 0.7679425837320574,
+      "f1": 0.6524390243902439,
+      "roc_auc": 0.6580598194375284
     },
     "test": {
-      "accuracy": 0.5685279187817259,
-      "precision": 0.49162011173184356,
-      "recall": 0.5269461077844312,
-      "f1": 0.5086705202312138,
-      "roc_auc": 0.5892004537181144
+      "accuracy": 0.5255813953488372,
+      "precision": 0.5071428571428571,
+      "recall": 0.6826923076923077,
+      "f1": 0.5819672131147541,
+      "roc_auc": 0.5461278586278586
     },
     "gaps": {
-      "accuracy": 0.0875634517766497,
-      "roc_auc": 0.11658683500383882
+      "accuracy": 0.07674418604651168,
+      "roc_auc": 0.11193196080966983
     },
     "confusion_matrix": [
       [
-        136,
-        91
+        42,
+        69
       ],
       [
-        79,
-        88
+        33,
+        71
       ]
     ],
     "classification_report": {
       "0": {
-        "precision": 0.6325581395348837,
-        "recall": 0.5991189427312775,
-        "f1-score": 0.6153846153846154,
-        "support": 227.0
+        "precision": 0.56,
+        "recall": 0.3783783783783784,
+        "f1-score": 0.45161290322580644,
+        "support": 111.0
       },
       "1": {
-        "precision": 0.49162011173184356,
-        "recall": 0.5269461077844312,
-        "f1-score": 0.5086705202312138,
-        "support": 167.0
+        "precision": 0.5071428571428571,
+        "recall": 0.6826923076923077,
+        "f1-score": 0.5819672131147541,
+        "support": 104.0
       },
-      "accuracy": 0.5685279187817259,
+      "accuracy": 0.5255813953488372,
       "macro avg": {
-        "precision": 0.5620891256333637,
-        "recall": 0.5630325252578543,
-        "f1-score": 0.5620275678079146,
-        "support": 394.0
+        "precision": 0.5335714285714286,
+        "recall": 0.530535343035343,
+        "f1-score": 0.5167900581702802,
+        "support": 215.0
       },
       "weighted avg": {
-        "precision": 0.5728204475473008,
-        "recall": 0.5685279187817259,
-        "f1-score": 0.5701530065251788,
-        "support": 394.0
+        "precision": 0.5344318936877076,
+        "recall": 0.5255813953488372,
+        "f1-score": 0.5146680112651113,
+        "support": 215.0
       }
     },
     "cross_validation": {
-      "accuracy_mean": 0.5644670050761421,
-      "accuracy_std": 0.030776662723297696,
-      "roc_auc_mean": 0.5912067669908655,
-      "roc_auc_std": 0.032973626068683926
+      "accuracy_mean": 0.5506976744186046,
+      "accuracy_std": 0.018743666678706868,
+      "roc_auc_mean": 0.5781143046143047,
+      "roc_auc_std": 0.0265479173412877
     }
   },
   "feature_importance": [
     {
-      "feature": "rsi_prev_1m",
-      "importance": 0.07875599712133408
-    },
-    {
       "feature": "ema_diff_pct_1m",
-      "importance": 0.07484705746173859
-    },
-    {
-      "feature": "rsi_1m",
-      "importance": 0.07400976866483688
-    },
-    {
-      "feature": "di_minus_1m",
-      "importance": 0.06376195698976517
-    },
-    {
-      "feature": "di_gap_1m",
-      "importance": 0.06111859157681465
-    },
-    {
-      "feature": "trend_bearish_1m",
-      "importance": 0.05990265682339668
-    },
-    {
-      "feature": "trend_bullish_1m",
-      "importance": 0.05448203533887863
-    },
-    {
-      "feature": "di_plus_1m",
-      "importance": 0.04156821593642235
-    },
-    {
-      "feature": "atr_pct_1m",
-      "importance": 0.03317836672067642
-    },
-    {
-      "feature": "bb_distance_to_lower_1m",
-      "importance": 0.03079243004322052
-    },
-    {
-      "feature": "bb_distance_to_upper_1m",
-      "importance": 0.0295273344963789
-    },
-    {
-      "feature": "trend_strength_5m",
-      "importance": 0.028449125587940216
-    },
-    {
-      "feature": "adx_5m",
-      "importance": 0.028162868693470955
-    },
-    {
-      "feature": "rsi_change_1m",
-      "importance": 0.02785634435713291
-    },
-    {
-      "feature": "macd_hist_prev_1m",
-      "importance": 0.02658487670123577
-    },
-    {
-      "feature": "volume_ratio_5m",
-      "importance": 0.026294684037566185
-    },
-    {
-      "feature": "di_minus_5m",
-      "importance": 0.02627483382821083
-    },
-    {
-      "feature": "macd_hist_prev_5m",
-      "importance": 0.025152308866381645
-    },
-    {
-      "feature": "volatility_ratio",
-      "importance": 0.025118503719568253
-    },
-    {
-      "feature": "config_use_confluence",
-      "importance": 0.02504700794816017
+      "importance": 0.14879940450191498
     },
     {
       "feature": "bb_distance_to_lower_5m",
-      "importance": 0.024088049307465553
+      "importance": 0.11422932893037796
+    },
+    {
+      "feature": "rsi_change_1m",
+      "importance": 0.10708407312631607
+    },
+    {
+      "feature": "day_of_week",
+      "importance": 0.10396954417228699
+    },
+    {
+      "feature": "bb_distance_to_upper_5m",
+      "importance": 0.1028379574418068
+    },
+    {
+      "feature": "bb_distance_to_lower_1m",
+      "importance": 0.09516251087188721
+    },
+    {
+      "feature": "volatility_ratio",
+      "importance": 0.09499982744455338
+    },
+    {
+      "feature": "macd_hist_5m",
+      "importance": 0.09108181297779083
     },
     {
       "feature": "adx_1m",
-      "importance": 0.02407916821539402
+      "importance": 0.07275477796792984
     },
     {
-      "feature": "config_snr_threshold",
-      "importance": 0.023922961205244064
+      "feature": "rsi_change_5m",
+      "importance": 0.06908074021339417
     },
     {
-      "feature": "macd_momentum_1m",
-      "importance": 0.023268302902579308
-    },
-    {
-      "feature": "trend_strength_1m",
-      "importance": 0.02238532342016697
+      "feature": "di_minus_5m",
+      "importance": 0.0
     },
     {
       "feature": "macd_divergence",
-      "importance": 0.021692980080842972
-    },
-    {
-      "feature": "volume_spike_5m",
-      "importance": 0.019678235054016113
-    },
-    {
-      "feature": "quality_score_5m",
       "importance": 0.0
     },
     {
-      "feature": "bb_width_1m",
+      "feature": "momentum_5m",
       "importance": 0.0
     },
     {
-      "feature": "bb_width_5m",
+      "feature": "rsi_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "atr_pct_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "hour_utc",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_use_confluence",
+      "importance": 0.0
+    },
+    {
+      "feature": "atr_optimal_passed_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_filter_passed_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_filter_passed_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_min_score_required",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_snr_threshold",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_atr_min_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_atr_max_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_atr_min_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_atr_max_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_volume_multiplier",
+      "importance": 0.0
+    },
+    {
+      "feature": "momentum_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_reason_category",
+      "importance": 0.0
+    },
+    {
+      "feature": "wick_passed_5m",
       "importance": 0.0
     }
   ],
   "training_info": {
     "timeframe_days": 90,
     "min_trades": 50,
-    "total_samples": 1970,
-    "train_samples": 1576,
-    "test_samples": 394,
-    "training_time_seconds": 0.526257,
-    "trained_at": "2025-11-24T20:14:17.751055",
+    "total_samples": 1075,
+    "train_samples": 860,
+    "test_samples": 215,
+    "training_time_seconds": 0.624207,
+    "trained_at": "2025-11-30T10:14:14.895207",
     "feature_names": [
       "rsi_1m",
       "rsi_prev_1m",
@@ -318,7 +318,23 @@
       "reject_confluence",
       "reject_correlation",
       "reject_recovery_mode",
-      "reject_none"
+      "reject_none",
+      "hour_utc",
+      "session_asia",
+      "session_europe",
+      "session_usa",
+      "high_activity_hours",
+      "day_of_week",
+      "is_weekend",
+      "week_edge",
+      "favorable_hour",
+      "unfavorable_hour",
+      "hour",
+      "is_market_hours",
+      "asian_session",
+      "european_session",
+      "us_session",
+      "volatility_momentum_product"
     ]
   },
   "version": "1.0"

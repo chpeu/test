@@ -84,8 +84,8 @@ _load_metric_runs_cache()
 
 # ========== HELPERS ==========
 
-def get_ml_task_status(task_id: str) -> Dict:
-    """Récupère status d'une tâche ML"""
+def _get_task_from_store(task_id: str) -> Dict:
+    """Récupère status d'une tâche ML depuis le store"""
     return ml_tasks.get(task_id, {'status': 'unknown', 'task_id': task_id})
 
 
@@ -254,12 +254,16 @@ async def get_data_quality():
 @router.get("/dashboard/ml_trades_count")
 async def get_ml_trades_count():
     """
-    🔢 Retourne le nombre de trades utilisables pour ML après filtrage:
+    🔢 Retourne le nombre de trades utilisables pour ML après filtrage COMPLET:
     - Exclure trades manuels (exit_reason = 'MANUAL')
     - Exclure trades avec configs différentes de la CONFIG ACTUELLE
     
-    Permet à l'utilisateur de voir l'impact des changements de config
-    sur la profondeur de données ML disponibles.
+    🔥 FILTRE EXHAUSTIF sur TOUS les paramètres influençant:
+    - Validation des setups (min_score, snr, volume, confluence, ATR, patterns, etc.)
+    - Prise de position (filtres additionnels)
+    - Clôture (TP/SL via config_snapshot JSONB)
+    
+    Le compteur se met à jour dynamiquement quand l'utilisateur change les paramètres.
     """
     try:
         from optimization.data.feature_loader import get_sqlalchemy_engine
@@ -268,41 +272,85 @@ async def get_ml_trades_count():
         
         engine = get_sqlalchemy_engine()
         
-        # 1. Lire la CONFIG ACTUELLE depuis TRADING_CONFIG
+        # ═══════════════════════════════════════════════════════════════════
+        # 1. LIRE TOUS LES PARAMÈTRES DE LA CONFIG ACTUELLE
+        # ═══════════════════════════════════════════════════════════════════
+        
+        # Paramètres de validation des setups (colonnes config_*)
         current_config = {
+            # Paramètres de base (validation setup)
             'min_score': float(TRADING_CONFIG.get('min_score_required', 6.5)),
             'snr_threshold': float(TRADING_CONFIG.get('snr_threshold', 0.15)),
-            'volume_mult': float(TRADING_CONFIG.get('volume_multiplier', 0.95))
+            'volume_mult': float(TRADING_CONFIG.get('volume_multiplier', 0.95)),
+            'use_confluence': bool(TRADING_CONFIG.get('use_confluence', False)),
+            
+            # ATR optimal
+            'atr_min_1m': float(TRADING_CONFIG.get('optimal_atr_min_1m', 0.12)),
+            'atr_max_1m': float(TRADING_CONFIG.get('optimal_atr_max_1m', 0.75)),
+            'atr_min_5m': float(TRADING_CONFIG.get('optimal_atr_min_5m', 0.22)),
+            'atr_max_5m': float(TRADING_CONFIG.get('optimal_atr_max_5m', 1.4)),
+            
+            # Filtres additionnels (si colonnes remplies)
+            'use_anti_whipsaw': bool(TRADING_CONFIG.get('use_anti_whipsaw', False)),
+            'use_candle_close': bool(TRADING_CONFIG.get('use_candle_close', False)),
+            'use_cooldown': bool(TRADING_CONFIG.get('use_cooldown', False)),
+            'use_momentum_continuity': bool(TRADING_CONFIG.get('use_momentum_continuity', False)),
+            'use_retest_confirmation': bool(TRADING_CONFIG.get('use_retest_confirmation', False)),
+            
+            # TP/SL (depuis config_snapshot JSONB)
+            'tp_sl_mode': str(TRADING_CONFIG.get('tp_sl_mode', 'FIXE')),
+            'tp_percent': float(TRADING_CONFIG.get('tp_percent', 0.5)),
+            'sl_percent': float(TRADING_CONFIG.get('sl_percent', 0.2)),
+            
+            # Patterns techniques (depuis config_snapshot JSONB) - flags + seuils
+            'use_breakout': bool(TRADING_CONFIG.get('use_breakout', True)),
+            'breakout_threshold': float(TRADING_CONFIG.get('breakout_threshold', 0.25)),
+            'use_snr': bool(TRADING_CONFIG.get('use_snr', True)),
+            'snr_threshold': float(TRADING_CONFIG.get('snr_threshold', 0.15)),
+            'use_wick': bool(TRADING_CONFIG.get('use_wick', False)),
+            'wick_ratio_max': float(TRADING_CONFIG.get('wick_ratio_max', 4.5)),
+            'use_divergence': bool(TRADING_CONFIG.get('use_divergence', True)),
+            'di_gap_min': float(TRADING_CONFIG.get('di_gap_min', 4.0)),
+            'di_gap_adx_threshold': float(TRADING_CONFIG.get('di_gap_adx_threshold', 25.0)),
         }
         
-        # 2. Compter tous les trades
+        # ═══════════════════════════════════════════════════════════════════
+        # 2. COMPTER TOUS LES TRADES
+        # ═══════════════════════════════════════════════════════════════════
         total_trades = int(pd.read_sql("SELECT COUNT(*) as cnt FROM trades", engine).iloc[0]['cnt'])
         
-        # 3. Compter trades non-manuels
+        # ═══════════════════════════════════════════════════════════════════
+        # 3. COMPTER TRADES NON-MANUELS
+        # ═══════════════════════════════════════════════════════════════════
         non_manual = int(pd.read_sql("""
             SELECT COUNT(*) as cnt FROM trades 
             WHERE exit_reason IS NULL OR exit_reason != 'MANUAL'
         """, engine).iloc[0]['cnt'])
         
-        # 4. Compter trades avec CONFIG ACTUELLE
-        conditions = ["(exit_reason IS NULL OR exit_reason != 'MANUAL')"]
-        conditions.append(f"ABS(COALESCE(config_min_score_required, 0) - {current_config['min_score']}) < 0.01")
-        conditions.append(f"ABS(COALESCE(config_snr_threshold, 0) - {current_config['snr_threshold']}) < 0.01")
-        conditions.append(f"ABS(COALESCE(config_volume_multiplier, 0) - {current_config['volume_mult']}) < 0.01")
+        # ═══════════════════════════════════════════════════════════════════
+        # 4. CONSTRUIRE LE FILTRE COMPLET (identique à l'entraînement ML)
+        # ═══════════════════════════════════════════════════════════════════
+        # 🔥 Utiliser la fonction centralisée pour garantir la cohérence
+        from optimization.data.feature_loader import build_config_filter_conditions
+        # Note: On utilise la table trades directement, donc inclure exit_reason
+        conditions = build_config_filter_conditions(for_trades_table=True)
         
         clean_query = f"SELECT COUNT(*) as cnt FROM trades WHERE {' AND '.join(conditions)}"
         clean_count = int(pd.read_sql(clean_query, engine).iloc[0]['cnt'])
         
-        # 5. Analyser configs pour le breakdown (top 5)
+        # ═══════════════════════════════════════════════════════════════════
+        # 5. BREAKDOWN PAR CONFIG (pour debug)
+        # ═══════════════════════════════════════════════════════════════════
         config_query = """
             SELECT 
                 config_min_score_required,
                 config_snr_threshold,
                 config_volume_multiplier,
+                config_use_confluence,
                 COUNT(*) as cnt
             FROM trades
             WHERE exit_reason IS NULL OR exit_reason != 'MANUAL'
-            GROUP BY config_min_score_required, config_snr_threshold, config_volume_multiplier
+            GROUP BY config_min_score_required, config_snr_threshold, config_volume_multiplier, config_use_confluence
             ORDER BY cnt DESC
             LIMIT 5
         """
@@ -314,43 +362,42 @@ async def get_ml_trades_count():
                 min_score = row['config_min_score_required']
                 snr_thresh = row['config_snr_threshold']
                 vol_mult = row['config_volume_multiplier']
+                confluence = row['config_use_confluence']
                 
-                # Check si cette config match la config actuelle
                 is_current = (
-                    pd.notna(min_score) and abs(float(min_score) - current_config['min_score']) < 0.01 and
-                    pd.notna(snr_thresh) and abs(float(snr_thresh) - current_config['snr_threshold']) < 0.01 and
-                    pd.notna(vol_mult) and abs(float(vol_mult) - current_config['volume_mult']) < 0.01
+                    pd.notna(min_score) and abs(float(min_score) - current_config['min_score']) < 0.1 and
+                    pd.notna(snr_thresh) and abs(float(snr_thresh) - current_config['snr_threshold']) < 0.02 and
+                    pd.notna(vol_mult) and abs(float(vol_mult) - current_config['volume_mult']) < 0.05 and
+                    pd.notna(confluence) and confluence == current_config['use_confluence']
                 )
                 
                 config_breakdown.append({
                     'min_score': float(min_score) if pd.notna(min_score) else None,
                     'snr_threshold': float(snr_thresh) if pd.notna(snr_thresh) else None,
                     'volume_mult': float(vol_mult) if pd.notna(vol_mult) else None,
+                    'confluence': bool(confluence) if pd.notna(confluence) else None,
                     'count': int(row['cnt']),
                     'is_current': bool(is_current)
                 })
         
-        # 6. Vérifier si ml_features_clean existe et son count
-        try:
-            ml_clean_count = int(pd.read_sql("SELECT COUNT(*) as cnt FROM ml_features_clean", engine).iloc[0]['cnt'])
-        except:
-            ml_clean_count = 0
-        
         engine.dispose()
         
+        # ═══════════════════════════════════════════════════════════════════
+        # 6. RETOURNER LE RÉSULTAT
+        # ═══════════════════════════════════════════════════════════════════
         return {
             'total_trades': total_trades,
             'manual_excluded': total_trades - non_manual,
             'non_manual_trades': non_manual,
             'config_filtered_trades': clean_count,
             'different_config_excluded': non_manual - clean_count,
-            'ml_features_clean_count': ml_clean_count,
             'current_config': current_config,
             'config_breakdown': config_breakdown,
             'filters_applied': {
-                'exclude_manual': True,
-                'exclude_different_configs': True,
-                'compare_to': 'current_config'
+                'setup_validation': ['min_score', 'snr_threshold', 'volume_mult', 'confluence', 'atr_1m', 'atr_5m'],
+                'additional_filters': ['anti_whipsaw', 'candle_close', 'cooldown', 'momentum', 'retest'],
+                'tp_sl': ['tp_sl_mode', 'tp_percent', 'sl_percent'],
+                'patterns_techniques': ['use_breakout', 'breakout_threshold', 'use_snr', 'snr_threshold', 'use_wick', 'wick_ratio_max', 'use_divergence', 'di_gap_min', 'di_gap_adx_threshold']
             },
             'message': f"✅ {clean_count} trades avec config actuelle (sur {total_trades} total)"
         }
@@ -1462,8 +1509,29 @@ async def get_task_status(task_id: str):
     """
     Status d'une tâche ML (training, backtest, etc.)
     """
-    task_info = get_ml_task_status(task_id)
-    return task_info
+    task_data = _get_task_from_store(task_id)
+    
+    # 🔥 FIX: Nettoyer les données non-sérialisables (coroutines, objets, etc.)
+    clean_data = {}
+    for key, value in task_data.items():
+        if value is None:
+            clean_data[key] = None
+        elif isinstance(value, (str, int, float, bool)):
+            clean_data[key] = value
+        elif isinstance(value, dict):
+            clean_data[key] = {
+                k: str(v) if not isinstance(v, (str, int, float, bool, type(None), list, dict)) else v 
+                for k, v in value.items()
+            }
+        elif isinstance(value, list):
+            clean_data[key] = [
+                str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v 
+                for v in value
+            ]
+        else:
+            clean_data[key] = str(value)
+    
+    return clean_data
 
 
 # ========== HYPERPARAMETER OPTIMIZATION ==========
@@ -3427,12 +3495,19 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
         # 🔥 FILTRE STRICT: Seulement trades avec TOUS les paramètres config identiques
         initial_count = len(base_df)
         current_config = {
+            # Paramètres d'entrée
             'min_score_required': TRADING_CONFIG.get('min_score_required', 6.5),
             'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.15),
             'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
             'use_confluence': TRADING_CONFIG.get('use_confluence', True),
+            'atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+            'atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+            'atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+            'atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
         }
-        logger.info(f"🔧 Config actuelle: {current_config}")
+        logger.info(f"🔧 Config actuelle: min_score={current_config['min_score_required']}, "
+                   f"snr={current_config['snr_threshold']}, vol={current_config['volume_multiplier']}, "
+                   f"confluence={current_config['use_confluence']}")
         
         # Construire le masque pour TOUS les paramètres
         mask = pd.Series([True] * len(base_df), index=base_df.index)
@@ -3448,6 +3523,19 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
         
         if 'config_use_confluence' in base_df.columns:
             mask &= base_df['config_use_confluence'] == current_config['use_confluence']
+        
+        # Filtres ATR
+        if 'config_atr_min_1m' in base_df.columns:
+            mask &= abs(base_df['config_atr_min_1m'] - current_config['atr_min_1m']) < 0.05
+        
+        if 'config_atr_max_1m' in base_df.columns:
+            mask &= abs(base_df['config_atr_max_1m'] - current_config['atr_max_1m']) < 0.1
+        
+        if 'config_atr_min_5m' in base_df.columns:
+            mask &= abs(base_df['config_atr_min_5m'] - current_config['atr_min_5m']) < 0.05
+        
+        if 'config_atr_max_5m' in base_df.columns:
+            mask &= abs(base_df['config_atr_max_5m'] - current_config['atr_max_5m']) < 0.2
         
         base_df = base_df[mask]
         logger.info(f"   Après filtre config COMPLET: {len(base_df)} trades")
