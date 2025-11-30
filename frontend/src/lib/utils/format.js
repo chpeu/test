@@ -173,9 +173,10 @@ export function formatPrice(price, precision = null) {
 			decimals = precision;
 		}
 		
-		// Use the calculated decimals if available
+		// Use the calculated decimals if available (max 20 to avoid RangeError)
 		if (decimals !== null && decimals !== undefined && decimals >= 0) {
-			return num.toFixed(decimals);
+			const safeDecimals = Math.min(Math.max(0, Math.floor(decimals)), 20);
+			return num.toFixed(safeDecimals);
 		}
 	}
 
@@ -202,7 +203,19 @@ export function formatPrice(price, precision = null) {
 		return num.toFixed(4);
 	}
 
-	// For normal prices, use 2 decimals
+	// 🔥 FIX: Pour les prix crypto (>= 1 et < 100), utiliser 4 décimales pour plus de précision
+	// Exemples: ETH=2234.1500, SOL=142.0400, INJ=6.0700, BNB=350.5000
+	if (num < 100) {
+		return num.toFixed(4);
+	}
+
+	// 🔥 FIX: Pour les prix entre 100 et 10000, utiliser 2 décimales
+	// Exemples: BTC=42156.50, indices >100
+	if (num < 10000) {
+		return num.toFixed(2);
+	}
+
+	// Pour les très grands prix (>= 10000), utiliser 2 décimales
 	return num.toFixed(2);
 }
 

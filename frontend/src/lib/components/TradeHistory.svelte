@@ -2,7 +2,7 @@
 	import { sortedTrades } from '$lib/stores/trades';
 	import { derived } from 'svelte/store';
 
-	import { formatAdaptive, formatPercent, formatUSDT } from '$lib/utils/format';
+	import { formatAdaptive, formatPercent, formatUSDT, formatPrice } from '$lib/utils/format';
 
 	// 🔥 PAGINATION: Variables de pagination
 	let currentPage = 1;
@@ -44,25 +44,15 @@
 		currentPage = 1;
 	}
 
-	// 🔥 FIX: Calculer le PnL total de la session depuis TOUS les trades (pas seulement la page)
+	// 🔥 FIX: Somme simple des colonnes (frais/slippage DÉJÀ déduits dans net_pnl_*)
 	const sessionPnL = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
-		// Utiliser net_pnl_usdt directement (déjà calculé avec slippage et fees déduits)
-		const totalPnL = $trades.reduce((sum, trade) => {
-			return sum + (trade.net_pnl_usdt || trade.pnl_usdt || 0);
-		}, 0);
-		return totalPnL;
+		return $trades.reduce((sum, trade) => sum + (trade.net_pnl_usdt || 0), 0);
 	});
 
 	const sessionPnLPct = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
-		// Utiliser net_pnl_pct directement (déjà calculé avec slippage et fees déduits)
-		// Somme totale, pas moyenne - doit correspondre exactement à la somme des trades visibles
-		const totalPnLPct = $trades.reduce((sum, trade) => {
-			// Utiliser uniquement net_pnl_pct ou pnl_pct (en pourcentage), pas net_pnl qui est en USDT
-			return sum + (trade.net_pnl_pct || trade.pnl_pct || 0);
-		}, 0);
-		return totalPnLPct; // Total, pas moyenne
+		return $trades.reduce((sum, trade) => sum + (trade.net_pnl_pct || 0), 0);
 	});
 
 	function formatTime(dateStr) {
@@ -128,6 +118,7 @@
 						<th data-debug-name="tradeHistory.column.symbol">Paire</th>
 						<th data-debug-name="tradeHistory.column.direction">Dir</th>
 						<th data-debug-name="tradeHistory.column.reason">Raison</th>
+						<th data-debug-name="tradeHistory.column.exitPrice">Prix Sortie</th>
 						<th data-debug-name="tradeHistory.column.pnlGross">PnL Brut %</th>
 						<th data-debug-name="tradeHistory.column.slippage">Slippage</th>
 						<th data-debug-name="tradeHistory.column.pnlNet">PnL Net %</th>
@@ -155,11 +146,16 @@
 									{trade.reason || trade.close_reason || 'N/A'}
 								{/if}
 							</td>
-							<!-- 🔥 FIX: PnL Brut avec formatage adaptatif -->
+							<td class="exit-price" data-debug-name="trade.exit_price">
+								{(() => {
+									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price;
+									if (!exitPrice) return 'N/A';
+									return formatPrice(exitPrice, trade.entry_price);
+								})()}
+							</td>
 							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0} data-debug-name="trade.gross_pnl_pct">
 								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.gross_pnl_pct || trade.pnl_pct || 0)}%
 							</td>
-							<!-- 🔥 FIX: Slippage avec formatage adaptatif (calculé si manquant) -->
 							<td class="slippage" data-debug-name="trade.slippage">
 								{(() => {
 									// Essayer slippage_pct d'abord (en pourcentage)
@@ -184,9 +180,9 @@
 									return (slippageValue || 0).toFixed(3);
 								})()}%
 							</td>
-							<!-- 🔥 FIX: PnL Net avec formatage adaptatif (incluant slippage) -->
-							<td class="pnl-net" class:positive={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0} class:negative={((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) < 0} data-debug-name="trade.net_pnl_pct">
-								{((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0)) >= 0 ? '+' : ''}{formatPercent((trade.net_pnl_pct || trade.net_pnl || 0) - (trade.slippage || 0))}%
+							<!-- PnL Net % (frais/slippage DÉJÀ déduits) -->
+							<td class="pnl-net" class:positive={(trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl_pct || 0) < 0} data-debug-name="trade.net_pnl_pct">
+								{(trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || 0)}%
 							</td>
 							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
 							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt">
@@ -439,6 +435,12 @@
 	.price {
 		font-family: 'Courier New', monospace;
 		color: #00aaff;
+	}
+
+	.exit-price {
+		font-family: 'Courier New', monospace;
+		color: #00aaff;
+		font-weight: 500;
 	}
 
 	.size {

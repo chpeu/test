@@ -62,9 +62,14 @@ class MLPredictor:
             # Extraire feature names du preprocessor
             # Pour un Pipeline avec feature selection, le scaler contient features APRÈS sélection
             # Il faut récupérer les features AVANT sélection depuis le metadata
-            if self.metadata and 'feature_names' in self.metadata.get('training_info', {}):
+            if self.metadata and 'feature_names' in self.metadata:
                 # Meilleure source: metadata contient les features complètes
+                self.feature_names = list(self.metadata['feature_names'])
+            elif self.metadata and 'feature_names' in self.metadata.get('training_info', {}):
                 self.feature_names = list(self.metadata['training_info']['feature_names'])
+            elif isinstance(self.preprocessor, dict) and 'feature_names' in self.preprocessor:
+                # Format dictionnaire avec feature_names
+                self.feature_names = list(self.preprocessor['feature_names'])
             elif hasattr(self.preprocessor, 'named_steps'):
                 # Pipeline: essayer d'extraire du scaler
                 scaler_step = self.preprocessor.named_steps.get('scaler')
@@ -124,8 +129,24 @@ class MLPredictor:
             df = df.replace([np.inf, -np.inf], 0)
             df = df.fillna(0)
             
-            # Preprocesser
-            X = self.preprocessor.transform(df)
+            # Preprocesser - gérer différents formats
+            if isinstance(self.preprocessor, dict):
+                # Format dictionnaire: extraire scaler et imputer
+                scaler = self.preprocessor.get('scaler')
+                imputer = self.preprocessor.get('imputer')
+                
+                if imputer is not None:
+                    df = pd.DataFrame(imputer.transform(df), columns=df.columns)
+                if scaler is not None:
+                    X = scaler.transform(df)
+                else:
+                    X = df.values
+            elif hasattr(self.preprocessor, 'transform'):
+                # Format sklearn standard
+                X = self.preprocessor.transform(df)
+            else:
+                # Pas de preprocessor, utiliser directement
+                X = df.values
             
             # Prédiction
             prediction = int(self.model.predict(X)[0])

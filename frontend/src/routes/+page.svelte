@@ -375,7 +375,8 @@
 		// 🔥 FIX: Mettre à jour la position active si présente
 		if (data.active_position || data.position?.active) {
 			const { updatePosition } = await import('$lib/stores/position');
-			const positionData = data.active_position || data.position;
+			// data.position a la forme { active: bool, data: {...} } dans la réponse state
+			const positionData = data.active_position || data.position?.data || data.position;
 			if (positionData) {
 				updatePosition(positionData);
 			}

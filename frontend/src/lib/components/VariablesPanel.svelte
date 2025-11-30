@@ -3,6 +3,7 @@
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import OptimizationPanel from '$lib/components/ml/OptimizationPanel.svelte';
 	import MLCONTENT_V2_Variables from '$lib/components/ml/MLCONTENT_V2_Variables.svelte';
+	import MLCONTENT_GB_Variables from '$lib/components/ml/MLCONTENT_GB_Variables.svelte';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -71,6 +72,8 @@
 		trailing_max_distance: 0.25,
 		// Machine Learning V1
 		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
+		ml_filter_mode: 'NEGATIVE',  // 🔥 Mode NEGATIVE = filtre négatif (+2.9% win rate)
+		ml_loss_threshold: 0.45,  // Seuil P(loss) pour rejet (mode NEGATIVE)
 		ml_min_confidence: 0.60,  // 60% (si réactivé plus tard)
 		// Hyperparamètres XGBoost V1
 		ml_max_depth: 6,
@@ -102,7 +105,38 @@
 		ml_v2_reg_lambda: 3.0,
 		ml_v2_subsample: 0.7,
 		ml_v2_colsample_bytree: 0.7,
-		ml_v2_gamma: 0.5
+		ml_v2_gamma: 0.5,
+		// GradientBoosting (Modèle optimisé 64-69% accuracy)
+		gb_filter_enabled: true,  // Activé par défaut car performant
+		gb_min_confidence: 0.55,  // 55% seuil
+		gb_n_estimators: 200,
+		gb_max_depth: 3,
+		gb_learning_rate: 0.03,
+		gb_min_samples_split: 30,
+		gb_min_samples_leaf: 15,
+		gb_subsample: 0.7,
+		gb_max_features: 0.5,
+		// 🔥 OPT #14: Scan Interval
+		scan_interval: 30,
+		// 🔥 OPT #15: Anti-Whipsaw Filter
+		use_anti_whipsaw: true,
+		whipsaw_lookback: 5,
+		whipsaw_threshold_pct: 0.2,
+		whipsaw_max_alternations: 3,
+		// 🔥 OPT #16: Retest Breakout Confirmation
+		use_retest_confirmation: false,
+		retest_tolerance_pct: 0.1,
+		retest_timeout_seconds: 300,
+		// 🔥 OPT #17: Cooldown Post-Trade
+		use_cooldown: true,
+		cooldown_seconds: 30,
+		cooldown_same_symbol: 60,
+		// 🔥 OPT #18: Candle Close Confirmation
+		use_candle_close: false,
+		candle_close_threshold_seconds: 5,
+		// 🔥 OPT #19: Momentum Continuity
+		use_momentum_continuity: true,
+		momentum_lookback: 3
 	};
 
 	let config = { ...DEFAULTS };
@@ -122,16 +156,17 @@
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
 	
-	// 🔥 Variables Live Trading
+	// Variables Live Trading
 	let liveConfig = null;
 	let loadingLiveConfig = false;
 	
 	// Variables pour export Excel et reset DB
 	let exportingExcel = false;
+	let exportingCurrentConfig = false;
 	let retrainingML = false;
 	let resettingDB = false;
 	
-	// 🔥 FIX: Variables pour métriques ML dynamiques
+	// FIX: Variables pour métriques ML dynamiques
 	let mlMetrics = {
 		test_accuracy: 55.3,
 		roc_auc: 55.4,
@@ -160,10 +195,40 @@
 				config[`escalier_level${l}_size`] = Math.max(0, Math.round(currentValue - reduction));
 			});
 		}
-
 	}
 
-	function autoAdjustEscalierPnL(changedLevel) {
+	// 🔥 Export XLSX des variables en cours
+	async function exportCurrentConfigXlsx() {
+		if (exportingCurrentConfig) return;
+		try {
+			exportingCurrentConfig = true;
+			saveMessage = '⏳ Export des variables en cours...';
+			const response = await fetch('/api/config/export-xlsx');
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}));
+				throw new Error(error.error || 'Erreur export variables en cours');
+			}
+			const blob = await response.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `trading_config_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.xlsx`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+			saveMessage = '✅ Export des variables en cours terminé';
+			setTimeout(() => (saveMessage = ''), 3000);
+		} catch (error: any) {
+			console.error('❌ Erreur export XLSM variables en cours:', error);
+			saveMessage = `❌ Erreur export variables en cours: ${error.message || error}`;
+			setTimeout(() => (saveMessage = ''), 5000);
+		} finally {
+			exportingCurrentConfig = false;
+		}
+	}
+
+	function autoAdjustEscalierPnL(changedLevel: number) {
 		// S'assurer que les niveaux suivants sont >= niveau actuel
 		const currentPnl = config[`escalier_level${changedLevel}_pnl`];
 
@@ -479,6 +544,8 @@
 			},
 			'🤖 Machine Learning V1': {
 				ml_filter_enabled: tradingConfig.ml_filter_enabled,
+				ml_filter_mode: tradingConfig.ml_filter_mode,
+				ml_loss_threshold: tradingConfig.ml_loss_threshold,
 				ml_min_confidence: tradingConfig.ml_min_confidence,
 				ml_max_depth: tradingConfig.ml_max_depth,
 				ml_min_child_weight: tradingConfig.ml_min_child_weight,
@@ -511,9 +578,41 @@
 				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
 				ml_v2_gamma: tradingConfig.ml_v2_gamma,
 			},
+			'🎯 GradientBoosting (Optimisé 64%)': {
+				gb_filter_enabled: tradingConfig.gb_filter_enabled,
+				gb_min_confidence: tradingConfig.gb_min_confidence,
+				gb_n_estimators: tradingConfig.gb_n_estimators,
+				gb_max_depth: tradingConfig.gb_max_depth,
+				gb_learning_rate: tradingConfig.gb_learning_rate,
+				gb_min_samples_split: tradingConfig.gb_min_samples_split,
+				gb_min_samples_leaf: tradingConfig.gb_min_samples_leaf,
+				gb_subsample: tradingConfig.gb_subsample,
+				gb_max_features: tradingConfig.gb_max_features,
+			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
 				max_latency_ms: tradingConfig.max_latency_ms,
+			},
+			'🛡️ Filtres Avancés (OPT #15-19)': {
+				// OPT #15: Anti-Whipsaw
+				use_anti_whipsaw: tradingConfig.use_anti_whipsaw,
+				whipsaw_lookback: tradingConfig.whipsaw_lookback,
+				whipsaw_threshold_pct: tradingConfig.whipsaw_threshold_pct,
+				whipsaw_max_alternations: tradingConfig.whipsaw_max_alternations,
+				// OPT #16: Retest Breakout
+				use_retest_confirmation: tradingConfig.use_retest_confirmation,
+				retest_tolerance_pct: tradingConfig.retest_tolerance_pct,
+				retest_timeout_seconds: tradingConfig.retest_timeout_seconds,
+				// OPT #17: Cooldown
+				use_cooldown: tradingConfig.use_cooldown,
+				cooldown_seconds: tradingConfig.cooldown_seconds,
+				cooldown_same_symbol: tradingConfig.cooldown_same_symbol,
+				// OPT #18: Candle Close
+				use_candle_close: tradingConfig.use_candle_close,
+				candle_close_threshold_seconds: tradingConfig.candle_close_threshold_seconds,
+				// OPT #19: Momentum Continuity
+				use_momentum_continuity: tradingConfig.use_momentum_continuity,
+				momentum_lookback: tradingConfig.momentum_lookback,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -847,6 +946,21 @@
 				hasUnsavedChanges = false; // Marquer comme sauvegardé
 				console.log('✅ Paramètres sauvegardés automatiquement via WebSocket:', result.updated);
 				setTimeout(() => (saveMessage = ''), 3000);
+				
+				// 🔥 FIX LEVIER: Si default_leverage a changé, synchroniser dans toutes les sources
+				if (result.updated.default_leverage !== undefined) {
+					try {
+						const syncRes = await fetch(`/api/live/leverage/sync?leverage=${config.default_leverage}`, {
+							method: 'POST'
+						});
+						if (syncRes.ok) {
+							const syncData = await syncRes.json();
+							console.log('✅ Levier synchronisé:', syncData);
+						}
+					} catch (e) {
+						console.warn('⚠️ Sync levier échouée:', e);
+					}
+				}
 				
 				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
 				if (activeSubTab === 'current') {
@@ -1604,7 +1718,318 @@
 				</div>
 			</section>
 
-			<!-- Section 4: Timeframes & ATR Optimal -->
+			<!-- Section 4: 🔥 Filtres Avancés (OPT #14-19) -->
+			<section class="variable-section">
+				<h3>🛡️ Filtres Avancés</h3>
+				<p class="section-subtitle">Protection contre whipsaw, confirmation breakout, cooldown et momentum</p>
+
+				<div class="variables-list">
+					<!-- Scan Interval -->
+					<div class="variable-item" data-debug-name="config.scan_interval">
+						<div class="var-header">
+							<label for="scan-interval">
+								<span class="var-name">⏱️ Scan Interval</span>
+								<span class="var-desc">Intervalle entre chaque scan (secondes)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('scan_interval')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="scan-interval"
+								type="range"
+								step="5"
+								min="15"
+								max="120"
+								bind:value={config.scan_interval}
+								on:change={() => triggerAutoSave('scan_interval', `${config.scan_interval}s`)}
+							/>
+							<span class="slider-value">{config.scan_interval}s</span>
+						</div>
+					</div>
+
+					<!-- Anti-Whipsaw -->
+					<div class="variable-item checkbox">
+						<label for="use-anti-whipsaw">
+							<input
+								id="use-anti-whipsaw"
+								type="checkbox"
+								bind:checked={config.use_anti_whipsaw}
+								on:change={() => triggerAutoSave('use_anti_whipsaw', config.use_anti_whipsaw ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⚡ Anti-Whipsaw</span>
+							<span class="var-desc">Rejeter les marchés en zigzag rapide</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_anti_whipsaw')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_anti_whipsaw}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-lookback">
+										<span class="var-name">Whipsaw Lookback</span>
+										<span class="var-desc">Nombre de bougies à analyser</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-lookback"
+										type="range"
+										step="1"
+										min="3"
+										max="10"
+										bind:value={config.whipsaw_lookback}
+										on:change={() => triggerAutoSave('whipsaw_lookback', config.whipsaw_lookback)}
+									/>
+									<span class="slider-value">{config.whipsaw_lookback}</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-threshold">
+										<span class="var-name">Whipsaw Threshold (%)</span>
+										<span class="var-desc">Amplitude min pour compter comme mouvement</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-threshold"
+										type="range"
+										step="0.05"
+										min="0.1"
+										max="0.5"
+										bind:value={config.whipsaw_threshold_pct}
+										on:change={() => triggerAutoSave('whipsaw_threshold_pct', config.whipsaw_threshold_pct.toFixed(2))}
+									/>
+									<span class="slider-value">{Number(config.whipsaw_threshold_pct).toFixed(2)}%</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-alternations">
+										<span class="var-name">Max Alternations</span>
+										<span class="var-desc">Nombre max d'alternances avant rejet</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-alternations"
+										type="range"
+										step="1"
+										min="2"
+										max="5"
+										bind:value={config.whipsaw_max_alternations}
+										on:change={() => triggerAutoSave('whipsaw_max_alternations', config.whipsaw_max_alternations)}
+									/>
+									<span class="slider-value">{config.whipsaw_max_alternations}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Cooldown Post-Trade -->
+					<div class="variable-item checkbox">
+						<label for="use-cooldown">
+							<input
+								id="use-cooldown"
+								type="checkbox"
+								bind:checked={config.use_cooldown}
+								on:change={() => triggerAutoSave('use_cooldown', config.use_cooldown ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⏸️ Cooldown Post-Trade</span>
+							<span class="var-desc">Délai entre trades pour éviter over-trading</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_cooldown')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_cooldown}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="cooldown-seconds">
+										<span class="var-name">Cooldown (s)</span>
+										<span class="var-desc">Délai minimum entre trades</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="cooldown-seconds"
+										type="range"
+										step="5"
+										min="10"
+										max="120"
+										bind:value={config.cooldown_seconds}
+										on:change={() => triggerAutoSave('cooldown_seconds', `${config.cooldown_seconds}s`)}
+									/>
+									<span class="slider-value">{config.cooldown_seconds}s</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="cooldown-same-symbol">
+										<span class="var-name">Cooldown Same Symbol (s)</span>
+										<span class="var-desc">Délai supplémentaire pour même symbole</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="cooldown-same-symbol"
+										type="range"
+										step="5"
+										min="30"
+										max="300"
+										bind:value={config.cooldown_same_symbol}
+										on:change={() => triggerAutoSave('cooldown_same_symbol', `${config.cooldown_same_symbol}s`)}
+									/>
+									<span class="slider-value">{config.cooldown_same_symbol}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Momentum Continuity -->
+					<div class="variable-item checkbox">
+						<label for="use-momentum-continuity">
+							<input
+								id="use-momentum-continuity"
+								type="checkbox"
+								bind:checked={config.use_momentum_continuity}
+								on:change={() => triggerAutoSave('use_momentum_continuity', config.use_momentum_continuity ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">📈 Momentum Continu</span>
+							<span class="var-desc">Vérifier que le momentum est dans la bonne direction</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_momentum_continuity')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_momentum_continuity}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="momentum-lookback">
+										<span class="var-name">Momentum Lookback</span>
+										<span class="var-desc">Nombre de bougies pour vérifier continuité</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="momentum-lookback"
+										type="range"
+										step="1"
+										min="2"
+										max="10"
+										bind:value={config.momentum_lookback}
+										on:change={() => triggerAutoSave('momentum_lookback', config.momentum_lookback)}
+									/>
+									<span class="slider-value">{config.momentum_lookback}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Candle Close Confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-candle-close">
+							<input
+								id="use-candle-close"
+								type="checkbox"
+								bind:checked={config.use_candle_close}
+								on:change={() => triggerAutoSave('use_candle_close', config.use_candle_close ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🕯️ Attendre Fermeture Bougie</span>
+							<span class="var-desc">N'entrer que proche de la fermeture de bougie</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_candle_close')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_candle_close}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="candle-close-threshold">
+										<span class="var-name">Seuil Fermeture (s)</span>
+										<span class="var-desc">Secondes avant fermeture pour considérer OK</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="candle-close-threshold"
+										type="range"
+										step="1"
+										min="3"
+										max="15"
+										bind:value={config.candle_close_threshold_seconds}
+										on:change={() => triggerAutoSave('candle_close_threshold_seconds', `${config.candle_close_threshold_seconds}s`)}
+									/>
+									<span class="slider-value">{config.candle_close_threshold_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Retest Breakout Confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-retest-confirmation">
+							<input
+								id="use-retest-confirmation"
+								type="checkbox"
+								bind:checked={config.use_retest_confirmation}
+								on:change={() => triggerAutoSave('use_retest_confirmation', config.use_retest_confirmation ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🔄 Confirmation Retest Breakout</span>
+							<span class="var-desc">Attendre retest du niveau cassé avant entrée (⚠️ Avancé)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_retest_confirmation')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_retest_confirmation}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="retest-tolerance">
+										<span class="var-name">Tolérance Retest (%)</span>
+										<span class="var-desc">Distance max pour valider le retest</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="retest-tolerance"
+										type="range"
+										step="0.05"
+										min="0.05"
+										max="0.5"
+										bind:value={config.retest_tolerance_pct}
+										on:change={() => triggerAutoSave('retest_tolerance_pct', config.retest_tolerance_pct.toFixed(2))}
+									/>
+									<span class="slider-value">{Number(config.retest_tolerance_pct).toFixed(2)}%</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="retest-timeout">
+										<span class="var-name">Timeout Retest (s)</span>
+										<span class="var-desc">Temps max pour attendre le retest</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="retest-timeout"
+										type="range"
+										step="30"
+										min="60"
+										max="600"
+										bind:value={config.retest_timeout_seconds}
+										on:change={() => triggerAutoSave('retest_timeout_seconds', `${config.retest_timeout_seconds}s`)}
+									/>
+									<span class="slider-value">{config.retest_timeout_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</section>
+
+			<!-- Section 5: Timeframes & ATR Optimal -->
 			<section class="variable-section">
 				<h3>⏱️ Timeframes & ATR Optimal</h3>
 				<p class="section-subtitle">Configuration des timeframes et plages ATR optimales pour filtrage</p>
@@ -2461,15 +2886,25 @@
 				<span class="version-icon-compact">🚀</span>
 				<span class="version-label-compact">XGBoost V2</span>
 			</button>
+
+			<button
+				class="version-btn-compact recommended"
+				class:active={mlVersion === 'gb'}
+				on:click={() => (mlVersion = 'gb')}
+			>
+				<span class="version-icon-compact">🎯</span>
+				<span class="version-label-compact">GradientBoosting</span>
+				<span class="badge-recommended">64%</span>
+			</button>
 		</div>
 	</div>
 
+	<!-- 🔥 SECTION FILTRAGE ML - UNIQUEMENT POUR XGBOOST V1 -->
 	{#if mlVersion === 'v1'}
-	<!-- 1. Section Filtrage ML (inchangée) -->
-	<section class="variable-section">
-		<h3>🎯 Filtrage ML des Trades</h3>
+	<section class="variable-section ml-common-section">
+		<h3>🎯 Filtrage ML XGBoost V1</h3>
 		<p class="section-desc">
-			Activez le filtrage pour que le bot rejette automatiquement les opportunités avec faible confiance ML.
+			Ces paramètres s'appliquent uniquement à XGBoost V1. Pour GradientBoosting, utilisez l'onglet dédié.
 		</p>
 
 		<div class="variable-item">
@@ -2492,6 +2927,49 @@
 
 		<div class="variable-item" class:disabled={!config.ml_filter_enabled}>
 			<div class="variable-label-container">
+				<label for="ml_filter_mode">
+					<span class="variable-name">Mode de Filtrage</span>
+					<span class="variable-desc">NEGATIVE = rejette les mauvais trades (+2.9% win rate)</span>
+				</label>
+			</div>
+			<select
+				id="ml_filter_mode"
+				bind:value={config.ml_filter_mode}
+				on:change={() => triggerAutoSave('ml_filter_mode', config.ml_filter_mode)}
+				disabled={!config.ml_filter_enabled}
+				class="select-input"
+			>
+				<option value="NEGATIVE">NEGATIVE (Recommandé)</option>
+				<option value="STRICT">STRICT</option>
+				<option value="SOFT">SOFT</option>
+			</select>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.ml_filter_enabled || config.ml_filter_mode !== 'NEGATIVE'}>
+			<div class="variable-label-container">
+				<label for="ml_loss_threshold">
+					<span class="variable-name">Seuil P(loss) pour Rejet</span>
+					<span class="variable-desc">Rejeter si P(loss) >= ce seuil (30-80%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="ml_loss_threshold"
+					min="0.30"
+					max="0.80"
+					step="0.05"
+					bind:value={config.ml_loss_threshold}
+					on:change={() => triggerAutoSave('ml_loss_threshold', Math.round(config.ml_loss_threshold * 100) + '%')}
+					disabled={!config.ml_filter_enabled || config.ml_filter_mode !== 'NEGATIVE'}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.ml_loss_threshold * 100)}%</span>
+			</div>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.ml_filter_enabled || config.ml_filter_mode === 'NEGATIVE'}>
+			<div class="variable-label-container">
 				<label for="ml_min_confidence">
 					<span class="variable-name">Seuil de Confiance Minimum</span>
 					<span class="variable-desc">Confiance minimale pour accepter un trade (50-90%)</span>
@@ -2506,14 +2984,16 @@
 					step="0.05"
 					bind:value={config.ml_min_confidence}
 					on:change={() => triggerAutoSave('ml_min_confidence', Math.round(config.ml_min_confidence * 100) + '%')}
-					disabled={!config.ml_filter_enabled}
+					disabled={!config.ml_filter_enabled || config.ml_filter_mode === 'NEGATIVE'}
 					class="slider"
 				/>
 				<span class="slider-value">{Math.round(config.ml_min_confidence * 100)}%</span>
 			</div>
 		</div>
 	</section>
+	{/if}
 
+	{#if mlVersion === 'v1'}
 	<!-- 2. Métriques du Modèle Actuel (déplacée ici) -->
 	<section class="variable-section">
 		<h3>📊 Métriques du Modèle Actuel</h3>
@@ -2851,6 +3331,9 @@
 	{:else if mlVersion === 'v2'}
 	<!-- Contenu XGBoost V2 -->
 	<MLCONTENT_V2_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
+	{:else if mlVersion === 'gb'}
+	<!-- Contenu GradientBoosting (Modèle Optimisé) -->
+	<MLCONTENT_GB_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
 	{/if}
 	{/if}
 
@@ -2861,6 +3344,15 @@
 					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig} data-debug-name="variablesPanel.current.refreshButton">
 						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
 					</button>
+					<button
+			class="btn-export"
+			on:click={exportCurrentConfigXlsx}
+			disabled={exportingCurrentConfig}
+			title="Exporter l'ensemble des variables en .xlsx"
+			data-debug-name="variablesPanel.current.exportButton"
+		>
+			{exportingCurrentConfig ? '⏳ Export...' : '📤 Export XLSX'}
+		</button>
 				</div>
 				<p class="section-desc" data-debug-name="variablesPanel.current.description">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
 
@@ -3168,6 +3660,31 @@
 	.version-label-compact {
 		font-size: 0.875rem;
 		white-space: nowrap;
+	}
+
+	.version-btn-compact.recommended {
+		border-color: rgba(16, 185, 129, 0.5);
+		background: rgba(16, 185, 129, 0.1);
+		position: relative;
+	}
+
+	.version-btn-compact.recommended.active {
+		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+		border-color: #10b981;
+		box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+	}
+
+	.badge-recommended {
+		position: absolute;
+		top: -8px;
+		right: -8px;
+		background: linear-gradient(135deg, #10b981, #059669);
+		color: white;
+		font-size: 10px;
+		font-weight: 700;
+		padding: 2px 6px;
+		border-radius: 8px;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 	}
 
 	.variables-panel {

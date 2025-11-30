@@ -199,6 +199,47 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
         
         logger.info(f"🏷️ One-hot encoding reject_reason_category: {len(reject_categories)+1} features créées")
     
+    # ========== TEMPORAL FEATURES ==========
+    # 🔥 Features temporelles pour capturer les patterns horaires/sessions
+    if 'timestamp' in df_eng.columns:
+        try:
+            # Convertir timestamp en datetime si nécessaire
+            if not pd.api.types.is_datetime64_any_dtype(df_eng['timestamp']):
+                df_eng['timestamp'] = pd.to_datetime(df_eng['timestamp'])
+            
+            # Heure UTC (0-23)
+            df_eng['hour_utc'] = df_eng['timestamp'].dt.hour
+            
+            # Sessions de marché (binaire)
+            # Asie: 00:00-08:00 UTC
+            df_eng['session_asia'] = ((df_eng['hour_utc'] >= 0) & (df_eng['hour_utc'] < 8)).astype(int)
+            # Europe: 08:00-16:00 UTC
+            df_eng['session_europe'] = ((df_eng['hour_utc'] >= 8) & (df_eng['hour_utc'] < 16)).astype(int)
+            # USA: 13:00-21:00 UTC (overlap avec Europe)
+            df_eng['session_usa'] = ((df_eng['hour_utc'] >= 13) & (df_eng['hour_utc'] < 21)).astype(int)
+            
+            # Heures à forte activité (overlap sessions)
+            df_eng['high_activity_hours'] = ((df_eng['hour_utc'] >= 13) & (df_eng['hour_utc'] < 17)).astype(int)
+            
+            # Jour de la semaine (0=Lundi, 6=Dimanche)
+            df_eng['day_of_week'] = df_eng['timestamp'].dt.dayofweek
+            
+            # Weekend (samedi/dimanche - moins de volume)
+            df_eng['is_weekend'] = (df_eng['day_of_week'] >= 5).astype(int)
+            
+            # Début/fin de semaine (lundi/vendredi - plus volatile)
+            df_eng['week_edge'] = ((df_eng['day_of_week'] == 0) | (df_eng['day_of_week'] == 4)).astype(int)
+            
+            # Heures favorables identifiées précédemment (2h, 12h, 16h UTC)
+            df_eng['favorable_hour'] = df_eng['hour_utc'].isin([2, 12, 16]).astype(int)
+            
+            # Heures défavorables (nuit Europe, peu de volume)
+            df_eng['unfavorable_hour'] = df_eng['hour_utc'].isin([3, 4, 5, 22, 23]).astype(int)
+            
+            logger.info(f"🕐 Features temporelles ajoutées: 11 nouvelles features")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur features temporelles: {e}")
+    
     logger.info(f"✅ Feature engineering de base terminé: {len(df_eng.columns)} features")
     
     # Ajouter features avancées
@@ -280,8 +321,17 @@ def select_top_features(
     y = df[target_col]
     
     if method == 'correlation':
+        # Filtrer colonnes constantes (variance=0) pour éviter division par 0
+        X_var = X.var()
+        constant_cols = X_var[X_var == 0].index.tolist()
+        if constant_cols:
+            logger.debug(f"⚠️ {len(constant_cols)} colonnes constantes ignorées pour corrélation")
+            X = X.drop(columns=constant_cols)
+        
         # Corrélation avec target
         correlations = X.corrwith(y).abs()
+        # Filtrer NaN (colonnes avec trop de valeurs manquantes)
+        correlations = correlations.dropna()
         top_features = correlations.nlargest(n_features).index.tolist()
         
     elif method == 'mutual_info':

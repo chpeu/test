@@ -147,12 +147,15 @@ def test_ml_train_endpoint_background_task(monkeypatch):
 
 
 def test_ml_train_endpoint_insufficient_data(monkeypatch):
-    """/api/ml/train returns 400 when not enough trades."""
+    """/api/ml/train returns 200 with warning when not enough trades (non-blocking)."""
 
     monkeypatch.setattr(feature_loader, "get_trades_count", lambda completed_only=True: 10)
 
     client = _test_client()
     response = client.post("/api/ml/train?model_type=xgboost&timeframe_days=60&min_trades=30")
 
-    assert response.status_code == 400
-    assert "Pas assez de données" in response.json()["detail"]
+    # Changed behavior: now returns 200 with warning instead of blocking with 400
+    # Training continues but logs a warning about limited data
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") in ["started", "pending", "running"] or "task_id" in data

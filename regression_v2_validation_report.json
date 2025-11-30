@@ -1,0 +1,113 @@
+{
+  "timestamp": "2025-11-29T08:15:04.494301",
+  "checks": [
+    {
+      "name": "Chargement donn\u00e9es",
+      "status": "PASS",
+      "message": "2892 samples charg\u00e9s",
+      "details": {
+        "n_samples": 2892,
+        "n_pnl_valid": "2892",
+        "n_features": 119
+      }
+    },
+    {
+      "name": "Distribution target_pnl",
+      "status": "WARN",
+      "message": "Distribution tr\u00e8s skewed (-10.20)",
+      "details": {
+        "mean": "-0.0051%",
+        "std": "3.2366%",
+        "median": "-0.0800%",
+        "skewness": "-10.20",
+        "kurtosis": "944.52",
+        "outliers_pct": "0.1%",
+        "near_zero_pct": "17.9%",
+        "min": "-100.0000%",
+        "max": "100.0000%"
+      }
+    },
+    {
+      "name": "Qualit\u00e9 features",
+      "status": "PASS",
+      "message": "65 features utiles",
+      "details": {
+        "total_features": 113,
+        "useful_features": "65",
+        "top_mi_score": "0.2153",
+        "mean_mi_score": "0.0277",
+        "top_5_features": [
+          {
+            "feature": "config_min_score_required",
+            "mi_score": 0.2153220926631918
+          },
+          {
+            "feature": "config_snr_threshold",
+            "mi_score": 0.20639507593593276
+          },
+          {
+            "feature": "day_of_week",
+            "mi_score": 0.12014348666200947
+          },
+          {
+            "feature": "config_atr_max_1m",
+            "mi_score": 0.10930940082950835
+          },
+          {
+            "feature": "config_atr_min_1m",
+            "mi_score": 0.10574816543089094
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test entra\u00eenement baseline",
+      "status": "FAIL",
+      "message": "R\u00b2 test n\u00e9gatif (-0.0035)",
+      "details": {
+        "train_r2": "0.0179",
+        "test_r2": "-0.0035",
+        "train_mae": "0.3525%",
+        "test_mae": "0.6680%",
+        "model": "Ridge(alpha=10)"
+      }
+    },
+    {
+      "name": "Test avec r\u00e9gularisation forte",
+      "status": "FAIL",
+      "message": "R\u00b2 test toujours n\u00e9gatif (-0.0433)",
+      "details": {
+        "train_r2": "-0.0000",
+        "val_r2": "-0.0771",
+        "test_r2": "-0.0433",
+        "gap": "0.0433",
+        "train_mae": "0.2784%",
+        "test_mae": "0.3075%",
+        "n_samples_filtered": 2338
+      }
+    },
+    {
+      "name": "D\u00e9tection overfitting",
+      "status": "PASS",
+      "message": "Gap OK: 0.0433",
+      "details": {
+        "train_r2": "-0.0000",
+        "test_r2": "-0.0433",
+        "gap": "0.0433"
+      }
+    },
+    {
+      "name": "Recommandations",
+      "status": "INFO",
+      "message": "4 recommandations",
+      "details": {}
+    }
+  ],
+  "recommendations": [
+    "\ud83d\udd27 Appliquer transformation log ou winsorization sur target_pnl",
+    "\ud83d\udd27 M\u00eame Ridge baseline a R\u00b2 < 0 - probl\u00e8me avec les donn\u00e9es",
+    "\ud83d\udd27 M\u00eame avec forte r\u00e9gularisation, R\u00b2 < 0 - le PNL% est tr\u00e8s difficile \u00e0 pr\u00e9dire",
+    "\ud83d\udd27 Consid\u00e9rer: (1) plus de donn\u00e9es, (2) features diff\u00e9rentes, (3) transformer la cible"
+  ],
+  "overall_status": "NEEDS_IMPROVEMENT"
+}

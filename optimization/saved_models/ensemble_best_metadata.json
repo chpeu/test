@@ -1,0 +1,25 @@
+{
+  "model_name": "ensemble",
+  "trained_at": "2025-11-30T10:20:17.513218",
+  "metrics": {
+    "accuracy": 0.4325581395348837,
+    "f1": 0.5960264900662252,
+    "precision": 0.4265402843601896,
+    "recall": 0.989010989010989,
+    "roc_auc": 0.5082417582417582,
+    "threshold": 0.30184637150837745
+  },
+  "n_features": 40,
+  "features": [
+    "wick_passed_1m",
+    "favorable_hour",
+    "di_gap_5m",
+    "macd_momentum_1m",
+    "european_session",
+    "rsi_neutral_1m",
+    "volatility_ratio",
+    "macd_hist_prev_1m",
+    "macd_hist_prev_5m",
+    "volatility_momentum_product"
+  ]
+}

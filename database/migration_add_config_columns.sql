@@ -44,6 +44,63 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_use_confluence') THEN
         ALTER TABLE scan_logs ADD COLUMN config_use_confluence BOOLEAN;
     END IF;
+
+    -- 🔥 OPT #15-19: Filtres avancés
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_use_anti_whipsaw') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_use_anti_whipsaw BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_whipsaw_lookback') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_whipsaw_lookback INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_whipsaw_threshold_pct') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_whipsaw_threshold_pct FLOAT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_whipsaw_max_alternations') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_whipsaw_max_alternations INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_use_retest_confirmation') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_use_retest_confirmation BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_retest_tolerance_pct') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_retest_tolerance_pct FLOAT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_retest_timeout_seconds') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_retest_timeout_seconds INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_use_cooldown') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_use_cooldown BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_cooldown_seconds') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_cooldown_seconds INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_cooldown_same_symbol') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_cooldown_same_symbol INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_use_candle_close') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_use_candle_close BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_candle_close_threshold_seconds') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_candle_close_threshold_seconds INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_use_momentum_continuity') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_use_momentum_continuity BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scan_logs' AND column_name = 'config_momentum_lookback') THEN
+        ALTER TABLE scan_logs ADD COLUMN config_momentum_lookback INTEGER;
+    END IF;
     
     RAISE NOTICE '✅ Colonnes config_* ajoutées à scan_logs';
 END $$;
@@ -57,6 +114,20 @@ COMMENT ON COLUMN scan_logs.config_atr_min_5m IS 'ATR min 5m (extrait de params_
 COMMENT ON COLUMN scan_logs.config_atr_max_5m IS 'ATR max 5m (extrait de params_snapshot)';
 COMMENT ON COLUMN scan_logs.config_volume_multiplier IS 'Multiplicateur volume (extrait de params_snapshot)';
 COMMENT ON COLUMN scan_logs.config_use_confluence IS 'Mode confluence activé (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_use_anti_whipsaw IS 'Filtre anti-whipsaw activé (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_whipsaw_lookback IS 'Lookback whipsaw (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_whipsaw_threshold_pct IS 'Seuil whipsaw % (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_whipsaw_max_alternations IS 'Max alternances whipsaw (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_use_retest_confirmation IS 'Retest breakout activé (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_retest_tolerance_pct IS 'Tolérance retest % (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_retest_timeout_seconds IS 'Timeout retest (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_use_cooldown IS 'Cooldown activé (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_cooldown_seconds IS 'Cooldown global (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_cooldown_same_symbol IS 'Cooldown même symbole (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_use_candle_close IS 'Confirmation fermeture bougie (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_candle_close_threshold_seconds IS 'Seuil fermeture bougie (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_use_momentum_continuity IS 'Filtre momentum activé (extrait de params_snapshot)';
+COMMENT ON COLUMN scan_logs.config_momentum_lookback IS 'Lookback momentum (extrait de params_snapshot)';
 
 -- ============================================================================
 -- TABLE trades - Ajouter colonnes config_*
@@ -96,6 +167,63 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_use_confluence') THEN
         ALTER TABLE trades ADD COLUMN config_use_confluence BOOLEAN;
     END IF;
+
+    -- 🔥 OPT #15-19: Filtres avancés
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_use_anti_whipsaw') THEN
+        ALTER TABLE trades ADD COLUMN config_use_anti_whipsaw BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_whipsaw_lookback') THEN
+        ALTER TABLE trades ADD COLUMN config_whipsaw_lookback INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_whipsaw_threshold_pct') THEN
+        ALTER TABLE trades ADD COLUMN config_whipsaw_threshold_pct FLOAT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_whipsaw_max_alternations') THEN
+        ALTER TABLE trades ADD COLUMN config_whipsaw_max_alternations INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_use_retest_confirmation') THEN
+        ALTER TABLE trades ADD COLUMN config_use_retest_confirmation BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_retest_tolerance_pct') THEN
+        ALTER TABLE trades ADD COLUMN config_retest_tolerance_pct FLOAT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_retest_timeout_seconds') THEN
+        ALTER TABLE trades ADD COLUMN config_retest_timeout_seconds INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_use_cooldown') THEN
+        ALTER TABLE trades ADD COLUMN config_use_cooldown BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_cooldown_seconds') THEN
+        ALTER TABLE trades ADD COLUMN config_cooldown_seconds INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_cooldown_same_symbol') THEN
+        ALTER TABLE trades ADD COLUMN config_cooldown_same_symbol INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_use_candle_close') THEN
+        ALTER TABLE trades ADD COLUMN config_use_candle_close BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_candle_close_threshold_seconds') THEN
+        ALTER TABLE trades ADD COLUMN config_candle_close_threshold_seconds INTEGER;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_use_momentum_continuity') THEN
+        ALTER TABLE trades ADD COLUMN config_use_momentum_continuity BOOLEAN;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'trades' AND column_name = 'config_momentum_lookback') THEN
+        ALTER TABLE trades ADD COLUMN config_momentum_lookback INTEGER;
+    END IF;
     
     RAISE NOTICE '✅ Colonnes config_* ajoutées à trades';
 END $$;
@@ -109,6 +237,20 @@ COMMENT ON COLUMN trades.config_optimal_atr_min_5m IS 'ATR min 5m (extrait de co
 COMMENT ON COLUMN trades.config_optimal_atr_max_5m IS 'ATR max 5m (extrait de config_snapshot)';
 COMMENT ON COLUMN trades.config_volume_multiplier IS 'Multiplicateur volume (extrait de config_snapshot)';
 COMMENT ON COLUMN trades.config_use_confluence IS 'Mode confluence activé (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_use_anti_whipsaw IS 'Filtre anti-whipsaw activé (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_whipsaw_lookback IS 'Lookback whipsaw (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_whipsaw_threshold_pct IS 'Seuil whipsaw % (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_whipsaw_max_alternations IS 'Max alternances whipsaw (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_use_retest_confirmation IS 'Retest breakout activé (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_retest_tolerance_pct IS 'Tolérance retest % (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_retest_timeout_seconds IS 'Timeout retest (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_use_cooldown IS 'Cooldown activé (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_cooldown_seconds IS 'Cooldown global (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_cooldown_same_symbol IS 'Cooldown même symbole (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_use_candle_close IS 'Confirmation fermeture bougie (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_candle_close_threshold_seconds IS 'Seuil fermeture bougie (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_use_momentum_continuity IS 'Filtre momentum activé (extrait de config_snapshot)';
+COMMENT ON COLUMN trades.config_momentum_lookback IS 'Lookback momentum (extrait de config_snapshot)';
 
 -- ============================================================================
 -- Backfill depuis params_snapshot (scan_logs)
@@ -124,7 +266,21 @@ SET
     config_atr_min_5m = (params_snapshot->'optimal_atr'->'5m'->>'min')::FLOAT,
     config_atr_max_5m = (params_snapshot->'optimal_atr'->'5m'->>'max')::FLOAT,
     config_volume_multiplier = (params_snapshot->>'volume_multiplier')::FLOAT,
-    config_use_confluence = (params_snapshot->>'use_confluence')::BOOLEAN
+    config_use_confluence = (params_snapshot->>'use_confluence')::BOOLEAN,
+    config_use_anti_whipsaw = (params_snapshot->>'use_anti_whipsaw')::BOOLEAN,
+    config_whipsaw_lookback = (params_snapshot->>'whipsaw_lookback')::INTEGER,
+    config_whipsaw_threshold_pct = (params_snapshot->>'whipsaw_threshold_pct')::FLOAT,
+    config_whipsaw_max_alternations = (params_snapshot->>'whipsaw_max_alternations')::INTEGER,
+    config_use_retest_confirmation = (params_snapshot->>'use_retest_confirmation')::BOOLEAN,
+    config_retest_tolerance_pct = (params_snapshot->>'retest_tolerance_pct')::FLOAT,
+    config_retest_timeout_seconds = (params_snapshot->>'retest_timeout_seconds')::INTEGER,
+    config_use_cooldown = (params_snapshot->>'use_cooldown')::BOOLEAN,
+    config_cooldown_seconds = (params_snapshot->>'cooldown_seconds')::INTEGER,
+    config_cooldown_same_symbol = (params_snapshot->>'cooldown_same_symbol')::INTEGER,
+    config_use_candle_close = (params_snapshot->>'use_candle_close')::BOOLEAN,
+    config_candle_close_threshold_seconds = (params_snapshot->>'candle_close_threshold_seconds')::INTEGER,
+    config_use_momentum_continuity = (params_snapshot->>'use_momentum_continuity')::BOOLEAN,
+    config_momentum_lookback = (params_snapshot->>'momentum_lookback')::INTEGER
 WHERE params_snapshot IS NOT NULL
   AND config_min_score_required IS NULL;
 
@@ -142,7 +298,21 @@ SET
     config_optimal_atr_min_5m = (config_snapshot->'optimal_atr'->'5m'->>'min')::FLOAT,
     config_optimal_atr_max_5m = (config_snapshot->'optimal_atr'->'5m'->>'max')::FLOAT,
     config_volume_multiplier = (config_snapshot->>'volume_multiplier')::FLOAT,
-    config_use_confluence = (config_snapshot->>'use_confluence')::BOOLEAN
+    config_use_confluence = (config_snapshot->>'use_confluence')::BOOLEAN,
+    config_use_anti_whipsaw = (config_snapshot->>'use_anti_whipsaw')::BOOLEAN,
+    config_whipsaw_lookback = (config_snapshot->>'whipsaw_lookback')::INTEGER,
+    config_whipsaw_threshold_pct = (config_snapshot->>'whipsaw_threshold_pct')::FLOAT,
+    config_whipsaw_max_alternations = (config_snapshot->>'whipsaw_max_alternations')::INTEGER,
+    config_use_retest_confirmation = (config_snapshot->>'use_retest_confirmation')::BOOLEAN,
+    config_retest_tolerance_pct = (config_snapshot->>'retest_tolerance_pct')::FLOAT,
+    config_retest_timeout_seconds = (config_snapshot->>'retest_timeout_seconds')::INTEGER,
+    config_use_cooldown = (config_snapshot->>'use_cooldown')::BOOLEAN,
+    config_cooldown_seconds = (config_snapshot->>'cooldown_seconds')::INTEGER,
+    config_cooldown_same_symbol = (config_snapshot->>'cooldown_same_symbol')::INTEGER,
+    config_use_candle_close = (config_snapshot->>'use_candle_close')::BOOLEAN,
+    config_candle_close_threshold_seconds = (config_snapshot->>'candle_close_threshold_seconds')::INTEGER,
+    config_use_momentum_continuity = (config_snapshot->>'use_momentum_continuity')::BOOLEAN,
+    config_momentum_lookback = (config_snapshot->>'momentum_lookback')::INTEGER
 WHERE config_snapshot IS NOT NULL
   AND config_min_score_required IS NULL;
 

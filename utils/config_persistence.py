@@ -82,8 +82,15 @@ def apply_config_overrides(trading_config: Dict[str, Any]) -> Dict[str, Any]:
         
         # Appliquer chaque override
         applied_count = 0
+        # Prefixes autorisés pour nouvelles clés (config UI)
+        allowed_new_prefixes = ('gb_', 'ml_', 'xgb_', 'optuna_')
+        
         for key, value in overrides.items():
             if key in trading_config:
+                trading_config[key] = value
+                applied_count += 1
+            elif key.startswith(allowed_new_prefixes):
+                # Accepter nouvelles clés pour GB, ML, XGBoost, Optuna
                 trading_config[key] = value
                 applied_count += 1
             else:

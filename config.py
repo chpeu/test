@@ -27,8 +27,11 @@ TRADING_CONFIG = {
     "use_slippage_calculation": True,  # Calculer slippage estimé basé sur spread et profondeur
     "position_timeout": 300,  # 5 minutes
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
-    "scan_interval": 45,  # 45 secondes pour position scan
+    "scan_interval": 30,  # 🔥 OPT #14: 30 secondes pour capture plus rapide des setups
     "scalability_interval": 90,  # 90 secondes pour scalability scan
+    # 🔥 Liste des paires à exclure manuellement (par exemple contraintes de taille minimale)
+    # ZEC retiré - bug contractSize corrigé le 29/11/2025
+    "excluded_symbols": [],
 
     # BUG #14 FIX: Suppression doublon volume_multiplier (défini ligne 77 avec valeur ajustée 0.95)
     "volume_multiplier_range": (0.10, 2.00),
@@ -95,8 +98,46 @@ TRADING_CONFIG = {
     "top_pairs_limit": 20,
     "balance_score_min": 0.7,
     
+    # 🔥 OPT SCALABILITY: Paramètres configurables (anciennement hardcodés)
+    "scalability_spread_min": 0.001,  # Spread minimum % (évite slippage nul)
+    "scalability_spread_max": 0.02,   # Spread maximum % (évite coûts excessifs)
+    "scalability_volume_min": 100000,  # Volume minimum USDT (5 dernières bougies)
+    "scalability_volume_24h_min": 500000,  # Volume 24h minimum pour pré-filtrage
+    "scalability_funding_rate_max": 0.05,  # Funding rate max % (évite coûts cachés)
+    "scalability_adx_bonus_threshold": 25,  # ADX > seuil = bonus trend
+    "scalability_adx_bonus_multiplier": 1.2,  # Multiplicateur bonus si trend fort
+    "scalability_klines_limit": 30,  # Nombre de klines à récupérer (était 60)
+    "scalability_orderbook_cache_ttl": 30,  # TTL cache orderbook en secondes
+    "scalability_interval_min": 60,  # Intervalle minimum en secondes
+    "scalability_interval_max": 180,  # Intervalle maximum en secondes
+    "scalability_log_rejected": True,  # Logger les paires rejetées avec raison
+    
     # Confluence
     "use_confluence": False,  # False = 1m OU 5m, True = 1m ET 5m
+    
+    # 🔥 OPT #15: Anti-Whipsaw Filter
+    "use_anti_whipsaw": True,  # Détecter et rejeter les marchés en zigzag
+    "whipsaw_lookback": 5,  # Nombre de bougies à analyser
+    "whipsaw_threshold_pct": 0.2,  # Amplitude min pour compter comme mouvement significatif
+    "whipsaw_max_alternations": 3,  # Nombre max d'alternances avant rejet
+    
+    # 🔥 OPT #16: Confirmation Retest Breakout
+    "use_retest_confirmation": False,  # Attendre retest du niveau cassé avant entrée
+    "retest_tolerance_pct": 0.1,  # Tolérance pour considérer un retest valide
+    "retest_timeout_seconds": 300,  # Timeout avant abandon du pending breakout (5 min)
+    
+    # 🔥 OPT #17: Cooldown Post-Trade
+    "use_cooldown": True,  # Activer cooldown entre trades
+    "cooldown_seconds": 30,  # Délai minimum entre fermeture et nouvelle ouverture
+    "cooldown_same_symbol": 60,  # Délai supplémentaire pour même symbole
+    
+    # 🔥 OPT #18: Candle Close Confirmation  
+    "use_candle_close": False,  # Attendre fermeture bougie avant entrée
+    "candle_close_threshold_seconds": 5,  # Seuil pour considérer proche de la fermeture
+    
+    # 🔥 OPT #19: Momentum Continuity Filter
+    "use_momentum_continuity": True,  # Vérifier que le momentum est croissant
+    "momentum_lookback": 3,  # Nombre de bougies pour vérifier continuité
     
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT
@@ -113,7 +154,8 @@ TRADING_CONFIG = {
     "mexc_browser_token": os.getenv("MEXC_BROWSER_TOKEN", ""),
     "use_bypass_mode": True,  # Utiliser le mode bypass (recommandé si API bloquée)
     # 🔄 Synchronisation des entrées live (éviter décalages prix/size)
-    "live_entry_sync_delay_sec": 2,  # attendre 2s avant lecture de la position réelle
+    "live_entry_sync_delay_sec": 2,  # attendre 2s avant lecture de la position réelle (ouverture)
+    "live_resync_delay_sec": 2,  # 🔥 FIX: attendre 2s avant resynchronisation (TP partiel, etc.)
     "live_entry_sync_use_ccxt": True,  # utiliser l'API clés (CCXT) pour lecture plutôt que bypass quand dispo
     
     # 🔥 FIX: Validation slippage avant ouverture position
@@ -294,6 +336,18 @@ TRADING_CONFIG = {
     "ml_v2_subsample": 0.70,
     "ml_v2_colsample_bytree": 0.70,
     "ml_v2_gamma": 0.50,
+    
+    # GradientBoosting (Modèle Optimisé 64-69% accuracy)
+    "gb_filter_enabled": True,  # Activé par défaut car performant
+    "gb_min_confidence": 0.55,  # 55% seuil
+    "gb_n_estimators": 200,
+    "gb_max_depth": 3,
+    "gb_learning_rate": 0.03,
+    "gb_min_samples_split": 30,
+    "gb_min_samples_leaf": 15,
+    "gb_subsample": 0.70,
+    "gb_max_features": 0.50,
+    "gb_model_type": "gb",  # 'gb' = GradientBoosting, 'histgb' = HistGradientBoosting (10x plus rapide)
 }
 
 # Risk management
@@ -424,8 +478,8 @@ ML_CONFIG = {
     # Activation du filtre ML pour le trading
     "enabled": os.getenv('ML_FILTER_ENABLED', 'false').lower() == 'true',
 
-    # Modèle à utiliser
-    "model_name": os.getenv('ML_MODEL_NAME', 'xgboost_v1'),
+    # Modèle à utiliser ("optimized" = GradientBoosting 64-69% accuracy, "xgboost_v1" = ancien ~50%)
+    "model_name": os.getenv('ML_MODEL_NAME', 'optimized'),
 
     # Seuil de confiance minimum pour accepter un trade
     "min_confidence": float(os.getenv('ML_MIN_CONFIDENCE', '0.60')),  # 60% par défaut
@@ -436,7 +490,11 @@ ML_CONFIG = {
     # Mode de fonctionnement
     # - "STRICT": Accepter uniquement les prédictions 'win' avec confiance >= min_confidence
     # - "SOFT": Rejeter seulement les prédictions 'loss' avec confiance >= max_loss_confidence
-    "mode": os.getenv('ML_MODE', 'STRICT'),
+    # - "NEGATIVE": 🔥 NOUVEAU - Rejeter si P(loss) >= loss_threshold (filtre négatif, +6.8% win rate)
+    "mode": os.getenv('ML_MODE', 'NEGATIVE'),  # 🔥 NEGATIVE par défaut (meilleurs résultats)
+    
+    # 🔥 NOUVEAU: Seuil pour le mode NEGATIVE (rejeter si P(loss) >= ce seuil)
+    "loss_threshold": float(os.getenv('ML_LOSS_THRESHOLD', '0.45')),  # 45% = +6.8% win rate
 
     # Logger les prédictions dans PostgreSQL
     "log_predictions": True,
@@ -458,9 +516,13 @@ try:
         ML_CONFIG['enabled'] = TRADING_CONFIG['ml_filter_enabled']
     if 'ml_min_confidence' in TRADING_CONFIG:
         ML_CONFIG['min_confidence'] = TRADING_CONFIG['ml_min_confidence']
+    if 'ml_filter_mode' in TRADING_CONFIG:
+        ML_CONFIG['mode'] = TRADING_CONFIG['ml_filter_mode']
+    if 'ml_loss_threshold' in TRADING_CONFIG:
+        ML_CONFIG['loss_threshold'] = TRADING_CONFIG['ml_loss_threshold']
     
     import logging
-    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}")
+    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, mode={ML_CONFIG.get('mode', 'NEGATIVE')}, loss_threshold={ML_CONFIG.get('loss_threshold', 0.45)}")
     
 except Exception as e:
     import logging

@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-11-30T11:39:26.158219",
+  "all_passed": true,
+  "results": {
+    "config": {
+      "enabled": true,
+      "mode": "NEGATIVE",
+      "loss_threshold": 0.55,
+      "min_confidence": 0.6
+    },
+    "models": {
+      "v1": {
+        "loaded": true,
+        "working": true
+      },
+      "v2": {
+        "loaded": true,
+        "working": true
+      },
+      "gb": {
+        "loaded": true,
+        "working": true
+      },
+      "negative": {
+        "loaded": true,
+        "working": true
+      }
+    },
+    "performance": {
+      "GradientBoosting": 0.6527777777777778,
+      "Filtre Negatif": 0.875
+    }
+  }
+}

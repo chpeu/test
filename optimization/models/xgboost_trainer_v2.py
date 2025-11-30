@@ -1,18 +1,21 @@
 """
-XGBoost Trainer V2 - Version améliorée avec split temporel et filtrage qualité
+XGBoost Trainer V2.1 - Version améliorée avec split temporel et filtrage qualité
 
 Améliorations vs V1:
 1. Split temporel (pas random) - Évite data leakage
 2. Filtrage trades marginaux (bruit)
 3. Features top-K seulement (features discriminantes)
-4. Walk-forward validation option
+4. Walk-forward validation IMPLÉMENTÉ
 5. Analyse distribution temporelle win/loss
+6. Calibration des probabilités
+7. Métriques trading-specific (Profit Factor, Sharpe)
+8. Intégration automatique des hyperparamètres Optuna
 """
 import logging
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 import joblib
 import pandas as pd
@@ -26,7 +29,9 @@ from sklearn.metrics import (
     roc_auc_score,
     confusion_matrix,
     classification_report,
+    brier_score_loss,
 )
+from sklearn.calibration import CalibratedClassifierCV
 
 from optimization.data.feature_loader import load_features_from_postgres
 from optimization.data.feature_engineering import calculate_derived_features
@@ -64,7 +69,14 @@ class XGBoostTrainerV2:
         # Feature selection
         feature_selection: bool = True,
         max_features: int = 30,  # Top 30 features seulement
-        # XGBoost params (meilleures valeurs)
+        # 🔥 V2.1: Walk-forward validation
+        walk_forward: bool = False,
+        walk_forward_splits: int = 5,
+        # 🔥 V2.1: Calibration des probabilités
+        calibrate_probabilities: bool = True,
+        # 🔥 V2.1: Charger params depuis Optuna/config
+        load_optuna_params: bool = True,
+        # XGBoost params (défauts, écrasés par Optuna si disponible)
         n_estimators: int = 500,
         max_depth: int = 5,
         learning_rate: float = 0.05,
@@ -90,10 +102,33 @@ class XGBoostTrainerV2:
             Dict avec métriques et diagnostic
         """
         logger.info("=" * 80)
-        logger.info("🚀 XGBOOST TRAINER V2 - Temporal Split + Quality Filtering")
+        logger.info("🚀 XGBOOST TRAINER V2.1 - Temporal Split + Quality Filtering + Calibration")
         logger.info("=" * 80)
 
         start_time = datetime.now()
+        
+        # 🔥 V2.1: Charger hyperparamètres depuis Optuna/config si disponible
+        if load_optuna_params:
+            optuna_params = self._load_optuna_params()
+            if optuna_params:
+                logger.info(f"🎯 Hyperparamètres Optuna chargés: {len(optuna_params)} params")
+                # Écraser les défauts
+                n_estimators = optuna_params.get('n_estimators', n_estimators)
+                max_depth = optuna_params.get('max_depth', max_depth)
+                learning_rate = optuna_params.get('learning_rate', learning_rate)
+                min_child_weight = optuna_params.get('min_child_weight', min_child_weight)
+                reg_alpha = optuna_params.get('reg_alpha', reg_alpha)
+                reg_lambda = optuna_params.get('reg_lambda', reg_lambda)
+                subsample = optuna_params.get('subsample', subsample)
+                colsample_bytree = optuna_params.get('colsample_bytree', colsample_bytree)
+                gamma = optuna_params.get('gamma', gamma)
+                # Params supplémentaires
+                xgb_params.update({
+                    k: v for k, v in optuna_params.items() 
+                    if k not in ['n_estimators', 'max_depth', 'learning_rate', 
+                                 'min_child_weight', 'reg_alpha', 'reg_lambda',
+                                 'subsample', 'colsample_bytree', 'gamma']
+                })
 
         # 1. Charger données
         logger.info(f"📥 Chargement données (timeframe={timeframe_days}d, min_trades={min_trades})...")
@@ -224,9 +259,39 @@ class XGBoostTrainerV2:
             early_stopping_rounds=early_stopping_rounds,
             verbose=False
         )
+        
+        # 🔥 V2.1: Walk-forward validation si activé
+        walk_forward_results = None
+        if walk_forward:
+            logger.info(f"\n🔄 Walk-forward validation ({walk_forward_splits} splits)...")
+            walk_forward_results = self._walk_forward_validation(
+                df, feature_cols if not feature_selection else selected_features,
+                walk_forward_splits, model_params
+            )
+            logger.info(f"✅ Walk-forward: mean={walk_forward_results['mean_score']:.4f}, std={walk_forward_results['std_score']:.4f}")
+        
+        # 🔥 V2.1: Calibration des probabilités
+        self.calibrated_model = None
+        if calibrate_probabilities:
+            logger.info("\n🎯 Calibration des probabilités (isotonic)...")
+            try:
+                self.calibrated_model = CalibratedClassifierCV(
+                    self.model, method='isotonic', cv='prefit'
+                )
+                self.calibrated_model.fit(X_val_scaled, y_val)
+                
+                # Vérifier amélioration Brier score
+                y_val_proba_raw = self.model.predict_proba(X_val_scaled)[:, 1]
+                y_val_proba_cal = self.calibrated_model.predict_proba(X_val_scaled)[:, 1]
+                brier_raw = brier_score_loss(y_val, y_val_proba_raw)
+                brier_cal = brier_score_loss(y_val, y_val_proba_cal)
+                
+                logger.info(f"✅ Brier score: {brier_raw:.4f} → {brier_cal:.4f} ({"-" if brier_cal < brier_raw else "+"}{abs(brier_raw - brier_cal)*100:.1f}%)")
+            except Exception as e:
+                logger.warning(f"⚠️ Calibration échouée: {e}")
 
         training_time = (datetime.now() - start_time).total_seconds()
-        logger.info(f"✅ Entraînement terminé en {training_time:.2f}s")
+        logger.info(f"\n✅ Entraînement terminé en {training_time:.2f}s")
 
         # 8. Évaluation
         metrics = self._evaluate_model(
@@ -440,6 +505,206 @@ class XGBoostTrainerV2:
         metadata_path = self.model_dir / f"{self.model_name}_metadata.json"
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(self.metadata, f, indent=2, ensure_ascii=False)
+
+    def _load_optuna_params(self) -> Optional[Dict]:
+        """
+        🔥 V2.1: Charger les hyperparamètres optimisés depuis config_overrides.json ou Optuna DB
+        """
+        # Params XGBoost valides (whitelist)
+        VALID_XGB_PARAMS = {
+            'n_estimators', 'max_depth', 'learning_rate', 'min_child_weight',
+            'reg_alpha', 'reg_lambda', 'subsample', 'colsample_bytree',
+            'colsample_bylevel', 'gamma', 'scale_pos_weight', 'max_bin',
+            'grow_policy', 'tree_method'
+        }
+        
+        try:
+            # 1. Essayer config_overrides.json
+            config_path = Path("config_overrides.json")
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                
+                # Chercher ml_params_to_apply ou ml_* params
+                if 'ml_params_to_apply' in config:
+                    params = config['ml_params_to_apply']
+                    # Nettoyer les metadata et filtrer params valides
+                    clean_params = {}
+                    for k, v in params.items():
+                        if not k.startswith('_'):
+                            # Retirer préfixe v2_ si présent
+                            param_name = k[3:] if k.startswith('v2_') else k
+                            if param_name in VALID_XGB_PARAMS:
+                                clean_params[param_name] = v
+                    return clean_params if clean_params else None
+                
+                # Sinon chercher ml_v2_* puis ml_* params individuels
+                ml_params = {}
+                
+                # Priorité aux params V2
+                for key, value in config.items():
+                    if key.startswith('ml_v2_'):
+                        param_name = key[6:]  # Enlever 'ml_v2_'
+                        if param_name in VALID_XGB_PARAMS:
+                            ml_params[param_name] = value
+                
+                # Si pas de V2, utiliser V1
+                if not ml_params:
+                    for key, value in config.items():
+                        if key.startswith('ml_') and not key.startswith('ml_v2_') and not key.startswith('ml_params'):
+                            param_name = key[3:]  # Enlever 'ml_'
+                            if param_name in VALID_XGB_PARAMS:
+                                ml_params[param_name] = value
+                
+                if ml_params:
+                    logger.info(f"📂 Params XGBoost chargés depuis config_overrides.json: {list(ml_params.keys())}")
+                    return ml_params
+            
+            # 2. Essayer Optuna DB directement
+            import optuna
+            storage_path = "sqlite:///data/optuna_v2.db"
+            try:
+                study = optuna.load_study(
+                    study_name="xgboost_v2_enhanced_optimization",
+                    storage=storage_path
+                )
+                if study.best_trial:
+                    logger.info(f"📂 Params chargés depuis Optuna: best_value={study.best_value:.4f}")
+                    return study.best_params
+            except Exception:
+                pass
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de charger params Optuna: {e}")
+            return None
+
+    def _walk_forward_validation(
+        self,
+        df: pd.DataFrame,
+        feature_cols: List[str],
+        n_splits: int,
+        model_params: Dict
+    ) -> Dict:
+        """
+        🔥 V2.1: Walk-forward validation temporelle
+        
+        Divise les données en n_splits fenêtres glissantes:
+        - Split 1: Train sur 60%, Test sur 10% suivants
+        - Split 2: Train sur 68%, Test sur 10% suivants
+        - etc.
+        """
+        logger.info(f"🔄 Walk-forward validation avec {n_splits} splits...")
+        
+        scores = []
+        df_sorted = df.sort_values('timestamp').reset_index(drop=True)
+        total_len = len(df_sorted)
+        
+        # Taille initiale train: 60%, incréments de 8%
+        initial_train_ratio = 0.60
+        test_ratio = 0.10
+        increment = (1.0 - initial_train_ratio - test_ratio) / max(n_splits - 1, 1)
+        
+        exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity']
+        
+        for i in range(n_splits):
+            train_end_ratio = initial_train_ratio + i * increment
+            test_end_ratio = train_end_ratio + test_ratio
+            
+            train_end_idx = int(total_len * train_end_ratio)
+            test_end_idx = int(total_len * test_end_ratio)
+            
+            if test_end_idx > total_len:
+                break
+            
+            train_data = df_sorted.iloc[:train_end_idx]
+            test_data = df_sorted.iloc[train_end_idx:test_end_idx]
+            
+            if len(test_data) < 10:
+                continue
+            
+            # Préparer X, y
+            X_train = train_data[feature_cols].copy()
+            y_train = train_data['target_win'].copy()
+            X_test = test_data[feature_cols].copy()
+            y_test = test_data['target_win'].copy()
+            
+            # Preprocessing
+            preprocessor = FeaturePreprocessor(scaler_type='robust')
+            X_train_scaled, _ = preprocessor.fit_transform(
+                pd.concat([X_train, y_train.rename('target_win')], axis=1),
+                target_col='target_win'
+            )
+            X_test_scaled = preprocessor.transform(X_test)
+            
+            # Entraîner
+            model = XGBClassifier(**model_params)
+            model.fit(X_train_scaled, y_train, verbose=False)
+            
+            # Évaluer
+            y_pred = model.predict(X_test_scaled)
+            y_proba = model.predict_proba(X_test_scaled)[:, 1]
+            
+            score = f1_score(y_test, y_pred, zero_division=0)
+            auc = roc_auc_score(y_test, y_proba) if len(np.unique(y_test)) > 1 else 0.5
+            
+            scores.append({
+                'split': i + 1,
+                'train_size': len(train_data),
+                'test_size': len(test_data),
+                'f1': score,
+                'auc': auc
+            })
+            
+            logger.info(f"  Split {i+1}: train={len(train_data)}, test={len(test_data)}, F1={score:.4f}, AUC={auc:.4f}")
+        
+        if not scores:
+            return {'mean_score': 0, 'std_score': 0, 'splits': []}
+        
+        f1_scores = [s['f1'] for s in scores]
+        auc_scores = [s['auc'] for s in scores]
+        
+        return {
+            'mean_score': np.mean(f1_scores),
+            'std_score': np.std(f1_scores),
+            'mean_auc': np.mean(auc_scores),
+            'std_auc': np.std(auc_scores),
+            'splits': scores
+        }
+
+    def _calculate_trading_metrics(
+        self,
+        y_true: np.ndarray,
+        y_pred: np.ndarray,
+        pnl_values: Optional[np.ndarray] = None
+    ) -> Dict:
+        """
+        🔥 V2.1: Métriques spécifiques au trading
+        """
+        metrics = {
+            'accuracy': accuracy_score(y_true, y_pred),
+            'precision': precision_score(y_true, y_pred, zero_division=0),
+            'recall': recall_score(y_true, y_pred, zero_division=0),
+            'f1': f1_score(y_true, y_pred, zero_division=0),
+        }
+        
+        if pnl_values is not None:
+            # Profit Factor simulé
+            predicted_wins = y_pred == 1
+            if predicted_wins.sum() > 0:
+                profits = pnl_values[predicted_wins & (y_true == 1)]
+                losses = abs(pnl_values[predicted_wins & (y_true == 0)])
+                
+                total_profit = profits.sum() if len(profits) > 0 else 0
+                total_loss = losses.sum() if len(losses) > 0 else 1
+                
+                metrics['profit_factor'] = total_profit / total_loss if total_loss > 0 else 0
+                metrics['avg_profit'] = profits.mean() if len(profits) > 0 else 0
+                metrics['avg_loss'] = losses.mean() if len(losses) > 0 else 0
+                metrics['win_rate'] = y_true[predicted_wins].mean()
+        
+        return metrics
 
 
 if __name__ == "__main__":

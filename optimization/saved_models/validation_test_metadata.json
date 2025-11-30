@@ -1,0 +1,176 @@
+{
+  "model_name": "validation_test",
+  "model_type": "XGBClassifier_V2_Temporal",
+  "model_path": "optimization\\saved_models\\validation_test.pkl",
+  "preprocessor_path": "optimization\\saved_models\\validation_test_preprocessor.pkl",
+  "model_params": {
+    "n_estimators": 400,
+    "max_depth": 3,
+    "learning_rate": 0.01,
+    "min_child_weight": 10,
+    "reg_alpha": 5.0,
+    "reg_lambda": 8.0,
+    "subsample": 0.6692322301082811,
+    "colsample_bytree": 0.8312101753453213,
+    "gamma": 1.3834704023781477,
+    "scale_pos_weight": 1.12316715542522,
+    "random_state": 42,
+    "eval_metric": "logloss",
+    "use_label_encoder": false
+  },
+  "metrics": {
+    "train": {
+      "accuracy": 0.6022099447513812,
+      "precision": 0.5704787234042553,
+      "recall": 0.6290322580645161,
+      "f1": 0.5983263598326359,
+      "roc_auc": 0.6398082356454294
+    },
+    "validation": {
+      "accuracy": 0.5217391304347826,
+      "precision": 0.5929203539823009,
+      "recall": 0.5583333333333333,
+      "f1": 0.575107296137339,
+      "roc_auc": 0.5171455938697318
+    },
+    "test": {
+      "accuracy": 0.4927536231884058,
+      "precision": 0.5017301038062284,
+      "recall": 0.6872037914691943,
+      "f1": 0.58,
+      "roc_auc": 0.5126654682137605
+    },
+    "gaps": {
+      "accuracy": 0.10945632156297541,
+      "roc_auc": 0.12714276743166897
+    },
+    "confusion_matrix": [
+      [
+        59,
+        144
+      ],
+      [
+        66,
+        145
+      ]
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "bb_width_5m",
+      "importance": 0.09364097565412521
+    },
+    {
+      "feature": "volatility_momentum_product",
+      "importance": 0.07280710339546204
+    },
+    {
+      "feature": "momentum_divergence",
+      "importance": 0.07253772765398026
+    },
+    {
+      "feature": "macd_momentum_1m",
+      "importance": 0.07203646749258041
+    },
+    {
+      "feature": "macd_hist_5m",
+      "importance": 0.07094591110944748
+    },
+    {
+      "feature": "breakout_passed_5m",
+      "importance": 0.06961537897586823
+    },
+    {
+      "feature": "atr_optimal_passed_1m",
+      "importance": 0.06846540421247482
+    },
+    {
+      "feature": "adx_5m",
+      "importance": 0.0681670755147934
+    },
+    {
+      "feature": "rsi_divergence",
+      "importance": 0.06701672822237015
+    },
+    {
+      "feature": "strong_trend_1m",
+      "importance": 0.06400744616985321
+    },
+    {
+      "feature": "di_gap_1m",
+      "importance": 0.06282694637775421
+    },
+    {
+      "feature": "atr_optimal_passed_5m",
+      "importance": 0.05932110175490379
+    },
+    {
+      "feature": "quality_score_5m",
+      "importance": 0.05830566957592964
+    },
+    {
+      "feature": "bb_width_1m",
+      "importance": 0.05523785203695297
+    },
+    {
+      "feature": "ema_aligned",
+      "importance": 0.045068223029375076
+    },
+    {
+      "feature": "macd_bullish_cross_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_spike_strong",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_none",
+      "importance": 0.0
+    },
+    {
+      "feature": "bullish_confluence",
+      "importance": 0.0
+    },
+    {
+      "feature": "macd_bearish_cross_1m",
+      "importance": 0.0
+    }
+  ],
+  "training_info": {
+    "timeframe_days": 30,
+    "min_trades": 50,
+    "total_samples": 2069,
+    "train_samples": 1448,
+    "val_samples": 207,
+    "test_samples": 414,
+    "training_time_seconds": 0.704903,
+    "trained_at": "2025-11-29T07:57:50.127468",
+    "filter_marginal_trades": true,
+    "marginal_threshold": 0.15,
+    "split_type": "temporal",
+    "selected_features": [
+      "rsi_divergence",
+      "macd_bullish_cross_1m",
+      "momentum_divergence",
+      "macd_momentum_1m",
+      "volume_spike_strong",
+      "reject_none",
+      "bullish_confluence",
+      "macd_bearish_cross_1m",
+      "di_gap_1m",
+      "bb_width_5m",
+      "adx_5m",
+      "atr_optimal_passed_5m",
+      "ema_aligned",
+      "volatility_momentum_product",
+      "quality_score_5m",
+      "breakout_passed_5m",
+      "macd_hist_5m",
+      "strong_trend_1m",
+      "bb_width_1m",
+      "atr_optimal_passed_1m"
+    ]
+  },
+  "version": "2.0"
+}

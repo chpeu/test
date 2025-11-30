@@ -8,6 +8,7 @@ REFACTORISÉ avec architecture modulaire
 import asyncio
 import json
 import logging
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -111,6 +112,8 @@ class Position:
     margin_mode: Optional[str] = None
     position_size_usdt: Optional[float] = None
     position_size_contracts: Optional[float] = None
+    size_initial_contracts: Optional[float] = None
+    size_remaining_contracts: Optional[float] = None
     liquidation_price: Optional[float] = None
     margin_used: Optional[float] = None
     maker_fee_rate: Optional[float] = None
@@ -184,6 +187,8 @@ class Position:
             'margin_mode': self.margin_mode,
             'position_size_usdt': self.position_size_usdt,
             'position_size_contracts': self.position_size_contracts,
+            'size_initial_contracts': self.size_initial_contracts,
+            'size_remaining_contracts': self.size_remaining_contracts,
             'liquidation_price': self.liquidation_price,
             'margin_used': self.margin_used,
             'entry_fee_usdt': self.entry_fee_usdt,
@@ -292,6 +297,86 @@ class PositionManager:
 
         # Initialiser modules spécialisés
         self._init_modules(analytics_db)
+
+    def _schedule_position_sync(self, symbol: str, delay: Optional[float] = None) -> None:
+        if not self.live_order_manager:
+            return
+
+        dry_run = False
+        try:
+            dry_run = getattr(self.live_order_manager, 'dry_run', False)
+        except Exception:
+            dry_run = False
+
+        if dry_run:
+            return
+
+        from config import TRADING_CONFIG
+
+        if delay is None:
+            delay = float(TRADING_CONFIG.get('live_resync_delay_sec', 3))
+
+        def _worker():
+            try:
+                if delay and delay > 0:
+                    logger.debug(f"⏳ Resynchronisation position LIVE programmée dans {delay}s pour {symbol}...")
+                    time.sleep(delay)
+
+                live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
+                if not live_position:
+                    logger.warning(f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée")
+                    return
+
+                current_position = self.active_position
+                if not current_position or current_position.symbol != symbol:
+                    return
+
+                live_entry_price = float(live_position.get('entry_price') or 0)
+                live_contracts = float(live_position.get('size') or 0)
+
+                if live_entry_price > 0:
+                    previous_entry = current_position.entry
+                    if previous_entry and abs(live_entry_price - previous_entry) > 1e-8:
+                        price_diff = live_entry_price - previous_entry
+                        if current_position.direction == 'LONG':
+                            current_position.tp += price_diff
+                            current_position.sl += price_diff
+                        else:
+                            current_position.tp -= price_diff
+                            current_position.sl -= price_diff
+                        logger.info(
+                            f"🔁 [LIVE] Prix d'entrée resynchronisé: {previous_entry:.8f} -> {live_entry_price:.8f}"
+                        )
+                    current_position.entry = live_entry_price
+                    current_position.entry_fill_price = live_entry_price
+
+                if live_contracts > 0 and live_entry_price > 0:
+                    live_size_usdt = live_contracts * live_entry_price
+
+                    # 🔥 FIX: Toujours synchroniser size_remaining avec la position RÉELLE MEXC
+                    # Que ce soit après ouverture OU après TP partiel
+                    if not current_position.size_initial_contracts:
+                        # Première synchro (après ouverture): définir size initial
+                        current_position.size_initial_contracts = live_contracts
+
+                    # Mettre à jour la taille actuelle (TOUJOURS, même après TP partiel)
+                    current_position.size = live_size_usdt
+                    current_position.position_size_usdt = live_size_usdt
+                    current_position.position_size_contracts = live_contracts
+                    current_position.size_remaining = live_size_usdt
+                    current_position.size_remaining_contracts = live_contracts
+
+                    logger.info(
+                        f"🔁 [LIVE] Taille resynchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Erreur resynchronisation différée position LIVE pour {symbol}: {e}")
+
+        thread = threading.Thread(target=_worker, name=f"position_sync_{symbol}", daemon=True)
+        try:
+            thread.start()
+        except RuntimeError as e:
+            logger.error(f"❌ Impossible de démarrer le thread de resynchronisation pour {symbol}: {e}")
 
     def _get_market_info(self, symbol: str) -> Optional[Dict]:
         """
@@ -446,6 +531,21 @@ class PositionManager:
         Returns:
             Position créée
         """
+        # 🔥 FIX: Log critique pour diagnostiquer size=0
+        logger.info(
+            f"📋 OPEN_POSITION reçu: {symbol} {direction} | "
+            f"entry={entry} | size={size} USDT"
+        )
+        
+        # 🔥 FIX: Validation size minimum AVANT de créer la position
+        MIN_SIZE_USDT = 7.0
+        if size < MIN_SIZE_USDT:
+            logger.warning(
+                f"⚠️ Position size trop petite: {size:.2f} USDT < {MIN_SIZE_USDT} USDT | "
+                f"Augmentation automatique à {MIN_SIZE_USDT} USDT"
+            )
+            size = MIN_SIZE_USDT
+        
         # Validation
         if not entry or entry <= 0:
             raise ValueError(f"Entry invalide: {entry}")
@@ -456,14 +556,18 @@ class PositionManager:
                 f"fixed_tp_pct={self.config.fixed_tp_pct}%"
             )
 
-        # ✅ Mettre à jour config TP/SL avec valeurs depuis TRADING_CONFIG (dynamique)
         from config import TRADING_CONFIG
+        excluded_symbols = set(TRADING_CONFIG.get('excluded_symbols', []))
+        if symbol in excluded_symbols:
+            raise ValueError(f"Symbol {symbol} est exclu du trading (excluded_symbols)")
+
+        # Mettre à jour config TP/SL avec valeurs depuis TRADING_CONFIG (dynamique)
         self.tpsl_config.win_streak = self.config.win_streak
         self.tpsl_config.loss_streak = self.config.loss_streak
-        # 🔥 FIX: Mettre à jour paramètres FIXE depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
+        # FIX: Mettre à jour paramètres FIXE depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
         self.tpsl_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
         self.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
-        # ✅ Mettre à jour paramètres ATR depuis TRADING_CONFIG
+        # Mettre à jour paramètres ATR depuis TRADING_CONFIG
         self.tpsl_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
         self.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
         self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
@@ -530,6 +634,17 @@ class PositionManager:
             tick_size=tick_size
         )
 
+        # ✅ Initialiser les tailles en contrats même en mode paper/dry-run
+        try:
+            contracts = size / entry if entry else 0.0
+        except Exception:
+            contracts = 0.0
+
+        self.active_position.position_size_contracts = contracts
+        self.active_position.size_initial_contracts = contracts
+        self.active_position.size_remaining_contracts = contracts
+        self.active_position.size_remaining = size
+
         # ✅ Initialiser TP Escalier si mode TP_MULTI
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
         levels_config = None
@@ -561,11 +676,22 @@ class PositionManager:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
                 size_amount = size / entry
 
+                # 🔥 FIX: Récupérer le levier depuis TRADING_CONFIG (pas celui de l'init)
+                configured_leverage = TRADING_CONFIG.get('default_leverage', 10)
+                
+                # 🔍 VÉRIFICATION LEVIER: Logger pour debug
+                logger.info(
+                    f"🔍 LEVIER CHECK: config={configured_leverage}x | "
+                    f"live_manager_default={self.live_order_manager.default_leverage}x | "
+                    f"Utilisation: {configured_leverage}x"
+                )
+
                 order_result = self.live_order_manager.open_position(
                     symbol=symbol,
                     direction=direction,
                     entry_price=entry,
-                    size_usdt=size
+                    size_usdt=size,
+                    leverage=configured_leverage  # 🔥 FIX: Passer le levier explicitement
                 )
 
                 if order_result.success:
@@ -595,6 +721,8 @@ class PositionManager:
                     self.active_position.size = filled_size_usdt
                     self.active_position.position_size_usdt = filled_size_usdt
                     self.active_position.position_size_contracts = filled_amount
+                    self.active_position.size_initial_contracts = filled_amount
+                    self.active_position.size_remaining_contracts = filled_amount
                     self.active_position.size_remaining = filled_size_usdt
                     self.active_position.margin_mode = 'isolated'
                     self.active_position.leverage_used = getattr(order_result, 'leverage', None) or getattr(self.live_order_manager, 'default_leverage', None)
@@ -643,9 +771,15 @@ class PositionManager:
                                 self.active_position.position_size_usdt = live_size_usdt
                                 self.active_position.position_size_contracts = live_contracts
                                 self.active_position.size_remaining = live_size_usdt
+                                # 🔥 FIX: TOUJOURS synchroniser size_initial_contracts avec MEXC
+                                # L'ancienne condition "if not" ne fonctionnait pas car déjà initialisé avec tokens
+                                self.active_position.size_initial_contracts = live_contracts
+                                self.active_position.size_remaining_contracts = live_contracts
                                 logger.info(
                                     f"🔁 [LIVE] Taille synchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
                                 )
+                        # Programmer une resynchronisation non bloquante
+                        self._schedule_position_sync(symbol)
 
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
                     if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
@@ -659,12 +793,16 @@ class PositionManager:
                         f"Slippage: {order_result.actual_slippage_pct or 0:.4f}% | "
                         f"Taille réelle: {filled_size_usdt:.2f} USDT ({filled_amount:.4f} contrats)"
                     )
+                    # 🔥 FIX: Marquer la position comme ouverte sur l'exchange
+                    self.active_position.is_live_open = True
                 else:
                     logger.error(
                         f"❌ Ordre LIVE échoué: {symbol} | "
                         f"Erreur: {order_result.error_message} | "
                         f"Revert to paper trading"
                     )
+                    # 🔥 FIX: Position non ouverte sur exchange - empêcher TP partiels live
+                    self.active_position.is_live_open = False
             except Exception as e:
                 logger.error(f"❌ Erreur passage ordre LIVE: {e}")
 
@@ -878,6 +1016,36 @@ class PositionManager:
         # FIN POINT C
         # ========================================
 
+        # 📢 NOTIFICATION: Position ouverte
+        if hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                position_data = {
+                    'symbol': symbol,
+                    'direction': direction,
+                    'entry_price': entry,
+                    'size_usdt': executed_size_usdt,
+                    'sl': sl,
+                    'tp': tp,
+                    'atr': atr,
+                    'leverage': getattr(self.live_order_manager, 'leverage', 1) if self.live_order_manager else 1,
+                    'tp_escalier_levels': len(levels_config) if levels_config else 0
+                }
+                # Appel async non-bloquant
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(
+                            self.notification_manager.notify('position_opened', position_data, priority='info')
+                        )
+                    else:
+                        asyncio.run(self.notification_manager.notify('position_opened', position_data, priority='info'))
+                except RuntimeError:
+                    # Pas de loop, ignorer notification
+                    pass
+            except Exception as e:
+                logger.debug(f"Erreur envoi notification position_opened: {e}")
+
         return self.active_position
 
     def calculate_position_size(
@@ -961,6 +1129,14 @@ class PositionManager:
         min_size = capital * min_risk if min_risk else 0.0
         max_size = capital * max_risk if max_risk else final_size
         final_size = max(min_size, min(max_size, final_size))
+        
+        # 🔥 FIX: Garantir une taille minimum de 7 USDT pour éviter les rejets MEXC (min 5 USDT)
+        MIN_POSITION_USDT = 7.0
+        if final_size < MIN_POSITION_USDT:
+            logger.warning(
+                f"⚠️ Taille position trop petite ({final_size:.2f} USDT), augmentation au minimum {MIN_POSITION_USDT} USDT"
+            )
+            final_size = MIN_POSITION_USDT
 
         logger.debug(
             f"📊 Position sizing: {setup.get('symbol', 'N/A')} | "
@@ -1049,11 +1225,26 @@ class PositionManager:
 
         # Calculer temps écoulé et PnL
         elapsed = time.time() - self.active_position.start_time
+
+        # 🔥 OPT #3: Utiliser prix RÉEL rempli pour calcul PnL (early invalidation)
+        # Si entry_fill_price est disponible (ordre réel exécuté), l'utiliser
+        # Sinon fallback sur entry (prix théorique, pour paper trading)
+        effective_entry = self.active_position.entry_fill_price or self.active_position.entry
+
         pnl = self.pnl_calculator.calculate_pnl_percent(
-            self.active_position.entry,
+            effective_entry,  # 🔥 Prix RÉEL au lieu de théorique
             current_price,
             self.active_position.direction
         )
+        
+        # 🔥 FIX: Enregistrer le PnL dans l'historique pour calculer max_drawdown
+        pnl_usdt = (pnl / 100) * self.active_position.size if self.active_position.size else 0
+        self.active_position.pnl_history.append({
+            'timestamp': time.time(),
+            'price': current_price,
+            'pnl_pct': pnl,
+            'pnl_usdt': pnl_usdt
+        })
 
         # 1. Early Invalidation (10-30s)
         early_invalidation_data = None
@@ -1061,7 +1252,7 @@ class PositionManager:
             invalidation = self.early_invalidation.check_invalidation(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
-                pnl_percent=pnl
+                pnl_percent=pnl  # 🔥 PnL basé sur prix RÉEL
             )
             if invalidation:
                 # Stocker les détails de l'invalidation pour le logging
@@ -1084,6 +1275,16 @@ class PositionManager:
                 # Stocker dans la position pour le logging
                 self.active_position._early_invalidation_data = early_invalidation_data
                 return invalidation
+
+        # 🔥 OPT #13: Time-Based Exit - Fermer si position flat après 20min
+        if elapsed > 1200:  # 20 minutes = 1200 secondes
+            # Position considérée "flat" si PnL entre -0.1% et +0.1%
+            if -0.1 <= pnl <= 0.1:
+                logger.warning(
+                    f"⏱️ Time-Based Exit: Position {self.active_position.symbol} {self.active_position.direction} "
+                    f"ouverte depuis {elapsed/60:.1f}min avec PnL {pnl:+.2f}% (flat) → Fermeture"
+                )
+                return 'TIME_BASED_EXIT'
 
         # 2. TP Escalier - Vérifier niveaux
         if self.active_position.tp_escalier_enabled:
@@ -1154,13 +1355,20 @@ class PositionManager:
                 partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0)
                 
                 # 🔥 LIVE TRADING: Exécuter l'ordre partiel réel sur MEXC
-                if self.live_order_manager and not self.live_order_manager.dry_run:
+                # 🔥 FIX: Vérifier que la position existe réellement sur l'exchange
+                is_live_open = getattr(self.active_position, 'is_live_open', False)
+                if self.live_order_manager and not self.live_order_manager.dry_run and is_live_open:
                     try:
                         # Calculer la taille en contrats à vendre
                         size_contracts = self.active_position.position_size_contracts
                         if not size_contracts:
                             entry_price = self.active_position.entry or 1
                             size_contracts = self.active_position.size / entry_price
+                        
+                        # 🔥 FIX: Vérifier que size_contracts est valide
+                        if size_contracts <= 0:
+                            logger.warning(f"⚠️ TP Partiel ignoré: size_contracts={size_contracts} invalide")
+                            return None
                         
                         partial_order_result = self.live_order_manager.close_position(
                             symbol=self.active_position.symbol,
@@ -1177,12 +1385,15 @@ class PositionManager:
                             filled_size_usdt = partial_order_result.filled_size_usdt or (filled_amount * current_price)
                             
                             # Mettre à jour les contrats restants
-                            remaining_contracts = size_contracts - filled_amount
-                            remaining_usdt = self.active_position.size - filled_size_usdt
-                            
+                            remaining_contracts = max(size_contracts - filled_amount, 0)
+                            remaining_usdt = max(self.active_position.size - filled_size_usdt, 0)
+
                             self.active_position.partial_tp_sold = True
                             self.active_position.size_remaining = remaining_usdt
                             self.active_position.position_size_contracts = remaining_contracts
+                            self.active_position.size_remaining_contracts = remaining_contracts
+                            if not self.active_position.size_initial_contracts:
+                                self.active_position.size_initial_contracts = size_contracts
                             self.active_position.partial_profit_usdt = partial_order_result.actual_pnl_usdt or 0.0
                             
                             logger.info(
@@ -1191,6 +1402,35 @@ class PositionManager:
                                 f"Restant: {remaining_contracts:.4f} contrats ({remaining_usdt:.2f} USDT) | "
                                 f"PnL: {partial_order_result.actual_pnl_usdt or 0:.2f} USDT"
                             )
+
+                            # 📢 NOTIFICATION: TP Escalier level hit
+                            if hasattr(self, 'notification_manager') and self.notification_manager:
+                                try:
+                                    import asyncio
+                                    tp_data = {
+                                        'symbol': self.active_position.symbol,
+                                        'direction': self.active_position.direction,
+                                        'level': 1,  # First TP partial
+                                        'entry_price': self.active_position.entry,
+                                        'exit_price': current_price,
+                                        'sold_usdt': filled_size_usdt,
+                                        'remaining_usdt': remaining_usdt,
+                                        'pnl_usdt': partial_order_result.actual_pnl_usdt or 0.0,
+                                        'pnl_pct': pnl
+                                    }
+                                    # Appel async non-bloquant
+                                    try:
+                                        loop = asyncio.get_event_loop()
+                                        if loop.is_running():
+                                            loop.create_task(
+                                                self.notification_manager.notify('tp_escalier_level', tp_data, priority='info')
+                                            )
+                                        else:
+                                            asyncio.run(self.notification_manager.notify('tp_escalier_level', tp_data, priority='info'))
+                                    except RuntimeError:
+                                        pass
+                                except Exception as e:
+                                    logger.debug(f"Erreur envoi notification tp_escalier_level: {e}")
                         else:
                             logger.error(
                                 f"❌ [LIVE] Échec TP Partiel: {partial_order_result.error_message}"
@@ -1209,6 +1449,13 @@ class PositionManager:
                     self.active_position.partial_tp_sold = True
                     self.active_position.size_remaining = partial_result['size_remaining']
                     self.active_position.partial_profit_usdt = partial_result['profit_usdt']
+                    entry_price = self.active_position.entry or current_price or 1
+                    remaining_contracts = self.active_position.size_remaining / entry_price
+                    initial_contracts = self.active_position.position_size_contracts or (self.active_position.size / entry_price)
+                    if not self.active_position.size_initial_contracts:
+                        self.active_position.size_initial_contracts = initial_contracts
+                    self.active_position.position_size_contracts = remaining_contracts
+                    self.active_position.size_remaining_contracts = remaining_contracts
 
                 # Déplacer SL à break-even après le 1er TP
                 new_sl = self.partial_tp.update_sl_after_partial_tp(
@@ -1216,6 +1463,7 @@ class PositionManager:
                 )
                 self.active_position.sl = new_sl
                 self.active_position.break_even_set = True
+                self._schedule_position_sync(self.active_position.symbol)
                 
                 logger.info(
                     f"💰 1er TP partiel déclenché à {break_even_trigger:.2f}% | "
@@ -1232,10 +1480,7 @@ class PositionManager:
                 if tp_sl_mode == 'FIXE':
                     # Mode FIXE : utiliser trailing_distance directement
                     trailing_distance = TRADING_CONFIG.get('trailing_distance', 0.15)
-                    new_sl = self._update_trailing_stop_fixe(
-                        current_price=current_price,
-                        trailing_distance=trailing_distance
-                    )
+                    new_sl = self._update_trailing_stop_fixe(current_price, trailing_distance)
                     if new_sl:
                         self.active_position.sl = new_sl
                         self.active_position.dynamic_sl = new_sl
@@ -1749,15 +1994,25 @@ class PositionManager:
                     config_snapshot['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
                     
                     # Préparer indicateurs de sortie
-                    # 🔥 FIX: Utiliser les derniers indicateurs de la position (mis à jour périodiquement)
-                    # Note: Pour avoir les indicateurs exacts au moment de la sortie, il faudrait
-                    # appeler l'API pour récupérer les dernières klines et recalculer les indicateurs,
-                    # mais cela ajouterait de la latence. On utilise donc les derniers connus.
-                    exit_indicators = getattr(self.active_position, '_last_indicators', {}) or {}
-                    
-                    # Fallback: si aucun indicateur n'est disponible, utiliser un dict vide
-                    # (mieux que des valeurs 0 qui seraient trompeuses)
-                    if not exit_indicators:
+                    # 🔥 FIX: Récupérer les indicateurs depuis pnl_history (dernier point)
+                    # Note: analyze_timeframe est async, on utilise les indicateurs déjà collectés
+                    exit_indicators = {}
+                    try:
+                        # Utiliser les derniers indicateurs du pnl_history si disponibles
+                        if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history:
+                            last_entry = self.active_position.pnl_history[-1]
+                            # Les indicateurs peuvent être stockés dans _last_indicators
+                            last_indicators = getattr(self.active_position, '_last_indicators', {})
+                            if last_indicators:
+                                exit_indicators = last_indicators
+                                logger.debug(f"📊 Exit indicators depuis _last_indicators: {exit_indicators}")
+                        
+                        # Si toujours vide, on laisse vide (évite RuntimeWarning en essayant d'appeler async depuis sync)
+                        if not exit_indicators:
+                            logger.debug("⚠️ Pas d'indicateurs de sortie disponibles (async call skipped)")
+                            
+                    except Exception as e:
+                        logger.warning(f"⚠️ Impossible de récupérer exit_indicators: {e}")
                         exit_indicators = {}
                     
                     # 🔥 Déterminer le mode de trading (Live/Paper et Dry-Run)
@@ -1976,6 +2231,70 @@ class PositionManager:
             f"Raison: {reason} | PnL net: {net_pnl_pct:.2f}% ({net_pnl_usdt:.4f} USDT) | "
             f"Slippage: {slippage_pct:.4f}% ({slippage_usdt:.4f} USDT)"
         )
+
+        # 📢 NOTIFICATION: Position fermée
+        if hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                notification_data = {
+                    'symbol': result['symbol'],
+                    'direction': result['direction'],
+                    'entry_price': result['entry'],
+                    'exit_price': result['exit'],
+                    'size_usdt': result['size'],
+                    'duration': result['duration'],
+                    'result': result  # Include full result for notification_manager
+                }
+                # Appel async non-bloquant
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(
+                            self.notification_manager.notify('position_closed', notification_data, priority='info')
+                        )
+                    else:
+                        asyncio.run(self.notification_manager.notify('position_closed', notification_data, priority='info'))
+                except RuntimeError:
+                    # Pas de loop, ignorer notification
+                    pass
+            except Exception as e:
+                logger.debug(f"Erreur envoi notification position_closed: {e}")
+
+        # 📢 NOTIFICATION: Early invalidation (si applicable)
+        if reason == 'EARLY_INVALIDATION' and hasattr(self, 'notification_manager') and self.notification_manager:
+            try:
+                import asyncio
+                early_invalidation_data = {
+                    'symbol': result['symbol'],
+                    'direction': result['direction'],
+                    'entry_price': result['entry'],
+                    'exit_price': result['exit'],
+                    'pnl_pct': pnl_data['pnl_pct'],
+                    'duration': result['duration'],
+                    'reason': 'Invalidation précoce'
+                }
+                # Appel async non-bloquant
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(
+                            self.notification_manager.notify('early_invalidation', early_invalidation_data, priority='warning')
+                        )
+                    else:
+                        asyncio.run(self.notification_manager.notify('early_invalidation', early_invalidation_data, priority='warning'))
+                except RuntimeError:
+                    pass
+            except Exception as e:
+                logger.debug(f"Erreur envoi notification early_invalidation: {e}")
+
+        # 🔥 OPT #17: Enregistrer cooldown post-trade
+        try:
+            from core.analyzer.advanced_filters import get_cooldown_manager
+            cooldown_mgr = get_cooldown_manager()
+            cooldown_mgr.record_trade_close(result['symbol'], result['direction'])
+            logger.debug(f"⏱️ Cooldown enregistré pour {result['symbol']} {result['direction']}")
+        except Exception as e:
+            logger.debug(f"Erreur enregistrement cooldown: {e}")
 
         return result
 

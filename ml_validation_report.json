@@ -1,0 +1,68 @@
+{
+  "timestamp": "2025-11-29T07:57:47.952759",
+  "checks": [
+    {
+      "name": "Compilation modules",
+      "status": "PASS",
+      "message": "6 modules OK",
+      "details": {}
+    },
+    {
+      "name": "Chargement donn\u00e9es",
+      "status": "PASS",
+      "message": "2888 samples charg\u00e9s",
+      "details": {
+        "n_samples": 2888,
+        "n_features": 55,
+        "win_rate": "43.9%"
+      }
+    },
+    {
+      "name": "Entra\u00eenement mod\u00e8le",
+      "status": "PASS",
+      "message": "Mod\u00e8le entra\u00een\u00e9",
+      "details": {
+        "test_accuracy": "0.493",
+        "test_f1": "0.580"
+      }
+    },
+    {
+      "name": "M\u00e9triques performance",
+      "status": "WARN",
+      "message": "Accuracy 0.493 < target 0.55",
+      "details": {
+        "accuracy": "0.493",
+        "f1": "0.580",
+        "roc_auc": "0.513",
+        "precision": "0.502"
+      }
+    },
+    {
+      "name": "Overfitting",
+      "status": "WARN",
+      "message": "Overfitting l\u00e9ger: gap=0.109",
+      "details": {
+        "accuracy_gap": "0.109",
+        "roc_auc_gap": "0.127"
+      }
+    },
+    {
+      "name": "Walk-forward validation",
+      "status": "SKIP",
+      "message": "Skipped en mode rapide",
+      "details": {}
+    },
+    {
+      "name": "Calibration probabilit\u00e9s",
+      "status": "SKIP",
+      "message": "Skipped en mode rapide",
+      "details": {}
+    }
+  ],
+  "overall_status": "PASS",
+  "errors": [],
+  "warnings": [
+    "M\u00e9triques performance: Accuracy 0.493 < target 0.55",
+    "Overfitting: Overfitting l\u00e9ger: gap=0.109"
+  ]
+}
