@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764440112.6334844,
+  "timestamp": 1764513143.1959903,
   "specs": {
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -135,6 +135,16 @@
       "symbol": "AVAX_USDT",
       "min_vol": 1.0,
       "max_vol": 1400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "ZEN_USDT": {
+      "symbol": "ZEN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 270000.0,
       "vol_unit": 1.0,
       "price_unit": 0.001,
       "price_precision": 3,

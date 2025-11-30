@@ -771,8 +771,9 @@ class PositionManager:
                                 self.active_position.position_size_usdt = live_size_usdt
                                 self.active_position.position_size_contracts = live_contracts
                                 self.active_position.size_remaining = live_size_usdt
-                                if not self.active_position.size_initial_contracts:
-                                    self.active_position.size_initial_contracts = live_contracts
+                                # 🔥 FIX: TOUJOURS synchroniser size_initial_contracts avec MEXC
+                                # L'ancienne condition "if not" ne fonctionnait pas car déjà initialisé avec tokens
+                                self.active_position.size_initial_contracts = live_contracts
                                 self.active_position.size_remaining_contracts = live_contracts
                                 logger.info(
                                     f"🔁 [LIVE] Taille synchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"

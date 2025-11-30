@@ -252,7 +252,8 @@ class FuturesOrderResult:
     success: bool
     order_id: Optional[str] = None
     filled_price: Optional[float] = None
-    filled_amount: Optional[float] = None
+    filled_amount: Optional[float] = None  # 🔥 En CONTRATS MEXC (pas tokens)
+    filled_contracts: Optional[float] = None  # 🔥 Alias explicite pour contrats MEXC
     filled_size_usdt: Optional[float] = None
     actual_pnl_usdt: Optional[float] = None
     actual_fees_usdt: Optional[float] = None
@@ -987,11 +988,17 @@ class LiveOrderManagerFutures:
                         f"Latence: {latency_ms:.0f}ms"
                     )
 
+                    # 🔥 FIX CRITIQUE: Retourner CONTRATS MEXC, pas tokens
+                    # amount = contrats MEXC (1.4 pour LINK)
+                    # real_filled_amount = tokens (14.0 pour LINK) - NE PAS UTILISER POUR AFFICHAGE
+                    mexc_contracts = amount  # C'est ce que MEXC affiche
+                    
                     return FuturesOrderResult(
                         success=True,
                         order_id=str(bypass_result.order_id),
                         filled_price=final_filled_price,  # 🔥 Prix RÉEL rempli
-                        filled_amount=real_filled_amount,  # 🔥 FIX: Volume RÉEL en tokens
+                        filled_amount=mexc_contracts,  # 🔥 FIX: CONTRATS MEXC (pas tokens!)
+                        filled_contracts=mexc_contracts,  # 🔥 Alias explicite
                         filled_size_usdt=real_filled_size_usdt,  # 🔥 FIX: Valeur USDT RÉELLE
                         actual_fees_usdt=0.0,  # 0% fees sur paires scannées
                         actual_slippage_pct=final_slippage_pct,  # 🔥 Slippage RÉEL calculé
