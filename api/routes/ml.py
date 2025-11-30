@@ -773,9 +773,22 @@ async def get_model_metrics(model_name: str):
         
         # Extraire métriques clés
         metrics = metadata.get('metrics', {})
-        feature_importance = metadata.get('feature_importance', [])
+        feature_importance = metadata.get('feature_importance') or []
         training_info = metadata.get('training_info', {})
-        
+
+        # Fallback: si aucune importance n'est stockée, utiliser feature_names
+        if not feature_importance:
+            feature_names = metadata.get('feature_names') or metadata.get('selected_features') or []
+            if feature_names:
+                default_weight = 1 / len(feature_names)
+                feature_importance = [
+                    {
+                        'feature': name,
+                        'importance': default_weight
+                    }
+                    for name in feature_names
+                ]
+
         # Top features (limiter à 10)
         top_features = [
             {
