@@ -4098,6 +4098,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                     'scalability_interval': TRADING_CONFIG.get('scalability_interval', 90),
                                     # Machine Learning
                                     'ml_filter_enabled': TRADING_CONFIG.get('ml_filter_enabled', False),
+                                    'ml_filter_mode': TRADING_CONFIG.get('ml_filter_mode', 'NEGATIVE'),
+                                    'ml_loss_threshold': TRADING_CONFIG.get('ml_loss_threshold', 0.45),
                                     'ml_min_confidence': TRADING_CONFIG.get('ml_min_confidence', 0.60),
                                     'ml_max_depth': TRADING_CONFIG.get('ml_max_depth', 6),
                                     'ml_min_child_weight': TRADING_CONFIG.get('ml_min_child_weight', 3),
@@ -4584,6 +4586,26 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['ml_min_confidence'] = val
             updated['ml_min_confidence'] = val
             logger.info(f"✅ ML min confidence: {val*100:.0f}%")
+        
+        # 🔥 ML Mode (STRICT, SOFT, NEGATIVE)
+        if 'ml_filter_mode' in params:
+            from config import ML_CONFIG
+            mode = str(params['ml_filter_mode']).upper()
+            if mode in ['STRICT', 'SOFT', 'NEGATIVE']:
+                ML_CONFIG['mode'] = mode
+                TRADING_CONFIG['ml_filter_mode'] = mode
+                updated['ml_filter_mode'] = mode
+                logger.info(f"✅ ML filter mode: {mode}")
+        
+        # 🔥 ML Loss Threshold (pour mode NEGATIVE)
+        if 'ml_loss_threshold' in params:
+            from config import ML_CONFIG
+            val = float(params['ml_loss_threshold'])
+            val = max(0.30, min(0.80, val))  # Clamp 0.30-0.80
+            ML_CONFIG['loss_threshold'] = val
+            TRADING_CONFIG['ml_loss_threshold'] = val
+            updated['ml_loss_threshold'] = val
+            logger.info(f"✅ ML loss threshold: {val*100:.0f}%")
 
         # 🔥 ML Hyperparameters (XGBoost)
         if 'ml_max_depth' in params:
@@ -4826,7 +4848,7 @@ async def handle_client_command(command: str, params: dict):
         
         if 'gb_learning_rate' in params:
             val = float(params['gb_learning_rate'])
-            val = max(0.01, min(0.15, val))  # Clamp 0.01-0.15
+            val = max(0.01, min(0.3, val))  # Clamp 0.01-0.3
             TRADING_CONFIG['gb_learning_rate'] = val
             updated['gb_learning_rate'] = val
             logger.info(f"✅ GB learning_rate: {val}")
@@ -4840,7 +4862,7 @@ async def handle_client_command(command: str, params: dict):
         
         if 'gb_min_samples_leaf' in params:
             val = int(params['gb_min_samples_leaf'])
-            val = max(5, min(30, val))  # Clamp 5-30
+            val = max(5, min(50, val))  # Clamp 5-50
             TRADING_CONFIG['gb_min_samples_leaf'] = val
             updated['gb_min_samples_leaf'] = val
             logger.info(f"✅ GB min_samples_leaf: {val}")
@@ -4853,11 +4875,22 @@ async def handle_client_command(command: str, params: dict):
             logger.info(f"✅ GB subsample: {val}")
         
         if 'gb_max_features' in params:
-            val = float(params['gb_max_features'])
-            val = max(0.3, min(1.0, val))  # Clamp 0.3-1.0
-            TRADING_CONFIG['gb_max_features'] = val
-            updated['gb_max_features'] = val
-            logger.info(f"✅ GB max_features: {val}")
+            val = params['gb_max_features']
+            # Gérer les valeurs string valides pour GradientBoosting
+            if isinstance(val, str):
+                if val in ['sqrt', 'log2', 'auto', None]:
+                    TRADING_CONFIG['gb_max_features'] = val
+                    updated['gb_max_features'] = val
+                    logger.info(f"✅ GB max_features: {val}")
+                else:
+                    logger.warning(f"⚠️ GB max_features invalide: {val}, valeurs valides: sqrt, log2, auto, ou nombre 0.3-1.0")
+            else:
+                # Valeur numérique (legacy)
+                val = float(val)
+                val = max(0.3, min(1.0, val))  # Clamp 0.3-1.0
+                TRADING_CONFIG['gb_max_features'] = val
+                updated['gb_max_features'] = val
+                logger.info(f"✅ GB max_features: {val}")
         
         if 'gb_model_type' in params:
             val = str(params['gb_model_type'])

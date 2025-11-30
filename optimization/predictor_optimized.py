@@ -40,10 +40,11 @@ class OptimizedPredictor:
         Initialiser le predictor.
         
         Args:
-            model_path: Chemin vers le modèle (défaut: best_classifier_latest.pkl)
+            model_path: Chemin vers le modèle (défaut: gradient_boosting_optimized.pkl)
         """
         self.model = None
         self.metadata = None
+        self.preprocessor = None  # Scaler + feature_names
         self.feature_cols = None
         self.is_loaded = False
         
@@ -57,6 +58,7 @@ class OptimizedPredictor:
         # Essayer plusieurs chemins
         possible_paths = [
             model_path,
+            models_dir / "gradient_boosting_optimized.pkl",  # Modèle optimisé avancé
             models_dir / "best_classifier_latest.pkl",
             models_dir / "optimized_classifier_latest.pkl",
         ]
@@ -74,14 +76,30 @@ class OptimizedPredictor:
             logger.error("❌ Aucun modèle trouvé!")
             return
         
+        # Charger preprocessor (scaler)
+        for prep_name in ["gradient_boosting_optimized_preprocessor.pkl", "best_classifier_preprocessor.pkl"]:
+            prep_path = models_dir / prep_name
+            if prep_path.exists():
+                try:
+                    self.preprocessor = joblib.load(prep_path)
+                    # Extraire feature_names du preprocessor
+                    if isinstance(self.preprocessor, dict) and 'feature_names' in self.preprocessor:
+                        self.feature_cols = list(self.preprocessor['feature_names'])
+                    logger.info(f"✅ Preprocessor chargé: {len(self.feature_cols) if self.feature_cols else 'N/A'} features")
+                    break
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur preprocessor: {e}")
+        
         # Charger metadata
-        for metadata_name in ["best_classifier_metadata.json", "optimized_classifier_metadata.json"]:
+        for metadata_name in ["gradient_boosting_optimized_metadata.json", "best_classifier_metadata.json", "optimized_classifier_metadata.json"]:
             metadata_path = models_dir / metadata_name
             if metadata_path.exists():
                 try:
                     with open(metadata_path, 'r') as f:
                         self.metadata = json.load(f)
-                    self.feature_cols = self.metadata.get('feature_cols', [])
+                    # Si feature_cols pas encore défini, utiliser metadata
+                    if not self.feature_cols:
+                        self.feature_cols = self.metadata.get('feature_names', self.metadata.get('feature_cols', []))
                     logger.info(f"✅ Metadata chargée: {len(self.feature_cols)} features")
                     break
                 except Exception as e:
@@ -114,8 +132,15 @@ class OptimizedPredictor:
             # Convertir features en DataFrame
             df = self._prepare_features(features)
 
-            # Convertir en numpy array pour éviter le warning RobustScaler
-            input_data = df.values if isinstance(df, pd.DataFrame) else df
+            # Appliquer le preprocessor (scaler) si disponible
+            if self.preprocessor is not None and isinstance(self.preprocessor, dict):
+                scaler = self.preprocessor.get('scaler')
+                if scaler is not None:
+                    input_data = scaler.transform(df)
+                else:
+                    input_data = df.values
+            else:
+                input_data = df.values if isinstance(df, pd.DataFrame) else df
 
             # Prédire
             proba = self.model.predict_proba(input_data)[0, 1]  # Probabilité de WIN

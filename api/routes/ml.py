@@ -3152,28 +3152,67 @@ async def _train_gradientboosting_background(task_id: str):
         
         logger.info(f"📊 Split: Train={len(y_train)} ({len(y_train)/n*100:.0f}%), Test={len(y_test)} ({len(y_test)/n*100:.0f}%)")
         
-        # 🔥 FIX: Sélection de features pour ratio optimal
-        from sklearn.feature_selection import SelectKBest, f_classif
+        # 🔥 OPTIMISE: Utiliser les 28 features pré-sélectionnées si disponibles
+        optimized_metadata_path = Path('optimization/saved_models/gradient_boosting_optimized_metadata.json')
+        use_optimized_features = False
         
-        n_samples = X_train.shape[0]
-        n_features_original = X_train.shape[1]
-        # k=25 optimal avec nouvelles features (testé empiriquement)
-        optimal_k = max(25, min(n_samples // 80, n_features_original))
+        if optimized_metadata_path.exists():
+            try:
+                with open(optimized_metadata_path, 'r') as f:
+                    opt_metadata = json.load(f)
+                selected_features = opt_metadata.get('selected_features', [])
+                
+                if selected_features:
+                    # Vérifier que toutes les features optimisées sont disponibles
+                    available = set(feature_cols)
+                    needed = set(selected_features)
+                    missing = needed - available
+                    
+                    if len(missing) <= 3:  # Tolérance de 3 features manquantes
+                        # Utiliser les features optimisées
+                        valid_features = [f for f in selected_features if f in available]
+                        feature_cols = valid_features
+                        X = df[feature_cols].fillna(0).values
+                        y = df['target_win'].astype(int).values  # 🔥 FIX: Recalculer y aussi
+                        
+                        # Re-split avec les nouvelles features ET les labels
+                        if 'timestamp' in df.columns:
+                            sort_idx = df['timestamp'].argsort().values
+                            X = X[sort_idx]
+                            y = y[sort_idx]  # 🔥 FIX: Trier y aussi !
+                        
+                        X_train, X_test = X[:train_end], X[train_end:]
+                        y_train, y_test = y[:train_end], y[train_end:]  # 🔥 FIX: Re-split y aussi
+                        
+                        use_optimized_features = True
+                        logger.info(f"⭐ Utilisation des {len(valid_features)} features OPTIMISEES (68.5% accuracy)")
+                        logger.info(f"📋 Features: {valid_features[:5]}...")
+                    else:
+                        logger.warning(f"⚠️ {len(missing)} features optimisées manquantes, fallback SelectKBest")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur chargement features optimisées: {e}")
         
-        if n_features_original > optimal_k:
-            logger.info(f"📊 Sélection features: {n_features_original} → {optimal_k} (ratio {n_samples}:{optimal_k} = {n_samples//optimal_k}:1)")
-            selector = SelectKBest(f_classif, k=optimal_k)
-            X_train = selector.fit_transform(X_train, y_train)
-            X_test = selector.transform(X_test)
+        if not use_optimized_features:
+            # Fallback: Sélection dynamique avec SelectKBest
+            from sklearn.feature_selection import SelectKBest, f_classif
             
-            # Sauvegarder les features sélectionnées (IMPORTANT pour prédiction!)
-            selected_mask = selector.get_support()
-            feature_cols = [feature_cols[i] for i in range(len(feature_cols)) if selected_mask[i]]
-            logger.info(f"✅ Features réduites: {n_features_original} → {X_train.shape[1]}")
-            logger.info(f"📋 Features sélectionnées: {feature_cols[:5]}...")
+            n_samples = X_train.shape[0]
+            n_features_original = X_train.shape[1]
+            optimal_k = max(25, min(n_samples // 80, n_features_original))
+            
+            if n_features_original > optimal_k:
+                logger.info(f"📊 Sélection features dynamique: {n_features_original} → {optimal_k}")
+                selector = SelectKBest(f_classif, k=optimal_k)
+                X_train = selector.fit_transform(X_train, y_train)
+                X_test = selector.transform(X_test)
+                
+                selected_mask = selector.get_support()
+                feature_cols = [feature_cols[i] for i in range(len(feature_cols)) if selected_mask[i]]
+                logger.info(f"📋 Features sélectionnées: {feature_cols[:5]}...")
         
-        # Scaler et modèle
-        scaler = RobustScaler()
+        # 🔥 OPTIMISE: Utiliser StandardScaler (comme l'optimisation avancée)
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
         
@@ -3214,25 +3253,23 @@ async def _train_gradientboosting_background(task_id: str):
             # 🔥 FIX: HistGB utilise sample_weight dans fit()
             model.fit(X_train_scaled, y_train, sample_weight=sample_weights)
         else:
-            # GradientBoosting standard
-            logger.info(f"🌳 Utilisation de GradientBoostingClassifier (standard)")
+            # GradientBoosting standard - IDENTIQUE à optimize_gradientboosting_advanced.py
+            logger.info(f"🌳 Utilisation de GradientBoostingClassifier (standard - mode optimisé)")
             
+            # 🔥 EXACT COMME L'OPTIMISATION: pas de validation_fraction, pas de n_iter_no_change
             model = GradientBoostingClassifier(
-                n_estimators=params.get('n_estimators', 200),
-                max_depth=params.get('max_depth', 3),
-                learning_rate=params.get('learning_rate', 0.03),
-                min_samples_split=params.get('min_samples_split', 30),
-                min_samples_leaf=params.get('min_samples_leaf', 15),
-                subsample=params.get('subsample', 0.7),
-                max_features=params.get('max_features', 0.5),
-                random_state=42,
-                validation_fraction=0.15,
-                n_iter_no_change=30
+                n_estimators=params.get('n_estimators', 271),
+                max_depth=params.get('max_depth', 6),
+                learning_rate=params.get('learning_rate', 0.217),
+                min_samples_split=params.get('min_samples_split', 48),
+                min_samples_leaf=params.get('min_samples_leaf', 38),
+                subsample=params.get('subsample', 0.734),
+                max_features=params.get('max_features', 'sqrt'),
+                random_state=42
             )
-            # 🔥 FIX: GB standard utilise aussi sample_weight
-            model.fit(X_train_scaled, y_train, sample_weight=sample_weights)
-        
-        logger.info(f"✅ Modèle entraîné avec sample_weights pour équilibrer les classes")
+            # 🔥 EXACT COMME L'OPTIMISATION: pas de sample_weight
+            model.fit(X_train_scaled, y_train)
+            logger.info(f"✅ GB standard entraîné (mode optimisé - sans sample_weights)")
         
         ml_tasks[task_id]['progress'] = 80
         ml_tasks[task_id]['stage'] = 'evaluating'

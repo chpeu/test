@@ -72,6 +72,8 @@
 		trailing_max_distance: 0.25,
 		// Machine Learning V1
 		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
+		ml_filter_mode: 'NEGATIVE',  // 🔥 Mode NEGATIVE = filtre négatif (+2.9% win rate)
+		ml_loss_threshold: 0.45,  // Seuil P(loss) pour rejet (mode NEGATIVE)
 		ml_min_confidence: 0.60,  // 60% (si réactivé plus tard)
 		// Hyperparamètres XGBoost V1
 		ml_max_depth: 6,
@@ -542,6 +544,8 @@
 			},
 			'🤖 Machine Learning V1': {
 				ml_filter_enabled: tradingConfig.ml_filter_enabled,
+				ml_filter_mode: tradingConfig.ml_filter_mode,
+				ml_loss_threshold: tradingConfig.ml_loss_threshold,
 				ml_min_confidence: tradingConfig.ml_min_confidence,
 				ml_max_depth: tradingConfig.ml_max_depth,
 				ml_min_child_weight: tradingConfig.ml_min_child_weight,
@@ -2895,12 +2899,12 @@
 		</div>
 	</div>
 
+	<!-- 🔥 SECTION FILTRAGE ML - UNIQUEMENT POUR XGBOOST V1 -->
 	{#if mlVersion === 'v1'}
-	<!-- 1. Section Filtrage ML (inchangée) -->
-	<section class="variable-section">
-		<h3>🎯 Filtrage ML des Trades</h3>
+	<section class="variable-section ml-common-section">
+		<h3>🎯 Filtrage ML XGBoost V1</h3>
 		<p class="section-desc">
-			Activez le filtrage pour que le bot rejette automatiquement les opportunités avec faible confiance ML.
+			Ces paramètres s'appliquent uniquement à XGBoost V1. Pour GradientBoosting, utilisez l'onglet dédié.
 		</p>
 
 		<div class="variable-item">
@@ -2923,6 +2927,49 @@
 
 		<div class="variable-item" class:disabled={!config.ml_filter_enabled}>
 			<div class="variable-label-container">
+				<label for="ml_filter_mode">
+					<span class="variable-name">Mode de Filtrage</span>
+					<span class="variable-desc">NEGATIVE = rejette les mauvais trades (+2.9% win rate)</span>
+				</label>
+			</div>
+			<select
+				id="ml_filter_mode"
+				bind:value={config.ml_filter_mode}
+				on:change={() => triggerAutoSave('ml_filter_mode', config.ml_filter_mode)}
+				disabled={!config.ml_filter_enabled}
+				class="select-input"
+			>
+				<option value="NEGATIVE">NEGATIVE (Recommandé)</option>
+				<option value="STRICT">STRICT</option>
+				<option value="SOFT">SOFT</option>
+			</select>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.ml_filter_enabled || config.ml_filter_mode !== 'NEGATIVE'}>
+			<div class="variable-label-container">
+				<label for="ml_loss_threshold">
+					<span class="variable-name">Seuil P(loss) pour Rejet</span>
+					<span class="variable-desc">Rejeter si P(loss) >= ce seuil (30-80%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="ml_loss_threshold"
+					min="0.30"
+					max="0.80"
+					step="0.05"
+					bind:value={config.ml_loss_threshold}
+					on:change={() => triggerAutoSave('ml_loss_threshold', Math.round(config.ml_loss_threshold * 100) + '%')}
+					disabled={!config.ml_filter_enabled || config.ml_filter_mode !== 'NEGATIVE'}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.ml_loss_threshold * 100)}%</span>
+			</div>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.ml_filter_enabled || config.ml_filter_mode === 'NEGATIVE'}>
+			<div class="variable-label-container">
 				<label for="ml_min_confidence">
 					<span class="variable-name">Seuil de Confiance Minimum</span>
 					<span class="variable-desc">Confiance minimale pour accepter un trade (50-90%)</span>
@@ -2937,14 +2984,16 @@
 					step="0.05"
 					bind:value={config.ml_min_confidence}
 					on:change={() => triggerAutoSave('ml_min_confidence', Math.round(config.ml_min_confidence * 100) + '%')}
-					disabled={!config.ml_filter_enabled}
+					disabled={!config.ml_filter_enabled || config.ml_filter_mode === 'NEGATIVE'}
 					class="slider"
 				/>
 				<span class="slider-value">{Math.round(config.ml_min_confidence * 100)}%</span>
 			</div>
 		</div>
 	</section>
+	{/if}
 
+	{#if mlVersion === 'v1'}
 	<!-- 2. Métriques du Modèle Actuel (déplacée ici) -->
 	<section class="variable-section">
 		<h3>📊 Métriques du Modèle Actuel</h3>

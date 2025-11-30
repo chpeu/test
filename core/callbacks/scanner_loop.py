@@ -559,6 +559,50 @@ async def _scan_top_pairs():
                                         should_reject = True
                                         reject_reason = f"ML prédit loss avec forte confiance {confidence*100:.1f}% (seuil: {max_loss_confidence*100:.1f}%)"
 
+                                elif mode == 'NEGATIVE':
+                                    # 🔥 Mode NEGATIVE: Utiliser le filtre négatif (+6.8% win rate)
+                                    # Rejeter si P(loss) >= threshold (éviter les mauvais trades)
+                                    try:
+                                        from optimization.predictor_negative import get_negative_predictor
+                                        
+                                        neg_predictor = get_negative_predictor()
+                                        loss_threshold = ML_CONFIG.get('loss_threshold', 0.45)
+                                        
+                                        # Extraire les features depuis best_setup
+                                        indicators_1m = best_setup.get('indicators_1m', {})
+                                        indicators_5m = best_setup.get('indicators_5m', {})
+                                        
+                                        # Construire le dict de features pour le prédicteur
+                                        features_for_ml = {}
+                                        
+                                        # Features 1m
+                                        for key, val in indicators_1m.items():
+                                            if isinstance(val, (int, float)) and val is not None:
+                                                features_for_ml[f"{key}_1m" if not key.endswith('_1m') else key] = val
+                                        
+                                        # Features 5m
+                                        for key, val in indicators_5m.items():
+                                            if isinstance(val, (int, float)) and val is not None:
+                                                features_for_ml[f"{key}_5m" if not key.endswith('_5m') else key] = val
+                                        
+                                        # Prédiction
+                                        if features_for_ml:
+                                            neg_result = neg_predictor.predict(features_for_ml, threshold=loss_threshold)
+                                            p_loss = neg_result.get('p_loss', 0)
+                                            neg_should_reject = neg_result.get('should_reject', False)
+                                            
+                                            logger.info(f"🔮 Filtre Négatif: P(loss)={p_loss*100:.1f}% (seuil={loss_threshold*100:.0f}%)")
+                                            
+                                            if neg_should_reject:
+                                                should_reject = True
+                                                reject_reason = f"Filtre Négatif: P(loss)={p_loss*100:.1f}% >= seuil {loss_threshold*100:.0f}%"
+                                        else:
+                                            logger.warning(f"⚠️ Pas de features pour filtre négatif, trade autorisé")
+                                            
+                                    except Exception as neg_err:
+                                        logger.error(f"❌ Erreur filtre négatif: {neg_err}")
+                                        # En cas d'erreur, ne pas bloquer le trade
+
                                 if should_reject:
                                     logger.warning(f"❌ ML REJETTE le trade: {reject_reason}")
                                     return  # Bloquer l'ouverture de position

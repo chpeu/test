@@ -1,0 +1,25 @@
+{
+  "model_name": "gradient_boosting",
+  "trained_at": "2025-11-30T10:20:16.109894",
+  "metrics": {
+    "accuracy": 0.42790697674418604,
+    "f1": 0.594059405940594,
+    "precision": 0.42452830188679247,
+    "recall": 0.989010989010989,
+    "roc_auc": 0.48617511520737333,
+    "threshold": 0.3867532823200014
+  },
+  "n_features": 40,
+  "features": [
+    "wick_passed_1m",
+    "favorable_hour",
+    "di_gap_5m",
+    "macd_momentum_1m",
+    "european_session",
+    "rsi_neutral_1m",
+    "volatility_ratio",
+    "macd_hist_prev_1m",
+    "macd_hist_prev_5m",
+    "volatility_momentum_product"
+  ]
+}

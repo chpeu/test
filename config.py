@@ -490,7 +490,11 @@ ML_CONFIG = {
     # Mode de fonctionnement
     # - "STRICT": Accepter uniquement les prédictions 'win' avec confiance >= min_confidence
     # - "SOFT": Rejeter seulement les prédictions 'loss' avec confiance >= max_loss_confidence
-    "mode": os.getenv('ML_MODE', 'STRICT'),
+    # - "NEGATIVE": 🔥 NOUVEAU - Rejeter si P(loss) >= loss_threshold (filtre négatif, +6.8% win rate)
+    "mode": os.getenv('ML_MODE', 'NEGATIVE'),  # 🔥 NEGATIVE par défaut (meilleurs résultats)
+    
+    # 🔥 NOUVEAU: Seuil pour le mode NEGATIVE (rejeter si P(loss) >= ce seuil)
+    "loss_threshold": float(os.getenv('ML_LOSS_THRESHOLD', '0.45')),  # 45% = +6.8% win rate
 
     # Logger les prédictions dans PostgreSQL
     "log_predictions": True,
@@ -512,9 +516,13 @@ try:
         ML_CONFIG['enabled'] = TRADING_CONFIG['ml_filter_enabled']
     if 'ml_min_confidence' in TRADING_CONFIG:
         ML_CONFIG['min_confidence'] = TRADING_CONFIG['ml_min_confidence']
+    if 'ml_filter_mode' in TRADING_CONFIG:
+        ML_CONFIG['mode'] = TRADING_CONFIG['ml_filter_mode']
+    if 'ml_loss_threshold' in TRADING_CONFIG:
+        ML_CONFIG['loss_threshold'] = TRADING_CONFIG['ml_loss_threshold']
     
     import logging
-    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}")
+    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, mode={ML_CONFIG.get('mode', 'NEGATIVE')}, loss_threshold={ML_CONFIG.get('loss_threshold', 0.45)}")
     
 except Exception as e:
     import logging

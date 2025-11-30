@@ -527,9 +527,10 @@
 					</div>
 					<select id="gb_max_depth" bind:value={config.gb_max_depth} on:change={() => triggerAutoSave('gb_max_depth', config.gb_max_depth)} class="select-input">
 						<option value={2}>2 (très conservateur)</option>
-						<option value={3}>3 (recommandé)</option>
+						<option value={3}>3 (conservateur)</option>
 						<option value={4}>4 (modéré)</option>
 						<option value={5}>5 (agressif)</option>
+						<option value={6}>6 (optimisé ⭐)</option>
 					</select>
 				</div>
 				<div class="variable-item">
@@ -540,7 +541,7 @@
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_learning_rate" min="0.01" max="0.15" step="0.01" bind:value={config.gb_learning_rate} on:change={() => triggerAutoSave('gb_learning_rate', config.gb_learning_rate.toFixed(2))} />
+						<input type="range" id="gb_learning_rate" min="0.01" max="0.3" step="0.01" bind:value={config.gb_learning_rate} on:change={() => triggerAutoSave('gb_learning_rate', config.gb_learning_rate.toFixed(2))} />
 						<span class="slider-value">{config.gb_learning_rate.toFixed(2)}</span>
 					</div>
 				</div>
@@ -568,7 +569,7 @@
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_min_samples_leaf" min="5" max="30" step="5" bind:value={config.gb_min_samples_leaf} on:change={() => triggerAutoSave('gb_min_samples_leaf', config.gb_min_samples_leaf)} />
+						<input type="range" id="gb_min_samples_leaf" min="5" max="50" step="5" bind:value={config.gb_min_samples_leaf} on:change={() => triggerAutoSave('gb_min_samples_leaf', config.gb_min_samples_leaf)} />
 						<span class="slider-value">{config.gb_min_samples_leaf}</span>
 					</div>
 				</div>
@@ -596,8 +597,8 @@
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_max_features" min="0.3" max="1.0" step="0.1" bind:value={config.gb_max_features} on:change={() => triggerAutoSave('gb_max_features', config.gb_max_features.toFixed(1))} />
-						<span class="slider-value">{config.gb_max_features.toFixed(1)}</span>
+						<input type="range" id="gb_max_features" min="0.3" max="1.0" step="0.1" bind:value={config.gb_max_features} on:change={() => triggerAutoSave('gb_max_features', typeof config.gb_max_features === 'number' ? config.gb_max_features.toFixed(1) : config.gb_max_features)} />
+						<span class="slider-value">{typeof config.gb_max_features === 'number' ? config.gb_max_features.toFixed(1) : config.gb_max_features}</span>
 					</div>
 				</div>
 			</div>
