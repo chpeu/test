@@ -397,6 +397,13 @@ async def _scan_top_pairs():
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
                                 'score': pair.get('score'),  # Alias
+                                # 🔥 ORDER FLOW: 6 nouvelles métriques
+                                'delta_volume': pair.get('delta_volume'),
+                                'imbalance_normalized': pair.get('imbalance_normalized'),
+                                'spread_volatility_5': pair.get('spread_volatility_5'),
+                                'book_depth_ratio': pair.get('book_depth_ratio'),
+                                'volume_acceleration': pair.get('volume_acceleration'),
+                                'price_momentum_5': pair.get('price_momentum_5'),
                             }
                             
                             logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
@@ -1112,15 +1119,24 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                                 'balance_score': balance_score,
                                 'bidVol': bid_vol,
                                 'askVol': ask_vol,
+                                'bid_vol': bid_vol,
+                                'ask_vol': ask_vol,
                                 'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
                                 'recentVolume': pair.get('recentVolume'),
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
-                                'score': pair.get('score')
+                                'score': pair.get('score'),
+                                # 🔥 ORDER FLOW: 6 nouvelles métriques
+                                'delta_volume': pair.get('delta_volume'),
+                                'imbalance_normalized': pair.get('imbalance_normalized'),
+                                'spread_volatility_5': pair.get('spread_volatility_5'),
+                                'book_depth_ratio': pair.get('book_depth_ratio'),
+                                'volume_acceleration': pair.get('volume_acceleration'),
+                                'price_momentum_5': pair.get('price_momentum_5'),
                             }
-                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}")
+                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}, delta_vol={pair.get('delta_volume')}")
                             break
                 
                 # 🔥 DEBUG: Vérifier si scalability_data a été rempli
@@ -1145,6 +1161,16 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         except Exception:
                             imbalance = None
 
+                    # 🔥 ORDER FLOW: Calculer les métriques depuis bid/ask disponibles
+                    delta_volume = None
+                    imbalance_normalized = None
+                    book_depth_ratio = None
+                    if bid_value and ask_value:
+                        delta_volume = bid_value - ask_value
+                        total_vol = bid_value + ask_value
+                        imbalance_normalized = (bid_value - ask_value) / total_vol if total_vol > 0 else 0.0
+                        book_depth_ratio = bid_value / ask_value if ask_value > 0 else 1.0
+                    
                     scalability_data = {
                         'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
                         'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
@@ -1154,6 +1180,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'balance_score': analysis_obj.get('orderbook_balance'),
                         'bidVol': bid_value,
                         'askVol': ask_value,
+                        'bid_vol': bid_value,
+                        'ask_vol': ask_value,
                         'orderbook_imbalance_ratio': imbalance,
                         'recent_volume': analysis_obj.get('recent_volume'),
                         'recentVolume': analysis_obj.get('recent_volume'),  # Alias
@@ -1161,8 +1189,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'vol15': analysis_obj.get('vol15'),
                         'scalability_score': analysis_obj.get('scalability_score'),
                         'score': analysis_obj.get('scalability_score'),  # Alias
+                        # 🔥 ORDER FLOW: Métriques calculées depuis bid/ask
+                        'delta_volume': delta_volume,
+                        'imbalance_normalized': imbalance_normalized,
+                        'spread_volatility_5': None,  # Nécessite historique
+                        'book_depth_ratio': book_depth_ratio,
+                        'volume_acceleration': None,  # Nécessite historique
+                        'price_momentum_5': None,  # Nécessite historique
                     }
-                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
+                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}, delta_vol={delta_volume}")
 
                 scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
@@ -1200,12 +1235,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'spread_pct': scalability_data.get('spread'),
                         'book_depth': scalability_data.get('bookDepth'),
                         'balance_score': scalability_data.get('balanceScore'),
-                        'bid_vol': scalability_data.get('bidVol'),
-                        'ask_vol': scalability_data.get('askVol'),
+                        'bid_vol': scalability_data.get('bidVol') or scalability_data.get('bid_vol'),
+                        'ask_vol': scalability_data.get('askVol') or scalability_data.get('ask_vol'),
                         # Calculer imbalance ratio si bid/ask disponibles
                         'orderbook_imbalance_ratio': (
-                            scalability_data.get('bidVol') / scalability_data.get('askVol')
-                            if scalability_data.get('askVol') and scalability_data.get('askVol') > 0
+                            (scalability_data.get('bidVol') or scalability_data.get('bid_vol', 0)) / 
+                            (scalability_data.get('askVol') or scalability_data.get('ask_vol', 1))
+                            if (scalability_data.get('askVol') or scalability_data.get('ask_vol', 0)) > 0
                             else None
                         ),
                         # Paramètres du scan de scalabilité
@@ -1213,6 +1249,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'vol5': scalability_data.get('vol5'),
                         'vol15': scalability_data.get('vol15'),
                         'scalability_score': scalability_data.get('scalability_score'),
+                        # 🔥 ORDER FLOW: 6 nouvelles métriques
+                        'delta_volume': scalability_data.get('delta_volume'),
+                        'imbalance_normalized': scalability_data.get('imbalance_normalized'),
+                        'spread_volatility_5': scalability_data.get('spread_volatility_5'),
+                        'book_depth_ratio': scalability_data.get('book_depth_ratio'),
+                        'volume_acceleration': scalability_data.get('volume_acceleration'),
+                        'price_momentum_5': scalability_data.get('price_momentum_5'),
                     },
                     # Ajouter aussi au niveau racine pour les fallbacks
                     'price': scan_price,  # 🔥 FIX: Ajouter le prix au niveau racine pour les fallbacks

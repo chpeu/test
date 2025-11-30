@@ -34,6 +34,10 @@ class ScalabilityScanner:
         self._orderbook_cache_timestamps: Dict[str, float] = {}
         # 🔥 OPT #5: dernière raison de rejet (pour debug)
         self._last_reject_reason: Optional[str] = None
+        # 🔥 ORDER FLOW: Historique des spreads pour volatilité
+        self._spread_history: Dict[str, List[float]] = {}
+        # 🔥 ORDER FLOW: Historique des volumes pour accélération
+        self._volume_history: Dict[str, List[float]] = {}
     
     def calculate_volatility(self, closes: List[float], period: int) -> float:
         """
@@ -286,6 +290,82 @@ class ScalabilityScanner:
         except Exception:
             return 0.0
 
+    def calculate_orderflow_metrics(
+        self,
+        symbol: str,
+        bid_vol: float,
+        ask_vol: float,
+        spread: float,
+        closes: List[float],
+        volumes: List[float]
+    ) -> Dict[str, float]:
+        """
+        🔥 ORDER FLOW: Calcul des métriques avancées pour ML
+        
+        Args:
+            symbol: Symbole de la paire
+            bid_vol: Volume bid (acheteurs)
+            ask_vol: Volume ask (vendeurs)
+            spread: Spread actuel en %
+            closes: Liste des prix de clôture
+            volumes: Liste des volumes
+            
+        Returns:
+            Dict avec les 6 métriques order flow
+        """
+        # 1. Delta Volume: pression nette (+ = acheteurs dominent)
+        delta_volume = bid_vol - ask_vol
+        
+        # 2. Imbalance Normalized: ratio [-1, +1]
+        total_vol = bid_vol + ask_vol
+        imbalance_normalized = (bid_vol - ask_vol) / total_vol if total_vol > 0 else 0.0
+        
+        # 3. Spread Volatility (écart-type sur les 5 derniers spreads)
+        if symbol not in self._spread_history:
+            self._spread_history[symbol] = []
+        
+        # Ajouter le spread actuel à l'historique (max 10 valeurs)
+        if not math.isnan(spread) and spread > 0:
+            self._spread_history[symbol].append(spread)
+            if len(self._spread_history[symbol]) > 10:
+                self._spread_history[symbol] = self._spread_history[symbol][-10:]
+        
+        # Calculer écart-type sur les 5 derniers
+        spread_history = self._spread_history.get(symbol, [])
+        if len(spread_history) >= 5:
+            recent_spreads = spread_history[-5:]
+            mean_spread = sum(recent_spreads) / len(recent_spreads)
+            variance = sum((s - mean_spread) ** 2 for s in recent_spreads) / len(recent_spreads)
+            spread_volatility_5 = math.sqrt(variance)
+        else:
+            spread_volatility_5 = 0.0
+        
+        # 4. Book Depth Ratio: bid_vol / ask_vol (> 1 = plus d'acheteurs)
+        book_depth_ratio = bid_vol / ask_vol if ask_vol > 0 else 1.0
+        
+        # 5. Volume Acceleration: dérivée du volume (changement récent)
+        if len(volumes) >= 5:
+            vol_recent = sum(volumes[-3:]) / 3  # Moyenne 3 dernières
+            vol_previous = sum(volumes[-6:-3]) / 3 if len(volumes) >= 6 else vol_recent  # Moyenne précédentes
+            volume_acceleration = (vol_recent - vol_previous) / vol_previous if vol_previous > 0 else 0.0
+        else:
+            volume_acceleration = 0.0
+        
+        # 6. Price Momentum 5: % change sur 5 bougies
+        if len(closes) >= 5:
+            price_momentum_5 = ((closes[-1] - closes[-5]) / closes[-5]) * 100 if closes[-5] > 0 else 0.0
+        else:
+            price_momentum_5 = 0.0
+        
+        return {
+            'delta_volume': round(delta_volume, 4),
+            'imbalance_normalized': round(imbalance_normalized, 4),
+            'spread_volatility_5': round(spread_volatility_5, 6),
+            'book_depth_ratio': round(book_depth_ratio, 4),
+            'volume_acceleration': round(volume_acceleration, 4),
+            'price_momentum_5': round(price_momentum_5, 4)
+        }
+
     async def scan_pair(self, symbol: str) -> Optional[Dict]:
         """
         🔥 OPT #4/#9: Scanne une paire avec ADX et klines optimisées
@@ -324,6 +404,16 @@ class ScalabilityScanner:
             # Récupérer spread & depth (avec cache)
             spread_data = await self.fetch_spread_data(symbol)
             
+            # 🔥 ORDER FLOW: Calculer les métriques avancées
+            orderflow_metrics = self.calculate_orderflow_metrics(
+                symbol=symbol,
+                bid_vol=spread_data['bidVol'],
+                ask_vol=spread_data['askVol'],
+                spread=spread_data['spread'],
+                closes=closes,
+                volumes=volumes
+            )
+            
             # Construire objet paire
             pair = {
                 'symbol': symbol,
@@ -338,7 +428,14 @@ class ScalabilityScanner:
                 'askVol': spread_data['askVol'],
                 'directionBias': spread_data.get('directionBias', 'NEUTRAL'),
                 'bidAskRatio': spread_data.get('bidAskRatio', 0.5),
-                'adx': adx  # 🔥 OPT #4: ADX pour trend strength
+                'adx': adx,  # 🔥 OPT #4: ADX pour trend strength
+                # 🔥 ORDER FLOW: 6 nouvelles métriques pour ML
+                'delta_volume': orderflow_metrics['delta_volume'],
+                'imbalance_normalized': orderflow_metrics['imbalance_normalized'],
+                'spread_volatility_5': orderflow_metrics['spread_volatility_5'],
+                'book_depth_ratio': orderflow_metrics['book_depth_ratio'],
+                'volume_acceleration': orderflow_metrics['volume_acceleration'],
+                'price_momentum_5': orderflow_metrics['price_momentum_5']
             }
             
             return pair

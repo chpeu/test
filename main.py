@@ -4899,6 +4899,76 @@ async def handle_client_command(command: str, params: dict):
                 updated['gb_model_type'] = val
                 logger.info(f"✅ GB model_type: {val} ({'HistGradientBoosting' if val == 'histgb' else 'GradientBoosting'})")
 
+        # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
+        if 'adaptive_sizing_enabled' in params:
+            TRADING_CONFIG['adaptive_sizing_enabled'] = bool(params['adaptive_sizing_enabled'])
+            updated['adaptive_sizing_enabled'] = TRADING_CONFIG['adaptive_sizing_enabled']
+            logger.info(f"✅ adaptive_sizing_enabled: {TRADING_CONFIG['adaptive_sizing_enabled']}")
+        
+        if 'adaptive_sizing_min_trades' in params:
+            val = int(params['adaptive_sizing_min_trades'])
+            val = max(2, min(10, val))  # Clamp 2-10
+            TRADING_CONFIG['adaptive_sizing_min_trades'] = val
+            updated['adaptive_sizing_min_trades'] = val
+        
+        # Seuils de Win Rate
+        adaptive_sizing_wr_params = {
+            'adaptive_sizing_excellent_wr': (0.60, 0.95),
+            'adaptive_sizing_good_wr': (0.50, 0.80),
+            'adaptive_sizing_poor_wr': (0.20, 0.50),
+            'adaptive_sizing_very_poor_wr': (0.10, 0.40)
+        }
+        for key, (min_val, max_val) in adaptive_sizing_wr_params.items():
+            if key in params:
+                val = float(params[key])
+                val = max(min_val, min(max_val, val))
+                TRADING_CONFIG[key] = val
+                updated[key] = val
+        
+        # Multiplicateurs de sizing
+        adaptive_sizing_mult_params = {
+            'adaptive_sizing_excellent_mult': (1.0, 2.0),
+            'adaptive_sizing_good_mult': (1.0, 1.75),
+            'adaptive_sizing_normal_mult': (0.8, 1.2),
+            'adaptive_sizing_poor_mult': (0.3, 1.0),
+            'adaptive_sizing_very_poor_mult': (0.2, 0.8),
+            'adaptive_sizing_max_mult': (1.0, 3.0),
+            'adaptive_sizing_min_mult': (0.1, 1.0)
+        }
+        for key, (min_val, max_val) in adaptive_sizing_mult_params.items():
+            if key in params:
+                val = float(params[key])
+                val = max(min_val, min(max_val, val))
+                TRADING_CONFIG[key] = val
+                updated[key] = val
+        
+        if 'adaptive_sizing_reset_hours' in params:
+            val = int(params['adaptive_sizing_reset_hours'])
+            val = max(1, min(24, val))  # Clamp 1-24h
+            TRADING_CONFIG['adaptive_sizing_reset_hours'] = val
+            updated['adaptive_sizing_reset_hours'] = val
+        
+        if 'adaptive_sizing_reset_big_loss' in params:
+            TRADING_CONFIG['adaptive_sizing_reset_big_loss'] = bool(params['adaptive_sizing_reset_big_loss'])
+            updated['adaptive_sizing_reset_big_loss'] = TRADING_CONFIG['adaptive_sizing_reset_big_loss']
+        
+        if 'adaptive_sizing_big_loss_threshold' in params:
+            val = float(params['adaptive_sizing_big_loss_threshold'])
+            val = max(-10.0, min(-0.5, val))  # Clamp -10% à -0.5%
+            TRADING_CONFIG['adaptive_sizing_big_loss_threshold'] = val
+            updated['adaptive_sizing_big_loss_threshold'] = val
+        
+        # 🔥 Si un paramètre adaptive_sizing a changé, recharger la config du manager
+        adaptive_sizing_keys = [k for k in updated.keys() if k.startswith('adaptive_sizing_')]
+        if adaptive_sizing_keys:
+            try:
+                from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                manager = get_adaptive_sizing_manager()
+                manager.reload_config()
+                logger.info(f"✅ AdaptiveSizingManager config rechargée: {adaptive_sizing_keys}")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur reload AdaptiveSizingManager: {e}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -6047,7 +6117,8 @@ async def export_datalogger_excel(
                         'config_retest_timeout_seconds', 'config_use_cooldown',
                         'config_cooldown_seconds', 'config_cooldown_same_symbol',
                         'config_use_candle_close', 'config_candle_close_threshold_seconds',
-                        'config_use_momentum_continuity', 'config_momentum_lookback'
+                        'config_use_momentum_continuity', 'config_momentum_lookback',
+                        'delta_volume', 'imbalance_normalized', 'book_depth_ratio'
                     ]
                     for col in config_columns:
                         if col not in headers:

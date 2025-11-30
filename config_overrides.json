@@ -109,5 +109,20 @@
   "gb_subsample": 0.734,
   "gb_max_features": "sqrt",
   "gb_model_type": "gb",
-  "gb_timeframe_days": 730
+  "gb_timeframe_days": 730,
+  "adaptive_sizing_enabled": true,
+  "adaptive_sizing_min_trades": 3,
+  "adaptive_sizing_excellent_wr": 0.7,
+  "adaptive_sizing_good_wr": 0.5,
+  "adaptive_sizing_poor_wr": 0.4,
+  "adaptive_sizing_very_poor_wr": 0.3,
+  "adaptive_sizing_excellent_mult": 1.5,
+  "adaptive_sizing_good_mult": 1.0,
+  "adaptive_sizing_poor_mult": 0.7,
+  "adaptive_sizing_very_poor_mult": 0.5,
+  "adaptive_sizing_max_mult": 1.8,
+  "adaptive_sizing_min_mult": 0.5,
+  "adaptive_sizing_reset_hours": 3,
+  "adaptive_sizing_reset_big_loss": true,
+  "adaptive_sizing_big_loss_threshold": -2.0
 }

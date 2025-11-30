@@ -272,6 +272,23 @@ TRADING_CONFIG = {
         ]
     },
     
+    # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session (basé sur WR temps réel)
+    "adaptive_sizing_enabled": True,
+    "adaptive_sizing_min_trades": 3,        # Minimum trades avant ajustement
+    "adaptive_sizing_excellent_wr": 0.75,   # WR >= 75% = excellent
+    "adaptive_sizing_good_wr": 0.60,        # WR >= 60% = bon
+    "adaptive_sizing_poor_wr": 0.40,        # WR <= 40% = mauvais
+    "adaptive_sizing_very_poor_wr": 0.30,   # WR <= 30% = très mauvais
+    "adaptive_sizing_excellent_mult": 1.50, # +50% si excellent
+    "adaptive_sizing_good_mult": 1.25,      # +25% si bon
+    "adaptive_sizing_poor_mult": 0.70,      # -30% si mauvais
+    "adaptive_sizing_very_poor_mult": 0.50, # -50% si très mauvais
+    "adaptive_sizing_max_mult": 1.50,       # Limite max
+    "adaptive_sizing_min_mult": 0.50,       # Limite min
+    "adaptive_sizing_reset_hours": 8,       # Reset après 8h d'inactivité
+    "adaptive_sizing_reset_big_loss": True, # Reset si grosse perte
+    "adaptive_sizing_big_loss_threshold": -2.0, # Seuil grosse perte %
+
     # ✅ TP Escalier / Multi-Level TP (paramètres individuels pour frontend)
     "partial_tp_percent": 50,  # % de position vendue au 1er TP (mode FIXE)
     "escalier_level1_pnl": 0.20,

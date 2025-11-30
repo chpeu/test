@@ -1122,8 +1122,24 @@ class PositionManager:
                 f"(mult: {recovery_mult:.2f}, final: {streak_mult:.2f})"
             )
 
+        # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
+        adaptive_mult = 1.0
+        symbol = setup.get('symbol', '')
+        if symbol and TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+            try:
+                from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                adaptive_manager = get_adaptive_sizing_manager()
+                adaptive_mult = adaptive_manager.get_size_multiplier(symbol)
+                if adaptive_mult != 1.0:
+                    logger.info(
+                        f"📊 Sizing adaptatif {symbol}: x{adaptive_mult:.2f} "
+                        f"(basé sur WR session)"
+                    )
+            except Exception as e:
+                logger.debug(f"Sizing adaptatif non disponible: {e}")
+
         # Calculer taille finale
-        final_size = base_size * multiplier * streak_mult
+        final_size = base_size * multiplier * streak_mult * adaptive_mult
 
         # Bornes
         min_size = capital * min_risk if min_risk else 0.0
@@ -1142,10 +1158,31 @@ class PositionManager:
             f"📊 Position sizing: {setup.get('symbol', 'N/A')} | "
             f"Score={score:.1f} | Base={base_size:.0f} | "
             f"Multiplier={multiplier:.2f} | Streak={streak_mult:.2f} | "
-            f"Final={final_size:.2f} USDT"
+            f"Adaptive={adaptive_mult:.2f} | Final={final_size:.2f} USDT"
         )
 
         return round(final_size, 2)
+
+    def record_trade_for_adaptive_sizing(self, symbol: str, pnl_pct: float, is_win: bool):
+        """
+        Enregistre un trade dans le manager de sizing adaptatif.
+        Appelé après la fermeture d'une position.
+        
+        Args:
+            symbol: Symbole de la paire
+            pnl_pct: PnL en pourcentage
+            is_win: True si trade gagnant
+        """
+        from config import TRADING_CONFIG
+        if not TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+            return
+        
+        try:
+            from core.position.adaptive_sizing import get_adaptive_sizing_manager
+            manager = get_adaptive_sizing_manager()
+            manager.record_trade(symbol, pnl_pct, is_win)
+        except Exception as e:
+            logger.debug(f"Erreur enregistrement trade adaptatif: {e}")
 
     def get_recovery_level(self, loss_streak: int) -> Optional[Dict]:
         """
@@ -2177,12 +2214,20 @@ class PositionManager:
         # ========================================
 
         # Mettre à jour streaks
-        if net_pnl_pct > 0:
+        is_win = net_pnl_pct > 0
+        if is_win:
             self.config.win_streak += 1
             self.config.loss_streak = 0
         else:
             self.config.win_streak = 0
             self.config.loss_streak += 1
+
+        # 🔥 PHASE 8: Enregistrer trade pour sizing adaptatif
+        self.record_trade_for_adaptive_sizing(
+            symbol=self.active_position.symbol,
+            pnl_pct=net_pnl_pct,
+            is_win=is_win
+        )
 
         # Recovery Mode - Mettre à jour
         self.recovery_mode.update_after_trade(is_win=net_pnl_pct > 0)

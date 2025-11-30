@@ -439,6 +439,9 @@ class PostgreSQLDataLogger:
                     price, spread_pct, book_depth, balance_score,
                     bid_vol, ask_vol, orderbook_imbalance_ratio,
                     recent_volume, vol5, vol15, scalability_score,
+                    -- 🔥 ORDER FLOW: 6 nouvelles métriques
+                    delta_volume, imbalance_normalized, spread_volatility_5,
+                    book_depth_ratio, volume_acceleration, price_momentum_5,
                     
                     -- Indicateurs 1m
                     ema9_1m, ema21_1m, ema_diff_pct_1m,
@@ -506,17 +509,18 @@ class PostgreSQLDataLogger:
                     NOW(), %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -557,18 +561,43 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
             
+            # 🔥 ORDER FLOW: Calcul automatique si manquant
+            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
+            imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
+            book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
+            
+            # Calculer automatiquement si manquant et bid/ask disponibles
+            if delta_volume is None and bid_vol and ask_vol:
+                delta_volume = float(bid_vol) - float(ask_vol)
+            if imbalance_normalized is None and bid_vol and ask_vol:
+                total = float(bid_vol) + float(ask_vol)
+                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+                book_depth_ratio = float(bid_vol) / float(ask_vol)
+            
             # Préparer les paramètres
             params = (
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
-                market_data.get('bid_vol'), market_data.get('ask_vol'),
+                bid_vol, ask_vol,
                 market_data.get('orderbook_imbalance_ratio'),
                 # Paramètres du scan de scalabilité
                 market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
                 market_data.get('vol5') or scan_data.get('vol5'),
                 market_data.get('vol15') or scan_data.get('vol15'),
                 market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                
+                # 🔥 ORDER FLOW: 6 métriques (calculées auto si manquantes)
+                delta_volume,
+                imbalance_normalized,
+                market_data.get('spread_volatility_5') or scan_data.get('spread_volatility_5'),
+                book_depth_ratio,
+                market_data.get('volume_acceleration') or scan_data.get('volume_acceleration'),
+                market_data.get('price_momentum_5') or scan_data.get('price_momentum_5'),
                 
                 # 1m
                 indicators_1m.get('ema9'), indicators_1m.get('ema21'),
@@ -1553,18 +1582,42 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
 
+            # 🔥 ORDER FLOW: Calcul automatique si manquant
+            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
+            imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
+            book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
+            
+            # Calculer automatiquement si manquant et bid/ask disponibles
+            if delta_volume is None and bid_vol and ask_vol:
+                delta_volume = float(bid_vol) - float(ask_vol)
+            if imbalance_normalized is None and bid_vol and ask_vol:
+                total = float(bid_vol) + float(ask_vol)
+                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+                book_depth_ratio = float(bid_vol) / float(ask_vol)
+
             value_tuple = (
                 # En-tête
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
-                market_data.get('bid_vol'), market_data.get('ask_vol'),
+                bid_vol, ask_vol,
                 market_data.get('orderbook_imbalance_ratio'),
                 # Scalability
                 market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
                 market_data.get('vol5') or scan_data.get('vol5'),
                 market_data.get('vol15') or scan_data.get('vol15'),
                 market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                # 🔥 ORDER FLOW: 6 métriques (calculées auto si manquantes)
+                delta_volume,
+                imbalance_normalized,
+                market_data.get('spread_volatility_5') or scan_data.get('spread_volatility_5'),
+                book_depth_ratio,
+                market_data.get('volume_acceleration') or scan_data.get('volume_acceleration'),
+                market_data.get('price_momentum_5') or scan_data.get('price_momentum_5'),
                 # 1m
                 indicators_1m.get('ema9'), indicators_1m.get('ema21'),
                 indicators_1m.get('ema_diff_pct'),
@@ -1661,6 +1714,9 @@ class PostgreSQLDataLogger:
             'price', 'spread_pct', 'book_depth', 'balance_score',
             'bid_vol', 'ask_vol', 'orderbook_imbalance_ratio',
             'recent_volume', 'vol5', 'vol15', 'scalability_score',
+            # 🔥 ORDER FLOW: 6 nouvelles colonnes
+            'delta_volume', 'imbalance_normalized', 'spread_volatility_5',
+            'book_depth_ratio', 'volume_acceleration', 'price_momentum_5',
             'ema9_1m', 'ema21_1m', 'ema_diff_pct_1m',
             'rsi_1m', 'rsi_prev_1m',
             'macd_1m', 'macd_signal_1m', 'macd_hist_1m', 'macd_hist_prev_1m',

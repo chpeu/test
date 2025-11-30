@@ -136,7 +136,21 @@
 		candle_close_threshold_seconds: 5,
 		// 🔥 OPT #19: Momentum Continuity
 		use_momentum_continuity: true,
-		momentum_lookback: 3
+		momentum_lookback: 3,
+		// 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
+		adaptive_sizing_enabled: true,
+		adaptive_sizing_min_trades: 3,
+		adaptive_sizing_excellent_wr: 0.75,
+		adaptive_sizing_good_wr: 0.60,
+		adaptive_sizing_poor_wr: 0.40,
+		adaptive_sizing_very_poor_wr: 0.30,
+		adaptive_sizing_excellent_mult: 1.50,
+		adaptive_sizing_good_mult: 1.25,
+		adaptive_sizing_poor_mult: 0.70,
+		adaptive_sizing_very_poor_mult: 0.50,
+		adaptive_sizing_max_mult: 1.50,
+		adaptive_sizing_min_mult: 0.50,
+		adaptive_sizing_reset_hours: 8
 	};
 
 	let config = { ...DEFAULTS };
@@ -534,6 +548,21 @@
 				trailing_atr_multiplier: tradingConfig.trailing_atr_multiplier,
 				trailing_min_distance: tradingConfig.trailing_min_distance,
 				trailing_max_distance: tradingConfig.trailing_max_distance,
+			},
+			'📊 Sizing Adaptatif': {
+				adaptive_sizing_enabled: tradingConfig.adaptive_sizing_enabled,
+				adaptive_sizing_min_trades: tradingConfig.adaptive_sizing_min_trades,
+				adaptive_sizing_excellent_wr: tradingConfig.adaptive_sizing_excellent_wr,
+				adaptive_sizing_good_wr: tradingConfig.adaptive_sizing_good_wr,
+				adaptive_sizing_poor_wr: tradingConfig.adaptive_sizing_poor_wr,
+				adaptive_sizing_very_poor_wr: tradingConfig.adaptive_sizing_very_poor_wr,
+				adaptive_sizing_excellent_mult: tradingConfig.adaptive_sizing_excellent_mult,
+				adaptive_sizing_good_mult: tradingConfig.adaptive_sizing_good_mult,
+				adaptive_sizing_poor_mult: tradingConfig.adaptive_sizing_poor_mult,
+				adaptive_sizing_very_poor_mult: tradingConfig.adaptive_sizing_very_poor_mult,
+				adaptive_sizing_max_mult: tradingConfig.adaptive_sizing_max_mult,
+				adaptive_sizing_min_mult: tradingConfig.adaptive_sizing_min_mult,
+				adaptive_sizing_reset_hours: tradingConfig.adaptive_sizing_reset_hours,
 			},
 			'⏱️ Timeframe & Trend': {
 				trend_timeframe: tradingConfig.trend_timeframe,
@@ -2198,6 +2227,219 @@
 								data-debug-name="config.risk_per_trade"
 							/>
 							<span class="slider-value" data-debug-name="config.risk_per_trade">{Number(config.risk_per_trade).toFixed(1)}%</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- 🔥 PHASE 8: Sizing Adaptatif par Paire/Session -->
+				<h3>📊 Sizing Adaptatif</h3>
+				<p class="section-info">
+					Ajuste automatiquement la taille des positions en fonction du winrate par paire pendant la session.
+				</p>
+				<div class="variables-list">
+					<div class="variable-item toggle-item">
+						<div class="var-header">
+							<label for="adaptive-sizing-enabled">
+								<span class="var-name">Sizing Adaptatif</span>
+								<span class="var-desc">Activer l'ajustement automatique de la taille</span>
+							</label>
+						</div>
+						<label class="toggle">
+							<input type="checkbox" id="adaptive-sizing-enabled" bind:checked={config.adaptive_sizing_enabled} 
+								on:change={() => triggerAutoSave('adaptive_sizing_enabled', config.adaptive_sizing_enabled ? 'ON' : 'OFF')} />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-min-trades">
+								<span class="var-name">Trades min avant ajustement</span>
+								<span class="var-desc">Nombre minimum de trades avant d'ajuster la taille</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_min_trades')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-min-trades" step="1" min="2" max="10" 
+								bind:value={config.adaptive_sizing_min_trades}
+								on:change={() => triggerAutoSave('adaptive_sizing_min_trades', config.adaptive_sizing_min_trades)} />
+							<span class="slider-value">{config.adaptive_sizing_min_trades}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-excellent-wr">
+								<span class="var-name">Seuil WR Excellent (%)</span>
+								<span class="var-desc">WR au-dessus = multiplicateur excellent</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_excellent_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-excellent-wr" step="0.05" min="0.60" max="0.90" 
+								bind:value={config.adaptive_sizing_excellent_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_excellent_wr', `${(config.adaptive_sizing_excellent_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_excellent_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-excellent-mult">
+								<span class="var-name">Mult. Excellent</span>
+								<span class="var-desc">Multiplicateur si WR excellent (ex: 1.5 = +50%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_excellent_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-excellent-mult" step="0.05" min="1.0" max="2.0" 
+								bind:value={config.adaptive_sizing_excellent_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_excellent_mult', `x${config.adaptive_sizing_excellent_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_excellent_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-good-wr">
+								<span class="var-name">Seuil WR Bon (%)</span>
+								<span class="var-desc">WR au-dessus = multiplicateur bon</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_good_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-good-wr" step="0.05" min="0.50" max="0.75" 
+								bind:value={config.adaptive_sizing_good_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_good_wr', `${(config.adaptive_sizing_good_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_good_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-good-mult">
+								<span class="var-name">Mult. Bon</span>
+								<span class="var-desc">Multiplicateur si WR bon (ex: 1.25 = +25%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_good_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-good-mult" step="0.05" min="1.0" max="1.5" 
+								bind:value={config.adaptive_sizing_good_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_good_mult', `x${config.adaptive_sizing_good_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_good_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-poor-wr">
+								<span class="var-name">Seuil WR Mauvais (%)</span>
+								<span class="var-desc">WR en-dessous = multiplicateur réduit</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_poor_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-poor-wr" step="0.05" min="0.20" max="0.50" 
+								bind:value={config.adaptive_sizing_poor_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_poor_wr', `${(config.adaptive_sizing_poor_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_poor_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-poor-mult">
+								<span class="var-name">Mult. Mauvais</span>
+								<span class="var-desc">Multiplicateur si WR mauvais (ex: 0.7 = -30%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_poor_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-poor-mult" step="0.05" min="0.30" max="1.0" 
+								bind:value={config.adaptive_sizing_poor_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_poor_mult', `x${config.adaptive_sizing_poor_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_poor_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-very-poor-wr">
+								<span class="var-name">Seuil WR Très Mauvais (%)</span>
+								<span class="var-desc">WR en-dessous = multiplicateur minimal</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_very_poor_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-very-poor-wr" step="0.05" min="0.10" max="0.40" 
+								bind:value={config.adaptive_sizing_very_poor_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_very_poor_wr', `${(config.adaptive_sizing_very_poor_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_very_poor_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-very-poor-mult">
+								<span class="var-name">Mult. Très Mauvais</span>
+								<span class="var-desc">Multiplicateur si WR très mauvais (ex: 0.5 = -50%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_very_poor_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-very-poor-mult" step="0.05" min="0.20" max="0.80" 
+								bind:value={config.adaptive_sizing_very_poor_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_very_poor_mult', `x${config.adaptive_sizing_very_poor_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_very_poor_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-max-mult">
+								<span class="var-name">Limite Max Mult.</span>
+								<span class="var-desc">Sécurité: jamais plus de ce multiplicateur</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_max_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-max-mult" step="0.05" min="1.10" max="2.00" 
+								bind:value={config.adaptive_sizing_max_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_max_mult', `x${config.adaptive_sizing_max_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_max_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-min-mult">
+								<span class="var-name">Limite Min Mult.</span>
+								<span class="var-desc">Sécurité: jamais moins de ce multiplicateur</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_min_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-min-mult" step="0.05" min="0.20" max="0.80" 
+								bind:value={config.adaptive_sizing_min_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_min_mult', `x${config.adaptive_sizing_min_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_min_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-reset-hours">
+								<span class="var-name">Reset après (heures)</span>
+								<span class="var-desc">Reset les stats après X heures d'inactivité</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_reset_hours')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-reset-hours" step="1" min="1" max="24" 
+								bind:value={config.adaptive_sizing_reset_hours}
+								on:change={() => triggerAutoSave('adaptive_sizing_reset_hours', `${config.adaptive_sizing_reset_hours}h`)} />
+							<span class="slider-value">{config.adaptive_sizing_reset_hours}h</span>
 						</div>
 					</div>
 				</div>
