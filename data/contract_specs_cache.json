@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764622865.1198835,
+  "timestamp": 1764623273.177488,
   "specs": {
     "HYPE_USDT": {
       "symbol": "HYPE_USDT",
@@ -30,6 +30,26 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "HBAR_USDT": {
+      "symbol": "HBAR_USDT",
+      "min_vol": 1.0,
+      "max_vol": 9800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "LINK_USDT": {
+      "symbol": "LINK_USDT",
+      "min_vol": 1.0,
+      "max_vol": 850000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }
