@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764623273.177488,
+  "timestamp": 1764624170.9397216,
   "specs": {
     "HYPE_USDT": {
       "symbol": "HYPE_USDT",
@@ -50,6 +50,36 @@
       "price_precision": 3,
       "vol_precision": 1,
       "contract_size": 0.1
+    },
+    "SPX_USDT": {
+      "symbol": "SPX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 160000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "SOL_USDT": {
+      "symbol": "SOL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 120000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "SUI_USDT": {
+      "symbol": "SUI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }

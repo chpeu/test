@@ -4852,7 +4852,7 @@ async def handle_client_command(command: str, params: dict):
         
         if 'gb_min_confidence' in params:
             val = float(params['gb_min_confidence'])
-            val = max(0.40, min(0.80, val))  # Clamp 40%-80%
+            val = max(0.25, min(0.80, val))  # Clamp 25%-80% (comme le slider frontend)
             TRADING_CONFIG['gb_min_confidence'] = val
             updated['gb_min_confidence'] = val
             logger.info(f"✅ GB min confidence: {val*100:.0f}%")

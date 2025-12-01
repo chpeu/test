@@ -1385,7 +1385,44 @@ class LiveOrderManagerFutures:
                     self.bypass_client.get_contract_spec(bypass_symbol)
                 )
                 
+                # 🔥 FIX FERMETURE PARTIELLE: Pour fermeture TOTALE, récupérer taille réelle MEXC
+                used_mexc_size = False  # Flag pour savoir si on a la taille réelle MEXC
+                if partial_pct is None:  # Fermeture totale
+                    try:
+                        positions = run_async_safely(
+                            self.bypass_client.get_open_positions(bypass_symbol)
+                        )
+                        if positions:
+                            for pos in positions:
+                                # Trouver la position correspondante
+                                pos_symbol = getattr(pos, 'symbol', None)
+                                pos_size = getattr(pos, 'hold_vol', None) or getattr(pos, 'size', None)
+                                if pos_symbol == bypass_symbol and pos_size and pos_size > 0:
+                                    logger.info(
+                                        f"📋 [CLOSE] Taille RÉELLE MEXC: {pos_size} contrats "
+                                        f"(calculée: {amount / contract_spec.contract_size if contract_spec and contract_spec.contract_size != 1.0 else amount:.2f})"
+                                    )
+                                    # Utiliser directement la taille MEXC en contrats (pas besoin de conversion!)
+                                    amount = float(pos_size)
+                                    used_mexc_size = True
+                                    break
+                    except Exception as pos_err:
+                        logger.warning(f"⚠️ Impossible de récupérer position MEXC: {pos_err}, utilisation taille calculée")
+                
                 if contract_spec:
+                    # 🔥 FIX CRITIQUE: Convertir tokens → contrats MEXC (comme à l'ouverture!)
+                    # Sur MEXC, 1 contrat = contractSize tokens
+                    # Exemple SOL (contractSize=0.1): 0.1 token → 1 contrat
+                    # SAUF si on a récupéré la taille réelle MEXC (déjà en contrats)
+                    if contract_spec.contract_size != 1.0 and not used_mexc_size:
+                        # Conversion nécessaire si on n'a pas la taille réelle MEXC
+                        original_amount = amount
+                        amount = amount / contract_spec.contract_size
+                        logger.info(
+                            f"📋 [CLOSE] Conversion tokens→contrats {bypass_symbol}: "
+                            f"{original_amount:.6f} / {contract_spec.contract_size} = {amount:.2f} contrats"
+                        )
+                    
                     amount = contract_spec.round_volume(amount)
                     current_price = contract_spec.round_price(current_price)
                 else:
