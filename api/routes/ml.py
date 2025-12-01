@@ -2228,7 +2228,8 @@ async def apply_gradientboosting_params(
             'min_samples_split': 'gb_min_samples_split',
             'min_samples_leaf': 'gb_min_samples_leaf',
             'subsample': 'gb_subsample',
-            'max_features': 'gb_max_features'
+            'max_features': 'gb_max_features',
+            'l2_regularization': 'gb_l2_regularization'  # Pour HistGB
         }
         
         applied_params = {}
@@ -3182,6 +3183,7 @@ async def train_gradientboosting_model(
         final_min_samples_leaf = min_samples_leaf if min_samples_leaf is not None else TRADING_CONFIG.get('gb_min_samples_leaf', 15)
         final_subsample = subsample if subsample is not None else TRADING_CONFIG.get('gb_subsample', 0.7)
         final_max_features = max_features if max_features is not None else TRADING_CONFIG.get('gb_max_features', 0.5)
+        final_l2_regularization = TRADING_CONFIG.get('gb_l2_regularization', 0.3)  # Pour HistGB
         
         logger.info(
             f"🎯 Hyperparamètres GB depuis config: n_estimators={final_n_estimators}, "
@@ -3203,7 +3205,8 @@ async def train_gradientboosting_model(
                 'min_samples_split': final_min_samples_split,
                 'min_samples_leaf': final_min_samples_leaf,
                 'subsample': final_subsample,
-                'max_features': final_max_features
+                'max_features': final_max_features,
+                'l2_regularization': final_l2_regularization  # Pour HistGB
             }
         }
         

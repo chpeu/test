@@ -56,6 +56,7 @@ def load_config():
         'min_samples_leaf': config.get('gb_min_samples_leaf', 15),
         'subsample': config.get('gb_subsample', 0.7),
         'max_features': config.get('gb_max_features', 0.5),
+        'l2_regularization': config.get('gb_l2_regularization', 0.3),  # Pour HistGB
     }
     
     model_type = config.get('gb_model_type', 'gb')
@@ -140,10 +141,8 @@ def train_and_evaluate(X, y, params, model_type='gb'):
             max_depth=params.get('max_depth', 3),
             learning_rate=params.get('learning_rate', 0.03),
             min_samples_leaf=params.get('min_samples_leaf', 15),
-            random_state=RANDOM_STATE,
-            early_stopping=True,
-            n_iter_no_change=15,
-            validation_fraction=0.15
+            l2_regularization=params.get('l2_regularization', 0.3),  # 🔥 IMPORTANT!
+            random_state=RANDOM_STATE
         )
     else:
         print(f"🌳 Modèle: GradientBoostingClassifier")
@@ -205,6 +204,7 @@ def cross_validate(X, y, params, model_type='gb'):
             max_depth=params.get('max_depth', 3),
             learning_rate=params.get('learning_rate', 0.03),
             min_samples_leaf=params.get('min_samples_leaf', 15),
+            l2_regularization=params.get('l2_regularization', 0.3),  # 🔥 IMPORTANT!
             random_state=RANDOM_STATE
         )
     else:
