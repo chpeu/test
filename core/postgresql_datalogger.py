@@ -1536,7 +1536,7 @@ class PostgreSQLDataLogger:
                     ('ws_latency_ms', trade_data.get('ws_latency_ms')),
                     # Score & ML
                     ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
-                    ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence'))),
+                    # ml_confidence déplacé dans fields principaux
                     ('ml_prediction', trade_data.get('ml_prediction')),
                     # Analyse post-trade (risk_reward déjà ajoutés plus haut)
                     # Notes & Tags

@@ -53,8 +53,9 @@ async def analyze_symbol(symbol_ccxt, symbol_mexc):
 
 async def main():
     # Analyser SOL (problématique) et SHIB (correct)
-    await analyze_symbol('SOL/USDT:USDT', 'SOL_USDT')
-    await analyze_symbol('SHIB/USDT:USDT', 'SHIB_USDT')
+    # await analyze_symbol('SOL/USDT:USDT', 'SOL_USDT')
+    # await analyze_symbol('SHIB/USDT:USDT', 'SHIB_USDT')
+    await analyze_symbol('ZEC/USDT:USDT', 'ZEC_USDT')
 
 if __name__ == "__main__":
     asyncio.run(main())
