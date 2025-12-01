@@ -1152,6 +1152,16 @@ async def scanner_loop_callback():
                                         capital=account_size
                                     )
                                     
+                                    # 🔥 Récupérer le multiplicateur adaptatif pour affichage frontend
+                                    adaptive_sizing_mult = 1.0
+                                    if TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+                                        try:
+                                            from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                                            adaptive_manager = get_adaptive_sizing_manager()
+                                            adaptive_sizing_mult = adaptive_manager.get_size_multiplier(symbol)
+                                        except Exception:
+                                            pass
+                                    
                                     # 🔥 FIX: Log détaillé du calcul de taille pour debug
                                     logger.info(
                                         f"💰 Calcul taille position adaptative: {symbol} | "
@@ -1368,8 +1378,8 @@ async def scanner_loop_callback():
                                                     
                                                     logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
                                                     
-                                                    # 🔥 FIX: Stocker la confiance ML pour le logging
-                                                    ml_conf_pct = confidence * 100  # En pourcentage
+                                                    # 🔥 FIX: Stocker la confiance ML pour le logging (arrondi au dixième)
+                                                    ml_conf_pct = round(confidence * 100, 1)  # En pourcentage, arrondi 0.1
                                                     setup['ml_confidence'] = ml_conf_pct
                                                     last_ml_confidence = ml_conf_pct  # Variable pour le logging
                                                     
@@ -1398,6 +1408,7 @@ async def scanner_loop_callback():
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
+                                    
                                     position = position_manager.open_position(
                                         symbol=symbol,
                                         direction=direction,
@@ -1408,7 +1419,8 @@ async def scanner_loop_callback():
                                         confirmed_by=setup.get('confirmedBy', 'Scanner auto'),
                                         scalability_data=scalability_data,
                                         condition_types=condition_types,  # 🔥 PHASE 5: Types de conditions
-                                        ml_confidence=setup.get('ml_confidence')  # 🔥 FIX: Passer ml_confidence
+                                        ml_confidence=setup.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
+                                        adaptive_sizing_multiplier=adaptive_sizing_mult  # 🔥 Multiplicateur adaptatif
                                     )
                                     
                                     # Stocker capital
@@ -2362,6 +2374,20 @@ async def position_check_loop_callback():
                     f"SL={position.sl:.6f} | TP={position.tp:.6f}"
                 )
                 
+                # 🔥 FIX: Récupérer ml_confidence depuis PostgreSQL si null sur la position
+                ml_conf = getattr(position, 'ml_confidence', None)
+                if ml_conf is None:
+                    try:
+                        from core.callbacks.scanner_loop import get_pg_datalogger
+                        pg_logger = get_pg_datalogger()
+                        if pg_logger and pg_logger.enabled:
+                            ml_conf = pg_logger.get_ml_confidence_for_symbol(position.symbol)
+                            if ml_conf is not None:
+                                position.ml_confidence = round(ml_conf, 1)  # Arrondir et stocker
+                                ml_conf = position.ml_confidence
+                    except Exception as e:
+                        logger.debug(f"⚠️ Impossible de charger ml_confidence depuis PostgreSQL: {e}")
+                
                 # Émettre update pour le frontend (inclut aussi les tailles en contrats)
                 update_data = {
                     'symbol': position.symbol,
@@ -2378,6 +2404,9 @@ async def position_check_loop_callback():
                     'position_size_contracts': getattr(position, 'position_size_contracts', None),
                     'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
                     'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
+                    # 🔥 FIX: Ajouter ml_confidence et adaptive_sizing_multiplier
+                    'ml_confidence': ml_conf,
+                    'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
                 }
                 await ws_manager.emit('position_update', update_data)
                 
@@ -3596,6 +3625,17 @@ async def api_open_position(request: Request):
             
             # Extraire paramètres avec valeurs par défaut
             condition_types = data.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
+            
+            # 🔥 Calculer le multiplicateur adaptatif si non fourni
+            adaptive_mult = data.get('adaptive_sizing_multiplier', 1.0)
+            if adaptive_mult == 1.0 and TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+                try:
+                    from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                    adaptive_manager = get_adaptive_sizing_manager()
+                    adaptive_mult = adaptive_manager.get_size_multiplier(data['symbol'])
+                except Exception:
+                    pass
+            
             position = position_manager.open_position(
                 symbol=data['symbol'],
                 direction=data.get('direction', 'LONG'),
@@ -3606,7 +3646,8 @@ async def api_open_position(request: Request):
                 confirmed_by=data.get('confirmed_by', ''),
                 scalability_data=data.get('scalability_data'),
                 condition_types=condition_types,  # 🔥 PHASE 5: Types de conditions
-                ml_confidence=data.get('ml_confidence')  # 🔥 FIX: Passer ml_confidence
+                ml_confidence=data.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
+                adaptive_sizing_multiplier=adaptive_mult  # 🔥 Multiplicateur adaptatif
             )
             
             # 🔥 FIX: Stocker capital si fourni dans data

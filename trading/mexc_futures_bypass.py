@@ -1217,7 +1217,22 @@ class MexcFuturesBypass:
             price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
             
             # 🔥 Récupérer contractSize (taille du contrat en tokens)
-            contract_size = float(data.get("contractSize", 1))
+            raw_contract_size = data.get("contractSize")
+            contract_size = float(raw_contract_size) if raw_contract_size is not None else 1.0
+            
+            # 🔥 VALIDATION contractSize pour éviter erreurs de sizing
+            if contract_size <= 0:
+                logger.error(
+                    f"❌ contractSize INVALIDE pour {symbol}: {contract_size} (brut: {raw_contract_size}) "
+                    f"→ Fallback à 1.0 (RISQUE DE SIZING INCORRECT!)"
+                )
+                contract_size = 1.0
+            elif contract_size == 1.0 and raw_contract_size is None:
+                # API n'a pas retourné de contractSize, on utilise le défaut
+                logger.warning(
+                    f"⚠️ contractSize ABSENT pour {symbol}, utilisation défaut 1.0 "
+                    f"(vérifier manuellement si micro-contrat)"
+                )
             
             # 🔥 FIX: Corriger contractSize UNIQUEMENT pour symboles où MEXC API retourne 1.0 alors que c'est faux
             # NOTE: La plupart des symboles (SHIB, BTC, ETH, etc.) sont CORRECTS dans l'API

@@ -118,6 +118,7 @@
 						<th data-debug-name="tradeHistory.column.symbol">Paire</th>
 						<th data-debug-name="tradeHistory.column.direction">Dir</th>
 						<th data-debug-name="tradeHistory.column.reason">Raison</th>
+						<th data-debug-name="tradeHistory.column.entryPrice">Prix Entrée</th>
 						<th data-debug-name="tradeHistory.column.exitPrice">Prix Sortie</th>
 						<th data-debug-name="tradeHistory.column.pnlGross">PnL Brut %</th>
 						<th data-debug-name="tradeHistory.column.slippage">Slippage</th>
@@ -145,6 +146,9 @@
 								{:else}
 									{trade.reason || trade.close_reason || 'N/A'}
 								{/if}
+							</td>
+							<td class="entry-price" data-debug-name="trade.entry_price">
+								{trade.entry_price ? formatPrice(trade.entry_price) : 'N/A'}
 							</td>
 							<td class="exit-price" data-debug-name="trade.exit_price">
 								{(() => {

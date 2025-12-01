@@ -124,6 +124,11 @@ class Position:
     funding_rate_at_entry: Optional[float] = None
     funding_rate_at_exit: Optional[float] = None
     funding_paid_usdt: Optional[float] = None
+    
+    # 🔥 ML & Sizing Adaptatif (pour affichage frontend)
+    ml_confidence: Optional[float] = None  # Confiance ML au moment de l'ouverture (%)
+    adaptive_sizing_multiplier: Optional[float] = None  # Multiplicateur sizing adaptatif (0.5-1.5)
+    
     time_to_fill_entry_ms: Optional[float] = None
     time_to_fill_exit_ms: Optional[float] = None
     price_at_signal: Optional[float] = None
@@ -199,6 +204,9 @@ class Position:
             'funding_paid_usdt': self.funding_paid_usdt,
             'time_to_fill_entry_ms': self.time_to_fill_entry_ms,
             'time_to_fill_exit_ms': self.time_to_fill_exit_ms,
+            # 🔥 ML & Sizing Adaptatif
+            'ml_confidence': self.ml_confidence,
+            'adaptive_sizing_multiplier': self.adaptive_sizing_multiplier,
         }
 
 
@@ -557,7 +565,8 @@ class PositionManager:
         confirmed_by: str = "",
         scalability_data: Optional[Dict] = None,
         condition_types: Optional[List[str]] = None,
-        ml_confidence: Optional[float] = None  # 🔥 FIX: Ajouter ml_confidence
+        ml_confidence: Optional[float] = None,  # 🔥 FIX: Ajouter ml_confidence
+        adaptive_sizing_multiplier: Optional[float] = None  # 🔥 Multiplicateur sizing adaptatif
     ) -> Position:
         """
         Ouvrir une nouvelle position
@@ -692,6 +701,9 @@ class PositionManager:
         
         # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
         self.active_position.ml_confidence = ml_confidence
+        
+        # 🔥 Stocker le multiplicateur sizing adaptatif
+        self.active_position.adaptive_sizing_multiplier = adaptive_sizing_multiplier
 
         # ✅ Initialiser TP Escalier si mode TP_MULTI
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')

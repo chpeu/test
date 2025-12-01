@@ -1296,6 +1296,20 @@ class LiveOrderManagerFutures:
                 )
 
         try:
+            # 🔥 FIX: Validation current_price pour éviter division par zéro
+            if not current_price or current_price <= 0:
+                logger.error(f"❌ current_price invalide ({current_price}) pour fermeture {symbol}")
+                # Fallback: utiliser entry_price comme prix de sortie estimé
+                if entry_price and entry_price > 0:
+                    logger.warning(f"⚠️ Fallback sur entry_price: {entry_price}")
+                    current_price = entry_price
+                else:
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Prix invalide pour fermeture: current_price={current_price}, entry_price={entry_price}",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
+
             # Convertir symbole
             futures_symbol = self._convert_symbol_to_futures(symbol)
 
@@ -1528,8 +1542,12 @@ class LiveOrderManagerFutures:
                     actual_exit_price = order_data.get('dealAvgPrice') or order_data.get('avgPrice')
 
                     if actual_exit_price and actual_exit_price > 0:
-                        # Calculer slippage réel sur fermeture
-                        exit_slippage = abs((actual_exit_price - current_price) / current_price) * 100
+                        # Calculer slippage réel sur fermeture (avec protection division par zéro)
+                        if current_price and current_price > 0:
+                            exit_slippage = abs((actual_exit_price - current_price) / current_price) * 100
+                        else:
+                            exit_slippage = 0.0
+                            logger.warning(f"⚠️ current_price=0, slippage exit non calculable")
 
                         logger.info(
                             f"📊 Prix sortie RÉEL: {actual_exit_price} (théorique: {current_price}) | "
@@ -1660,8 +1678,11 @@ class LiveOrderManagerFutures:
 
             pnl_usdt -= fees  # Soustraire fees
 
-            # Slippage
-            slippage_pct = abs((filled_price - current_price) / current_price) * 100 if filled_price else 0
+            # Slippage (avec protection division par zéro)
+            if filled_price and current_price and current_price > 0:
+                slippage_pct = abs((filled_price - current_price) / current_price) * 100
+            else:
+                slippage_pct = 0.0
 
             # Récupérer funding rate à la sortie
             funding_rate = None

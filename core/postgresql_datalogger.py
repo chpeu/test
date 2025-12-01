@@ -769,6 +769,48 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur update ml_confidence pour {symbol}: {e}")
             return False
     
+    def get_ml_confidence_for_symbol(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        🔥 FIX: Récupérer ml_confidence depuis PostgreSQL pour un symbole
+        
+        Cette méthode est utilisée pour charger ml_confidence si la position
+        a été ouverte avant que le fix soit en place.
+        
+        Args:
+            symbol: Symbole de la paire (ex: 'SHIB/USDT')
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 60)
+        
+        Returns:
+            ml_confidence en pourcentage ou None si non trouvé
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            query = """
+                SELECT ml_confidence FROM scan_logs 
+                WHERE symbol = %s 
+                AND timestamp > NOW() - INTERVAL '%s minutes'
+                AND ml_confidence IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            
+            result = self._execute_query(query, (symbol, minutes_ago))
+            if result and len(result) > 0 and result[0][0] is not None:
+                ml_conf = float(result[0][0])
+                logger.debug(f"📊 ml_confidence récupéré pour {symbol}: {ml_conf:.1f}%")
+                return round(ml_conf, 1)  # Arrondir au dixième
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get ml_confidence pour {symbol}: {e}")
+            return None
+    
     def log_opportunity(
         self,
         scan_id: int,

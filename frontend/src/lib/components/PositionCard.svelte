@@ -280,6 +280,21 @@
 	<div class="position-card" data-debug-name="activePosition">
 		<div class="position-header">
 			<div class="symbol" data-debug-name="activePosition.symbol">{$activePosition.symbol}</div>
+			
+			<!-- 🔥 ML & Sizing Badges -->
+			<div class="ml-sizing-badges">
+				{#if $activePosition.ml_confidence !== undefined && $activePosition.ml_confidence !== null && $activePosition.ml_confidence > 0}
+					<div class="badge ml-badge" title="Confiance ML au moment de l'ouverture">
+						🧠 {$activePosition.ml_confidence.toFixed(1)}%
+					</div>
+				{/if}
+				{#if $activePosition.adaptive_sizing_multiplier !== undefined && $activePosition.adaptive_sizing_multiplier !== null && $activePosition.adaptive_sizing_multiplier !== 1.0}
+					<div class="badge sizing-badge" class:boost={$activePosition.adaptive_sizing_multiplier > 1} class:reduce={$activePosition.adaptive_sizing_multiplier < 1} title="Multiplicateur sizing adaptatif">
+						📊 x{$activePosition.adaptive_sizing_multiplier.toFixed(2)}
+					</div>
+				{/if}
+			</div>
+			
 			<div class="header-right">
 				<div class="direction" class:long={$activePosition.direction === 'LONG'} class:short={$activePosition.direction === 'SHORT'} data-debug-name="activePosition.direction">
 					{$activePosition.direction}
@@ -423,6 +438,45 @@
 		flex-direction: column;
 		align-items: flex-end;
 		gap: 8px;
+	}
+
+	/* 🔥 ML & Sizing Badges */
+	.ml-sizing-badges {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+	}
+
+	.badge {
+		padding: 4px 10px;
+		border-radius: 6px;
+		font-size: 12px;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+	}
+
+	.ml-badge {
+		background: rgba(138, 43, 226, 0.2);
+		color: #b388ff;
+		border: 1px solid rgba(138, 43, 226, 0.5);
+	}
+
+	.sizing-badge {
+		background: rgba(100, 100, 100, 0.2);
+		color: #aaa;
+		border: 1px solid rgba(100, 100, 100, 0.5);
+	}
+
+	.sizing-badge.boost {
+		background: rgba(0, 255, 136, 0.15);
+		color: #00ff88;
+		border: 1px solid rgba(0, 255, 136, 0.4);
+	}
+
+	.sizing-badge.reduce {
+		background: rgba(255, 170, 0, 0.15);
+		color: #ffaa00;
+		border: 1px solid rgba(255, 170, 0, 0.4);
 	}
 
 	.direction {

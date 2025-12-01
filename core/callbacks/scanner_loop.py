@@ -337,6 +337,16 @@ async def _scan_top_pairs():
                     min_risk=0.005,  # 0.5%
                     max_risk=0.03   # 3%
                 )
+                
+                # 🔥 Récupérer le multiplicateur adaptatif pour affichage frontend
+                adaptive_sizing_mult = 1.0
+                if TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+                    try:
+                        from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                        adaptive_manager = get_adaptive_sizing_manager()
+                        adaptive_sizing_mult = adaptive_manager.get_size_multiplier(best_setup.get('symbol', ''))
+                    except Exception:
+                        pass
 
                 # BUG #5 FIX: Récupérer scalability_data depuis top_pairs
                 symbol = best_setup.get('symbol')
@@ -657,7 +667,8 @@ async def _scan_top_pairs():
                     confirmed_by=', '.join(best_setup.get('condition_types', [])),
                     scalability_data=scalability_data,  # BUG #5: Données récupérées
                     condition_types=best_setup.get('condition_types', []),
-                    ml_confidence=best_setup.get('ml_confidence')  # 🔥 FIX: Passer ml_confidence
+                    ml_confidence=best_setup.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
+                    adaptive_sizing_multiplier=adaptive_sizing_mult  # 🔥 Multiplicateur adaptatif
                 )
 
                 logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
