@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764607213.4637618,
+  "timestamp": 1764620533.5938706,
   "specs": {
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -8,8 +8,7 @@
       "vol_unit": 1.0,
       "price_unit": 1e-05,
       "price_precision": 0,
-      "vol_precision": 1,
-      "contract_size": 1.0
+      "vol_precision": 1
     },
     "ZEC_USDT": {
       "symbol": "ZEC_USDT",
@@ -18,8 +17,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.01,
       "price_precision": 2,
-      "vol_precision": 1,
-      "contract_size": 0.01
+      "vol_precision": 1
     },
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -28,8 +26,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1,
-      "contract_size": 1.0
+      "vol_precision": 1
     },
     "SUI_USDT": {
       "symbol": "SUI_USDT",
@@ -38,8 +35,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1,
-      "contract_size": 1.0
+      "vol_precision": 1
     },
     "INJ_USDT": {
       "symbol": "INJ_USDT",
@@ -48,8 +44,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.001,
       "price_precision": 3,
-      "vol_precision": 1,
-      "contract_size": 1.0
+      "vol_precision": 1
     },
     "HYPE_USDT": {
       "symbol": "HYPE_USDT",
@@ -58,8 +53,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.001,
       "price_precision": 3,
-      "vol_precision": 1,
-      "contract_size": 0.1
+      "vol_precision": 1
     },
     "TIA_USDT": {
       "symbol": "TIA_USDT",
@@ -68,8 +62,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1,
-      "contract_size": 1.0
+      "vol_precision": 1
     },
     "LINK_USDT": {
       "symbol": "LINK_USDT",
@@ -78,8 +71,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.001,
       "price_precision": 3,
-      "vol_precision": 1,
-      "contract_size": 0.1
+      "vol_precision": 1
     },
     "APT_USDT": {
       "symbol": "APT_USDT",
@@ -88,8 +80,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1,
-      "contract_size": 0.1
+      "vol_precision": 1
     },
     "WLD_USDT": {
       "symbol": "WLD_USDT",
@@ -98,8 +89,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1,
-      "contract_size": 1.0
+      "vol_precision": 1
     },
     "SPX_USDT": {
       "symbol": "SPX_USDT",
@@ -108,8 +98,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1,
-      "contract_size": 1.0
+      "vol_precision": 1
     },
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -118,8 +107,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.01,
       "price_precision": 2,
-      "vol_precision": 1,
-      "contract_size": 0.1
+      "vol_precision": 1
     },
     "XLM_USDT": {
       "symbol": "XLM_USDT",
@@ -128,8 +116,7 @@
       "vol_unit": 1.0,
       "price_unit": 1e-05,
       "price_precision": 0,
-      "vol_precision": 1,
-      "contract_size": 10.0
+      "vol_precision": 1
     },
     "AVAX_USDT": {
       "symbol": "AVAX_USDT",
@@ -138,8 +125,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.001,
       "price_precision": 3,
-      "vol_precision": 1,
-      "contract_size": 0.1
+      "vol_precision": 1
     },
     "ZEN_USDT": {
       "symbol": "ZEN_USDT",
@@ -148,8 +134,7 @@
       "vol_unit": 1.0,
       "price_unit": 0.001,
       "price_precision": 3,
-      "vol_precision": 1,
-      "contract_size": 0.1
+      "vol_precision": 1
     },
     "SHIB_USDT": {
       "symbol": "SHIB_USDT",
@@ -158,8 +143,7 @@
       "vol_unit": 1.0,
       "price_unit": 1e-09,
       "price_precision": 0,
-      "vol_precision": 1,
-      "contract_size": 1000.0
+      "vol_precision": 1
     },
     "LTC_USDT": {
       "symbol": "LTC_USDT",
@@ -168,8 +152,25 @@
       "vol_unit": 1.0,
       "price_unit": 0.01,
       "price_precision": 2,
-      "vol_precision": 1,
-      "contract_size": 0.01
+      "vol_precision": 1
+    },
+    "HBAR_USDT": {
+      "symbol": "HBAR_USDT",
+      "min_vol": 1.0,
+      "max_vol": 9800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1
+    },
+    "PROMPT_USDT": {
+      "symbol": "PROMPT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 32000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1
     }
   }
 }

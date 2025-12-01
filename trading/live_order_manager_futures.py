@@ -361,18 +361,13 @@ class LiveOrderManagerFutures:
                 token_check_interval=300,         # 🔥 Vérif toutes les 5 minutes
                 telegram_notifier=telegram_notifier  # 🔥 Alertes Telegram
             )
-            print(
-                f"✅ LiveOrderManagerFutures initialisé en mode BYPASS | "
-                f"Mode: {'DRY_RUN' if dry_run else 'LIVE BYPASS'} | "
-                f"Levier défaut: {self.default_leverage}x"
-            )
             logger.info(
                 f"✅ LiveOrderManagerFutures initialisé en mode BYPASS | "
                 f"Mode: {'DRY_RUN' if dry_run else 'LIVE BYPASS'} | "
                 f"Levier défaut: {self.default_leverage}x"
             )
-            
-            # Initialiser WebSocket si API keys fournis
+        else:
+            # 🔥 CCXT MODE: Utiliser les API keys classiques
             if api_key and api_secret:
                 self.bypass_ws = MexcFuturesWebSocket(
                     api_key=api_key,
@@ -380,32 +375,22 @@ class LiveOrderManagerFutures:
                     auto_reconnect=True
                 )
                 logger.info("✅ WebSocket bypass initialisé (pour updates temps réel)")
-        else:
-            # Mode CCXT classique (peut être bloqué par MEXC)
-            if not api_key or not api_secret:
-                raise ValueError("api_key et api_secret requis en mode CCXT")
-            
-            self.exchange = ccxt.mexc({
-                'apiKey': api_key,
-                'secret': api_secret,
-                'enableRateLimit': True,
-                'timeout': 10000,
-                'options': {
-                    'defaultType': 'swap',
-                    'adjustForTimeDifference': True,
-                    'defaultMarginMode': 'isolated',
-                }
-            })
+                self.exchange = ccxt.mexc({
+                    'apiKey': api_key,
+                    'secret': api_secret,
+                    'enableRateLimit': True,
+                    'timeout': 10000,
+                    'options': {
+                        'defaultType': 'swap',
+                        'adjustForTimeDifference': True,
+                        'defaultMarginMode': 'isolated',
+                    }
+                })
 
-            if testnet:
-                self.exchange.set_sandbox_mode(True)
-                logger.warning("⚠️ MEXC Futures testnet - utiliser dry_run=True pour tests")
-            
-            print(
-                f"✅ LiveOrderManagerFutures initialisé en mode CCXT | "
-                f"Mode: {'DRY_RUN' if dry_run else 'LIVE CCXT'} | "
-                f"Levier défaut: {self.default_leverage}x"
-            )
+                if testnet:
+                    self.exchange.set_sandbox_mode(True)
+                    logger.warning("⚠️ MEXC Futures testnet - utiliser dry_run=True pour tests")
+
             logger.info(
                 f"✅ LiveOrderManagerFutures initialisé en mode CCXT | "
                 f"Mode: {'DRY_RUN' if dry_run else 'LIVE CCXT'} | "
@@ -498,6 +483,74 @@ class LiveOrderManagerFutures:
         clean = symbol.replace(":USDT", "")
         # Remplacer / par _
         return clean.replace("/", "_")
+
+    def _verify_position_size(
+        self,
+        symbol: str,
+        reference_price: float,
+        retries: int = 3,
+        delay_sec: float = 2.0
+    ) -> Optional[Dict[str, float]]:
+        """
+        Récupérer la taille réelle ouverte sur MEXC (contrats & USDT)
+        Utilise CCXT en priorité puis fallback bypass.
+        """
+        if self.dry_run:
+            return None
+
+        def _fetch_via_ccxt() -> Optional[Dict[str, float]]:
+            if not self.exchange:
+                return None
+            try:
+                futures_symbol = self._convert_symbol_to_futures(symbol)
+                positions = self.exchange.fetch_positions([futures_symbol])
+                for pos in positions:
+                    if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                        contracts = float(pos.get('contracts', 0))
+                        entry_price = float(pos.get('entryPrice', 0)) or reference_price
+                        size_usdt = contracts * entry_price
+                        return {
+                            'contracts': contracts,
+                            'entry_price': entry_price,
+                            'size_usdt': size_usdt
+                        }
+            except Exception as ccxt_err:
+                logger.debug(f"⚠️ CCXT verify_position_size échec: {ccxt_err}")
+            return None
+
+        def _fetch_via_bypass() -> Optional[Dict[str, float]]:
+            if not (self.use_bypass and self.bypass_client):
+                return None
+            try:
+                bypass_symbol = self._convert_symbol_to_bypass(symbol)
+                positions = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                for pos in positions:
+                    if pos.symbol == bypass_symbol and pos.hold_vol > 0:
+                        contracts = float(pos.hold_vol)
+                        entry_price = float(pos.hold_avg_price or reference_price)
+                        size_usdt = contracts * entry_price
+                        return {
+                            'contracts': contracts,
+                            'entry_price': entry_price,
+                            'size_usdt': size_usdt
+                        }
+            except Exception as bypass_err:
+                logger.debug(f"⚠️ Bypass verify_position_size échec: {bypass_err}")
+            return None
+
+        for attempt in range(retries):
+            result = _fetch_via_ccxt()
+            if result:
+                return result
+            result = _fetch_via_bypass()
+            if result:
+                return result
+            if attempt < retries - 1:
+                logger.debug(f"⏳ verify_position_size retry {attempt + 1}/{retries-1} dans {delay_sec}s...")
+                time.sleep(delay_sec)
+
+        logger.warning(f"⚠️ Impossible de vérifier taille réelle pour {symbol} après {retries} tentatives")
+        return None
 
     def open_position(
         self,
@@ -932,39 +985,25 @@ class LiveOrderManagerFutures:
                     real_filled_amount = amount * real_contract_size  # Volume réel en tokens
                     real_filled_size_usdt = real_filled_amount * final_filled_price  # Valeur USDT réelle
                     
+                    # 🔥 FIX: Définir mexc_contracts AVANT utilisation
+                    mexc_contracts = amount  # Contrats MEXC (ce que MEXC affiche)
+                    
                     logger.info(
                         f"📊 Volume RÉEL: {real_filled_amount:.4f} tokens ({amount:.2f} contrats × {real_contract_size} contract_size) = {real_filled_size_usdt:.4f} USDT"
                     )
                     
-                    # 🔥 VÉRIFICATION POST-ORDRE: Récupérer la position réelle depuis CCXT (2s délai)
-                    verified_amount = real_filled_amount
-                    try:
-                        time.sleep(2.0)  # Attendre propagation MEXC
-                        
-                        # Récupérer position réelle via bypass
-                        positions = run_async_safely(
-                            self.bypass_client.get_open_positions(bypass_symbol)
-                        )
-                        
-                        # Chercher notre position
-                        for pos in positions:
-                            if pos.symbol == bypass_symbol:
-                                # hold_vol est en contrats, convertir en tokens
-                                verified_amount = pos.hold_vol * real_contract_size
-                                verified_usdt = verified_amount * final_filled_price
-                                
-                                if abs(verified_amount - real_filled_amount) > 0.01:
-                                    logger.warning(
-                                        f"⚠️ ÉCART DÉTECTÉ: calculé={real_filled_amount:.4f} vs réel={verified_amount:.4f} tokens | "
-                                        f"({pos.hold_vol:.2f} contrats × {real_contract_size})"
-                                    )
-                                    real_filled_amount = verified_amount
-                                    real_filled_size_usdt = verified_usdt
-                                else:
-                                    logger.info(f"✅ Volume vérifié OK: {verified_amount:.4f} tokens")
-                                break
-                    except Exception as verify_err:
-                        logger.warning(f"⚠️ Impossible de vérifier position réelle: {verify_err} (utilisation valeur calculée)")
+                    # 🔁 VÉRIFICATION POST-ORDRE: Récupérer la taille réelle via CCXT/BYPASS
+                    live_sync = self._verify_position_size(symbol, final_filled_price)
+                    if live_sync:
+                        verified_contracts = live_sync['contracts']
+                        verified_size_usdt = live_sync['size_usdt']
+                        if abs(verified_contracts - mexc_contracts) > 1e-6:
+                            logger.warning(
+                                f"⚠️ CONTRATS réels ≠ demandés: {mexc_contracts:.4f} -> {verified_contracts:.4f}"
+                            )
+                        real_filled_amount = verified_contracts * real_contract_size
+                        real_filled_size_usdt = verified_size_usdt
+                        final_filled_price = live_sync['entry_price'] or final_filled_price
 
                     # Calculer prix de liquidation estimé (basé sur prix réel)
                     margin = size_usdt / leverage
@@ -988,17 +1027,17 @@ class LiveOrderManagerFutures:
                         f"Latence: {latency_ms:.0f}ms"
                     )
 
-                    # 🔥 FIX CRITIQUE: Retourner CONTRATS MEXC, pas tokens
-                    # amount = contrats MEXC (1.4 pour LINK)
-                    # real_filled_amount = tokens (14.0 pour LINK) - NE PAS UTILISER POUR AFFICHAGE
-                    mexc_contracts = amount  # C'est ce que MEXC affiche
+                    # 🔥 FIX: Retourner les VRAIS tokens pour l'affichage
+                    # mexc_contracts = contrats MEXC (2543 pour SHIB)
+                    # real_filled_amount = tokens réels (2543000 pour SHIB avec contractSize=1000)
+                    # L'affichage doit montrer les tokens, pas les contrats MEXC
                     
                     return FuturesOrderResult(
                         success=True,
                         order_id=str(bypass_result.order_id),
                         filled_price=final_filled_price,  # 🔥 Prix RÉEL rempli
-                        filled_amount=mexc_contracts,  # 🔥 FIX: CONTRATS MEXC (pas tokens!)
-                        filled_contracts=mexc_contracts,  # 🔥 Alias explicite
+                        filled_amount=real_filled_amount,  # 🔥 FIX: Tokens réels (pas contrats MEXC!)
+                        filled_contracts=real_filled_amount,  # 🔥 Tokens pour affichage dashboard
                         filled_size_usdt=real_filled_size_usdt,  # 🔥 FIX: Valeur USDT RÉELLE
                         actual_fees_usdt=0.0,  # 0% fees sur paires scannées
                         actual_slippage_pct=final_slippage_pct,  # 🔥 Slippage RÉEL calculé

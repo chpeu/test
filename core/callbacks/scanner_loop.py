@@ -502,6 +502,9 @@ async def _scan_top_pairs():
                                 
                                 logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
                                 
+                                # 🔥 FIX: Stocker la confiance ML dans best_setup pour le logging
+                                best_setup['ml_confidence'] = confidence * 100  # En pourcentage
+                                
                                 if not should_trade:
                                     logger.warning(f"❌ GradientBoosting REJETTE le trade: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
                                     return  # Bloquer l'ouverture

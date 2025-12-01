@@ -517,16 +517,16 @@
 			<div class="var-header">
 				<label for="gb_min_confidence">
 					<span class="var-name">Seuil de Confiance Minimum</span>
-					<span class="var-desc">Probabilité minimale de WIN pour accepter le trade (50-80%)</span>
+					<span class="var-desc">Probabilité minimale de WIN pour accepter le trade (25-80%, pas: 1%)</span>
 				</label>
 			</div>
 			<div class="slider-container">
 				<input
 					type="range"
 					id="gb_min_confidence"
-					min="0.50"
+					min="0.25"
 					max="0.80"
-					step="0.05"
+					step="0.01"
 					bind:value={config.gb_min_confidence}
 					on:change={() => triggerAutoSave('gb_min_confidence', Math.round(config.gb_min_confidence * 100) + '%')}
 					disabled={!config.gb_filter_enabled}

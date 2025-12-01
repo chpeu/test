@@ -981,6 +981,7 @@ async def scanner_loop_callback():
                 no_setup = 0
                 errors = 0
                 rejection_reasons = {}  # Dict pour compter les raisons de rejet
+                last_ml_confidence = None  # 🔥 FIX: Initialiser ICI pour qu'il soit disponible dans le logging
                 
                 # 🔥 FIX: Analyser chaque résultat en détail
                 for i, result in enumerate(results):
@@ -1367,6 +1368,20 @@ async def scanner_loop_callback():
                                                     
                                                     logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
                                                     
+                                                    # 🔥 FIX: Stocker la confiance ML pour le logging
+                                                    ml_conf_pct = confidence * 100  # En pourcentage
+                                                    setup['ml_confidence'] = ml_conf_pct
+                                                    last_ml_confidence = ml_conf_pct  # Variable pour le logging
+                                                    
+                                                    # 🔥 FIX: Mettre à jour ml_confidence dans PostgreSQL (scan déjà loggé)
+                                                    try:
+                                                        from core.callbacks.scanner_loop import get_pg_datalogger
+                                                        pg_logger = get_pg_datalogger()
+                                                        if pg_logger and pg_logger.enabled:
+                                                            pg_logger.update_ml_confidence(symbol, ml_conf_pct)
+                                                    except Exception as pg_err:
+                                                        logger.debug(f"⚠️ Impossible de mettre à jour ml_confidence: {pg_err}")
+                                                    
                                                     if not should_trade:
                                                         logger.warning(f"❌ GradientBoosting REJETTE {symbol}: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
                                                         continue  # Passer au setup suivant
@@ -1533,6 +1548,10 @@ async def scan_pair_for_setup(symbol: str):
     
     # 🔥 PHASE 3: Mesurer la durée du scan
     scan_start_time = time.time()
+    
+    # 🔥 FIX: Initialiser last_ml_confidence pour le logging PostgreSQL
+    # Note: Cette valeur reste None car le filtre ML s'exécute dans le callback APRÈS cette fonction
+    last_ml_confidence = None
     
     # 🔥 FIX: Ajouter log pour voir que l'analyse démarre
     logger.info(f"🔍 Analyse {symbol}...")
@@ -1933,6 +1952,7 @@ async def scan_pair_for_setup(symbol: str):
             return filters
         
         # 🔥 PHASE 1: Logger le scan dans PostgreSQL si activé (comme dans scanner_loop.py)
+        # Note: last_ml_confidence est initialisé plus haut (ligne 984) et mis à jour dans le filtre ML
         try:
             from core.callbacks.scanner_loop import get_pg_datalogger
             pg_datalogger = get_pg_datalogger()
@@ -2029,7 +2049,8 @@ async def scan_pair_for_setup(symbol: str):
                 if scan_price is None and price_provider:
                     try:
                         price_result = await price_provider.get_price(symbol)
-                        scan_price = get_preferred_price(price_result, setup.get('price'))
+                        # FIX: Utiliser analysis au lieu de setup (setup n'est pas toujours défini)
+                        scan_price = get_preferred_price(price_result, analysis.get('price') if analysis else None)
                     except Exception as price_error:
                         logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {price_error}")
                 
@@ -2107,6 +2128,8 @@ async def scan_pair_for_setup(symbol: str):
                     'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)),
                     'opportunity_direction': analysis.get('direction') if analysis and 'direction' in analysis else None,
+                    # 🔥 ML Confidence: confiance réelle du modèle (si disponible)
+                    'ml_confidence': last_ml_confidence,
                     'params_snapshot': {
                         'volume_multiplier': volume_multiplier,
                         'use_confluence': use_confluence,
@@ -5983,7 +6006,8 @@ def _get_pg_connection_for_export():
 @app.get("/api/datalogger/export/excel")
 async def export_datalogger_excel(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    limit: int = 50
 ):
     """
     🔥 Export des données du datalogger en Excel (.xlsx)
@@ -5991,10 +6015,13 @@ async def export_datalogger_excel(
     Args:
         start_date: Date début (YYYY-MM-DD) - optionnel
         end_date: Date fin (YYYY-MM-DD) - optionnel
+        limit: Nombre de lignes par table (défaut: 50, max: 10000)
     
     Returns:
         Fichier Excel (.xlsx) avec plusieurs onglets (scans, opportunities, trades)
     """
+    # Valider et limiter le nombre de lignes
+    limit = max(1, min(limit, 10000))  # Entre 1 et 10000
     try:
         # Vérifier si openpyxl est installé
         try:
@@ -6083,13 +6110,13 @@ async def export_datalogger_excel(
                         base_query += " AND timestamp_entry <= %s"
                         params.append(f"{end_date} 23:59:59")
 
-                # 🔥 FIX: Limiter TOUTES les tables aux 50 dernières lignes pour éviter crash sur base volumineuse
+                # 🔥 FIX: Limiter TOUTES les tables au nombre de lignes demandé
                 if has_timestamp:
-                    base_query += " ORDER BY timestamp DESC LIMIT 50"
+                    base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp_entry:
-                    base_query += " ORDER BY timestamp_entry DESC LIMIT 50"
+                    base_query += f" ORDER BY timestamp_entry DESC LIMIT {limit}"
                 else:
-                    base_query += " LIMIT 50"  # Fallback: limiter aux 50 premières lignes
+                    base_query += f" LIMIT {limit}"  # Fallback: limiter aux premières lignes
 
                 cursor.execute(base_query, params)
                 rows = cursor.fetchall()

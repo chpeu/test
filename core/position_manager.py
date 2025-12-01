@@ -351,23 +351,28 @@ class PositionManager:
                     current_position.entry_fill_price = live_entry_price
 
                 if live_contracts > 0 and live_entry_price > 0:
-                    live_size_usdt = live_contracts * live_entry_price
+                    # 🔥 FIX: Convertir contrats MEXC en tokens réels
+                    # MEXC retourne 2524 contrats, mais SHIB a contractSize=1000
+                    # Donc le vrai montant est 2524 * 1000 = 2,524,000 tokens
+                    contract_size = self._get_contract_size(symbol)
+                    real_tokens = live_contracts * contract_size
+                    live_size_usdt = real_tokens * live_entry_price
 
                     # 🔥 FIX: Toujours synchroniser size_remaining avec la position RÉELLE MEXC
                     # Que ce soit après ouverture OU après TP partiel
                     if not current_position.size_initial_contracts:
                         # Première synchro (après ouverture): définir size initial
-                        current_position.size_initial_contracts = live_contracts
+                        current_position.size_initial_contracts = real_tokens
 
                     # Mettre à jour la taille actuelle (TOUJOURS, même après TP partiel)
                     current_position.size = live_size_usdt
                     current_position.position_size_usdt = live_size_usdt
-                    current_position.position_size_contracts = live_contracts
+                    current_position.position_size_contracts = real_tokens
                     current_position.size_remaining = live_size_usdt
-                    current_position.size_remaining_contracts = live_contracts
+                    current_position.size_remaining_contracts = real_tokens
 
                     logger.info(
-                        f"🔁 [LIVE] Taille resynchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
+                        f"🔁 [LIVE] Taille resynchronisée: {real_tokens:.0f} tokens ({live_contracts:.0f} contrats × {contract_size} = {live_size_usdt:.2f} USDT)"
                     )
             except Exception as e:
                 logger.error(f"❌ Erreur resynchronisation différée position LIVE pour {symbol}: {e}")
@@ -377,6 +382,45 @@ class PositionManager:
             thread.start()
         except RuntimeError as e:
             logger.error(f"❌ Impossible de démarrer le thread de resynchronisation pour {symbol}: {e}")
+
+    def _get_contract_size(self, symbol: str) -> float:
+        """
+        🔥 FIX: Obtenir le contractSize pour un symbole
+        
+        Pour SHIB avec contractSize=1000, MEXC retourne 2524 contrats mais
+        le vrai montant en tokens est 2524 * 1000 = 2,524,000
+        
+        Args:
+            symbol: Symbole de la paire (ex: SHIB/USDT:USDT)
+            
+        Returns:
+            contractSize (ex: 1000 pour SHIB, 0.0001 pour BTC)
+        """
+        try:
+            if self.live_order_manager and hasattr(self.live_order_manager, 'bypass_client'):
+                bypass_client = self.live_order_manager.bypass_client
+                if bypass_client:
+                    # Convertir le symbole au format bypass (SHIB/USDT:USDT -> SHIB_USDT)
+                    bypass_symbol = symbol.replace('/USDT:USDT', '_USDT').replace('/', '_')
+                    
+                    # Essayer de récupérer depuis le cache du bypass_client
+                    if hasattr(bypass_client, '_contract_specs') and bypass_symbol in bypass_client._contract_specs:
+                        spec = bypass_client._contract_specs[bypass_symbol]
+                        return spec.contract_size
+                    
+                    # Sinon, essayer de récupérer via l'API (synchrone)
+                    try:
+                        from trading.live_order_manager_futures import run_async_safely
+                        spec = run_async_safely(bypass_client.get_contract_spec(bypass_symbol))
+                        if spec:
+                            logger.info(f"📋 ContractSize récupéré pour {symbol}: {spec.contract_size}")
+                            return spec.contract_size
+                    except Exception as e:
+                        logger.debug(f"⚠️ Impossible de récupérer contract_spec pour {bypass_symbol}: {e}")
+        except Exception as e:
+            logger.debug(f"⚠️ Erreur _get_contract_size pour {symbol}: {e}")
+        
+        return 1.0  # Défaut: pas de conversion
 
     def _get_market_info(self, symbol: str) -> Optional[Dict]:
         """
@@ -766,17 +810,19 @@ class PositionManager:
                                 self.active_position.entry_fill_price = live_entry_price
 
                             if live_contracts > 0 and live_entry_price > 0:
-                                live_size_usdt = live_contracts * live_entry_price
+                                # 🔥 FIX: Convertir contrats MEXC en tokens réels
+                                contract_size = self._get_contract_size(symbol)
+                                real_tokens = live_contracts * contract_size
+                                live_size_usdt = real_tokens * live_entry_price
                                 self.active_position.size = live_size_usdt
                                 self.active_position.position_size_usdt = live_size_usdt
-                                self.active_position.position_size_contracts = live_contracts
+                                self.active_position.position_size_contracts = real_tokens
                                 self.active_position.size_remaining = live_size_usdt
-                                # 🔥 FIX: TOUJOURS synchroniser size_initial_contracts avec MEXC
-                                # L'ancienne condition "if not" ne fonctionnait pas car déjà initialisé avec tokens
-                                self.active_position.size_initial_contracts = live_contracts
-                                self.active_position.size_remaining_contracts = live_contracts
+                                # 🔥 FIX: TOUJOURS synchroniser size_initial_contracts avec tokens réels
+                                self.active_position.size_initial_contracts = real_tokens
+                                self.active_position.size_remaining_contracts = real_tokens
                                 logger.info(
-                                    f"🔁 [LIVE] Taille synchronisée: {live_contracts:.4f} contrats ({live_size_usdt:.2f} USDT)"
+                                    f"🔁 [LIVE] Taille synchronisée: {real_tokens:.0f} tokens ({live_contracts:.0f} contrats × {contract_size})"
                                 )
                         # Programmer une resynchronisation non bloquante
                         self._schedule_position_sync(symbol)

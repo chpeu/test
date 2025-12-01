@@ -180,6 +180,10 @@
 	let retrainingML = false;
 	let resettingDB = false;
 	
+	// 🔥 NOUVEAU: Popup export Excel avec nombre de lignes
+	let showExportPopup = false;
+	let exportRowCount = 50; // Défaut: 50 lignes
+	
 	// FIX: Variables pour métriques ML dynamiques
 	let mlMetrics = {
 		test_accuracy: 55.3,
@@ -1016,15 +1020,26 @@
 		}
 	}
 	
-	// 🔥 Export Excel du datalogger
+	// 🔥 Export Excel du datalogger - Ouvre le popup
+	function openExportPopup() {
+		showExportPopup = true;
+	}
+	
+	// 🔥 Fermer le popup export
+	function closeExportPopup() {
+		showExportPopup = false;
+	}
+	
+	// 🔥 Export Excel avec nombre de lignes personnalisé
 	async function exportExcel() {
 		if (exportingExcel) return;
 		
+		showExportPopup = false; // Fermer le popup
 		exportingExcel = true;
-		saveMessage = '⏳ Export Excel en cours...';
+		saveMessage = `⏳ Export Excel en cours (${exportRowCount} lignes)...`;
 		
 		try {
-			const response = await fetch('/api/datalogger/export/excel');
+			const response = await fetch(`/api/datalogger/export/excel?limit=${exportRowCount}`);
 			
 			if (!response.ok) {
 				const error = await response.json();
@@ -1036,13 +1051,13 @@
 			const url = window.URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = `datalogger_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+			a.download = `datalogger_export_${exportRowCount}rows_${new Date().toISOString().split('T')[0]}.xlsx`;
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
 			window.URL.revokeObjectURL(url);
 			
-			saveMessage = '✅ Export Excel réussi !';
+			saveMessage = `✅ Export Excel réussi (${exportRowCount} lignes) !`;
 			setTimeout(() => saveMessage = '', 3000);
 		} catch (error: any) {
 			saveMessage = `❌ Erreur export Excel: ${error.message}`;
@@ -1204,9 +1219,9 @@
 			<button class="btn-primary" on:click={saveConfig} disabled={loading} title={hasUnsavedChanges ? 'Sauvegarder immédiatement (annule la sauvegarde automatique)' : 'Forcer la sauvegarde'} data-debug-name="variablesPanel.saveButton">
 				{loading ? '⏳ Saving...' : '💾 Save'}
 			</button>
-			<button class="btn-export" on:click={exportExcel} disabled={exportingExcel} title="Exporter les données du datalogger en Excel (.xlsx)" data-debug-name="variablesPanel.exportExcelButton">
-				{exportingExcel ? '⏳ Export...' : '📊 Export Excel'}
-			</button>
+			<button class="btn-export" on:click={openExportPopup} disabled={exportingExcel} title="Exporter les données du datalogger en Excel (.xlsx)" data-debug-name="variablesPanel.exportExcelButton">
+			{exportingExcel ? '⏳ Export...' : '📊 Export Excel'}
+		</button>
 			<button class="btn-danger" on:click={resetDatabase} disabled={resettingDB} title="⚠️ ATTENTION: Supprime TOUTES les données de la base PostgreSQL" data-debug-name="variablesPanel.resetDBButton">
 				{resettingDB ? '⏳ Reset...' : '🗑️ Reset DB'}
 			</button>
@@ -3755,6 +3770,40 @@
 	</div>
 </div>
 
+<!-- 🔥 POPUP Export Excel avec nombre de lignes -->
+{#if showExportPopup}
+	<div class="popup-overlay" on:click={closeExportPopup}>
+		<div class="popup-content" on:click|stopPropagation>
+			<div class="popup-header">
+				<h3>📊 Export Excel</h3>
+				<button class="popup-close" on:click={closeExportPopup}>✕</button>
+			</div>
+			<div class="popup-body">
+				<label for="export-row-count">
+					<span class="popup-label">Nombre de lignes à exporter par table :</span>
+				</label>
+				<input
+					id="export-row-count"
+					type="number"
+					min="1"
+					max="10000"
+					bind:value={exportRowCount}
+					class="popup-input"
+				/>
+				<p class="popup-hint">
+					💡 Défaut: 50 lignes. Maximum recommandé: 1000 lignes pour éviter les fichiers trop volumineux.
+				</p>
+			</div>
+			<div class="popup-actions">
+				<button class="btn-secondary" on:click={closeExportPopup}>Annuler</button>
+				<button class="btn-primary" on:click={exportExcel} disabled={exportingExcel || exportRowCount < 1}>
+					{exportingExcel ? '⏳ Export...' : `📥 Exporter ${exportRowCount} lignes`}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	/* Sélecteurs Version ML */
 	.ml-version-selector {
@@ -5060,6 +5109,103 @@
 		.optimization-grid {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	/* 🔥 POPUP Export Excel */
+	.popup-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.7);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		backdrop-filter: blur(4px);
+	}
+
+	.popup-content {
+		background: #1e2749;
+		border: 2px solid #2a3a6b;
+		border-radius: 16px;
+		padding: 24px;
+		min-width: 400px;
+		max-width: 500px;
+		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+	}
+
+	.popup-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 20px;
+		padding-bottom: 16px;
+		border-bottom: 1px solid #2a3a6b;
+	}
+
+	.popup-header h3 {
+		margin: 0;
+		color: #00ff88;
+		font-size: 20px;
+	}
+
+	.popup-close {
+		background: transparent;
+		border: none;
+		color: #888;
+		font-size: 20px;
+		cursor: pointer;
+		padding: 4px 8px;
+		border-radius: 4px;
+		transition: all 0.2s;
+	}
+
+	.popup-close:hover {
+		color: #f87171;
+		background: rgba(248, 113, 113, 0.1);
+	}
+
+	.popup-body {
+		margin-bottom: 24px;
+	}
+
+	.popup-label {
+		display: block;
+		color: #ccc;
+		margin-bottom: 12px;
+		font-size: 14px;
+	}
+
+	.popup-input {
+		width: 100%;
+		padding: 12px 16px;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid #2a3a6b;
+		border-radius: 8px;
+		color: white;
+		font-size: 16px;
+		transition: all 0.2s;
+	}
+
+	.popup-input:focus {
+		outline: none;
+		border-color: #00ff88;
+		box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
+	}
+
+	.popup-hint {
+		margin-top: 12px;
+		font-size: 12px;
+		color: #888;
+		line-height: 1.5;
+	}
+
+	.popup-actions {
+		display: flex;
+		gap: 12px;
+		justify-content: flex-end;
 	}
 
 </style>

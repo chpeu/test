@@ -489,6 +489,9 @@ class PostgreSQLDataLogger:
                     -- Décision ML
                     is_opportunity, opportunity_direction, reject_reason, reject_reason_category,
                     
+                    -- 🔥 ML Confidence (confiance réelle du modèle)
+                    ml_confidence,
+                    
                     -- Params snapshot
                     params_snapshot,
                     
@@ -518,6 +521,7 @@ class PostgreSQLDataLogger:
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
+                    %s,
                     %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
@@ -664,6 +668,9 @@ class PostgreSQLDataLogger:
                 scan_data.get('opportunity_direction'),
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 
+                # 🔥 ML Confidence (confiance réelle du modèle, si disponible)
+                scan_data.get('ml_confidence'),
+                
                 # Params
                 json.dumps(params_snap),
                 
@@ -702,6 +709,65 @@ class PostgreSQLDataLogger:
         except Exception as e:
             logger.error(f"❌ Erreur logging scan {symbol}: {e}")
             return None
+    
+    def update_ml_confidence(
+        self,
+        symbol: str,
+        ml_confidence: float,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        🔥 FIX: Mettre à jour ml_confidence pour le scan le plus récent d'un symbole
+        
+        Cette méthode est appelée APRÈS la prédiction ML pour mettre à jour
+        le scan_log qui a été créé AVANT la prédiction.
+        
+        Args:
+            symbol: Symbole de la paire
+            ml_confidence: Confiance ML en pourcentage (ex: 34.7)
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
+        
+        Returns:
+            True si mise à jour réussie, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            # Mettre à jour le scan le plus récent pour ce symbole
+            query = """
+                UPDATE scan_logs 
+                SET ml_confidence = %s
+                WHERE symbol = %s 
+                AND timestamp > NOW() - INTERVAL '%s minutes'
+                AND ml_confidence IS NULL
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            # Note: PostgreSQL ne supporte pas LIMIT dans UPDATE directement
+            # On utilise une sous-requête
+            query = """
+                UPDATE scan_logs 
+                SET ml_confidence = %s
+                WHERE id = (
+                    SELECT id FROM scan_logs 
+                    WHERE symbol = %s 
+                    AND timestamp > NOW() - INTERVAL '%s minutes'
+                    AND ml_confidence IS NULL
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                )
+            """
+            
+            result = self._execute_query(query, (ml_confidence, symbol, minutes_ago))
+            if result is not None:
+                logger.info(f"✅ ml_confidence mis à jour pour {symbol}: {ml_confidence:.1f}%")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update ml_confidence pour {symbol}: {e}")
+            return False
     
     def log_opportunity(
         self,
@@ -1675,6 +1741,8 @@ class PostgreSQLDataLogger:
                 scan_data.get('is_opportunity', False),
                 scan_data.get('opportunity_direction'),
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
+                # 🔥 ML Confidence (confiance réelle du modèle)
+                scan_data.get('ml_confidence'),
                 # Params
                 json.dumps(params_snap),
                 # Config
@@ -1747,6 +1815,8 @@ class PostgreSQLDataLogger:
             'trend_timeframe', 'trend_direction', 'trend_strength', 'trend_bonus',
             'divergence_detected', 'divergence_type', 'divergence_bonus',
             'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
+            # 🔥 ML Confidence (confiance réelle du modèle)
+            'ml_confidence',
             'params_snapshot',
             'config_min_score_required', 'config_snr_threshold',
             'config_atr_min_1m', 'config_atr_max_1m',
