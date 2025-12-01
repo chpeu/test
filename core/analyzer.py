@@ -1839,45 +1839,53 @@ class TechnicalAnalyzer:
                     return best
 
                 # Confluence demandée mais au moins un timeframe invalide
-                missing_details = []
-                if not valid_1m:
-                    reason_1m = analysis_1m.get('reason') if isinstance(analysis_1m, dict) else 'analyse 1m indisponible'
-                    missing_details.append(f"1m: {reason_1m}")
-                if not valid_5m:
-                    reason_5m = analysis_5m.get('reason') if isinstance(analysis_5m, dict) else 'analyse 5m indisponible'
-                    missing_details.append(f"5m: {reason_5m}")
-                reason = "Confluence: timeframe(s) invalide(s) - " + " | ".join(missing_details) if missing_details else "Confluence: aucune timeframe valide"
+                # 🔥 FIX: Si au moins un TF est valide, on passe en MODE PERMISSIF
+                # au lieu de rejeter (comportement de l'ancien code qui ouvrait des trades)
+                if valid_1m or valid_5m:
+                    # Au moins un TF valide → on continue vers le MODE PERMISSIF ci-dessous
+                    logger.info(f"ℹ️ {symbol}: Confluence partielle, passage en mode permissif")
+                    pass  # Continue vers ligne 1886+
+                else:
+                    # Aucun TF valide → rejet
+                    missing_details = []
+                    if not valid_1m:
+                        reason_1m = analysis_1m.get('reason') if isinstance(analysis_1m, dict) else 'analyse 1m indisponible'
+                        missing_details.append(f"1m: {reason_1m}")
+                    if not valid_5m:
+                        reason_5m = analysis_5m.get('reason') if isinstance(analysis_5m, dict) else 'analyse 5m indisponible'
+                        missing_details.append(f"5m: {reason_5m}")
+                    reason = "Confluence: timeframe(s) invalide(s) - " + " | ".join(missing_details) if missing_details else "Confluence: aucune timeframe valide"
 
-                if return_reason:
-                    indicators_1m_reject = self._extract_indicators(analysis_1m) if isinstance(analysis_1m, dict) else {}
-                    indicators_5m_reject = self._extract_indicators(analysis_5m) if isinstance(analysis_5m, dict) else {}
-                    score_1m = analysis_1m.get('totalScore') if isinstance(analysis_1m, dict) else None
-                    score_5m = analysis_5m.get('totalScore') if isinstance(analysis_5m, dict) else None
-                    return {
-                        'reason': reason,
-                        'symbol': symbol,
-                        'timeframe': '1m+5m',
-                        'analysis_1m': analysis_1m if isinstance(analysis_1m, dict) else None,
-                        'analysis_5m': analysis_5m if isinstance(analysis_5m, dict) else None,
-                        'indicators_1m': indicators_1m_reject,
-                        'indicators_5m': indicators_5m_reject,
-                        'score_1m': score_1m,
-                        'score_5m': score_5m,
-                        'score_total': max(filter(None, [score_1m, score_5m])) if any([score_1m, score_5m]) else None,
-                        'pattern_1m': analysis_1m.get('pattern') if isinstance(analysis_1m, dict) else None,
-                        'pattern_5m': analysis_5m.get('pattern') if isinstance(analysis_5m, dict) else None,
-                        'pattern_multi_1m': analysis_1m.get('pattern_multi') if isinstance(analysis_1m, dict) else None,
-                        'pattern_multi_5m': analysis_5m.get('pattern_multi') if isinstance(analysis_5m, dict) else None,
-                        'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
-                        'divergence_bonus': 0,
-                        'divergence_detected': False,
-                        'divergence_type': None,
-                        'reject_category': 'confluence'
-                    }
+                    if return_reason:
+                        indicators_1m_reject = self._extract_indicators(analysis_1m) if isinstance(analysis_1m, dict) else {}
+                        indicators_5m_reject = self._extract_indicators(analysis_5m) if isinstance(analysis_5m, dict) else {}
+                        score_1m = analysis_1m.get('totalScore') if isinstance(analysis_1m, dict) else None
+                        score_5m = analysis_5m.get('totalScore') if isinstance(analysis_5m, dict) else None
+                        return {
+                            'reason': reason,
+                            'symbol': symbol,
+                            'timeframe': '1m+5m',
+                            'analysis_1m': analysis_1m if isinstance(analysis_1m, dict) else None,
+                            'analysis_5m': analysis_5m if isinstance(analysis_5m, dict) else None,
+                            'indicators_1m': indicators_1m_reject,
+                            'indicators_5m': indicators_5m_reject,
+                            'score_1m': score_1m,
+                            'score_5m': score_5m,
+                            'score_total': max(filter(None, [score_1m, score_5m])) if any([score_1m, score_5m]) else None,
+                            'pattern_1m': analysis_1m.get('pattern') if isinstance(analysis_1m, dict) else None,
+                            'pattern_5m': analysis_5m.get('pattern') if isinstance(analysis_5m, dict) else None,
+                            'pattern_multi_1m': analysis_1m.get('pattern_multi') if isinstance(analysis_1m, dict) else None,
+                            'pattern_multi_5m': analysis_5m.get('pattern_multi') if isinstance(analysis_5m, dict) else None,
+                            'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                            'divergence_bonus': 0,
+                            'divergence_detected': False,
+                            'divergence_type': None,
+                            'reject_category': 'confluence'
+                        }
 
-                if DEBUG_ENABLED:
-                    logger.debug(reason)
-                return None
+                    if DEBUG_ENABLED:
+                        logger.debug(reason)
+                    return None
 
             if strength_1m > 0 or strength_5m > 0:
                 # MODE PERMISSIF avec priorité par force
