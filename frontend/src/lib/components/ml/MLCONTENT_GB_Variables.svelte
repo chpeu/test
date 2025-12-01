@@ -23,11 +23,12 @@
 	let verifyingML = false;
 	let verifyResult = null;
 	
-	// Optuna optimization state
+	// Optuna
 	let optimizingOptuna = false;
 	let optunaProgress = 0;
-	let optunaStatus = null;
+	let optunaStatus = { status: 'idle', message: 'Prêt à lancer l\'optimisation' };
 	let optunaPollingInterval = null;
+	let lastOptunaResults = null; // Derniers résultats chargés depuis l'API
 	
 	// Vérification complète
 	let verifyingComplete = false;
@@ -39,7 +40,34 @@
 	onMount(async () => {
 		await loadMLMetricsGB();
 		await loadMLTradesStats();
+		await loadLastOptunaResults(); // Charger les derniers résultats Optuna
 	});
+	
+	// 🔄 Charger les derniers résultats d'optimisation Optuna
+	async function loadLastOptunaResults() {
+		try {
+			const response = await fetch('/api/ml/optimize/gb/results');
+			if (!response.ok) return;
+			
+			const results = await response.json();
+			if (results && results.best_params) {
+				lastOptunaResults = results;
+				// Mettre à jour optunaStatus pour afficher les résultats
+				optunaStatus = {
+					status: 'completed',
+					best_params: results.best_params,
+					best_score: results.best_score_composite,
+					metrics_holdout: results.metrics_holdout,
+					message: `✅ Dernière optimisation: Accuracy=${((results.metrics_holdout?.test_accuracy || 0) * 100).toFixed(1)}%\n` +
+						`F1=${(results.metrics_holdout?.f1_score || 0).toFixed(3)}\n` +
+						`Overfitting=${((results.metrics_holdout?.overfitting_gap || 0) * 100).toFixed(1)}%`
+				};
+				console.log('📊 Résultats Optuna chargés:', results);
+			}
+		} catch (err) {
+			console.log('⚠️ Pas de résultats Optuna précédents');
+		}
+	}
 	
 	// 🔢 Charger stats trades ML filtrés
 	async function loadMLTradesStats() {
@@ -82,12 +110,16 @@
 			);
 
 			if (gbModel && gbModel.metrics) {
+				const testMetrics = gbModel.metrics.test || {};
 				mlMetricsGB = {
-					test_accuracy: (gbModel.metrics.test?.accuracy || 0.643) * 100,
-					test_f1: gbModel.metrics.test?.f1_score || 0.415,
-					test_precision: gbModel.metrics.test?.precision || 0.629,
+					test_accuracy: (testMetrics.accuracy || 0.643) * 100,
+					test_accuracy_std: (testMetrics.accuracy_std || 0) * 100, // Pour afficher ±
+					test_f1: testMetrics.f1_score || 0.415,
+					test_precision: testMetrics.precision || 0.629,
 					overfitting_gap: gbModel.overfitting_gap || 12.7,
-					trades_count: gbModel.dataset_info?.total_samples || 2893
+					trades_count: gbModel.dataset_info?.total_samples || 2893,
+					// 🔬 Flag pour indiquer que c'est du CV
+					is_cv: testMetrics.accuracy_std !== undefined && testMetrics.accuracy_std > 0
 				};
 			}
 		} catch (err) {
@@ -191,45 +223,116 @@
 		optunaStatus = { status: 'starting', message: 'Démarrage de l\'optimisation...' };
 		
 		try {
-			const response = await fetch('/api/ml/optimize_gb?n_trials=100&timeout_minutes=30', {
+			// 🔥 Nouvel endpoint GradientBoosting avec validation rigoureuse
+			// Utiliser HistGradientBoosting si sélectionné (10x plus rapide)
+			const useHistGB = modelType === 'histgb';
+			
+			optunaStatus = { ...optunaStatus, status: 'fetching', message: 'Contact du serveur...' };
+			
+			const response = await fetch(`/api/ml/optimize/gb/start?n_trials=100&timeout_minutes=30&timeframe_days=365&use_histgb=${useHistGB}`, {
 				method: 'POST'
 			});
 			
-			if (!response.ok) throw new Error('Erreur démarrage optimisation');
+			optunaStatus = { ...optunaStatus, status: 'parsing', message: 'Analyse de la réponse...' };
+			
+			// Vérifier le statut HTTP
+			console.log('📊 Response status:', response.status);
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error('❌ Response error:', errorText);
+				throw new Error(`HTTP ${response.status}: ${errorText}`);
+			}
 			
 			const result = await response.json();
+			console.log('📊 Response JSON:', result);
 			
-			if (result.success) {
+			// Mettre à jour optunaStatus avec la réponse pour debug
+			optunaStatus = { ...optunaStatus, ...result, status: 'received', message: 'Réponse reçue' };
+			
+			if (result.task_id) {
+				// Stocker le task_id pour le polling
+				optunaStatus.task_id = result.task_id;
+				optunaStatus.total_trials = 100;
+				optunaStatus.status = 'polling';
+				optunaStatus.message = 'Polling en cours...';
 				// Démarrer le polling
-				optunaPollingInterval = setInterval(pollOptunaStatus, 2000);
+				optunaPollingInterval = setInterval(pollOptunaStatus, 3000);
 			} else {
-				throw new Error(result.error || 'Erreur inconnue');
+				throw new Error(result.error || 'Erreur inconnue - pas de task_id dans la réponse');
 			}
 		} catch (err) {
-			optunaStatus = { status: 'error', message: err.message };
+			console.error('❌ Erreur complète:', err);
+			optunaStatus = { status: 'error', message: `Erreur: ${err.message}` };
 			optimizingOptuna = false;
 		}
 	}
 	
 	async function pollOptunaStatus() {
 		try {
-			const response = await fetch('/api/ml/optimize_gb/status');
+			// 🔥 Utiliser le task_id pour polling
+			const taskId = optunaStatus?.task_id;
+			if (!taskId) return;
+			
+			const response = await fetch(`/api/ml/task/${taskId}`);
 			if (!response.ok) return;
 			
 			const status = await response.json();
+			console.log('📊 Polling response:', status); // DEBUG
+			
 			optunaProgress = status.progress || 0;
-			optunaStatus = status;
+			optunaStatus = { ...optunaStatus, ...status };
+			
+			console.log('📊 Updated optunaStatus:', optunaStatus); // DEBUG
 			
 			if (status.status === 'completed') {
 				clearInterval(optunaPollingInterval);
 				optimizingOptuna = false;
+				
+				// Extraire métriques holdout
+				const metrics = status.metrics_holdout || {};
 				optunaStatus = {
 					...status,
-					message: `✅ Optimisation terminée! Best F1=${(status.best_score * 100).toFixed(1)}%`
+					best_score: metrics.test_accuracy || status.best_score,
+					metrics_holdout: metrics,
+					message: `✅ Optimisation terminée!\nAccuracy=${((metrics.test_accuracy || 0) * 100).toFixed(1)}%\nOverfit Gap=${((metrics.overfitting_gap || 0) * 100).toFixed(1)}%`
 				};
-			} else if (status.status === 'error') {
+				
+				// Rafraîchir les métriques
+				await loadMLMetricsGB();
+				
+				// 🔄 Rafraîchir les sliders ET sauvegarder automatiquement
+				if (status.best_params) {
+					const paramMapping = {
+						'n_estimators': 'gb_n_estimators',
+						'max_depth': 'gb_max_depth',
+						'learning_rate': 'gb_learning_rate',
+						'min_samples_split': 'gb_min_samples_split',
+						'min_samples_leaf': 'gb_min_samples_leaf',
+						'subsample': 'gb_subsample',
+						'max_features': 'gb_max_features'
+					};
+					
+					// Mettre à jour le config local ET sauvegarder
+					Object.entries(status.best_params).forEach(([key, value]) => {
+						const configKey = paramMapping[key];
+						if (configKey && config[configKey] !== undefined) {
+							console.log(`📊 Mise à jour ${configKey}: ${config[configKey]} -> ${value}`);
+							config[configKey] = value;
+							// 🔥 SAUVEGARDER automatiquement chaque paramètre
+							triggerAutoSave(configKey, value);
+						}
+					});
+					
+					// Forcer la réactivité
+					config = {...config};
+					
+					optunaStatus.message += '\n📊 Sliders mis à jour et SAUVEGARDÉS!';
+					optunaStatus.applied = true;
+				}
+			} else if (status.status === 'failed') {
 				clearInterval(optunaPollingInterval);
 				optimizingOptuna = false;
+				optunaStatus = { ...status, message: `❌ Erreur: ${status.error}` };
 			}
 		} catch (err) {
 			console.error('Erreur polling Optuna:', err);
@@ -238,8 +341,15 @@
 	
 	async function applyOptunaParams() {
 		try {
-			const response = await fetch('/api/ml/optimize_gb/apply', {
-				method: 'POST'
+			// 🔥 Utiliser le nouvel endpoint avec les params trouvés
+			const paramsToApply = optunaStatus?.best_params || {};
+			
+			console.log('📊 Paramètres à appliquer:', paramsToApply);
+			
+			const response = await fetch('/api/ml/optimize/gb/apply', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(paramsToApply)
 			});
 			
 			if (!response.ok) throw new Error('Erreur application paramètres');
@@ -247,18 +357,51 @@
 			const result = await response.json();
 			
 			if (result.success) {
-				// Mettre à jour config local avec les nouveaux params
-				if (result.applied_params) {
-					Object.assign(config, result.applied_params);
-				}
+				// 🔄 Mapping des paramètres optimisés vers les clés des sliders
+				const paramMapping = {
+					'n_estimators': 'gb_n_estimators',
+					'max_depth': 'gb_max_depth',
+					'learning_rate': 'gb_learning_rate',
+					'min_samples_split': 'gb_min_samples_split',
+					'min_samples_leaf': 'gb_min_samples_leaf',
+					'subsample': 'gb_subsample',
+					'max_features': 'gb_max_features'
+				};
+				
+				// Mettre à jour les sliders avec les nouveaux params
+				Object.entries(paramsToApply).forEach(([key, value]) => {
+					const configKey = paramMapping[key];
+					if (configKey && config[configKey] !== undefined) {
+						console.log(`📊 Mise à jour slider ${configKey}: ${config[configKey]} -> ${value}`);
+						config[configKey] = value;
+					}
+				});
+				
+				// Forcer la réactivité Svelte
+				config = {...config};
+				
 				optunaStatus = {
 					...optunaStatus,
 					applied: true,
-					message: `✅ ${Object.keys(result.applied_params || {}).length} paramètres appliqués!`
+					message: `✅ Paramètres appliqués aux sliders!\nLes changements sont visibles immédiatement.`
 				};
+				
+				// Notifier le parent pour sauvegarder
+				dispatch('paramsApplied');
+				
+				// Aussi appeler triggerAutoSave pour chaque param
+				Object.entries(paramsToApply).forEach(([key, value]) => {
+					const configKey = paramMapping[key];
+					if (configKey) {
+						triggerAutoSave(configKey, value);
+					}
+				});
+				
+				alert('✅ Paramètres appliqués aux sliders!\n\nPour réentraîner le modèle avec ces paramètres, cliquez sur "Réentraîner le modèle".');
 			}
 		} catch (err) {
 			console.error('Erreur application params:', err);
+			alert(`❌ Erreur: ${err.message}`);
 		}
 	}
 	
@@ -401,8 +544,13 @@
 		{:else}
 			<div class="ml-metrics-grid">
 				<div class="metric-card" class:good={mlMetricsGB.test_accuracy >= 60} class:ok={mlMetricsGB.test_accuracy >= 55 && mlMetricsGB.test_accuracy < 60} class:warning={mlMetricsGB.test_accuracy < 55}>
-					<span class="metric-label">Test Accuracy</span>
-					<strong class="metric-value">{mlMetricsGB.test_accuracy.toFixed(1)}%</strong>
+					<span class="metric-label">{mlMetricsGB.is_cv ? '🔬 CV Accuracy' : 'Test Accuracy'}</span>
+					<strong class="metric-value">
+						{mlMetricsGB.test_accuracy.toFixed(1)}%
+						{#if mlMetricsGB.is_cv && mlMetricsGB.test_accuracy_std > 0}
+							<span class="std-badge">± {mlMetricsGB.test_accuracy_std.toFixed(1)}%</span>
+						{/if}
+					</strong>
 					<span class="metric-hint">{mlMetricsGB.test_accuracy >= 60 ? '🎉 Excellent' : mlMetricsGB.test_accuracy >= 55 ? '✅ Bon' : '⚠️ À améliorer'}</span>
 				</div>
 				<div class="metric-card" class:good={mlMetricsGB.test_f1 >= 0.4} class:warning={mlMetricsGB.test_f1 < 0.4}>
@@ -557,7 +705,7 @@
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_min_samples_split" min="5" max="50" step="5" bind:value={config.gb_min_samples_split} on:change={() => triggerAutoSave('gb_min_samples_split', config.gb_min_samples_split)} />
+						<input type="range" id="gb_min_samples_split" min="10" max="120" step="10" bind:value={config.gb_min_samples_split} on:change={() => triggerAutoSave('gb_min_samples_split', config.gb_min_samples_split)} />
 						<span class="slider-value">{config.gb_min_samples_split}</span>
 					</div>
 				</div>
@@ -569,7 +717,7 @@
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_min_samples_leaf" min="5" max="50" step="5" bind:value={config.gb_min_samples_leaf} on:change={() => triggerAutoSave('gb_min_samples_leaf', config.gb_min_samples_leaf)} />
+						<input type="range" id="gb_min_samples_leaf" min="10" max="80" step="10" bind:value={config.gb_min_samples_leaf} on:change={() => triggerAutoSave('gb_min_samples_leaf', config.gb_min_samples_leaf)} />
 						<span class="slider-value">{config.gb_min_samples_leaf}</span>
 					</div>
 				</div>
@@ -646,10 +794,21 @@
 					{/if}
 				</button>
 				
-				{#if optunaStatus?.status === 'completed' && !optunaStatus?.applied}
+				{#if optunaStatus?.status === 'completed'}
 					<button class="btn-apply-optuna" on:click={applyOptunaParams}>
-						✅ Appliquer les meilleurs paramètres
+						{optunaStatus?.applied ? '🔄 Ré-appliquer les paramètres' : '✅ Appliquer les meilleurs paramètres'}
 					</button>
+					{#if optunaStatus?.applied}
+						<button class="btn-retrain" on:click={retrainModelGB}>
+							🎯 Réentraîner avec ces paramètres
+						</button>
+					{/if}
+				{/if}
+				
+				{#if optunaStatus?.message}
+					<div class="optuna-message">
+						{optunaStatus.message}
+					</div>
 				{/if}
 			</div>
 			
@@ -664,18 +823,55 @@
 			
 			{#if optunaStatus?.best_params}
 				<div class="optuna-result" class:success={optunaStatus.status === 'completed'}>
-					<h5>🎯 Meilleurs paramètres trouvés (F1: {(optunaStatus.best_score * 100).toFixed(1)}%)</h5>
+					<h5>🎯 Meilleurs paramètres trouvés</h5>
+					
+					<!-- Métriques Optuna -->
+					{#if optunaStatus.metrics_holdout}
+						<div class="optuna-metrics-box">
+							<div class="metric-item">
+								<span class="metric-label">Test Accuracy (Optuna)</span>
+								<span class="metric-value">{((optunaStatus.metrics_holdout.test_accuracy || 0) * 100).toFixed(1)}%</span>
+							</div>
+							<div class="metric-item">
+								<span class="metric-label">F1 Score</span>
+								<span class="metric-value">{(optunaStatus.metrics_holdout.f1_score || 0).toFixed(3)}</span>
+							</div>
+							<div class="metric-item">
+								<span class="metric-label">Overfitting Gap</span>
+								<span class="metric-value">{((optunaStatus.metrics_holdout.overfitting_gap || 0) * 100).toFixed(1)}%</span>
+							</div>
+						</div>
+					{/if}
+					
 					<div class="params-grid">
 						{#each Object.entries(optunaStatus.best_params) as [key, value]}
 							<div class="param-item">
 								<span class="param-key">{key}</span>
-								<span class="param-value">{typeof value === 'number' ? value.toFixed(4) : value}</span>
+								<span class="param-value">{typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(4)) : value}</span>
 							</div>
 						{/each}
 					</div>
 					{#if optunaStatus.applied}
-						<div class="applied-badge">✅ Appliqué</div>
+						<div class="applied-badge">✅ Paramètres appliqués aux sliders</div>
 					{/if}
+				</div>
+				
+				<!-- Explication des métriques -->
+				<div class="metrics-explanation">
+					<details>
+						<summary>ℹ️ Pourquoi les métriques diffèrent entre Optuna et l'UI ?</summary>
+						<div class="explanation-content">
+							<p><strong>Métriques Optuna</strong> = calculées pendant l'optimisation sur un split 80/20</p>
+							<p><strong>Métriques UI (Config B)</strong> = calculées après ré-entraînement complet</p>
+							<p>Les différences sont normales car :</p>
+							<ul>
+								<li>Le split train/test change à chaque entraînement</li>
+								<li>L'UI peut utiliser un filtrage de données différent</li>
+								<li>La cross-validation (~63%) est plus représentative</li>
+							</ul>
+							<p><strong>Conseil :</strong> Fiez-vous à la Cross-Validation plutôt qu'au holdout test.</p>
+						</div>
+					</details>
 				</div>
 			{/if}
 		</div>
@@ -1321,6 +1517,107 @@
 
 	.btn-apply-optuna:hover {
 		transform: translateY(-2px);
+	}
+
+	.btn-retrain {
+		padding: 0.75rem 1.5rem;
+		background: linear-gradient(135deg, #3b82f6, #2563eb);
+		border: none;
+		border-radius: 8px;
+		color: white;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.btn-retrain:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+	}
+
+	.optuna-message {
+		margin-top: 12px;
+		padding: 12px 16px;
+		background: rgba(16, 185, 129, 0.15);
+		border: 1px solid rgba(16, 185, 129, 0.3);
+		border-radius: 8px;
+		color: #10b981;
+		font-size: 14px;
+		white-space: pre-line;
+	}
+
+	.optuna-metrics-box {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 12px;
+		margin-bottom: 16px;
+		padding: 12px;
+		background: rgba(59, 130, 246, 0.1);
+		border-radius: 8px;
+	}
+
+	.optuna-metrics-box .metric-item {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.optuna-metrics-box .metric-label {
+		font-size: 11px;
+		color: #94a3b8;
+		text-transform: uppercase;
+	}
+
+	.optuna-metrics-box .metric-value {
+		font-size: 18px;
+		font-weight: 700;
+		color: #3b82f6;
+	}
+
+	.metrics-explanation {
+		margin-top: 16px;
+	}
+
+	.metrics-explanation summary {
+		cursor: pointer;
+		color: #94a3b8;
+		font-size: 13px;
+		padding: 8px;
+		background: rgba(255, 255, 255, 0.03);
+		border-radius: 6px;
+	}
+
+	.metrics-explanation summary:hover {
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.explanation-content {
+		padding: 12px;
+		margin-top: 8px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 6px;
+		font-size: 13px;
+		color: #94a3b8;
+	}
+
+	.explanation-content p {
+		margin: 8px 0;
+	}
+
+	.explanation-content ul {
+		margin: 8px 0;
+		padding-left: 20px;
+	}
+
+	.explanation-content li {
+		margin: 4px 0;
+	}
+
+	.std-badge {
+		font-size: 12px;
+		font-weight: 400;
+		color: #94a3b8;
+		margin-left: 4px;
 	}
 
 	.optuna-progress {

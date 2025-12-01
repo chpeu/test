@@ -543,6 +543,11 @@ async def get_models_overview():
             test_acc = gb_metrics.get('test_acc', 0)
             overfitting_gap = (train_acc - test_acc) * 100 if train_acc and test_acc else 0
             
+            # 🔬 Utiliser CV accuracy si disponible (plus fiable)
+            cv_accuracy = gb_metrics.get('cv_accuracy', test_acc)
+            cv_f1 = gb_metrics.get('cv_f1', gb_metrics.get('test_f1', 0))
+            cv_std = gb_metrics.get('cv_accuracy_std', 0)
+            
             # Convertir au format attendu par le frontend
             models.append({
                 'name': 'best_classifier',  # Nom cherché par le frontend
@@ -552,9 +557,14 @@ async def get_models_overview():
                 'trained_at': gb_metadata.get('timestamp'),
                 'metrics': {
                     'test': {
-                        'accuracy': test_acc,
-                        'f1_score': gb_metrics.get('test_f1', 0),
-                        'precision': gb_metrics.get('test_precision', 0)
+                        # 🔬 Afficher CV accuracy comme métrique principale
+                        'accuracy': cv_accuracy,
+                        'accuracy_std': cv_std,
+                        'f1_score': cv_f1,
+                        'precision': gb_metrics.get('test_precision', 0),
+                        # Garder holdout pour référence
+                        'holdout_accuracy': test_acc,
+                        'holdout_f1': gb_metrics.get('test_f1', 0)
                     },
                     'train': {
                         'accuracy': train_acc
@@ -1968,6 +1978,329 @@ async def apply_best_hyperparameters(
     except Exception as e:
         logger.error(f"❌ Erreur apply_best_hyperparameters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== GRADIENTBOOSTING OPTIMIZATION ==========
+
+@router.post("/optimize/gb/start")
+async def start_gradientboosting_optimization(
+    background_tasks: BackgroundTasks,
+    n_trials: int = Query(100, ge=10, le=500),
+    timeout_minutes: int = Query(30, ge=5, le=120),
+    timeframe_days: int = Query(365, ge=30, le=730),
+    use_histgb: bool = Query(False, description="Utiliser HistGradientBoosting (10x plus rapide)")
+):
+    """
+    Démarrer optimisation hyperparamètres GradientBoosting
+    
+    Caractéristiques:
+    - Cross-validation 5-fold stratifiée
+    - Holdout test set 20% (jamais vu pendant l'optimisation)
+    - Score composite pénalisant l'overfitting
+    - Métriques fiables et répétables
+    
+    Args:
+        n_trials: Nombre de trials (10-500)
+        timeout_minutes: Timeout en minutes (5-120)
+        timeframe_days: Nombre de jours de données (30-730)
+        
+    Returns:
+        task_id pour suivre progression
+    """
+    try:
+        from optimization.data.feature_loader import get_trades_count
+        
+        # Vérifier données suffisantes
+        trades_count = get_trades_count()
+        
+        if trades_count < 100:
+            raise HTTPException(
+                400,
+                f"Pas assez de données: {trades_count}/100 trades minimum requis"
+            )
+        
+        # Créer task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialiser task status
+        model_name = 'HistGradientBoosting' if use_histgb else 'GradientBoosting'
+        ml_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'pending',
+            'action': 'gb_optimization',
+            'model_type': model_name,
+            'use_histgb': use_histgb,
+            'n_trials': n_trials,
+            'timeout_minutes': timeout_minutes,
+            'timeframe_days': timeframe_days,
+            'created_at': datetime.now().isoformat(),
+            'progress': 0,
+            'current_trial': 0,
+            'best_score': None,
+            'best_params': None
+        }
+        
+        # Lancer optimisation en background
+        background_tasks.add_task(
+            _optimize_gradientboosting_background,
+            task_id,
+            n_trials,
+            timeout_minutes,
+            timeframe_days,
+            use_histgb
+        )
+        
+        speed_info = " (⚡ 10x plus rapide)" if use_histgb else ""
+        logger.info(f"🎯 Optimisation {model_name} démarrée{speed_info} (task_id={task_id}, trials={n_trials})")
+        
+        return {
+            'task_id': task_id,
+            'status': 'pending',
+            'message': f'Optimisation {model_name} démarrée ({n_trials} trials, timeout={timeout_minutes}min){speed_info}',
+            'trades_count': trades_count,
+            'model_type': model_name,
+            'use_histgb': use_histgb
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur start_gb_optimization: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _optimize_gradientboosting_background(
+    task_id: str,
+    n_trials: int,
+    timeout_minutes: int,
+    timeframe_days: int,
+    use_histgb: bool = False
+):
+    """Fonction background pour optimisation GradientBoosting"""
+    try:
+        from optimization.optuna_gradientboosting import GradientBoostingOptimizer
+        
+        # Update status
+        model_name = 'HistGradientBoosting' if use_histgb else 'GradientBoosting'
+        ml_tasks[task_id]['status'] = 'running'
+        ml_tasks[task_id]['progress'] = 5
+        ml_tasks[task_id]['stage'] = 'initializing'
+        
+        speed_info = " (⚡ rapide)" if use_histgb else ""
+        logger.info(f"🚀 Optimisation {model_name}{speed_info} en cours (task_id={task_id})")
+        
+        # Créer optimizer
+        optimizer = GradientBoostingOptimizer(
+            n_trials=n_trials,
+            timeout_minutes=timeout_minutes,
+            use_histgb=use_histgb
+        )
+        
+        # Charger données
+        ml_tasks[task_id]['progress'] = 10
+        ml_tasks[task_id]['stage'] = 'loading_data'
+        
+        n_samples = optimizer.load_data(timeframe_days=timeframe_days)
+        ml_tasks[task_id]['n_samples'] = n_samples
+        
+        # Optimiser
+        ml_tasks[task_id]['progress'] = 15
+        ml_tasks[task_id]['stage'] = 'optimizing'
+        
+        best_params = optimizer.optimize(n_trials=n_trials, timeout_minutes=timeout_minutes)
+        
+        # Mettre à jour pendant l'optimisation
+        if optimizer.study:
+            ml_tasks[task_id].update({
+                'progress': 85,
+                'current_trial': len(optimizer.study.trials),
+                'best_score': optimizer.study.best_value,
+                'best_params': optimizer.best_params
+            })
+        
+        # Validation finale sur holdout
+        ml_tasks[task_id]['progress'] = 90
+        ml_tasks[task_id]['stage'] = 'validating_holdout'
+        
+        metrics = optimizer.validate_on_holdout()
+        
+        # Résumé final
+        results = optimizer.get_results_summary()
+        
+        # 🔥 SAUVEGARDER dans optuna_gb_results.json pour persistence
+        results_path = os.path.join(
+            os.path.dirname(__file__), '..', '..', 'data', 'optuna_gb_results.json'
+        )
+        os.makedirs(os.path.dirname(results_path), exist_ok=True)
+        
+        save_data = {
+            'status': 'completed',
+            'timestamp': datetime.now().isoformat(),
+            'best_params': optimizer.best_params,
+            'best_score_composite': results.get('best_score_composite', metrics.get('test_accuracy', 0)),
+            'metrics_holdout': metrics,
+            'n_trials_completed': len(optimizer.study.trials) if optimizer.study else 0,
+            'n_trials_pruned': results.get('n_trials_pruned', 0),
+            'top_5_trials': results.get('top_5_trials', [])
+        }
+        
+        with open(results_path, 'w') as f:
+            json.dump(save_data, f, indent=2)
+        
+        logger.info(f"💾 Résultats sauvegardés: {results_path}")
+        
+        # Mettre à jour task
+        ml_tasks[task_id].update({
+            'status': 'completed',
+            'progress': 100,
+            'stage': 'completed',
+            'best_params': optimizer.best_params,
+            'metrics_holdout': metrics,
+            'results': results,
+            'completed_at': datetime.now().isoformat()
+        })
+        
+        # Sauvegarder dans optuna_last_runs.json avec clé spécifique
+        run_data = {
+            'metric': 'gb_composite',
+            'model_type': 'GradientBoosting',
+            'score': metrics['test_accuracy'],
+            'params': optimizer.best_params,
+            'metrics': metrics,
+            'trial_number': len(optimizer.study.trials) if optimizer.study else 0,
+            'total_trials': n_trials,
+            'datetime': datetime.now().isoformat()
+        }
+        record_metric_run('gb_composite', run_data)
+        
+        logger.info(f"✅ Optimisation GradientBoosting terminée: test_acc={metrics['test_accuracy']:.4f}, gap={metrics['overfitting_gap']:.4f}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur optimisation GradientBoosting: {e}", exc_info=True)
+        
+        ml_tasks[task_id].update({
+            'status': 'failed',
+            'error': str(e),
+            'failed_at': datetime.now().isoformat()
+        })
+
+
+@router.post("/optimize/gb/apply")
+async def apply_gradientboosting_params(
+    params_to_apply: Optional[Dict[str, Any]] = Body(None),
+    config_file: str = Query('config_overrides.json')
+):
+    """
+    Appliquer hyperparamètres GradientBoosting à config_overrides.json
+    
+    Args:
+        params_to_apply: Paramètres à appliquer
+        config_file: Fichier de config à écrire
+    
+    Returns:
+        Confirmation et params appliqués
+    """
+    try:
+        if not params_to_apply:
+            # Charger depuis le dernier résultat sauvegardé
+            results_path = os.path.join(
+                os.path.dirname(__file__), '..', '..', 'data', 'optuna_gb_results.json'
+            )
+            if os.path.exists(results_path):
+                with open(results_path, 'r') as f:
+                    results = json.load(f)
+                    params_to_apply = results.get('best_params', {})
+            else:
+                raise HTTPException(400, "Aucun paramètre fourni et aucune optimisation GB trouvée")
+        
+        # Sauvegarder dans config_overrides.json
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+        else:
+            config = {}
+        
+        # Mapping des paramètres GradientBoosting
+        gb_mapping = {
+            'n_estimators': 'gb_n_estimators',
+            'max_depth': 'gb_max_depth',
+            'learning_rate': 'gb_learning_rate',
+            'min_samples_split': 'gb_min_samples_split',
+            'min_samples_leaf': 'gb_min_samples_leaf',
+            'subsample': 'gb_subsample',
+            'max_features': 'gb_max_features'
+        }
+        
+        applied_params = {}
+        for param, value in params_to_apply.items():
+            if param in gb_mapping:
+                config_key = gb_mapping[param]
+                config[config_key] = value
+                applied_params[config_key] = value
+        
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        # Recharger config
+        try:
+            from config import TRADING_CONFIG
+            from utils.config_persistence import apply_config_overrides
+            apply_config_overrides(TRADING_CONFIG)
+            logger.info("✅ TRADING_CONFIG rechargé avec params GradientBoosting")
+        except Exception as reload_err:
+            logger.warning(f"⚠️ Impossible de recharger TRADING_CONFIG: {reload_err}")
+        
+        logger.info(f"✅ Paramètres GradientBoosting appliqués: {applied_params}")
+        
+        return {
+            'success': True,
+            'message': f'Paramètres GradientBoosting appliqués à {config_file}',
+            'params': applied_params,
+            'config_file': config_file
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erreur apply_gb_params: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/optimize/gb/results")
+async def get_gradientboosting_results():
+    """
+    Récupérer les résultats de la dernière optimisation GradientBoosting
+    
+    Returns:
+        Meilleurs params, métriques et historique
+    """
+    try:
+        results_path = os.path.join(
+            os.path.dirname(__file__), '..', '..', 'data', 'optuna_gb_results.json'
+        )
+        
+        if not os.path.exists(results_path):
+            return {
+                'found': False,
+                'message': 'Aucune optimisation GradientBoosting trouvée'
+            }
+        
+        with open(results_path, 'r') as f:
+            results = json.load(f)
+        
+        return {
+            'found': True,
+            **results
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_gb_results: {e}", exc_info=True)
+        return {
+            'found': False,
+            'error': str(e)
+        }
+
+
 """
 Endpoints ML V2 - À ajouter à api/routes/ml.py
 XGBoost V2 (Régression PNL%)
@@ -3010,62 +3343,21 @@ async def _train_gradientboosting_background(task_id: str):
         base_df = load_features_from_postgres(timeframe_days=timeframe, min_trades=30, use_clean_data=False)
         logger.info(f"📊 Données brutes chargées: {len(base_df)} trades (timeframe={timeframe} jours)")
         
-        # 🔥 FILTRAGE identique à l'UI: exclure trades manuels et configs différentes
+        # 🔥 ALIGNÉ AVEC OPTUNA: Utiliser TOUTES les données (pas de filtrage par config)
+        # Le filtrage strict réduisait le dataset et causait des différences de métriques
         initial_count = len(base_df)
         
-        # Filtrer les trades manuels (si colonne existe)
+        # Filtrer les trades manuels uniquement (si colonne existe)
         if 'is_manual' in base_df.columns:
             base_df = base_df[base_df['is_manual'] != True]
             logger.info(f"   Après exclusion manuels: {len(base_df)} trades")
         
-        # 🔥 FILTRE STRICT: Seulement trades avec TOUS les paramètres config identiques
-        current_config = {
-            # Paramètres d'entrée
-            'min_score_required': TRADING_CONFIG.get('min_score_required', 6.5),
-            'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.15),
-            'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-            'use_confluence': TRADING_CONFIG.get('use_confluence', True),
-            'atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-            'atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-            'atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-            'atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-        }
-        logger.info(f"🔧 Config actuelle: min_score={current_config['min_score_required']}, "
-                   f"snr={current_config['snr_threshold']}, vol={current_config['volume_multiplier']}, "
-                   f"confluence={current_config['use_confluence']}")
+        # 🔥 DÉSACTIVÉ: Filtrage strict par config (causait écart Optuna vs UI)
+        # Pour réactiver, passer use_config_filter=True
+        use_config_filter = False  # Aligné avec Optuna
         
-        # Construire le masque pour TOUS les paramètres
-        mask = pd.Series([True] * len(base_df), index=base_df.index)
-        
-        if 'config_min_score_required' in base_df.columns:
-            mask &= abs(base_df['config_min_score_required'] - current_config['min_score_required']) < 0.1
-        
-        if 'config_snr_threshold' in base_df.columns:
-            mask &= abs(base_df['config_snr_threshold'] - current_config['snr_threshold']) < 0.02
-        
-        if 'config_volume_multiplier' in base_df.columns:
-            mask &= abs(base_df['config_volume_multiplier'] - current_config['volume_multiplier']) < 0.05
-        
-        if 'config_use_confluence' in base_df.columns:
-            mask &= base_df['config_use_confluence'] == current_config['use_confluence']
-        
-        # Filtres ATR (tolérances plus larges car valeurs plus variables)
-        if 'config_atr_min_1m' in base_df.columns:
-            mask &= abs(base_df['config_atr_min_1m'] - current_config['atr_min_1m']) < 0.05
-        
-        if 'config_atr_max_1m' in base_df.columns:
-            mask &= abs(base_df['config_atr_max_1m'] - current_config['atr_max_1m']) < 0.1
-        
-        if 'config_atr_min_5m' in base_df.columns:
-            mask &= abs(base_df['config_atr_min_5m'] - current_config['atr_min_5m']) < 0.05
-        
-        if 'config_atr_max_5m' in base_df.columns:
-            mask &= abs(base_df['config_atr_max_5m'] - current_config['atr_max_5m']) < 0.2
-        
-        base_df = base_df[mask]
-        logger.info(f"   Après filtre config COMPLET: {len(base_df)} trades")
-        
-        logger.info(f"📊 Données filtrées: {len(base_df)}/{initial_count} trades utilisables")
+        # 🔥 ALIGNÉ AVEC OPTUNA: Pas de filtrage par config
+        logger.info(f"📊 Données utilisées: {len(base_df)}/{initial_count} trades (aligné Optuna)")
         df = calculate_derived_features(base_df)
         
         ml_tasks[task_id]['progress'] = 20
@@ -3284,10 +3576,54 @@ async def _train_gradientboosting_background(task_id: str):
             model.fit(X_train_scaled, y_train)
             logger.info(f"✅ GB standard entraîné (mode optimisé - sans sample_weights)")
         
-        ml_tasks[task_id]['progress'] = 80
+        ml_tasks[task_id]['progress'] = 75
+        ml_tasks[task_id]['stage'] = 'cross_validation'
+        
+        # 🔬 CROSS-VALIDATION 5-fold pour métriques fiables
+        from sklearn.model_selection import cross_val_score, StratifiedKFold
+        
+        logger.info("🔬 Calcul des métriques par Cross-Validation 5-fold...")
+        
+        # Créer un nouveau modèle pour CV (sur données complètes)
+        X_all = np.vstack([X_train_scaled, X_test_scaled])
+        y_all = np.concatenate([y_train, y_test])
+        
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        
+        if model_type == 'histgb':
+            cv_model = HistGradientBoostingClassifier(
+                max_iter=params.get('n_estimators', 300),
+                max_depth=params.get('max_depth', 2),
+                learning_rate=params.get('learning_rate', 0.089),
+                min_samples_leaf=params.get('min_samples_leaf', 50),
+                random_state=42
+            )
+        else:
+            cv_model = GradientBoostingClassifier(
+                n_estimators=params.get('n_estimators', 271),
+                max_depth=params.get('max_depth', 6),
+                learning_rate=params.get('learning_rate', 0.217),
+                min_samples_split=params.get('min_samples_split', 48),
+                min_samples_leaf=params.get('min_samples_leaf', 38),
+                subsample=params.get('subsample', 0.734),
+                max_features=params.get('max_features', 'sqrt'),
+                random_state=42
+            )
+        
+        cv_accuracy = cross_val_score(cv_model, X_all, y_all, cv=cv, scoring='accuracy')
+        cv_f1 = cross_val_score(cv_model, X_all, y_all, cv=cv, scoring='f1')
+        
+        cv_acc_mean = cv_accuracy.mean()
+        cv_acc_std = cv_accuracy.std()
+        cv_f1_mean = cv_f1.mean()
+        
+        logger.info(f"📊 CV Accuracy: {cv_acc_mean*100:.1f}% ± {cv_acc_std*100:.1f}%")
+        logger.info(f"📊 CV F1 Score: {cv_f1_mean:.3f}")
+        
+        ml_tasks[task_id]['progress'] = 85
         ml_tasks[task_id]['stage'] = 'evaluating'
         
-        # Évaluer
+        # Évaluer sur holdout (pour comparaison)
         y_train_pred = model.predict(X_train_scaled)
         y_test_pred = model.predict(X_test_scaled)
         
@@ -3319,11 +3655,16 @@ async def _train_gradientboosting_background(task_id: str):
             'timestamp': timestamp,
             'best_model': model_name,
             'model_type': model_type,
-            'n_samples': len(df),  # 🔥 Nombre total de samples
-            'n_train': X_train.shape[0],  # Utiliser shape car X_train est numpy array
+            'n_samples': len(df),
+            'n_train': X_train.shape[0],
             'n_test': X_test.shape[0],
-            'n_features': X_train.shape[1],  # 🔥 FIX: Nombre de features APRES sélection
+            'n_features': X_train.shape[1],
             'metrics': {
+                # 🔬 MÉTRIQUES CROSS-VALIDATION (les plus fiables!)
+                'cv_accuracy': float(cv_acc_mean),
+                'cv_accuracy_std': float(cv_acc_std),
+                'cv_f1': float(cv_f1_mean),
+                # Métriques holdout (pour référence)
                 'train_acc': float(train_acc),
                 'test_acc': float(test_acc),
                 'test_f1': float(test_f1),

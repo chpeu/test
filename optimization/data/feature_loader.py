@@ -300,6 +300,11 @@ def load_features_from_postgres(
             -- Reject category (depuis scan_logs)
             s.reject_reason_category,
             
+            -- 🔥 Order Flow features (depuis trades)
+            t.delta_volume,
+            t.imbalance_normalized,
+            t.book_depth_ratio,
+            
             -- Labels ML
             s.is_opportunity,
             t.win AS target_win,

@@ -106,14 +106,14 @@
 		ml_v2_subsample: 0.7,
 		ml_v2_colsample_bytree: 0.7,
 		ml_v2_gamma: 0.5,
-		// GradientBoosting (Modèle optimisé 64-69% accuracy)
+		// GradientBoosting (Config B Anti-Overfit - 62.6% accuracy, 15% gap)
 		gb_filter_enabled: true,  // Activé par défaut car performant
 		gb_min_confidence: 0.55,  // 55% seuil
-		gb_n_estimators: 200,
+		gb_n_estimators: 150,     // 🔥 Config B: -121 vs ancienne
 		gb_max_depth: 3,
 		gb_learning_rate: 0.03,
-		gb_min_samples_split: 30,
-		gb_min_samples_leaf: 15,
+		gb_min_samples_split: 80, // 🔥 Config B: +50 vs ancienne (anti-overfit)
+		gb_min_samples_leaf: 60,  // 🔥 Config B: +45 vs ancienne (anti-overfit)
 		gb_subsample: 0.7,
 		gb_max_features: 0.5,
 		// 🔥 OPT #14: Scan Interval
