@@ -556,7 +556,8 @@ class PositionManager:
         atr5m: Optional[float] = None,
         confirmed_by: str = "",
         scalability_data: Optional[Dict] = None,
-        condition_types: Optional[List[str]] = None
+        condition_types: Optional[List[str]] = None,
+        ml_confidence: Optional[float] = None  # 🔥 FIX: Ajouter ml_confidence
     ) -> Position:
         """
         Ouvrir une nouvelle position
@@ -688,6 +689,9 @@ class PositionManager:
         self.active_position.size_initial_contracts = contracts
         self.active_position.size_remaining_contracts = contracts
         self.active_position.size_remaining = size
+        
+        # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
+        self.active_position.ml_confidence = ml_confidence
 
         # ✅ Initialiser TP Escalier si mode TP_MULTI
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
@@ -2183,7 +2187,9 @@ class PositionManager:
                         'funding_rate_at_entry': getattr(self.active_position, 'funding_rate_at_entry', None),
                         'funding_rate_at_exit': getattr(self.active_position, 'funding_rate_at_exit', None),
                         'entry_api_response': getattr(self.active_position, 'entry_api_response', None),
-                        'exit_api_response': getattr(self.active_position, 'exit_api_response', None)
+                        'exit_api_response': getattr(self.active_position, 'exit_api_response', None),
+                        # 🔥 FIX: Ajouter ml_confidence au trade (même valeur que dans scan_logs)
+                        'ml_confidence': getattr(self.active_position, 'ml_confidence', None)
                     }
                     
                     # Récupérer opportunity_id et scan_log_id si disponibles

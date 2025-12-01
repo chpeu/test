@@ -68,9 +68,9 @@ def main():
                 print(f"   Contrats MEXC: {size}")
                 print(f"   Prix entree: {entry}")
                 
-                # Recuperer contractSize
-                if 'SHIB' in symbol:
-                    print("\n[2/3] Recuperation contractSize SHIB...")
+                # Recuperer contractSize pour tout symbole
+                if True:  # Pour tous les symboles
+                    print(f"\n[2/3] Recuperation contractSize {symbol}...")
                     spec = await client.get_contract_spec(symbol)
                     if spec:
                         contract_size = spec.contract_size

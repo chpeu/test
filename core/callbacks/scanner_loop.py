@@ -656,7 +656,8 @@ async def _scan_top_pairs():
                     atr5m=atr5m,  # BUG #12: Avec fallback
                     confirmed_by=', '.join(best_setup.get('condition_types', [])),
                     scalability_data=scalability_data,  # BUG #5: Données récupérées
-                    condition_types=best_setup.get('condition_types', [])
+                    condition_types=best_setup.get('condition_types', []),
+                    ml_confidence=best_setup.get('ml_confidence')  # 🔥 FIX: Passer ml_confidence
                 )
 
                 logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")

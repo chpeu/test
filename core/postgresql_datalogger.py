@@ -1479,7 +1479,9 @@ class PostgreSQLDataLogger:
                 ('config_use_momentum_continuity', config_use_momentum_continuity),
                 ('config_momentum_lookback', config_momentum_lookback),
                 ('config_snapshot', config_snapshot),
-                ('win', win)
+                ('win', win),
+                # 🔥 FIX: ml_confidence toujours loggé (pas seulement pour live trades)
+                ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence')))
             ])
             
             # 🔥 LIVE TRADING COLUMNS (ajoutées conditionnellement si présentes)

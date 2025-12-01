@@ -1407,7 +1407,8 @@ async def scanner_loop_callback():
                                         atr5m=atr5m,
                                         confirmed_by=setup.get('confirmedBy', 'Scanner auto'),
                                         scalability_data=scalability_data,
-                                        condition_types=condition_types  # 🔥 PHASE 5: Types de conditions
+                                        condition_types=condition_types,  # 🔥 PHASE 5: Types de conditions
+                                        ml_confidence=setup.get('ml_confidence')  # 🔥 FIX: Passer ml_confidence
                                     )
                                     
                                     # Stocker capital
@@ -3604,7 +3605,8 @@ async def api_open_position(request: Request):
                 atr5m=data.get('atr5m'),
                 confirmed_by=data.get('confirmed_by', ''),
                 scalability_data=data.get('scalability_data'),
-                condition_types=condition_types  # 🔥 PHASE 5: Types de conditions
+                condition_types=condition_types,  # 🔥 PHASE 5: Types de conditions
+                ml_confidence=data.get('ml_confidence')  # 🔥 FIX: Passer ml_confidence
             )
             
             # 🔥 FIX: Stocker capital si fourni dans data

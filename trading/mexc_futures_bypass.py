@@ -1219,12 +1219,18 @@ class MexcFuturesBypass:
             # 🔥 Récupérer contractSize (taille du contrat en tokens)
             contract_size = float(data.get("contractSize", 1))
             
-            # 🔥 FIX: Corriger contractSize pour certains symboles où MEXC retourne 1.0 mais utilise 0.01
-            # Ces symboles ont des "micro-contrats" sur MEXC Futures
-            MICRO_CONTRACT_SYMBOLS = {'ZEC_USDT', 'BCH_USDT', 'ETC_USDT', 'LTC_USDT'}
-            if symbol in MICRO_CONTRACT_SYMBOLS and contract_size == 1.0:
-                contract_size = 0.01
-                logger.warning(f"⚠️ Override contractSize pour {symbol}: 1.0 → 0.01 (micro-contrat MEXC)")
+            # 🔥 FIX: Corriger contractSize UNIQUEMENT pour symboles où MEXC API retourne 1.0 alors que c'est faux
+            # NOTE: La plupart des symboles (SHIB, BTC, ETH, etc.) sont CORRECTS dans l'API
+            # Ces overrides sont pour les cas où l'API ment (retourne 1.0 alors que c'est différent)
+            CONTRACT_SIZE_OVERRIDES = {
+                # Micro-contrats: API dit 1.0 mais c'est faux
+                # 'SOL_USDT': 0.1,     # Désactivé: l'API retourne bien 0.1 maintenant (problème de cache)
+                # Ajouter ici d'autres symboles si nécessaire après vérification manuelle
+            }
+            if symbol in CONTRACT_SIZE_OVERRIDES and contract_size == 1.0:
+                correct_size = CONTRACT_SIZE_OVERRIDES[symbol]
+                logger.warning(f"⚠️ Override contractSize pour {symbol}: {contract_size} → {correct_size}")
+                contract_size = correct_size
             
             spec = ContractSpec(
                 symbol=symbol,
