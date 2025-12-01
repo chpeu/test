@@ -2388,6 +2388,19 @@ async def position_check_loop_callback():
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de charger ml_confidence depuis PostgreSQL: {e}")
                 
+                # 🔥 FIX: Récupérer adaptive_sizing_multiplier depuis PostgreSQL si null sur la position
+                sizing_mult = getattr(position, 'adaptive_sizing_multiplier', None)
+                if sizing_mult is None:
+                    try:
+                        from core.callbacks.scanner_loop import get_pg_datalogger
+                        pg_logger = get_pg_datalogger()
+                        if pg_logger and pg_logger.enabled:
+                            sizing_mult = pg_logger.get_adaptive_sizing_for_symbol(position.symbol)
+                            if sizing_mult is not None:
+                                position.adaptive_sizing_multiplier = sizing_mult
+                    except Exception as e:
+                        logger.debug(f"⚠️ Impossible de charger sizing_multiplier depuis PostgreSQL: {e}")
+
                 # Émettre update pour le frontend (inclut aussi les tailles en contrats)
                 update_data = {
                     'symbol': position.symbol,
@@ -2406,7 +2419,7 @@ async def position_check_loop_callback():
                     'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
                     # 🔥 FIX: Ajouter ml_confidence et adaptive_sizing_multiplier
                     'ml_confidence': ml_conf,
-                    'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
+                    'adaptive_sizing_multiplier': sizing_mult,
                 }
                 await ws_manager.emit('position_update', update_data)
                 

@@ -794,13 +794,13 @@ class PostgreSQLDataLogger:
             query = """
                 SELECT ml_confidence FROM scan_logs 
                 WHERE symbol = %s 
-                AND timestamp > NOW() - INTERVAL '%s minutes'
+                AND timestamp > NOW() - (INTERVAL '1 minute' * %s)
                 AND ml_confidence IS NOT NULL
                 ORDER BY timestamp DESC
                 LIMIT 1
             """
             
-            result = self._execute_query(query, (symbol, minutes_ago))
+            result = self._execute_query(query, (symbol, minutes_ago), fetch=True)
             if result and len(result) > 0 and result[0][0] is not None:
                 ml_conf = float(result[0][0])
                 logger.debug(f"📊 ml_confidence récupéré pour {symbol}: {ml_conf:.1f}%")
@@ -811,6 +811,45 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur get ml_confidence pour {symbol}: {e}")
             return None
     
+    def get_adaptive_sizing_for_symbol(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        🔥 FIX: Récupérer adaptive_sizing_multiplier depuis PostgreSQL
+        
+        Args:
+            symbol: Symbole de la paire
+            minutes_ago: Chercher dans les N dernières minutes
+        
+        Returns:
+            adaptive_sizing_multiplier ou None
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            query = """
+                SELECT adaptive_sizing_multiplier FROM trades 
+                WHERE symbol = %s 
+                AND timestamp_entry > NOW() - (INTERVAL '1 minute' * %s)
+                AND adaptive_sizing_multiplier IS NOT NULL
+                ORDER BY timestamp_entry DESC
+                LIMIT 1
+            """
+            
+            result = self._execute_query(query, (symbol, minutes_ago), fetch=True)
+            if result and len(result) > 0 and result[0][0] is not None:
+                sizing = float(result[0][0])
+                logger.debug(f"📊 sizing_multiplier récupéré pour {symbol}: {sizing:.2f}x")
+                return sizing
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get sizing_multiplier pour {symbol}: {e}")
+            return None
+
     def log_opportunity(
         self,
         scan_id: int,
@@ -1337,6 +1376,9 @@ class PostgreSQLDataLogger:
             orderbook_imbalance_entry = entry_orderbook_imbalance
             atr_at_entry = _extract_numeric_value(entry_indicators.get('atr_1m'))
 
+            # 🔥 FIX: Extraire adaptive_sizing_multiplier
+            adaptive_sizing_multiplier = _extract_numeric_value(trade_data.get('adaptive_sizing_multiplier'))
+            
             fields = []
             fields.extend([
                 ('timestamp_entry', entry_timestamp),
@@ -1351,6 +1393,7 @@ class PostgreSQLDataLogger:
                 ('size_usdt', size_usdt),
                 ('tp_price', tp_price),
                 ('sl_price', sl_price),
+                ('adaptive_sizing_multiplier', adaptive_sizing_multiplier),
                 ('gross_pnl_usdt', gross_pnl_usdt),
                 ('pnl_pct', gross_pnl_pct),
                 ('pnl_usdt', gross_pnl_usdt),
