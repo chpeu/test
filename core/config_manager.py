@@ -357,3 +357,13 @@ def get_config_manager() -> ConfigManager:
     if _config_manager is None:
         _config_manager = ConfigManager()
     return _config_manager
+
+
+def reset_config_manager() -> None:
+    """
+    Réinitialiser l'instance globale du ConfigManager.
+
+    Utile principalement pour les tests afin d'obtenir une instance fraîche.
+    """
+    global _config_manager
+    _config_manager = None

@@ -131,6 +131,8 @@ def build_indicators_from_analysis(
             return existing
 
     # Priority 2: Try to extract from analysis_1m/analysis_5m
+    # Note: Both analysis_1m and analysis_5m have fields WITHOUT suffix
+    # (they contain 'rsi', 'macd', etc., not 'rsi_5m', 'macd_5m')
     analysis_key = f'analysis_{timeframe}'
     nested_analysis = analysis.get(analysis_key, {})
 
@@ -138,10 +140,8 @@ def build_indicators_from_analysis(
         if logger:
             logger.debug(f"Extracting {indicators_key} from {analysis_key}")
 
-        if timeframe == '1m':
-            return extract_indicators_1m(nested_analysis)
-        elif timeframe == '5m':
-            return extract_indicators_5m(nested_analysis)
+        # Both nested analysis dicts use the same field names without suffix
+        return extract_indicators_1m(nested_analysis)
 
     # Priority 3: Extract directly from analysis (for valid setups)
     if logger:
