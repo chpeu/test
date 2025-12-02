@@ -18,12 +18,12 @@ import io
 import subprocess
 from collections import OrderedDict
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple, Callable
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
-from core.websocket_manager import get_websocket_manager
+from core.websocket_manager import get_websocket_manager, WebSocketManager
 import time
 # 🔥 FIX: Import colorama pour les couleurs dans les logs
 try:
@@ -85,7 +85,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # 🔥 FIX: Exception handler global (défini comme fonction, sera attaché après création de app)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503 pour /api/state"""
     import time
     
@@ -186,7 +186,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 ws_manager = get_websocket_manager()
 
 # 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les routes
-def get_websocket_manager_for_routes():
+def get_websocket_manager_for_routes() -> WebSocketManager:
+    """Obtenir l'instance WebSocketManager pour les routes."""
     return ws_manager
 
 def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> OrderedDict:
@@ -389,8 +390,14 @@ async def lifespan(app: FastAPI):
             await data_logger.initialize()
             app.state.data_logger = data_logger
             logger.info("✅ DataLogger initialisé")
+        except ImportError as e:
+            logger.warning(f"⚠️ Module DataLogger non disponible: {e}")
+            app.state.data_logger = None
+        except (OSError, IOError, ConnectionError) as e:
+            logger.warning(f"⚠️ Erreur I/O lors de l'initialisation DataLogger: {e}")
+            app.state.data_logger = None
         except Exception as e:
-            logger.warning(f"⚠️ Erreur initialisation DataLogger: {e}")
+            logger.error(f"❌ Erreur inattendue initialisation DataLogger: {e}", exc_info=True)
             app.state.data_logger = None
 
         init_instances()
@@ -418,8 +425,10 @@ async def lifespan(app: FastAPI):
                 try:
                     await app.state.data_logger.shutdown()
                     logger.info("✅ DataLogger arrêté proprement")
+                except (OSError, IOError, ConnectionError) as e:
+                    logger.error(f"❌ Erreur I/O lors de l'arrêt DataLogger: {e}")
                 except Exception as e:
-                    logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+                    logger.error(f"❌ Erreur inattendue arrêt DataLogger: {e}", exc_info=True)
 
             try:
                 from core.callbacks.scanner_loop import get_pg_datalogger
@@ -427,8 +436,12 @@ async def lifespan(app: FastAPI):
                 if pg_datalogger:
                     pg_datalogger.close()
                     logger.info("✅ PostgreSQL DataLogger fermé proprement")
+            except ImportError as e:
+                logger.debug(f"Module PostgreSQL DataLogger non disponible: {e}")
+            except (OSError, IOError, ConnectionError) as e:
+                logger.warning(f"⚠️ Erreur I/O fermeture PostgreSQL DataLogger: {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+                logger.warning(f"⚠️ Erreur inattendue fermeture PostgreSQL DataLogger: {e}", exc_info=True)
 
             try:
                 from api.mexc import get_mexc_client
@@ -436,8 +449,12 @@ async def lifespan(app: FastAPI):
                 if mexc_client:
                     await mexc_client.close()
                     logger.info("✅ MEXC client fermé proprement")
+            except ImportError as e:
+                logger.debug(f"Module MEXC non disponible: {e}")
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(f"⚠️ Erreur réseau fermeture MEXC client: {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
+                logger.warning(f"⚠️ Erreur inattendue fermeture MEXC client: {e}", exc_info=True)
 
         except Exception as e:
             logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
@@ -511,7 +528,7 @@ def init_trade_database() -> None:
             logger.critical(f"❌ Erreur critique initialisation DB: {e}", exc_info=True)
             trade_db = None
 
-def save_trade_history():
+def save_trade_history() -> None:
     """Sauvegarder l'historique des trades dans un fichier JSON et SQLite"""
     global TRADE_HISTORY_FILE, trade_db
     
@@ -544,7 +561,7 @@ def save_trade_history():
     # pas toutes les colonnes requises (114). Les trades sont déjà loggés ailleurs via
     # analytics_logger, donc on évite toute duplication.
 
-def load_trade_history():
+def load_trade_history() -> None:
     """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
     global TRADE_HISTORY_FILE, trade_db
     
@@ -598,8 +615,24 @@ app_state = {
 }
 
 
-async def _run_initial_top_pairs_scan():
-    """Lancer le scan initial sans bloquer la boucle d'événements"""
+async def _run_initial_top_pairs_scan() -> None:
+    """
+    Lancer le scan initial des top pairs sans bloquer la boucle d'événements.
+
+    Cette fonction est exécutée en arrière-plan au démarrage de l'application
+    pour identifier les paires les plus prometteuses et initialiser les
+    connexions WebSocket pour le suivi des prix en temps réel.
+
+    Side Effects:
+        - Initialise les instances globales (scanner, price_provider)
+        - Met à jour app_state['top_pairs']
+        - Démarre les WebSocket pour le suivi des prix
+        - Émet des événements WebSocket vers le frontend
+        - Ajoute des logs dans la base de données
+
+    Note:
+        Ne fait rien si le scan a déjà été effectué (top_pairs présent)
+    """
     init_instances()
 
     if app_state.get('top_pairs'):
@@ -692,7 +725,7 @@ async def notify_error_telegram(error_type: str, details: str):
         logger.debug(f"⚠️ Impossible de notifier l'erreur via Telegram: {e}")
 
 
-def notify_error_sync(error_type: str, details: str):
+def notify_error_sync(error_type: str, details: str) -> None:
     """
     Version synchrone de notify_error_telegram.
     Utilise asyncio pour envoyer la notification.
@@ -707,13 +740,13 @@ def notify_error_sync(error_type: str, details: str):
 
 
 # 🔥 FIX SL MISMATCH: Fonction pour configurer vérification SL temps réel
-async def setup_realtime_sl_check(position, price_provider_instance):
+async def setup_realtime_sl_check(position: Any, price_provider_instance: Any) -> None:
     """
     Configure la vérification SL en temps réel via WebSocket.
-    
+
     Cette fonction est appelée après l'ouverture d'une position pour garantir
     que le SL sera détecté immédiatement à chaque tick, pas toutes les 2 secondes.
-    
+
     Args:
         position: Position active (objet Position ou dict)
         price_provider_instance: Instance HybridPriceProvider
@@ -804,13 +837,13 @@ async def setup_realtime_sl_check(position, price_provider_instance):
 _pending_sl_tasks: Dict[str, asyncio.Task] = {}
 
 
-async def schedule_sl_order_placement(position, delay_seconds: float = 3.0):
+async def schedule_sl_order_placement(position: Any, delay_seconds: float = 3.0) -> None:
     """
     Planifie le placement d'un ordre SL sur l'exchange après un délai.
-    
+
     Cette fonction attend que le prix d'entrée réel soit disponible (via ccxt),
     puis place un ordre SL de protection sur MEXC.
-    
+
     Args:
         position: Position active (objet Position)
         delay_seconds: Délai avant placement (défaut: 3 secondes)
@@ -906,12 +939,12 @@ async def schedule_sl_order_placement(position, delay_seconds: float = 3.0):
     logger.debug(f"📋 Tâche SL programmée pour {symbol} dans {delay_seconds}s")
 
 
-def cancel_pending_sl_task(symbol: str):
+def cancel_pending_sl_task(symbol: str) -> None:
     """
     Annule la tâche SL en attente pour un symbole.
-    
+
     Appelé quand une position se ferme avant que l'ordre SL ne soit placé.
-    
+
     Args:
         symbol: Symbole de la position fermée
     """
@@ -927,8 +960,36 @@ def cancel_pending_sl_task(symbol: str):
 
 # 🔥 JOUR 3: Callbacks pour le scheduler (doivent être définis avant init_instances)
 
-async def scanner_loop_callback():
-    """Callback appelé toutes les 45 secondes pour scanner les setups"""
+async def scanner_loop_callback() -> None:
+    """
+    Callback appelé périodiquement par le scheduler pour scanner les opportunités de trading.
+
+    Cette fonction est le cœur du système de scanning automatique. Elle est exécutée
+    à intervalle régulier (défini par scan_interval dans config) pour identifier
+    des setups de trading sur les paires les plus prometteuses.
+
+    Le processus est le suivant:
+    1. Vérifie qu'aucune position n'est active (skip si position active)
+    2. Scan initial des top pairs si nécessaire (volume, volatilité)
+    3. Analyse technique des top N paires (parallélisé)
+    4. Filtrage ML optionnel (winrate prédiction)
+    5. Validation finale des setups trouvés
+    6. Ouverture de position si setup valide
+
+    Side Effects:
+        - Initialise les instances globales
+        - Acquiert scanner_lock pour éviter les scans concurrents
+        - Met à jour app_state['top_pairs']
+        - Démarre les WebSocket pour le suivi des prix
+        - Log les résultats dans PostgreSQL
+        - Ouvre une position si un setup est trouvé
+        - Émet des événements WebSocket vers le frontend
+
+    Note:
+        - Ne fait rien si une position est déjà active
+        - Utilise un lock global pour éviter les scans multiples en parallèle
+        - Le nombre de paires scannées est configurable (top_pairs_limit)
+    """
     global price_provider  # 🔥 FIX: Utiliser variable globale
     
     init_instances()
@@ -1571,13 +1632,44 @@ async def scanner_loop_callback():
 
 async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
     """
-    Scanner une paire pour trouver un setup.
+    Scanner une paire pour trouver un setup de trading valide.
+
+    Cette fonction effectue une analyse technique complète d'une paire de trading
+    en utilisant plusieurs indicateurs (RSI, MACD, ADX, Bollinger Bands, etc.)
+    et patterns (breakout, S/R, divergence, chandeliers japonais) pour identifier
+    des opportunités de trading.
+
+    Le processus inclut:
+    1. Calcul des indicateurs techniques sur 1m et 5m
+    2. Analyse de la tendance sur le timeframe configuré
+    3. Détection de patterns (breakout, S/R, wicks, divergences)
+    4. Détection de patterns chandeliers (engulfing, hammer, doji, etc.)
+    5. Scoring pondéré basé sur les conditions validées
+    6. Filtrage par corrélation avec positions actives
+    7. Logging dans PostgreSQL (via DataLogger)
 
     Args:
-        symbol: Symbole de la paire à analyser (ex: 'BTC/USDT')
+        symbol: Symbole de la paire à analyser (ex: 'BTC/USDT', 'ETH/USDT')
 
     Returns:
-        Dict contenant l'analyse si un setup est trouvé, None sinon
+        Dict contenant l'analyse complète si un setup est trouvé:
+            - setup_found: bool
+            - direction: 'LONG' ou 'SHORT'
+            - score: float (score pondéré)
+            - conditions_met: int (nombre de conditions validées)
+            - indicators_1m/5m: Dict des indicateurs
+            - patterns: Dict des patterns détectés
+            - entry: float (prix d'entrée recommandé)
+            - tp/sl: float (take profit et stop loss)
+        None si aucun setup valide n'est trouvé
+
+    Side Effects:
+        - Initialise les instances globales si nécessaire
+        - Log l'analyse dans PostgreSQL (DataLogger)
+        - Peut émettre des warnings si l'analyzer n'est pas disponible
+
+    Note:
+        Le filtrage ML n'est pas appliqué ici mais dans le callback appelant
     """
     global _simple_logger  # 🔥 Simple Logger: Accès à la variable globale
     init_instances()
@@ -2187,8 +2279,39 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-async def position_check_loop_callback():
-    """Callback appelé toutes les 2 secondes pour vérifier la position"""
+async def position_check_loop_callback() -> None:
+    """
+    Callback appelé périodiquement pour surveiller et gérer la position active.
+
+    Cette fonction est le gestionnaire principal des positions ouvertes. Elle est
+    exécutée toutes les 2 secondes (check_interval) pour surveiller l'évolution
+    de la position et décider si elle doit être fermée.
+
+    Le processus de surveillance inclut:
+    1. Vérification de l'existence d'une position active
+    2. Récupération du prix actuel en temps réel
+    3. Vérification des conditions de sortie:
+       - Take Profit (TP) atteint
+       - Stop Loss (SL) touché
+       - Break-even activé (si configuration)
+       - Trailing stop activé (si configuration)
+       - Timeout de position
+    4. Fermeture automatique si condition validée
+    5. Mise à jour des statistiques et logs
+
+    Side Effects:
+        - Initialise les instances globales
+        - Peut fermer la position active
+        - Met à jour app_state['active_position']
+        - Log dans PostgreSQL et trade_history
+        - Émet des événements WebSocket vers le frontend
+        - Met à jour les statistiques de trading
+
+    Note:
+        - Ne fait rien si aucune position n'est active
+        - Gère les erreurs de connexion au price provider
+        - Utilise get_preferred_price() pour gérer les différents formats de prix
+    """
     init_instances()
     
     # Vérifier si on a une position active
@@ -2437,15 +2560,42 @@ async def scalability_refresh_loop_callback():
 
 def init_instances() -> None:
     """
-    Initialiser les instances globales (après import).
+    Initialiser toutes les instances globales nécessaires au fonctionnement du bot.
 
-    Initialise tous les services nécessaires:
-    - Scanner, Analyzer, PositionManager
-    - Analytics DB, Notification Manager
-    - WebSocket log handler
-    - Live Order Manager
+    Cette fonction est le point d'initialisation central pour tous les composants
+    du système de trading. Elle est appelée au démarrage et peut être rappelée
+    pour s'assurer que toutes les instances sont disponibles.
 
-    Note: Utilise des variables globales pour la compatibilité legacy.
+    Composants initialisés:
+    1. WebSocket Log Handler - Envoie les logs au frontend
+    2. Analytics Database - Stockage PostgreSQL des métriques
+    3. Scanner - Identification des paires prometteuses
+    4. Analyzer - Analyse technique et détection de setups
+    5. PositionManager - Gestion des positions actives
+    6. Scheduler - Exécution périodique des tâches
+    7. PriceProvider - Récupération des prix (REST + WebSocket)
+    8. NotificationManager - Notifications Telegram
+    9. LiveOrderManager - Exécution des ordres sur l'exchange
+    10. MetricsCollector - Collecte des métriques système
+
+    Side Effects:
+        - Crée/initialise des variables globales (scanner, analyzer, etc.)
+        - Configure le logger avec WebSocket handler
+        - Crée le répertoire data/ si nécessaire
+        - Initialise la base de données Analytics (PostgreSQL)
+        - Réinitialise les statistiques de session
+        - Configure le gestionnaire de notifications Telegram
+        - Enregistre les métriques système (CPU, mémoire)
+
+    Note:
+        - Utilise des variables globales pour compatibilité legacy
+        - Safe à appeler plusieurs fois (vérifie si déjà initialisé)
+        - Gère les erreurs d'initialisation individuellement
+        - Certains composants sont optionnels (Telegram, ML, etc.)
+
+    Raises:
+        Aucune exception n'est propagée - les erreurs sont loggées mais
+        ne bloquent pas le démarrage du système
     """
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
     global analytics_db, notification_manager, session_id, live_order_manager
@@ -5934,7 +6084,7 @@ async def export_trades_csv(
     )
 
 
-def _get_pg_connection_for_export():
+def _get_pg_connection_for_export() -> Tuple[Any, Callable[[], None]]:
     """Obtenir une connexion PostgreSQL même si le bot n'est pas actif."""
     pg_datalogger = None
     try:
@@ -6184,7 +6334,8 @@ async def export_datalogger_excel(
         )
 
 
-def _generate_trading_config_workbook():
+def _generate_trading_config_workbook() -> io.BytesIO:
+    """Générer un classeur Excel avec la configuration de trading."""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
