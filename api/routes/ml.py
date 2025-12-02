@@ -7,7 +7,8 @@ Phase 4-5 Migration Status:
 - ✅ ml_tasks.py: Task tracking and alerts (4 routes)
 - ✅ ml_dashboard.py: Dashboard and analytics (4 routes)
 - ✅ ml_predictions.py: Predictions and filtering (8 routes)
-- 🚧 Legacy routes: Still in ml_legacy.py (28 routes)
+- ✅ ml_models.py: Model management and features (6 routes)
+- 🚧 Legacy routes: Still in ml_legacy.py (22 routes)
 
 Migration Strategy:
 Routes are being progressively migrated from ml_legacy.py to focused modules:
@@ -28,6 +29,7 @@ from fastapi import APIRouter
 from .ml_tasks import router as tasks_router
 from .ml_dashboard import router as dashboard_router
 from .ml_predictions import router as predictions_router
+from .ml_models import router as models_router
 
 # Import legacy routes (to be migrated)
 from .ml_legacy import router as legacy_router
@@ -41,12 +43,13 @@ router = APIRouter()
 router.include_router(tasks_router, tags=["ML Tasks & Alerts"])
 router.include_router(dashboard_router, tags=["ML Dashboard & Analytics"])
 router.include_router(predictions_router, tags=["ML Predictions"])
+router.include_router(models_router, tags=["ML Models & Features"])
 
 # Include legacy router (to be progressively removed)
-# Note: This includes all 28 remaining routes that haven't been migrated yet
+# Note: This includes all 22 remaining routes that haven't been migrated yet
 router.include_router(legacy_router, tags=["ML Legacy"])
 
 logger.info("✅ ML router initialized (modular + legacy)")
-logger.info("   - Migrated: 16 routes (tasks + dashboard + predictions)")
-logger.info("   - Legacy: 28 routes (ml_legacy.py)")
+logger.info("   - Migrated: 22 routes (tasks + dashboard + predictions + models)")
+logger.info("   - Legacy: 22 routes (ml_legacy.py)")
 logger.info("   - Total: 44 routes")
