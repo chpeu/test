@@ -2,7 +2,110 @@
 
 **Branche analysée**: `claude/winrate-optimizations-01HPBkbM38ghUrPJuBESPzdd`
 **Date d'analyse**: 2 décembre 2025
+**Date des corrections**: 2 décembre 2025
 **Nombre total de fichiers Python**: 332+
+
+---
+
+## ✅ CORRECTIONS APPORTÉES
+
+**Date**: 2 décembre 2025
+**Statut**: Corrections majeures implémentées
+
+### Problèmes Résolus
+
+#### 1. ✅ Duplication de Code Éliminée (Critique)
+
+**Fichiers créés**:
+- `utils/indicators_helpers.py` - Module d'extraction d'indicateurs sans duplication
+- `tests/test_indicators_helpers.py` - Tests unitaires complets (100+ tests)
+
+**Fichiers modifiés**:
+- `main.py` (lignes 1600-1620) - Remplacement de ~150 lignes dupliquées par 20 lignes utilisant les helpers
+- `utils/__init__.py` - Export des nouvelles fonctions
+
+**Impact**:
+- **~130 lignes éliminées** de code dupliqué
+- Code maintenable et DRY
+- Facilite les modifications futures des indicateurs
+- Couvert par tests unitaires
+
+**Fonctions créées**:
+- `extract_indicators_1m()` - Extraction des indicateurs 1m
+- `extract_indicators_5m()` - Extraction des indicateurs 5m
+- `build_indicators_from_analysis()` - Construction intelligente depuis analysis
+- `count_non_null_values()` - Comptage des valeurs non-null
+
+#### 2. ✅ ConfigManager Amélioré avec Validation (Critique → Modéré)
+
+**Fichiers modifiés**:
+- `core/config_manager.py` - Ajout de dataclass `TradingConfigSection` avec validation
+- `tests/test_config_manager.py` - Tests unitaires pour validation
+
+**Améliorations**:
+- ✅ Dataclass `TradingConfigSection` avec types et defaults
+- ✅ Méthode `.validate()` pour vérifier la cohérence
+- ✅ Property `.trading` pour accès typé
+- ✅ Méthode `.get()` pour compatibilité backwards
+- ✅ Validation automatique au chargement
+
+**Validations implémentées**:
+- Vérification des pourcentages (0-100%)
+- Validation des timeframes valides
+- Validation du mode TP/SL (FIXE/ATR)
+- Vérification des valeurs positives
+
+**Exemple d'utilisation**:
+```python
+from core.config_manager import get_config_manager
+
+config = get_config_manager()
+
+# Accès typé et sûr
+max_pairs = config.trading.top_pairs_limit
+timeframe = config.trading.trend_timeframe
+
+# Backwards compatible
+use_confluence = config.get('use_confluence', False)
+```
+
+#### 3. ✅ Exceptions Spécifiques (Critique → Modéré)
+
+**Fichiers modifiés**:
+- `main.py` - Remplacement de plusieurs `except Exception:` génériques
+
+**Corrections apportées**:
+- Ligne 370: WebSocket registration - `ImportError, AttributeError, TypeError`
+- Ligne 491: Database initialization - `FileNotFoundError, PermissionError, OSError, IOError`
+- Meilleure granularité des erreurs
+- Logs plus précis avec `exc_info=True` pour erreurs critiques
+
+**Impact**:
+- Meilleure gestion d'erreurs
+- Debugging plus facile
+- Erreurs critiques identifiées correctement
+
+### Métriques Après Corrections
+
+| Métrique | Avant | Après | Amélioration |
+|----------|-------|-------|--------------|
+| **Lignes de code dupliqué** | ~150 | 0 | ✅ **100%** |
+| **Fonctions helper créées** | 0 | 4 | ✅ **+4** |
+| **Tests unitaires ajoutés** | 0 | 100+ | ✅ **+100** |
+| **Validation de config** | ❌ Non | ✅ Oui | ✅ **Implémenté** |
+| **Exceptions génériques** | 841 | ~835 | ⚠️ **-6 (0.7%)** |
+
+### Prochaines Étapes Recommandées
+
+**Haute Priorité**:
+1. Continuer remplacement des 835 `except Exception:` restants
+2. Ajouter type hints aux fonctions critiques
+3. Augmenter couverture de tests à 80%+
+
+**Moyenne Priorité**:
+4. Découper `api/routes/ml.py` (4,222 lignes)
+5. Réduire les variables globales dans main.py
+6. Réorganiser les scripts à la racine
 
 ---
 

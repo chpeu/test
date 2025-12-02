@@ -367,8 +367,11 @@ def _flatten_trading_config_for_excel(categories: OrderedDict) -> List[Dict[str,
 try:
     register_websocket_commands(ws_manager)
     logger.info("✅ Commandes WebSocket live trading enregistrées")
-except Exception as e:
+except (ImportError, AttributeError, TypeError) as e:
     logger.warning(f"⚠️ Impossible d'enregistrer commandes WebSocket live trading: {e}")
+except Exception as e:
+    logger.error(f"❌ Erreur inattendue lors de l'enregistrement WebSocket: {e}", exc_info=True)
+    raise
 
 from contextlib import asynccontextmanager
 
@@ -488,8 +491,14 @@ def init_trade_database():
         try:
             trade_db = TradeDatabase()
             logger.info("✅ Base de données SQLite initialisée")
+        except (FileNotFoundError, PermissionError) as e:
+            logger.error(f"❌ Erreur d'accès fichier DB: {e}")
+            trade_db = None
+        except (OSError, IOError) as e:
+            logger.error(f"❌ Erreur I/O lors de l'initialisation DB: {e}")
+            trade_db = None
         except Exception as e:
-            logger.error(f"❌ Erreur initialisation DB: {e}")
+            logger.critical(f"❌ Erreur critique initialisation DB: {e}", exc_info=True)
             trade_db = None
 
 def save_trade_history():
@@ -1600,160 +1609,24 @@ async def scan_pair_for_setup(symbol: str):
         # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
         # pour qu'ils soient disponibles dans _last_setup
         if analysis and isinstance(analysis, dict):
-            # Extraire les indicateurs depuis analysis si disponibles
-            indicators_1m = analysis.get('indicators_1m', {})
-            indicators_5m = analysis.get('indicators_5m', {})
-            
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
-            
-            # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
-            if not indicators_1m:
-                logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
-                # 🔥 DEBUG: Vérifier quelles données sont disponibles dans analysis
-                available_keys = [k for k in analysis.keys() if k not in ['symbol', 'direction', 'entry', 'sl', 'tp', 'price', 'signals', 'condition_types', 'totalScore', 'reason', 'reject_category']]
-                logger.info(f"🔍 DEBUG analysis keys disponibles pour indicators_1m: {available_keys[:20]}")
-                
-                # 🔥 PRIORITÉ 1: Vérifier si analysis contient analysis_1m (retourné par analyze_pair quand aucun setup n'est trouvé)
-                analysis_1m = analysis.get('analysis_1m', {})
-                if isinstance(analysis_1m, dict) and analysis_1m:
-                    # Extraire les indicateurs depuis analysis_1m
-                    indicators_1m = {
-                        'rsi': analysis_1m.get('rsi'),
-                        'rsi_prev': analysis_1m.get('rsi_prev'),
-                        'macd': analysis_1m.get('macd'),
-                        'macd_signal': analysis_1m.get('macd_signal'),
-                        'macd_hist': analysis_1m.get('macd_hist'),
-                        'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
-                        'adx': analysis_1m.get('adx'),
-                        'di_plus': analysis_1m.get('di_plus'),
-                        'di_minus': analysis_1m.get('di_minus'),
-                        'di_gap': analysis_1m.get('di_gap'),
-                        'ema9': analysis_1m.get('ema9'),
-                        'ema21': analysis_1m.get('ema21'),
-                        'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
-                        'atr': analysis_1m.get('atr'),
-                        'atr_pct': analysis_1m.get('atr_pct'),
-                        'bb_upper': analysis_1m.get('bb_upper'),
-                        'bb_middle': analysis_1m.get('bb_middle'),
-                        'bb_lower': analysis_1m.get('bb_lower'),
-                        'bb_width': analysis_1m.get('bb_width'),
-                        'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
-                        'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
-                        'volume': analysis_1m.get('volume'),
-                        'volume_avg': analysis_1m.get('volume_avg'),
-                        'volume_ratio': analysis_1m.get('volume_ratio') or analysis_1m.get('volumeSpike'),
-                        'volume_spike': analysis_1m.get('volume_spike'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_1m construit depuis analysis_1m")
-                else:
-                    # 🔥 PRIORITÉ 2: Chercher directement dans analysis (pour les setups valides)
-                    indicators_1m = {
-                        'rsi': analysis.get('rsi'),
-                        'rsi_prev': analysis.get('rsi_prev'),
-                        'macd': analysis.get('macd'),
-                        'macd_signal': analysis.get('macd_signal'),
-                        'macd_hist': analysis.get('macd_hist'),
-                        'macd_hist_prev': analysis.get('macd_hist_prev'),
-                        'adx': analysis.get('adx'),
-                        'di_plus': analysis.get('di_plus'),
-                        'di_minus': analysis.get('di_minus'),
-                        'di_gap': analysis.get('di_gap'),
-                        'ema9': analysis.get('ema9'),
-                        'ema21': analysis.get('ema21'),
-                        'ema_diff_pct': analysis.get('ema_diff_pct'),
-                        'atr': analysis.get('atr'),
-                        'atr_pct': analysis.get('atr_pct'),
-                        'bb_upper': analysis.get('bb_upper'),
-                        'bb_middle': analysis.get('bb_middle'),
-                        'bb_lower': analysis.get('bb_lower'),
-                        'bb_width': analysis.get('bb_width'),
-                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
-                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
-                        'volume': analysis.get('volume'),
-                        'volume_avg': analysis.get('volume_avg'),
-                        'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
-                        'volume_spike': analysis.get('volume_spike'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_1m construit depuis analysis directement")
-                
-                # 🔥 DEBUG: Compter les valeurs non-null
-                indicators_1m_non_null = len([v for v in indicators_1m.values() if v is not None])
-                logger.info(f"🔍 DEBUG indicators_1m construit: {indicators_1m_non_null}/{len(indicators_1m)} valeurs non-null")
-            
-            if not indicators_5m:
-                logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
-                
-                # 🔥 PRIORITÉ 1: Vérifier si analysis contient analysis_5m (retourné par analyze_pair quand aucun setup n'est trouvé)
-                analysis_5m = analysis.get('analysis_5m', {})
-                if isinstance(analysis_5m, dict) and analysis_5m:
-                    # Extraire les indicateurs depuis analysis_5m
-                    indicators_5m = {
-                        'rsi': analysis_5m.get('rsi'),
-                        'rsi_prev': analysis_5m.get('rsi_prev'),
-                        'macd': analysis_5m.get('macd'),
-                        'macd_signal': analysis_5m.get('macd_signal'),
-                        'macd_hist': analysis_5m.get('macd_hist'),
-                        'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
-                        'adx': analysis_5m.get('adx'),
-                        'di_plus': analysis_5m.get('di_plus'),
-                        'di_minus': analysis_5m.get('di_minus'),
-                        'di_gap': analysis_5m.get('di_gap'),
-                        'ema9': analysis_5m.get('ema9'),
-                        'ema21': analysis_5m.get('ema21'),
-                        'ema_diff_pct': analysis_5m.get('ema_diff_pct'),
-                        'atr': analysis_5m.get('atr'),
-                        'atr_pct': analysis_5m.get('atr_pct'),
-                        'bb_upper': analysis_5m.get('bb_upper'),
-                        'bb_middle': analysis_5m.get('bb_middle'),
-                        'bb_lower': analysis_5m.get('bb_lower'),
-                        'bb_width': analysis_5m.get('bb_width'),
-                        'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
-                        'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
-                        'volume': analysis_5m.get('volume'),
-                        'volume_avg': analysis_5m.get('volume_avg'),
-                        'volume_ratio': analysis_5m.get('volume_ratio') or analysis_5m.get('volumeSpike'),
-                        'volume_spike': analysis_5m.get('volume_spike'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_5m construit depuis analysis_5m")
-                else:
-                    # 🔥 PRIORITÉ 2: Chercher directement dans analysis (pour les setups valides)
-                    indicators_5m = {
-                        'rsi': analysis.get('rsi_5m'),
-                        'rsi_prev': analysis.get('rsi_prev_5m'),
-                        'macd': analysis.get('macd_5m'),
-                        'macd_signal': analysis.get('macd_signal_5m'),
-                        'macd_hist': analysis.get('macd_hist_5m'),
-                        'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
-                        'adx': analysis.get('adx_5m'),
-                        'di_plus': analysis.get('di_plus_5m'),
-                        'di_minus': analysis.get('di_minus_5m'),
-                        'di_gap': analysis.get('di_gap_5m'),
-                        'ema9': analysis.get('ema9_5m'),
-                        'ema21': analysis.get('ema21_5m'),
-                        'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
-                        'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
-                        'atr_pct': analysis.get('atr_pct_5m'),
-                        'bb_upper': analysis.get('bb_upper_5m'),
-                        'bb_middle': analysis.get('bb_middle_5m'),
-                        'bb_lower': analysis.get('bb_lower_5m'),
-                        'bb_width': analysis.get('bb_width_5m'),
-                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
-                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
-                        'volume': analysis.get('volume_5m'),
-                        'volume_avg': analysis.get('volume_avg_5m'),
-                        'volume_ratio': analysis.get('volume_ratio_5m'),
-                        'volume_spike': analysis.get('volume_spike_5m'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_5m construit depuis analysis directement")
-                
-                # 🔥 DEBUG: Compter les valeurs non-null
-                indicators_5m_non_null = len([v for v in indicators_5m.values() if v is not None])
-                logger.info(f"🔍 DEBUG indicators_5m construit: {indicators_5m_non_null}/{len(indicators_5m)} valeurs non-null")
-            
-            # Ajouter les indicateurs à analysis
+            # Use helper functions to extract indicators (eliminates code duplication)
+            from utils.indicators_helpers import build_indicators_from_analysis, count_non_null_values
+
+            # Build indicators for both timeframes
+            indicators_1m = build_indicators_from_analysis(analysis, '1m', logger)
+            indicators_5m = build_indicators_from_analysis(analysis, '5m', logger)
+
+            # Count non-null values for debugging
+            indicators_1m_count = count_non_null_values(indicators_1m)
+            indicators_5m_count = count_non_null_values(indicators_5m)
+
+            logger.info(f"✅ Indicateurs extraits pour {symbol}: "
+                       f"indicators_1m: {indicators_1m_count}/{len(indicators_1m)} valeurs, "
+                       f"indicators_5m: {indicators_5m_count}/{len(indicators_5m)} valeurs")
+
+            # Add indicators to analysis
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
-            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
         
         # 🔥 DÉSACTIVÉ: SimplePGLogger pour éviter doublons (PostgreSQLDataLogger fait déjà le travail)
         if False:  # Désactivé - évite les doublons avec PostgreSQLDataLogger
