@@ -270,6 +270,8 @@ class FuturesOrderResult:
     taker_fee_rate: Optional[float] = None
     funding_rate: Optional[float] = None
     raw_api_response: Optional[Dict[str, Any]] = None
+    # 🔥 FIX: Minimum contract amount pour TP partiel
+    min_contract_amount: Optional[float] = None
 
 
 class LiveOrderManagerFutures:
@@ -603,6 +605,9 @@ class LiveOrderManagerFutures:
             # Calcul quantité en contrats
             # Pour MEXC Futures: amount = size_usdt / entry_price
             amount = size_usdt / entry_price
+            
+            # 🔥 FIX: Stocker min_amount pour validation TP partiel
+            min_amount = None
 
             # 🔢 Ajuster quantité selon la précision/limites du marché (CCXT uniquement)
             if self.exchange:
@@ -798,9 +803,13 @@ class LiveOrderManagerFutures:
                         )
 
                     logger.debug(f"📋 Specs {bypass_symbol}: minVol={contract_spec.min_vol}, volUnit={contract_spec.vol_unit}")
+                    
+                    # 🔥 FIX: Stocker min_vol pour validation TP partiel
+                    min_amount = contract_spec.min_vol
                 else:
                     # Fallback: arrondi basique
                     amount = round(amount, 4)
+                    min_amount = 1.0  # Fallback minimum
                     logger.warning(f"⚠️ Specs non disponibles pour {bypass_symbol}, arrondi basique")
                 
                 # Déterminer side pour bypass
@@ -1046,7 +1055,8 @@ class LiveOrderManagerFutures:
                         liquidation_price=liq_price,
                         latency_ms=latency_ms,
                         executed_at=datetime.now(timezone.utc).isoformat(),
-                        raw_api_response=bypass_result.data
+                        raw_api_response=bypass_result.data,
+                        min_contract_amount=float(min_amount) if min_amount else None  # 🔥 FIX: Pour TP partiel
                     )
                 else:
                     # 🔥 Circuit Breaker: Enregistrer échec
@@ -1195,7 +1205,8 @@ class LiveOrderManagerFutures:
                 maker_fee_rate=maker_fee_rate,
                 taker_fee_rate=taker_fee_rate,
                 funding_rate=funding_rate,
-                raw_api_response=order
+                raw_api_response=order,
+                min_contract_amount=float(min_amount) if min_amount else None  # 🔥 FIX: Pour TP partiel
             )
 
         except Exception as e:

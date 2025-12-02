@@ -134,15 +134,18 @@
 		if (tpSlMode === 'FIXE') {
 			// Avant le 1er TP : utiliser break_even_trigger
 			if (!$activePosition.partial_tp_sold) {
+				// 🔥 FIX: Vérifier si position trop petite pour TP partiel
+				const forceFullTp = $activePosition.force_full_tp_for_partial;
+				
 				// Vérifier si TP partiel est configuré
-				if (tradingConfig.partial_tp_percent) {
+				if (tradingConfig.partial_tp_percent && !forceFullTp) {
 					// TP partiel pas encore vendu - utiliser break_even_trigger
 					return {
 						pnl: tradingConfig.break_even_trigger || 0.3,
 						size: tradingConfig.partial_tp_percent || 50
 					};
 				} else {
-					// Pas de TP partiel - utiliser break_even_trigger pour le TP complet
+					// Pas de TP partiel OU position trop petite → 100%
 					return {
 						pnl: tradingConfig.break_even_trigger || 0.3,
 						size: 100

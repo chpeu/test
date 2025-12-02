@@ -129,6 +129,10 @@ class Position:
     ml_confidence: Optional[float] = None  # Confiance ML au moment de l'ouverture (%)
     adaptive_sizing_multiplier: Optional[float] = None  # Multiplicateur sizing adaptatif (0.5-1.5)
     
+    # 🔥 FIX: Min contract amount pour validation TP partiel
+    min_contract_amount: Optional[float] = None  # Minimum du contrat en tokens
+    force_full_tp_for_partial: bool = False  # Si True, le TP partiel fermera 100% car qty < min
+    
     time_to_fill_entry_ms: Optional[float] = None
     time_to_fill_exit_ms: Optional[float] = None
     price_at_signal: Optional[float] = None
@@ -207,6 +211,9 @@ class Position:
             # 🔥 ML & Sizing Adaptatif
             'ml_confidence': self.ml_confidence,
             'adaptive_sizing_multiplier': self.adaptive_sizing_multiplier,
+            # 🔥 FIX: Info TP partiel forcé à 100%
+            'min_contract_amount': self.min_contract_amount,
+            'force_full_tp_for_partial': self.force_full_tp_for_partial,
         }
 
 
@@ -794,6 +801,23 @@ class PositionManager:
                     self.active_position.funding_rate_at_entry = getattr(order_result, 'funding_rate', None)
                     self.active_position.entry_api_response = getattr(order_result, 'raw_api_response', None)
                     self.active_position.price_at_signal = self.active_position.price_at_signal or requested_entry_price
+                    
+                    # 🔥 FIX: Stocker min_contract_amount pour validation TP partiel
+                    min_contract = getattr(order_result, 'min_contract_amount', None)
+                    self.active_position.min_contract_amount = min_contract
+                    
+                    # 🔥 FIX: Calculer si TP partiel doit fermer 100% au lieu de X%
+                    if min_contract and filled_amount:
+                        partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0)
+                        partial_qty = filled_amount * (partial_tp_percent / 100.0)
+                        if partial_qty < min_contract:
+                            self.active_position.force_full_tp_for_partial = True
+                            logger.info(
+                                f"🔧 TP Partiel forcé à 100%: {partial_qty:.6f} < min {min_contract:.6f} | "
+                                f"Position: {filled_amount:.6f} tokens"
+                            )
+                        else:
+                            self.active_position.force_full_tp_for_partial = False
 
                     # 🔄 Synchroniser avec la position réelle retournée par l'API MEXC (prix d'entrée & taille)
                     if not self.live_order_manager.dry_run:
@@ -1453,6 +1477,14 @@ class PositionManager:
                 # Calculer le pourcentage à vendre
                 partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0)
                 
+                # 🔥 FIX: Vérifier si on doit forcer 100% (position trop petite pour TP partiel)
+                force_full_tp = getattr(self.active_position, 'force_full_tp_for_partial', False)
+                if force_full_tp:
+                    logger.info(
+                        f"🔧 Force TP 100% au lieu de {partial_tp_percent}% (position au minimum du contrat)"
+                    )
+                    partial_tp_percent = 100.0
+                
                 # 🔥 LIVE TRADING: Exécuter l'ordre partiel réel sur MEXC
                 # 🔥 FIX: Vérifier que la position existe réellement sur l'exchange
                 is_live_open = getattr(self.active_position, 'is_live_open', False)
@@ -1475,7 +1507,7 @@ class PositionManager:
                             entry_price=self.active_position.entry,
                             current_price=current_price,
                             size_amount=size_contracts,
-                            partial_pct=partial_tp_percent
+                            partial_pct=partial_tp_percent  # 🔥 Peut être 100% si force_full_tp
                         )
                         
                         if partial_order_result.success:
@@ -1945,6 +1977,7 @@ class PositionManager:
             'symbol': self.active_position.symbol,
             'direction': self.active_position.direction,
             'entry': self.active_position.entry,
+            'entry_price': self.active_position.entry,  # 🔥 FIX: Ajouté pour PostgreSQL log_trade
             'exit': exit_price,
             'exit_price': exit_price,  # 🔥 FIX: Alias pour compatibilité frontend
             # 🔥 FIX PRECISION: Conserver 6 décimales pour les pourcentages (éviter arrondi trop agressif)
