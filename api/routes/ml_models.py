@@ -4,9 +4,11 @@ Migrated from ml_legacy.py as part of Phase 5 modularization
 """
 
 import logging
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from typing import Optional
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 

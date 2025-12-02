@@ -23,7 +23,7 @@ This file serves as the main router aggregator.
 """
 
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 
 # Import modular routers
 from .ml_tasks import router as tasks_router
@@ -33,6 +33,31 @@ from .ml_models import router as models_router
 
 # Import legacy routes (to be migrated)
 from .ml_legacy import router as legacy_router
+
+# Re-export common utilities for backward compatibility with tests
+from .ml_common import (
+    ml_tasks,
+    METRIC_OPTIONS,
+    LAST_RUNS_FILE,
+    metric_runs_cache,
+    _load_metric_runs_cache,
+    _save_metric_runs_cache,
+    record_metric_run,
+    get_metric_runs_snapshot,
+    _get_task_from_store,
+    update_task_status,
+    create_task,
+)
+
+# Re-export legacy functions for backward compatibility with tests
+from .ml_legacy import (
+    _train_xgboost_background,
+)
+
+# Alias for test compatibility
+def get_ml_task_status(task_id: str):
+    """Alias for _get_task_from_store for test compatibility."""
+    return _get_task_from_store(task_id)
 
 logger = logging.getLogger(__name__)
 
