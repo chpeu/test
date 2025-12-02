@@ -2,7 +2,7 @@
 	import { sortedTrades } from '$lib/stores/trades';
 	import { derived } from 'svelte/store';
 
-	import { formatAdaptive, formatPercent, formatUSDT, formatPrice } from '$lib/utils/format';
+	import { formatAdaptive, formatPercent, formatUSDT, formatPrice, getSignificantDecimals } from '$lib/utils/format';
 
 	// 🔥 PAGINATION: Variables de pagination
 	let currentPage = 1;
@@ -123,8 +123,7 @@
 						<th data-debug-name="tradeHistory.column.pnlGross">PnL Brut %</th>
 						<th data-debug-name="tradeHistory.column.slippage">Slippage</th>
 						<th data-debug-name="tradeHistory.column.pnlNet">PnL Net %</th>
-						<th data-debug-name="tradeHistory.column.pnlUsdt">PnL Net USDT</th>
-						<th data-debug-name="tradeHistory.column.pnlTotalUsdt">PnL Total USDT</th>
+						<th data-debug-name="tradeHistory.column.pnlUsdt" title="PnL réel depuis API MEXC">PnL Total USDT</th>
 						<th data-debug-name="tradeHistory.column.duration">Duration</th>
 					</tr>
 				</thead>
@@ -134,7 +133,7 @@
 						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0} data-debug-name="trade[{globalIndex}]">
 							<td class="index" data-debug-name="trade.index">{globalIndex + 1}</td>
 							<td class="time" data-debug-name="trade.closed_at">{formatTime(trade.closed_at || trade.timestamp)}</td>
-							<td class="symbol" data-debug-name="trade.symbol">{trade.symbol}</td>
+							<td class="symbol" data-debug-name="trade.symbol" title="Taille: {trade.filled_size_usdt ? trade.filled_size_usdt.toFixed(2) : (trade.size || 'N/A')} USDT">{trade.symbol}</td>
 							<td class="direction" data-debug-name="trade.direction">
 								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'} data-debug-name="trade.direction">
 									{trade.direction}
@@ -144,17 +143,44 @@
 								{#if trade.reason === 'MANUAL'}
 									<span class="reason-manual" data-debug-name="trade.reason">👤 Manuel</span>
 								{:else}
-									{trade.reason || trade.close_reason || 'N/A'}
+									{(() => {
+										const reason = trade.reason || trade.close_reason || 'N/A';
+										const pnl = trade.net_pnl_usdt || 0;
+										
+										// Clarifier les cas ambigus
+										if (reason === 'TP' && pnl < 0) return 'TP (Slippage)';
+										if (reason === 'SL' && pnl > 0) return 'SL (Profit)';
+										
+										return reason;
+									})()}
 								{/if}
 							</td>
 							<td class="entry-price" data-debug-name="trade.entry_price">
-								{trade.entry_price ? formatPrice(trade.entry_price) : 'N/A'}
+								{(() => {
+									const entryPrice = trade.entry_price || trade.entry;
+									return entryPrice ? formatPrice(entryPrice) : 'N/A';
+								})()}
 							</td>
 							<td class="exit-price" data-debug-name="trade.exit_price">
 								{(() => {
-									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price;
-									if (!exitPrice) return 'N/A';
-									return formatPrice(exitPrice, trade.entry_price);
+									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price || trade.exit;
+									const entryPrice = trade.entry_price || trade.entry;
+									
+									// Si pas de prix de sortie ou prix suspect (0 ou 1 pour un actif > 10)
+									if (!exitPrice || (exitPrice <= 1 && entryPrice > 10)) {
+										// Essayer de reconstruire depuis PnL si possible
+										if (entryPrice && trade.pnl_pct) {
+											const pnlMult = 1 + (trade.pnl_pct / 100 * (trade.direction === 'SHORT' ? -1 : 1));
+											const estPrice = entryPrice * pnlMult;
+											const decimals = getSignificantDecimals(entryPrice);
+											return `≈${formatPrice(estPrice, decimals)}`;
+										}
+										return exitPrice ? formatPrice(exitPrice) : 'N/A';
+									}
+									
+									// Utiliser le nombre de décimales du prix d'entrée
+									const decimals = entryPrice ? getSignificantDecimals(entryPrice) : null;
+									return formatPrice(exitPrice, decimals);
 								})()}
 							</td>
 							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0} data-debug-name="trade.gross_pnl_pct">
@@ -188,14 +214,12 @@
 							<td class="pnl-net" class:positive={(trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl_pct || 0) < 0} data-debug-name="trade.net_pnl_pct">
 								{(trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || 0)}%
 							</td>
-							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
-							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt">
+							<!-- 🔥 FIX: PnL Total USDT = PnL réel depuis API MEXC -->
+							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt" title="PnL réel depuis API MEXC (frais 0% sur paires scannées)">
 								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{(trade.net_pnl_usdt || 0).toFixed(3)} USDT
 							</td>
-							<!-- 🔥 FIX: PnL Total USDT (incluant slippage) -->
-							<td class="pnl-total-usdt" class:positive={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0} class:negative={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) < 0} data-debug-name="trade.pnl_total_usdt">
-								{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0 ? '+' : ''}{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)).toFixed(3)} USDT
-							</td>
+							<!-- 🔥 FIX: Supprimé PnL Total USDT car redondant et calcul incorrect -->
+							
 							<!-- 🔥 FIX: Duration (calculée si manquante) -->
 							<td class="duration" data-debug-name="trade.duration">
 								{(() => {

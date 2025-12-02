@@ -1242,9 +1242,9 @@ async def scanner_loop_callback() -> None:
                                         except Exception:
                                             pass
                                     
-                                    # 🔥 FIX: Log détaillé du calcul de taille pour debug
-                                    logger.info(
-                                        f"💰 Calcul taille position adaptative: {symbol} | "
+                                    # 🔥 FIX: Log détaillé du calcul de taille pour debug (WARNING pour visibilité)
+                                    logger.warning(
+                                        f"💰 POSITION SIZE DEBUG: {symbol} | "
                                         f"Capital: {account_size:.2f} USDT | "
                                         f"Risk%: {risk_per_trade*100:.2f}% | "
                                         f"SL%: {sl_percent:.4f}% | "

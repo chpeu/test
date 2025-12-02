@@ -296,6 +296,11 @@
 						📊 x{$activePosition.adaptive_sizing_multiplier.toFixed(2)}
 					</div>
 				{/if}
+				
+				<!-- 🔥 FIX: Afficher levier avec fallback si manquant -->
+				<div class="badge leverage-badge" title="Levier utilisé pour cette position">
+					⚡ {$activePosition.leverage_used || 2}x
+				</div>
 			</div>
 			
 			<div class="header-right">
@@ -480,6 +485,12 @@
 		background: rgba(255, 170, 0, 0.15);
 		color: #ffaa00;
 		border: 1px solid rgba(255, 170, 0, 0.4);
+	}
+
+	.leverage-badge {
+		background: rgba(255, 215, 0, 0.15);
+		color: #ffd700;
+		border: 1px solid rgba(255, 215, 0, 0.4);
 	}
 
 	.direction {

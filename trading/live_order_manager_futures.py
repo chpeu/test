@@ -655,46 +655,121 @@ class LiveOrderManagerFutures:
             side = 'buy' if direction == 'LONG' else 'sell'
             order_type = 'market'
 
-            logger.info(
+            # 🔥 WARNING pour visibilité dans les logs
+            logger.warning(
                 f"📤 OUVERTURE FUTURES {direction}: {futures_symbol} | "
                 f"Prix théorique: {entry_price} | "
-                f"Taille: {size_usdt} USDT | "
+                f"Taille: {size_usdt:.2f} USDT | "
                 f"Levier: {leverage}x | "
-                f"Quantité: {amount:.6f} | "
+                f"Quantité: {amount:.6f} tokens | "
                 f"Mode: {'DRY_RUN' if self.dry_run else 'LIVE'}"
             )
 
-            # DRY RUN: Simuler ordre
+            # DRY RUN: Simuler ordre (SHADOW TRADING REALISTE)
             if self.dry_run:
+                # -------------------------------------------------------------
+                # 🌑 SHADOW TRADING - SIMULATION HAUTE FIDÉLITÉ
+                # -------------------------------------------------------------
+                start_shadow = time.time()
+                
+                # 1. Récupérer Carnet d'Ordres Réel (L2 Data)
+                # On essaie de récupérer la liquidité réelle pour calculer le vrai prix
+                shadow_book = None
+                try:
+                    if self.use_bypass and self.bypass_client:
+                        # Mode Bypass
+                        bypass_symbol_book = self._convert_symbol_to_bypass(symbol)
+                        # Note: get_order_book n'est pas toujours dispo dans bypass, fallback sur CCXT si besoin
+                        # Si bypass a une méthode get_depth ou similaire
+                        pass 
+                    
+                    # Fallback ou Primary: Utiliser CCXT (souvent plus simple pour fetchOrderBook public)
+                    if not shadow_book and self.exchange:
+                        # Utiliser l'instance exchange même en dry_run si dispo, sinon créer une temporaire ? 
+                        # self.exchange est init en mode CCXT, mais peut-être pas en mode Bypass/DryRun pur sans keys
+                        # On va supposer que l'accès public (sans keys) fonctionne pour fetchOrderBook
+                        shadow_book = self.exchange.fetch_order_book(futures_symbol, limit=20)
+                except Exception as e:
+                    logger.debug(f"⚠️ Shadow: Impossible de fetch orderbook: {e}")
+
+                # 2. Calculer Prix d'Exécution Réaliste (Walking the Book)
+                shadow_filled_price = entry_price
+                shadow_slippage = 0.0
+                market_impact_usd = 0.0
+                
+                if shadow_book and 'bids' in shadow_book and 'asks' in shadow_book:
+                    bids = shadow_book['bids'] # [[price, qty], ...]
+                    asks = shadow_book['asks']
+                    
+                    # Si on ACHÈTE (LONG), on tape dans les ASKS (vendeurs)
+                    # Si on VEND (SHORT), on tape dans les BIDS (acheteurs)
+                    liquidity_side = asks if direction == 'LONG' else bids
+                    
+                    remaining_qty = amount
+                    total_cost = 0.0
+                    filled_qty = 0.0
+                    
+                    # "Walk the book"
+                    for price, qty in liquidity_side:
+                        take_qty = min(remaining_qty, qty)
+                        total_cost += take_qty * price
+                        filled_qty += take_qty
+                        remaining_qty -= take_qty
+                        
+                        if remaining_qty <= 0:
+                            break
+                            
+                    if filled_qty > 0:
+                        shadow_filled_price = total_cost / filled_qty
+                        
+                        # Calculer slippage réel vs meilleur prix
+                        best_price = liquidity_side[0][0]
+                        shadow_slippage = abs((shadow_filled_price - best_price) / best_price) * 100
+                        market_impact_usd = abs(shadow_filled_price - best_price) * filled_qty
+
+                # 3. Simuler Latence Réseau (50-150ms)
+                # On ajoute un bruit aléatoire pour simuler le temps de trajet réel
+                import random
+                network_latency = random.uniform(0.050, 0.150)
+                time.sleep(network_latency)
+                
                 latency_ms = (time.time() - start_time) * 1000
 
-                # Calculer prix de liquidation simulé
+                # 4. Calculer prix de liquidation simulé
                 margin = size_usdt / leverage
                 if direction == 'LONG':
-                    liq_price = entry_price * (1 - 1/leverage + 0.005)  # ~0.5% buffer
+                    liq_price = shadow_filled_price * (1 - 1/leverage + 0.005)
                 else:
-                    liq_price = entry_price * (1 + 1/leverage - 0.005)
+                    liq_price = shadow_filled_price * (1 + 1/leverage - 0.005)
 
                 logger.info(
-                    f"✅ [DRY_RUN] Position {direction} simulée | "
-                    f"Latence: {latency_ms:.0f}ms | "
-                    f"Liq. price: {liq_price:.2f}"
+                    f"🌑 [SHADOW] Position {direction} simulée | "
+                    f"Prix Demandé: {entry_price} → Exécuté: {shadow_filled_price:.2f} | "
+                    f"Slippage: {shadow_slippage:.4f}% ({market_impact_usd:.2f}$) | "
+                    f"Latence: {latency_ms:.0f}ms"
                 )
 
                 return FuturesOrderResult(
                     success=True,
-                    order_id=f"dry_run_futures_{int(time.time())}",
-                    filled_price=entry_price,
+                    order_id=f"shadow_{int(time.time())}_{random.randint(1000,9999)}",
+                    filled_price=shadow_filled_price, # Prix réaliste
                     filled_amount=amount,
-                    filled_size_usdt=amount * entry_price,
+                    filled_size_usdt=amount * shadow_filled_price,
                     actual_pnl_usdt=0.0,
-                    actual_fees_usdt=0.0,
-                    actual_slippage_pct=0.0,
+                    actual_fees_usdt=amount * shadow_filled_price * 0.0002, # Simulation fees 0.02%
+                    actual_slippage_pct=shadow_slippage,
                     margin_used=margin,
                     leverage=leverage,
                     liquidation_price=liq_price,
                     latency_ms=latency_ms,
-                    executed_at=datetime.now(timezone.utc).isoformat()
+                    executed_at=datetime.now(timezone.utc).isoformat(),
+                    # Métadonnées Shadow pour ML
+                    raw_api_response={
+                        'is_shadow': True,
+                        'shadow_slippage': shadow_slippage,
+                        'market_impact': market_impact_usd,
+                        'book_depth_used': len(shadow_book['asks']) if shadow_book else 0
+                    }
                 )
 
             # 🔥 Vérifier solde disponible AVANT d'ouvrir position
@@ -1576,11 +1651,46 @@ class LiveOrderManagerFutures:
                     if self.circuit_breaker:
                         self.circuit_breaker.record_success()
 
-                    # Calculer PnL RÉEL basé sur prix réel
+                    # 🔥 FIX: Essayer de récupérer le PnL RÉEL depuis l'historique MEXC
+                    real_pnl_from_api = None
+                    try:
+                        # Attendre que MEXC enregistre la fermeture
+                        time.sleep(0.5)
+                        
+                        # Récupérer l'historique des positions récentes
+                        pos_history = run_async_safely(
+                            self.bypass_client.get_position_history(
+                                symbol=bypass_symbol,
+                                page_size=5
+                            )
+                        )
+                        
+                        if pos_history and pos_history.get("success") and pos_history.get("data"):
+                            history_data = pos_history.get("data", [])
+                            if isinstance(history_data, list) and len(history_data) > 0:
+                                # Prendre la position la plus récente
+                                latest_pos = history_data[0]
+                                # MEXC retourne 'realizedPnl' ou 'profitReal' selon le endpoint
+                                real_pnl = latest_pos.get('realizedPnl') or latest_pos.get('profitReal') or latest_pos.get('profit')
+                                if real_pnl is not None:
+                                    real_pnl_from_api = float(real_pnl)
+                                    logger.info(f"📊 PnL RÉEL depuis API MEXC: {real_pnl_from_api:+.4f} USDT")
+                    except Exception as pnl_err:
+                        logger.debug(f"⚠️ Impossible de récupérer PnL depuis historique: {pnl_err}")
+                    
+                    # Calculer PnL basé sur prix réel (fallback si API échoue)
                     if direction == 'LONG':
-                        pnl_usdt = (final_exit_price - entry_price) * amount
+                        calculated_pnl = (final_exit_price - entry_price) * amount
                     else:
-                        pnl_usdt = (entry_price - final_exit_price) * amount
+                        calculated_pnl = (entry_price - final_exit_price) * amount
+                    
+                    # Utiliser le PnL de l'API si disponible, sinon le calculé
+                    pnl_usdt = real_pnl_from_api if real_pnl_from_api is not None else calculated_pnl
+                    
+                    if real_pnl_from_api is not None and abs(real_pnl_from_api - calculated_pnl) > 0.01:
+                        logger.info(
+                            f"📊 PnL différence: API={real_pnl_from_api:+.4f} vs Calculé={calculated_pnl:+.4f} USDT"
+                        )
 
                     # Mettre à jour stats
                     self.stats['orders_placed'] += 1
