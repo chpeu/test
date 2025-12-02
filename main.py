@@ -473,8 +473,13 @@ except Exception as e:
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
 # Utiliser le port comme identifiant d'instance (défaut: 5000)
-def get_trade_history_file():
-    """Retourner le nom du fichier historique selon le port de l'instance"""
+def get_trade_history_file() -> str:
+    """
+    Retourner le nom du fichier historique selon le port de l'instance.
+
+    Returns:
+        Nom du fichier d'historique spécifique à l'instance
+    """
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     return f"trade_history_instance_{port}.json"
@@ -484,8 +489,13 @@ TRADE_HISTORY_FILE = None  # Sera initialisé au démarrage
 # 🔥 PHASE 8: Instance globale TradeDatabase
 trade_db = None
 
-def init_trade_database():
-    """Initialiser base de données SQLite"""
+def init_trade_database() -> None:
+    """
+    Initialiser base de données SQLite.
+
+    Crée l'instance globale TradeDatabase si elle n'existe pas.
+    Gère les erreurs d'accès fichier et I/O de manière spécifique.
+    """
     global trade_db
     if TradeDatabase and not trade_db:
         try:
@@ -1559,8 +1569,16 @@ async def scanner_loop_callback():
     # 🔥 FIX: Le lock scanner_lock est automatiquement libéré ici (fin du bloc async with)
 
 
-async def scan_pair_for_setup(symbol: str):
-    """Scanner une paire pour trouver un setup"""
+async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Scanner une paire pour trouver un setup.
+
+    Args:
+        symbol: Symbole de la paire à analyser (ex: 'BTC/USDT')
+
+    Returns:
+        Dict contenant l'analyse si un setup est trouvé, None sinon
+    """
     global _simple_logger  # 🔥 Simple Logger: Accès à la variable globale
     init_instances()
     
@@ -2417,8 +2435,18 @@ async def scalability_refresh_loop_callback():
         logger.error("[%s] ERROR: Erreur scalability refresh", datetime.now().strftime('%H:%M:%S'))
 
 
-def init_instances():
-    """Initialiser les instances (après import)"""
+def init_instances() -> None:
+    """
+    Initialiser les instances globales (après import).
+
+    Initialise tous les services nécessaires:
+    - Scanner, Analyzer, PositionManager
+    - Analytics DB, Notification Manager
+    - WebSocket log handler
+    - Live Order Manager
+
+    Note: Utilise des variables globales pour la compatibilité legacy.
+    """
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
     global analytics_db, notification_manager, session_id, live_order_manager
     
