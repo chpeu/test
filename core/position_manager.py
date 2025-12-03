@@ -874,27 +874,34 @@ class PositionManager:
                                 # 🔥 FIX: Heuristic correction for contract_size
                                 # Si la taille détectée est beaucoup plus grande que prévu (ex: 10x, 100x), 
                                 # c'est probablement une erreur de contract_size (défaut 1.0 au lieu de 0.1, 0.01 etc)
+                                # Si beaucoup plus petite (ex: SHIB 1000x), c'est l'inverse (défaut 1.0 au lieu de 1000)
                                 expected_size = executed_size_usdt if 'executed_size_usdt' in locals() and executed_size_usdt > 0 else size
-                                if expected_size > 0 and live_size_usdt > 2.0 * expected_size:
-                                    logger.warning(f"⚠️ Taille détectée ({live_size_usdt:.2f}) >> attendue ({expected_size:.2f}). Tentative de correction contract_size...")
+                                corrected_cs = contract_size
+                                
+                                if expected_size > 0:
+                                    # Cas 1: Taille détectée TROP GRANDE (Contract Size trop grand)
+                                    if live_size_usdt > 2.0 * expected_size:
+                                        logger.warning(f"⚠️ Taille détectée ({live_size_usdt:.2f}) >> attendue ({expected_size:.2f}). Tentative de correction contract_size...")
+                                        ratio = live_size_usdt / expected_size
+                                        if 8 <= ratio <= 12:      corrected_cs = contract_size * 0.1
+                                        elif 80 <= ratio <= 120:  corrected_cs = contract_size * 0.01
+                                        elif 800 <= ratio <= 1200: corrected_cs = contract_size * 0.001
                                     
-                                    ratio = live_size_usdt / expected_size
-                                    corrected_cs = contract_size
-                                    
-                                    if 8 <= ratio <= 12:      # Factor 10 error (needs 0.1)
-                                        corrected_cs = contract_size * 0.1
-                                    elif 80 <= ratio <= 120:  # Factor 100 error (needs 0.01)
-                                        corrected_cs = contract_size * 0.01
-                                    elif 800 <= ratio <= 1200: # Factor 1000 error (needs 0.001)
-                                        corrected_cs = contract_size * 0.001
-                                        
-                                    if corrected_cs != contract_size:
-                                        contract_size = corrected_cs
-                                        self.active_position.contract_size_used = contract_size
-                                        # Recalculate with corrected contract_size
-                                        real_tokens = live_contracts * contract_size
-                                        live_size_usdt = real_tokens * live_entry_price
-                                        logger.info(f"✅ Contract size corrigé par heuristique: {contract_size} -> Nouvelle taille: {live_size_usdt:.2f} USDT")
+                                    # Cas 2: Taille détectée TROP PETITE (Contract Size trop petit)
+                                    elif live_size_usdt < 0.5 * expected_size:
+                                        logger.warning(f"⚠️ Taille détectée ({live_size_usdt:.2f}) << attendue ({expected_size:.2f}). Tentative de correction contract_size...")
+                                        ratio = expected_size / live_size_usdt
+                                        if 8 <= ratio <= 12:       corrected_cs = contract_size * 10
+                                        elif 80 <= ratio <= 120:   corrected_cs = contract_size * 100
+                                        elif 800 <= ratio <= 1200: corrected_cs = contract_size * 1000
+
+                                if corrected_cs != contract_size:
+                                    contract_size = corrected_cs
+                                    self.active_position.contract_size_used = contract_size
+                                    # Recalculate with corrected contract_size
+                                    real_tokens = live_contracts * contract_size
+                                    live_size_usdt = real_tokens * live_entry_price
+                                    logger.info(f"✅ Contract size corrigé par heuristique: {contract_size} -> Nouvelle taille: {live_size_usdt:.2f} USDT")
 
                                 self.active_position.size = live_size_usdt
                                 self.active_position.position_size_usdt = live_size_usdt
@@ -1634,8 +1641,12 @@ class PositionManager:
                     entry_price = self.active_position.entry or current_price or 1
                     remaining_contracts = self.active_position.size_remaining / entry_price
                     initial_contracts = self.active_position.position_size_contracts or (self.active_position.size / entry_price)
-                    if not self.active_position.size_initial_contracts:
+                    
+                    # 🔥 FIX: Mettre à jour size_initial_contracts si non défini OU si incohérent (tant que pas de TP partiel)
+                    # Cela corrige le bug où size_initial était fixé à une mauvaise valeur (ex: 2452 au lieu de 2.45M)
+                    if not self.active_position.size_initial_contracts or (not self.active_position.partial_tp_sold and abs(self.active_position.size_initial_contracts - initial_contracts) > initial_contracts * 0.1):
                         self.active_position.size_initial_contracts = initial_contracts
+                        
                     self.active_position.position_size_contracts = remaining_contracts
                     self.active_position.size_remaining_contracts = remaining_contracts
 

@@ -187,17 +187,36 @@
 			};
 		}
 		
-		// Mode ATR ou autres modes
-		// Vérifier si TP partiel déjà vendu
+		// Mode ATR : utiliser les valeurs ATR dynamiques
+		if (tpSlMode === 'ATR') {
+			// 🔥 En mode ATR, le TP est basé sur break_even_atr_mult pour le premier TP
+			// puis sur le trailing stop dynamique
+			const breakEvenAtrMult = tradingConfig.break_even_atr_mult || 0.5;
+			const atrPercent = $activePosition.atr_percent || tradingConfig.atr_min || 0.10;
+			
+			if (!$activePosition.partial_tp_sold && tradingConfig.partial_tp_percent) {
+				// TP partiel pas encore vendu - utiliser break_even basé sur ATR
+				return {
+					pnl: atrPercent * breakEvenAtrMult,
+					size: tradingConfig.partial_tp_percent || 60
+				};
+			}
+			
+			// Trailing actif après TP partiel
+			return {
+				pnl: atrPercent * (tradingConfig.trailing_trigger_atr_mult || 1.0),
+				size: 100
+			};
+		}
+		
+		// Autres modes : utiliser tp_percent standard
 		if (!$activePosition.partial_tp_sold && tradingConfig.partial_tp_percent) {
-			// TP partiel pas encore vendu
 			return {
 				pnl: tradingConfig.tp_percent || 0.6,
 				size: tradingConfig.partial_tp_percent || 50
 			};
 		}
 		
-		// TP complet
 		return {
 			pnl: tradingConfig.tp_percent || 0.6,
 			size: 100
@@ -207,6 +226,19 @@
 	$: nextSlInfo = (() => {
 		if (!$activePosition || !tradingConfig) return null;
 		
+		const tpSlMode = tradingConfig.tp_sl_mode || $activePosition.tp_sl_mode || 'FIXE';
+		
+		// Mode ATR : SL basé sur ATR
+		if (tpSlMode === 'ATR') {
+			const atrMultSl = tradingConfig.atr_mult_sl || 1.2;
+			const atrPercent = $activePosition.atr_percent || tradingConfig.atr_min || 0.10;
+			return {
+				pnl: atrPercent * atrMultSl,
+				size: 100
+			};
+		}
+		
+		// Mode FIXE ou autre
 		return {
 			pnl: tradingConfig.sl_percent || 0.25,
 			size: 100
@@ -235,7 +267,10 @@
 		if (value === null || value === undefined || isNaN(value)) {
 			return '-';
 		}
-		// Utiliser un maximum de 4 décimales pour les contrats, sans zéros de fin
+		// 🔥 FIX: Pour les gros nombres (>10000), pas de décimales. Sinon 4 max.
+		if (Math.abs(value) >= 10000) {
+			return Math.round(value).toLocaleString('fr-FR');
+		}
 		return formatWithoutTrailingZeros(value, 4);
 	}
 
@@ -338,9 +373,11 @@
 				<div class="price-value" data-debug-name="activePosition.size">{formatPrice($activePosition.size)} USDT</div>
 				{#if $activePosition.size_initial_contracts}
 					<div class="price-subvalue" data-debug-name="activePosition.size_contracts">
-						{formatContracts($activePosition.size_remaining_contracts ?? $activePosition.size_initial_contracts)}
-						/
-						{formatContracts($activePosition.size_initial_contracts)}
+						{#if $activePosition.size_remaining_contracts && Math.abs($activePosition.size_remaining_contracts - $activePosition.size_initial_contracts) > 1}
+							{formatContracts($activePosition.size_remaining_contracts)} / {formatContracts($activePosition.size_initial_contracts)}
+						{:else}
+							{formatContracts($activePosition.size_initial_contracts)}
+						{/if}
 					</div>
 				{/if}
 			</div>

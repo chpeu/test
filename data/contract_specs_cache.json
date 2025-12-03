@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764775660.5681012,
+  "timestamp": 1764791732.494385,
   "specs": {
     "HYPE_USDT": {
       "symbol": "HYPE_USDT",
@@ -200,6 +200,16 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 0.1
+    },
+    "LDO_USDT": {
+      "symbol": "LDO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 700000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }

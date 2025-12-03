@@ -1625,7 +1625,14 @@ async def scanner_loop_callback() -> None:
                                                     'partial_tp_sold': position.partial_tp_sold,
                                                     'position_size_contracts': getattr(position, 'position_size_contracts', None),
                                                     'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
-                                                    'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None)
+                                                    'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
+                                                    # 🔥 FIX: Ajouter tp_sl_mode, opened_at pour affichage ATR
+                                                    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                                                    'opened_at': getattr(position, 'opened_at', None),
+                                                    'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
+                                                    'leverage_used': getattr(position, 'leverage_used', None),
+                                                    'ml_confidence': getattr(position, 'ml_confidence', None),
+                                                    'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
                                                 })
                                                 logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
                                             except Exception as e:
@@ -2350,6 +2357,9 @@ async def position_check_loop_callback() -> None:
         return
     
     try:
+        # 🔥 FIX: Import TRADING_CONFIG pour position_update
+        from config import TRADING_CONFIG
+        
         # Récupérer prix actuel
         current_price_data = await price_provider.get_price(position_manager.active_position.symbol)
         if not current_price_data:
@@ -2462,6 +2472,11 @@ async def position_check_loop_callback() -> None:
                     # 🔥 FIX: Ajouter ml_confidence et adaptive_sizing_multiplier
                     'ml_confidence': ml_conf,
                     'adaptive_sizing_multiplier': sizing_mult,
+                    # 🔥 FIX: Ajouter tp_sl_mode, opened_at et force_full_tp pour affichage ATR
+                    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                    'opened_at': getattr(position, 'opened_at', None),
+                    'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
+                    'leverage_used': getattr(position, 'leverage_used', None),
                 }
                 await ws_manager.emit('position_update', update_data)
                 
