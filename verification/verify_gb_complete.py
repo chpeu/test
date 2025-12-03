@@ -49,15 +49,13 @@ def load_config():
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         config = json.load(f)
     
-    # Extraire les paramètres GB
+    # Extraire les paramètres HistGradientBoosting
     gb_params = {
-        'n_estimators': config.get('gb_n_estimators', 200),
+        'max_iter': config.get('gb_max_iter', 100),
         'max_depth': config.get('gb_max_depth', 3),
-        'learning_rate': config.get('gb_learning_rate', 0.03),
-        'min_samples_split': config.get('gb_min_samples_split', 30),
-        'min_samples_leaf': config.get('gb_min_samples_leaf', 15),
-        'subsample': config.get('gb_subsample', 0.7),
-        'max_features': config.get('gb_max_features', 0.5),
+        'learning_rate': config.get('gb_learning_rate', 0.08),
+        'min_samples_leaf': config.get('gb_min_samples_leaf', 30),
+        'l2_regularization': config.get('gb_l2_regularization', 0.5),
     }
     
     model_type = config.get('gb_model_type', 'gb')
@@ -129,12 +127,13 @@ def verify_cross_validation(X, y, params, model_type='gb', n_splits=5):
     
     # Créer le modèle selon le type
     if model_type == 'histgb':
-        # Convertir les paramètres pour HistGB
+        # Paramètres HistGradientBoosting directement
         hist_params = {
-            'max_iter': params.get('n_estimators', 200),
+            'max_iter': params.get('max_iter', 100),
             'max_depth': params.get('max_depth', 3),
-            'learning_rate': params.get('learning_rate', 0.03),
-            'min_samples_leaf': params.get('min_samples_leaf', 15),
+            'learning_rate': params.get('learning_rate', 0.08),
+            'min_samples_leaf': params.get('min_samples_leaf', 30),
+            'l2_regularization': params.get('l2_regularization', 0.5),
             'random_state': RANDOM_STATE
         }
         model = HistGradientBoostingClassifier(**hist_params)

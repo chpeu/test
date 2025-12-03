@@ -44,13 +44,14 @@ class MLAutoOptimizer:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Grilles de recherche
+        # Grilles de recherche (HistGradientBoosting params)
         self.feature_counts = [20, 25, 30, 35, 40]
         self.param_grid = {
             'max_depth': [2, 3, 4],
             'learning_rate': [0.03, 0.05, 0.08, 0.1],
-            'max_iter': [50, 75, 100],
-            'l2_regularization': [0.2, 0.3, 0.5, 1.0]
+            'max_iter': [50, 75, 100, 150],
+            'min_samples_leaf': [20, 30, 40, 50],
+            'l2_regularization': [0.2, 0.5, 1.0]
         }
         self.threshold_range = np.arange(0.30, 0.70, 0.05)
         
@@ -156,89 +157,90 @@ class MLAutoOptimizer:
                 X_test = X_test_full.iloc[:, top_idx]
                 selected_features = X_train_full.columns[top_idx].tolist()
                 
-                # Grid search sur hyperparametres
+                # Grid search sur hyperparametres (tous les params HistGB)
                 for max_depth in self.param_grid['max_depth']:
                     for lr in self.param_grid['learning_rate']:
                         for max_iter in self.param_grid['max_iter']:
-                            for l2_reg in self.param_grid['l2_regularization']:
-                                total_configs += 1
-                                
-                                model = HistGradientBoostingClassifier(
-                                    max_depth=max_depth,
-                                    learning_rate=lr,
-                                    max_iter=max_iter,
-                                    min_samples_leaf=30,
-                                    l2_regularization=l2_reg,
-                                    random_state=42
-                                )
-                                
-                                model.fit(X_train, y_train)
-                                
-                                # Predictions
-                                y_pred = model.predict(X_test)
-                                y_proba = model.predict_proba(X_test)[:, 1]
-                                y_train_pred = model.predict(X_train)
-                                
-                                # Metriques
-                                train_acc = accuracy_score(y_train, y_train_pred)
-                                test_acc = accuracy_score(y_test, y_pred)
-                                f1 = f1_score(y_test, y_pred)
-                                roc = roc_auc_score(y_test, y_proba)
-                                precision = precision_score(y_test, y_pred)
-                                recall = recall_score(y_test, y_pred)
-                                overfitting = train_acc - test_acc
-                                
-                                # Criteres de selection
-                                if overfitting < max_overfitting:
-                                    # Score composite
-                                    score = 0.35 * test_acc + 0.35 * f1 + 0.30 * roc
+                            for min_leaf in self.param_grid['min_samples_leaf']:
+                                for l2_reg in self.param_grid['l2_regularization']:
+                                    total_configs += 1
                                     
-                                    # Bonus si bat l'ancien modele
-                                    beats_old = (
-                                        test_acc > old_metrics['accuracy'] and
-                                        f1 > old_metrics['f1'] and
-                                        roc > old_metrics['roc_auc']
+                                    model = HistGradientBoostingClassifier(
+                                        max_depth=max_depth,
+                                        learning_rate=lr,
+                                        max_iter=max_iter,
+                                        min_samples_leaf=min_leaf,
+                                        l2_regularization=l2_reg,
+                                        random_state=42
                                     )
-                                    if beats_old:
-                                        score += 0.1
                                     
-                                    if score > best_score:
-                                        best_score = score
-                                        best_result = {
-                                            'model': model,
-                                            'split_rs': split_rs,
-                                            'n_features': n_features,
-                                            'feature_idx': top_idx.tolist(),
-                                            'feature_names': selected_features,
-                                            'feature_importances': dict(zip(
-                                                selected_features,
-                                                importances[top_idx].tolist()
-                                            )),
-                                            'params': {
-                                                'max_depth': max_depth,
-                                                'learning_rate': lr,
-                                                'max_iter': max_iter,
-                                                'min_samples_leaf': 30,
-                                                'l2_regularization': l2_reg
-                                            },
-                                            'metrics': {
-                                                'train_accuracy': train_acc,
-                                                'test_accuracy': test_acc,
-                                                'f1_score': f1,
-                                                'roc_auc': roc,
-                                                'precision': precision,
-                                                'recall': recall,
-                                                'overfitting': overfitting
-                                            },
-                                            'beats_old': beats_old,
-                                            'X_test': X_test,
-                                            'y_test': y_test,
-                                            'y_proba': y_proba
-                                        }
+                                    model.fit(X_train, y_train)
+                                    
+                                    # Predictions
+                                    y_pred = model.predict(X_test)
+                                    y_proba = model.predict_proba(X_test)[:, 1]
+                                    y_train_pred = model.predict(X_train)
+                                    
+                                    # Metriques
+                                    train_acc = accuracy_score(y_train, y_train_pred)
+                                    test_acc = accuracy_score(y_test, y_pred)
+                                    f1 = f1_score(y_test, y_pred)
+                                    roc = roc_auc_score(y_test, y_proba)
+                                    precision = precision_score(y_test, y_pred)
+                                    recall = recall_score(y_test, y_pred)
+                                    overfitting = train_acc - test_acc
+                                    
+                                    # Criteres de selection
+                                    if overfitting < max_overfitting:
+                                        # Score composite
+                                        score = 0.35 * test_acc + 0.35 * f1 + 0.30 * roc
                                         
+                                        # Bonus si bat l'ancien modele
+                                        beats_old = (
+                                            test_acc > old_metrics['accuracy'] and
+                                            f1 > old_metrics['f1'] and
+                                            roc > old_metrics['roc_auc']
+                                        )
                                         if beats_old:
-                                            print(f"  [NEW BEST] rs={split_rs} feat={n_features} d={max_depth} lr={lr} it={max_iter} l2={l2_reg}")
-                                            print(f"             Acc={test_acc*100:.1f}% F1={f1:.3f} ROC={roc:.4f} Ovf={overfitting*100:.1f}%")
+                                            score += 0.1
+                                        
+                                        if score > best_score:
+                                            best_score = score
+                                            best_result = {
+                                                'model': model,
+                                                'split_rs': split_rs,
+                                                'n_features': n_features,
+                                                'feature_idx': top_idx.tolist(),
+                                                'feature_names': selected_features,
+                                                'feature_importances': dict(zip(
+                                                    selected_features,
+                                                    importances[top_idx].tolist()
+                                                )),
+                                                'params': {
+                                                    'max_depth': max_depth,
+                                                    'learning_rate': lr,
+                                                    'max_iter': max_iter,
+                                                    'min_samples_leaf': min_leaf,
+                                                    'l2_regularization': l2_reg
+                                                },
+                                                'metrics': {
+                                                    'train_accuracy': train_acc,
+                                                    'test_accuracy': test_acc,
+                                                    'f1_score': f1,
+                                                    'roc_auc': roc,
+                                                    'precision': precision,
+                                                    'recall': recall,
+                                                    'overfitting': overfitting
+                                                },
+                                                'beats_old': beats_old,
+                                                'X_test': X_test,
+                                                'y_test': y_test,
+                                                'y_proba': y_proba
+                                            }
+                                            
+                                            if beats_old:
+                                                print(f"  [NEW BEST] rs={split_rs} feat={n_features} d={max_depth} lr={lr} it={max_iter} leaf={min_leaf} l2={l2_reg}")
+                                                print(f"             Acc={test_acc*100:.1f}% F1={f1:.3f} ROC={roc:.4f} Ovf={overfitting*100:.1f}%")
         
         print()
         print(f"  Configurations testees: {total_configs}")

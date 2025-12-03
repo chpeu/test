@@ -363,6 +363,9 @@
 		await loadMLMetricsGB();
 		await loadMLTradesStats();
 		await loadLastOptunaResults();
+		
+		// 🔬 Vérifier le système HistGB (non-bloquant)
+		checkHistgbSystem();
 	});
 	
 	onDestroy(() => {
@@ -406,8 +409,82 @@
 	let verifyingComplete = false;
 	let verifyCompleteResult = null;
 	
+	// 🔬 Statut système HistGB
+	let histgbSystemStatus = null;
+	let checkingHistgbSystem = false;
+	
 	// Type de modèle: 'gb' = GradientBoosting, 'histgb' = HistGradientBoosting (10x plus rapide)
-	let modelType = config.gb_model_type || 'gb';
+	let modelType = config.gb_model_type || 'histgb';
+	
+	// 🔬 Vérifier le système HistGB au chargement
+	async function checkHistgbSystem() {
+		if (checkingHistgbSystem) return;
+		checkingHistgbSystem = true;
+		
+		try {
+			const response = await fetch('/api/ml/histgb/verify');
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			
+			const data = await response.json();
+			histgbSystemStatus = {
+				ok: data.all_passed,
+				results: data.results,
+				timestamp: data.timestamp
+			};
+			
+			if (!data.all_passed) {
+				console.warn('⚠️ Système HistGB: problèmes détectés', data.results);
+			} else {
+				console.log('✅ Système HistGB: OK');
+			}
+		} catch (err) {
+			console.warn('⚠️ Vérification HistGB non disponible:', err.message);
+			histgbSystemStatus = null;
+		} finally {
+			checkingHistgbSystem = false;
+		}
+	}
+	
+	// 🔧 Réparer la config HistGB
+	async function repairHistgbConfig() {
+		try {
+			const response = await fetch('/api/ml/histgb/repair', { method: 'POST' });
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			
+			const result = await response.json();
+			
+			if (result.success) {
+				alert('✅ Configuration réparée:\n' + (result.fixes_applied?.join('\n') || 'Aucune correction nécessaire'));
+				// Recharger l'état
+				await checkHistgbSystem();
+				// Recharger la page pour avoir la config à jour
+				window.location.reload();
+			} else {
+				alert('❌ Erreur: ' + (result.errors?.join(', ') || 'Échec'));
+			}
+		} catch (err) {
+			alert('❌ Erreur: ' + err.message);
+		}
+	}
+	
+	// 🔄 Synchroniser config depuis modèle
+	async function syncConfigFromModel() {
+		try {
+			const response = await fetch('/api/ml/histgb/sync-from-model', { method: 'POST' });
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			
+			const result = await response.json();
+			
+			if (result.success) {
+				alert('✅ Configuration synchronisée depuis le modèle');
+				window.location.reload();
+			} else {
+				alert('❌ Erreur: ' + result.error);
+			}
+		} catch (err) {
+			alert('❌ Erreur: ' + err.message);
+		}
+	}
 	
 	// 🔄 Charger les derniers résultats d'optimisation Optuna
 	async function loadLastOptunaResults() {
@@ -909,11 +986,11 @@
 			if (result.success) {
 				// Mettre à jour les sliders
 				if (result.params) {
-					// Le backend retourne les clés avec préfixe gb_ directement
+					// Le backend retourne les clés avec préfixe gb_ (HistGradientBoosting params)
 					const validKeys = [
 						'gb_max_depth',
 						'gb_learning_rate', 
-						'gb_n_estimators',
+						'gb_max_iter',
 						'gb_min_samples_leaf',
 						'gb_l2_regularization',
 						'gb_n_features',
@@ -985,13 +1062,34 @@
 </script>
 
 <div class="ml-gb-wrapper">
+	<!-- Statut Système HistGB -->
+	{#if histgbSystemStatus !== null}
+		<div class="system-status-bar" class:ok={histgbSystemStatus.ok} class:warning={!histgbSystemStatus.ok}>
+			<span class="status-icon">{histgbSystemStatus.ok ? '✅' : '⚠️'}</span>
+			<span class="status-text">
+				{histgbSystemStatus.ok ? 'Système ML vérifié' : 'Problèmes détectés'}
+			</span>
+			{#if !histgbSystemStatus.ok}
+				<button class="repair-btn" on:click={repairHistgbConfig} title="Réparer automatiquement">
+					🔧 Réparer
+				</button>
+				<button class="sync-btn" on:click={syncConfigFromModel} title="Synchroniser depuis le modèle">
+					🔄 Sync
+				</button>
+			{/if}
+			<button class="refresh-btn-small" on:click={checkHistgbSystem} title="Revérifier">
+				🔍
+			</button>
+		</div>
+	{/if}
+	
 	<!-- Info Banner -->
 	<div class="info-banner">
 		<div class="banner-icon">🎯</div>
 		<div class="banner-content">
-			<h4>GradientBoosting Optimisé</h4>
-			<p>Ce modèle a été optimisé pour atteindre <strong>64-69% d'accuracy</strong> (vs ~50% pour XGBoost V1). 
-			Il utilise des features temporelles (heures favorables) et une forte régularisation pour éviter l'overfitting.</p>
+			<h4>HistGradientBoosting Optimisé</h4>
+			<p>Ce modèle utilise <strong>HistGradientBoostingClassifier</strong> (10x plus rapide) avec 5 hyperparamètres optimisés.
+			Accuracy cible: <strong>64-69%</strong> avec régularisation L2 pour éviter l'overfitting.</p>
 		</div>
 	</div>
 
@@ -1207,9 +1305,9 @@
 
 	<!-- Hyperparamètres -->
 	<section class="variable-section">
-		<h3>⚙️ Hyperparamètres GradientBoosting</h3>
+		<h3>⚙️ Hyperparamètres HistGradientBoosting</h3>
 		<p class="section-desc">
-			Ces paramètres ont été optimisés pour réduire l'overfitting tout en gardant une bonne accuracy.
+			Paramètres optimisés pour HistGradientBoostingClassifier (10x plus rapide, anti-overfitting).
 		</p>
 
 		<div class="subsection-grid">
@@ -1217,14 +1315,14 @@
 				<h4>🌳 Configuration Arbres</h4>
 				<div class="variable-item">
 					<div class="var-header">
-						<label for="gb_n_estimators">
-							<span class="var-name">N Estimators</span>
-							<span class="var-desc">Nombre total d'arbres</span>
+						<label for="gb_max_iter">
+							<span class="var-name">Max Iterations</span>
+							<span class="var-desc">Nombre d'itérations de boosting</span>
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_n_estimators" min="50" max="500" step="25" bind:value={config.gb_n_estimators} on:change={() => triggerAutoSave('gb_n_estimators', config.gb_n_estimators)} />
-						<span class="slider-value">{config.gb_n_estimators}</span>
+						<input type="range" id="gb_max_iter" min="50" max="200" step="10" bind:value={config.gb_max_iter} on:change={() => triggerAutoSave('gb_max_iter', config.gb_max_iter)} />
+						<span class="slider-value">{config.gb_max_iter}</span>
 					</div>
 				</div>
 				<div class="variable-item">
@@ -1260,54 +1358,26 @@
 				<h4>🛡️ Régularisation</h4>
 				<div class="variable-item">
 					<div class="var-header">
-						<label for="gb_min_samples_split">
-							<span class="var-name">Min Samples Split</span>
-							<span class="var-desc">Samples minimum pour diviser un noeud</span>
-						</label>
-					</div>
-					<div class="slider-container">
-						<input type="range" id="gb_min_samples_split" min="10" max="120" step="10" bind:value={config.gb_min_samples_split} on:change={() => triggerAutoSave('gb_min_samples_split', config.gb_min_samples_split)} />
-						<span class="slider-value">{config.gb_min_samples_split}</span>
-					</div>
-				</div>
-				<div class="variable-item">
-					<div class="var-header">
 						<label for="gb_min_samples_leaf">
 							<span class="var-name">Min Samples Leaf</span>
-							<span class="var-desc">Samples minimum par feuille</span>
+							<span class="var-desc">Samples minimum par feuille (↑ réduit overfitting)</span>
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_min_samples_leaf" min="10" max="80" step="10" bind:value={config.gb_min_samples_leaf} on:change={() => triggerAutoSave('gb_min_samples_leaf', config.gb_min_samples_leaf)} />
+						<input type="range" id="gb_min_samples_leaf" min="10" max="80" step="5" bind:value={config.gb_min_samples_leaf} on:change={() => triggerAutoSave('gb_min_samples_leaf', config.gb_min_samples_leaf)} />
 						<span class="slider-value">{config.gb_min_samples_leaf}</span>
 					</div>
 				</div>
-			</div>
-
-			<div class="subsection-card">
-				<h4>🎲 Sampling</h4>
 				<div class="variable-item">
 					<div class="var-header">
-						<label for="gb_subsample">
-							<span class="var-name">Subsample</span>
-							<span class="var-desc">% de données par arbre</span>
+						<label for="gb_l2_regularization">
+							<span class="var-name">L2 Regularization</span>
+							<span class="var-desc">Force de régularisation (↑ réduit overfitting)</span>
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_subsample" min="0.5" max="1.0" step="0.05" bind:value={config.gb_subsample} on:change={() => triggerAutoSave('gb_subsample', config.gb_subsample.toFixed(2))} />
-						<span class="slider-value">{config.gb_subsample.toFixed(2)}</span>
-					</div>
-				</div>
-				<div class="variable-item">
-					<div class="var-header">
-						<label for="gb_max_features">
-							<span class="var-name">Max Features</span>
-							<span class="var-desc">% de features par split</span>
-						</label>
-					</div>
-					<div class="slider-container">
-						<input type="range" id="gb_max_features" min="0.3" max="1.0" step="0.1" bind:value={config.gb_max_features} on:change={() => triggerAutoSave('gb_max_features', typeof config.gb_max_features === 'number' ? config.gb_max_features.toFixed(1) : config.gb_max_features)} />
-						<span class="slider-value">{typeof config.gb_max_features === 'number' ? config.gb_max_features.toFixed(1) : config.gb_max_features}</span>
+						<input type="range" id="gb_l2_regularization" min="0.1" max="2.0" step="0.1" bind:value={config.gb_l2_regularization} on:change={() => triggerAutoSave('gb_l2_regularization', config.gb_l2_regularization.toFixed(1))} />
+						<span class="slider-value">{(config.gb_l2_regularization || 0.5).toFixed(1)}</span>
 					</div>
 				</div>
 			</div>
@@ -3235,5 +3305,68 @@
 		text-align: center;
 		padding: 40px;
 		color: #94a3b8;
+	}
+
+	/* Système Status Bar */
+	.system-status-bar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 16px;
+		border-radius: 8px;
+		margin-bottom: 16px;
+		font-size: 13px;
+	}
+	
+	.system-status-bar.ok {
+		background: rgba(16, 185, 129, 0.1);
+		border: 1px solid rgba(16, 185, 129, 0.3);
+	}
+	
+	.system-status-bar.warning {
+		background: rgba(251, 191, 36, 0.1);
+		border: 1px solid rgba(251, 191, 36, 0.3);
+	}
+	
+	.system-status-bar .status-icon {
+		font-size: 16px;
+	}
+	
+	.system-status-bar .status-text {
+		color: #e2e8f0;
+		flex: 1;
+	}
+	
+	.system-status-bar .repair-btn,
+	.system-status-bar .sync-btn {
+		padding: 4px 10px;
+		background: rgba(139, 92, 246, 0.2);
+		border: 1px solid rgba(139, 92, 246, 0.4);
+		border-radius: 4px;
+		color: #c4b5fd;
+		font-size: 11px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.system-status-bar .repair-btn:hover,
+	.system-status-bar .sync-btn:hover {
+		background: rgba(139, 92, 246, 0.3);
+		color: #fff;
+	}
+	
+	.system-status-bar .refresh-btn-small {
+		padding: 4px 8px;
+		background: transparent;
+		border: none;
+		color: #64748b;
+		cursor: pointer;
+		font-size: 14px;
+		transition: all 0.2s;
+	}
+	
+	.system-status-bar .refresh-btn-small:hover {
+		color: #94a3b8;
+		transform: rotate(180deg);
 	}
 </style>

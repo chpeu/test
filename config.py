@@ -354,17 +354,17 @@ TRADING_CONFIG = {
     "ml_v2_colsample_bytree": 0.70,
     "ml_v2_gamma": 0.50,
     
-    # GradientBoosting (Modèle Optimisé 64-69% accuracy)
+    # HistGradientBoosting (Modèle Optimisé 64-69% accuracy)
+    # Note: Utilise HistGradientBoostingClassifier (10x plus rapide)
     "gb_filter_enabled": True,  # Activé par défaut car performant
-    "gb_min_confidence": 0.55,  # 55% seuil
-    "gb_n_estimators": 200,
-    "gb_max_depth": 3,
-    "gb_learning_rate": 0.03,
-    "gb_min_samples_split": 30,
-    "gb_min_samples_leaf": 15,
-    "gb_subsample": 0.70,
-    "gb_max_features": 0.50,
-    "gb_model_type": "gb",  # 'gb' = GradientBoosting, 'histgb' = HistGradientBoosting (10x plus rapide)
+    "gb_min_confidence": 0.55,  # 55% seuil de confiance
+    "gb_max_iter": 100,         # Nombre d'itérations (équivalent n_estimators)
+    "gb_max_depth": 3,          # Profondeur max (2-4 recommandé)
+    "gb_learning_rate": 0.08,   # Taux d'apprentissage
+    "gb_min_samples_leaf": 30,  # Samples minimum par feuille
+    "gb_l2_regularization": 0.5,  # Régularisation L2 (évite overfitting)
+    "gb_n_features": 30,        # Nombre de features sélectionnées
+    "gb_model_type": "histgb",  # Toujours HistGradientBoosting maintenant
 }
 
 # Risk management

@@ -2240,16 +2240,13 @@ async def apply_gradientboosting_params(
         else:
             config = {}
         
-        # Mapping des paramètres GradientBoosting
+        # Mapping des paramètres HistGradientBoosting
         gb_mapping = {
-            'n_estimators': 'gb_n_estimators',
+            'max_iter': 'gb_max_iter',
             'max_depth': 'gb_max_depth',
             'learning_rate': 'gb_learning_rate',
-            'min_samples_split': 'gb_min_samples_split',
             'min_samples_leaf': 'gb_min_samples_leaf',
-            'subsample': 'gb_subsample',
-            'max_features': 'gb_max_features',
-            'l2_regularization': 'gb_l2_regularization'  # Pour HistGB
+            'l2_regularization': 'gb_l2_regularization'
         }
         
         applied_params = {}
@@ -2618,11 +2615,11 @@ async def apply_auto_optimization_results(request: Request):
         optimal_threshold = results.get('optimal_threshold', 0.45)
         n_features = results.get('n_features', 20)
         
-        # Mapping des paramètres
+        # Mapping des paramètres HistGradientBoosting
         param_mapping = {
             'max_depth': 'gb_max_depth',
             'learning_rate': 'gb_learning_rate',
-            'max_iter': 'gb_n_estimators',
+            'max_iter': 'gb_max_iter',
             'min_samples_leaf': 'gb_min_samples_leaf',
             'l2_regularization': 'gb_l2_regularization'
         }
@@ -4584,6 +4581,186 @@ async def verify_gb_complete():
         
     except Exception as e:
         logger.error(f"Erreur vérification GB: {e}", exc_info=True)
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        }, status_code=500)
+
+
+# ========== HISTGB SYSTEM VERIFICATION ==========
+
+@router.get("/histgb/verify")
+async def verify_histgb_system():
+    """
+    Vérification complète du système HistGradientBoosting
+    
+    Vérifie:
+    - config_overrides.json (params corrects, pas d'obsolètes)
+    - Modèle sauvegardé (params, features, type)
+    - Synchronisation config <-> modèle
+    - Capacité de prédiction
+    
+    Returns:
+        Résultats détaillés de chaque vérification
+    """
+    try:
+        from verification.verify_histgb_system import (
+            verify_config_overrides,
+            verify_trading_config,
+            verify_model_file,
+            verify_metadata_file,
+            verify_prediction_capability,
+            verify_config_model_sync
+        )
+        
+        results = {}
+        
+        # 1. Config overrides
+        r = verify_config_overrides(auto_fix=False)
+        results['config_overrides'] = {
+            'passed': r.passed,
+            'errors': r.errors,
+            'warnings': r.warnings,
+            'info': r.info
+        }
+        
+        # 2. TRADING_CONFIG
+        r = verify_trading_config()
+        results['trading_config'] = {
+            'passed': r.passed,
+            'errors': r.errors,
+            'warnings': r.warnings,
+            'info': r.info
+        }
+        
+        # 3. Model file
+        r = verify_model_file()
+        results['model_file'] = {
+            'passed': r.passed,
+            'errors': r.errors,
+            'warnings': r.warnings,
+            'info': r.info
+        }
+        
+        # 4. Metadata
+        r = verify_metadata_file()
+        results['metadata'] = {
+            'passed': r.passed,
+            'errors': r.errors,
+            'warnings': r.warnings,
+            'info': r.info
+        }
+        
+        # 5. Prediction
+        r = verify_prediction_capability()
+        results['prediction'] = {
+            'passed': r.passed,
+            'errors': r.errors,
+            'warnings': r.warnings,
+            'info': r.info
+        }
+        
+        # 6. Sync
+        r = verify_config_model_sync()
+        results['sync'] = {
+            'passed': r.passed,
+            'errors': r.errors,
+            'warnings': r.warnings,
+            'info': r.info
+        }
+        
+        # Résumé
+        all_passed = all(v['passed'] for v in results.values())
+        
+        return {
+            'success': True,
+            'all_passed': all_passed,
+            'results': results,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except ImportError as e:
+        return JSONResponse({
+            'success': False,
+            'error': f'Module verification non disponible: {e}'
+        }, status_code=500)
+    except Exception as e:
+        logger.error(f"Erreur verify_histgb_system: {e}", exc_info=True)
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        }, status_code=500)
+
+
+@router.post("/histgb/sync-from-model")
+async def sync_config_from_model():
+    """
+    Synchronise config_overrides.json depuis les paramètres du modèle sauvegardé
+    
+    Utile après une optimisation pour s'assurer que la config reflète le modèle actuel.
+    
+    Returns:
+        Changements appliqués
+    """
+    try:
+        from verification.verify_histgb_system import sync_config_from_model as do_sync
+        
+        success = do_sync(dry_run=False)
+        
+        if success:
+            # Recharger TRADING_CONFIG
+            try:
+                from config import TRADING_CONFIG
+                from utils.config_persistence import apply_config_overrides
+                apply_config_overrides(TRADING_CONFIG)
+            except:
+                pass
+            
+            return {
+                'success': True,
+                'message': 'Configuration synchronisée depuis le modèle'
+            }
+        else:
+            return JSONResponse({
+                'success': False,
+                'error': 'Échec synchronisation'
+            }, status_code=500)
+            
+    except Exception as e:
+        logger.error(f"Erreur sync_config_from_model: {e}", exc_info=True)
+        return JSONResponse({
+            'success': False,
+            'error': str(e)
+        }, status_code=500)
+
+
+@router.post("/histgb/repair")
+async def repair_histgb_config():
+    """
+    Répare automatiquement la configuration HistGradientBoosting
+    
+    Actions:
+    - Ajoute les paramètres manquants avec valeurs par défaut
+    - Supprime les paramètres obsolètes (GradientBoosting classique)
+    - Force gb_model_type = 'histgb'
+    
+    Returns:
+        Corrections appliquées
+    """
+    try:
+        from verification.verify_histgb_system import verify_config_overrides
+        
+        result = verify_config_overrides(auto_fix=True)
+        
+        return {
+            'success': result.passed,
+            'fixes_applied': result.fixes_applied,
+            'errors': result.errors,
+            'warnings': result.warnings
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur repair_histgb_config: {e}", exc_info=True)
         return JSONResponse({
             'success': False,
             'error': str(e)

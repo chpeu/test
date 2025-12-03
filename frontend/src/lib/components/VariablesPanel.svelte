@@ -106,16 +106,15 @@
 		ml_v2_subsample: 0.7,
 		ml_v2_colsample_bytree: 0.7,
 		ml_v2_gamma: 0.5,
-		// GradientBoosting (Config B Anti-Overfit - 62.6% accuracy, 15% gap)
-		gb_filter_enabled: true,  // Activé par défaut car performant
-		gb_min_confidence: 0.55,  // 55% seuil
-		gb_n_estimators: 150,     // 🔥 Config B: -121 vs ancienne
+		// HistGradientBoosting (Optimisé 64-68% accuracy)
+		gb_filter_enabled: true,
+		gb_min_confidence: 0.50,
+		gb_max_iter: 100,           // Nombre d'itérations (anciennement n_estimators)
 		gb_max_depth: 3,
-		gb_learning_rate: 0.03,
-		gb_min_samples_split: 80, // 🔥 Config B: +50 vs ancienne (anti-overfit)
-		gb_min_samples_leaf: 60,  // 🔥 Config B: +45 vs ancienne (anti-overfit)
-		gb_subsample: 0.7,
-		gb_max_features: 0.5,
+		gb_learning_rate: 0.08,
+		gb_min_samples_leaf: 30,
+		gb_l2_regularization: 0.5,  // Régularisation L2 (spécifique HistGB)
+		gb_model_type: 'histgb',
 		// 🔥 OPT #14: Scan Interval
 		scan_interval: 30,
 		// 🔥 OPT #15: Anti-Whipsaw Filter
@@ -611,16 +610,14 @@
 				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
 				ml_v2_gamma: tradingConfig.ml_v2_gamma,
 			},
-			'🎯 GradientBoosting (Optimisé 64%)': {
+			'🎯 HistGradientBoosting (Optimisé 68%)': {
 				gb_filter_enabled: tradingConfig.gb_filter_enabled,
 				gb_min_confidence: tradingConfig.gb_min_confidence,
-				gb_n_estimators: tradingConfig.gb_n_estimators,
+				gb_max_iter: tradingConfig.gb_max_iter,
 				gb_max_depth: tradingConfig.gb_max_depth,
 				gb_learning_rate: tradingConfig.gb_learning_rate,
-				gb_min_samples_split: tradingConfig.gb_min_samples_split,
 				gb_min_samples_leaf: tradingConfig.gb_min_samples_leaf,
-				gb_subsample: tradingConfig.gb_subsample,
-				gb_max_features: tradingConfig.gb_max_features,
+				gb_l2_regularization: tradingConfig.gb_l2_regularization,
 			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
@@ -767,6 +764,16 @@
 					ml_v2_gamma: config.ml_v2_gamma,
 					ml_v2_subsample: config.ml_v2_subsample,
 					ml_v2_colsample_bytree: config.ml_v2_colsample_bytree
+				});
+				console.log('✅ HistGB params:', {
+					gb_filter_enabled: config.gb_filter_enabled,
+					gb_min_confidence: config.gb_min_confidence,
+					gb_max_iter: config.gb_max_iter,
+					gb_max_depth: config.gb_max_depth,
+					gb_learning_rate: config.gb_learning_rate,
+					gb_min_samples_leaf: config.gb_min_samples_leaf,
+					gb_l2_regularization: config.gb_l2_regularization,
+					gb_model_type: config.gb_model_type
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');

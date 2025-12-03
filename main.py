@@ -313,6 +313,16 @@ def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> Order
         ml_v2_colsample_bytree=trading_config.get('ml_v2_colsample_bytree'),
         ml_v2_gamma=trading_config.get('ml_v2_gamma')
     )
+    categories['🎯 HistGradientBoosting (Optimisé 68%)'] = OrderedDict(
+        gb_filter_enabled=trading_config.get('gb_filter_enabled'),
+        gb_min_confidence=trading_config.get('gb_min_confidence'),
+        gb_max_iter=trading_config.get('gb_max_iter'),
+        gb_max_depth=trading_config.get('gb_max_depth'),
+        gb_learning_rate=trading_config.get('gb_learning_rate'),
+        gb_min_samples_leaf=trading_config.get('gb_min_samples_leaf'),
+        gb_l2_regularization=trading_config.get('gb_l2_regularization'),
+        gb_model_type=trading_config.get('gb_model_type')
+    )
     categories['💎 Live Trading'] = OrderedDict(
         default_leverage=trading_config.get('default_leverage'),
         max_latency_ms=trading_config.get('max_latency_ms')
@@ -402,6 +412,24 @@ async def lifespan(app: FastAPI):
 
         init_instances()
         logger.info("✅ LIFESPAN: init_instances() terminé")
+
+        # 🔬 Vérification système HistGradientBoosting au démarrage
+        try:
+            from verification.verify_histgb_system import verify_config_overrides, verify_model_file
+            config_result = verify_config_overrides(auto_fix=True)  # Auto-repair si nécessaire
+            model_result = verify_model_file()
+            
+            if config_result.passed and model_result.passed:
+                logger.info("✅ HISTGB: Système ML vérifié et fonctionnel")
+            else:
+                if not config_result.passed:
+                    logger.warning(f"⚠️ HISTGB Config: {len(config_result.errors)} erreur(s)")
+                if not model_result.passed:
+                    logger.warning(f"⚠️ HISTGB Model: {len(model_result.errors)} erreur(s)")
+        except ImportError:
+            logger.debug("Module verification non disponible, skip vérification ML")
+        except Exception as e:
+            logger.warning(f"⚠️ Vérification ML non critique échouée: {e}")
 
         try:
             await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
