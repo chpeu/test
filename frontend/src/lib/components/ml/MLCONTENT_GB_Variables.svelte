@@ -314,7 +314,8 @@
 						autoOptimizing = true;
 						autoOptimizeProgress = taskStatus.progress || savedState.progress;
 						autoOptimizeStatus = taskStatus.message || savedState.status;
-						autoOptimizeResults = savedState.results;
+						// NE PAS restaurer les anciens résultats si optimisation en cours
+						autoOptimizeResults = null;
 						currentTaskId = savedState.taskId;
 						popupPosition = savedState.position || { x: 100, y: 100 };
 						popupMinimized = savedState.minimized || false;
@@ -790,15 +791,30 @@
 	// ========== AUTO-OPTIMISATION COMPLETE ==========
 	
 	async function startAutoOptimization() {
-		showAutoOptimizePopup = true;
-		autoOptimizing = true;
+		// IMPORTANT: Reset complet de l'état AVANT tout
+		autoOptimizeResults = null;
 		autoOptimizeProgress = 0;
 		autoOptimizeStatus = 'Démarrage de l\'optimisation complète...';
-		autoOptimizeResults = null;
 		currentTaskId = null;
 		
-		// Sauvegarder l'état immédiatement
+		// Arrêter tout polling existant
+		if (autoOptimizePollingInterval) {
+			clearInterval(autoOptimizePollingInterval);
+			autoOptimizePollingInterval = null;
+		}
+		
+		// Forcer la réactivité Svelte
+		showAutoOptimizePopup = true;
+		autoOptimizing = true;
+		
+		// Nettoyer l'ancien état stocké
+		clearOptimizationState();
+		
+		// Sauvegarder le nouvel état
 		saveOptimizationState();
+		
+		// Mettre à jour la fenêtre externe immédiatement
+		updateExternalWindow();
 		
 		try {
 			const response = await fetch('/api/ml/optimize/auto/start', {
