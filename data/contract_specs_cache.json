@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764791732.494385,
+  "timestamp": 1764795547.2032528,
   "specs": {
     "HYPE_USDT": {
       "symbol": "HYPE_USDT",
@@ -210,6 +210,16 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "ETC_USDT": {
+      "symbol": "ETC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 560000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }

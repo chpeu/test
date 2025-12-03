@@ -710,6 +710,10 @@ class PositionManager:
         self.active_position.size_remaining_contracts = contracts
         self.active_position.size_remaining = size
         
+        # 🔥 FIX CRITIQUE: Initialiser size_initial_usdt dès l'ouverture avec la taille demandée
+        # Cette valeur NE DOIT PAS être écrasée par une valeur incorrecte de synchronisation
+        self.active_position.size_initial_usdt = size  # size = taille en USDT demandée
+        
         # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
         self.active_position.ml_confidence = ml_confidence
         
@@ -791,9 +795,21 @@ class PositionManager:
                         logger.info(f" Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT")
                     
                     if order_result.filled_amount:
-                        self.active_position.position_size_contracts = order_result.filled_amount
-                        self.active_position.size_initial_contracts = order_result.filled_amount
-                        self.active_position.size_remaining_contracts = order_result.filled_amount
+                        # 🔥 FIX CRITIQUE: Convertir contrats bruts en tokens réels IMMÉDIATEMENT
+                        # order_result.filled_amount = contrats bruts (ex: 11 pour AAVE)
+                        # real_tokens = contrats * contract_size (ex: 11 * 0.01 = 0.11 AAVE)
+                        contract_size = self.active_position.contract_size_used
+                        if not contract_size or contract_size <= 0:
+                            contract_size = self._get_contract_size(symbol)
+                            self.active_position.contract_size_used = contract_size
+                            logger.info(f"📋 Contract size récupéré: {contract_size} pour {symbol}")
+                        
+                        real_tokens = order_result.filled_amount * contract_size
+                        logger.info(f"🔢 Conversion contrats→tokens: {order_result.filled_amount} × {contract_size} = {real_tokens:.6f} tokens")
+                        
+                        self.active_position.position_size_contracts = real_tokens
+                        self.active_position.size_initial_contracts = real_tokens
+                        self.active_position.size_remaining_contracts = real_tokens
                         
                     # Mettre à jour prix d'entrée si différent
                     if order_result.filled_price and order_result.filled_price > 0:
@@ -1402,19 +1418,32 @@ class PositionManager:
         # 🔥 FIX: Importer TRADING_CONFIG pour lecture dynamique
         from config import TRADING_CONFIG
         
-        # 🔥 FIX CRITIQUE: Correction des tailles corrompues (ex: SHIB initial contract size)
-        # Si remaining > initial, alors initial est faux (sous-estimé par facteur 1000)
-        if self.active_position.size_remaining_contracts and self.active_position.size_initial_contracts:
-             if self.active_position.size_remaining_contracts > self.active_position.size_initial_contracts * 1.01: # Marge 1%
-                 logger.warning(f"⚠️ Incohérence détectée: Remaining ({self.active_position.size_remaining_contracts}) > Initial ({self.active_position.size_initial_contracts}). Correction...")
-                 ratio = self.active_position.size_remaining_contracts / self.active_position.size_initial_contracts
-                 if ratio > 50: # Facteur 1000 probable (même si partiellement vendu)
-                     self.active_position.size_initial_contracts *= 1000
-                     logger.info(f"✅ Correction x1000 appliquée à size_initial_contracts: {self.active_position.size_initial_contracts}")
-                 else:
-                     # Fallback: prendre remaining comme initial minimum
-                     self.active_position.size_initial_contracts = self.active_position.size_remaining_contracts
-                     logger.info(f"✅ Correction fallback appliquée à size_initial_contracts: {self.active_position.size_initial_contracts}")
+        # 🔥 FIX ROBUSTE: Vérifier si size_initial_contracts est cohérent avec size/entry
+        # Cette formule donne le nombre de tokens attendu (USDT / prix = tokens)
+        # Exemple: 21.68 USDT / 197.12 = 0.11 AAVE (pas 11 contrats !)
+        # Si size_initial_contracts diffère significativement, c'est corrompu (contract_size non appliqué)
+        if self.active_position.size and self.active_position.entry and self.active_position.entry > 0:
+            # Calculer tokens attendus depuis la taille USDT
+            expected_tokens = self.active_position.size / self.active_position.entry
+            
+            if self.active_position.size_initial_contracts and expected_tokens > 0:
+                ratio = self.active_position.size_initial_contracts / expected_tokens
+                # Si ratio > 5 ou < 0.2, c'est clairement faux (facteur 10, 100 ou 1000 d'erreur)
+                if ratio > 5 or ratio < 0.2:
+                    logger.warning(
+                        f"⚠️ size_initial_contracts corrompu: {self.active_position.size_initial_contracts:.6f} | "
+                        f"Attendu depuis size/entry: {expected_tokens:.6f} (ratio={ratio:.1f}). Correction..."
+                    )
+                    self.active_position.size_initial_contracts = expected_tokens
+                    self.active_position.size_remaining_contracts = expected_tokens
+                    self.active_position.position_size_contracts = expected_tokens
+                    logger.info(f"✅ Correction appliquée: size_initial_contracts = {expected_tokens:.6f}")
+            elif not self.active_position.size_initial_contracts:
+                # Initialiser si manquant
+                self.active_position.size_initial_contracts = expected_tokens
+                self.active_position.size_remaining_contracts = expected_tokens
+                self.active_position.position_size_contracts = expected_tokens
+                logger.info(f"📋 size_initial_contracts initialisé: {expected_tokens:.6f}")
 
         # 🔥 FIX: Initialiser size_initial_usdt si manquant (pour historique)
         if not self.active_position.size_initial_usdt:
@@ -2154,21 +2183,28 @@ class PositionManager:
         total_costs = pnl_data['fees'] + slippage_usdt
 
         # PnL net
-        # 🔥 FIX: Calculer net_pnl_pct en tenant compte des coûts (fees + slippage)
-        # Le PnL net en % doit être ajusté pour refléter les coûts réels
+        # 🔥 FIX CRITIQUE: Utiliser size_initial_usdt pour cohérence entre PnL % et PnL USDT
+        # Si TP partiel, size actuel < size initial, donc le % serait faussé
+        size_for_pct = getattr(self.active_position, 'size_initial_usdt', None) or self.active_position.size
+        
         gross_pnl_pct = pnl_data['pnl_pct']
         
         # 🔥 FIX: Gestion robuste de la division par zéro
-        if self.active_position.size > 0:
-            total_costs_pct = (total_costs / self.active_position.size) * 100
+        if size_for_pct > 0:
+            total_costs_pct = (total_costs / size_for_pct) * 100
         else:
             total_costs_pct = 0
             logger.warning(f"⚠️ Position size est zéro lors du calcul des coûts")
         
-        net_pnl_pct = gross_pnl_pct - total_costs_pct
-        
         # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage USDT
         net_pnl_usdt = pnl_data['net_pnl'] - slippage_usdt
+        
+        # 🔥 FIX CRITIQUE: Calculer net_pnl_pct directement depuis net_pnl_usdt / size_initial
+        # Cela garantit cohérence parfaite: PnL % = PnL USDT / Size * 100
+        if size_for_pct > 0:
+            net_pnl_pct = (net_pnl_usdt / size_for_pct) * 100
+        else:
+            net_pnl_pct = gross_pnl_pct - total_costs_pct
 
         # Taille fermée
         if self.active_position.partial_tp_sold:

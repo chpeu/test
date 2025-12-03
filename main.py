@@ -2359,6 +2359,7 @@ async def position_check_loop_callback() -> None:
     try:
         # 🔥 FIX: Import TRADING_CONFIG pour position_update
         from config import TRADING_CONFIG
+        from datetime import datetime  # 🔥 FIX: Import au début du try pour éviter UnboundLocalError
         
         # Récupérer prix actuel
         current_price_data = await price_provider.get_price(position_manager.active_position.symbol)
@@ -2453,6 +2454,11 @@ async def position_check_loop_callback() -> None:
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de charger sizing_multiplier depuis PostgreSQL: {e}")
 
+                # 🔥 FIX: Calculer opened_at depuis start_time (opened_at n'est pas un attribut direct)
+                opened_at_iso = None
+                if position.start_time:
+                    opened_at_iso = datetime.fromtimestamp(position.start_time).isoformat()
+                
                 # Émettre update pour le frontend (inclut aussi les tailles en contrats)
                 update_data = {
                     'symbol': position.symbol,
@@ -2474,7 +2480,7 @@ async def position_check_loop_callback() -> None:
                     'adaptive_sizing_multiplier': sizing_mult,
                     # 🔥 FIX: Ajouter tp_sl_mode, opened_at et force_full_tp pour affichage ATR
                     'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-                    'opened_at': getattr(position, 'opened_at', None),
+                    'opened_at': opened_at_iso,  # 🔥 FIX: Calculé depuis start_time
                     'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
                     'leverage_used': getattr(position, 'leverage_used', None),
                 }
