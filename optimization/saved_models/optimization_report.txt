@@ -1,63 +1,53 @@
 ======================================================================
 RAPPORT D'OPTIMISATION ML
-Date: 2025-12-03 08:26:51
+Date: 2025-12-03 10:50:43
 ======================================================================
 
 METRIQUES FINALES
 ----------------------------------------
-Test Accuracy: 68.44%
-F1 Score: 0.6114
-ROC-AUC: 0.6804
-Precision: 0.7071
-Recall: 0.5385
-Overfitting: 14.85%
+Test Accuracy: 67.49%
+F1 Score: 0.6320
+ROC-AUC: 0.6959
+Precision: 0.6583
+Recall: 0.6077
+Overfitting: 12.86%
 
-CV Accuracy: 59.34% (+/- 3.52%)
+CV Accuracy: 62.21% (+/- 2.96%)
 
 HYPERPARAMETRES
 ----------------------------------------
-max_depth: 3
+max_depth: 4
 learning_rate: 0.08
-max_iter: 100
-min_samples_leaf: 30
+max_iter: 75
+min_samples_leaf: 50
 l2_regularization: 0.5
 
-FEATURES (30)
+FEATURES (20)
 ----------------------------------------
-  - rsi_change_1m: 0.0152
-  - delta_volume: 0.0157
-  - di_gap_1m: 0.0162
-  - di_minus_5m: 0.0163
-  - macd_momentum_5m: 0.0167
-  - di_minus_1m: 0.0172
-  - di_gap_5m: 0.0178
-  - momentum_1m: 0.0178
-  - di_plus_1m: 0.0188
-  - ema_trend_strength_5m: 0.0198
-  - trend_strength_1m: 0.0204
-  - macd_hist_prev_5m: 0.0207
-  - rsi_1m: 0.0210
-  - atr_pct_1m: 0.0214
+  - rsi_change_1m: 0.0193
+  - di_minus_1m: 0.0196
+  - rsi_1m: 0.0202
+  - di_plus_1m: 0.0215
+  - bb_width_5m: 0.0217
+  - rsi_prev_5m: 0.0222
   - imbalance_normalized: 0.0226
-  - rsi_5m: 0.0227
-  - adx_5m: 0.0228
-  - atr_pct_5m: 0.0228
-  - rsi_prev_1m: 0.0235
-  - rsi_prev_5m: 0.0240
-  - adx_1m: 0.0241
-  - momentum_divergence: 0.0248
-  - macd_hist_prev_1m: 0.0248
-  - ema_diff_pct_5m: 0.0255
-  - rsi_change_5m: 0.0266
-  - ema_trend_strength_1m: 0.0275
-  - bb_distance_to_upper_5m: 0.0277
-  - bb_distance_to_lower_5m: 0.0295
-  - bb_distance_to_lower_1m: 0.0358
-  - bb_distance_to_upper_1m: 0.0373
+  - rsi_divergence: 0.0227
+  - rsi_prev_1m: 0.0228
+  - macd_momentum_1m: 0.0235
+  - bb_distance_to_lower_1m: 0.0235
+  - momentum_1m: 0.0257
+  - momentum_5m: 0.0257
+  - momentum_divergence: 0.0269
+  - bb_distance_to_upper_5m: 0.0276
+  - rsi_change_5m: 0.0277
+  - atr_pct_5m: 0.0279
+  - ema_trend_strength_5m: 0.0330
+  - bb_distance_to_lower_5m: 0.0350
+  - bb_distance_to_upper_1m: 0.0496
 
 SEUILS OPTIMAUX
 ----------------------------------------
 best_accuracy: 0.50
-best_f1: 0.30
+best_f1: 0.35
 best_precision: 0.65
 best_balanced: 0.50

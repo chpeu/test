@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764707888.1034145,
+  "timestamp": 1764757644.7251682,
   "specs": {
     "HYPE_USDT": {
       "symbol": "HYPE_USDT",
@@ -150,6 +150,16 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "ZEN_USDT": {
+      "symbol": "ZEN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 270000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }

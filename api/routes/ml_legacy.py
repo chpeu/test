@@ -2410,6 +2410,7 @@ async def _run_auto_optimization_background(
     """Exécute l'auto-optimisation en background (NON-BLOQUANT)"""
     import asyncio
     import sys
+    import platform
     
     opt_logger.info(f"[START] BACKGROUND TASK STARTED: task_id={task_id}")
     
@@ -2431,13 +2432,23 @@ async def _run_auto_optimization_background(
         opt_logger.info(f"[DATA] Python executable: {sys.executable}")
         
         # 🔧 FIX: Utiliser asyncio.create_subprocess_exec (non-bloquant)
+        # Sur Windows, ajouter creationflags pour éviter les erreurs de pipe asyncio
+        subprocess_kwargs = {
+            'stdout': asyncio.subprocess.PIPE,
+            'stderr': asyncio.subprocess.PIPE
+        }
+        
+        if platform.system() == 'Windows':
+            import subprocess as sp
+            # CREATE_NO_WINDOW évite les problèmes de console sur Windows
+            subprocess_kwargs['creationflags'] = sp.CREATE_NO_WINDOW
+        
         process = await asyncio.create_subprocess_exec(
             sys.executable, script_path, 
             '--splits', str(n_splits),
             '--timeframe', str(timeframe_days),
             '--min-trades', str(min_trades),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            **subprocess_kwargs
         )
         
         # 🔧 NOUVEAU: Lire stdout en temps réel pour récupérer la progression
@@ -2492,10 +2503,10 @@ async def _run_auto_optimization_background(
         progress_task = asyncio.create_task(read_progress())
         
         # Attendre avec timeout (non-bloquant pour le reste de l'app)
-        # 🔧 FIX: Augmenter timeout à 30 minutes pour les gros datasets
+        # 🔧 FIX: Augmenter timeout à 60 minutes pour les gros datasets avec grid search
         try:
             # Attendre que le process finisse
-            await asyncio.wait_for(process.wait(), timeout=1800)  # 30 minutes max
+            await asyncio.wait_for(process.wait(), timeout=3600)  # 60 minutes max
             # Récupérer stderr pour les erreurs
             stderr_bytes = await process.stderr.read()
             try:
@@ -2510,8 +2521,8 @@ async def _run_auto_optimization_background(
             process.kill()
             await process.wait()
             progress_task.cancel()
-            opt_logger.error("Timeout: optimisation trop longue (>30 min)")
-            raise Exception("Timeout: optimisation trop longue (>30 min)")
+            opt_logger.error("Timeout: optimisation trop longue (>60 min)")
+            raise Exception("Timeout: optimisation trop longue (>60 min)")
         
         # Annuler la tâche de progression si encore active
         progress_task.cancel()

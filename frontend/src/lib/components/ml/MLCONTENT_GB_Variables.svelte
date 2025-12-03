@@ -290,6 +290,15 @@
 		externalWindow.document.title = `ML Optimize - ${autoOptimizeProgress}%`;
 	}
 	
+	// 🔧 FIX: Mise à jour réactive de la fenêtre externe quand progress/status change
+	$: if (browser && externalWindow && !externalWindow.closed && autoOptimizing) {
+		// Tracker explicitement les variables pour déclencher la réactivité
+		const _progress = autoOptimizeProgress;
+		const _status = autoOptimizeStatus;
+		const _results = autoOptimizeResults;
+		updateExternalWindow();
+	}
+	
 	// ========== LIFECYCLE ==========
 	
 	onMount(async () => {
