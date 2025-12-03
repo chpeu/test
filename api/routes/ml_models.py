@@ -89,47 +89,58 @@ async def get_models_overview():
             with open(gb_metadata_file, 'r') as f:
                 gb_metadata = json.load(f)
             
-            # Calculer overfitting gap depuis les métriques
+            # Extraire les métriques avec les bons noms de clés
             gb_metrics = gb_metadata.get('metrics', {})
-            train_acc = gb_metrics.get('train_acc', 0)
-            test_acc = gb_metrics.get('test_acc', 0)
-            overfitting_gap = (train_acc - test_acc) * 100 if train_acc and test_acc else 0
             
-            # 🔬 Utiliser CV accuracy si disponible (plus fiable)
-            cv_accuracy = gb_metrics.get('cv_accuracy', test_acc)
-            cv_f1 = gb_metrics.get('cv_f1', gb_metrics.get('test_f1', 0))
+            # 🔧 Utiliser les clés correctes du fichier metadata
+            train_acc = gb_metrics.get('train_accuracy', 0)
+            test_acc = gb_metrics.get('test_accuracy', 0)
+            
+            # Overfitting déjà calculé ou recalculer
+            overfitting_gap = gb_metrics.get('overfitting', 0)
+            if overfitting_gap == 0 and train_acc and test_acc:
+                overfitting_gap = train_acc - test_acc
+            overfitting_gap_pct = overfitting_gap * 100 if overfitting_gap < 1 else overfitting_gap
+            
+            # 🔬 Utiliser les métriques test (CV si disponible)
+            cv_accuracy = gb_metrics.get('cv_accuracy_mean', test_acc)
+            cv_f1 = gb_metrics.get('cv_f1_mean', gb_metrics.get('f1_score', 0))
             cv_std = gb_metrics.get('cv_accuracy_std', 0)
+            
+            # Métriques directes
+            f1_score = gb_metrics.get('f1_score', cv_f1)
+            precision = gb_metrics.get('precision', 0)
             
             # Convertir au format attendu par le frontend
             models.append({
                 'name': 'best_classifier',  # Nom cherché par le frontend
-                'type': gb_metadata.get('best_model', 'GradientBoostingClassifier'),
+                'type': gb_metadata.get('model_type', 'GradientBoostingClassifier'),
                 'model_type': gb_metadata.get('model_type', 'gb'),
                 'version': '2.0',
                 'trained_at': gb_metadata.get('timestamp'),
                 'metrics': {
                     'test': {
-                        # 🔬 Afficher CV accuracy comme métrique principale
-                        'accuracy': cv_accuracy,
+                        # Métriques principales (holdout test)
+                        'accuracy': test_acc,
                         'accuracy_std': cv_std,
-                        'f1_score': cv_f1,
-                        'precision': gb_metrics.get('test_precision', 0),
-                        # Garder holdout pour référence
-                        'holdout_accuracy': test_acc,
-                        'holdout_f1': gb_metrics.get('test_f1', 0)
+                        'f1_score': f1_score,
+                        'precision': precision,
+                        # CV pour référence
+                        'cv_accuracy': cv_accuracy,
+                        'cv_f1': cv_f1
                     },
                     'train': {
                         'accuracy': train_acc
                     }
                 },
-                'overfitting_gap': round(overfitting_gap, 1),
+                'overfitting_gap': round(overfitting_gap_pct, 1),
                 'dataset_info': {
-                    # n_samples peut ne pas exister dans les anciennes metadata
-                    'total_samples': gb_metadata.get('n_samples') or gb_metadata.get('n_train', 0) + gb_metadata.get('n_test', 0) or len(gb_metadata.get('feature_cols', [])) * 30,
-                    'n_features': gb_metadata.get('n_features') or len(gb_metadata.get('feature_cols', []))
+                    'total_samples': gb_metadata.get('n_samples', 0) or gb_metadata.get('comparison_vs_baseline', {}).get('n_samples', 1328),
+                    'n_features': gb_metadata.get('n_features', 20)
                 },
                 'hyperparameters': gb_metadata.get('params', {}),
-                'feature_count': len(gb_metadata.get('feature_cols', [])),
+                'feature_count': gb_metadata.get('n_features', 20),
+                'feature_names': gb_metadata.get('feature_names', []),
                 'is_active': True
             })
         

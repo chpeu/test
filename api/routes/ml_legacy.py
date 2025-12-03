@@ -537,47 +537,58 @@ async def get_models_overview():
             with open(gb_metadata_file, 'r') as f:
                 gb_metadata = json.load(f)
             
-            # Calculer overfitting gap depuis les métriques
+            # Extraire les métriques avec les bons noms de clés
             gb_metrics = gb_metadata.get('metrics', {})
-            train_acc = gb_metrics.get('train_acc', 0)
-            test_acc = gb_metrics.get('test_acc', 0)
-            overfitting_gap = (train_acc - test_acc) * 100 if train_acc and test_acc else 0
             
-            # 🔬 Utiliser CV accuracy si disponible (plus fiable)
-            cv_accuracy = gb_metrics.get('cv_accuracy', test_acc)
-            cv_f1 = gb_metrics.get('cv_f1', gb_metrics.get('test_f1', 0))
+            # 🔧 Utiliser les clés correctes du fichier metadata
+            train_acc = gb_metrics.get('train_accuracy', 0)
+            test_acc = gb_metrics.get('test_accuracy', 0)
+            
+            # Overfitting déjà calculé ou recalculer
+            overfitting_gap = gb_metrics.get('overfitting', 0)
+            if overfitting_gap == 0 and train_acc and test_acc:
+                overfitting_gap = train_acc - test_acc
+            overfitting_gap_pct = overfitting_gap * 100 if overfitting_gap < 1 else overfitting_gap
+            
+            # 🔬 Utiliser les métriques test (CV si disponible)
+            cv_accuracy = gb_metrics.get('cv_accuracy_mean', test_acc)
+            cv_f1 = gb_metrics.get('cv_f1_mean', gb_metrics.get('f1_score', 0))
             cv_std = gb_metrics.get('cv_accuracy_std', 0)
+            
+            # Métriques directes
+            f1_score = gb_metrics.get('f1_score', cv_f1)
+            precision = gb_metrics.get('precision', 0)
             
             # Convertir au format attendu par le frontend
             models.append({
                 'name': 'best_classifier',  # Nom cherché par le frontend
-                'type': gb_metadata.get('best_model', 'GradientBoostingClassifier'),
+                'type': gb_metadata.get('model_type', 'GradientBoostingClassifier'),
                 'model_type': gb_metadata.get('model_type', 'gb'),
                 'version': '2.0',
                 'trained_at': gb_metadata.get('timestamp'),
                 'metrics': {
                     'test': {
-                        # 🔬 Afficher CV accuracy comme métrique principale
-                        'accuracy': cv_accuracy,
+                        # Métriques principales (holdout test)
+                        'accuracy': test_acc,
                         'accuracy_std': cv_std,
-                        'f1_score': cv_f1,
-                        'precision': gb_metrics.get('test_precision', 0),
-                        # Garder holdout pour référence
-                        'holdout_accuracy': test_acc,
-                        'holdout_f1': gb_metrics.get('test_f1', 0)
+                        'f1_score': f1_score,
+                        'precision': precision,
+                        # CV pour référence
+                        'cv_accuracy': cv_accuracy,
+                        'cv_f1': cv_f1
                     },
                     'train': {
                         'accuracy': train_acc
                     }
                 },
-                'overfitting_gap': round(overfitting_gap, 1),
+                'overfitting_gap': round(overfitting_gap_pct, 1),
                 'dataset_info': {
-                    # n_samples peut ne pas exister dans les anciennes metadata
-                    'total_samples': gb_metadata.get('n_samples') or gb_metadata.get('n_train', 0) + gb_metadata.get('n_test', 0) or len(gb_metadata.get('feature_cols', [])) * 30,
-                    'n_features': gb_metadata.get('n_features') or len(gb_metadata.get('feature_cols', []))
+                    'total_samples': gb_metadata.get('n_samples', 0) or gb_metadata.get('comparison_vs_baseline', {}).get('n_samples', 1328),
+                    'n_features': gb_metadata.get('n_features', 20)
                 },
                 'hyperparameters': gb_metadata.get('params', {}),
-                'feature_count': len(gb_metadata.get('feature_cols', [])),
+                'feature_count': gb_metadata.get('n_features', 20),
+                'feature_names': gb_metadata.get('feature_names', []),
                 'is_active': True
             })
         
@@ -2300,6 +2311,292 @@ async def get_gradientboosting_results():
             'found': False,
             'error': str(e)
         }
+
+
+# ========== AUTO-OPTIMISATION COMPLETE ==========
+
+@router.post("/optimize/auto/start")
+async def start_auto_optimization(
+    background_tasks: BackgroundTasks,
+    request: Request
+):
+    """
+    Démarrer l'optimisation automatique complète ML
+    
+    - Sélection de features (RF importance)
+    - Grid search hyperparamètres
+    - Analyse des seuils de confiance
+    - Cross-validation
+    - Comparaison ancien/nouveau modèle
+    """
+    try:
+        body = await request.json()
+        n_splits = body.get('n_splits', 15)
+        timeframe_days = body.get('timeframe_days', 365)
+        min_trades = body.get('min_trades', 100)
+        
+        # Créer task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialiser task status
+        ml_tasks[task_id] = {
+            'task_id': task_id,
+            'status': 'pending',
+            'action': 'auto_optimization',
+            'created_at': datetime.now().isoformat(),
+            'progress': 0,
+            'message': 'Initialisation...',
+            'n_splits': n_splits,
+            'timeframe_days': timeframe_days,
+            'min_trades': min_trades
+        }
+        
+        # Lancer optimisation en background
+        background_tasks.add_task(
+            _run_auto_optimization_background,
+            task_id,
+            n_splits,
+            timeframe_days,
+            min_trades
+        )
+        
+        logger.info(f"🚀 Auto-optimisation ML démarrée (task_id={task_id})")
+        
+        return {
+            'task_id': task_id,
+            'status': 'pending',
+            'message': f'Auto-optimisation démarrée ({n_splits} splits)'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur start_auto_optimization: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _run_auto_optimization_background(
+    task_id: str,
+    n_splits: int,
+    timeframe_days: int,
+    min_trades: int
+):
+    """Exécute l'auto-optimisation en background (NON-BLOQUANT)"""
+    import asyncio
+    import sys
+    
+    try:
+        ml_tasks[task_id]['status'] = 'running'
+        ml_tasks[task_id]['progress'] = 5
+        ml_tasks[task_id]['message'] = 'Chargement des données...'
+        
+        # Exécuter le script d'optimisation
+        script_path = os.path.join(
+            os.path.dirname(__file__), '..', '..', 'scripts', 'auto_optimize_ml.py'
+        )
+        
+        ml_tasks[task_id]['progress'] = 10
+        ml_tasks[task_id]['message'] = 'Lancement de l\'optimisation...'
+        
+        # 🔧 FIX: Utiliser asyncio.create_subprocess_exec (non-bloquant)
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, script_path, 
+            '--splits', str(n_splits),
+            '--timeframe', str(timeframe_days),
+            '--min-trades', str(min_trades),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # 🔧 NOUVEAU: Lire stdout en temps réel pour récupérer la progression
+        async def read_progress():
+            """Lit stdout en temps réel et met à jour la progression"""
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                    
+                line_str = line.decode('utf-8', errors='ignore').strip()
+                
+                # Parser les lignes PROGRESS:XX:message
+                if line_str.startswith('PROGRESS:'):
+                    try:
+                        parts = line_str.split(':', 2)
+                        if len(parts) >= 3:
+                            progress = int(parts[1])
+                            message = parts[2]
+                            ml_tasks[task_id]['progress'] = progress
+                            ml_tasks[task_id]['message'] = message
+                            logger.info(f"📊 Optimisation progress: {progress}% - {message}")
+                    except (ValueError, IndexError):
+                        pass
+                else:
+                    # Logger les autres lignes pour debug
+                    if line_str:
+                        logger.debug(f"[auto_optimize_ml] {line_str}")
+        
+        # Lancer la lecture de progression en parallèle
+        progress_task = asyncio.create_task(read_progress())
+        
+        # Attendre avec timeout (non-bloquant pour le reste de l'app)
+        # 🔧 FIX: Augmenter timeout à 30 minutes pour les gros datasets
+        try:
+            # Attendre que le process finisse
+            await asyncio.wait_for(process.wait(), timeout=1800)  # 30 minutes max
+            # Récupérer stderr pour les erreurs
+            stderr = await process.stderr.read()
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            progress_task.cancel()
+            raise Exception("Timeout: optimisation trop longue (>30 min)")
+        
+        # Annuler la tâche de progression si encore active
+        progress_task.cancel()
+        
+        if process.returncode != 0:
+            raise Exception(f"Script failed: {stderr.decode()}")
+        
+        ml_tasks[task_id]['progress'] = 90
+        ml_tasks[task_id]['message'] = 'Lecture des résultats...'
+        
+        # Charger les résultats
+        metadata_path = os.path.join(
+            os.path.dirname(__file__), '..', '..', 
+            'optimization', 'saved_models', 'best_classifier_metadata.json'
+        )
+        
+        threshold_path = os.path.join(
+            os.path.dirname(__file__), '..', '..', 
+            'optimization', 'saved_models', 'threshold_analysis.csv'
+        )
+        
+        results = {}
+        
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                results['params'] = metadata.get('params', {})
+                results['metrics'] = metadata.get('metrics', {})
+                results['feature_names'] = metadata.get('feature_names', [])
+                results['n_features'] = metadata.get('n_features', 20)
+                results['optimal_thresholds'] = metadata.get('optimal_thresholds', {})
+                
+                # Baseline pour comparaison
+                results['baseline'] = {
+                    'accuracy': 0.6193,
+                    'f1': 0.5654,
+                    'roc_auc': 0.6466,
+                    'overfitting': 0.077
+                }
+                
+                # Seuil optimal
+                results['optimal_threshold'] = results['optimal_thresholds'].get('best_f1', 0.45)
+        
+        # Charger l'analyse des seuils
+        if os.path.exists(threshold_path):
+            import csv
+            threshold_analysis = []
+            with open(threshold_path, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    threshold_analysis.append({
+                        'threshold': float(row['threshold']),
+                        'accuracy': float(row['accuracy']),
+                        'f1_score': float(row['f1_score']),
+                        'precision': float(row['precision']),
+                        'recall': float(row['recall'])
+                    })
+            results['threshold_analysis'] = threshold_analysis
+        
+        ml_tasks[task_id]['status'] = 'completed'
+        ml_tasks[task_id]['progress'] = 100
+        ml_tasks[task_id]['message'] = 'Optimisation terminée!'
+        ml_tasks[task_id]['results'] = results
+        
+        logger.info(f"✅ Auto-optimisation terminée (task_id={task_id})")
+        
+    except Exception as e:
+        ml_tasks[task_id]['status'] = 'failed'
+        ml_tasks[task_id]['error'] = str(e)
+        logger.error(f"❌ Auto-optimisation failed: {e}", exc_info=True)
+
+
+@router.post("/optimize/auto/apply")
+async def apply_auto_optimization_results(request: Request):
+    """
+    Appliquer les résultats de l'auto-optimisation
+    
+    Met à jour:
+    - config_overrides.json avec les nouveaux hyperparamètres
+    - Le seuil de confiance optimal
+    """
+    try:
+        results = await request.json()
+        
+        config_file = os.path.join(
+            os.path.dirname(__file__), '..', '..', 'config_overrides.json'
+        )
+        
+        # Charger config existante
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+        else:
+            config = {}
+        
+        params = results.get('params', {})
+        optimal_threshold = results.get('optimal_threshold', 0.45)
+        n_features = results.get('n_features', 20)
+        
+        # Mapping des paramètres
+        param_mapping = {
+            'max_depth': 'gb_max_depth',
+            'learning_rate': 'gb_learning_rate',
+            'max_iter': 'gb_n_estimators',
+            'min_samples_leaf': 'gb_min_samples_leaf',
+            'l2_regularization': 'gb_l2_regularization'
+        }
+        
+        applied_params = {}
+        for key, value in params.items():
+            if key in param_mapping:
+                config_key = param_mapping[key]
+                config[config_key] = value
+                applied_params[config_key] = value
+        
+        # Appliquer le seuil optimal
+        config['gb_min_confidence'] = optimal_threshold
+        applied_params['gb_min_confidence'] = optimal_threshold
+        
+        # Appliquer le nombre de features
+        config['gb_n_features'] = n_features
+        applied_params['gb_n_features'] = n_features
+        
+        # Sauvegarder
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        # Recharger config
+        try:
+            from config import TRADING_CONFIG
+            from utils.config_persistence import apply_config_overrides
+            apply_config_overrides(TRADING_CONFIG)
+            logger.info("✅ TRADING_CONFIG rechargé avec auto-optimisation")
+        except Exception as reload_err:
+            logger.warning(f"⚠️ Impossible de recharger TRADING_CONFIG: {reload_err}")
+        
+        logger.info(f"✅ Auto-optimisation appliquée: {applied_params}")
+        
+        return {
+            'success': True,
+            'message': 'Paramètres auto-optimisés appliqués',
+            'params': applied_params,
+            'optimal_threshold': optimal_threshold,
+            'metrics': results.get('metrics', {})
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur apply_auto_optimization: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 """

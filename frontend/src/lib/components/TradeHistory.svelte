@@ -123,7 +123,7 @@
 						<th data-debug-name="tradeHistory.column.pnlGross">PnL Brut %</th>
 						<th data-debug-name="tradeHistory.column.slippage">Slippage</th>
 						<th data-debug-name="tradeHistory.column.pnlNet">PnL Net %</th>
-						<th data-debug-name="tradeHistory.column.pnlUsdt" title="PnL réel depuis API MEXC">PnL Total USDT</th>
+						<th data-debug-name="tradeHistory.column.pnlUsdt" title="PnL réalisé depuis API MEXC (frais inclus)">PnL Réalisé USDT</th>
 						<th data-debug-name="tradeHistory.column.duration">Duration</th>
 					</tr>
 				</thead>
@@ -214,9 +214,9 @@
 							<td class="pnl-net" class:positive={(trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl_pct || 0) < 0} data-debug-name="trade.net_pnl_pct">
 								{(trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || 0)}%
 							</td>
-							<!-- 🔥 FIX: PnL Total USDT = PnL réel depuis API MEXC -->
-							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt" title="PnL réel depuis API MEXC (frais 0% sur paires scannées)">
-								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{(trade.net_pnl_usdt || 0).toFixed(3)} USDT
+							<!-- 🔥 FIX: PnL Réalisé USDT = PnL réel depuis API MEXC (4 décimales comme l'API) -->
+							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt" title="PnL réalisé depuis API MEXC | Entry: {trade.entry_price || trade.entry || 'N/A'} | Exit: {trade.exit_price || trade.exit || 'N/A'}">
+								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{(trade.net_pnl_usdt || 0).toFixed(4)} USDT
 							</td>
 							<!-- 🔥 FIX: Supprimé PnL Total USDT car redondant et calcul incorrect -->
 							
