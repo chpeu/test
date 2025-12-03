@@ -166,33 +166,124 @@
 	function updateExternalWindow() {
 		if (!externalWindow || externalWindow.closed) return;
 		
+		// Générer les étapes
+		const steps = [
+			{ threshold: 10, label: 'Initialisation' },
+			{ threshold: 25, label: 'Chargement features' },
+			{ threshold: 40, label: 'Sélection features (RF)' },
+			{ threshold: 55, label: 'Grid search' },
+			{ threshold: 70, label: 'Entraînement modèle' },
+			{ threshold: 80, label: 'Analyse seuils' },
+			{ threshold: 90, label: 'Validation croisée' },
+			{ threshold: 100, label: 'Sauvegarde' }
+		];
+		
+		let stepsHtml = '';
+		steps.forEach((step, i) => {
+			const prevThreshold = i === 0 ? 0 : steps[i-1].threshold;
+			const isDone = autoOptimizeProgress >= step.threshold;
+			const isActive = autoOptimizeProgress >= prevThreshold && autoOptimizeProgress < step.threshold;
+			const icon = isDone ? '✅' : isActive ? '⏳' : '⬜';
+			const color = isDone ? '#4ade80' : isActive ? '#60a5fa' : '#64748b';
+			const bg = isActive ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.4)';
+			stepsHtml += `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;margin:4px 0;background:${bg};border-radius:6px;opacity:${isDone||isActive?1:0.5};">
+				<span>${icon}</span><span style="color:${color};font-size:13px;">${step.label}</span>
+			</div>`;
+		});
+		
 		const progressBar = autoOptimizing ? `
 			<div style="margin: 20px 0;">
 				<div style="background: #1e293b; border-radius: 10px; height: 20px; overflow: hidden;">
 					<div style="background: linear-gradient(90deg, #8b5cf6, #06b6d4); height: 100%; width: ${autoOptimizeProgress}%; transition: width 0.3s;"></div>
 				</div>
-				<p style="text-align: center; margin-top: 10px;">${autoOptimizeProgress}% - ${autoOptimizeStatus}</p>
+				<p style="text-align: center; margin-top: 10px; color: #60a5fa;">${autoOptimizeProgress}% - ${autoOptimizeStatus}</p>
 			</div>
 		` : '';
+		
+		// Générer le tableau des seuils pour la popup externe
+		let thresholdTableHtml = '';
+		if (autoOptimizeResults?.threshold_analysis) {
+			const rows = autoOptimizeResults.threshold_analysis.map(th => {
+				const isOptimal = th.threshold === autoOptimizeResults.optimal_threshold;
+				const bgColor = isOptimal ? 'rgba(139, 92, 246, 0.3)' : 'transparent';
+				const border = isOptimal ? 'border-left: 3px solid #8b5cf6;' : '';
+				return `<tr style="background:${bgColor};${border}">
+					<td style="padding:6px;border-bottom:1px solid #1e293b;">${(th.threshold * 100).toFixed(0)}%</td>
+					<td style="padding:6px;border-bottom:1px solid #1e293b;">${(th.accuracy * 100).toFixed(1)}%</td>
+					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.f1_score.toFixed(3)}</td>
+					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.precision.toFixed(3)}</td>
+					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.recall.toFixed(3)}</td>
+					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.predicted_wins || 0}</td>
+				</tr>`;
+			}).join('');
+			
+			thresholdTableHtml = `
+				<div style="margin-top:20px;overflow-x:auto;">
+					<h4 style="color:#94a3b8;margin:0 0 10px 0;font-size:13px;">📈 Analyse des Seuils</h4>
+					<table style="width:100%;border-collapse:collapse;font-size:11px;">
+						<thead>
+							<tr style="background:rgba(0,0,0,0.3);">
+								<th style="padding:8px;color:#94a3b8;text-align:left;">Seuil</th>
+								<th style="padding:8px;color:#94a3b8;text-align:left;">Accuracy</th>
+								<th style="padding:8px;color:#94a3b8;text-align:left;">F1</th>
+								<th style="padding:8px;color:#94a3b8;text-align:left;">Precision</th>
+								<th style="padding:8px;color:#94a3b8;text-align:left;">Recall</th>
+								<th style="padding:8px;color:#94a3b8;text-align:left;">Prédits WIN</th>
+							</tr>
+						</thead>
+						<tbody style="color:#e2e8f0;">${rows}</tbody>
+					</table>
+					<div style="margin-top:10px;padding:10px;background:rgba(139,92,246,0.15);border-radius:6px;text-align:center;color:#c4b5fd;font-size:12px;">
+						🎯 Seuil recommandé: ${((autoOptimizeResults.optimal_threshold || 0.45) * 100).toFixed(0)}%
+					</div>
+				</div>
+			`;
+		}
 		
 		const resultsHtml = autoOptimizeResults ? `
 			<div style="margin-top: 20px; padding: 15px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
 				<h3 style="color: #10b981; margin: 0 0 10px 0;">✅ Optimisation Terminée</h3>
-				<p><strong>Accuracy:</strong> ${((autoOptimizeResults.metrics?.test_accuracy || 0) * 100).toFixed(2)}%</p>
-				<p><strong>F1 Score:</strong> ${(autoOptimizeResults.metrics?.f1_score || 0).toFixed(4)}</p>
-				<p><strong>Precision:</strong> ${(autoOptimizeResults.metrics?.precision || 0).toFixed(4)}</p>
-				<p style="margin-top: 15px; color: #94a3b8;">Retournez à l'application principale pour appliquer les résultats.</p>
+				<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;">
+					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
+						<div style="color:#94a3b8;font-size:10px;">ACCURACY</div>
+						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${((autoOptimizeResults.metrics?.test_accuracy || 0) * 100).toFixed(1)}%</div>
+					</div>
+					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
+						<div style="color:#94a3b8;font-size:10px;">F1 SCORE</div>
+						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.f1_score || 0).toFixed(3)}</div>
+					</div>
+					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
+						<div style="color:#94a3b8;font-size:10px;">ROC-AUC</div>
+						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.roc_auc || 0).toFixed(3)}</div>
+					</div>
+					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
+						<div style="color:#94a3b8;font-size:10px;">PRECISION</div>
+						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.precision || 0).toFixed(3)}</div>
+					</div>
+					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
+						<div style="color:#94a3b8;font-size:10px;">RECALL</div>
+						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.recall || 0).toFixed(3)}</div>
+					</div>
+					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
+						<div style="color:#94a3b8;font-size:10px;">OVERFITTING</div>
+						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${((autoOptimizeResults.metrics?.overfitting || 0) * 100).toFixed(1)}%</div>
+					</div>
+				</div>
+				${thresholdTableHtml}
+				<p style="margin-top: 15px; color: #94a3b8; font-size: 11px; text-align:center;">Retournez à l'application principale pour appliquer les résultats.</p>
 			</div>
 		` : '';
 		
 		externalWindow.document.body.innerHTML = `
 			<div style="font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; min-height: 100vh; padding: 20px;">
-				<h2 style="margin: 0 0 20px 0;">🚀 Optimisation ML en cours</h2>
+				<h2 style="margin: 0 0 20px 0;">🚀 Optimisation ML</h2>
 				${progressBar}
+				<div style="max-width: 300px; margin: 20px auto;">
+					${stepsHtml}
+				</div>
 				${resultsHtml}
-				<p style="color: #64748b; font-size: 12px; margin-top: 30px;">
-					Cette fenêtre se met à jour automatiquement.<br>
-					Vous pouvez continuer à naviguer dans l'application principale.
+				<p style="color: #64748b; margin-top: 20px; font-size: 11px; text-align: center;">
+					Mise à jour automatique • Application principale accessible
 				</p>
 			</div>
 		`;
@@ -267,8 +358,10 @@
 		// Écouter les changements de visibilité pour maintenir le polling
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 		
-		// Charger les métriques
-		loadMLMetricsGB();
+		// Charger les métriques et données
+		await loadMLMetricsGB();
+		await loadMLTradesStats();
+		await loadLastOptunaResults();
 	});
 	
 	onDestroy(() => {
@@ -314,12 +407,6 @@
 	
 	// Type de modèle: 'gb' = GradientBoosting, 'histgb' = HistGradientBoosting (10x plus rapide)
 	let modelType = config.gb_model_type || 'gb';
-
-	onMount(async () => {
-		await loadMLMetricsGB();
-		await loadMLTradesStats();
-		await loadLastOptunaResults(); // Charger les derniers résultats Optuna
-	});
 	
 	// 🔄 Charger les derniers résultats d'optimisation Optuna
 	async function loadLastOptunaResults() {
@@ -806,28 +893,32 @@
 			if (result.success) {
 				// Mettre à jour les sliders
 				if (result.params) {
-					const paramMapping = {
-						'max_depth': 'gb_max_depth',
-						'learning_rate': 'gb_learning_rate',
-						'max_iter': 'gb_n_estimators',
-						'min_samples_leaf': 'gb_min_samples_leaf',
-						'l2_regularization': 'gb_l2_regularization'
-					};
+					// Le backend retourne les clés avec préfixe gb_ directement
+					const validKeys = [
+						'gb_max_depth',
+						'gb_learning_rate', 
+						'gb_n_estimators',
+						'gb_min_samples_leaf',
+						'gb_l2_regularization',
+						'gb_n_features',
+						'gb_min_confidence'
+					];
 					
 					Object.entries(result.params).forEach(([key, value]) => {
-						const configKey = paramMapping[key];
-						if (configKey && config[configKey] !== undefined) {
-							config[configKey] = value;
-							triggerAutoSave(configKey, value);
+						if (validKeys.includes(key) && config[key] !== undefined) {
+							console.log(`Updating slider: ${key} = ${value}`);
+							config[key] = value;
+							triggerAutoSave(key, value);
 						}
 					});
 					
-					// Mettre à jour le seuil de confiance
-					if (result.optimal_threshold) {
+					// Mettre à jour le seuil de confiance (si pas déjà dans params)
+					if (result.optimal_threshold && !result.params.gb_min_confidence) {
 						config.gb_min_confidence = result.optimal_threshold;
-						triggerAutoSave('gb_min_confidence', Math.round(result.optimal_threshold * 100) + '%');
+						triggerAutoSave('gb_min_confidence', result.optimal_threshold);
 					}
 					
+					// Force reactivity
 					config = {...config};
 				}
 				
@@ -1540,6 +1631,35 @@
 						<!-- Comparaison Ancien vs Nouveau -->
 						<div class="comparison-table">
 							<h4>Comparaison Ancien ↔ Nouveau Modèle</h4>
+							
+							<!-- Légende métriques principales -->
+							<div class="metrics-legend compact">
+								<div class="legend-item" title="Pourcentage de prédictions correctes (WIN prédit = WIN réel ou LOSS prédit = LOSS réel)">
+									<span class="legend-label">Accuracy</span>
+									<span class="legend-desc">% prédictions correctes</span>
+								</div>
+								<div class="legend-item" title="Moyenne harmonique entre Precision et Recall - équilibre les deux">
+									<span class="legend-label">F1 Score</span>
+									<span class="legend-desc">Équilibre precision/recall</span>
+								</div>
+								<div class="legend-item" title="Aire sous la courbe ROC - mesure la capacité à distinguer WIN de LOSS">
+									<span class="legend-label">ROC-AUC</span>
+									<span class="legend-desc">Discrimination (0.5=hasard)</span>
+								</div>
+								<div class="legend-item" title="Parmi les prédictions WIN, combien sont vraiment des WIN - évite les faux positifs">
+									<span class="legend-label">Precision</span>
+									<span class="legend-desc">% WIN prédits vrais</span>
+								</div>
+								<div class="legend-item" title="Parmi tous les vrais WIN, combien ont été détectés - évite de rater des opportunités">
+									<span class="legend-label">Recall</span>
+									<span class="legend-desc">% vrais WIN détectés</span>
+								</div>
+								<div class="legend-item" title="Différence entre performance train et test - un gap élevé indique du surapprentissage">
+									<span class="legend-label">Overfitting</span>
+									<span class="legend-desc">Écart train/test (bas=mieux)</span>
+								</div>
+							</div>
+							
 							<table>
 								<thead>
 									<tr>
@@ -1551,7 +1671,7 @@
 								</thead>
 								<tbody>
 									<tr class:improved={autoOptimizeResults.metrics?.test_accuracy > autoOptimizeResults.baseline?.accuracy}>
-										<td>Accuracy</td>
+										<td title="Pourcentage de prédictions correctes">Accuracy</td>
 										<td>{((autoOptimizeResults.baseline?.accuracy || 0) * 100).toFixed(2)}%</td>
 										<td>{((autoOptimizeResults.metrics?.test_accuracy || 0) * 100).toFixed(2)}%</td>
 										<td class:positive={(autoOptimizeResults.metrics?.test_accuracy - autoOptimizeResults.baseline?.accuracy) > 0}>
@@ -1559,7 +1679,7 @@
 										</td>
 									</tr>
 									<tr class:improved={autoOptimizeResults.metrics?.f1_score > autoOptimizeResults.baseline?.f1}>
-										<td>F1 Score</td>
+										<td title="Moyenne harmonique entre Precision et Recall">F1 Score</td>
 										<td>{(autoOptimizeResults.baseline?.f1 || 0).toFixed(4)}</td>
 										<td>{(autoOptimizeResults.metrics?.f1_score || 0).toFixed(4)}</td>
 										<td class:positive={(autoOptimizeResults.metrics?.f1_score - autoOptimizeResults.baseline?.f1) > 0}>
@@ -1567,15 +1687,27 @@
 										</td>
 									</tr>
 									<tr class:improved={autoOptimizeResults.metrics?.roc_auc > autoOptimizeResults.baseline?.roc_auc}>
-										<td>ROC-AUC</td>
+										<td title="Aire sous la courbe ROC - qualité de discrimination">ROC-AUC</td>
 										<td>{(autoOptimizeResults.baseline?.roc_auc || 0).toFixed(4)}</td>
 										<td>{(autoOptimizeResults.metrics?.roc_auc || 0).toFixed(4)}</td>
 										<td class:positive={(autoOptimizeResults.metrics?.roc_auc - autoOptimizeResults.baseline?.roc_auc) > 0}>
 											{(autoOptimizeResults.metrics?.roc_auc - autoOptimizeResults.baseline?.roc_auc).toFixed(4)}
 										</td>
 									</tr>
+									<tr class:improved={(autoOptimizeResults.metrics?.precision || 0) > 0.5}>
+										<td title="% des prédictions WIN qui sont vraies">Precision</td>
+										<td>-</td>
+										<td>{(autoOptimizeResults.metrics?.precision || 0).toFixed(4)}</td>
+										<td></td>
+									</tr>
+									<tr class:improved={(autoOptimizeResults.metrics?.recall || 0) > 0.5}>
+										<td title="% des vrais WIN détectés">Recall</td>
+										<td>-</td>
+										<td>{(autoOptimizeResults.metrics?.recall || 0).toFixed(4)}</td>
+										<td></td>
+									</tr>
 									<tr>
-										<td>Overfitting</td>
+										<td title="Écart entre performance train et test - plus bas = mieux">Overfitting</td>
 										<td>{((autoOptimizeResults.baseline?.overfitting || 0) * 100).toFixed(2)}%</td>
 										<td>{((autoOptimizeResults.metrics?.overfitting || 0) * 100).toFixed(2)}%</td>
 										<td class:positive={(autoOptimizeResults.baseline?.overfitting - autoOptimizeResults.metrics?.overfitting) > 0}>
@@ -1590,6 +1722,31 @@
 						{#if autoOptimizeResults.threshold_analysis}
 							<div class="threshold-table">
 								<h4>📈 Analyse des Seuils de Confiance</h4>
+								
+								<!-- Légende des métriques -->
+								<div class="metrics-legend">
+									<div class="legend-item" title="Pourcentage de prédictions correctes (WIN ou LOSS)">
+										<span class="legend-label">Accuracy</span>
+										<span class="legend-desc">% prédictions correctes</span>
+									</div>
+									<div class="legend-item" title="Moyenne harmonique entre Precision et Recall - équilibre les deux">
+										<span class="legend-label">F1</span>
+										<span class="legend-desc">Équilibre precision/recall</span>
+									</div>
+									<div class="legend-item" title="Parmi les prédictions WIN, combien sont réellement des WIN">
+										<span class="legend-label">Precision</span>
+										<span class="legend-desc">% WIN prédits qui sont vrais</span>
+									</div>
+									<div class="legend-item" title="Parmi tous les vrais WIN, combien ont été détectés">
+										<span class="legend-label">Recall</span>
+										<span class="legend-desc">% vrais WIN détectés</span>
+									</div>
+									<div class="legend-item" title="Nombre de trades prédits comme gagnants à ce seuil">
+										<span class="legend-label">Prédits WIN</span>
+										<span class="legend-desc">Nb signaux générés</span>
+									</div>
+								</div>
+								
 								<table>
 									<thead>
 										<tr>
@@ -1598,6 +1755,7 @@
 											<th>F1</th>
 											<th>Precision</th>
 											<th>Recall</th>
+											<th>Prédits WIN</th>
 										</tr>
 									</thead>
 									<tbody>
@@ -1608,6 +1766,7 @@
 												<td>{th.f1_score.toFixed(3)}</td>
 												<td>{th.precision.toFixed(3)}</td>
 												<td>{th.recall.toFixed(3)}</td>
+												<td>{th.predicted_wins || 0}</td>
 											</tr>
 										{/each}
 									</tbody>
@@ -2935,6 +3094,58 @@
 		border-radius: 8px;
 		color: #c4b5fd;
 		text-align: center;
+	}
+
+	.metrics-legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-bottom: 12px;
+		padding: 10px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 8px;
+	}
+
+	.legend-item {
+		display: flex;
+		flex-direction: column;
+		padding: 6px 10px;
+		background: rgba(30, 41, 59, 0.6);
+		border-radius: 6px;
+		cursor: help;
+		flex: 1;
+		min-width: 100px;
+	}
+
+	.legend-item:hover {
+		background: rgba(59, 130, 246, 0.2);
+	}
+
+	.legend-label {
+		font-weight: 600;
+		font-size: 11px;
+		color: #60a5fa;
+		text-transform: uppercase;
+	}
+
+	.legend-desc {
+		font-size: 10px;
+		color: #94a3b8;
+		margin-top: 2px;
+	}
+
+	.metrics-legend.compact {
+		margin-bottom: 8px;
+		padding: 8px;
+	}
+
+	.metrics-legend.compact .legend-item {
+		padding: 4px 8px;
+		min-width: 120px;
+	}
+
+	.metrics-legend.compact .legend-desc {
+		font-size: 9px;
 	}
 
 	.new-params, .selected-features {

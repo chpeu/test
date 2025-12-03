@@ -64,7 +64,9 @@ class MLAutoOptimizer:
     def _emit_progress(self, progress: int, message: str):
         """Émet un message de progression parsable par le backend."""
         # Format: PROGRESS:XX:message
+        # Force flush pour s'assurer que le backend le reçoit immédiatement
         print(f"PROGRESS:{progress}:{message}", flush=True)
+        sys.stdout.flush()
     
     def load_data(self, timeframe_days: int = 365, min_trades: int = 100):
         """Charge les donnees de trading pour l'entrainement."""
@@ -96,11 +98,12 @@ class MLAutoOptimizer:
     
     def _select_features_rf(self, X_train, y_train, n_features: int):
         """Selectionne les top N features par importance RandomForest."""
+        # n_jobs=1 pour éviter crash joblib/loky sur Windows dans sous-processus
         rf = RandomForestClassifier(
             n_estimators=50, 
             max_depth=5, 
             random_state=42, 
-            n_jobs=-1
+            n_jobs=1
         )
         rf.fit(X_train, y_train)
         
@@ -315,12 +318,16 @@ class MLAutoOptimizer:
         best_f1_idx = self.threshold_analysis['f1_score'].idxmax()
         best_precision_idx = self.threshold_analysis['precision'].idxmax()
         
-        # Score composite pour seuil equilibre
+        # Score composite pour seuil equilibre (trading: precision > recall pour eviter faux positifs)
+        # Precision = 0.4 (eviter de trader sur de mauvais signaux)
+        # Accuracy = 0.3 (performance globale)
+        # F1 = 0.2 (equilibre general)
+        # Recall = 0.1 (moins important - mieux vaut rater une opportunite que perdre de l'argent)
         self.threshold_analysis['composite'] = (
+            0.4 * self.threshold_analysis['precision'] +
             0.3 * self.threshold_analysis['accuracy'] +
-            0.3 * self.threshold_analysis['f1_score'] +
-            0.2 * self.threshold_analysis['precision'] +
-            0.2 * self.threshold_analysis['recall']
+            0.2 * self.threshold_analysis['f1_score'] +
+            0.1 * self.threshold_analysis['recall']
         )
         best_composite_idx = self.threshold_analysis['composite'].idxmax()
         
@@ -498,19 +505,25 @@ class MLAutoOptimizer:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Optimisation automatique du modele ML")
-    parser.add_argument('--timeframe', type=int, default=365, help="Jours de donnees a utiliser")
-    parser.add_argument('--min-trades', type=int, default=100, help="Minimum de trades requis")
-    parser.add_argument('--splits', type=int, default=20, help="Nombre de splits a tester")
-    
-    args = parser.parse_args()
-    
-    optimizer = MLAutoOptimizer()
-    optimizer.run(
-        timeframe_days=args.timeframe,
-        min_trades=args.min_trades,
-        n_splits=args.splits
-    )
+    try:
+        parser = argparse.ArgumentParser(description="Optimisation automatique du modele ML")
+        parser.add_argument('--timeframe', type=int, default=365, help="Jours de donnees a utiliser")
+        parser.add_argument('--min-trades', type=int, default=100, help="Minimum de trades requis")
+        parser.add_argument('--splits', type=int, default=20, help="Nombre de splits a tester")
+        
+        args = parser.parse_args()
+        
+        optimizer = MLAutoOptimizer()
+        optimizer.run(
+            timeframe_days=args.timeframe,
+            min_trades=args.min_trades,
+            n_splits=args.splits
+        )
+    except Exception as e:
+        print(f"ERROR:CRITICAL:{str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

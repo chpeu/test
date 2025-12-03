@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 # Router ML
 router = APIRouter(prefix="/api/ml", tags=["ML"])
 
+# 🔥 FIX: Importer l'état partagé depuis ml_common
+# pour que tous les modules voient les mêmes tâches
+from .ml_common import (
+    ml_tasks,
+    METRIC_OPTIONS,
+    LAST_RUNS_FILE,
+    get_metric_runs_snapshot
+)
+
 
 @router.get("/optimize/summary")
 async def get_metric_summary():
@@ -32,12 +41,12 @@ async def get_metric_summary():
         metrics_map.setdefault(metric, {"metric": metric, "last_run": None})
     return {"metrics": metrics_map}
 
-# State global pour tracking tasks
-ml_tasks = {}
+# State global pour tracking tasks - MAINTENANT DANS ML_COMMON
+# ml_tasks = {}
 
-METRIC_OPTIONS = ["trading_composite", "f1_score", "accuracy", "roc_auc"]
+# METRIC_OPTIONS = ["trading_composite", "f1_score", "accuracy", "roc_auc"]
 
-LAST_RUNS_FILE = Path("data/optuna_last_runs.json")
+# LAST_RUNS_FILE = Path("data/optuna_last_runs.json")
 _metric_cache_lock = threading.Lock()
 metric_runs_cache = {"metrics": {}}
 
@@ -49,7 +58,7 @@ def _load_metric_runs_cache():
             with LAST_RUNS_FILE.open('r') as f:
                 metric_runs_cache = json.load(f)
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de charger {LAST_RUNS_FILE}: {e}")
+            logger.warning(f"[WARN] Impossible de charger {LAST_RUNS_FILE}: {e}")
             metric_runs_cache = {"metrics": {}}
     else:
         metric_runs_cache = {"metrics": {}}
@@ -151,7 +160,7 @@ async def get_ml_dashboard_stats():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_ml_dashboard_stats: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_ml_dashboard_stats: {e}", exc_info=True)
         return JSONResponse({
             'error': str(e),
             'trades_count': 0,
@@ -247,7 +256,7 @@ async def get_data_quality():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_data_quality: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_data_quality: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -403,7 +412,7 @@ async def get_ml_trades_count():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_ml_trades_count: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_ml_trades_count: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -458,7 +467,7 @@ async def get_performance_analysis(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_performance_analysis: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_performance_analysis: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -608,7 +617,7 @@ async def get_models_overview():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_models_overview: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_models_overview: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -674,7 +683,7 @@ async def get_feature_importance(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur get_feature_importance: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_feature_importance: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -716,7 +725,7 @@ async def get_correlation_matrix(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_correlation_matrix: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_correlation_matrix: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -760,7 +769,7 @@ async def get_models_status():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_models_status: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_models_status: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -873,7 +882,7 @@ async def get_model_metrics(model_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur get_model_metrics: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_model_metrics: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -934,7 +943,7 @@ async def get_experiments(limit: int = 10):
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_experiments: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_experiments: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -969,7 +978,7 @@ async def get_predictions_analytics(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_predictions_analytics: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_predictions_analytics: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -995,7 +1004,7 @@ async def get_recent_predictions(limit: int = Query(20, ge=1, le=100)):
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_recent_predictions: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_recent_predictions: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1029,7 +1038,7 @@ async def reload_predictor(model_name: str = Query('xgboost_v1')):
             raise HTTPException(status_code=500, detail='Échec du rechargement')
             
     except Exception as e:
-        logger.error(f"❌ Erreur reload_predictor: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur reload_predictor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1065,7 +1074,7 @@ async def predict_opportunity(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur predict_opportunity: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur predict_opportunity: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1101,7 +1110,7 @@ async def predict_batch(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur predict_batch: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur predict_batch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1139,7 +1148,7 @@ async def predict_pnl_v2(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur predict_pnl_v2: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur predict_pnl_v2: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1186,7 +1195,7 @@ async def predict_pnl_v2_batch(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur predict_pnl_v2_batch: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur predict_pnl_v2_batch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1224,7 +1233,7 @@ async def filter_setup_with_v2(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur filter_setup_with_v2: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur filter_setup_with_v2: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1253,7 +1262,7 @@ async def get_alerts_history(limit: int = Query(20, ge=1, le=100)):
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_alerts_history: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_alerts_history: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1304,7 +1313,7 @@ async def test_alert(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur test_alert: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur test_alert: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1330,7 +1339,7 @@ async def check_retrain_status():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur check_retrain_status: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur check_retrain_status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1407,7 +1416,7 @@ async def trigger_retrain(
         
         background_tasks.add_task(_retrain_background)
         
-        logger.info(f"🚀 Ré-entraînement déclenché (task_id={task_id})")
+        logger.info(f"[START] Ré-entraînement déclenché (task_id={task_id})")
         
         return {
             'task_id': task_id,
@@ -1416,7 +1425,7 @@ async def trigger_retrain(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur trigger_retrain: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur trigger_retrain: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1445,7 +1454,7 @@ async def train_model(
         trades_count = get_trades_count()
         
         if trades_count < min_trades:
-            logger.warning(f"⚠️ Données limitées: {trades_count}/{min_trades} trades - entraînement peut être sous-optimal")
+            logger.warning(f"[WARN] Données limitées: {trades_count}/{min_trades} trades - entraînement peut être sous-optimal")
             # Ne PAS bloquer, continuer avec les données disponibles
         
         # Créer task ID
@@ -1471,7 +1480,7 @@ async def train_model(
                 min_trades,
             )
         
-        logger.info(f"🚀 Entraînement {model_type} démarré (task_id={task_id})")
+        logger.info(f"[START] Entraînement {model_type} démarré (task_id={task_id})")
         
         return {
             'task_id': task_id,
@@ -1483,7 +1492,7 @@ async def train_model(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur train_model: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur train_model: {e}", exc_info=True)
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
@@ -1496,7 +1505,7 @@ async def _train_xgboost_background(task_id: str, timeframe_days: int, min_trade
         ml_tasks[task_id]['status'] = 'running'
         ml_tasks[task_id]['progress'] = 10
         
-        logger.info(f"🎯 Entraînement XGBoost en cours (task_id={task_id})")
+        logger.info(f"[TRAIN] Entraînement XGBoost en cours (task_id={task_id})")
         
         # Entraîner
         trainer = XGBoostTrainer()
@@ -1516,7 +1525,7 @@ async def _train_xgboost_background(task_id: str, timeframe_days: int, min_trade
             'completed_at': datetime.now().isoformat(),
         })
         
-        logger.info(f"✅ Entraînement XGBoost terminé (task_id={task_id})")
+        logger.info(f"[OK] Entraînement XGBoost terminé (task_id={task_id})")
         
         # Recharger automatiquement le predictor avec le nouveau modèle
         try:
@@ -1524,12 +1533,12 @@ async def _train_xgboost_background(task_id: str, timeframe_days: int, min_trade
             predictor = get_predictor('xgboost_v1')
             predictor.loaded = False  # Force reload
             predictor.load_model()
-            logger.info("🔄 Predictor rechargé automatiquement avec le nouveau modèle")
+            logger.info("[RELOAD] Predictor rechargé automatiquement avec le nouveau modèle")
         except Exception as reload_err:
-            logger.warning(f"⚠️ Impossible de recharger le predictor: {reload_err}")
+            logger.warning(f"[WARN] Impossible de recharger le predictor: {reload_err}")
         
     except Exception as e:
-        logger.error(f"❌ Erreur entraînement XGBoost: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur entraînement XGBoost: {e}", exc_info=True)
         
         ml_tasks[task_id].update({
             'status': 'failed',
@@ -1633,7 +1642,7 @@ async def start_hyperparameter_optimization(
             max_samples
         )
         
-        logger.info(f"🎯 Optimisation hyperparamètres démarrée (task_id={task_id}, trials={n_trials})")
+        logger.info(f"[TRAIN] Optimisation hyperparamètres démarrée (task_id={task_id}, trials={n_trials})")
         
         return {
             'task_id': task_id,
@@ -1645,7 +1654,7 @@ async def start_hyperparameter_optimization(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur start_optimization: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur start_optimization: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1665,7 +1674,7 @@ async def _optimize_hyperparameters_background(
         ml_tasks[task_id]['status'] = 'running'
         ml_tasks[task_id]['progress'] = 5
         
-        logger.info(f"🚀 Optimisation en cours (task_id={task_id})")
+        logger.info(f"[START] Optimisation en cours (task_id={task_id})")
         
         # Détecter GPU si demandé
         gpu_id = None
@@ -1674,7 +1683,7 @@ async def _optimize_hyperparameters_background(
                 import torch
                 if torch.cuda.is_available():
                     gpu_id = 0
-                    logger.info("🎮 GPU détecté et activé")
+                    logger.info("[GPU] GPU détecté et activé")
             except:
                 pass
         
@@ -1765,7 +1774,7 @@ async def _optimize_hyperparameters_background(
             'completed_at': datetime.now().isoformat()
         })
         
-        logger.info(f"✅ Optimisation terminée (task_id={task_id}, best_score={tuner.study.best_value:.4f})")
+        logger.info(f"[OK] Optimisation terminée (task_id={task_id}, best_score={tuner.study.best_value:.4f})")
         
         # Préparer les données pour record_metric_run
         run_data = {
@@ -1777,12 +1786,12 @@ async def _optimize_hyperparameters_background(
             'datetime': datetime.now().isoformat()
         }
         
-        logger.info(f"📊 Enregistrement métrique '{metric}' avec score={run_data['score']:.4f}, params={list(run_data['params'].keys())}")
+        logger.info(f"[DATA] Enregistrement métrique '{metric}' avec score={run_data['score']:.4f}, params={list(run_data['params'].keys())}")
         record_metric_run(metric, run_data)
-        logger.info(f"✅ Métrique '{metric}' enregistrée dans optuna_last_runs.json")
+        logger.info(f"[OK] Métrique '{metric}' enregistrée dans optuna_last_runs.json")
         
     except Exception as e:
-        logger.error(f"❌ Erreur optimisation: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur optimisation: {e}", exc_info=True)
         
         ml_tasks[task_id].update({
             'status': 'failed',
@@ -1854,7 +1863,7 @@ async def get_optimization_history(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_optimization_history: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_optimization_history: {e}", exc_info=True)
         return {
             'trials': [],
             'best_trial': None,
@@ -1900,7 +1909,7 @@ async def get_best_hyperparameters(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_best_hyperparameters: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_best_hyperparameters: {e}", exc_info=True)
         return {
             'found': False,
             'error': str(e)
@@ -1962,18 +1971,18 @@ async def apply_best_hyperparameters(
         with open(config_file, 'w') as f:
             json.dump(config, f, indent=2)
         
-        logger.info(f"💾 Paramètres sauvegardés dans {config_file}")
+        logger.info(f"[SAVE] Paramètres sauvegardés dans {config_file}")
         
         # Recharger immédiatement les overrides pour mettre à jour TRADING_CONFIG
         try:
             from config import TRADING_CONFIG
             from utils.config_persistence import apply_config_overrides
             apply_config_overrides(TRADING_CONFIG)
-            logger.info("✅ TRADING_CONFIG rechargé avec les paramètres ML")
+            logger.info("[OK] TRADING_CONFIG rechargé avec les paramètres ML")
         except Exception as reload_err:
-            logger.error(f"❌ Impossible de recharger TRADING_CONFIG: {reload_err}")
+            logger.error(f"[FAIL] Impossible de recharger TRADING_CONFIG: {reload_err}")
         
-        logger.info(f"✅ Paramètres appliqués à {config_file}")
+        logger.info(f"[OK] Paramètres appliqués à {config_file}")
         
         return {
             'success': True,
@@ -1987,7 +1996,7 @@ async def apply_best_hyperparameters(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur apply_best_hyperparameters: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur apply_best_hyperparameters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2062,7 +2071,7 @@ async def start_gradientboosting_optimization(
         )
         
         speed_info = " (⚡ 10x plus rapide)" if use_histgb else ""
-        logger.info(f"🎯 Optimisation {model_name} démarrée{speed_info} (task_id={task_id}, trials={n_trials})")
+        logger.info(f"[TRAIN] Optimisation {model_name} démarrée{speed_info} (task_id={task_id}, trials={n_trials})")
         
         return {
             'task_id': task_id,
@@ -2076,7 +2085,7 @@ async def start_gradientboosting_optimization(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur start_gb_optimization: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur start_gb_optimization: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2098,7 +2107,7 @@ async def _optimize_gradientboosting_background(
         ml_tasks[task_id]['stage'] = 'initializing'
         
         speed_info = " (⚡ rapide)" if use_histgb else ""
-        logger.info(f"🚀 Optimisation {model_name}{speed_info} en cours (task_id={task_id})")
+        logger.info(f"[START] Optimisation {model_name}{speed_info} en cours (task_id={task_id})")
         
         # Créer optimizer
         optimizer = GradientBoostingOptimizer(
@@ -2158,7 +2167,7 @@ async def _optimize_gradientboosting_background(
         with open(results_path, 'w') as f:
             json.dump(save_data, f, indent=2)
         
-        logger.info(f"💾 Résultats sauvegardés: {results_path}")
+        logger.info(f"[SAVE] Résultats sauvegardés: {results_path}")
         
         # Mettre à jour task
         ml_tasks[task_id].update({
@@ -2184,10 +2193,10 @@ async def _optimize_gradientboosting_background(
         }
         record_metric_run('gb_composite', run_data)
         
-        logger.info(f"✅ Optimisation GradientBoosting terminée: test_acc={metrics['test_accuracy']:.4f}, gap={metrics['overfitting_gap']:.4f}")
+        logger.info(f"[OK] Optimisation GradientBoosting terminée: test_acc={metrics['test_accuracy']:.4f}, gap={metrics['overfitting_gap']:.4f}")
         
     except Exception as e:
-        logger.error(f"❌ Erreur optimisation GradientBoosting: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur optimisation GradientBoosting: {e}", exc_info=True)
         
         ml_tasks[task_id].update({
             'status': 'failed',
@@ -2258,11 +2267,11 @@ async def apply_gradientboosting_params(
             from config import TRADING_CONFIG
             from utils.config_persistence import apply_config_overrides
             apply_config_overrides(TRADING_CONFIG)
-            logger.info("✅ TRADING_CONFIG rechargé avec params GradientBoosting")
+            logger.info("[OK] TRADING_CONFIG recharge avec params GradientBoosting")
         except Exception as reload_err:
-            logger.warning(f"⚠️ Impossible de recharger TRADING_CONFIG: {reload_err}")
+            logger.warning(f"[WARN] Impossible de recharger TRADING_CONFIG: {reload_err}")
         
-        logger.info(f"✅ Paramètres GradientBoosting appliqués: {applied_params}")
+        logger.info(f"[OK] Parametres GradientBoosting appliques: {applied_params}")
         
         return {
             'success': True,
@@ -2274,7 +2283,7 @@ async def apply_gradientboosting_params(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur apply_gb_params: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur apply_gb_params: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2306,7 +2315,7 @@ async def get_gradientboosting_results():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_gb_results: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_gb_results: {e}", exc_info=True)
         return {
             'found': False,
             'error': str(e)
@@ -2316,10 +2325,7 @@ async def get_gradientboosting_results():
 # ========== AUTO-OPTIMISATION COMPLETE ==========
 
 @router.post("/optimize/auto/start")
-async def start_auto_optimization(
-    background_tasks: BackgroundTasks,
-    request: Request
-):
+async def start_auto_optimization(request: Request):
     """
     Démarrer l'optimisation automatique complète ML
     
@@ -2351,16 +2357,32 @@ async def start_auto_optimization(
             'min_trades': min_trades
         }
         
-        # Lancer optimisation en background
-        background_tasks.add_task(
-            _run_auto_optimization_background,
-            task_id,
-            n_splits,
-            timeframe_days,
-            min_trades
-        )
+        # 🔧 FIX: Utiliser un Thread au lieu de asyncio.create_task
+        # asyncio.create_task() peut orpheliner la tâche après le retour de la requête
+        import threading
         
-        logger.info(f"🚀 Auto-optimisation ML démarrée (task_id={task_id})")
+        def run_optimization_thread():
+            """Wrapper pour exécuter l'optimisation dans un thread"""
+            import asyncio
+            # Créer une nouvelle event loop pour ce thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    _run_auto_optimization_background(
+                        task_id,
+                        n_splits,
+                        timeframe_days,
+                        min_trades
+                    )
+                )
+            finally:
+                loop.close()
+        
+        thread = threading.Thread(target=run_optimization_thread, daemon=True)
+        thread.start()
+        
+        logger.info(f"[START] Auto-optimisation ML demarree dans thread (task_id={task_id})")
         
         return {
             'task_id': task_id,
@@ -2369,9 +2391,18 @@ async def start_auto_optimization(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur start_auto_optimization: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur start_auto_optimization: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# Logger dédié pour l'optimisation
+opt_logger = logging.getLogger('optimization_debug')
+opt_logger.setLevel(logging.DEBUG)
+if not opt_logger.handlers:
+    os.makedirs('logs', exist_ok=True)
+    fh = logging.FileHandler('logs/optimization_debug.log', encoding='utf-8')
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    opt_logger.addHandler(fh)
 
 async def _run_auto_optimization_background(
     task_id: str,
@@ -2383,10 +2414,13 @@ async def _run_auto_optimization_background(
     import asyncio
     import sys
     
+    opt_logger.info(f"[START] BACKGROUND TASK STARTED: task_id={task_id}")
+    
     try:
         ml_tasks[task_id]['status'] = 'running'
         ml_tasks[task_id]['progress'] = 5
-        ml_tasks[task_id]['message'] = 'Chargement des données...'
+        ml_tasks[task_id]['message'] = 'Démarrage...'
+        opt_logger.info(f"[DATA] Task {task_id} status set to 'running'")
         
         # Exécuter le script d'optimisation
         script_path = os.path.join(
@@ -2395,6 +2429,9 @@ async def _run_auto_optimization_background(
         
         ml_tasks[task_id]['progress'] = 10
         ml_tasks[task_id]['message'] = 'Lancement de l\'optimisation...'
+        
+        opt_logger.info(f"[DATA] Launching script: {script_path}")
+        opt_logger.info(f"[DATA] Python executable: {sys.executable}")
         
         # 🔧 FIX: Utiliser asyncio.create_subprocess_exec (non-bloquant)
         process = await asyncio.create_subprocess_exec(
@@ -2409,29 +2446,50 @@ async def _run_auto_optimization_background(
         # 🔧 NOUVEAU: Lire stdout en temps réel pour récupérer la progression
         async def read_progress():
             """Lit stdout en temps réel et met à jour la progression"""
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                    
-                line_str = line.decode('utf-8', errors='ignore').strip()
-                
-                # Parser les lignes PROGRESS:XX:message
-                if line_str.startswith('PROGRESS:'):
+            opt_logger.info(f"[DATA] Démarrage lecture stdout pour task {task_id}")
+            try:
+                while True:
+                    # Utiliser readline() qui est safe avec asyncio.subprocess
+                    line_bytes = await process.stdout.readline()
+                    if not line_bytes:
+                        opt_logger.info(f"[DATA] Fin de stdout pour task {task_id}")
+                        break
+                        
                     try:
-                        parts = line_str.split(':', 2)
-                        if len(parts) >= 3:
-                            progress = int(parts[1])
-                            message = parts[2]
-                            ml_tasks[task_id]['progress'] = progress
-                            ml_tasks[task_id]['message'] = message
-                            logger.info(f"📊 Optimisation progress: {progress}% - {message}")
-                    except (ValueError, IndexError):
-                        pass
-                else:
-                    # Logger les autres lignes pour debug
-                    if line_str:
-                        logger.debug(f"[auto_optimize_ml] {line_str}")
+                        # Essayer utf-8 puis cp1252 (windows)
+                        line_str = line_bytes.decode('utf-8').strip()
+                    except UnicodeDecodeError:
+                        line_str = line_bytes.decode('cp1252', errors='ignore').strip()
+                    
+                    if not line_str:
+                        continue
+
+                    # Logger tout pour debug
+                    if 'PROGRESS:' in line_str:
+                        opt_logger.info(f"[SCRIPT] {line_str}")
+                    else:
+                        opt_logger.debug(f"[SCRIPT STDOUT] {line_str}")
+                    
+                    # Parser les lignes PROGRESS:XX:message
+                    if line_str.startswith('PROGRESS:'):
+                        try:
+                            parts = line_str.split(':', 2)
+                            if len(parts) >= 3:
+                                progress = int(parts[1])
+                                message = parts[2]
+                                # Mettre à jour la tâche
+                                ml_tasks[task_id]['progress'] = progress
+                                ml_tasks[task_id]['message'] = message
+                                opt_logger.info(f"[DATA] UPDATE TASK {task_id}: {progress}% - {message}")
+                        except (ValueError, IndexError) as e:
+                            opt_logger.warning(f"[PARSE] Parse error: {e} - line: {line_str}")
+                    
+                    # Détecter les erreurs Python
+                    elif "Traceback" in line_str or "Error:" in line_str:
+                        opt_logger.error(f"[SCRIPT ERROR] {line_str}")
+                        
+            except Exception as e:
+                opt_logger.error(f"[READ] Erreur lecture stdout: {e}", exc_info=True)
         
         # Lancer la lecture de progression en parallèle
         progress_task = asyncio.create_task(read_progress())
@@ -2442,21 +2500,32 @@ async def _run_auto_optimization_background(
             # Attendre que le process finisse
             await asyncio.wait_for(process.wait(), timeout=1800)  # 30 minutes max
             # Récupérer stderr pour les erreurs
-            stderr = await process.stderr.read()
+            stderr_bytes = await process.stderr.read()
+            try:
+                stderr = stderr_bytes.decode('utf-8')
+            except:
+                stderr = stderr_bytes.decode('cp1252', errors='ignore')
+                
+            if stderr:
+                opt_logger.warning(f"[SCRIPT STDERR] {stderr}")
+                
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
             progress_task.cancel()
+            opt_logger.error("Timeout: optimisation trop longue (>30 min)")
             raise Exception("Timeout: optimisation trop longue (>30 min)")
         
         # Annuler la tâche de progression si encore active
         progress_task.cancel()
         
         if process.returncode != 0:
-            raise Exception(f"Script failed: {stderr.decode()}")
+            opt_logger.error(f"Script failed with return code {process.returncode}")
+            raise Exception(f"Script failed: {stderr}")
         
         ml_tasks[task_id]['progress'] = 90
         ml_tasks[task_id]['message'] = 'Lecture des résultats...'
+        opt_logger.info("Lecture des résultats...")
         
         # Charger les résultats
         metadata_path = os.path.join(
@@ -2488,8 +2557,8 @@ async def _run_auto_optimization_background(
                     'overfitting': 0.077
                 }
                 
-                # Seuil optimal
-                results['optimal_threshold'] = results['optimal_thresholds'].get('best_f1', 0.45)
+                # Seuil optimal - utiliser best_balanced pour trading (meilleur compromis precision/recall)
+                results['optimal_threshold'] = results['optimal_thresholds'].get('best_balanced', 0.50)
         
         # Charger l'analyse des seuils
         if os.path.exists(threshold_path):
@@ -2503,7 +2572,9 @@ async def _run_auto_optimization_background(
                         'accuracy': float(row['accuracy']),
                         'f1_score': float(row['f1_score']),
                         'precision': float(row['precision']),
-                        'recall': float(row['recall'])
+                        'recall': float(row['recall']),
+                        'predicted_wins': int(row.get('predicted_wins', 0)),
+                        'total_samples': int(row.get('total_samples', 0))
                     })
             results['threshold_analysis'] = threshold_analysis
         
@@ -2512,12 +2583,12 @@ async def _run_auto_optimization_background(
         ml_tasks[task_id]['message'] = 'Optimisation terminée!'
         ml_tasks[task_id]['results'] = results
         
-        logger.info(f"✅ Auto-optimisation terminée (task_id={task_id})")
+        logger.info(f"[OK] Auto-optimisation terminee (task_id={task_id})")
         
     except Exception as e:
         ml_tasks[task_id]['status'] = 'failed'
         ml_tasks[task_id]['error'] = str(e)
-        logger.error(f"❌ Auto-optimisation failed: {e}", exc_info=True)
+        logger.error(f"[FAIL] Auto-optimisation failed: {e}", exc_info=True)
 
 
 @router.post("/optimize/auto/apply")
@@ -2580,11 +2651,11 @@ async def apply_auto_optimization_results(request: Request):
             from config import TRADING_CONFIG
             from utils.config_persistence import apply_config_overrides
             apply_config_overrides(TRADING_CONFIG)
-            logger.info("✅ TRADING_CONFIG rechargé avec auto-optimisation")
+            logger.info("[OK] TRADING_CONFIG recharge avec auto-optimisation")
         except Exception as reload_err:
-            logger.warning(f"⚠️ Impossible de recharger TRADING_CONFIG: {reload_err}")
+            logger.warning(f"[WARN] Impossible de recharger TRADING_CONFIG: {reload_err}")
         
-        logger.info(f"✅ Auto-optimisation appliquée: {applied_params}")
+        logger.info(f"[OK] Auto-optimisation appliquee: {applied_params}")
         
         return {
             'success': True,
@@ -2595,7 +2666,7 @@ async def apply_auto_optimization_results(request: Request):
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur apply_auto_optimization: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur apply_auto_optimization: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2642,7 +2713,7 @@ async def train_xgboost_v2_model(
             force
         )
         
-        logger.info(f"🚀 Entraînement XGBoost V2 démarré (task_id={task_id})")
+        logger.info(f"[START] Entraînement XGBoost V2 démarré (task_id={task_id})")
         
         return {
             'task_id': task_id,
@@ -2651,7 +2722,7 @@ async def train_xgboost_v2_model(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur train_v2: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur train_v2: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2699,7 +2770,7 @@ async def get_ml_task_status(task_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur get_ml_task_status: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_ml_task_status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2723,7 +2794,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         ml_tasks[task_id]['progress'] = 5
         ml_tasks[task_id]['stage'] = 'loading_data'
         
-        logger.info(f"🚀 Entraînement V2 en cours (task_id={task_id})")
+        logger.info(f"[START] Entraînement V2 en cours (task_id={task_id})")
         
         # Charger params depuis config
         timeframe_days = TRADING_CONFIG.get('ml_v2_timeframe_days', 270)
@@ -2744,7 +2815,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         colsample_bytree = TRADING_CONFIG.get('ml_v2_colsample_bytree', 0.6)  # Réduit
         gamma = TRADING_CONFIG.get('ml_v2_gamma', 2.0)            # Augmenté de 0.5 à 2
         
-        logger.info(f"📊 Params V2: timeframe={timeframe_days}d, max_features={max_features}, filter_marginal={filter_marginal}")
+        logger.info(f"[DATA] Params V2: timeframe={timeframe_days}d, max_features={max_features}, filter_marginal={filter_marginal}")
         
         # Charger données nettoyées (meme filtre que XGBoost V1)
         ml_tasks[task_id]['progress'] = 10
@@ -2755,7 +2826,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         )
         
         df = calculate_derived_features(base_df)
-        logger.info(f"✅ {len(df)} trades chargés")
+        logger.info(f"[OK] {len(df)} trades chargés")
         
         # Filtrer invalides
         ml_tasks[task_id]['progress'] = 15
@@ -2781,11 +2852,11 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
             df['target_pnl'] = df['target_pnl'].clip(lower=lower_bound, upper=upper_bound)
             
             pnl_after = df['target_pnl'].describe()
-            logger.info(f"📊 Target PNL clippé: [{lower_bound:.2f}%, {upper_bound:.2f}%]")
-            logger.info(f"📊 Avant: std={pnl_before['std']:.3f}%, range=[{pnl_before['min']:.2f}%, {pnl_before['max']:.2f}%]")
-            logger.info(f"📊 Après: std={pnl_after['std']:.3f}%, range=[{pnl_after['min']:.2f}%, {pnl_after['max']:.2f}%]")
+            logger.info(f"[DATA] Target PNL clippé: [{lower_bound:.2f}%, {upper_bound:.2f}%]")
+            logger.info(f"[DATA] Avant: std={pnl_before['std']:.3f}%, range=[{pnl_before['min']:.2f}%, {pnl_before['max']:.2f}%]")
+            logger.info(f"[DATA] Après: std={pnl_after['std']:.3f}%, range=[{pnl_after['min']:.2f}%, {pnl_after['max']:.2f}%]")
         
-        logger.info(f"✅ {len(df)} trades après filtrage ({len(df)/initial_count*100:.1f}%)")
+        logger.info(f"[OK] {len(df)} trades après filtrage ({len(df)/initial_count*100:.1f}%)")
         
         if len(df) < 100:
             raise Exception(f"Dataset trop petit: {len(df)} trades (minimum 100)")
@@ -2815,7 +2886,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         X_test = test_df[feature_cols].copy()
         y_test = test_df['target_pnl'].copy()
         
-        logger.info(f"✅ Split: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+        logger.info(f"[OK] Split: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
         
         # Feature selection
         ml_tasks[task_id]['progress'] = 30
@@ -2838,7 +2909,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         X_val = X_val[selected_features]
         X_test = X_test[selected_features]
         
-        logger.info(f"✅ {max_features} features sélectionnées (top mutual info)")
+        logger.info(f"[OK] {max_features} features sélectionnées (top mutual info)")
         
         # Preprocessing
         ml_tasks[task_id]['progress'] = 40
@@ -2883,7 +2954,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
             verbose=False
         )
         
-        logger.info("✅ Entraînement terminé")
+        logger.info("[OK] Entraînement terminé")
         
         # Évaluation régression
         ml_tasks[task_id]['progress'] = 80
@@ -2905,9 +2976,9 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         
         # 🔥 DIAGNOSTIC R² négatif
         if test_r2 < -1.0:
-            logger.warning(f"⚠️ R² très négatif ({test_r2:.1f}): variance train={y_train.var():.4f}, test={y_test.var():.4f}")
-            logger.warning(f"⚠️ Predictions: mean={y_test_pred.mean():.3f}, std={y_test_pred.std():.3f}")
-            logger.warning(f"⚠️ Actuals: mean={y_test.mean():.3f}, std={y_test.std():.3f}")
+            logger.warning(f"[WARN] R² très négatif ({test_r2:.1f}): variance train={y_train.var():.4f}, test={y_test.var():.4f}")
+            logger.warning(f"[WARN] Predictions: mean={y_test_pred.mean():.3f}, std={y_test_pred.std():.3f}")
+            logger.warning(f"[WARN] Actuals: mean={y_test.mean():.3f}, std={y_test.std():.3f}")
             # Clipper R² pour affichage (le modèle reste le même)
             test_r2_display = max(-1.0, test_r2)
         else:
@@ -2921,7 +2992,7 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         test_f1 = f1_score(y_test_class, y_test_pred_class, zero_division=0)
         test_accuracy = accuracy_score(y_test_class, y_test_pred_class)
         
-        logger.info(f"📊 R² Test: {test_r2_display:.3f} (raw: {test_r2:.1f}), MAE Test: {test_mae:.3f}%, F1: {test_f1:.3f}")
+        logger.info(f"[DATA] R² Test: {test_r2_display:.3f} (raw: {test_r2:.1f}), MAE Test: {test_mae:.3f}%, F1: {test_f1:.3f}")
         
         # ========== SAUVEGARDE MODÈLE V2 ==========
         ml_tasks[task_id]['progress'] = 90
@@ -2942,12 +3013,12 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         # Sauvegarder modèle
         model_path = models_dir / f"{model_name}.pkl"
         joblib.dump(model, model_path)
-        logger.info(f"💾 Modèle sauvegardé: {model_path}")
+        logger.info(f"[SAVE] Modèle sauvegardé: {model_path}")
         
         # Sauvegarder preprocessor
         preprocessor_path = models_dir / f"{model_name}_preprocessor.pkl"
         joblib.dump(preprocessor, preprocessor_path)
-        logger.info(f"💾 Preprocessor sauvegardé: {preprocessor_path}")
+        logger.info(f"[SAVE] Preprocessor sauvegardé: {preprocessor_path}")
         
         # Sauvegarder aussi comme "latest"
         latest_model_path = models_dir / "xgboost_v2_latest.pkl"
@@ -3047,10 +3118,10 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
                 datetime.now()                       # $32
             )
             
-            logger.info(f"✅ Modèle V2 sauvegardé dans PostgreSQL: {model_name}")
+            logger.info(f"[OK] Modèle V2 sauvegardé dans PostgreSQL: {model_name}")
             
         except Exception as db_error:
-            logger.error(f"❌ Erreur sauvegarde PostgreSQL: {db_error}", exc_info=True)
+            logger.error(f"[FAIL] Erreur sauvegarde PostgreSQL: {db_error}", exc_info=True)
             # Continuer même si erreur DB (fichiers .pkl sont sauvegardés)
         
         # Success
@@ -3073,10 +3144,10 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
             'completed_at': datetime.now().isoformat()
         })
         
-        logger.info(f"✅ Entraînement V2 terminé (task_id={task_id})")
+        logger.info(f"[OK] Entraînement V2 terminé (task_id={task_id})")
         
     except Exception as e:
-        logger.error(f"❌ Erreur _train_xgboost_v2_background: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur _train_xgboost_v2_background: {e}", exc_info=True)
         ml_tasks[task_id].update({
             'status': 'error',
             'error': str(e),
@@ -3152,7 +3223,7 @@ async def start_hyperparameter_optimization_v2(
             n_trials
         )
         
-        logger.info(f"🎯 Optimisation V2 démarrée ({n_trials} trials)")
+        logger.info(f"[TRAIN] Optimisation V2 démarrée ({n_trials} trials)")
         
         return {
             'status': 'started',
@@ -3164,7 +3235,7 @@ async def start_hyperparameter_optimization_v2(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur start_optimization_v2: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur start_optimization_v2: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3183,7 +3254,7 @@ async def _optimize_hyperparameters_v2_background(n_trials: int):
         from sklearn.feature_selection import mutual_info_regression
         import pandas as pd
         
-        logger.info(f"🚀 Optimisation V2 en cours")
+        logger.info(f"[START] Optimisation V2 en cours")
         
         # Charger données
         optuna_v2_state['progress'] = 5
@@ -3319,10 +3390,10 @@ async def _optimize_hyperparameters_v2_background(n_trials: int):
             'n_trials': len(study.trials)
         })
         
-        logger.info(f"✅ Optimisation V2 terminée: R²={study.best_value:.3f}")
+        logger.info(f"[OK] Optimisation V2 terminée: R²={study.best_value:.3f}")
         
     except Exception as e:
-        logger.error(f"❌ Erreur _optimize_v2_background: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur _optimize_v2_background: {e}", exc_info=True)
         optuna_v2_state.update({
             'is_running': False,
             'error': str(e)
@@ -3347,7 +3418,7 @@ async def get_optimization_v2_status():
             'study_name': 'xgboost_v2_regression'
         }
     except Exception as e:
-        logger.error(f"❌ Erreur get_optimization_v2_status: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur get_optimization_v2_status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3374,7 +3445,7 @@ async def apply_best_hyperparameters_v2(params_dict: Dict[str, Any] = Body(None)
         else:
             score = params_dict.pop('score', None) if isinstance(params_dict, dict) else None
         
-        logger.info(f"💾 Application params V2: {params_dict}")
+        logger.info(f"[SAVE] Application params V2: {params_dict}")
         
         # Utiliser le même fichier que config_persistence.py
         from utils.config_persistence import CONFIG_OVERRIDES_FILE
@@ -3404,7 +3475,7 @@ async def apply_best_hyperparameters_v2(params_dict: Dict[str, Any] = Body(None)
             if param in ['score', 'source']:
                 continue
             if param not in valid_v2_params:
-                logger.warning(f"⚠️ Paramètre V2 non-standard ignoré: {param}")
+                logger.warning(f"[WARN] Paramètre V2 non-standard ignoré: {param}")
                 continue
             config_key = f"ml_v2_{param}"
             config[config_key] = value
@@ -3412,17 +3483,17 @@ async def apply_best_hyperparameters_v2(params_dict: Dict[str, Any] = Body(None)
         with open(config_file, 'w') as f:
             json.dump(config, f, indent=2)
         
-        logger.info(f"💾 Paramètres V2 sauvegardés dans {config_file}")
+        logger.info(f"[SAVE] Paramètres V2 sauvegardés dans {config_file}")
         
         # Recharger TRADING_CONFIG
         try:
             from utils.config_persistence import apply_config_overrides
             apply_config_overrides(TRADING_CONFIG)
-            logger.info("✅ TRADING_CONFIG rechargé avec params V2")
-            logger.info(f"🔍 Vérification: ml_v2_max_depth = {TRADING_CONFIG.get('ml_v2_max_depth')}")
-            logger.info(f"🔍 Vérification: ml_v2_learning_rate = {TRADING_CONFIG.get('ml_v2_learning_rate')}")
+            logger.info("[OK] TRADING_CONFIG rechargé avec params V2")
+            logger.info(f"[CHECK] Vérification: ml_v2_max_depth = {TRADING_CONFIG.get('ml_v2_max_depth')}")
+            logger.info(f"[CHECK] Vérification: ml_v2_learning_rate = {TRADING_CONFIG.get('ml_v2_learning_rate')}")
         except Exception as reload_err:
-            logger.error(f"❌ Impossible de recharger TRADING_CONFIG: {reload_err}")
+            logger.error(f"[FAIL] Impossible de recharger TRADING_CONFIG: {reload_err}")
         
         return {
             'success': True,
@@ -3436,7 +3507,7 @@ async def apply_best_hyperparameters_v2(params_dict: Dict[str, Any] = Body(None)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Erreur apply_v2_hyperparameters: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur apply_v2_hyperparameters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3510,7 +3581,7 @@ async def train_gradientboosting_model(
         # Lancer en background
         background_tasks.add_task(_train_gradientboosting_background, task_id)
         
-        logger.info(f"🎯 Entraînement GradientBoosting démarré (task_id={task_id})")
+        logger.info(f"[TRAIN] Entraînement GradientBoosting démarré (task_id={task_id})")
         
         return {
             'task_id': task_id,
@@ -3519,7 +3590,7 @@ async def train_gradientboosting_model(
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur train_gb: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur train_gb: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3593,7 +3664,7 @@ async def verify_gradientboosting_model():
         }
         
     except Exception as e:
-        logger.error(f"❌ Erreur verify_gb: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur verify_gb: {e}", exc_info=True)
         return {
             'status': 'error',
             'message': str(e),
@@ -3632,7 +3703,7 @@ async def _train_gradientboosting_background(task_id: str):
         ml_tasks[task_id]['progress'] = 5
         ml_tasks[task_id]['stage'] = 'loading_data'
         
-        logger.info(f"🎯 Entraînement GradientBoosting en cours (task_id={task_id})")
+        logger.info(f"[TRAIN] Entraînement GradientBoosting en cours (task_id={task_id})")
         
         # 🔥 FIX: Utiliser ml_features (pas ml_features_clean qui est obsolète)
         # Charger TOUTES les données puis filtrer comme l'UI
@@ -3641,7 +3712,7 @@ async def _train_gradientboosting_background(task_id: str):
         
         # Charger depuis ml_features (table complète)
         base_df = load_features_from_postgres(timeframe_days=timeframe, min_trades=30, use_clean_data=False)
-        logger.info(f"📊 Données brutes chargées: {len(base_df)} trades (timeframe={timeframe} jours)")
+        logger.info(f"[DATA] Données brutes chargées: {len(base_df)} trades (timeframe={timeframe} jours)")
         
         # 🔥 ALIGNÉ AVEC OPTUNA: Utiliser TOUTES les données (pas de filtrage par config)
         # Le filtrage strict réduisait le dataset et causait des différences de métriques
@@ -3657,7 +3728,7 @@ async def _train_gradientboosting_background(task_id: str):
         use_config_filter = False  # Aligné avec Optuna
         
         # 🔥 ALIGNÉ AVEC OPTUNA: Pas de filtrage par config
-        logger.info(f"📊 Données utilisées: {len(base_df)}/{initial_count} trades (aligné Optuna)")
+        logger.info(f"[DATA] Données utilisées: {len(base_df)}/{initial_count} trades (aligné Optuna)")
         df = calculate_derived_features(base_df)
         
         ml_tasks[task_id]['progress'] = 20
@@ -3723,7 +3794,7 @@ async def _train_gradientboosting_background(task_id: str):
         if 'ema_diff_pct_1m' in df.columns and 'ema_diff_pct_5m' in df.columns:
             df['ema_trend_aligned'] = np.sign(df['ema_diff_pct_1m']) * np.sign(df['ema_diff_pct_5m'])
         
-        logger.info(f"📊 Nouvelles features créées: bb_position, momentum_combined, macd_acceleration, etc.")
+        logger.info(f"[DATA] Nouvelles features créées: bb_position, momentum_combined, macd_acceleration, etc.")
         
         # Préparer features
         exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity', 'date']
@@ -3750,12 +3821,12 @@ async def _train_gradientboosting_background(task_id: str):
             sort_idx = df['timestamp'].argsort().values
             X = X[sort_idx]
             y = y[sort_idx]
-            logger.info(f"📊 Split temporel: données triées par timestamp")
+            logger.info(f"[DATA] Split temporel: données triées par timestamp")
         
         X_train, X_test = X[:train_end], X[train_end:]
         y_train, y_test = y[:train_end], y[train_end:]
         
-        logger.info(f"📊 Split: Train={len(y_train)} ({len(y_train)/n*100:.0f}%), Test={len(y_test)} ({len(y_test)/n*100:.0f}%)")
+        logger.info(f"[DATA] Split: Train={len(y_train)} ({len(y_train)/n*100:.0f}%), Test={len(y_test)} ({len(y_test)/n*100:.0f}%)")
         
         # 🔥 OPTIMISE: Utiliser les 28 features pré-sélectionnées si disponibles
         optimized_metadata_path = Path('optimization/saved_models/gradient_boosting_optimized_metadata.json')
@@ -3790,12 +3861,12 @@ async def _train_gradientboosting_background(task_id: str):
                         y_train, y_test = y[:train_end], y[train_end:]  # 🔥 FIX: Re-split y aussi
                         
                         use_optimized_features = True
-                        logger.info(f"⭐ Utilisation des {len(valid_features)} features OPTIMISEES (68.5% accuracy)")
-                        logger.info(f"📋 Features: {valid_features[:5]}...")
+                        logger.info(f"[OPTIM] Utilisation des {len(valid_features)} features OPTIMISEES (68.5% accuracy)")
+                        logger.info(f"[LIST] Features: {valid_features[:5]}...")
                     else:
-                        logger.warning(f"⚠️ {len(missing)} features optimisées manquantes, fallback SelectKBest")
+                        logger.warning(f"[WARN] {len(missing)} features optimisées manquantes, fallback SelectKBest")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur chargement features optimisées: {e}")
+                logger.warning(f"[WARN] Erreur chargement features optimisées: {e}")
         
         if not use_optimized_features:
             # Fallback: Sélection dynamique avec SelectKBest
@@ -3806,14 +3877,14 @@ async def _train_gradientboosting_background(task_id: str):
             optimal_k = max(25, min(n_samples // 80, n_features_original))
             
             if n_features_original > optimal_k:
-                logger.info(f"📊 Sélection features dynamique: {n_features_original} → {optimal_k}")
+                logger.info(f"[DATA] Sélection features dynamique: {n_features_original} → {optimal_k}")
                 selector = SelectKBest(f_classif, k=optimal_k)
                 X_train = selector.fit_transform(X_train, y_train)
                 X_test = selector.transform(X_test)
                 
                 selected_mask = selector.get_support()
                 feature_cols = [feature_cols[i] for i in range(len(feature_cols)) if selected_mask[i]]
-                logger.info(f"📋 Features sélectionnées: {feature_cols[:5]}...")
+                logger.info(f"[LIST] Features sélectionnées: {feature_cols[:5]}...")
         
         # 🔥 OPTIMISE: Utiliser StandardScaler (comme l'optimisation avancée)
         from sklearn.preprocessing import StandardScaler
@@ -3830,8 +3901,8 @@ async def _train_gradientboosting_background(task_id: str):
         # Log la distribution des classes
         n_pos = np.sum(y_train == 1)
         n_neg = np.sum(y_train == 0)
-        logger.info(f"📊 Distribution classes: positifs={n_pos} ({n_pos/len(y_train)*100:.1f}%), négatifs={n_neg} ({n_neg/len(y_train)*100:.1f}%)")
-        logger.info(f"📊 Class weights: {class_weight_dict}")
+        logger.info(f"[DATA] Distribution classes: positifs={n_pos} ({n_pos/len(y_train)*100:.1f}%), négatifs={n_neg} ({n_neg/len(y_train)*100:.1f}%)")
+        logger.info(f"[DATA] Class weights: {class_weight_dict}")
         
         # Choisir le type de modèle (GB standard ou HistGB 10x plus rapide)
         from config import TRADING_CONFIG
@@ -3840,7 +3911,7 @@ async def _train_gradientboosting_background(task_id: str):
         if model_type == 'histgb':
             # HistGradientBoosting - 10x plus rapide
             from sklearn.ensemble import HistGradientBoostingClassifier
-            logger.info(f"🔥 Utilisation de HistGradientBoostingClassifier (10x plus rapide)")
+            logger.info(f"[FAST] Utilisation de HistGradientBoostingClassifier (10x plus rapide)")
             
             # 🔥 FIX: Utiliser les paramètres optimisés sans les écraser
             model = HistGradientBoostingClassifier(
@@ -3874,7 +3945,7 @@ async def _train_gradientboosting_background(task_id: str):
             )
             # 🔥 EXACT COMME L'OPTIMISATION: pas de sample_weight
             model.fit(X_train_scaled, y_train)
-            logger.info(f"✅ GB standard entraîné (mode optimisé - sans sample_weights)")
+            logger.info(f"[OK] GB standard entraîné (mode optimisé - sans sample_weights)")
         
         ml_tasks[task_id]['progress'] = 75
         ml_tasks[task_id]['stage'] = 'cross_validation'
@@ -3917,8 +3988,8 @@ async def _train_gradientboosting_background(task_id: str):
         cv_acc_std = cv_accuracy.std()
         cv_f1_mean = cv_f1.mean()
         
-        logger.info(f"📊 CV Accuracy: {cv_acc_mean*100:.1f}% ± {cv_acc_std*100:.1f}%")
-        logger.info(f"📊 CV F1 Score: {cv_f1_mean:.3f}")
+        logger.info(f"[DATA] CV Accuracy: {cv_acc_mean*100:.1f}% ± {cv_acc_std*100:.1f}%")
+        logger.info(f"[DATA] CV F1 Score: {cv_f1_mean:.3f}")
         
         ml_tasks[task_id]['progress'] = 85
         ml_tasks[task_id]['stage'] = 'evaluating'
@@ -3986,10 +4057,10 @@ async def _train_gradientboosting_background(task_id: str):
         ml_tasks[task_id]['metrics'] = metadata['metrics']
         ml_tasks[task_id]['model_type'] = model_type
         
-        logger.info(f"✅ {model_name} entraîné: Accuracy={test_acc:.1%}, F1={test_f1:.3f}, Gap={gap:.1%}")
+        logger.info(f"[OK] {model_name} entraîné: Accuracy={test_acc:.1%}, F1={test_f1:.3f}, Gap={gap:.1%}")
         
     except Exception as e:
-        logger.error(f"❌ Erreur _train_gradientboosting_background: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur _train_gradientboosting_background: {e}", exc_info=True)
         ml_tasks[task_id]['status'] = 'error'
         ml_tasks[task_id]['error'] = str(e)
 
@@ -4113,7 +4184,7 @@ async def apply_gb_optuna_params():
         overrides.update(updated)
         save_config_overrides(overrides)
         
-        logger.info(f"✅ Paramètres Optuna appliqués: {updated}")
+        logger.info(f"[OK] Paramètres Optuna appliqués: {updated}")
         
         return {
             'success': True,
@@ -4165,7 +4236,7 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
     import asyncio
     
     try:
-        logger.info(f"🔬 Démarrage optimisation Optuna GB (task={task_id})")
+        logger.info(f"[CV] Démarrage optimisation Optuna GB (task={task_id})")
         
         from optimization.optuna_gb_tuner import GradientBoostingOptunaOptimizer
         from optimization.data.feature_loader import load_features_from_postgres
@@ -4174,14 +4245,14 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
         
         # 1. Charger les données - MÊME LOGIQUE QUE TRAINING
         _gb_optuna_task['progress'] = 5
-        logger.info("📊 Chargement des données depuis PostgreSQL...")
+        logger.info("[DATA] Chargement des données depuis PostgreSQL...")
         
         # 🔥 FIX: Utiliser ml_features (pas ml_features_clean obsolète) + même filtrage que training
         from config import TRADING_CONFIG
         timeframe = TRADING_CONFIG.get('gb_timeframe_days', 730)  # 2 ans par défaut
         
         base_df = load_features_from_postgres(timeframe_days=timeframe, min_trades=30, use_clean_data=False)
-        logger.info(f"📊 Données brutes chargées: {len(base_df)} trades (timeframe={timeframe} jours)")
+        logger.info(f"[DATA] Données brutes chargées: {len(base_df)} trades (timeframe={timeframe} jours)")
         
         # 🔥 FILTRE STRICT: Seulement trades avec TOUS les paramètres config identiques
         initial_count = len(base_df)
@@ -4196,7 +4267,7 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
             'atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
             'atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
         }
-        logger.info(f"🔧 Config actuelle: min_score={current_config['min_score_required']}, "
+        logger.info(f"[CONFIG] Config actuelle: min_score={current_config['min_score_required']}, "
                    f"snr={current_config['snr_threshold']}, vol={current_config['volume_multiplier']}, "
                    f"confluence={current_config['use_confluence']}")
         
@@ -4231,7 +4302,7 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
         base_df = base_df[mask]
         logger.info(f"   Après filtre config COMPLET: {len(base_df)} trades")
         
-        logger.info(f"📊 Données filtrées: {len(base_df)}/{initial_count} trades utilisables")
+        logger.info(f"[DATA] Données filtrées: {len(base_df)}/{initial_count} trades utilisables")
         
         df = calculate_derived_features(base_df)
         
@@ -4240,7 +4311,7 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
         
         # 2. Feature engineering (même que train_gb)
         _gb_optuna_task['progress'] = 15
-        logger.info(f"🔧 Feature engineering sur {len(df)} trades...")
+        logger.info(f"[CONFIG] Feature engineering sur {len(df)} trades...")
         
         # Features temporelles
         if 'timestamp' in df.columns:
@@ -4274,7 +4345,7 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
         if len(X) < 200:
             raise ValueError(f"Pas assez d'échantillons après feature engineering: {len(X)}")
         
-        logger.info(f"✅ Dataset prêt: {X.shape[0]} samples, {X.shape[1]} features")
+        logger.info(f"[OK] Dataset prêt: {X.shape[0]} samples, {X.shape[1]} features")
         
         # 3. Lancer l'optimisation dans un thread séparé pour ne pas bloquer le WebSocket
         _gb_optuna_task['progress'] = 20
@@ -4282,7 +4353,7 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
         # Récupérer le type de modèle depuis la config
         from config import TRADING_CONFIG
         model_type = TRADING_CONFIG.get('gb_model_type', 'gb')
-        logger.info(f"🔧 Type de modèle: {model_type} ({'HistGradientBoosting 10x rapide' if model_type == 'histgb' else 'GradientBoosting standard'})")
+        logger.info(f"[CONFIG] Type de modèle: {model_type} ({'HistGradientBoosting 10x rapide' if model_type == 'histgb' else 'GradientBoosting standard'})")
         
         optimizer = GradientBoostingOptunaOptimizer(
             n_trials=n_trials,
@@ -4298,7 +4369,7 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
                 _gb_optuna_task['best_score'] = score
         
         # 🔥 Exécuter dans un thread séparé pour libérer l'event loop (WebSocket reste actif)
-        logger.info("🔄 Lancement optimisation dans thread séparé (WebSocket reste actif)...")
+        logger.info("[RELOAD] Lancement optimisation dans thread séparé (WebSocket reste actif)...")
         result = await asyncio.to_thread(optimizer.optimize, X, y, progress_callback)
         
         # 4. Mettre à jour le statut
@@ -4311,13 +4382,13 @@ async def _run_gb_optuna_optimization(task_id: str, n_trials: int, timeout_minut
             _gb_optuna_task['progress'] = 100
             _gb_optuna_task['completed_at'] = datetime.now().isoformat()
             
-            logger.info(f"✅ Optimisation terminée: Best F1={result['best_score']:.4f}")
+            logger.info(f"[OK] Optimisation terminée: Best F1={result['best_score']:.4f}")
             logger.info(f"   Params: {result['best_params']}")
         else:
             raise Exception(result.get('error', 'Erreur inconnue'))
         
     except Exception as e:
-        logger.error(f"❌ Erreur optimisation Optuna: {e}", exc_info=True)
+        logger.error(f"[FAIL] Erreur optimisation Optuna: {e}", exc_info=True)
         _gb_optuna_task['status'] = 'error'
         _gb_optuna_task['error'] = str(e)
         _gb_optuna_task['completed_at'] = datetime.now().isoformat()
