@@ -795,17 +795,21 @@ class PositionManager:
                         logger.info(f" Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT")
                     
                     if order_result.filled_amount:
-                        # 🔥 FIX CRITIQUE: Convertir contrats bruts en tokens réels IMMÉDIATEMENT
-                        # order_result.filled_amount = contrats bruts (ex: 11 pour AAVE)
-                        # real_tokens = contrats * contract_size (ex: 11 * 0.01 = 0.11 AAVE)
-                        contract_size = self.active_position.contract_size_used
-                        if not contract_size or contract_size <= 0:
-                            contract_size = self._get_contract_size(symbol)
-                            self.active_position.contract_size_used = contract_size
-                            logger.info(f"📋 Contract size récupéré: {contract_size} pour {symbol}")
+                        # 🔥 FIX CRITIQUE: Utiliser les valeurs de order_result correctement
+                        # order_result.filled_amount est DÉJÀ en tokens réels (conversion faite dans bypass)
+                        # order_result.contract_size contient le contract_size utilisé
                         
-                        real_tokens = order_result.filled_amount * contract_size
-                        logger.info(f"🔢 Conversion contrats→tokens: {order_result.filled_amount} × {contract_size} = {real_tokens:.6f} tokens")
+                        # Stocker le contract_size pour les calculs futurs
+                        if order_result.contract_size and order_result.contract_size > 0:
+                            self.active_position.contract_size_used = order_result.contract_size
+                            logger.info(f"📋 Contract size depuis ordre: {order_result.contract_size} pour {symbol}")
+                        elif not self.active_position.contract_size_used or self.active_position.contract_size_used <= 0:
+                            self.active_position.contract_size_used = self._get_contract_size(symbol)
+                            logger.info(f"📋 Contract size récupéré: {self.active_position.contract_size_used} pour {symbol}")
+                        
+                        # 🔥 FIX: filled_amount est DÉJÀ en tokens réels, pas besoin de conversion
+                        real_tokens = order_result.filled_amount
+                        logger.info(f"📊 Position ouverte: {real_tokens:.6f} tokens réels ({real_tokens / self.active_position.contract_size_used if self.active_position.contract_size_used else real_tokens:.2f} contrats MEXC)")
                         
                         self.active_position.position_size_contracts = real_tokens
                         self.active_position.size_initial_contracts = real_tokens
@@ -834,15 +838,27 @@ class PositionManager:
                     # 🔥 FIX: Utiliser order_result.min_contract_amount
                     self.active_position.min_contract_amount = order_result.min_contract_amount
                     
-                    # 🔥 FIX: Calculer si TP partiel doit fermer 100% au lieu de X%
+                    # 🔥 FIX CRITIQUE: Calculer si TP partiel doit fermer 100% au lieu de X%
+                    # ATTENTION: filled_amount est en TOKENS, min_contract_amount est en CONTRATS
+                    # Il faut convertir en contrats pour comparer correctement !
                     if order_result.min_contract_amount and order_result.filled_amount:
                         partial_tp_percent = TRADING_CONFIG.get('partial_tp_percent', 50.0)
-                        partial_qty = order_result.filled_amount * (partial_tp_percent / 100.0)
-                        if partial_qty < order_result.min_contract_amount:
+                        
+                        # 🔥 FIX: Convertir tokens → contrats pour comparaison
+                        contract_size = order_result.contract_size or self.active_position.contract_size_used or 1.0
+                        filled_contracts = order_result.filled_amount / contract_size if contract_size > 0 else order_result.filled_amount
+                        partial_contracts = filled_contracts * (partial_tp_percent / 100.0)
+                        
+                        logger.info(
+                            f"📊 Vérification TP Partiel: {filled_contracts:.2f} contrats × {partial_tp_percent}% = "
+                            f"{partial_contracts:.2f} contrats | Min: {order_result.min_contract_amount} contrats"
+                        )
+                        
+                        if partial_contracts < order_result.min_contract_amount:
                             self.active_position.force_full_tp_for_partial = True
                             logger.info(
-                                f"🔧 TP Partiel forcé à 100%: {partial_qty:.6f} < min {order_result.min_contract_amount:.6f} | "
-                                f"Position: {order_result.filled_amount:.6f} tokens"
+                                f"🔧 TP Partiel forcé à 100%: {partial_contracts:.2f} contrats < min {order_result.min_contract_amount} | "
+                                f"Position: {filled_contracts:.2f} contrats ({order_result.filled_amount:.6f} tokens)"
                             )
                         else:
                             self.active_position.force_full_tp_for_partial = False

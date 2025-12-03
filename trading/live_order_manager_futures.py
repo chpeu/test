@@ -1528,9 +1528,46 @@ class LiveOrderManagerFutures:
                     
                     amount = contract_spec.round_volume(amount)
                     current_price = contract_spec.round_price(current_price)
+                    
+                    # 🔥 FIX CRITIQUE: Si amount arrondi = 0, récupérer la taille réelle MEXC et fermer 100%
+                    # Cela arrive quand partial_pct * position < min_contract (ex: 0.5 contrat DOGE)
+                    if amount <= 0 and partial_pct is not None:
+                        logger.warning(
+                            f"⚠️ Volume partiel arrondi à 0 pour {bypass_symbol}. "
+                            f"Récupération taille MEXC pour fermer 100%..."
+                        )
+                        try:
+                            positions = run_async_safely(
+                                self.bypass_client.get_open_positions(bypass_symbol)
+                            )
+                            if positions:
+                                for pos in positions:
+                                    pos_symbol = getattr(pos, 'symbol', None)
+                                    pos_size = getattr(pos, 'hold_vol', None) or getattr(pos, 'size', None)
+                                    if pos_symbol == bypass_symbol and pos_size and pos_size > 0:
+                                        amount = float(pos_size)
+                                        logger.info(
+                                            f"🔧 TP Partiel forcé à 100%: volume MEXC={amount} contrats "
+                                            f"(partiel impossible car < min)"
+                                        )
+                                        break
+                        except Exception as pos_err:
+                            logger.error(f"❌ Impossible de récupérer position MEXC: {pos_err}")
                 else:
                     amount = round(amount, 4)
                     logger.warning(f"Specs non disponibles pour {bypass_symbol}, arrondi basique")
+                
+                # 🔥 FIX: Validation finale - rejeter si volume toujours 0
+                if amount <= 0:
+                    logger.error(
+                        f"❌ [BYPASS] BLOQUE fermeture: volume={amount} <= 0 pour {bypass_symbol} | "
+                        f"partial_pct={partial_pct}"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Volume fermeture invalide: {amount} <= 0",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
                 
                 # Déterminer side pour bypass (fermeture)
                 # 1=open long, 2=close short, 3=open short, 4=close long
