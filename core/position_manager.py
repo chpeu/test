@@ -114,6 +114,7 @@ class Position:
     position_size_usdt: Optional[float] = None
     position_size_contracts: Optional[float] = None
     size_initial_contracts: Optional[float] = None
+    size_initial_usdt: Optional[float] = None  # 🔥 FIX: Taille initiale USDT (totale) pour historique
     size_remaining_contracts: Optional[float] = None
     liquidation_price: Optional[float] = None
     margin_used: Optional[float] = None
@@ -199,6 +200,7 @@ class Position:
             'position_size_usdt': self.position_size_usdt,
             'position_size_contracts': self.position_size_contracts,
             'size_initial_contracts': self.size_initial_contracts,
+            'size_initial_usdt': self.size_initial_usdt,
             'size_remaining_contracts': self.size_remaining_contracts,
             'liquidation_price': self.liquidation_price,
             'margin_used': self.margin_used,
@@ -910,6 +912,10 @@ class PositionManager:
                                 # 🔥 FIX: TOUJOURS synchroniser size_initial_contracts avec tokens réels
                                 self.active_position.size_initial_contracts = real_tokens
                                 self.active_position.size_remaining_contracts = real_tokens
+                                # 🔥 FIX: Initialiser size_initial_usdt (taille totale)
+                                if not self.active_position.size_initial_usdt:
+                                    self.active_position.size_initial_usdt = live_size_usdt
+
                                 logger.info(
                                     f"🔁 [LIVE] Taille synchronisée: {real_tokens:.6f} tokens ({live_contracts:.0f} contrats × {contract_size})"
                                 )
@@ -1395,6 +1401,37 @@ class PositionManager:
 
         # 🔥 FIX: Importer TRADING_CONFIG pour lecture dynamique
         from config import TRADING_CONFIG
+        
+        # 🔥 FIX CRITIQUE: Correction des tailles corrompues (ex: SHIB initial contract size)
+        # Si remaining > initial, alors initial est faux (sous-estimé par facteur 1000)
+        if self.active_position.size_remaining_contracts and self.active_position.size_initial_contracts:
+             if self.active_position.size_remaining_contracts > self.active_position.size_initial_contracts * 1.01: # Marge 1%
+                 logger.warning(f"⚠️ Incohérence détectée: Remaining ({self.active_position.size_remaining_contracts}) > Initial ({self.active_position.size_initial_contracts}). Correction...")
+                 ratio = self.active_position.size_remaining_contracts / self.active_position.size_initial_contracts
+                 if ratio > 50: # Facteur 1000 probable (même si partiellement vendu)
+                     self.active_position.size_initial_contracts *= 1000
+                     logger.info(f"✅ Correction x1000 appliquée à size_initial_contracts: {self.active_position.size_initial_contracts}")
+                 else:
+                     # Fallback: prendre remaining comme initial minimum
+                     self.active_position.size_initial_contracts = self.active_position.size_remaining_contracts
+                     logger.info(f"✅ Correction fallback appliquée à size_initial_contracts: {self.active_position.size_initial_contracts}")
+
+        # 🔥 FIX: Initialiser size_initial_usdt si manquant (pour historique)
+        if not self.active_position.size_initial_usdt:
+             if self.active_position.partial_tp_sold:
+                  # Estimation rétroactive si on a déjà vendu
+                  partial_pct = TRADING_CONFIG.get('partial_tp_percent', 50.0) / 100.0
+                  try:
+                      # Si size actuel est 10.40 et partial 50%, initial ~ 20.80.
+                      self.active_position.size_initial_usdt = self.active_position.size / (1 - partial_pct)
+                  except:
+                      self.active_position.size_initial_usdt = self.active_position.size
+             else:
+                  self.active_position.size_initial_usdt = self.active_position.size
+        
+        # 🔥 FIX: Initialiser start_time si manquant (pour duration)
+        if not self.active_position.start_time:
+             self.active_position.start_time = time.time()
 
         # Calculer temps écoulé et PnL
         elapsed = time.time() - self.active_position.start_time
@@ -2179,7 +2216,9 @@ class PositionManager:
             'closure_id': closure_id,
             'has_partial_tp': self.active_position.partial_tp_sold,
             'size_closed': round(size_closed, 4),
-            'size': self.active_position.size,
+            # 🔥 FIX: Utiliser la taille initiale totale pour l'historique
+            'size': getattr(self.active_position, 'size_initial_usdt', None) or self.active_position.size,
+            'size_initial_usdt': getattr(self.active_position, 'size_initial_usdt', None),
             'confirmed_by': getattr(self.active_position, 'confirmed_by', ''),  # 🔥 FIX: Ajouté pour l'affichage signals
             # ✅ FIX: Tracking source du exit_price
             'exit_price_source': exit_price_source,

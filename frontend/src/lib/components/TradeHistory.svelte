@@ -186,7 +186,8 @@
 							<!-- 🔥 Size USDT (montant à l'ouverture) -->
 							<td class="size-usdt" data-debug-name="trade.size">
 								{(() => {
-									const size = trade.filled_size_usdt || trade.size || trade.position_size_usdt || 0;
+									// 🔥 FIX: Utiliser size_initial_usdt en priorité (taille totale ouverture)
+									const size = trade.size_initial_usdt || trade.filled_size_usdt || trade.size || trade.position_size_usdt || 0;
 									return size > 0 ? formatUSDT(size) : 'N/A';
 								})()}
 							</td>
@@ -197,8 +198,8 @@
 									if (trade.net_pnl_pct !== undefined && trade.net_pnl_pct !== null) {
 										return `${trade.net_pnl_pct >= 0 ? '+' : ''}${formatPercent(trade.net_pnl_pct)}%`;
 									}
-									// Priorité 2: Calculer depuis size et pnl_usdt
-									const size = trade.filled_size_usdt || trade.size || trade.position_size_usdt || 0;
+									// Priorité 2: Calculer depuis size (initial) et pnl_usdt
+									const size = trade.size_initial_usdt || trade.filled_size_usdt || trade.size || trade.position_size_usdt || 0;
 									const pnlUsdt = trade.net_pnl_usdt || 0;
 									if (size > 0) {
 										const pnlPct = (pnlUsdt / size) * 100;

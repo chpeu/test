@@ -5,8 +5,11 @@ Target: 95% coverage for all position modules
 """
 
 import pytest
+import unittest
 import sys
 import os
+import math
+from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.position import (
@@ -620,10 +623,12 @@ class TestPartialTPManager:
             'direction': 'LONG'
         }
 
-        result = manager.execute_partial_tp(
-            position=position,
-            current_price=50150.0  # +0.3%
-        )
+        # 🔥 FIX: Mocker TRADING_CONFIG directement dans config.py
+        with patch('config.TRADING_CONFIG', {'partial_tp_percent': 65.0}):
+            result = manager.execute_partial_tp(
+                position=position,
+                current_price=50150.0  # +0.3%
+            )
 
         assert result is not None
         assert 'size_sold' in result
