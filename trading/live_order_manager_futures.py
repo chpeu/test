@@ -272,6 +272,8 @@ class FuturesOrderResult:
     raw_api_response: Optional[Dict[str, Any]] = None
     # 🔥 FIX: Minimum contract amount pour TP partiel
     min_contract_amount: Optional[float] = None
+    # 🔥 FIX: Contract size utilisé (pour éviter erreurs PNL)
+    contract_size: Optional[float] = None
 
 
 class LiveOrderManagerFutures:
@@ -1131,7 +1133,8 @@ class LiveOrderManagerFutures:
                         latency_ms=latency_ms,
                         executed_at=datetime.now(timezone.utc).isoformat(),
                         raw_api_response=bypass_result.data,
-                        min_contract_amount=float(min_amount) if min_amount else None  # 🔥 FIX: Pour TP partiel
+                        min_contract_amount=float(min_amount) if min_amount else None,  # 🔥 FIX: Pour TP partiel
+                        contract_size=real_contract_size  # 🔥 FIX: Contract size pour calcul PNL correct
                     )
                 else:
                     # 🔥 Circuit Breaker: Enregistrer échec
@@ -1679,10 +1682,13 @@ class LiveOrderManagerFutures:
                         logger.debug(f"⚠️ Impossible de récupérer PnL depuis historique: {pnl_err}")
                     
                     # Calculer PnL basé sur prix réel (fallback si API échoue)
+                    # 🔥 FIX: Inclure contract_size dans le calcul (PnL = DeltaPrice * Contracts * ContractSize)
+                    real_contract_size = contract_spec.contract_size if contract_spec else 1.0
+                    
                     if direction == 'LONG':
-                        calculated_pnl = (final_exit_price - entry_price) * amount
+                        calculated_pnl = (final_exit_price - entry_price) * amount * real_contract_size
                     else:
-                        calculated_pnl = (entry_price - final_exit_price) * amount
+                        calculated_pnl = (entry_price - final_exit_price) * amount * real_contract_size
                     
                     # Utiliser le PnL de l'API si disponible, sinon le calculé
                     pnl_usdt = real_pnl_from_api if real_pnl_from_api is not None else calculated_pnl
@@ -1712,8 +1718,8 @@ class LiveOrderManagerFutures:
                         success=True,
                         order_id=str(bypass_result.order_id),
                         filled_price=final_exit_price,  # 🔥 Prix RÉEL sortie
-                        filled_amount=amount,
-                        filled_size_usdt=amount * final_exit_price,
+                        filled_amount=amount * real_contract_size,  # 🔥 FIX: Tokens réels (comme open_position)
+                        filled_size_usdt=amount * final_exit_price * real_contract_size, # 🔥 FIX: Valeur USDT réelle
                         actual_pnl_usdt=pnl_usdt,  # 🔥 PnL basé sur prix RÉEL
                         actual_fees_usdt=0.0,  # 0% fees
                         actual_slippage_pct=final_exit_slippage,  # 🔥 Slippage RÉEL

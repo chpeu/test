@@ -297,9 +297,9 @@
 					</div>
 				{/if}
 				
-				<!-- 🔥 FIX: Afficher levier avec fallback si manquant -->
+				<!-- 🔥 FIX: Afficher levier avec fallback dynamique depuis config -->
 				<div class="badge leverage-badge" title="Levier utilisé pour cette position">
-					⚡ {$activePosition.leverage_used || 2}x
+					⚡ {$activePosition.leverage_used || tradingConfig?.default_leverage || 1}x
 				</div>
 			</div>
 			

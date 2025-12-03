@@ -223,10 +223,8 @@ async def get_ml_trades_count():
             'use_momentum_continuity': bool(TRADING_CONFIG.get('use_momentum_continuity', False)),
             'use_retest_confirmation': bool(TRADING_CONFIG.get('use_retest_confirmation', False)),
             
-            # TP/SL (depuis config_snapshot JSONB)
-            'tp_sl_mode': str(TRADING_CONFIG.get('tp_sl_mode', 'FIXE')),
-            'tp_percent': float(TRADING_CONFIG.get('tp_percent', 0.5)),
-            'sl_percent': float(TRADING_CONFIG.get('sl_percent', 0.2)),
+            # 🔥 TP/SL EXCLUS - n'affectent pas la prédiction ML (gestion post-entrée uniquement)
+            # Le modèle prédit si un signal d'entrée est bon, pas comment on gère la position après
             
             # Patterns techniques (depuis config_snapshot JSONB) - flags + seuils
             'use_breakout': bool(TRADING_CONFIG.get('use_breakout', True)),
@@ -322,7 +320,7 @@ async def get_ml_trades_count():
             'filters_applied': {
                 'setup_validation': ['min_score', 'snr_threshold', 'volume_mult', 'confluence', 'atr_1m', 'atr_5m'],
                 'additional_filters': ['anti_whipsaw', 'candle_close', 'cooldown', 'momentum', 'retest'],
-                'tp_sl': ['tp_sl_mode', 'tp_percent', 'sl_percent'],
+                # 🔥 TP/SL exclus du filtre ML (gestion post-entrée, n'affecte pas la qualité du signal)
                 'patterns_techniques': ['use_breakout', 'breakout_threshold', 'use_snr', 'snr_threshold', 'use_wick', 'wick_ratio_max', 'use_divergence', 'di_gap_min', 'di_gap_adx_threshold']
             },
             'message': f"✅ {clean_count} trades avec config actuelle (sur {total_trades} total)"

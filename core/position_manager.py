@@ -110,6 +110,7 @@ class Position:
     exit_api_response: Optional[Any] = None
     leverage_used: Optional[int] = None
     margin_mode: Optional[str] = None
+    contract_size_used: Optional[float] = None  # 🔥 FIX: Stocker contract_size pour éviter erreurs de calcul
     position_size_usdt: Optional[float] = None
     position_size_contracts: Optional[float] = None
     size_initial_contracts: Optional[float] = None
@@ -194,6 +195,7 @@ class Position:
             'exit_timestamp': self.exit_timestamp,
             'leverage_used': self.leverage_used,
             'margin_mode': self.margin_mode,
+            'contract_size_used': self.contract_size_used,
             'position_size_usdt': self.position_size_usdt,
             'position_size_contracts': self.position_size_contracts,
             'size_initial_contracts': self.size_initial_contracts,
@@ -773,6 +775,11 @@ class PositionManager:
                     # FIX: Stocker le levier utilisé pour l'affichage frontend
                     self.active_position.leverage_used = order_result.leverage
                     
+                    # 🔥 FIX: Stocker contract_size pour éviter erreurs de calcul PNL
+                    if hasattr(order_result, 'contract_size') and order_result.contract_size:
+                        self.active_position.contract_size_used = order_result.contract_size
+                        logger.info(f"📋 Contract size stocké: {order_result.contract_size}")
+                    
                     # FIX: Mettre à jour la taille avec la taille réellement exécutée
                     if order_result.filled_size_usdt and order_result.filled_size_usdt > 0:
                         executed_size_usdt = order_result.filled_size_usdt
@@ -853,10 +860,42 @@ class PositionManager:
                                 self.active_position.entry_fill_price = live_entry_price
 
                             if live_contracts > 0 and live_entry_price > 0:
-                                # 🔥 FIX: Convertir contrats MEXC en tokens réels
-                                contract_size = self._get_contract_size(symbol)
+                                # 🔥 FIX: Utiliser contract_size stocké si disponible, sinon récupérer
+                                contract_size = self.active_position.contract_size_used
+                                if not contract_size or contract_size <= 0:
+                                    contract_size = self._get_contract_size(symbol)
+                                    # Stocker pour usage futur
+                                    self.active_position.contract_size_used = contract_size
+                                    logger.info(f"📋 Contract size récupéré et stocké: {contract_size}")
+                                
                                 real_tokens = live_contracts * contract_size
                                 live_size_usdt = real_tokens * live_entry_price
+
+                                # 🔥 FIX: Heuristic correction for contract_size
+                                # Si la taille détectée est beaucoup plus grande que prévu (ex: 10x, 100x), 
+                                # c'est probablement une erreur de contract_size (défaut 1.0 au lieu de 0.1, 0.01 etc)
+                                expected_size = executed_size_usdt if 'executed_size_usdt' in locals() and executed_size_usdt > 0 else size
+                                if expected_size > 0 and live_size_usdt > 2.0 * expected_size:
+                                    logger.warning(f"⚠️ Taille détectée ({live_size_usdt:.2f}) >> attendue ({expected_size:.2f}). Tentative de correction contract_size...")
+                                    
+                                    ratio = live_size_usdt / expected_size
+                                    corrected_cs = contract_size
+                                    
+                                    if 8 <= ratio <= 12:      # Factor 10 error (needs 0.1)
+                                        corrected_cs = contract_size * 0.1
+                                    elif 80 <= ratio <= 120:  # Factor 100 error (needs 0.01)
+                                        corrected_cs = contract_size * 0.01
+                                    elif 800 <= ratio <= 1200: # Factor 1000 error (needs 0.001)
+                                        corrected_cs = contract_size * 0.001
+                                        
+                                    if corrected_cs != contract_size:
+                                        contract_size = corrected_cs
+                                        self.active_position.contract_size_used = contract_size
+                                        # Recalculate with corrected contract_size
+                                        real_tokens = live_contracts * contract_size
+                                        live_size_usdt = real_tokens * live_entry_price
+                                        logger.info(f"✅ Contract size corrigé par heuristique: {contract_size} -> Nouvelle taille: {live_size_usdt:.2f} USDT")
+
                                 self.active_position.size = live_size_usdt
                                 self.active_position.position_size_usdt = live_size_usdt
                                 self.active_position.position_size_contracts = real_tokens
@@ -865,7 +904,7 @@ class PositionManager:
                                 self.active_position.size_initial_contracts = real_tokens
                                 self.active_position.size_remaining_contracts = real_tokens
                                 logger.info(
-                                    f"🔁 [LIVE] Taille synchronisée: {real_tokens:.0f} tokens ({live_contracts:.0f} contrats × {contract_size})"
+                                    f"🔁 [LIVE] Taille synchronisée: {real_tokens:.6f} tokens ({live_contracts:.0f} contrats × {contract_size})"
                                 )
                         # Programmer une resynchronisation non bloquante
                         self._schedule_position_sync(symbol)
@@ -1470,9 +1509,17 @@ class PositionManager:
 
         # 3. TP Partiel (si pas TP Escalier) - utiliser break_even_trigger comme seuil du 1er TP
         if not self.active_position.tp_escalier_enabled:
-            # 🔥 FIX: En mode FIXE, utiliser break_even_trigger comme seuil du 1er TP partiel
-            # break_even_trigger détermine le % de profit pour déclencher le 1er TP
-            break_even_trigger = TRADING_CONFIG.get('break_even_trigger', 0.3)
+            # 🔥 HYBRID: Break-even basé sur ATR ou % fixe
+            break_even_use_atr = TRADING_CONFIG.get('break_even_use_atr', False)
+            if break_even_use_atr:
+                # 🔥 Mode ATR: BE dès PnL >= X × ATR%
+                atr_pct = self._get_position_atr_percent()
+                be_atr_mult = TRADING_CONFIG.get('break_even_atr_mult', 0.5)
+                break_even_trigger = atr_pct * be_atr_mult
+                logger.debug(f"🎯 BE ATR: trigger={break_even_trigger:.3f}% (ATR={atr_pct:.3f}% × {be_atr_mult})")
+            else:
+                # Mode FIXE: utiliser break_even_trigger directement
+                break_even_trigger = TRADING_CONFIG.get('break_even_trigger', 0.3)
             if self.partial_tp.check_trigger(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
@@ -1605,11 +1652,34 @@ class PositionManager:
                     f"Break-even activé | Trailing stop activé"
                 )
 
-        # 4. Trailing Stop (activé après le 1er TP partiel ou si PnL > break_even_trigger)
-        # 🔥 FIX: Le trailing stop est activé après le 1er TP (déclenché par break_even_trigger)
-        # Le trailing stop commence à fonctionner une fois que le PnL dépasse break_even_trigger
-        if self.active_position.partial_tp_sold or pnl >= TRADING_CONFIG.get('break_even_trigger', 0.3):
-            if self.trailing_stop.should_trigger(pnl):
+        # 4. Trailing Stop (activé après le 1er TP partiel ou si PnL > trigger ATR)
+        # 🔥 HYBRID: Trailing trigger basé sur ATR ou % fixe
+        # Support both nested (trailing_stop.use_atr_trigger) and flat (trailing_use_atr_trigger) config keys
+        trailing_config = TRADING_CONFIG.get('trailing_stop', {})
+        use_atr_trigger = (
+            trailing_config.get('use_atr_trigger', False) or 
+            TRADING_CONFIG.get('trailing_use_atr_trigger', False)
+        )
+        
+        if use_atr_trigger:
+            # 🔥 Mode ATR: trigger dès PnL >= X × ATR%
+            atr_pct = self._get_position_atr_percent()
+            trigger_atr_mult = (
+                trailing_config.get('trigger_atr_mult', 1.0) or
+                TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.0)
+            )
+            trailing_trigger = atr_pct * trigger_atr_mult
+        else:
+            # Mode FIXE
+            trailing_trigger = (
+                trailing_config.get('trigger_pnl') or
+                TRADING_CONFIG.get('trailing_trigger_pnl', 0.15)
+            )
+        
+        trailing_should_activate = self.active_position.partial_tp_sold or pnl >= trailing_trigger
+        
+        if trailing_should_activate:
+            if pnl >= trailing_trigger:  # Remplace should_trigger()
                 # 🔥 FIX: En mode FIXE, utiliser trailing_distance directement depuis TRADING_CONFIG
                 tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
                 if tp_sl_mode == 'FIXE':
@@ -1629,6 +1699,11 @@ class PositionManager:
                     if new_sl:
                         self.active_position.sl = new_sl
                         self.active_position.dynamic_sl = new_sl
+
+        # 5. 🔥 HYBRID: Stagnation Exit (Time Decay)
+        stagnation_reason = self._check_stagnation_exit(pnl)
+        if stagnation_reason:
+            return stagnation_reason
 
         # 6. Vérifier TP/SL
         return self._check_levels(current_price)
@@ -1675,6 +1750,91 @@ class PositionManager:
                 )
                 return new_sl
 
+        return None
+
+    def _get_position_atr_percent(self) -> float:
+        """
+        🔥 HYBRID: Obtenir ATR% pour la position active
+        
+        Returns:
+            ATR en pourcentage du prix d'entrée (ex: 0.35 pour 0.35%)
+        """
+        from config import TRADING_CONFIG  # 🔥 FIX: Import manquant
+        
+        if not self.active_position:
+            return 0.5  # Fallback
+        
+        entry = self.active_position.entry
+        atr = getattr(self.active_position, 'atr', None)
+        
+        if entry and entry > 0 and atr and atr > 0:
+            atr_pct = (atr / entry) * 100
+            # Clamp entre atr_min et atr_max
+            atr_min = TRADING_CONFIG.get('atr_min', 0.10)
+            atr_max = TRADING_CONFIG.get('atr_max', 1.0)
+            atr_pct = max(atr_min, min(atr_max, atr_pct))
+            return atr_pct
+        else:
+            # Fallback: moyenne raisonnable pour scalping
+            return 0.35
+
+    def _check_stagnation_exit(self, pnl: float) -> Optional[str]:
+        """
+        🔥 HYBRID: Vérifier si le trade doit être fermé pour stagnation (Time Decay)
+        
+        Args:
+            pnl: PnL actuel en %
+            
+        Returns:
+            'STAGNATION' si doit être fermé, None sinon
+        """
+        from config import TRADING_CONFIG  # 🔥 FIX: Import manquant
+        
+        # Support both nested (stagnation_exit.enabled) and flat (stagnation_exit_enabled) config keys
+        stagnation_config = TRADING_CONFIG.get('stagnation_exit', {})
+        enabled = (
+            stagnation_config.get('enabled', False) or 
+            TRADING_CONFIG.get('stagnation_exit_enabled', False)
+        )
+        if not enabled:
+            return None
+        
+        if not self.active_position or not self.active_position.start_time:
+            return None
+        
+        import time
+        elapsed = time.time() - self.active_position.start_time
+        timeout = (
+            stagnation_config.get('timeout_seconds') or
+            TRADING_CONFIG.get('stagnation_exit_timeout_seconds', 120)
+        )
+        
+        # Pas encore timeout
+        if elapsed < timeout:
+            return None
+        
+        # Vérifier les conditions de sortie
+        min_pnl_to_stay = (
+            stagnation_config.get('min_pnl_to_stay') or
+            TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', 0.10)
+        )
+        max_loss_to_exit = (
+            stagnation_config.get('max_loss_to_exit') or
+            TRADING_CONFIG.get('stagnation_exit_max_loss_to_exit', -0.05)
+        )
+        
+        # Rester si PnL suffisant
+        if pnl >= min_pnl_to_stay:
+            return None
+        
+        # Sortir si perte ou stagnation après timeout
+        if pnl < max_loss_to_exit or (pnl >= max_loss_to_exit and pnl < min_pnl_to_stay):
+            logger.warning(
+                f"⏰ STAGNATION EXIT {self.active_position.symbol}: "
+                f"PnL={pnl:.2f}% après {elapsed:.0f}s (timeout={timeout}s)"
+            )
+            return 'STAGNATION'
+        
         return None
 
     def _check_levels(self, current_price: float) -> Optional[str]:

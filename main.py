@@ -5127,6 +5127,59 @@ async def handle_client_command(command: str, params: dict):
             except Exception as e:
                 logger.warning(f"⚠️ Erreur reload AdaptiveSizingManager: {e}")
 
+        # 🔥 HYBRID INTELLIGENT: Break-Even ATR
+        if 'break_even_use_atr' in params:
+            TRADING_CONFIG['break_even_use_atr'] = bool(params['break_even_use_atr'])
+            updated['break_even_use_atr'] = TRADING_CONFIG['break_even_use_atr']
+            logger.info(f"✅ break_even_use_atr: {TRADING_CONFIG['break_even_use_atr']}")
+        
+        if 'break_even_atr_mult' in params:
+            val = float(params['break_even_atr_mult'])
+            val = max(0.1, min(3.0, val))  # Clamp 0.1-3.0
+            TRADING_CONFIG['break_even_atr_mult'] = val
+            updated['break_even_atr_mult'] = val
+            logger.info(f"✅ break_even_atr_mult: {val}")
+
+        # 🔥 HYBRID INTELLIGENT: Trailing ATR Trigger
+        if 'trailing_use_atr_trigger' in params:
+            TRADING_CONFIG['trailing_use_atr_trigger'] = bool(params['trailing_use_atr_trigger'])
+            updated['trailing_use_atr_trigger'] = TRADING_CONFIG['trailing_use_atr_trigger']
+            logger.info(f"✅ trailing_use_atr_trigger: {TRADING_CONFIG['trailing_use_atr_trigger']}")
+        
+        if 'trailing_trigger_atr_mult' in params:
+            val = float(params['trailing_trigger_atr_mult'])
+            val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0
+            TRADING_CONFIG['trailing_trigger_atr_mult'] = val
+            updated['trailing_trigger_atr_mult'] = val
+            logger.info(f"✅ trailing_trigger_atr_mult: {val}")
+
+        # 🔥 HYBRID INTELLIGENT: Stagnation Exit (Time Decay)
+        if 'stagnation_exit_enabled' in params:
+            TRADING_CONFIG['stagnation_exit_enabled'] = bool(params['stagnation_exit_enabled'])
+            updated['stagnation_exit_enabled'] = TRADING_CONFIG['stagnation_exit_enabled']
+            logger.info(f"✅ stagnation_exit_enabled: {TRADING_CONFIG['stagnation_exit_enabled']}")
+        
+        if 'stagnation_exit_timeout_seconds' in params:
+            val = int(params['stagnation_exit_timeout_seconds'])
+            val = max(30, min(600, val))  # Clamp 30s-600s (10min)
+            TRADING_CONFIG['stagnation_exit_timeout_seconds'] = val
+            updated['stagnation_exit_timeout_seconds'] = val
+            logger.info(f"✅ stagnation_exit_timeout_seconds: {val}")
+        
+        if 'stagnation_exit_min_pnl_to_stay' in params:
+            val = float(params['stagnation_exit_min_pnl_to_stay'])
+            val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
+            TRADING_CONFIG['stagnation_exit_min_pnl_to_stay'] = val
+            updated['stagnation_exit_min_pnl_to_stay'] = val
+            logger.info(f"✅ stagnation_exit_min_pnl_to_stay: {val}")
+        
+        if 'stagnation_exit_max_loss_to_exit' in params:
+            val = float(params['stagnation_exit_max_loss_to_exit'])
+            val = max(-1.0, min(0.0, val))  # Clamp -1.0% à 0%
+            TRADING_CONFIG['stagnation_exit_max_loss_to_exit'] = val
+            updated['stagnation_exit_max_loss_to_exit'] = val
+            logger.info(f"✅ stagnation_exit_max_loss_to_exit: {val}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))

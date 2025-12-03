@@ -51,10 +51,7 @@ def build_config_filter_conditions(for_trades_table: bool = True, use_alias: boo
         use_momentum_continuity = bool(TRADING_CONFIG.get('use_momentum_continuity', False))
         use_retest_confirmation = bool(TRADING_CONFIG.get('use_retest_confirmation', False))
         
-        # TP/SL
-        tp_sl_mode = str(TRADING_CONFIG.get('tp_sl_mode', 'FIXE'))
-        tp_percent = float(TRADING_CONFIG.get('tp_percent', 0.5))
-        sl_percent = float(TRADING_CONFIG.get('sl_percent', 0.2))
+        # 🔥 TP/SL EXCLUS - n'affectent pas la prédiction ML (gestion post-entrée uniquement)
         
         # Patterns techniques (flags + seuils)
         use_breakout = bool(TRADING_CONFIG.get('use_breakout', True))
@@ -98,13 +95,13 @@ def build_config_filter_conditions(for_trades_table: bool = True, use_alias: boo
             conditions.append(f"({p}config_use_momentum_continuity IS NULL OR {p}config_use_momentum_continuity = {str(use_momentum_continuity).lower()})")
             conditions.append(f"({p}config_use_retest_confirmation IS NULL OR {p}config_use_retest_confirmation = {str(use_retest_confirmation).lower()})")
         
-        # --- TP/SL et patterns techniques (depuis config_snapshot) ---
+        # --- Patterns techniques (depuis config_snapshot) ---
+        # 🔥 NOTE: TP/SL EXCLUS du filtre ML
+        # Les paramètres TP/SL n'affectent PAS la qualité du signal d'entrée,
+        # ils affectent uniquement la gestion de position APRÈS l'entrée.
+        # Le modèle ML prédit si un setup sera gagnant basé sur les indicateurs techniques,
+        # pas sur comment on gère la position ensuite.
         if for_trades_table:
-            # TP/SL
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'tp_sl_mode' IS NULL OR {p}config_snapshot->>'tp_sl_mode' = '{tp_sl_mode}')")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'tp_percent' IS NULL OR ABS(({p}config_snapshot->>'tp_percent')::FLOAT - {tp_percent}) < 0.05)")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'sl_percent' IS NULL OR ABS(({p}config_snapshot->>'sl_percent')::FLOAT - {sl_percent}) < 0.03)")
-            
             # Patterns techniques (flags + seuils)
             conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'use_breakout' IS NULL OR ({p}config_snapshot->>'use_breakout')::BOOLEAN = {str(use_breakout).lower()})")
             conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'breakout_threshold' IS NULL OR ABS(({p}config_snapshot->>'breakout_threshold')::FLOAT - {breakout_threshold}) < 0.05)")
