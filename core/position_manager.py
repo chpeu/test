@@ -129,6 +129,7 @@ class Position:
     
     # 🔥 ML & Sizing Adaptatif (pour affichage frontend)
     ml_confidence: Optional[float] = None  # Confiance ML au moment de l'ouverture (%)
+    ml_calibrated_winrate: Optional[float] = None  # 🔥 WR Réel calibré (si disponible)
     adaptive_sizing_multiplier: Optional[float] = None  # Multiplicateur sizing adaptatif (0.5-1.5)
     
     # 🔥 FIX: Min contract amount pour validation TP partiel
@@ -214,6 +215,7 @@ class Position:
             'time_to_fill_exit_ms': self.time_to_fill_exit_ms,
             # 🔥 ML & Sizing Adaptatif
             'ml_confidence': self.ml_confidence,
+            'ml_calibrated_winrate': self.ml_calibrated_winrate,
             'adaptive_sizing_multiplier': self.adaptive_sizing_multiplier,
             # 🔥 FIX: Info TP partiel forcé à 100%
             'min_contract_amount': self.min_contract_amount,
@@ -622,6 +624,7 @@ class PositionManager:
             )
 
         # 🔥 ML AUTO-CALIBRATION: Vérifier si le trade doit être pris
+        calibrated_wr = None
         try:
             from ml.calibration import get_calibration_manager
             calib_manager = get_calibration_manager()
@@ -741,6 +744,7 @@ class PositionManager:
         
         # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
         self.active_position.ml_confidence = ml_confidence
+        self.active_position.ml_calibrated_winrate = calibrated_wr
         
         # 🔥 Stocker le multiplicateur sizing adaptatif
         self.active_position.adaptive_sizing_multiplier = adaptive_sizing_multiplier

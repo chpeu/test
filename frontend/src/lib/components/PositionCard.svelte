@@ -326,6 +326,11 @@
 						🧠 {$activePosition.ml_confidence.toFixed(1)}%
 					</div>
 				{/if}
+				{#if $activePosition.ml_calibrated_winrate !== undefined && $activePosition.ml_calibrated_winrate !== null && $activePosition.ml_calibrated_winrate > 0}
+					<div class="badge calib-badge" title="WinRate réel recalibré pour ce bucket">
+						⚖️ {$activePosition.ml_calibrated_winrate.toFixed(1)}%
+					</div>
+				{/if}
 				{#if $activePosition.adaptive_sizing_multiplier !== undefined && $activePosition.adaptive_sizing_multiplier !== null && $activePosition.adaptive_sizing_multiplier !== 1.0}
 					<div class="badge sizing-badge" class:boost={$activePosition.adaptive_sizing_multiplier > 1} class:reduce={$activePosition.adaptive_sizing_multiplier < 1} title="Multiplicateur sizing adaptatif">
 						📊 x{$activePosition.adaptive_sizing_multiplier.toFixed(2)}
@@ -511,8 +516,14 @@
 		border: 1px solid rgba(138, 43, 226, 0.5);
 	}
 
+	.calib-badge {
+		background: rgba(0, 255, 136, 0.1);
+		color: #00ff88;
+		border: 1px solid rgba(0, 255, 136, 0.3);
+	}
+
 	.sizing-badge {
-		background: rgba(100, 100, 100, 0.2);
+		background: rgba(64, 196, 255, 0.1);
 		color: #aaa;
 		border: 1px solid rgba(100, 100, 100, 0.5);
 	}

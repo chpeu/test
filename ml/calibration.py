@@ -197,7 +197,7 @@ class MLCalibrationManager:
         weight = self.calculate_trade_weight(is_live, is_dry_run, trade_timestamp)
         
         logger.info(
-            f"📊 Calibration update: {direction} {bucket} | "
+            f"Calibration update: {direction} {bucket} | "
             f"Win={win} | Weight={weight:.3f} | PnL={pnl_pct:.3f}%"
         )
         
@@ -211,6 +211,17 @@ class MLCalibrationManager:
             conn = pg_logger.pool.getconn()
             try:
                 with conn.cursor() as cur:
+                    # Récupérer l'ancien winrate et stats avant mise à jour
+                    cur.execute("""
+                        SELECT actual_winrate, total_trades, weighted_total
+                        FROM ml_calibration
+                        WHERE direction = %s AND confidence_bucket = %s
+                    """, (direction, bucket))
+                    row = cur.fetchone()
+                    old_winrate = float(row[0]) if row and row[0] else None
+                    old_trades = row[1] if row else 0
+                    
+                    # Mise à jour
                     cur.execute("""
                         UPDATE ml_calibration
                         SET 
@@ -228,7 +239,50 @@ class MLCalibrationManager:
                         direction,
                         bucket
                     ))
+                    
+                    # Récupérer le nouveau winrate après mise à jour
+                    cur.execute("""
+                        SELECT actual_winrate, total_trades, weighted_total
+                        FROM ml_calibration
+                        WHERE direction = %s AND confidence_bucket = %s
+                    """, (direction, bucket))
+                    row = cur.fetchone()
+                    new_winrate = float(row[0]) if row and row[0] else 0
+                    new_trades = row[1] if row else 0
+                    new_weighted_total = float(row[2]) if row and row[2] else 0
+                    
                     conn.commit()
+                    
+                    # Enregistrer dans l'historique si changement significatif
+                    should_log = False
+                    reason = "update"
+                    
+                    # 1. Premier trade avec ML confidence dans ce bucket
+                    if old_trades == 0:
+                        should_log = True
+                        reason = "first_trade"
+                    
+                    # 2. Passage au seuil min_trades (phase apprentissage -> active)
+                    elif old_trades < config['min_trades'] and new_trades >= config['min_trades']:
+                        should_log = True
+                        reason = "phase_active"
+                    
+                    # 3. Changement significatif de winrate (>5%)
+                    elif old_winrate is not None and abs(new_winrate - old_winrate) >= 5.0:
+                        should_log = True
+                        reason = "significant_change"
+                    
+                    # 4. Tous les 10 trades (snapshot périodique)
+                    elif new_trades % 10 == 0:
+                        should_log = True
+                        reason = f"snapshot_{new_trades}"
+                    
+                    if should_log:
+                        self._log_to_history(
+                            direction, bucket, old_winrate, new_winrate,
+                            new_trades, new_weighted_total, reason
+                        )
+                    
             finally:
                 pg_logger.pool.putconn(conn)
                     
@@ -242,6 +296,54 @@ class MLCalibrationManager:
             logger.error(f"[ERR] Erreur mise a jour calibration: {e}")
             return False
     
+    def _log_to_history(
+        self,
+        direction: str,
+        bucket: str,
+        old_winrate: Optional[float],
+        new_winrate: float,
+        total_trades: int,
+        weighted_total: float,
+        reason: str = "update"
+    ) -> bool:
+        """
+        Enregistre un changement dans l'historique de calibration.
+        
+        Args:
+            direction: LONG ou SHORT
+            bucket: Bucket de confiance
+            old_winrate: Ancien winrate (None si premier)
+            new_winrate: Nouveau winrate
+            total_trades: Nombre de trades
+            weighted_total: Total pondéré
+            reason: Raison (update, reset, significant_change, etc.)
+        """
+        pg_logger = self._get_db_pool()
+        if not pg_logger:
+            return False
+        
+        try:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO ml_calibration_history 
+                        (direction, confidence_bucket, old_winrate, new_winrate, 
+                         total_trades, weighted_total, reason, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    """, (
+                        direction, bucket, old_winrate, new_winrate,
+                        total_trades, weighted_total, reason
+                    ))
+                    conn.commit()
+                    logger.debug(f"[HISTORY] {direction} {bucket}: {old_winrate} -> {new_winrate} ({reason})")
+                    return True
+            finally:
+                pg_logger.pool.putconn(conn)
+        except Exception as e:
+            logger.warning(f"[WARN] Erreur log historique: {e}")
+            return False
+
     def get_calibrated_winrate(
         self, 
         direction: str, 
@@ -262,16 +364,18 @@ class MLCalibrationManager:
         
         stats = self._get_stats(direction, bucket)
         if not stats:
+            logger.debug(f"[CALIB DEBUG] No stats for {direction} {bucket}")
             return None
         
         # Vérifier minimum de trades
         if stats.weighted_total < config['min_trades']:
             logger.debug(
                 f"Pas assez de trades pour calibration: {direction} {bucket} "
-                f"({stats.total_trades} trades, {stats.weighted_total:.1f} pondéré)"
+                f"({stats.total_trades} trades, {stats.weighted_total:.1f} < {config['min_trades']} pondéré)"
             )
             return None
         
+        logger.debug(f"[CALIB DEBUG] Returning WR {stats.actual_winrate} (Total {stats.weighted_total} >= {config['min_trades']})")
         return stats.actual_winrate
     
     def should_take_trade(
@@ -356,12 +460,12 @@ class MLCalibrationManager:
                 stats = CalibrationStats(
                     direction=row[0],
                     confidence_bucket=row[1],
-                    weighted_wins=float(row[2]) if row[2] else 0,
-                    weighted_total=float(row[3]) if row[3] else 0,
+                    weighted_wins=float(row[2]) if row[2] is not None else 0.0,
+                    weighted_total=float(row[3]) if row[3] is not None else 0.0,
                     total_trades=row[4] or 0,
-                    actual_winrate=float(row[5]) if row[5] else None,
-                    avg_pnl_pct=float(row[6]) if row[6] else 0,
-                    total_pnl_usdt=float(row[7]) if row[7] else 0,
+                    actual_winrate=float(row[5]) if row[5] is not None else 0.0,
+                    avg_pnl_pct=float(row[6]) if row[6] is not None else 0.0,
+                    total_pnl_usdt=float(row[7]) if row[7] is not None else 0.0,
                 )
                 self._cache[(stats.direction, stats.confidence_bucket)] = stats
             
@@ -404,17 +508,20 @@ class MLCalibrationManager:
             conn = pg_logger.pool.getconn()
             try:
                 with conn.cursor() as cur:
-                    # Sauvegarder dans l'historique (si table existe)
+                    # Sauvegarder dans l'historique avant reset
                     try:
                         cur.execute("""
                             INSERT INTO ml_calibration_history 
-                            (direction, confidence_bucket, actual_winrate, total_trades, reason)
-                            SELECT direction, confidence_bucket, actual_winrate, total_trades, %s
+                            (direction, confidence_bucket, old_winrate, new_winrate, 
+                             total_trades, weighted_total, reason, created_at)
+                            SELECT direction, confidence_bucket, actual_winrate, 0,
+                                   total_trades, weighted_total, %s, NOW()
                             FROM ml_calibration
                             WHERE total_trades > 0
                         """, (reason,))
-                    except Exception:
-                        pass  # Table historique optionnelle
+                        logger.info(f"[HISTORY] Snapshot avant reset ({reason})")
+                    except Exception as e:
+                        logger.warning(f"[WARN] Erreur log historique reset: {e}")
                     
                     # Reset
                     cur.execute("""
