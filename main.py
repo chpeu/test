@@ -1531,6 +1531,11 @@ async def scanner_loop_callback() -> None:
                                         adaptive_sizing_multiplier=adaptive_sizing_mult  # 🔥 Multiplicateur adaptatif
                                     )
                                     
+                                    # 🔥 FIX: Vérifier si position rejetée par calibration
+                                    if position is None:
+                                        logger.info(f"⏭️ Trade {symbol} {direction} ignoré (rejeté par calibration)")
+                                        continue
+                                    
                                     # Stocker capital
                                     position.capital = account_size
                                     

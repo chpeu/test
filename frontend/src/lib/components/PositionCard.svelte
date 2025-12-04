@@ -326,7 +326,7 @@
 						🧠 {$activePosition.ml_confidence.toFixed(1)}%
 					</div>
 				{/if}
-				{#if $activePosition.ml_calibrated_winrate !== undefined && $activePosition.ml_calibrated_winrate !== null && $activePosition.ml_calibrated_winrate > 0}
+				{#if $activePosition.ml_calibrated_winrate !== undefined && $activePosition.ml_calibrated_winrate !== null}
 					<div class="badge calib-badge" title="WinRate réel recalibré pour ce bucket">
 						⚖️ {$activePosition.ml_calibrated_winrate.toFixed(1)}%
 					</div>
