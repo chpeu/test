@@ -625,6 +625,7 @@ class PositionManager:
 
         # 🔥 ML AUTO-CALIBRATION: Vérifier si le trade doit être pris
         calibrated_wr = None
+        logger.info(f"🔍 Calibration check: {symbol} {direction} | ml_confidence={ml_confidence}")
         try:
             from ml.calibration import get_calibration_manager
             calib_manager = get_calibration_manager()
@@ -646,8 +647,10 @@ class PositionManager:
                     f"✅ Trade accepté (calibration): {symbol} {direction} | "
                     f"ML Conf={ml_confidence:.1f}% → WR Réel={calibrated_wr:.1f}%"
                 )
+            else:
+                logger.info(f"⏭️ Calibration: {symbol} {direction} | Phase apprentissage (calibrated_wr=None)")
         except Exception as e:
-            logger.debug(f"Calibration check ignoré (non-bloquant): {e}")
+            logger.warning(f"⚠️ Calibration check erreur (non-bloquant): {e}")
 
         from config import TRADING_CONFIG
         excluded_symbols = set(TRADING_CONFIG.get('excluded_symbols', []))

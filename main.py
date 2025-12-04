@@ -1637,6 +1637,7 @@ async def scanner_loop_callback() -> None:
                                                     'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
                                                     'leverage_used': getattr(position, 'leverage_used', None),
                                                     'ml_confidence': getattr(position, 'ml_confidence', None),
+                                                    'ml_calibrated_winrate': getattr(position, 'ml_calibrated_winrate', None),
                                                     'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
                                                 })
                                                 logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")

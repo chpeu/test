@@ -326,7 +326,10 @@ async def _emit_position_update(position, current_price: float):
             # 🔥 FIX: Ajouter force_full_tp_for_partial pour affichage message TP
             'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
             # 🔥 FIX: Ajouter multiplicateur sizing adaptatif
-            'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None)
+            'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
+            # 🔥 FIX: Ajouter ML confidence et calibrated winrate pour affichage badge
+            'ml_confidence': getattr(position, 'ml_confidence', None),
+            'ml_calibrated_winrate': getattr(position, 'ml_calibrated_winrate', None)
         }
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement

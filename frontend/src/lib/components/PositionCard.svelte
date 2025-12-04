@@ -1,4 +1,5 @@
 <script>
+	// 🔄 FORCE RELOAD: 2025-12-04T23:58:00 - Badge calibration fix
 	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
 	import { formatPrice, formatPercent, formatUSDT, getSignificantDecimals, formatWithoutTrailingZeros } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';

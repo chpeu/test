@@ -1982,6 +1982,18 @@ async def apply_best_hyperparameters(
         except Exception as reload_err:
             logger.error(f"[FAIL] Impossible de recharger TRADING_CONFIG: {reload_err}")
         
+        # 🔥 AUTO-RESET CALIBRATION: Réinitialiser la calibration après application de nouveaux params
+        try:
+            from ml.calibration import get_calibration_manager
+            manager = get_calibration_manager()
+            # Utiliser un reason explicite pour l'historique
+            if manager.reset_calibration(reason="auto_reset_after_optimization"):
+                logger.info("✅ Calibration réinitialisée automatiquement après optimisation")
+            else:
+                logger.warning("⚠️ Echec du reset automatique de la calibration")
+        except Exception as calib_err:
+            logger.error(f"❌ Erreur lors du reset automatique de calibration: {calib_err}")
+
         logger.info(f"[OK] Paramètres appliqués à {config_file}")
         
         return {
@@ -2663,6 +2675,17 @@ async def apply_auto_optimization_results(request: Request):
         except Exception as reload_err:
             logger.warning(f"[WARN] Impossible de recharger TRADING_CONFIG: {reload_err}")
         
+        # 🔥 AUTO-RESET CALIBRATION: Réinitialiser la calibration après auto-optimisation
+        try:
+            from ml.calibration import get_calibration_manager
+            manager = get_calibration_manager()
+            if manager.reset_calibration(reason="auto_reset_after_auto_optimization"):
+                logger.info("[OK] Calibration réinitialisée automatiquement après auto-optimisation")
+            else:
+                logger.warning("[WARN] Echec du reset automatique de la calibration")
+        except Exception as calib_err:
+            logger.error(f"[FAIL] Erreur lors du reset automatique de calibration: {calib_err}")
+
         logger.info(f"[OK] Auto-optimisation appliquee: {applied_params}")
         
         return {
