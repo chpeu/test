@@ -320,7 +320,13 @@ async def _emit_position_update(position, current_price: float):
             'position_size_contracts': getattr(position, 'position_size_contracts', None),
             'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
             'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
-            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None  # 🔥 FIX: Niveaux TP escalier
+            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None,  # 🔥 FIX: Niveaux TP escalier
+            # 🔥 FIX: Ajouter levier utilisé pour affichage correct (levier auto adapté)
+            'leverage_used': getattr(position, 'leverage_used', None),
+            # 🔥 FIX: Ajouter force_full_tp_for_partial pour affichage message TP
+            'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
+            # 🔥 FIX: Ajouter multiplicateur sizing adaptatif
+            'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None)
         }
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement

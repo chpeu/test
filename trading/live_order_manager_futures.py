@@ -274,6 +274,8 @@ class FuturesOrderResult:
     min_contract_amount: Optional[float] = None
     # 🔥 FIX: Contract size utilisé (pour éviter erreurs PNL)
     contract_size: Optional[float] = None
+    # 🔥 FIX: Indique si un TP partiel a été forcé à 100% (position trop petite)
+    forced_full_close: bool = False
 
 
 class LiveOrderManagerFutures:
@@ -778,23 +780,36 @@ class LiveOrderManagerFutures:
             margin_required = size_usdt / leverage
             balance_free = self.get_balance('USDT')
             balance_total = self.get_balance_total('USDT')
+            original_leverage = leverage  # Garder trace du levier initial
             
             if balance_free is not None and balance_free < margin_required:
-                # Calculer le levier minimum nécessaire
-                min_leverage_needed = int(size_usdt / balance_free) + 1 if balance_free > 0 else 999
+                # Calculer le levier minimum nécessaire (avec marge de sécurité 10%)
+                min_leverage_needed = int(size_usdt / (balance_free * 0.90)) + 1 if balance_free > 0 else 999
                 margin_blocked = (balance_total or 0) - (balance_free or 0)
                 
-                logger.error(
-                    f"❌ Solde insuffisant: {balance_free:.2f} USDT disponible / {balance_total:.2f} USDT total | "
-                    f"Marge bloquée: {margin_blocked:.2f} USDT | "
-                    f"Requis: {margin_required:.2f} USDT (size={size_usdt:.2f}, leverage={leverage}x) | "
-                    f"💡 Levier min nécessaire: x{min_leverage_needed}"
-                )
-                return FuturesOrderResult(
-                    success=False,
-                    error_message=f"Solde insuffisant: {balance_free:.2f} USDT disponible (total: {balance_total:.2f}), {margin_required:.2f} USDT requis. Augmenter levier à x{min_leverage_needed} ou fermer des positions.",
-                    latency_ms=(time.time() - start_time) * 1000
-                )
+                # 🔥 FIX: Adapter automatiquement le levier si raisonnable (≤ 5x max pour limiter risque)
+                MAX_AUTO_LEVERAGE = 5
+                if min_leverage_needed <= MAX_AUTO_LEVERAGE:
+                    leverage = min_leverage_needed
+                    margin_required = size_usdt / leverage  # Recalculer marge
+                    logger.warning(
+                        f"⚡ ADAPTATION LEVIER AUTO: {original_leverage}x → {leverage}x | "
+                        f"Raison: sizing adaptatif (size={size_usdt:.2f} USDT, solde={balance_free:.2f} USDT) | "
+                        f"Nouvelle marge: {margin_required:.2f} USDT"
+                    )
+                else:
+                    # Levier trop élevé, refuser le trade
+                    logger.error(
+                        f"❌ Solde insuffisant: {balance_free:.2f} USDT disponible / {balance_total:.2f} USDT total | "
+                        f"Marge bloquée: {margin_blocked:.2f} USDT | "
+                        f"Requis: {margin_required:.2f} USDT (size={size_usdt:.2f}, leverage={leverage}x) | "
+                        f"💡 Levier min nécessaire: x{min_leverage_needed} (> max auto {MAX_AUTO_LEVERAGE}x)"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Solde insuffisant: {balance_free:.2f} USDT disponible (total: {balance_total:.2f}), {margin_required:.2f} USDT requis. Levier auto max={MAX_AUTO_LEVERAGE}x, nécessaire={min_leverage_needed}x.",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
 
             # Stocker levier dans cache pour la fermeture
             self._leverage_cache[futures_symbol] = leverage
@@ -1490,6 +1505,7 @@ class LiveOrderManagerFutures:
                 
                 # 🔥 FIX FERMETURE PARTIELLE: Pour fermeture TOTALE, récupérer taille réelle MEXC
                 used_mexc_size = False  # Flag pour savoir si on a la taille réelle MEXC
+                forced_full_close = False  # Flag pour indiquer si TP partiel forcé à 100%
                 if partial_pct is None:  # Fermeture totale
                     try:
                         positions = run_async_safely(
@@ -1546,6 +1562,7 @@ class LiveOrderManagerFutures:
                                     pos_size = getattr(pos, 'hold_vol', None) or getattr(pos, 'size', None)
                                     if pos_symbol == bypass_symbol and pos_size and pos_size > 0:
                                         amount = float(pos_size)
+                                        forced_full_close = True  # 🔥 Marquer comme TP 100% forcé
                                         logger.info(
                                             f"🔧 TP Partiel forcé à 100%: volume MEXC={amount} contrats "
                                             f"(partiel impossible car < min)"
@@ -1692,48 +1709,23 @@ class LiveOrderManagerFutures:
                         self.circuit_breaker.record_success()
 
                     # 🔥 FIX: Essayer de récupérer le PnL RÉEL depuis l'historique MEXC
-                    real_pnl_from_api = None
-                    try:
-                        # Attendre que MEXC enregistre la fermeture
-                        time.sleep(0.5)
-                        
-                        # Récupérer l'historique des positions récentes
-                        pos_history = run_async_safely(
-                            self.bypass_client.get_position_history(
-                                symbol=bypass_symbol,
-                                page_size=5
-                            )
-                        )
-                        
-                        if pos_history and pos_history.get("success") and pos_history.get("data"):
-                            history_data = pos_history.get("data", [])
-                            if isinstance(history_data, list) and len(history_data) > 0:
-                                # Prendre la position la plus récente
-                                latest_pos = history_data[0]
-                                # MEXC retourne 'realizedPnl' ou 'profitReal' selon le endpoint
-                                real_pnl = latest_pos.get('realizedPnl') or latest_pos.get('profitReal') or latest_pos.get('profit')
-                                if real_pnl is not None:
-                                    real_pnl_from_api = float(real_pnl)
-                                    logger.info(f"📊 PnL RÉEL depuis API MEXC: {real_pnl_from_api:+.4f} USDT")
-                    except Exception as pnl_err:
-                        logger.debug(f"⚠️ Impossible de récupérer PnL depuis historique: {pnl_err}")
-                    
-                    # Calculer PnL basé sur prix réel (fallback si API échoue)
-                    # 🔥 FIX: Inclure contract_size dans le calcul (PnL = DeltaPrice * Contracts * ContractSize)
+                    # 🔥 FIX BUG PnL: TOUJOURS utiliser le calcul local
+                    # L'API MEXC get_position_history peut retourner un PnL incorrect:
+                    # - PnL cumulé de plusieurs ordres
+                    # - PnL d'une autre position du même symbole
+                    # Le calcul local est mathématiquement exact et cohérent
                     real_contract_size = contract_spec.contract_size if contract_spec else 1.0
                     
                     if direction == 'LONG':
-                        calculated_pnl = (final_exit_price - entry_price) * amount * real_contract_size
+                        pnl_usdt = (final_exit_price - entry_price) * amount * real_contract_size
                     else:
-                        calculated_pnl = (entry_price - final_exit_price) * amount * real_contract_size
+                        pnl_usdt = (entry_price - final_exit_price) * amount * real_contract_size
                     
-                    # Utiliser le PnL de l'API si disponible, sinon le calculé
-                    pnl_usdt = real_pnl_from_api if real_pnl_from_api is not None else calculated_pnl
-                    
-                    if real_pnl_from_api is not None and abs(real_pnl_from_api - calculated_pnl) > 0.01:
-                        logger.info(
-                            f"📊 PnL différence: API={real_pnl_from_api:+.4f} vs Calculé={calculated_pnl:+.4f} USDT"
-                        )
+                    logger.info(
+                        f"📊 PnL calculé: {pnl_usdt:+.4f} USDT "
+                        f"(prix: {entry_price:.6f} → {final_exit_price:.6f}, "
+                        f"qty: {amount:.4f} contrats × {real_contract_size} = {amount * real_contract_size:.6f} tokens)"
+                    )
 
                     # Mettre à jour stats
                     self.stats['orders_placed'] += 1
@@ -1762,7 +1754,8 @@ class LiveOrderManagerFutures:
                         actual_slippage_pct=final_exit_slippage,  # 🔥 Slippage RÉEL
                         latency_ms=latency_ms,
                         executed_at=datetime.now(timezone.utc).isoformat(),
-                        raw_api_response=bypass_result.data
+                        raw_api_response=bypass_result.data,
+                        forced_full_close=forced_full_close  # 🔥 Indique si TP partiel forcé à 100%
                     )
                 else:
                     # 🔥 Circuit Breaker: Enregistrer échec

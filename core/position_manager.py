@@ -1655,6 +1655,24 @@ class PositionManager:
                             filled_amount = partial_order_result.filled_amount or (size_contracts * partial_tp_percent / 100)
                             filled_size_usdt = partial_order_result.filled_size_usdt or (filled_amount * current_price)
                             
+                            # 🔥 FIX: Si forcé à 100%, la position a été entièrement fermée par MEXC
+                            # On marque la position comme vide, la prochaine vérification TP/SL 
+                            # détectera que size_remaining = 0 et fermera proprement le trade
+                            if getattr(partial_order_result, 'forced_full_close', False):
+                                logger.info(
+                                    f"🔧 [LIVE] TP forcé à 100% (position trop petite): {self.active_position.symbol} | "
+                                    f"PnL: {partial_order_result.actual_pnl_usdt or 0:.2f} USDT | "
+                                    f"Position fermée entièrement sur MEXC - clôture du trade..."
+                                )
+                                # Marquer position comme fermée
+                                self.active_position.partial_tp_sold = True
+                                self.active_position.size_remaining = 0
+                                self.active_position.size_remaining_contracts = 0
+                                self.active_position.position_size_contracts = 0
+                                self.active_position.partial_profit_usdt = partial_order_result.actual_pnl_usdt or 0.0
+                                # Retourner 'TP' pour que le scanner_loop ferme le trade
+                                return 'TP'
+                            
                             # Mettre à jour les contrats restants
                             remaining_contracts = max(size_contracts - filled_amount, 0)
                             remaining_usdt = max(self.active_position.size - filled_size_usdt, 0)
@@ -1991,19 +2009,31 @@ class PositionManager:
 
         return None
 
-    def close_position(self, exit_price: float, reason: str) -> Dict[str, Any]:
+    def close_position(self, exit_price: float, reason: str, skip_order: bool = False) -> Dict[str, Any]:
         """
         Fermer la position active
 
         Args:
             exit_price: Prix de sortie
             reason: Raison de fermeture (TP, SL, TS, EARLY_INVALIDATION, etc.)
+            skip_order: Si True, ne pas envoyer d'ordre (position déjà fermée sur MEXC)
 
         Returns:
             Dict avec résultats du trade
         """
         if not self.active_position:
             raise ValueError("Aucune position active à fermer")
+        
+        # 🔥 FIX: Détecter si la position a déjà été fermée sur MEXC (TP forcé à 100%)
+        # Dans ce cas, size_remaining_contracts = 0 et on ne doit pas envoyer d'ordre
+        if (self.active_position.size_remaining_contracts == 0 and 
+            self.active_position.partial_tp_sold and 
+            reason == 'TP'):
+            logger.info(
+                f"📋 Position déjà fermée sur MEXC (TP forcé 100%): {self.active_position.symbol} | "
+                f"Finalisation du trade sans envoyer d'ordre..."
+            )
+            skip_order = True
 
         # ✅ FIX: Validation exit_price avec fallback multi-niveaux
         exit_price_source = "api"  # Pour tracking
@@ -2097,7 +2127,7 @@ class PositionManager:
         actual_slippage_pct = 0.0
         requested_exit_price = exit_price
 
-        if self.live_order_manager:
+        if self.live_order_manager and not skip_order:
             try:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
                 size_amount = self.active_position.position_size_contracts

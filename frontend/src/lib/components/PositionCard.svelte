@@ -390,7 +390,12 @@
 				{#if nextTpInfo}
 					<div class="tpsl-info">
 						<div class="tpsl-pnl" data-debug-name="nextTpInfo.pnl">PnL objectif: <span class="tpsl-value" data-debug-name="nextTpInfo.pnl">+{formatPercent(nextTpInfo.pnl)}%</span></div>
-						<div class="tpsl-size" data-debug-name="nextTpInfo.size">Taille: <span class="tpsl-value" data-debug-name="nextTpInfo.size">{nextTpInfo.size}% de la position</span></div>
+						<div class="tpsl-size" data-debug-name="nextTpInfo.size">
+							Taille: <span class="tpsl-value" data-debug-name="nextTpInfo.size">{nextTpInfo.size}% de la position</span>
+							{#if $activePosition.force_full_tp_for_partial && nextTpInfo.size === 100}
+								<span class="force-full-tp-badge" title="Position trop petite pour TP partiel">(min. atteint)</span>
+							{/if}
+						</div>
 					</div>
 				{:else if $tpDistance}
 					<div class="tpsl-distance" data-debug-name="tpDistance">+{$tpDistance}%</div>
@@ -697,6 +702,19 @@
 
 	.tpsl-box.sl .tpsl-value {
 		color: #ff4444;
+	}
+
+	.force-full-tp-badge {
+		display: inline-block;
+		margin-left: 6px;
+		padding: 2px 6px;
+		font-size: 9px;
+		font-weight: bold;
+		color: #ffaa00;
+		background: rgba(255, 170, 0, 0.15);
+		border: 1px solid rgba(255, 170, 0, 0.3);
+		border-radius: 4px;
+		cursor: help;
 	}
 
 	.tp-levels {
