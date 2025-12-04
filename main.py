@@ -5201,6 +5201,54 @@ async def handle_client_command(command: str, params: dict):
             updated['stagnation_exit_max_loss_to_exit'] = val
             logger.info(f"✅ stagnation_exit_max_loss_to_exit: {val}")
 
+        # 🔬 ML Calibration Parameters
+        if 'ml_calibration_enabled' in params:
+            TRADING_CONFIG['ml_calibration_enabled'] = bool(params['ml_calibration_enabled'])
+            updated['ml_calibration_enabled'] = TRADING_CONFIG['ml_calibration_enabled']
+            logger.info(f"✅ ml_calibration_enabled: {TRADING_CONFIG['ml_calibration_enabled']}")
+        
+        if 'ml_calib_live_weight' in params:
+            val = float(params['ml_calib_live_weight'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_calib_live_weight'] = val
+            updated['ml_calib_live_weight'] = val
+            logger.info(f"✅ ml_calib_live_weight: {val}")
+        
+        if 'ml_calib_dryrun_weight' in params:
+            val = float(params['ml_calib_dryrun_weight'])
+            val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
+            TRADING_CONFIG['ml_calib_dryrun_weight'] = val
+            updated['ml_calib_dryrun_weight'] = val
+            logger.info(f"✅ ml_calib_dryrun_weight: {val}")
+        
+        if 'ml_calib_decay_days' in params:
+            val = int(params['ml_calib_decay_days'])
+            val = max(7, min(60, val))  # Clamp 7-60 days
+            TRADING_CONFIG['ml_calib_decay_days'] = val
+            updated['ml_calib_decay_days'] = val
+            logger.info(f"✅ ml_calib_decay_days: {val}")
+        
+        if 'ml_calib_min_trades' in params:
+            val = int(params['ml_calib_min_trades'])
+            val = max(10, min(100, val))  # Clamp 10-100
+            TRADING_CONFIG['ml_calib_min_trades'] = val
+            updated['ml_calib_min_trades'] = val
+            logger.info(f"✅ ml_calib_min_trades: {val}")
+        
+        if 'ml_calib_min_winrate' in params:
+            val = float(params['ml_calib_min_winrate'])
+            val = max(30.0, min(60.0, val))  # Clamp 30-60%
+            TRADING_CONFIG['ml_calib_min_winrate'] = val
+            updated['ml_calib_min_winrate'] = val
+            logger.info(f"✅ ml_calib_min_winrate: {val}%")
+        
+        if 'ml_calib_bucket_size' in params:
+            val = int(params['ml_calib_bucket_size'])
+            val = max(5, min(10, val))  # Clamp 5-10
+            TRADING_CONFIG['ml_calib_bucket_size'] = val
+            updated['ml_calib_bucket_size'] = val
+            logger.info(f"✅ ml_calib_bucket_size: {val}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -6320,7 +6368,11 @@ async def export_datalogger_excel(
                         params.append(f"{end_date} 23:59:59")
 
                 # 🔥 FIX: Limiter TOUTES les tables au nombre de lignes demandé
-                if has_timestamp:
+                if table_name == 'ml_calibration':
+                    base_query += f" ORDER BY updated_at DESC LIMIT {limit}"
+                elif table_name == 'ml_calibration_history':
+                    base_query += f" ORDER BY created_at DESC LIMIT {limit}"
+                elif has_timestamp:
                     base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp_entry:
                     base_query += f" ORDER BY timestamp_entry DESC LIMIT {limit}"

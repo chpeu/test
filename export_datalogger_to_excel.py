@@ -54,7 +54,9 @@ class DataLoggerExporter:
         'market_context',
         'scan_errors',
         'model_predictions',
-        'features_engineered'
+        'features_engineered',
+        'ml_calibration',  # 🔥 NOUVEAU: Table calibration ML
+        'ml_calibration_history'  # 🔥 NOUVEAU: Historique calibration
     ]
 
     def __init__(

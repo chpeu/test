@@ -399,6 +399,21 @@ TRADING_CONFIG = {
     "gb_l2_regularization": 0.5,  # Régularisation L2 (évite overfitting)
     "gb_n_features": 30,        # Nombre de features sélectionnées
     "gb_model_type": "histgb",  # Toujours HistGradientBoosting maintenant
+    
+    # ============================================================
+    # 🔥 ML AUTO-CALIBRATION SYSTEM
+    # ============================================================
+    # Recalibre automatiquement la confiance ML basée sur les résultats live réels
+    # La confiance affichée devient le winrate réel observé par bucket
+    # ============================================================
+    
+    "ml_calibration_enabled": True,          # Activer l'auto-calibration
+    "ml_calib_live_weight": 1.0,             # Poids des trades LIVE (slider: 0.5-1.0)
+    "ml_calib_dryrun_weight": 0.5,           # Poids des trades DRY-RUN (slider: 0.0-1.0)
+    "ml_calib_decay_days": 14,               # Demi-vie en jours (slider: 7-60)
+    "ml_calib_min_trades": 30,               # Minimum de trades pondérés pour activer (slider: 10-100)
+    "ml_calib_min_winrate": 40.0,            # Seuil WR minimum pour accepter un trade (slider: 30-60%)
+    "ml_calib_bucket_size": 5,               # Taille des buckets de confiance (ex: 30-35, 35-40)
 }
 
 # Risk management

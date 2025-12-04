@@ -1391,8 +1391,145 @@
 				</div>
 			</div>
 		</div>
+	</section>
 
-		<div class="action-buttons">
+	<!-- Calibration ML -->
+	<section class="variable-section">
+		<h3>⚖️ Calibration ML Auto-Adaptative</h3>
+		<p class="section-desc">
+			Ajuste automatiquement la confiance ML en fonction du WinRate réel observé par bucket.
+		</p>
+
+		<div class="variable-item toggle-item">
+			<div class="var-header">
+				<label for="ml_calibration_enabled">
+					<span class="var-name">Activer Calibration Auto</span>
+					<span class="var-desc">Recalibrer la confiance ML avec les résultats réels</span>
+				</label>
+			</div>
+			<label class="toggle">
+				<input
+					type="checkbox"
+					id="ml_calibration_enabled"
+					bind:checked={config.ml_calibration_enabled}
+					on:change={() => triggerAutoSave('ml_calibration_enabled', config.ml_calibration_enabled ? 'Activé' : 'Désactivé')}
+				/>
+				<span class="toggle-slider"></span>
+			</label>
+		</div>
+
+		<div class="subsection-grid" class:disabled={!config.ml_calibration_enabled}>
+			<div class="subsection-card">
+				<h4>⚖️ Pondération des Trades</h4>
+				
+				<div class="variable-item">
+					<div class="var-header">
+						<label for="ml_calib_live_weight">
+							<span class="var-name">Poids LIVE</span>
+							<span class="var-desc">Importance des trades réels (0.5 - 1.0)</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input 
+							type="range" 
+							id="ml_calib_live_weight" 
+							min="0.5" max="1.0" step="0.1" 
+							bind:value={config.ml_calib_live_weight} 
+							on:change={() => triggerAutoSave('ml_calib_live_weight', config.ml_calib_live_weight)} 
+							disabled={!config.ml_calibration_enabled}
+						/>
+						<span class="slider-value">{config.ml_calib_live_weight}</span>
+					</div>
+				</div>
+
+				<div class="variable-item">
+					<div class="var-header">
+						<label for="ml_calib_dryrun_weight">
+							<span class="var-name">Poids DRY-RUN</span>
+							<span class="var-desc">Importance des trades simulés (0.0 - 1.0)</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input 
+							type="range" 
+							id="ml_calib_dryrun_weight" 
+							min="0.0" max="1.0" step="0.1" 
+							bind:value={config.ml_calib_dryrun_weight} 
+							on:change={() => triggerAutoSave('ml_calib_dryrun_weight', config.ml_calib_dryrun_weight)} 
+							disabled={!config.ml_calibration_enabled}
+						/>
+						<span class="slider-value">{config.ml_calib_dryrun_weight}</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="subsection-card">
+				<h4>⏳ Paramètres Temporels & Seuils</h4>
+				
+				<div class="variable-item">
+					<div class="var-header">
+						<label for="ml_calib_decay_days">
+							<span class="var-name">Demi-vie (Jours)</span>
+							<span class="var-desc">Réduction du poids des vieux trades</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input 
+							type="range" 
+							id="ml_calib_decay_days" 
+							min="7" max="60" step="1" 
+							bind:value={config.ml_calib_decay_days} 
+							on:change={() => triggerAutoSave('ml_calib_decay_days', config.ml_calib_decay_days)} 
+							disabled={!config.ml_calibration_enabled}
+						/>
+						<span class="slider-value">{config.ml_calib_decay_days}j</span>
+					</div>
+				</div>
+
+				<div class="variable-item">
+					<div class="var-header">
+						<label for="ml_calib_min_trades">
+							<span class="var-name">Min Trades</span>
+							<span class="var-desc">Volume requis pour activer</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input 
+							type="range" 
+							id="ml_calib_min_trades" 
+							min="10" max="100" step="5" 
+							bind:value={config.ml_calib_min_trades} 
+							on:change={() => triggerAutoSave('ml_calib_min_trades', config.ml_calib_min_trades)} 
+							disabled={!config.ml_calibration_enabled}
+						/>
+						<span class="slider-value">{config.ml_calib_min_trades}</span>
+					</div>
+				</div>
+
+				<div class="variable-item">
+					<div class="var-header">
+						<label for="ml_calib_min_winrate">
+							<span class="var-name">WinRate Min</span>
+							<span class="var-desc">Seuil WR calibré pour accepter (30-60%)</span>
+						</label>
+					</div>
+					<div class="slider-container">
+						<input 
+							type="range" 
+							id="ml_calib_min_winrate" 
+							min="30" max="60" step="1" 
+							bind:value={config.ml_calib_min_winrate} 
+							on:change={() => triggerAutoSave('ml_calib_min_winrate', config.ml_calib_min_winrate + '%')} 
+							disabled={!config.ml_calibration_enabled}
+						/>
+						<span class="slider-value">{config.ml_calib_min_winrate}%</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<div class="action-buttons">
 			<div class="retrain-card">
 				<div>
 					<h4>🚀 Réentraîner Modèle</h4>
@@ -1412,14 +1549,14 @@
 					{verifyingML ? '⏳ Vérification...' : 'Vérifier'}
 				</button>
 			</div>
-		</div>
+	</div>
 		
-		<!-- 🔬 Optuna Optimization -->
-		<div class="optuna-section">
-			<div class="optuna-header">
-				<h4>🔬 Optimisation Automatique (Optuna)</h4>
-				<p>Recherche automatique des meilleurs hyperparamètres (~100 trials, ~15-30 min)</p>
-			</div>
+	<!-- 🔬 Optuna Optimization -->
+	<section class="optuna-section">
+		<div class="optuna-header">
+			<h4>🔬 Optimisation Automatique (Optuna)</h4>
+			<p>Recherche automatique des meilleurs hyperparamètres (~100 trials, ~15-30 min)</p>
+		</div>
 			
 			<div class="optuna-actions">
 				<button 
@@ -1514,7 +1651,7 @@
 					</details>
 				</div>
 			{/if}
-		</div>
+	</section>
 		
 		<!-- 🔍 Vérification Complète -->
 		<div class="verify-complete-section">
@@ -1559,20 +1696,19 @@
 					</div>
 				</div>
 			{/if}
-		</div>
 
-		{#if verifyResult}
-			<div class="verify-result" class:success={verifyResult.status === 'PASS'} class:error={verifyResult.status === 'error' || verifyResult.status === 'FAIL'}>
-				{#if verifyResult.status === 'PASS'}
-					<span>✅ Modèle valide - Accuracy: {(verifyResult.accuracy * 100).toFixed(1)}%</span>
-				{:else if verifyResult.status === 'error'}
-					<span>❌ Erreur: {verifyResult.message}</span>
-				{:else}
-					<span>⚠️ Modèle non performant: {verifyResult.message}</span>
-				{/if}
-			</div>
-		{/if}
-	</section>
+			{#if verifyResult}
+				<div class="verify-result" class:success={verifyResult.status === 'PASS'} class:error={verifyResult.status === 'error' || verifyResult.status === 'FAIL'}>
+					{#if verifyResult.status === 'PASS'}
+						<span>✅ Modèle valide - Accuracy: {(verifyResult.accuracy * 100).toFixed(1)}%</span>
+					{:else if verifyResult.status === 'error'}
+						<span>❌ Erreur: {verifyResult.message}</span>
+					{:else}
+						<span>⚠️ Modèle non performant: {verifyResult.message}</span>
+					{/if}
+				</div>
+			{/if}
+		</div>
 
 	<!-- Features Info -->
 	<section class="variable-section info-section">

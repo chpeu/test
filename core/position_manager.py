@@ -621,6 +621,31 @@ class PositionManager:
                 f"fixed_tp_pct={self.config.fixed_tp_pct}%"
             )
 
+        # 🔥 ML AUTO-CALIBRATION: Vérifier si le trade doit être pris
+        try:
+            from ml.calibration import get_calibration_manager
+            calib_manager = get_calibration_manager()
+            should_take, calibrated_wr, calib_reason = calib_manager.should_take_trade(
+                direction=direction,
+                ml_confidence=ml_confidence
+            )
+            
+            if not should_take:
+                logger.warning(
+                    f"🚫 Trade rejeté par ML Calibration: {symbol} {direction} | "
+                    f"ML Conf={ml_confidence:.1f}% → WR Réel={calibrated_wr:.1f}% | "
+                    f"Raison: {calib_reason}"
+                )
+                return None  # Rejeter le trade
+            
+            if calibrated_wr is not None:
+                logger.info(
+                    f"✅ Trade accepté (calibration): {symbol} {direction} | "
+                    f"ML Conf={ml_confidence:.1f}% → WR Réel={calibrated_wr:.1f}%"
+                )
+        except Exception as e:
+            logger.debug(f"Calibration check ignoré (non-bloquant): {e}")
+
         from config import TRADING_CONFIG
         excluded_symbols = set(TRADING_CONFIG.get('excluded_symbols', []))
         if symbol in excluded_symbols:
@@ -2547,6 +2572,36 @@ class PositionManager:
                     
                     if trade_id:
                         logger.debug(f"📊 Trade loggé dans PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
+                        
+                        # 🔥 ML AUTO-CALIBRATION: Mettre à jour les stats après chaque trade
+                        try:
+                            from ml.calibration import get_calibration_manager
+                            calib_manager = get_calibration_manager()
+                            
+                            # Récupérer les infos nécessaires
+                            ml_conf = getattr(self.active_position, 'ml_confidence', None)
+                            is_live = getattr(self.active_position, 'live_execution_mode', None) == 'LIVE'
+                            is_dry = self.live_order_manager.dry_run if self.live_order_manager else True
+                            trade_ts = datetime.fromtimestamp(
+                                self.active_position.start_time,
+                                tz=timezone.utc
+                            ) if self.active_position.start_time else datetime.now(timezone.utc)
+                            
+                            if ml_conf and ml_conf >= 30:
+                                calib_manager.update_calibration(
+                                    direction=self.active_position.direction,
+                                    ml_confidence=float(ml_conf),
+                                    win=net_pnl_pct > 0,
+                                    pnl_pct=net_pnl_pct,
+                                    pnl_usdt=net_pnl_usdt,
+                                    is_live=is_live,
+                                    is_dry_run=is_dry,
+                                    trade_timestamp=trade_ts
+                                )
+                                logger.debug(f"📊 Calibration ML mise à jour: {self.active_position.symbol}")
+                        except Exception as calib_err:
+                            logger.debug(f"Calibration update ignoré (non-bloquant): {calib_err}")
+                            
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur logging PostgreSQL trade: {e}")
         except Exception as e:

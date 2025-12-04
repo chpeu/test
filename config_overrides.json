@@ -133,5 +133,12 @@
   "adaptive_sizing_min_mult": 0.5,
   "adaptive_sizing_reset_hours": 3,
   "adaptive_sizing_reset_big_loss": true,
-  "adaptive_sizing_big_loss_threshold": -2.0
+  "adaptive_sizing_big_loss_threshold": -2.0,
+  "ml_calibration_enabled": true,
+  "ml_calib_live_weight": 1.0,
+  "ml_calib_dryrun_weight": 0.5,
+  "ml_calib_decay_days": 14,
+  "ml_calib_min_trades": 30,
+  "ml_calib_min_winrate": 40.0,
+  "ml_calib_bucket_size": 5
 }

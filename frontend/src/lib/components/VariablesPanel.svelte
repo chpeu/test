@@ -126,6 +126,14 @@
 		gb_min_samples_leaf: 30,
 		gb_l2_regularization: 0.5,  // Régularisation L2 (spécifique HistGB)
 		gb_model_type: 'histgb',
+		// 🔬 ML Calibration
+		ml_calibration_enabled: true,
+		ml_calib_live_weight: 1.0,
+		ml_calib_dryrun_weight: 0.5,
+		ml_calib_decay_days: 14,
+		ml_calib_min_trades: 30,
+		ml_calib_min_winrate: 40.0,
+		ml_calib_bucket_size: 5,
 		// 🔥 OPT #14: Scan Interval
 		scan_interval: 30,
 		// 🔥 OPT #15: Anti-Whipsaw Filter
@@ -650,6 +658,15 @@
 				gb_min_samples_leaf: tradingConfig.gb_min_samples_leaf,
 				gb_l2_regularization: tradingConfig.gb_l2_regularization,
 			},
+			'🔬 ML Calibration': {
+				ml_calibration_enabled: tradingConfig.ml_calibration_enabled,
+				ml_calib_live_weight: tradingConfig.ml_calib_live_weight,
+				ml_calib_dryrun_weight: tradingConfig.ml_calib_dryrun_weight,
+				ml_calib_decay_days: tradingConfig.ml_calib_decay_days,
+				ml_calib_min_trades: tradingConfig.ml_calib_min_trades,
+				ml_calib_min_winrate: tradingConfig.ml_calib_min_winrate,
+				ml_calib_bucket_size: tradingConfig.ml_calib_bucket_size,
+			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
 				max_latency_ms: tradingConfig.max_latency_ms,
@@ -805,6 +822,15 @@
 					gb_min_samples_leaf: config.gb_min_samples_leaf,
 					gb_l2_regularization: config.gb_l2_regularization,
 					gb_model_type: config.gb_model_type
+				});
+				console.log('✅ ML Calibration params:', {
+					ml_calibration_enabled: config.ml_calibration_enabled,
+					ml_calib_live_weight: config.ml_calib_live_weight,
+					ml_calib_dryrun_weight: config.ml_calib_dryrun_weight,
+					ml_calib_decay_days: config.ml_calib_decay_days,
+					ml_calib_min_trades: config.ml_calib_min_trades,
+					ml_calib_min_winrate: config.ml_calib_min_winrate,
+					ml_calib_bucket_size: config.ml_calib_bucket_size
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
