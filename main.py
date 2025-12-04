@@ -18,12 +18,12 @@ import io
 import subprocess
 from collections import OrderedDict
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple, Callable
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
-from core.websocket_manager import get_websocket_manager
+from core.websocket_manager import get_websocket_manager, WebSocketManager
 import time
 # 🔥 FIX: Import colorama pour les couleurs dans les logs
 try:
@@ -85,7 +85,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # 🔥 FIX: Exception handler global (défini comme fonction, sera attaché après création de app)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503 pour /api/state"""
     import time
     
@@ -186,7 +186,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 ws_manager = get_websocket_manager()
 
 # 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les routes
-def get_websocket_manager_for_routes():
+def get_websocket_manager_for_routes() -> WebSocketManager:
+    """Obtenir l'instance WebSocketManager pour les routes."""
     return ws_manager
 
 def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> OrderedDict:
@@ -312,6 +313,16 @@ def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> Order
         ml_v2_colsample_bytree=trading_config.get('ml_v2_colsample_bytree'),
         ml_v2_gamma=trading_config.get('ml_v2_gamma')
     )
+    categories['🎯 HistGradientBoosting (Optimisé 68%)'] = OrderedDict(
+        gb_filter_enabled=trading_config.get('gb_filter_enabled'),
+        gb_min_confidence=trading_config.get('gb_min_confidence'),
+        gb_max_iter=trading_config.get('gb_max_iter'),
+        gb_max_depth=trading_config.get('gb_max_depth'),
+        gb_learning_rate=trading_config.get('gb_learning_rate'),
+        gb_min_samples_leaf=trading_config.get('gb_min_samples_leaf'),
+        gb_l2_regularization=trading_config.get('gb_l2_regularization'),
+        gb_model_type=trading_config.get('gb_model_type')
+    )
     categories['💎 Live Trading'] = OrderedDict(
         default_leverage=trading_config.get('default_leverage'),
         max_latency_ms=trading_config.get('max_latency_ms')
@@ -367,8 +378,11 @@ def _flatten_trading_config_for_excel(categories: OrderedDict) -> List[Dict[str,
 try:
     register_websocket_commands(ws_manager)
     logger.info("✅ Commandes WebSocket live trading enregistrées")
-except Exception as e:
+except (ImportError, AttributeError, TypeError) as e:
     logger.warning(f"⚠️ Impossible d'enregistrer commandes WebSocket live trading: {e}")
+except Exception as e:
+    logger.error(f"❌ Erreur inattendue lors de l'enregistrement WebSocket: {e}", exc_info=True)
+    raise
 
 from contextlib import asynccontextmanager
 
@@ -386,12 +400,36 @@ async def lifespan(app: FastAPI):
             await data_logger.initialize()
             app.state.data_logger = data_logger
             logger.info("✅ DataLogger initialisé")
+        except ImportError as e:
+            logger.warning(f"⚠️ Module DataLogger non disponible: {e}")
+            app.state.data_logger = None
+        except (OSError, IOError, ConnectionError) as e:
+            logger.warning(f"⚠️ Erreur I/O lors de l'initialisation DataLogger: {e}")
+            app.state.data_logger = None
         except Exception as e:
-            logger.warning(f"⚠️ Erreur initialisation DataLogger: {e}")
+            logger.error(f"❌ Erreur inattendue initialisation DataLogger: {e}", exc_info=True)
             app.state.data_logger = None
 
         init_instances()
         logger.info("✅ LIFESPAN: init_instances() terminé")
+
+        # 🔬 Vérification système HistGradientBoosting au démarrage
+        try:
+            from verification.verify_histgb_system import verify_config_overrides, verify_model_file
+            config_result = verify_config_overrides(auto_fix=True)  # Auto-repair si nécessaire
+            model_result = verify_model_file()
+            
+            if config_result.passed and model_result.passed:
+                logger.info("✅ HISTGB: Système ML vérifié et fonctionnel")
+            else:
+                if not config_result.passed:
+                    logger.warning(f"⚠️ HISTGB Config: {len(config_result.errors)} erreur(s)")
+                if not model_result.passed:
+                    logger.warning(f"⚠️ HISTGB Model: {len(model_result.errors)} erreur(s)")
+        except ImportError:
+            logger.debug("Module verification non disponible, skip vérification ML")
+        except Exception as e:
+            logger.warning(f"⚠️ Vérification ML non critique échouée: {e}")
 
         try:
             await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
@@ -415,8 +453,10 @@ async def lifespan(app: FastAPI):
                 try:
                     await app.state.data_logger.shutdown()
                     logger.info("✅ DataLogger arrêté proprement")
+                except (OSError, IOError, ConnectionError) as e:
+                    logger.error(f"❌ Erreur I/O lors de l'arrêt DataLogger: {e}")
                 except Exception as e:
-                    logger.error(f"❌ Erreur arrêt DataLogger: {e}")
+                    logger.error(f"❌ Erreur inattendue arrêt DataLogger: {e}", exc_info=True)
 
             try:
                 from core.callbacks.scanner_loop import get_pg_datalogger
@@ -424,8 +464,12 @@ async def lifespan(app: FastAPI):
                 if pg_datalogger:
                     pg_datalogger.close()
                     logger.info("✅ PostgreSQL DataLogger fermé proprement")
+            except ImportError as e:
+                logger.debug(f"Module PostgreSQL DataLogger non disponible: {e}")
+            except (OSError, IOError, ConnectionError) as e:
+                logger.warning(f"⚠️ Erreur I/O fermeture PostgreSQL DataLogger: {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+                logger.warning(f"⚠️ Erreur inattendue fermeture PostgreSQL DataLogger: {e}", exc_info=True)
 
             try:
                 from api.mexc import get_mexc_client
@@ -433,8 +477,12 @@ async def lifespan(app: FastAPI):
                 if mexc_client:
                     await mexc_client.close()
                     logger.info("✅ MEXC client fermé proprement")
+            except ImportError as e:
+                logger.debug(f"Module MEXC non disponible: {e}")
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(f"⚠️ Erreur réseau fermeture MEXC client: {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
+                logger.warning(f"⚠️ Erreur inattendue fermeture MEXC client: {e}", exc_info=True)
 
         except Exception as e:
             logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
@@ -470,8 +518,13 @@ except Exception as e:
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
 # Utiliser le port comme identifiant d'instance (défaut: 5000)
-def get_trade_history_file():
-    """Retourner le nom du fichier historique selon le port de l'instance"""
+def get_trade_history_file() -> str:
+    """
+    Retourner le nom du fichier historique selon le port de l'instance.
+
+    Returns:
+        Nom du fichier d'historique spécifique à l'instance
+    """
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     return f"trade_history_instance_{port}.json"
@@ -481,18 +534,29 @@ TRADE_HISTORY_FILE = None  # Sera initialisé au démarrage
 # 🔥 PHASE 8: Instance globale TradeDatabase
 trade_db = None
 
-def init_trade_database():
-    """Initialiser base de données SQLite"""
+def init_trade_database() -> None:
+    """
+    Initialiser base de données SQLite.
+
+    Crée l'instance globale TradeDatabase si elle n'existe pas.
+    Gère les erreurs d'accès fichier et I/O de manière spécifique.
+    """
     global trade_db
     if TradeDatabase and not trade_db:
         try:
             trade_db = TradeDatabase()
             logger.info("✅ Base de données SQLite initialisée")
+        except (FileNotFoundError, PermissionError) as e:
+            logger.error(f"❌ Erreur d'accès fichier DB: {e}")
+            trade_db = None
+        except (OSError, IOError) as e:
+            logger.error(f"❌ Erreur I/O lors de l'initialisation DB: {e}")
+            trade_db = None
         except Exception as e:
-            logger.error(f"❌ Erreur initialisation DB: {e}")
+            logger.critical(f"❌ Erreur critique initialisation DB: {e}", exc_info=True)
             trade_db = None
 
-def save_trade_history():
+def save_trade_history() -> None:
     """Sauvegarder l'historique des trades dans un fichier JSON et SQLite"""
     global TRADE_HISTORY_FILE, trade_db
     
@@ -525,7 +589,7 @@ def save_trade_history():
     # pas toutes les colonnes requises (114). Les trades sont déjà loggés ailleurs via
     # analytics_logger, donc on évite toute duplication.
 
-def load_trade_history():
+def load_trade_history() -> None:
     """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
     global TRADE_HISTORY_FILE, trade_db
     
@@ -579,8 +643,24 @@ app_state = {
 }
 
 
-async def _run_initial_top_pairs_scan():
-    """Lancer le scan initial sans bloquer la boucle d'événements"""
+async def _run_initial_top_pairs_scan() -> None:
+    """
+    Lancer le scan initial des top pairs sans bloquer la boucle d'événements.
+
+    Cette fonction est exécutée en arrière-plan au démarrage de l'application
+    pour identifier les paires les plus prometteuses et initialiser les
+    connexions WebSocket pour le suivi des prix en temps réel.
+
+    Side Effects:
+        - Initialise les instances globales (scanner, price_provider)
+        - Met à jour app_state['top_pairs']
+        - Démarre les WebSocket pour le suivi des prix
+        - Émet des événements WebSocket vers le frontend
+        - Ajoute des logs dans la base de données
+
+    Note:
+        Ne fait rien si le scan a déjà été effectué (top_pairs présent)
+    """
     init_instances()
 
     if app_state.get('top_pairs'):
@@ -673,7 +753,7 @@ async def notify_error_telegram(error_type: str, details: str):
         logger.debug(f"⚠️ Impossible de notifier l'erreur via Telegram: {e}")
 
 
-def notify_error_sync(error_type: str, details: str):
+def notify_error_sync(error_type: str, details: str) -> None:
     """
     Version synchrone de notify_error_telegram.
     Utilise asyncio pour envoyer la notification.
@@ -688,13 +768,13 @@ def notify_error_sync(error_type: str, details: str):
 
 
 # 🔥 FIX SL MISMATCH: Fonction pour configurer vérification SL temps réel
-async def setup_realtime_sl_check(position, price_provider_instance):
+async def setup_realtime_sl_check(position: Any, price_provider_instance: Any) -> None:
     """
     Configure la vérification SL en temps réel via WebSocket.
-    
+
     Cette fonction est appelée après l'ouverture d'une position pour garantir
     que le SL sera détecté immédiatement à chaque tick, pas toutes les 2 secondes.
-    
+
     Args:
         position: Position active (objet Position ou dict)
         price_provider_instance: Instance HybridPriceProvider
@@ -785,13 +865,13 @@ async def setup_realtime_sl_check(position, price_provider_instance):
 _pending_sl_tasks: Dict[str, asyncio.Task] = {}
 
 
-async def schedule_sl_order_placement(position, delay_seconds: float = 3.0):
+async def schedule_sl_order_placement(position: Any, delay_seconds: float = 3.0) -> None:
     """
     Planifie le placement d'un ordre SL sur l'exchange après un délai.
-    
+
     Cette fonction attend que le prix d'entrée réel soit disponible (via ccxt),
     puis place un ordre SL de protection sur MEXC.
-    
+
     Args:
         position: Position active (objet Position)
         delay_seconds: Délai avant placement (défaut: 3 secondes)
@@ -887,12 +967,12 @@ async def schedule_sl_order_placement(position, delay_seconds: float = 3.0):
     logger.debug(f"📋 Tâche SL programmée pour {symbol} dans {delay_seconds}s")
 
 
-def cancel_pending_sl_task(symbol: str):
+def cancel_pending_sl_task(symbol: str) -> None:
     """
     Annule la tâche SL en attente pour un symbole.
-    
+
     Appelé quand une position se ferme avant que l'ordre SL ne soit placé.
-    
+
     Args:
         symbol: Symbole de la position fermée
     """
@@ -908,8 +988,36 @@ def cancel_pending_sl_task(symbol: str):
 
 # 🔥 JOUR 3: Callbacks pour le scheduler (doivent être définis avant init_instances)
 
-async def scanner_loop_callback():
-    """Callback appelé toutes les 45 secondes pour scanner les setups"""
+async def scanner_loop_callback() -> None:
+    """
+    Callback appelé périodiquement par le scheduler pour scanner les opportunités de trading.
+
+    Cette fonction est le cœur du système de scanning automatique. Elle est exécutée
+    à intervalle régulier (défini par scan_interval dans config) pour identifier
+    des setups de trading sur les paires les plus prometteuses.
+
+    Le processus est le suivant:
+    1. Vérifie qu'aucune position n'est active (skip si position active)
+    2. Scan initial des top pairs si nécessaire (volume, volatilité)
+    3. Analyse technique des top N paires (parallélisé)
+    4. Filtrage ML optionnel (winrate prédiction)
+    5. Validation finale des setups trouvés
+    6. Ouverture de position si setup valide
+
+    Side Effects:
+        - Initialise les instances globales
+        - Acquiert scanner_lock pour éviter les scans concurrents
+        - Met à jour app_state['top_pairs']
+        - Démarre les WebSocket pour le suivi des prix
+        - Log les résultats dans PostgreSQL
+        - Ouvre une position si un setup est trouvé
+        - Émet des événements WebSocket vers le frontend
+
+    Note:
+        - Ne fait rien si une position est déjà active
+        - Utilise un lock global pour éviter les scans multiples en parallèle
+        - Le nombre de paires scannées est configurable (top_pairs_limit)
+    """
     global price_provider  # 🔥 FIX: Utiliser variable globale
     
     init_instances()
@@ -1162,9 +1270,9 @@ async def scanner_loop_callback():
                                         except Exception:
                                             pass
                                     
-                                    # 🔥 FIX: Log détaillé du calcul de taille pour debug
-                                    logger.info(
-                                        f"💰 Calcul taille position adaptative: {symbol} | "
+                                    # 🔥 FIX: Log détaillé du calcul de taille pour debug (WARNING pour visibilité)
+                                    logger.warning(
+                                        f"💰 POSITION SIZE DEBUG: {symbol} | "
                                         f"Capital: {account_size:.2f} USDT | "
                                         f"Risk%: {risk_per_trade*100:.2f}% | "
                                         f"SL%: {sl_percent:.4f}% | "
@@ -1517,7 +1625,14 @@ async def scanner_loop_callback():
                                                     'partial_tp_sold': position.partial_tp_sold,
                                                     'position_size_contracts': getattr(position, 'position_size_contracts', None),
                                                     'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
-                                                    'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None)
+                                                    'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
+                                                    # 🔥 FIX: Ajouter tp_sl_mode, opened_at pour affichage ATR
+                                                    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                                                    'opened_at': getattr(position, 'opened_at', None),
+                                                    'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
+                                                    'leverage_used': getattr(position, 'leverage_used', None),
+                                                    'ml_confidence': getattr(position, 'ml_confidence', None),
+                                                    'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
                                                 })
                                                 logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
                                             except Exception as e:
@@ -1550,8 +1665,47 @@ async def scanner_loop_callback():
     # 🔥 FIX: Le lock scanner_lock est automatiquement libéré ici (fin du bloc async with)
 
 
-async def scan_pair_for_setup(symbol: str):
-    """Scanner une paire pour trouver un setup"""
+async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Scanner une paire pour trouver un setup de trading valide.
+
+    Cette fonction effectue une analyse technique complète d'une paire de trading
+    en utilisant plusieurs indicateurs (RSI, MACD, ADX, Bollinger Bands, etc.)
+    et patterns (breakout, S/R, divergence, chandeliers japonais) pour identifier
+    des opportunités de trading.
+
+    Le processus inclut:
+    1. Calcul des indicateurs techniques sur 1m et 5m
+    2. Analyse de la tendance sur le timeframe configuré
+    3. Détection de patterns (breakout, S/R, wicks, divergences)
+    4. Détection de patterns chandeliers (engulfing, hammer, doji, etc.)
+    5. Scoring pondéré basé sur les conditions validées
+    6. Filtrage par corrélation avec positions actives
+    7. Logging dans PostgreSQL (via DataLogger)
+
+    Args:
+        symbol: Symbole de la paire à analyser (ex: 'BTC/USDT', 'ETH/USDT')
+
+    Returns:
+        Dict contenant l'analyse complète si un setup est trouvé:
+            - setup_found: bool
+            - direction: 'LONG' ou 'SHORT'
+            - score: float (score pondéré)
+            - conditions_met: int (nombre de conditions validées)
+            - indicators_1m/5m: Dict des indicateurs
+            - patterns: Dict des patterns détectés
+            - entry: float (prix d'entrée recommandé)
+            - tp/sl: float (take profit et stop loss)
+        None si aucun setup valide n'est trouvé
+
+    Side Effects:
+        - Initialise les instances globales si nécessaire
+        - Log l'analyse dans PostgreSQL (DataLogger)
+        - Peut émettre des warnings si l'analyzer n'est pas disponible
+
+    Note:
+        Le filtrage ML n'est pas appliqué ici mais dans le callback appelant
+    """
     global _simple_logger  # 🔥 Simple Logger: Accès à la variable globale
     init_instances()
     
@@ -1600,160 +1754,24 @@ async def scan_pair_for_setup(symbol: str):
         # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
         # pour qu'ils soient disponibles dans _last_setup
         if analysis and isinstance(analysis, dict):
-            # Extraire les indicateurs depuis analysis si disponibles
-            indicators_1m = analysis.get('indicators_1m', {})
-            indicators_5m = analysis.get('indicators_5m', {})
-            
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
-            
-            # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
-            if not indicators_1m:
-                logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
-                # 🔥 DEBUG: Vérifier quelles données sont disponibles dans analysis
-                available_keys = [k for k in analysis.keys() if k not in ['symbol', 'direction', 'entry', 'sl', 'tp', 'price', 'signals', 'condition_types', 'totalScore', 'reason', 'reject_category']]
-                logger.info(f"🔍 DEBUG analysis keys disponibles pour indicators_1m: {available_keys[:20]}")
-                
-                # 🔥 PRIORITÉ 1: Vérifier si analysis contient analysis_1m (retourné par analyze_pair quand aucun setup n'est trouvé)
-                analysis_1m = analysis.get('analysis_1m', {})
-                if isinstance(analysis_1m, dict) and analysis_1m:
-                    # Extraire les indicateurs depuis analysis_1m
-                    indicators_1m = {
-                        'rsi': analysis_1m.get('rsi'),
-                        'rsi_prev': analysis_1m.get('rsi_prev'),
-                        'macd': analysis_1m.get('macd'),
-                        'macd_signal': analysis_1m.get('macd_signal'),
-                        'macd_hist': analysis_1m.get('macd_hist'),
-                        'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
-                        'adx': analysis_1m.get('adx'),
-                        'di_plus': analysis_1m.get('di_plus'),
-                        'di_minus': analysis_1m.get('di_minus'),
-                        'di_gap': analysis_1m.get('di_gap'),
-                        'ema9': analysis_1m.get('ema9'),
-                        'ema21': analysis_1m.get('ema21'),
-                        'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
-                        'atr': analysis_1m.get('atr'),
-                        'atr_pct': analysis_1m.get('atr_pct'),
-                        'bb_upper': analysis_1m.get('bb_upper'),
-                        'bb_middle': analysis_1m.get('bb_middle'),
-                        'bb_lower': analysis_1m.get('bb_lower'),
-                        'bb_width': analysis_1m.get('bb_width'),
-                        'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
-                        'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
-                        'volume': analysis_1m.get('volume'),
-                        'volume_avg': analysis_1m.get('volume_avg'),
-                        'volume_ratio': analysis_1m.get('volume_ratio') or analysis_1m.get('volumeSpike'),
-                        'volume_spike': analysis_1m.get('volume_spike'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_1m construit depuis analysis_1m")
-                else:
-                    # 🔥 PRIORITÉ 2: Chercher directement dans analysis (pour les setups valides)
-                    indicators_1m = {
-                        'rsi': analysis.get('rsi'),
-                        'rsi_prev': analysis.get('rsi_prev'),
-                        'macd': analysis.get('macd'),
-                        'macd_signal': analysis.get('macd_signal'),
-                        'macd_hist': analysis.get('macd_hist'),
-                        'macd_hist_prev': analysis.get('macd_hist_prev'),
-                        'adx': analysis.get('adx'),
-                        'di_plus': analysis.get('di_plus'),
-                        'di_minus': analysis.get('di_minus'),
-                        'di_gap': analysis.get('di_gap'),
-                        'ema9': analysis.get('ema9'),
-                        'ema21': analysis.get('ema21'),
-                        'ema_diff_pct': analysis.get('ema_diff_pct'),
-                        'atr': analysis.get('atr'),
-                        'atr_pct': analysis.get('atr_pct'),
-                        'bb_upper': analysis.get('bb_upper'),
-                        'bb_middle': analysis.get('bb_middle'),
-                        'bb_lower': analysis.get('bb_lower'),
-                        'bb_width': analysis.get('bb_width'),
-                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
-                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
-                        'volume': analysis.get('volume'),
-                        'volume_avg': analysis.get('volume_avg'),
-                        'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
-                        'volume_spike': analysis.get('volume_spike'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_1m construit depuis analysis directement")
-                
-                # 🔥 DEBUG: Compter les valeurs non-null
-                indicators_1m_non_null = len([v for v in indicators_1m.values() if v is not None])
-                logger.info(f"🔍 DEBUG indicators_1m construit: {indicators_1m_non_null}/{len(indicators_1m)} valeurs non-null")
-            
-            if not indicators_5m:
-                logger.info(f"🔧 Construction indicators_5m depuis analysis pour {symbol}")
-                
-                # 🔥 PRIORITÉ 1: Vérifier si analysis contient analysis_5m (retourné par analyze_pair quand aucun setup n'est trouvé)
-                analysis_5m = analysis.get('analysis_5m', {})
-                if isinstance(analysis_5m, dict) and analysis_5m:
-                    # Extraire les indicateurs depuis analysis_5m
-                    indicators_5m = {
-                        'rsi': analysis_5m.get('rsi'),
-                        'rsi_prev': analysis_5m.get('rsi_prev'),
-                        'macd': analysis_5m.get('macd'),
-                        'macd_signal': analysis_5m.get('macd_signal'),
-                        'macd_hist': analysis_5m.get('macd_hist'),
-                        'macd_hist_prev': analysis_5m.get('macd_hist_prev'),
-                        'adx': analysis_5m.get('adx'),
-                        'di_plus': analysis_5m.get('di_plus'),
-                        'di_minus': analysis_5m.get('di_minus'),
-                        'di_gap': analysis_5m.get('di_gap'),
-                        'ema9': analysis_5m.get('ema9'),
-                        'ema21': analysis_5m.get('ema21'),
-                        'ema_diff_pct': analysis_5m.get('ema_diff_pct'),
-                        'atr': analysis_5m.get('atr'),
-                        'atr_pct': analysis_5m.get('atr_pct'),
-                        'bb_upper': analysis_5m.get('bb_upper'),
-                        'bb_middle': analysis_5m.get('bb_middle'),
-                        'bb_lower': analysis_5m.get('bb_lower'),
-                        'bb_width': analysis_5m.get('bb_width'),
-                        'bb_distance_to_lower': analysis_5m.get('bb_distance_to_lower'),
-                        'bb_distance_to_upper': analysis_5m.get('bb_distance_to_upper'),
-                        'volume': analysis_5m.get('volume'),
-                        'volume_avg': analysis_5m.get('volume_avg'),
-                        'volume_ratio': analysis_5m.get('volume_ratio') or analysis_5m.get('volumeSpike'),
-                        'volume_spike': analysis_5m.get('volume_spike'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_5m construit depuis analysis_5m")
-                else:
-                    # 🔥 PRIORITÉ 2: Chercher directement dans analysis (pour les setups valides)
-                    indicators_5m = {
-                        'rsi': analysis.get('rsi_5m'),
-                        'rsi_prev': analysis.get('rsi_prev_5m'),
-                        'macd': analysis.get('macd_5m'),
-                        'macd_signal': analysis.get('macd_signal_5m'),
-                        'macd_hist': analysis.get('macd_hist_5m'),
-                        'macd_hist_prev': analysis.get('macd_hist_prev_5m'),
-                        'adx': analysis.get('adx_5m'),
-                        'di_plus': analysis.get('di_plus_5m'),
-                        'di_minus': analysis.get('di_minus_5m'),
-                        'di_gap': analysis.get('di_gap_5m'),
-                        'ema9': analysis.get('ema9_5m'),
-                        'ema21': analysis.get('ema21_5m'),
-                        'ema_diff_pct': analysis.get('ema_diff_pct_5m'),
-                        'atr': analysis.get('atr5m') or analysis.get('atr_5m'),
-                        'atr_pct': analysis.get('atr_pct_5m'),
-                        'bb_upper': analysis.get('bb_upper_5m'),
-                        'bb_middle': analysis.get('bb_middle_5m'),
-                        'bb_lower': analysis.get('bb_lower_5m'),
-                        'bb_width': analysis.get('bb_width_5m'),
-                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower_5m'),
-                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper_5m'),
-                        'volume': analysis.get('volume_5m'),
-                        'volume_avg': analysis.get('volume_avg_5m'),
-                        'volume_ratio': analysis.get('volume_ratio_5m'),
-                        'volume_spike': analysis.get('volume_spike_5m'),
-                    }
-                    logger.debug(f"🔍 DEBUG {symbol}: indicators_5m construit depuis analysis directement")
-                
-                # 🔥 DEBUG: Compter les valeurs non-null
-                indicators_5m_non_null = len([v for v in indicators_5m.values() if v is not None])
-                logger.info(f"🔍 DEBUG indicators_5m construit: {indicators_5m_non_null}/{len(indicators_5m)} valeurs non-null")
-            
-            # Ajouter les indicateurs à analysis
+            # Use helper functions to extract indicators (eliminates code duplication)
+            from utils.indicators_helpers import build_indicators_from_analysis, count_non_null_values
+
+            # Build indicators for both timeframes
+            indicators_1m = build_indicators_from_analysis(analysis, '1m', logger)
+            indicators_5m = build_indicators_from_analysis(analysis, '5m', logger)
+
+            # Count non-null values for debugging
+            indicators_1m_count = count_non_null_values(indicators_1m)
+            indicators_5m_count = count_non_null_values(indicators_5m)
+
+            logger.info(f"✅ Indicateurs extraits pour {symbol}: "
+                       f"indicators_1m: {indicators_1m_count}/{len(indicators_1m)} valeurs, "
+                       f"indicators_5m: {indicators_5m_count}/{len(indicators_5m)} valeurs")
+
+            # Add indicators to analysis
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
-            logger.info(f"✅ Indicateurs ajoutés à analysis pour {symbol}: indicators_1m keys: {len(indicators_1m)}, indicators_5m keys: {len(indicators_5m)}")
         
         # 🔥 DÉSACTIVÉ: SimplePGLogger pour éviter doublons (PostgreSQLDataLogger fait déjà le travail)
         if False:  # Désactivé - évite les doublons avec PostgreSQLDataLogger
@@ -2296,8 +2314,39 @@ async def scan_pair_for_setup(symbol: str):
         return None
 
 
-async def position_check_loop_callback():
-    """Callback appelé toutes les 2 secondes pour vérifier la position"""
+async def position_check_loop_callback() -> None:
+    """
+    Callback appelé périodiquement pour surveiller et gérer la position active.
+
+    Cette fonction est le gestionnaire principal des positions ouvertes. Elle est
+    exécutée toutes les 2 secondes (check_interval) pour surveiller l'évolution
+    de la position et décider si elle doit être fermée.
+
+    Le processus de surveillance inclut:
+    1. Vérification de l'existence d'une position active
+    2. Récupération du prix actuel en temps réel
+    3. Vérification des conditions de sortie:
+       - Take Profit (TP) atteint
+       - Stop Loss (SL) touché
+       - Break-even activé (si configuration)
+       - Trailing stop activé (si configuration)
+       - Timeout de position
+    4. Fermeture automatique si condition validée
+    5. Mise à jour des statistiques et logs
+
+    Side Effects:
+        - Initialise les instances globales
+        - Peut fermer la position active
+        - Met à jour app_state['active_position']
+        - Log dans PostgreSQL et trade_history
+        - Émet des événements WebSocket vers le frontend
+        - Met à jour les statistiques de trading
+
+    Note:
+        - Ne fait rien si aucune position n'est active
+        - Gère les erreurs de connexion au price provider
+        - Utilise get_preferred_price() pour gérer les différents formats de prix
+    """
     init_instances()
     
     # Vérifier si on a une position active
@@ -2308,6 +2357,10 @@ async def position_check_loop_callback():
         return
     
     try:
+        # 🔥 FIX: Import TRADING_CONFIG pour position_update
+        from config import TRADING_CONFIG
+        from datetime import datetime  # 🔥 FIX: Import au début du try pour éviter UnboundLocalError
+        
         # Récupérer prix actuel
         current_price_data = await price_provider.get_price(position_manager.active_position.symbol)
         if not current_price_data:
@@ -2401,6 +2454,11 @@ async def position_check_loop_callback():
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de charger sizing_multiplier depuis PostgreSQL: {e}")
 
+                # 🔥 FIX: Calculer opened_at depuis start_time (opened_at n'est pas un attribut direct)
+                opened_at_iso = None
+                if position.start_time:
+                    opened_at_iso = datetime.fromtimestamp(position.start_time).isoformat()
+                
                 # Émettre update pour le frontend (inclut aussi les tailles en contrats)
                 update_data = {
                     'symbol': position.symbol,
@@ -2420,6 +2478,11 @@ async def position_check_loop_callback():
                     # 🔥 FIX: Ajouter ml_confidence et adaptive_sizing_multiplier
                     'ml_confidence': ml_conf,
                     'adaptive_sizing_multiplier': sizing_mult,
+                    # 🔥 FIX: Ajouter tp_sl_mode, opened_at et force_full_tp pour affichage ATR
+                    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                    'opened_at': opened_at_iso,  # 🔥 FIX: Calculé depuis start_time
+                    'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
+                    'leverage_used': getattr(position, 'leverage_used', None),
                 }
                 await ws_manager.emit('position_update', update_data)
                 
@@ -2544,8 +2607,45 @@ async def scalability_refresh_loop_callback():
         logger.error("[%s] ERROR: Erreur scalability refresh", datetime.now().strftime('%H:%M:%S'))
 
 
-def init_instances():
-    """Initialiser les instances (après import)"""
+def init_instances() -> None:
+    """
+    Initialiser toutes les instances globales nécessaires au fonctionnement du bot.
+
+    Cette fonction est le point d'initialisation central pour tous les composants
+    du système de trading. Elle est appelée au démarrage et peut être rappelée
+    pour s'assurer que toutes les instances sont disponibles.
+
+    Composants initialisés:
+    1. WebSocket Log Handler - Envoie les logs au frontend
+    2. Analytics Database - Stockage PostgreSQL des métriques
+    3. Scanner - Identification des paires prometteuses
+    4. Analyzer - Analyse technique et détection de setups
+    5. PositionManager - Gestion des positions actives
+    6. Scheduler - Exécution périodique des tâches
+    7. PriceProvider - Récupération des prix (REST + WebSocket)
+    8. NotificationManager - Notifications Telegram
+    9. LiveOrderManager - Exécution des ordres sur l'exchange
+    10. MetricsCollector - Collecte des métriques système
+
+    Side Effects:
+        - Crée/initialise des variables globales (scanner, analyzer, etc.)
+        - Configure le logger avec WebSocket handler
+        - Crée le répertoire data/ si nécessaire
+        - Initialise la base de données Analytics (PostgreSQL)
+        - Réinitialise les statistiques de session
+        - Configure le gestionnaire de notifications Telegram
+        - Enregistre les métriques système (CPU, mémoire)
+
+    Note:
+        - Utilise des variables globales pour compatibilité legacy
+        - Safe à appeler plusieurs fois (vérifie si déjà initialisé)
+        - Gère les erreurs d'initialisation individuellement
+        - Certains composants sont optionnels (Telegram, ML, etc.)
+
+    Raises:
+        Aucune exception n'est propagée - les erreurs sont loggées mais
+        ne bloquent pas le démarrage du système
+    """
     global scanner, analyzer, position_config, position_manager, price_provider, scheduler
     global analytics_db, notification_manager, session_id, live_order_manager
     
@@ -5048,6 +5148,59 @@ async def handle_client_command(command: str, params: dict):
             except Exception as e:
                 logger.warning(f"⚠️ Erreur reload AdaptiveSizingManager: {e}")
 
+        # 🔥 HYBRID INTELLIGENT: Break-Even ATR
+        if 'break_even_use_atr' in params:
+            TRADING_CONFIG['break_even_use_atr'] = bool(params['break_even_use_atr'])
+            updated['break_even_use_atr'] = TRADING_CONFIG['break_even_use_atr']
+            logger.info(f"✅ break_even_use_atr: {TRADING_CONFIG['break_even_use_atr']}")
+        
+        if 'break_even_atr_mult' in params:
+            val = float(params['break_even_atr_mult'])
+            val = max(0.1, min(3.0, val))  # Clamp 0.1-3.0
+            TRADING_CONFIG['break_even_atr_mult'] = val
+            updated['break_even_atr_mult'] = val
+            logger.info(f"✅ break_even_atr_mult: {val}")
+
+        # 🔥 HYBRID INTELLIGENT: Trailing ATR Trigger
+        if 'trailing_use_atr_trigger' in params:
+            TRADING_CONFIG['trailing_use_atr_trigger'] = bool(params['trailing_use_atr_trigger'])
+            updated['trailing_use_atr_trigger'] = TRADING_CONFIG['trailing_use_atr_trigger']
+            logger.info(f"✅ trailing_use_atr_trigger: {TRADING_CONFIG['trailing_use_atr_trigger']}")
+        
+        if 'trailing_trigger_atr_mult' in params:
+            val = float(params['trailing_trigger_atr_mult'])
+            val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0
+            TRADING_CONFIG['trailing_trigger_atr_mult'] = val
+            updated['trailing_trigger_atr_mult'] = val
+            logger.info(f"✅ trailing_trigger_atr_mult: {val}")
+
+        # 🔥 HYBRID INTELLIGENT: Stagnation Exit (Time Decay)
+        if 'stagnation_exit_enabled' in params:
+            TRADING_CONFIG['stagnation_exit_enabled'] = bool(params['stagnation_exit_enabled'])
+            updated['stagnation_exit_enabled'] = TRADING_CONFIG['stagnation_exit_enabled']
+            logger.info(f"✅ stagnation_exit_enabled: {TRADING_CONFIG['stagnation_exit_enabled']}")
+        
+        if 'stagnation_exit_timeout_seconds' in params:
+            val = int(params['stagnation_exit_timeout_seconds'])
+            val = max(30, min(600, val))  # Clamp 30s-600s (10min)
+            TRADING_CONFIG['stagnation_exit_timeout_seconds'] = val
+            updated['stagnation_exit_timeout_seconds'] = val
+            logger.info(f"✅ stagnation_exit_timeout_seconds: {val}")
+        
+        if 'stagnation_exit_min_pnl_to_stay' in params:
+            val = float(params['stagnation_exit_min_pnl_to_stay'])
+            val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
+            TRADING_CONFIG['stagnation_exit_min_pnl_to_stay'] = val
+            updated['stagnation_exit_min_pnl_to_stay'] = val
+            logger.info(f"✅ stagnation_exit_min_pnl_to_stay: {val}")
+        
+        if 'stagnation_exit_max_loss_to_exit' in params:
+            val = float(params['stagnation_exit_max_loss_to_exit'])
+            val = max(-1.0, min(0.0, val))  # Clamp -1.0% à 0%
+            TRADING_CONFIG['stagnation_exit_max_loss_to_exit'] = val
+            updated['stagnation_exit_max_loss_to_exit'] = val
+            logger.info(f"✅ stagnation_exit_max_loss_to_exit: {val}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -6033,7 +6186,7 @@ async def export_trades_csv(
     )
 
 
-def _get_pg_connection_for_export():
+def _get_pg_connection_for_export() -> Tuple[Any, Callable[[], None]]:
     """Obtenir une connexion PostgreSQL même si le bot n'est pas actif."""
     pg_datalogger = None
     try:
@@ -6283,7 +6436,8 @@ async def export_datalogger_excel(
         )
 
 
-def _generate_trading_config_workbook():
+def _generate_trading_config_workbook() -> io.BytesIO:
+    """Générer un classeur Excel avec la configuration de trading."""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment

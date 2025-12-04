@@ -2,7 +2,7 @@
 	import { sortedTrades } from '$lib/stores/trades';
 	import { derived } from 'svelte/store';
 
-	import { formatAdaptive, formatPercent, formatUSDT, formatPrice } from '$lib/utils/format';
+	import { formatAdaptive, formatPercent, formatUSDT, formatPrice, getSignificantDecimals } from '$lib/utils/format';
 
 	// 🔥 PAGINATION: Variables de pagination
 	let currentPage = 1;
@@ -120,21 +120,20 @@
 						<th data-debug-name="tradeHistory.column.reason">Raison</th>
 						<th data-debug-name="tradeHistory.column.entryPrice">Prix Entrée</th>
 						<th data-debug-name="tradeHistory.column.exitPrice">Prix Sortie</th>
-						<th data-debug-name="tradeHistory.column.pnlGross">PnL Brut %</th>
-						<th data-debug-name="tradeHistory.column.slippage">Slippage</th>
+						<th data-debug-name="tradeHistory.column.sizeUsdt" title="Montant USDT à l'ouverture">Size USDT</th>
 						<th data-debug-name="tradeHistory.column.pnlNet">PnL Net %</th>
-						<th data-debug-name="tradeHistory.column.pnlUsdt">PnL Net USDT</th>
-						<th data-debug-name="tradeHistory.column.pnlTotalUsdt">PnL Total USDT</th>
+						<th data-debug-name="tradeHistory.column.pnlUsdt" title="PnL réalisé depuis API MEXC (frais inclus)">PnL Réalisé USDT</th>
 						<th data-debug-name="tradeHistory.column.duration">Duration</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each $paginatedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
 						{@const globalIndex = (currentPage - 1) * tradesPerPage + index}
-						<tr class:win={trade.net_pnl_usdt >= 0} class:loss={trade.net_pnl_usdt < 0} data-debug-name="trade[{globalIndex}]">
+						{@const isWin = (trade.net_pnl_usdt || 0) >= 0}
+						<tr class:row-win={isWin} class:row-loss={!isWin} data-debug-name="trade[{globalIndex}]">
 							<td class="index" data-debug-name="trade.index">{globalIndex + 1}</td>
 							<td class="time" data-debug-name="trade.closed_at">{formatTime(trade.closed_at || trade.timestamp)}</td>
-							<td class="symbol" data-debug-name="trade.symbol">{trade.symbol}</td>
+							<td class="symbol" data-debug-name="trade.symbol" title="Taille: {trade.filled_size_usdt ? trade.filled_size_usdt.toFixed(2) : (trade.size || 'N/A')} USDT">{trade.symbol}</td>
 							<td class="direction" data-debug-name="trade.direction">
 								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'} data-debug-name="trade.direction">
 									{trade.direction}
@@ -144,58 +143,77 @@
 								{#if trade.reason === 'MANUAL'}
 									<span class="reason-manual" data-debug-name="trade.reason">👤 Manuel</span>
 								{:else}
-									{trade.reason || trade.close_reason || 'N/A'}
+									{(() => {
+										const reason = trade.reason || trade.close_reason || 'N/A';
+										const pnl = trade.net_pnl_usdt || 0;
+										
+										// Clarifier les cas ambigus
+										if (reason === 'TP' && pnl < 0) return 'TP (Slippage)';
+										if (reason === 'SL' && pnl > 0) return 'SL (Profit)';
+										
+										return reason;
+									})()}
 								{/if}
 							</td>
 							<td class="entry-price" data-debug-name="trade.entry_price">
-								{trade.entry_price ? formatPrice(trade.entry_price) : 'N/A'}
+								{(() => {
+									const entryPrice = trade.entry_price || trade.entry;
+									return entryPrice ? formatPrice(entryPrice) : 'N/A';
+								})()}
 							</td>
 							<td class="exit-price" data-debug-name="trade.exit_price">
 								{(() => {
-									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price;
-									if (!exitPrice) return 'N/A';
-									return formatPrice(exitPrice, trade.entry_price);
+									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price || trade.exit;
+									const entryPrice = trade.entry_price || trade.entry;
+									
+									// Si pas de prix de sortie ou prix suspect (0 ou 1 pour un actif > 10)
+									if (!exitPrice || (exitPrice <= 1 && entryPrice > 10)) {
+										// Essayer de reconstruire depuis PnL si possible
+										if (entryPrice && trade.pnl_pct) {
+											const pnlMult = 1 + (trade.pnl_pct / 100 * (trade.direction === 'SHORT' ? -1 : 1));
+											const estPrice = entryPrice * pnlMult;
+											const decimals = getSignificantDecimals(entryPrice);
+											return `≈${formatPrice(estPrice, decimals)}`;
+										}
+										return exitPrice ? formatPrice(exitPrice) : 'N/A';
+									}
+									
+									// Utiliser le nombre de décimales du prix d'entrée
+									const decimals = entryPrice ? getSignificantDecimals(entryPrice) : null;
+									return formatPrice(exitPrice, decimals);
 								})()}
 							</td>
-							<td class="pnl-gross" class:positive={(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0} class:negative={(trade.gross_pnl_pct || trade.pnl_pct || 0) < 0} data-debug-name="trade.gross_pnl_pct">
-								{(trade.gross_pnl_pct || trade.pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.gross_pnl_pct || trade.pnl_pct || 0)}%
-							</td>
-							<td class="slippage" data-debug-name="trade.slippage">
+							<!-- 🔥 Size USDT (montant à l'ouverture) -->
+							<td class="size-usdt" data-debug-name="trade.size">
 								{(() => {
-									// Essayer slippage_pct d'abord (en pourcentage)
-									let slippageValue = trade.slippage_pct;
-									// Sinon essayer slippage (peut être en % ou en décimales)
-									if (slippageValue === undefined || slippageValue === null) {
-										slippageValue = trade.slippage;
-										// Si slippage est < 1, c'est probablement en décimales (0.001 = 0.1%), multiplier par 100
-										if (slippageValue !== undefined && slippageValue !== null && Math.abs(slippageValue) < 1 && slippageValue !== 0) {
-											slippageValue = slippageValue * 100;
-										}
+									// 🔥 FIX: Utiliser size_initial_usdt en priorité (taille totale ouverture)
+									const size = trade.size_initial_usdt || trade.filled_size_usdt || trade.size || trade.position_size_usdt || 0;
+									return size > 0 ? formatUSDT(size) : 'N/A';
+								})()}
+							</td>
+							<!-- 🔥 PnL Net % calculé depuis size et pnl_usdt réel -->
+							<td class="pnl-net" class:positive={isWin} class:negative={!isWin} data-debug-name="trade.net_pnl_pct">
+								{(() => {
+									// Priorité 1: net_pnl_pct du backend
+									if (trade.net_pnl_pct !== undefined && trade.net_pnl_pct !== null) {
+										return `${trade.net_pnl_pct >= 0 ? '+' : ''}${formatPercent(trade.net_pnl_pct)}%`;
 									}
-									// Sinon calculer depuis slippage_usdt si disponible
-									if ((slippageValue === undefined || slippageValue === null || slippageValue === 0) && trade.slippage_usdt && trade.size) {
-										slippageValue = (trade.slippage_usdt / trade.size) * 100;
+									// Priorité 2: Calculer depuis size (initial) et pnl_usdt
+									const size = trade.size_initial_usdt || trade.filled_size_usdt || trade.size || trade.position_size_usdt || 0;
+									const pnlUsdt = trade.net_pnl_usdt || 0;
+									if (size > 0) {
+										const pnlPct = (pnlUsdt / size) * 100;
+										return `${pnlPct >= 0 ? '+' : ''}${formatPercent(pnlPct)}%`;
 									}
-									// Valeur par défaut
-									if (slippageValue === undefined || slippageValue === null) {
-										slippageValue = 0;
-									}
-									// 🔥 FIX: Forcer 3 décimales pour slippage
-									return (slippageValue || 0).toFixed(3);
-								})()}%
+									return 'N/A';
+								})()}
 							</td>
-							<!-- PnL Net % (frais/slippage DÉJÀ déduits) -->
-							<td class="pnl-net" class:positive={(trade.net_pnl_pct || 0) >= 0} class:negative={(trade.net_pnl_pct || 0) < 0} data-debug-name="trade.net_pnl_pct">
-								{(trade.net_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(trade.net_pnl_pct || 0)}%
+							<!-- 🔥 FIX: PnL Réalisé USDT = PnL réel depuis API MEXC (4 décimales comme l'API) -->
+							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt" title="PnL réalisé depuis API MEXC | Entry: {trade.entry_price || trade.entry || 'N/A'} | Exit: {trade.exit_price || trade.exit || 'N/A'}">
+								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{(trade.net_pnl_usdt || 0).toFixed(4)} USDT
 							</td>
-							<!-- 🔥 FIX: PnL USDT avec formatage adaptatif -->
-							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt">
-								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{(trade.net_pnl_usdt || 0).toFixed(3)} USDT
-							</td>
-							<!-- 🔥 FIX: PnL Total USDT (incluant slippage) -->
-							<td class="pnl-total-usdt" class:positive={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0} class:negative={((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) < 0} data-debug-name="trade.pnl_total_usdt">
-								{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)) >= 0 ? '+' : ''}{((trade.net_pnl_usdt || 0) - (trade.slippage_usdt || 0)).toFixed(3)} USDT
-							</td>
+							<!-- 🔥 FIX: Supprimé PnL Total USDT car redondant et calcul incorrect -->
+							
 							<!-- 🔥 FIX: Duration (calculée si manquante) -->
 							<td class="duration" data-debug-name="trade.duration">
 								{(() => {
@@ -385,6 +403,26 @@
 		background: rgba(0, 255, 136, 0.05);
 	}
 
+	/* 🔥 Surlignage vert/rouge des lignes selon PnL */
+	.trades-table tbody tr.row-win {
+		background: rgba(0, 255, 136, 0.08);
+		border-left: 4px solid #00ff88;
+	}
+
+	.trades-table tbody tr.row-win:hover {
+		background: rgba(0, 255, 136, 0.15);
+	}
+
+	.trades-table tbody tr.row-loss {
+		background: rgba(255, 68, 68, 0.08);
+		border-left: 4px solid #ff4444;
+	}
+
+	.trades-table tbody tr.row-loss:hover {
+		background: rgba(255, 68, 68, 0.15);
+	}
+
+	/* Legacy classes pour compatibilité */
 	.trades-table tbody tr.win {
 		border-left: 4px solid #00ff88;
 	}
@@ -449,6 +487,12 @@
 
 	.size {
 		color: #ffaa00;
+	}
+
+	.size-usdt {
+		color: #ffaa00;
+		font-family: 'Courier New', monospace;
+		font-weight: 500;
 	}
 
 	.pnl-pct, .pnl-usdt {

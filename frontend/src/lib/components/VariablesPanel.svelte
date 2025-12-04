@@ -51,10 +51,21 @@
 		break_even_trigger: 0.3,
 		trailing_distance: 0.15,
 		// Mode ATR
-		atr_mult_tp: 1.5,
-		atr_mult_sl: 1.0,
-		atr_min: 0.15,
-		atr_max: 1.5,
+		atr_mult_tp: 3.0,
+		atr_mult_sl: 1.2,
+		atr_min: 0.10,
+		atr_max: 1.0,
+		// 🔥 HYBRID: Break-even ATR
+		break_even_use_atr: true,
+		break_even_atr_mult: 0.5,
+		// 🔥 HYBRID: Trailing ATR trigger
+		trailing_use_atr_trigger: true,
+		trailing_trigger_atr_mult: 1.0,
+		// 🔥 HYBRID: Stagnation Exit (Time Decay)
+		stagnation_exit_enabled: true,
+		stagnation_exit_timeout_seconds: 120,
+		stagnation_exit_min_pnl_to_stay: 0.10,
+		stagnation_exit_max_loss_to_exit: -0.05,
 		// Mode ESCALIER (TP_MULTI) - 4 niveaux
 		escalier_level1_pnl: 0.20,
 		escalier_level1_size: 25,
@@ -106,16 +117,15 @@
 		ml_v2_subsample: 0.7,
 		ml_v2_colsample_bytree: 0.7,
 		ml_v2_gamma: 0.5,
-		// GradientBoosting (Config B Anti-Overfit - 62.6% accuracy, 15% gap)
-		gb_filter_enabled: true,  // Activé par défaut car performant
-		gb_min_confidence: 0.55,  // 55% seuil
-		gb_n_estimators: 150,     // 🔥 Config B: -121 vs ancienne
+		// HistGradientBoosting (Optimisé 64-68% accuracy)
+		gb_filter_enabled: true,
+		gb_min_confidence: 0.50,
+		gb_max_iter: 100,           // Nombre d'itérations (anciennement n_estimators)
 		gb_max_depth: 3,
-		gb_learning_rate: 0.03,
-		gb_min_samples_split: 80, // 🔥 Config B: +50 vs ancienne (anti-overfit)
-		gb_min_samples_leaf: 60,  // 🔥 Config B: +45 vs ancienne (anti-overfit)
-		gb_subsample: 0.7,
-		gb_max_features: 0.5,
+		gb_learning_rate: 0.08,
+		gb_min_samples_leaf: 30,
+		gb_l2_regularization: 0.5,  // Régularisation L2 (spécifique HistGB)
+		gb_model_type: 'histgb',
 		// 🔥 OPT #14: Scan Interval
 		scan_interval: 30,
 		// 🔥 OPT #15: Anti-Whipsaw Filter
@@ -535,6 +545,26 @@
 				atr_min: tradingConfig.atr_min,
 				atr_max: tradingConfig.atr_max,
 			},
+			'🎯 Hybrid: Break-Even ATR': {
+				break_even_use_atr: tradingConfig.break_even_use_atr,
+				break_even_atr_mult: tradingConfig.break_even_atr_mult,
+			},
+			'📈 Hybrid: Trailing ATR': {
+				trailing_use_atr_trigger: tradingConfig.trailing_use_atr_trigger,
+				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
+				trailing_atr_multiplier: tradingConfig.trailing_atr_multiplier,
+				trailing_min_distance: tradingConfig.trailing_min_distance,
+				trailing_max_distance: tradingConfig.trailing_max_distance,
+			},
+			'💰 Hybrid: TP Partiel': {
+				partial_tp_percent: tradingConfig.partial_tp_percent,
+			},
+			'⏰ Hybrid: Sortie Stagnation': {
+				stagnation_exit_enabled: tradingConfig.stagnation_exit_enabled,
+				stagnation_exit_timeout_seconds: tradingConfig.stagnation_exit_timeout_seconds,
+				stagnation_exit_min_pnl_to_stay: tradingConfig.stagnation_exit_min_pnl_to_stay,
+				stagnation_exit_max_loss_to_exit: tradingConfig.stagnation_exit_max_loss_to_exit,
+			},
 			'🪜 TP Escalier': {
 				partial_tp_percent: tradingConfig.partial_tp_percent,
 				escalier_level1_pnl: tradingConfig.escalier_level1_pnl,
@@ -611,16 +641,14 @@
 				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
 				ml_v2_gamma: tradingConfig.ml_v2_gamma,
 			},
-			'🎯 GradientBoosting (Optimisé 64%)': {
+			'🎯 HistGradientBoosting (Optimisé 68%)': {
 				gb_filter_enabled: tradingConfig.gb_filter_enabled,
 				gb_min_confidence: tradingConfig.gb_min_confidence,
-				gb_n_estimators: tradingConfig.gb_n_estimators,
+				gb_max_iter: tradingConfig.gb_max_iter,
 				gb_max_depth: tradingConfig.gb_max_depth,
 				gb_learning_rate: tradingConfig.gb_learning_rate,
-				gb_min_samples_split: tradingConfig.gb_min_samples_split,
 				gb_min_samples_leaf: tradingConfig.gb_min_samples_leaf,
-				gb_subsample: tradingConfig.gb_subsample,
-				gb_max_features: tradingConfig.gb_max_features,
+				gb_l2_regularization: tradingConfig.gb_l2_regularization,
 			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
@@ -767,6 +795,16 @@
 					ml_v2_gamma: config.ml_v2_gamma,
 					ml_v2_subsample: config.ml_v2_subsample,
 					ml_v2_colsample_bytree: config.ml_v2_colsample_bytree
+				});
+				console.log('✅ HistGB params:', {
+					gb_filter_enabled: config.gb_filter_enabled,
+					gb_min_confidence: config.gb_min_confidence,
+					gb_max_iter: config.gb_max_iter,
+					gb_max_depth: config.gb_max_depth,
+					gb_learning_rate: config.gb_learning_rate,
+					gb_min_samples_leaf: config.gb_min_samples_leaf,
+					gb_l2_regularization: config.gb_l2_regularization,
+					gb_model_type: config.gb_model_type
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -2757,6 +2795,280 @@
 									<span class="slider-value" data-debug-name="config.atr_max">{Number(config.atr_max).toFixed(2)}%</span>
 								</div>
 							</div>
+
+							<!-- 🔥 HYBRID: Break-even ATR -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">🎯 Break-Even ATR</h4>
+								
+								<div class="variable-item checkbox-item">
+									<label class="checkbox-label">
+										<input
+											type="checkbox"
+											bind:checked={config.break_even_use_atr}
+											on:change={() => triggerAutoSave('break_even_use_atr', config.break_even_use_atr ? 'Activé' : 'Désactivé')}
+										/>
+										<span class="checkmark"></span>
+										<span class="checkbox-text">
+											<span class="var-name">Break-Even basé ATR</span>
+											<span class="var-desc">BE déclenché dès PnL ≥ X × ATR% (au lieu d'un % fixe)</span>
+										</span>
+									</label>
+								</div>
+
+								{#if config.break_even_use_atr}
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="be-atr-mult">
+												<span class="var-name">BE ATR Mult</span>
+												<span class="var-desc">Break-even dès PnL ≥ {(config.break_even_atr_mult).toFixed(1)} × ATR%</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('break_even_atr_mult')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="be-atr-mult"
+												type="range"
+												step="0.1"
+												min="0.2"
+												max="2.0"
+												bind:value={config.break_even_atr_mult}
+												on:change={() => triggerAutoSave('break_even_atr_mult', `${config.break_even_atr_mult.toFixed(1)}x ATR`)}
+											/>
+											<span class="slider-value">{Number(config.break_even_atr_mult).toFixed(1)}x ATR</span>
+										</div>
+									</div>
+								{/if}
+							</div>
+
+							<!-- 🔥 HYBRID: Trailing ATR Trigger -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">📈 Trailing Stop ATR</h4>
+								
+								<div class="variable-item checkbox-item">
+									<label class="checkbox-label">
+										<input
+											type="checkbox"
+											bind:checked={config.trailing_use_atr_trigger}
+											on:change={() => triggerAutoSave('trailing_use_atr_trigger', config.trailing_use_atr_trigger ? 'Activé' : 'Désactivé')}
+										/>
+										<span class="checkmark"></span>
+										<span class="checkbox-text">
+											<span class="var-name">Trailing Trigger basé ATR</span>
+											<span class="var-desc">Trailing activé dès PnL ≥ X × ATR% (au lieu d'un % fixe)</span>
+										</span>
+									</label>
+								</div>
+
+								{#if config.trailing_use_atr_trigger}
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="trailing-atr-trigger-mult">
+												<span class="var-name">Trailing Trigger ATR Mult</span>
+												<span class="var-desc">Trailing activé dès PnL ≥ {(config.trailing_trigger_atr_mult).toFixed(1)} × ATR%</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('trailing_trigger_atr_mult')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="trailing-atr-trigger-mult"
+												type="range"
+												step="0.1"
+												min="0.5"
+												max="3.0"
+												bind:value={config.trailing_trigger_atr_mult}
+												on:change={() => triggerAutoSave('trailing_trigger_atr_mult', `${config.trailing_trigger_atr_mult.toFixed(1)}x ATR`)}
+											/>
+											<span class="slider-value">{Number(config.trailing_trigger_atr_mult).toFixed(1)}x ATR</span>
+										</div>
+									</div>
+								{/if}
+							</div>
+
+							<!-- 🔥 HYBRID: Stagnation Exit (Time Decay) -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">⏰ Sortie Stagnation (Time Decay)</h4>
+								
+								<div class="variable-item checkbox-item">
+									<label class="checkbox-label">
+										<input
+											type="checkbox"
+											bind:checked={config.stagnation_exit_enabled}
+											on:change={() => triggerAutoSave('stagnation_exit_enabled', config.stagnation_exit_enabled ? 'Activé' : 'Désactivé')}
+										/>
+										<span class="checkmark"></span>
+										<span class="checkbox-text">
+											<span class="var-name">Sortie Stagnation</span>
+											<span class="var-desc">Ferme les trades stagnants après un timeout</span>
+										</span>
+									</label>
+								</div>
+
+								{#if config.stagnation_exit_enabled}
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="stagnation-timeout">
+												<span class="var-name">Timeout (secondes)</span>
+												<span class="var-desc">Durée avant de considérer le trade comme stagnant</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('stagnation_exit_timeout_seconds')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="stagnation-timeout"
+												type="range"
+												step="10"
+												min="30"
+												max="300"
+												bind:value={config.stagnation_exit_timeout_seconds}
+												on:change={() => triggerAutoSave('stagnation_exit_timeout_seconds', `${config.stagnation_exit_timeout_seconds}s`)}
+											/>
+											<span class="slider-value">{Number(config.stagnation_exit_timeout_seconds).toFixed(0)}s</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="stagnation-min-pnl">
+												<span class="var-name">PnL Min pour rester (%)</span>
+												<span class="var-desc">Rester si PnL ≥ ce seuil après timeout</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('stagnation_exit_min_pnl_to_stay')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="stagnation-min-pnl"
+												type="range"
+												step="0.01"
+												min="0.01"
+												max="0.50"
+												bind:value={config.stagnation_exit_min_pnl_to_stay}
+												on:change={() => triggerAutoSave('stagnation_exit_min_pnl_to_stay', `${config.stagnation_exit_min_pnl_to_stay.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.stagnation_exit_min_pnl_to_stay).toFixed(2)}%</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="stagnation-max-loss">
+												<span class="var-name">Perte Max pour sortir (%)</span>
+												<span class="var-desc">Sortir immédiatement si PnL ≤ ce seuil après timeout</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('stagnation_exit_max_loss_to_exit')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="stagnation-max-loss"
+												type="range"
+												step="0.01"
+												min="-0.30"
+												max="0.00"
+												bind:value={config.stagnation_exit_max_loss_to_exit}
+												on:change={() => triggerAutoSave('stagnation_exit_max_loss_to_exit', `${config.stagnation_exit_max_loss_to_exit.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.stagnation_exit_max_loss_to_exit).toFixed(2)}%</span>
+										</div>
+									</div>
+								{/if}
+							</div>
+
+							<!-- 🔥 HYBRID: TP Partiel -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">💰 TP Partiel</h4>
+								
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="partial-tp-atr">
+											<span class="var-name">TP Partiel (%)</span>
+											<span class="var-desc">% de position vendue au break-even trigger</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('partial_tp_percent')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="partial-tp-atr"
+											type="range"
+											step="5"
+											min="25"
+											max="100"
+											bind:value={config.partial_tp_percent}
+											on:change={() => triggerAutoSave('partial_tp_percent', `${config.partial_tp_percent}%`)}
+										/>
+										<span class="slider-value">{Number(config.partial_tp_percent).toFixed(0)}%</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- 🔥 HYBRID: Trailing Distance -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">📏 Distance Trailing</h4>
+								
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-atr-mult-hybrid">
+											<span class="var-name">ATR Multiplier</span>
+											<span class="var-desc">Distance trailing = ATR × ce multiplicateur</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_atr_multiplier')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-atr-mult-hybrid"
+											type="range"
+											step="0.1"
+											min="0.2"
+											max="1.5"
+											bind:value={config.trailing_atr_multiplier}
+											on:change={() => triggerAutoSave('trailing_atr_multiplier', `${config.trailing_atr_multiplier.toFixed(1)}x`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_atr_multiplier).toFixed(1)}x ATR</span>
+									</div>
+								</div>
+
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-min-dist-hybrid">
+											<span class="var-name">Distance Min (%)</span>
+											<span class="var-desc">Distance trailing minimum (clamp bas)</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_min_distance')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-min-dist-hybrid"
+											type="range"
+											step="0.01"
+											min="0.03"
+											max="0.15"
+											bind:value={config.trailing_min_distance}
+											on:change={() => triggerAutoSave('trailing_min_distance', `${config.trailing_min_distance.toFixed(2)}%`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_min_distance).toFixed(2)}%</span>
+									</div>
+								</div>
+
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-max-dist-hybrid">
+											<span class="var-name">Distance Max (%)</span>
+											<span class="var-desc">Distance trailing maximum (clamp haut)</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_max_distance')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-max-dist-hybrid"
+											type="range"
+											step="0.01"
+											min="0.10"
+											max="0.50"
+											bind:value={config.trailing_max_distance}
+											on:change={() => triggerAutoSave('trailing_max_distance', `${config.trailing_max_distance.toFixed(2)}%`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_max_distance).toFixed(2)}%</span>
+									</div>
+								</div>
+							</div>
 						</div>
 					{/if}
 
@@ -4394,6 +4706,60 @@
 		flex-direction: column;
 		gap: 12px;
 		margin-top: 8px;
+	}
+
+	/* 🔥 HYBRID: Section styles */
+	.hybrid-section {
+		background: rgba(255, 170, 0, 0.05);
+		border: 1px solid rgba(255, 170, 0, 0.25);
+		border-radius: 8px;
+		padding: 14px;
+		margin-top: 12px;
+	}
+
+	.hybrid-title {
+		color: #ffaa00;
+		font-size: 14px;
+		font-weight: 600;
+		margin: 0 0 12px 0;
+		padding-bottom: 8px;
+		border-bottom: 1px solid rgba(255, 170, 0, 0.3);
+	}
+
+	.checkbox-item {
+		margin-bottom: 8px;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: flex-start;
+		cursor: pointer;
+		gap: 10px;
+	}
+
+	.checkbox-label input[type="checkbox"] {
+		width: 18px;
+		height: 18px;
+		margin-top: 2px;
+		accent-color: #00ff88;
+		cursor: pointer;
+	}
+
+	.checkbox-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.checkbox-text .var-name {
+		color: #00ff88;
+		font-size: 13px;
+		font-weight: 500;
+	}
+
+	.checkbox-text .var-desc {
+		color: #888;
+		font-size: 11px;
 	}
 
 	@media (max-width: 768px) {

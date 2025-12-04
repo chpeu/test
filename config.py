@@ -36,20 +36,49 @@ TRADING_CONFIG = {
     # BUG #14 FIX: Suppression doublon volume_multiplier (défini ligne 77 avec valeur ajustée 0.95)
     "volume_multiplier_range": (0.10, 2.00),
 
-    # TP/SL settings
-    "tp_sl_mode": "FIXE",  # FIXE ou ATR
+    # ============================================================
+    # 🔥 HYBRID INTELLIGENT TP/SL SYSTEM (Option C)
+    # ============================================================
+    # Système adaptatif basé sur ATR - s'adapte à la volatilité réelle
+    # 
+    # Principes:
+    # 1. SL Initial: ATR × 1.2 (dynamique, respire avec le marché)
+    # 2. Break-even: dès que PnL >= 0.5 × ATR
+    # 3. Trailing: distance = ATR × 0.4, trigger = 1 × ATR
+    # 4. Time decay: si stagnation > 2min et PnL < 0.1%, sortie
+    # 5. Pas de TP fixe (laisser trailing capturer)
+    # ============================================================
     
-    # FIXE mode
-    "tp_percent": 0.50,  # 🔥 PHASE 3 : +0.50% (optimisé pour scalping, était 0.6%)
-    "sl_percent": 0.20,  # 🔥 PHASE 3 : -0.20% (SL serré, était 0.25%)
-    "break_even_trigger": 0.3,  # +0.3%
-    "trailing_distance": 0.15,  # 0.15%
+    "tp_sl_mode": "ATR",  # 🔥 HYBRID: Mode ATR dynamique (pas FIXE)
     
-    # ATR mode
-    "atr_mult_tp": 1.5,
-    "atr_mult_sl": 1.0,
-    "atr_min": 0.15,  # %
-    "atr_max": 1.5,  # %
+    # Fallback FIXE mode (si ATR invalide)
+    "tp_percent": 0.80,  # TP large (rarement atteint, trailing prend le relais)
+    "sl_percent": 0.30,  # SL fallback
+    "break_even_trigger": 0.20,  # BE fallback
+    "trailing_distance": 0.15,  # Trailing fallback
+    
+    # 🔥 ATR mode - HYBRID INTELLIGENT
+    "atr_mult_tp": 3.0,   # TP = 3 × ATR (très large, trailing capture avant)
+    "atr_mult_sl": 1.2,   # 🔥 SL = 1.2 × ATR (laisse respirer le trade)
+    "atr_min": 0.10,      # ATR minimum 0.10% (micro-volatilité)
+    "atr_max": 1.0,       # ATR maximum 1.0% (macro-volatilité)
+    
+    # 🔥 Break-even ATR-based (nouveaux paramètres)
+    "break_even_atr_mult": 0.5,  # BE dès PnL >= 0.5 × ATR%
+    "break_even_use_atr": True,  # Utiliser ATR pour BE (pas % fixe)
+    
+    # 🔥 Stagnation Exit (Time Decay)
+    "stagnation_exit": {
+        "enabled": True,
+        "timeout_seconds": 120,    # 2 minutes de stagnation
+        "min_pnl_to_stay": 0.10,   # Rester si PnL > 0.1%
+        "max_loss_to_exit": -0.05, # Sortir si PnL < -0.05% après timeout
+    },
+    # 🔥 FLAT KEYS pour config_overrides.json (copie des valeurs imbriquées)
+    "stagnation_exit_enabled": True,
+    "stagnation_exit_timeout_seconds": 120,
+    "stagnation_exit_min_pnl_to_stay": 0.10,
+    "stagnation_exit_max_loss_to_exit": -0.05,
     
     # Trend timeframe pour calculer trend_data (bonus)
     "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
@@ -166,20 +195,25 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
-        "enabled": True,
+        "enabled": False,  # 🔥 DÉSACTIVÉ - trop agressif (0% winrate sur 9 trades)
         "delay": 15,  # 🔥 PHASE 2 : 15s au lieu de 10s (laisser plus de temps)
         "threshold_15s": -0.15,  # 🔥 PHASE 2 : -0.15% (était -0.12%, moins agressif)
         "threshold_30s": -0.12,  # 🔥 PHASE 2 : -0.12% (était -0.08%, moins agressif)
     },
     
-    # 🔥 PHASE 2: Trailing stop adaptatif ATR
+    # 🔥 HYBRID: Trailing stop adaptatif ATR
     "trailing_stop": {
         "enabled": True,
-        "trigger_pnl": 0.15,      # 🔥 PHASE 2 : Déclencher à +0.15% (était 0.25%, protection plus tôt)
-        "atr_multiplier": 0.4,   # Distance = ATR × 0.4
-        "min_distance": 0.08,    # Minimum 0.08%
-        "max_distance": 0.25,    # Maximum 0.25%
+        "trigger_pnl": 0.10,        # 🔥 HYBRID: Déclencher à +0.10% (très tôt)
+        "trigger_atr_mult": 1.0,    # 🔥 OU trigger dès PnL >= 1.0 × ATR
+        "use_atr_trigger": True,    # 🔥 Utiliser ATR pour trigger (pas % fixe)
+        "atr_multiplier": 0.4,      # Distance = ATR × 0.4
+        "min_distance": 0.06,       # 🔥 Minimum 0.06% (plus serré)
+        "max_distance": 0.20,       # Maximum 0.20%
     },
+    # 🔥 FLAT KEYS pour config_overrides.json (copie des valeurs trailing_stop)
+    "trailing_use_atr_trigger": True,
+    "trailing_trigger_atr_mult": 1.0,
     
     # 🔥 PHASE 8: Seuils adaptatifs ATR pour invalidation
     "adaptive_thresholds": {
@@ -354,17 +388,17 @@ TRADING_CONFIG = {
     "ml_v2_colsample_bytree": 0.70,
     "ml_v2_gamma": 0.50,
     
-    # GradientBoosting (Modèle Optimisé 64-69% accuracy)
+    # HistGradientBoosting (Modèle Optimisé 64-69% accuracy)
+    # Note: Utilise HistGradientBoostingClassifier (10x plus rapide)
     "gb_filter_enabled": True,  # Activé par défaut car performant
-    "gb_min_confidence": 0.55,  # 55% seuil
-    "gb_n_estimators": 200,
-    "gb_max_depth": 3,
-    "gb_learning_rate": 0.03,
-    "gb_min_samples_split": 30,
-    "gb_min_samples_leaf": 15,
-    "gb_subsample": 0.70,
-    "gb_max_features": 0.50,
-    "gb_model_type": "gb",  # 'gb' = GradientBoosting, 'histgb' = HistGradientBoosting (10x plus rapide)
+    "gb_min_confidence": 0.55,  # 55% seuil de confiance
+    "gb_max_iter": 100,         # Nombre d'itérations (équivalent n_estimators)
+    "gb_max_depth": 3,          # Profondeur max (2-4 recommandé)
+    "gb_learning_rate": 0.08,   # Taux d'apprentissage
+    "gb_min_samples_leaf": 30,  # Samples minimum par feuille
+    "gb_l2_regularization": 0.5,  # Régularisation L2 (évite overfitting)
+    "gb_n_features": 30,        # Nombre de features sélectionnées
+    "gb_model_type": "histgb",  # Toujours HistGradientBoosting maintenant
 }
 
 # Risk management

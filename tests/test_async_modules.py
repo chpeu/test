@@ -85,7 +85,7 @@ class TestMarketDataAsync:
 
     @pytest.mark.asyncio
     async def test_check_spread_too_wide(self):
-        """Test spread check avec spread trop large (> 0.03%)"""
+        """Test spread check avec spread trop large (> 0.03% en mode FIXE)"""
         mock_client = AsyncMock()
         mock_client.fetch_order_book = AsyncMock(return_value={
             'bids': [[50000.0, 10.0]],
@@ -94,7 +94,10 @@ class TestMarketDataAsync:
 
         spread_cache = {}
 
-        result = await check_spread(mock_client, 'BTC/USDT:USDT', spread_cache)
+        # 🔥 FIX: Mocker TRADING_CONFIG pour forcer mode FIXE (seuil 0.03%)
+        # En mode ATR, le seuil est 0.06% donc 0.05% serait valide
+        with patch('core.analyzer.market_data.TRADING_CONFIG', {'tp_sl_mode': 'FIXE'}):
+            result = await check_spread(mock_client, 'BTC/USDT:USDT', spread_cache)
 
         assert result['valid'] is False
         assert result['spread_pct'] > 0.03

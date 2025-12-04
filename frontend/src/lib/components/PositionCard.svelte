@@ -134,15 +134,18 @@
 		if (tpSlMode === 'FIXE') {
 			// Avant le 1er TP : utiliser break_even_trigger
 			if (!$activePosition.partial_tp_sold) {
+				// 🔥 FIX: Vérifier si position trop petite pour TP partiel
+				const forceFullTp = $activePosition.force_full_tp_for_partial;
+				
 				// Vérifier si TP partiel est configuré
-				if (tradingConfig.partial_tp_percent) {
+				if (tradingConfig.partial_tp_percent && !forceFullTp) {
 					// TP partiel pas encore vendu - utiliser break_even_trigger
 					return {
 						pnl: tradingConfig.break_even_trigger || 0.3,
 						size: tradingConfig.partial_tp_percent || 50
 					};
 				} else {
-					// Pas de TP partiel - utiliser break_even_trigger pour le TP complet
+					// Pas de TP partiel OU position trop petite → 100%
 					return {
 						pnl: tradingConfig.break_even_trigger || 0.3,
 						size: 100
@@ -184,17 +187,36 @@
 			};
 		}
 		
-		// Mode ATR ou autres modes
-		// Vérifier si TP partiel déjà vendu
+		// Mode ATR : utiliser les valeurs ATR dynamiques
+		if (tpSlMode === 'ATR') {
+			// 🔥 En mode ATR, le TP est basé sur break_even_atr_mult pour le premier TP
+			// puis sur le trailing stop dynamique
+			const breakEvenAtrMult = tradingConfig.break_even_atr_mult || 0.5;
+			const atrPercent = $activePosition.atr_percent || tradingConfig.atr_min || 0.10;
+			
+			if (!$activePosition.partial_tp_sold && tradingConfig.partial_tp_percent) {
+				// TP partiel pas encore vendu - utiliser break_even basé sur ATR
+				return {
+					pnl: atrPercent * breakEvenAtrMult,
+					size: tradingConfig.partial_tp_percent || 60
+				};
+			}
+			
+			// Trailing actif après TP partiel
+			return {
+				pnl: atrPercent * (tradingConfig.trailing_trigger_atr_mult || 1.0),
+				size: 100
+			};
+		}
+		
+		// Autres modes : utiliser tp_percent standard
 		if (!$activePosition.partial_tp_sold && tradingConfig.partial_tp_percent) {
-			// TP partiel pas encore vendu
 			return {
 				pnl: tradingConfig.tp_percent || 0.6,
 				size: tradingConfig.partial_tp_percent || 50
 			};
 		}
 		
-		// TP complet
 		return {
 			pnl: tradingConfig.tp_percent || 0.6,
 			size: 100
@@ -204,6 +226,19 @@
 	$: nextSlInfo = (() => {
 		if (!$activePosition || !tradingConfig) return null;
 		
+		const tpSlMode = tradingConfig.tp_sl_mode || $activePosition.tp_sl_mode || 'FIXE';
+		
+		// Mode ATR : SL basé sur ATR
+		if (tpSlMode === 'ATR') {
+			const atrMultSl = tradingConfig.atr_mult_sl || 1.2;
+			const atrPercent = $activePosition.atr_percent || tradingConfig.atr_min || 0.10;
+			return {
+				pnl: atrPercent * atrMultSl,
+				size: 100
+			};
+		}
+		
+		// Mode FIXE ou autre
 		return {
 			pnl: tradingConfig.sl_percent || 0.25,
 			size: 100
@@ -232,7 +267,10 @@
 		if (value === null || value === undefined || isNaN(value)) {
 			return '-';
 		}
-		// Utiliser un maximum de 4 décimales pour les contrats, sans zéros de fin
+		// 🔥 FIX: Pour les gros nombres (>10000), pas de décimales. Sinon 4 max.
+		if (Math.abs(value) >= 10000) {
+			return Math.round(value).toLocaleString('fr-FR');
+		}
 		return formatWithoutTrailingZeros(value, 4);
 	}
 
@@ -293,6 +331,11 @@
 						📊 x{$activePosition.adaptive_sizing_multiplier.toFixed(2)}
 					</div>
 				{/if}
+				
+				<!-- 🔥 FIX: Afficher levier avec fallback dynamique depuis config -->
+				<div class="badge leverage-badge" title="Levier utilisé pour cette position">
+					⚡ {$activePosition.leverage_used || tradingConfig?.default_leverage || 1}x
+				</div>
 			</div>
 			
 			<div class="header-right">
@@ -330,9 +373,11 @@
 				<div class="price-value" data-debug-name="activePosition.size">{formatPrice($activePosition.size)} USDT</div>
 				{#if $activePosition.size_initial_contracts}
 					<div class="price-subvalue" data-debug-name="activePosition.size_contracts">
-						{formatContracts($activePosition.size_remaining_contracts ?? $activePosition.size_initial_contracts)}
-						/
-						{formatContracts($activePosition.size_initial_contracts)}
+						{#if $activePosition.size_remaining_contracts && Math.abs($activePosition.size_remaining_contracts - $activePosition.size_initial_contracts) > 1}
+							{formatContracts($activePosition.size_remaining_contracts)} / {formatContracts($activePosition.size_initial_contracts)}
+						{:else}
+							{formatContracts($activePosition.size_initial_contracts)}
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -345,7 +390,12 @@
 				{#if nextTpInfo}
 					<div class="tpsl-info">
 						<div class="tpsl-pnl" data-debug-name="nextTpInfo.pnl">PnL objectif: <span class="tpsl-value" data-debug-name="nextTpInfo.pnl">+{formatPercent(nextTpInfo.pnl)}%</span></div>
-						<div class="tpsl-size" data-debug-name="nextTpInfo.size">Taille: <span class="tpsl-value" data-debug-name="nextTpInfo.size">{nextTpInfo.size}% de la position</span></div>
+						<div class="tpsl-size" data-debug-name="nextTpInfo.size">
+							Taille: <span class="tpsl-value" data-debug-name="nextTpInfo.size">{nextTpInfo.size}% de la position</span>
+							{#if $activePosition.force_full_tp_for_partial && nextTpInfo.size === 100}
+								<span class="force-full-tp-badge" title="Position trop petite pour TP partiel">(min. atteint)</span>
+							{/if}
+						</div>
 					</div>
 				{:else if $tpDistance}
 					<div class="tpsl-distance" data-debug-name="tpDistance">+{$tpDistance}%</div>
@@ -477,6 +527,12 @@
 		background: rgba(255, 170, 0, 0.15);
 		color: #ffaa00;
 		border: 1px solid rgba(255, 170, 0, 0.4);
+	}
+
+	.leverage-badge {
+		background: rgba(255, 215, 0, 0.15);
+		color: #ffd700;
+		border: 1px solid rgba(255, 215, 0, 0.4);
 	}
 
 	.direction {
@@ -646,6 +702,19 @@
 
 	.tpsl-box.sl .tpsl-value {
 		color: #ff4444;
+	}
+
+	.force-full-tp-badge {
+		display: inline-block;
+		margin-left: 6px;
+		padding: 2px 6px;
+		font-size: 9px;
+		font-weight: bold;
+		color: #ffaa00;
+		background: rgba(255, 170, 0, 0.15);
+		border: 1px solid rgba(255, 170, 0, 0.3);
+		border-radius: 4px;
+		cursor: help;
 	}
 
 	.tp-levels {
