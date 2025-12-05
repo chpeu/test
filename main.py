@@ -431,6 +431,24 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ Vérification ML non critique échouée: {e}")
 
+        # 🔥 AUTO-SEED CALIBRATION: Initialiser la calibration ML avec l'historique des trades
+        try:
+            from config import TRADING_CONFIG
+            if TRADING_CONFIG.get('ml_calibration_enabled', True):
+                from ml.calibration import get_calibration_manager
+                calib_manager = get_calibration_manager()
+                
+                # Vérifier si la calibration a des données
+                decay_days = TRADING_CONFIG.get('ml_calib_decay_days', 14)
+                seeded_count = calib_manager.seed_from_historical_trades(days=decay_days)
+                
+                if seeded_count > 0:
+                    logger.info(f"✅ CALIBRATION: Auto-seed avec {seeded_count} trades ({decay_days} jours)")
+                else:
+                    logger.info("ℹ️ CALIBRATION: Aucun trade historique trouvé pour le seed")
+        except Exception as e:
+            logger.warning(f"⚠️ Auto-seed calibration échoué (non-bloquant): {e}")
+
         try:
             await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
         except asyncio.TimeoutError:

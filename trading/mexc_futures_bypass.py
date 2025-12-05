@@ -440,13 +440,17 @@ class TokenHealthMonitor:
 
     Vérifie périodiquement la validité du token et envoie des alertes si expiré.
     Check toutes les 5 minutes (configurable).
+    
+    🔥 NOUVEAU: Alertes proactives basées sur l'âge du token
     """
 
     def __init__(
         self,
         client: 'MexcFuturesBypass',
         check_interval: int = 300,  # 5 minutes
-        telegram_notifier: Optional[Any] = None
+        telegram_notifier: Optional[Any] = None,
+        token_max_age_hours: float = 20.0,  # 🔥 Durée max token avant alerte (20h par défaut)
+        proactive_alert_hours: float = 4.0  # 🔥 Alerter X heures avant expiration estimée
     ):
         """
         Initialiser le moniteur
@@ -455,6 +459,8 @@ class TokenHealthMonitor:
             client: Instance du client MexcFuturesBypass
             check_interval: Intervalle de vérification en secondes (défaut 300s = 5min)
             telegram_notifier: Instance du TelegramNotifier pour alertes
+            token_max_age_hours: 🔥 Durée de vie estimée du token en heures (défaut 20h)
+            proactive_alert_hours: 🔥 Alerter X heures avant expiration estimée (défaut 4h)
         """
         self.client = client
         self.check_interval = check_interval
@@ -464,6 +470,12 @@ class TokenHealthMonitor:
         self._last_check_time = 0
         self._consecutive_failures = 0
         self._token_healthy = True
+        
+        # 🔥 NOUVEAU: Tracking de l'âge du token
+        self._token_start_time = time.time()  # Heure de démarrage du monitoring
+        self._token_max_age_seconds = token_max_age_hours * 3600
+        self._proactive_alert_seconds = proactive_alert_hours * 3600
+        self._proactive_alert_sent = False  # Éviter les alertes répétées
 
     async def start(self):
         """Démarrer le monitoring"""
@@ -503,6 +515,37 @@ class TokenHealthMonitor:
         """Vérifier la santé du token"""
         try:
             self._last_check_time = time.time()
+            
+            # 🔥 NOUVEAU: Vérification proactive de l'âge du token
+            token_age = time.time() - self._token_start_time
+            time_until_expiry = self._token_max_age_seconds - token_age
+            
+            # Alerter si le token approche de son expiration estimée
+            if time_until_expiry <= self._proactive_alert_seconds and not self._proactive_alert_sent:
+                hours_remaining = time_until_expiry / 3600
+                hours_used = token_age / 3600
+                
+                warning_msg = (
+                    f"⚠️ TOKEN MEXC - RENOUVELLEMENT RECOMMANDÉ\n\n"
+                    f"Le token est utilisé depuis {hours_used:.1f}h.\n"
+                    f"Expiration estimée dans ~{hours_remaining:.1f}h.\n\n"
+                    f"🔄 Actions recommandées:\n"
+                    f"1. Ouvrir DevTools sur mexc.com\n"
+                    f"2. Copier nouveau token (Headers > authorization)\n"
+                    f"3. Mettre à jour MEXC_BROWSER_TOKEN dans .env\n"
+                    f"4. Redémarrer le bot\n\n"
+                    f"💡 Renouvelez le token MAINTENANT pour éviter une interruption"
+                )
+                
+                logger.warning(f"⏰ {warning_msg}")
+                
+                if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_message'):
+                    try:
+                        await self.telegram_notifier.send_message(warning_msg, bypass_throttle=True)
+                    except Exception as e:
+                        logger.error(f"Erreur envoi alerte proactive Telegram: {e}")
+                
+                self._proactive_alert_sent = True
 
             # Tenter de récupérer l'asset USDT (requête simple)
             response = await self.client.get_account_asset("USDT")
@@ -572,13 +615,31 @@ class TokenHealthMonitor:
 
     def get_status(self) -> Dict:
         """Récupérer le statut du moniteur"""
+        token_age_seconds = time.time() - self._token_start_time
+        time_until_expiry = max(0, self._token_max_age_seconds - token_age_seconds)
+        
         return {
             'running': self._running,
             'token_healthy': self._token_healthy,
             'consecutive_failures': self._consecutive_failures,
             'last_check_time': self._last_check_time,
-            'next_check_in': max(0, self.check_interval - (time.time() - self._last_check_time))
+            'next_check_in': max(0, self.check_interval - (time.time() - self._last_check_time)),
+            # 🔥 NOUVEAU: Info sur l'âge du token
+            'token_age_hours': round(token_age_seconds / 3600, 2),
+            'estimated_expiry_hours': round(time_until_expiry / 3600, 2),
+            'proactive_alert_sent': self._proactive_alert_sent,
+            'token_max_age_hours': round(self._token_max_age_seconds / 3600, 1)
         }
+    
+    def reset_token_timer(self):
+        """
+        🔥 NOUVEAU: Réinitialiser le timer du token après renouvellement manuel
+        
+        Appeler cette méthode après avoir mis à jour le token dans .env et redémarré.
+        """
+        self._token_start_time = time.time()
+        self._proactive_alert_sent = False
+        logger.info("✅ Timer token réinitialisé - Prochain check d'expiration dans ~16h")
 
 
 # ============================================================================

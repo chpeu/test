@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764886301.0977201,
+  "timestamp": 1764909832.4487896,
   "specs": {
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -90,6 +90,46 @@
       "price_precision": 3,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "WLD_USDT": {
+      "symbol": "WLD_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "TRUMPOFFICIAL_USDT": {
+      "symbol": "TRUMPOFFICIAL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "APT_USDT": {
+      "symbol": "APT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 6000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "SHIB_USDT": {
+      "symbol": "SHIB_USDT",
+      "min_vol": 1.0,
+      "max_vol": 150000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-09,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1000.0
     }
   }
 }

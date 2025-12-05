@@ -114,7 +114,8 @@ class Position:
     position_size_usdt: Optional[float] = None
     position_size_contracts: Optional[float] = None
     size_initial_contracts: Optional[float] = None
-    size_initial_usdt: Optional[float] = None  # 🔥 FIX: Taille initiale USDT (totale) pour historique
+    size_initial_usdt: Optional[float] = None  # 🔥 FIX: Taille initiale USDT (demandée) pour historique
+    size_executed_usdt: Optional[float] = None  # 🔥 FIX: Taille réellement exécutée (après lot size)
     size_remaining_contracts: Optional[float] = None
     liquidation_price: Optional[float] = None
     margin_used: Optional[float] = None
@@ -744,6 +745,8 @@ class PositionManager:
         # 🔥 FIX CRITIQUE: Initialiser size_initial_usdt dès l'ouverture avec la taille demandée
         # Cette valeur NE DOIT PAS être écrasée par une valeur incorrecte de synchronisation
         self.active_position.size_initial_usdt = size  # size = taille en USDT demandée
+        # 🔥 FIX: Initialiser size_executed_usdt (sera écrasée après exécution ordre live)
+        self.active_position.size_executed_usdt = size  # Par défaut = demandée, mise à jour après ordre
         
         # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
         self.active_position.ml_confidence = ml_confidence
@@ -824,7 +827,9 @@ class PositionManager:
                         self.active_position.size = executed_size_usdt
                         self.active_position.position_size_usdt = executed_size_usdt
                         self.active_position.size_remaining = executed_size_usdt
-                        logger.info(f" Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT")
+                        # 🔥 FIX: Stocker la taille exécutée pour calcul PnL précis
+                        self.active_position.size_executed_usdt = executed_size_usdt
+                        logger.info(f"✅ Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT")
                     
                     if order_result.filled_amount:
                         # 🔥 FIX CRITIQUE: Utiliser les valeurs de order_result correctement
@@ -2261,9 +2266,15 @@ class PositionManager:
         total_costs = pnl_data['fees'] + slippage_usdt
 
         # PnL net
-        # 🔥 FIX CRITIQUE: Utiliser size_initial_usdt pour cohérence entre PnL % et PnL USDT
-        # Si TP partiel, size actuel < size initial, donc le % serait faussé
-        size_for_pct = getattr(self.active_position, 'size_initial_usdt', None) or self.active_position.size
+        # 🔥 FIX Option B: Utiliser size_executed_usdt (taille réellement exécutée) pour précision
+        # Si TP partiel, reconstruire la taille totale exécutée
+        if self.active_position.partial_tp_sold:
+            # Si TP partiel fait, size actuelle = reste, donc taille totale = size / (1 - partial_pct)
+            partial_pct = TRADING_CONFIG.get('partial_tp_percent', 50.0) / 100.0
+            size_for_pct = self.active_position.size / (1 - partial_pct) if partial_pct < 1 else self.active_position.size
+        else:
+            # Priorité: size_executed_usdt > size (taille actuelle)
+            size_for_pct = getattr(self.active_position, 'size_executed_usdt', None) or self.active_position.size
         
         gross_pnl_pct = pnl_data['pnl_pct']
         
@@ -2330,9 +2341,10 @@ class PositionManager:
             'closure_id': closure_id,
             'has_partial_tp': self.active_position.partial_tp_sold,
             'size_closed': round(size_closed, 4),
-            # 🔥 FIX: Utiliser la taille initiale totale pour l'historique
-            'size': getattr(self.active_position, 'size_initial_usdt', None) or self.active_position.size,
+            # 🔥 FIX Option B: Utiliser la taille exécutée (réelle) pour cohérence avec PnL
+            'size': round(size_for_pct, 4),  # Taille utilisée pour calcul PnL
             'size_initial_usdt': getattr(self.active_position, 'size_initial_usdt', None),
+            'size_executed_usdt': getattr(self.active_position, 'size_executed_usdt', None),  # 🔥 NEW
             'confirmed_by': getattr(self.active_position, 'confirmed_by', ''),  # 🔥 FIX: Ajouté pour l'affichage signals
             # ✅ FIX: Tracking source du exit_price
             'exit_price_source': exit_price_source,

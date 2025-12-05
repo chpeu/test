@@ -619,6 +619,95 @@ async def get_funding_rate(symbol: str):
         return JSONResponse({'success': False, 'error': str(e), 'rate': 0})
 
 
+@router.get('/token/status')
+async def get_token_status():
+    """
+    🔥 NOUVEAU: Récupérer le statut du token MEXC
+    
+    Returns:
+        - token_healthy: Token valide
+        - token_age_hours: Âge du token en heures
+        - estimated_expiry_hours: Temps restant estimé avant expiration
+        - proactive_alert_sent: Alerte proactive envoyée
+    """
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({
+                'success': False,
+                'message': 'Live trading non initialisé'
+            })
+        
+        # Récupérer le client MEXC bypass
+        if hasattr(live_order_manager, 'client') and live_order_manager.client:
+            client = live_order_manager.client
+            
+            # Récupérer le token monitor
+            if hasattr(client, '_token_monitor') and client._token_monitor:
+                status = client._token_monitor.get_status()
+                return JSONResponse({
+                    'success': True,
+                    **status
+                })
+        
+        return JSONResponse({
+            'success': False,
+            'message': 'Token monitor non disponible'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération statut token: {e}")
+        return JSONResponse({'success': False, 'error': str(e)})
+
+
+@router.post('/token/reset-timer')
+async def reset_token_timer():
+    """
+    🔥 NOUVEAU: Réinitialiser le timer du token après renouvellement manuel
+    
+    Appeler cette API après avoir:
+    1. Mis à jour MEXC_BROWSER_TOKEN dans .env
+    2. Redémarré le bot
+    
+    Cela réinitialise le compteur d'âge du token pour les alertes proactives.
+    """
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({
+                'success': False,
+                'message': 'Live trading non initialisé'
+            })
+        
+        # Récupérer le client MEXC bypass
+        if hasattr(live_order_manager, 'client') and live_order_manager.client:
+            client = live_order_manager.client
+            
+            # Récupérer le token monitor
+            if hasattr(client, '_token_monitor') and client._token_monitor:
+                client._token_monitor.reset_token_timer()
+                status = client._token_monitor.get_status()
+                
+                logger.info("✅ Timer token MEXC réinitialisé via API")
+                
+                return JSONResponse({
+                    'success': True,
+                    'message': 'Timer token réinitialisé',
+                    **status
+                })
+        
+        return JSONResponse({
+            'success': False,
+            'message': 'Token monitor non disponible'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur reset timer token: {e}")
+        return JSONResponse({'success': False, 'error': str(e)})
+
+
 # ============================================================================
 # WebSocket Commands Handlers
 # ============================================================================
