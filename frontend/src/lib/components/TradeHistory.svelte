@@ -186,8 +186,29 @@
 							<!-- 🔥 Size USDT (montant réellement exécuté) -->
 							<td class="size-usdt" data-debug-name="trade.size">
 								{(() => {
-									// 🔥 FIX Option B: Utiliser size_executed_usdt (taille réelle) en priorité
-									const size = trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0;
+									// 🔥 FIX: Validation intelligente de la taille
+									// Si size_executed_usdt est > 3x size_initial_usdt, c'est probablement une erreur
+									const initialSize = trade.size_initial_usdt || 0;
+									const executedSize = trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0;
+									
+									// 🔥 FIX: Recalculer size depuis PnL si disponible (plus fiable)
+									const pnlUsdt = trade.net_pnl_usdt || 0;
+									const pnlPct = trade.net_pnl_pct || 0;
+									let calculatedSize = 0;
+									if (pnlPct !== 0 && Math.abs(pnlPct) > 0.001) {
+										calculatedSize = Math.abs(pnlUsdt / (pnlPct / 100));
+									}
+									
+									// Utiliser la taille la plus fiable
+									let size = executedSize;
+									if (initialSize > 0 && executedSize > 3 * initialSize) {
+										// Taille exécutée suspicieusement grande - utiliser calculée ou initiale
+										size = calculatedSize > 0 ? calculatedSize : initialSize;
+									} else if (calculatedSize > 0 && Math.abs(calculatedSize - executedSize) > executedSize * 0.5) {
+										// Écart > 50% entre calculée et exécutée - utiliser calculée
+										size = calculatedSize;
+									}
+									
 									return size > 0 ? formatUSDT(size) : 'N/A';
 								})()}
 							</td>

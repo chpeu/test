@@ -354,7 +354,8 @@ class PositionManager:
                     return
 
                 live_entry_price = float(live_position.get('entry_price') or 0)
-                live_contracts = float(live_position.get('size') or 0)
+                # 🔥 FIX: Utiliser 'tokens' directement (déjà calculé = contracts × contract_size)
+                real_tokens = float(live_position.get('tokens') or 0)
 
                 if live_entry_price > 0:
                     previous_entry = current_position.entry
@@ -372,18 +373,16 @@ class PositionManager:
                     current_position.entry = live_entry_price
                     current_position.entry_fill_price = live_entry_price
 
-                if live_contracts > 0 and live_entry_price > 0:
-                    # 🔥 FIX: Convertir contrats MEXC en tokens réels
-                    # MEXC retourne 2524 contrats, mais SHIB a contractSize=1000
-                    # Donc le vrai montant est 2524 * 1000 = 2,524,000 tokens
-                    contract_size = self._get_contract_size(symbol)
-                    real_tokens = live_contracts * contract_size
+                if real_tokens > 0 and live_entry_price > 0:
+                    # 🔥 FIX: Calculer USDT directement depuis tokens × entry
                     live_size_usdt = real_tokens * live_entry_price
 
-                    # 🔥 FIX: Toujours synchroniser size_remaining avec la position RÉELLE MEXC
-                    # Que ce soit après ouverture OU après TP partiel
-                    if not current_position.size_initial_contracts:
-                        # Première synchro (après ouverture): définir size initial
+                    # 🔥 FIX: Mettre à jour size_initial_contracts si pas encore synchro LIVE
+                    # ou si aucun TP partiel n'a eu lieu (size_initial == size_remaining)
+                    old_initial = current_position.size_initial_contracts or 0
+                    old_remaining = current_position.size_remaining_contracts or 0
+                    if not old_initial or abs(old_initial - old_remaining) < 0.0001:
+                        # Première synchro LIVE ou pas de TP partiel → mettre à jour initial
                         current_position.size_initial_contracts = real_tokens
 
                     # Mettre à jour la taille actuelle (TOUJOURS, même après TP partiel)
@@ -394,7 +393,7 @@ class PositionManager:
                     current_position.size_remaining_contracts = real_tokens
 
                     logger.info(
-                        f"🔁 [LIVE] Taille resynchronisée: {real_tokens:.0f} tokens ({live_contracts:.0f} contrats × {contract_size} = {live_size_usdt:.2f} USDT)"
+                        f"🔁 [LIVE] Taille resynchronisée: {real_tokens:.6f} tokens × {live_entry_price:.4f} = {live_size_usdt:.4f} USDT"
                     )
             except Exception as e:
                 logger.error(f"❌ Erreur resynchronisation différée position LIVE pour {symbol}: {e}")
@@ -824,6 +823,11 @@ class PositionManager:
                     # FIX: Mettre à jour la taille avec la taille réellement exécutée
                     if order_result.filled_size_usdt and order_result.filled_size_usdt > 0:
                         executed_size_usdt = order_result.filled_size_usdt
+                        # 🔥 DEBUG: Log pour tracer le calcul
+                        logger.warning(
+                            f"🔍 DEBUG SIZE (1): filled_size_usdt={order_result.filled_size_usdt:.4f}, "
+                            f"filled_amount={order_result.filled_amount}, filled_price={order_result.filled_price}"
+                        )
                         self.active_position.size = executed_size_usdt
                         self.active_position.position_size_usdt = executed_size_usdt
                         self.active_position.size_remaining = executed_size_usdt
@@ -912,7 +916,14 @@ class PositionManager:
                         live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
                         if live_position:
                             live_entry_price = float(live_position.get('entry_price') or 0)
-                            live_contracts = float(live_position.get('size') or 0)
+                            # 🔥 FIX: Utiliser 'tokens' directement (déjà calculé = contracts × contract_size)
+                            real_tokens = float(live_position.get('tokens') or 0)
+                            live_contracts = float(live_position.get('contracts') or 0)
+                            
+                            logger.info(
+                                f"🔁 [LIVE] get_position: tokens={real_tokens:.6f}, contracts={live_contracts}, "
+                                f"contract_size={live_position.get('contract_size')}, entry={live_entry_price}"
+                            )
 
                             if live_entry_price > 0:
                                 previous_entry = self.active_position.entry
@@ -930,63 +941,26 @@ class PositionManager:
                                 self.active_position.entry = live_entry_price
                                 self.active_position.entry_fill_price = live_entry_price
 
-                            if live_contracts > 0 and live_entry_price > 0:
-                                # 🔥 FIX: Utiliser contract_size stocké si disponible, sinon récupérer
-                                contract_size = self.active_position.contract_size_used
-                                if not contract_size or contract_size <= 0:
-                                    contract_size = self._get_contract_size(symbol)
-                                    # Stocker pour usage futur
-                                    self.active_position.contract_size_used = contract_size
-                                    logger.info(f"📋 Contract size récupéré et stocké: {contract_size}")
-                                
-                                real_tokens = live_contracts * contract_size
+                            if real_tokens > 0 and live_entry_price > 0:
+                                # 🔥 FIX: Utiliser tokens déjà calculé par get_position
                                 live_size_usdt = real_tokens * live_entry_price
-
-                                # 🔥 FIX: Heuristic correction for contract_size
-                                # Si la taille détectée est beaucoup plus grande que prévu (ex: 10x, 100x), 
-                                # c'est probablement une erreur de contract_size (défaut 1.0 au lieu de 0.1, 0.01 etc)
-                                # Si beaucoup plus petite (ex: SHIB 1000x), c'est l'inverse (défaut 1.0 au lieu de 1000)
-                                expected_size = executed_size_usdt if 'executed_size_usdt' in locals() and executed_size_usdt > 0 else size
-                                corrected_cs = contract_size
                                 
-                                if expected_size > 0:
-                                    # Cas 1: Taille détectée TROP GRANDE (Contract Size trop grand)
-                                    if live_size_usdt > 2.0 * expected_size:
-                                        logger.warning(f"⚠️ Taille détectée ({live_size_usdt:.2f}) >> attendue ({expected_size:.2f}). Tentative de correction contract_size...")
-                                        ratio = live_size_usdt / expected_size
-                                        if 8 <= ratio <= 12:      corrected_cs = contract_size * 0.1
-                                        elif 80 <= ratio <= 120:  corrected_cs = contract_size * 0.01
-                                        elif 800 <= ratio <= 1200: corrected_cs = contract_size * 0.001
-                                    
-                                    # Cas 2: Taille détectée TROP PETITE (Contract Size trop petit)
-                                    elif live_size_usdt < 0.5 * expected_size:
-                                        logger.warning(f"⚠️ Taille détectée ({live_size_usdt:.2f}) << attendue ({expected_size:.2f}). Tentative de correction contract_size...")
-                                        ratio = expected_size / live_size_usdt
-                                        if 8 <= ratio <= 12:       corrected_cs = contract_size * 10
-                                        elif 80 <= ratio <= 120:   corrected_cs = contract_size * 100
-                                        elif 800 <= ratio <= 1200: corrected_cs = contract_size * 1000
-
-                                if corrected_cs != contract_size:
-                                    contract_size = corrected_cs
-                                    self.active_position.contract_size_used = contract_size
-                                    # Recalculate with corrected contract_size
-                                    real_tokens = live_contracts * contract_size
-                                    live_size_usdt = real_tokens * live_entry_price
-                                    logger.info(f"✅ Contract size corrigé par heuristique: {contract_size} -> Nouvelle taille: {live_size_usdt:.2f} USDT")
+                                logger.info(
+                                    f"🔁 [LIVE] Sync: {real_tokens:.6f} tokens × {live_entry_price:.4f} = {live_size_usdt:.4f} USDT"
+                                )
 
                                 self.active_position.size = live_size_usdt
                                 self.active_position.position_size_usdt = live_size_usdt
                                 self.active_position.position_size_contracts = real_tokens
                                 self.active_position.size_remaining = live_size_usdt
-                                # 🔥 FIX: TOUJOURS synchroniser size_initial_contracts avec tokens réels
                                 self.active_position.size_initial_contracts = real_tokens
                                 self.active_position.size_remaining_contracts = real_tokens
-                                # 🔥 FIX: Initialiser size_initial_usdt (taille totale)
+                                self.active_position.size_executed_usdt = live_size_usdt
                                 if not self.active_position.size_initial_usdt:
                                     self.active_position.size_initial_usdt = live_size_usdt
-
-                                logger.info(
-                                    f"🔁 [LIVE] Taille synchronisée: {real_tokens:.6f} tokens ({live_contracts:.0f} contrats × {contract_size})"
+                            else:
+                                logger.warning(
+                                    f"🔍 DEBUG SIZE (2b): live_contracts={live_contracts}, live_entry_price={live_entry_price} - SYNC SKIPPED!"
                                 )
                         # Programmer une resynchronisation non bloquante
                         self._schedule_position_sync(symbol)
@@ -1471,32 +1445,56 @@ class PositionManager:
         # 🔥 FIX: Importer TRADING_CONFIG pour lecture dynamique
         from config import TRADING_CONFIG
         
-        # 🔥 FIX ROBUSTE: Vérifier si size_initial_contracts est cohérent avec size/entry
-        # Cette formule donne le nombre de tokens attendu (USDT / prix = tokens)
-        # Exemple: 21.68 USDT / 197.12 = 0.11 AAVE (pas 11 contrats !)
-        # Si size_initial_contracts diffère significativement, c'est corrompu (contract_size non appliqué)
-        if self.active_position.size and self.active_position.entry and self.active_position.entry > 0:
-            # Calculer tokens attendus depuis la taille USDT
-            expected_tokens = self.active_position.size / self.active_position.entry
+        # 🔥 BOUCLE DE VÉRIFICATION: Assurer cohérence entre size, tokens et entry
+        # Source de vérité = size_initial_contracts (tokens MEXC à l'ouverture)
+        # Si pas de TP partiel: size_remaining_contracts doit = size_initial_contracts
+        # size USDT doit être = tokens × entry_price
+        if self.active_position.entry and self.active_position.entry > 0:
             
-            if self.active_position.size_initial_contracts and expected_tokens > 0:
-                ratio = self.active_position.size_initial_contracts / expected_tokens
-                # Si ratio > 5 ou < 0.2, c'est clairement faux (facteur 10, 100 ou 1000 d'erreur)
-                if ratio > 5 or ratio < 0.2:
+            # 🔥 FIX CRITIQUE: Si pas de TP partiel, synchroniser remaining avec initial
+            if not self.active_position.partial_tp_sold and self.active_position.size_initial_contracts:
+                if self.active_position.size_remaining_contracts != self.active_position.size_initial_contracts:
                     logger.warning(
-                        f"⚠️ size_initial_contracts corrompu: {self.active_position.size_initial_contracts:.6f} | "
-                        f"Attendu depuis size/entry: {expected_tokens:.6f} (ratio={ratio:.1f}). Correction..."
+                        f"⚠️ SYNC: size_remaining_contracts ({self.active_position.size_remaining_contracts:.6f}) "
+                        f"!= size_initial_contracts ({self.active_position.size_initial_contracts:.6f}) sans TP partiel. Correction..."
                     )
+                    self.active_position.size_remaining_contracts = self.active_position.size_initial_contracts
+                    self.active_position.position_size_contracts = self.active_position.size_initial_contracts
+            
+            # Utiliser size_initial_contracts comme source de vérité
+            tokens_source = self.active_position.size_remaining_contracts or self.active_position.size_initial_contracts
+            
+            if tokens_source and tokens_source > 0:
+                expected_size_usdt = tokens_source * self.active_position.entry
+                current_size = self.active_position.size or 0
+                
+                # Vérifier si size est incohérent (plus de 5% d'écart)
+                if current_size > 0:
+                    ratio = current_size / expected_size_usdt
+                    if ratio > 1.05 or ratio < 0.95:
+                        logger.warning(
+                            f"⚠️ CORRECTION SIZE: {current_size:.4f} USDT → {expected_size_usdt:.4f} USDT "
+                            f"({tokens_source:.6f} tokens × {self.active_position.entry:.4f})"
+                        )
+                        self.active_position.size = expected_size_usdt
+                        self.active_position.position_size_usdt = expected_size_usdt
+                        self.active_position.size_remaining = expected_size_usdt
+                else:
+                    # size manquant, initialiser
+                    self.active_position.size = expected_size_usdt
+                    self.active_position.position_size_usdt = expected_size_usdt
+                    self.active_position.size_remaining = expected_size_usdt
+                    
+            # Cas 2: Pas de tokens mais size existe → calculer tokens depuis size
+            elif self.active_position.size and self.active_position.size > 0:
+                expected_tokens = self.active_position.size / self.active_position.entry
+                if not self.active_position.size_initial_contracts:
                     self.active_position.size_initial_contracts = expected_tokens
+                if not self.active_position.size_remaining_contracts:
                     self.active_position.size_remaining_contracts = expected_tokens
+                if not self.active_position.position_size_contracts:
                     self.active_position.position_size_contracts = expected_tokens
-                    logger.info(f"✅ Correction appliquée: size_initial_contracts = {expected_tokens:.6f}")
-            elif not self.active_position.size_initial_contracts:
-                # Initialiser si manquant
-                self.active_position.size_initial_contracts = expected_tokens
-                self.active_position.size_remaining_contracts = expected_tokens
-                self.active_position.position_size_contracts = expected_tokens
-                logger.info(f"📋 size_initial_contracts initialisé: {expected_tokens:.6f}")
+                logger.debug(f"📋 Tokens calculés depuis size: {expected_tokens:.6f}")
 
         # 🔥 FIX: Initialiser size_initial_usdt si manquant (pour historique)
         if not self.active_position.size_initial_usdt:
@@ -1517,6 +1515,13 @@ class PositionManager:
 
         # Calculer temps écoulé et PnL
         elapsed = time.time() - self.active_position.start_time
+
+        # 🔥 SANITY CHECK LOOP: Resynchroniser toutes les 15 secondes
+        # Cela répond à la demande de "boucles de verifs" pour assurer la cohérence exchange/local
+        if elapsed > 10 and int(elapsed) % 15 == 0 and int(elapsed) != getattr(self, '_last_sync_check', 0):
+             self._last_sync_check = int(elapsed)
+             # Ne pas spammer les logs si tout va bien
+             self._schedule_position_sync(self.active_position.symbol, delay=0)
 
         # 🔥 OPT #3: Utiliser prix RÉEL rempli pour calcul PnL (early invalidation)
         # Si entry_fill_price est disponible (ordre réel exécuté), l'utiliser
@@ -2058,6 +2063,9 @@ class PositionManager:
         Returns:
             Dict avec résultats du trade
         """
+        # 🔥 FIX: Import TRADING_CONFIG au début pour éviter UnboundLocalError
+        from config import TRADING_CONFIG
+        
         if not self.active_position:
             raise ValueError("Aucune position active à fermer")
         
@@ -2212,11 +2220,25 @@ class PositionManager:
                         f"PnL réalisé: {realized_pnl_usdt:.2f} USDT ({realized_pnl_pct:.2f}%)"
                     )
                 else:
-                    logger.error(
-                        f"❌ Ordre LIVE fermeture échoué: {self.active_position.symbol} | "
-                        f"Erreur: {order_result.error_message} | "
-                        f"Using paper trading exit price"
-                    )
+                    # 🔥 FIX: Détecter si position inexistante sur MEXC (code 2009)
+                    # Cela signifie que la position a été fermée autrement (manuellement, liquidation, etc.)
+                    error_msg = order_result.error_message or ""
+                    # Note: FuturesOrderResult n'a pas error_code, seulement error_message
+                    if "2009" in error_msg or "nonexistent" in error_msg.lower() or "closed" in error_msg.lower():
+                        logger.warning(
+                            f"⚠️ Position DÉJÀ FERMÉE sur MEXC: {self.active_position.symbol} | "
+                            f"Message: {error_msg} | "
+                            f"Fermeture locale (paper close) avec prix actuel"
+                        )
+                        # Marquer comme succès pour éviter boucle infinie
+                        # La position est DÉJÀ fermée sur l'exchange
+                        skip_order = True  # Ne plus réessayer
+                    else:
+                        logger.error(
+                            f"❌ Ordre LIVE fermeture échoué: {self.active_position.symbol} | "
+                            f"Erreur: {order_result.error_message} | "
+                            f"Using paper trading exit price"
+                        )
             except Exception as e:
                 logger.error(f"❌ Erreur fermeture ordre LIVE: {e}")
 

@@ -514,9 +514,24 @@ class LiveOrderManagerFutures:
                     if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
                         contracts = float(pos.get('contracts', 0))
                         entry_price = float(pos.get('entryPrice', 0)) or reference_price
-                        size_usdt = contracts * entry_price
+                        # 🔥 FIX: TOUJOURS calculer size_usdt = tokens × entry_price
+                        # Ne PAS utiliser notional qui peut être incorrect
+                        contract_size = float(pos.get('contractSize', 1.0))
+                        if contract_size <= 0:
+                            contract_size = float(pos.get('info', {}).get('contractSize', 1.0))
+                        if contract_size <= 0:
+                            contract_size = 1.0
+                        real_tokens = contracts * contract_size
+                        size_usdt = real_tokens * entry_price
+                        # 🔥 DEBUG
+                        logger.warning(
+                            f"🔍 DEBUG _verify_position_size CCXT: {contracts} × {contract_size} = "
+                            f"{real_tokens} tokens × {entry_price} = {size_usdt:.4f} USDT"
+                        )
                         return {
                             'contracts': contracts,
+                            'tokens': real_tokens,
+                            'contract_size': contract_size,
                             'entry_price': entry_price,
                             'size_usdt': size_usdt
                         }
@@ -532,13 +547,20 @@ class LiveOrderManagerFutures:
                 positions = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
                 for pos in positions:
                     if pos.symbol == bypass_symbol and pos.hold_vol > 0:
-                        contracts = float(pos.hold_vol)
+                        hold_vol = float(pos.hold_vol)  # Contrats MEXC
                         entry_price = float(pos.hold_avg_price or reference_price)
-                        size_usdt = contracts * entry_price
+                        # 🔥 FIX: Récupérer contract_size pour calculer vraie valeur USDT
+                        contract_spec = run_async_safely(self.bypass_client.get_contract_spec(bypass_symbol))
+                        contract_size = contract_spec.contract_size if contract_spec else 1.0
+                        # Tokens réels = hold_vol * contract_size
+                        real_tokens = hold_vol * contract_size
+                        size_usdt = real_tokens * entry_price
                         return {
-                            'contracts': contracts,
+                            'contracts': hold_vol,  # Contrats MEXC
+                            'tokens': real_tokens,  # Tokens réels
                             'entry_price': entry_price,
-                            'size_usdt': size_usdt
+                            'size_usdt': size_usdt,
+                            'contract_size': contract_size
                         }
             except Exception as bypass_err:
                 logger.debug(f"⚠️ Bypass verify_position_size échec: {bypass_err}")
@@ -1496,6 +1518,14 @@ class LiveOrderManagerFutures:
             # MODE BYPASS: Utiliser les endpoints browser
             # ================================================================
             if self.use_bypass and self.bypass_client:
+                # 🔥 FIX: Recalculer amount propre pour le bypass (ignorer les modifs CCXT précédentes)
+                if partial_pct:
+                    amount = size_amount * (partial_pct / 100)
+                else:
+                    amount = size_amount
+                
+                logger.info(f"🔍 [BYPASS] Close Amount Init: {amount:.6f} tokens (Partial: {partial_pct}%)")
+
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
                 
                 # Récupérer les specs du contrat pour arrondir correctement
@@ -1506,6 +1536,7 @@ class LiveOrderManagerFutures:
                 # 🔥 FIX FERMETURE PARTIELLE: Pour fermeture TOTALE, récupérer taille réelle MEXC
                 used_mexc_size = False  # Flag pour savoir si on a la taille réelle MEXC
                 forced_full_close = False  # Flag pour indiquer si TP partiel forcé à 100%
+                
                 if partial_pct is None:  # Fermeture totale
                     try:
                         positions = run_async_safely(
@@ -1586,6 +1617,27 @@ class LiveOrderManagerFutures:
                         latency_ms=(time.time() - start_time) * 1000
                     )
                 
+                # 🔥 FIX CRITIQUE: Vérifier si on ne ferme pas plus que ce qu'on a (via position check)
+                # Si partial_pct est set, on ne devrait pas dépasser la position totale
+                try:
+                    if partial_pct:
+                        positions = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                        if positions:
+                            for pos in positions:
+                                pos_symbol = getattr(pos, 'symbol', None)
+                                if pos_symbol == bypass_symbol:
+                                    current_qty = float(getattr(pos, 'hold_vol', 0) or 0)
+                                    if current_qty > 0 and amount > current_qty:
+                                        logger.warning(
+                                            f"⚠️ Tentative fermeture {amount} > position réelle {current_qty}. "
+                                            f"Ajustement à {current_qty} (100%)"
+                                        )
+                                        amount = current_qty
+                                        forced_full_close = True
+                                    break
+                except Exception as check_err:
+                    logger.warning(f"⚠️ Impossible de vérifier la taille max avant fermeture: {check_err}")
+
                 # Déterminer side pour bypass (fermeture)
                 # 1=open long, 2=close short, 3=open short, 4=close long
                 if direction == 'LONG':
@@ -2047,11 +2099,24 @@ class LiveOrderManagerFutures:
 
                     for pos in positions:
                         if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                            contracts = float(pos.get('contracts', 0))
+                            entry_price = float(pos.get('entryPrice', 0))
+                            # 🔥 FIX: TOUJOURS calculer size = tokens × entry (pas notional)
+                            contract_size = float(pos.get('contractSize', 1.0))
+                            if contract_size <= 0:
+                                contract_size = float(pos.get('info', {}).get('contractSize', 1.0))
+                            if contract_size <= 0:
+                                contract_size = 1.0
+                            real_tokens = contracts * contract_size
+                            size_usdt = real_tokens * entry_price
                             return {
                                 'symbol': futures_symbol,
                                 'side': pos.get('side'),
-                                'size': float(pos.get('contracts', 0)),
-                                'entry_price': float(pos.get('entryPrice', 0)),
+                                'size': size_usdt,  # 🔥 FIX: tokens × entry_price
+                                'contracts': contracts,
+                                'tokens': real_tokens,
+                                'contract_size': contract_size,
+                                'entry_price': entry_price,
                                 'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                                 'liquidation_price': float(pos.get('liquidationPrice', 0)),
                                 'margin': float(pos.get('initialMargin', 0)),
@@ -2080,11 +2145,22 @@ class LiveOrderManagerFutures:
                 
                 for pos in positions:
                     if pos.hold_vol > 0:
+                        hold_vol = pos.hold_vol  # Contrats MEXC
+                        entry_price = pos.hold_avg_price
+                        # 🔥 FIX: Récupérer contract_size pour calculer vraie valeur USDT
+                        contract_spec = run_async_safely(self.bypass_client.get_contract_spec(bypass_symbol))
+                        contract_size = contract_spec.contract_size if contract_spec else 1.0
+                        # Tokens réels = hold_vol (contrats MEXC) * contract_size
+                        real_tokens = hold_vol * contract_size
+                        size_usdt = real_tokens * entry_price
                         return {
                             'symbol': symbol,
                             'side': 'long' if pos.position_type == 1 else 'short',
-                            'size': pos.hold_vol,
-                            'entry_price': pos.hold_avg_price,
+                            'size': size_usdt,  # Valeur USDT réelle
+                            'contracts': hold_vol,  # Contrats MEXC
+                            'tokens': real_tokens,  # Tokens réels
+                            'contract_size': contract_size,
+                            'entry_price': entry_price,
                             'unrealized_pnl': pos.unrealized_pnl,
                             'liquidation_price': pos.liquidate_price,
                             'margin': pos.margin,
@@ -2098,11 +2174,24 @@ class LiveOrderManagerFutures:
 
             for pos in positions:
                 if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                    contracts = float(pos.get('contracts', 0))
+                    entry_price = float(pos.get('entryPrice', 0))
+                    # 🔥 FIX: TOUJOURS calculer size = tokens × entry (pas notional)
+                    contract_size = float(pos.get('contractSize', 1.0))
+                    if contract_size <= 0:
+                        contract_size = float(pos.get('info', {}).get('contractSize', 1.0))
+                    if contract_size <= 0:
+                        contract_size = 1.0
+                    real_tokens = contracts * contract_size
+                    size_usdt = real_tokens * entry_price
                     return {
                         'symbol': futures_symbol,
                         'side': pos.get('side'),
-                        'size': float(pos.get('contracts', 0)),
-                        'entry_price': float(pos.get('entryPrice', 0)),
+                        'size': size_usdt,  # tokens × entry_price
+                        'contracts': contracts,
+                        'tokens': real_tokens,
+                        'contract_size': contract_size,
+                        'entry_price': entry_price,
                         'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                         'liquidation_price': float(pos.get('liquidationPrice', 0)),
                         'margin': float(pos.get('initialMargin', 0)),

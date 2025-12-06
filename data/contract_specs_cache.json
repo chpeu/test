@@ -1,5 +1,5 @@
 {
-  "timestamp": 1764909832.4487896,
+  "timestamp": 1764981671.5088506,
   "specs": {
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -130,6 +130,56 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 1000.0
+    },
+    "SPX_USDT": {
+      "symbol": "SPX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 160000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "AVAX_USDT": {
+      "symbol": "AVAX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "LTC_USDT": {
+      "symbol": "LTC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "HBAR_USDT": {
+      "symbol": "HBAR_USDT",
+      "min_vol": 1.0,
+      "max_vol": 9800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "ZEN_USDT": {
+      "symbol": "ZEN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 270000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }

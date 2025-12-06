@@ -657,7 +657,9 @@ app_state = {
     },
     'top_pairs': [],
     'logs': [],
-    'trade_history': []  # 🔥 PHASE 4: Historique des trades
+    'trade_history': [],  # 🔥 PHASE 4: Historique des trades
+    'close_failure_count': 0,  # 🔥 FIX: Compteur d'échecs de fermeture pour éviter boucle infinie
+    'close_failure_symbol': None  # 🔥 FIX: Symbol de la position en échec
 }
 
 
@@ -2524,6 +2526,9 @@ async def position_check_loop_callback() -> None:
             async with position_lock:
                 result = position_manager.close_position(exit_price=current_price, reason=close_reason)
                 app_state['active_position'] = None
+                # 🔥 FIX: Reset compteur d'échecs après fermeture réussie
+                app_state['close_failure_count'] = 0
+                app_state['close_failure_symbol'] = None
                 
                 # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
                 if result:
@@ -2573,6 +2578,46 @@ async def position_check_loop_callback() -> None:
     except Exception as e:
         logger.error(f"Erreur dans position check loop: {e}")
         await add_log('ERROR', 'Erreur position check', str(e))
+        
+        # 🔥 FIX: Compteur d'échecs pour éviter boucle infinie
+        # Si même position échoue 5+ fois, forcer fermeture locale
+        if position_manager and position_manager.active_position:
+            current_symbol = position_manager.active_position.symbol
+            if app_state['close_failure_symbol'] == current_symbol:
+                app_state['close_failure_count'] += 1
+            else:
+                app_state['close_failure_symbol'] = current_symbol
+                app_state['close_failure_count'] = 1
+            
+            # Après 5 échecs consécutifs, forcer fermeture locale (paper close)
+            if app_state['close_failure_count'] >= 5:
+                logger.warning(
+                    f"⚠️ FORCE CLOSE: {current_symbol} - {app_state['close_failure_count']} échecs consécutifs | "
+                    f"Fermeture locale forcée pour éviter boucle infinie"
+                )
+                try:
+                    async with position_lock:
+                        # Forcer fermeture sans ordre (skip_order=True)
+                        result = position_manager.close_position(
+                            exit_price=position_manager.active_position.entry,  # Utiliser prix d'entrée comme fallback
+                            reason='FORCE_CLOSE',
+                            skip_order=True  # Ne pas envoyer d'ordre à MEXC
+                        )
+                        app_state['active_position'] = None
+                        app_state['close_failure_count'] = 0
+                        app_state['close_failure_symbol'] = None
+                        if result:
+                            result['timestamp'] = datetime.now().isoformat()
+                            app_state['trade_history'].append(result)
+                            save_trade_history()
+                        logger.info(f"✅ FORCE CLOSE réussi: {current_symbol}")
+                        await ws_manager.emit('position_closed', result)
+                except Exception as force_e:
+                    logger.error(f"❌ FORCE CLOSE échoué: {force_e} - Réinitialisation position")
+                    position_manager.active_position = None
+                    app_state['active_position'] = None
+                    app_state['close_failure_count'] = 0
+                    app_state['close_failure_symbol'] = None
 
 
 async def scalability_refresh_loop_callback():
