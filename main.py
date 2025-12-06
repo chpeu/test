@@ -1385,10 +1385,8 @@ async def scanner_loop_callback() -> None:
                                                 }
                                                 logger.info(f"💹 Données scalabilité depuis setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                                             else:
-                                                error_msg = f"Impossible de récupérer spread_pct depuis setup pour {symbol}"
-                                                logger.error(f"💹 ERREUR: {error_msg}")
-                                                # 🔥 NOUVEAU: Notifier l'erreur via Telegram
-                                                await notify_error_telegram("Scalability Data", error_msg)
+                                                # ⚠️ Warning non-bloquant: spread_pct manquant (rare, ~1x/4-5h)
+                                                logger.warning(f"💹 spread_pct non disponible dans setup pour {symbol} (non-bloquant)")
                                     else:
                                         logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
                                     
@@ -4777,6 +4775,20 @@ async def handle_client_command(command: str, params: dict):
             val = max(0.01, min(5.0, val))  # Clamp 0.01-5.0%
             TRADING_CONFIG['trailing_max_distance'] = val
             updated['trailing_max_distance'] = val
+        
+        # 🔥 FIX: Mettre à jour dynamiquement le trailing_stop manager si paramètres trailing changés
+        trailing_keys = ['trailing_enabled', 'trailing_trigger_pnl', 'trailing_atr_multiplier', 
+                         'trailing_min_distance', 'trailing_max_distance']
+        if any(k in updated for k in trailing_keys) and position_manager and hasattr(position_manager, 'trailing_stop'):
+            from core.position.trailing_stop import TrailingStopConfig
+            position_manager.trailing_stop.config = TrailingStopConfig(
+                enabled=TRADING_CONFIG.get('trailing_enabled', True),
+                trigger_pnl=TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
+                atr_multiplier=TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
+                min_distance=TRADING_CONFIG.get('trailing_min_distance', 0.08),
+                max_distance=TRADING_CONFIG.get('trailing_max_distance', 0.25)
+            )
+            logger.info(f"✅ TrailingStop config rechargée dynamiquement")
         
         # 🔥 BIDIRECTIONNEL: Partial TP
         if 'partial_tp_percent' in params:

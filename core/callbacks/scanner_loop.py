@@ -464,10 +464,8 @@ async def _scan_top_pairs():
                             }
                             logger.info(f"💹 Données scalabilité depuis best_setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                         else:
-                            error_msg = f"Impossible de récupérer spread_pct depuis best_setup pour {symbol}"
-                            logger.error(f"💹 ERREUR: {error_msg}")
-                            # 🔥 NOUVEAU: Notifier l'erreur via Telegram
-                            await notify_error_telegram("Scalability Data", error_msg)
+                            # ⚠️ Warning non-bloquant: spread_pct manquant (rare, ~1x/4-5h)
+                            logger.warning(f"💹 spread_pct non disponible dans best_setup pour {symbol} (non-bloquant)")
                 else:
                     logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
 

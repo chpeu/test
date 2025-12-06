@@ -2942,9 +2942,9 @@
 											<input
 												id="stagnation-timeout"
 												type="range"
-												step="10"
-												min="30"
-												max="300"
+												step="30"
+												min="60"
+												max="600"
 												bind:value={config.stagnation_exit_timeout_seconds}
 												on:change={() => triggerAutoSave('stagnation_exit_timeout_seconds', `${config.stagnation_exit_timeout_seconds}s`)}
 											/>

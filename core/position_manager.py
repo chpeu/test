@@ -1943,12 +1943,11 @@ class PositionManager:
         """
         from config import TRADING_CONFIG  # 🔥 FIX: Import manquant
         
-        # Support both nested (stagnation_exit.enabled) and flat (stagnation_exit_enabled) config keys
+        # 🔥 FIX: Prioriser les FLAT KEYS (mises à jour via frontend) sur le dict imbriqué
         stagnation_config = TRADING_CONFIG.get('stagnation_exit', {})
-        enabled = (
-            stagnation_config.get('enabled', False) or 
-            TRADING_CONFIG.get('stagnation_exit_enabled', False)
-        )
+        
+        # Enabled: flat key prioritaire
+        enabled = TRADING_CONFIG.get('stagnation_exit_enabled', stagnation_config.get('enabled', False))
         if not enabled:
             return None
         
@@ -1957,24 +1956,17 @@ class PositionManager:
         
         import time
         elapsed = time.time() - self.active_position.start_time
-        timeout = (
-            stagnation_config.get('timeout_seconds') or
-            TRADING_CONFIG.get('stagnation_exit_timeout_seconds', 120)
-        )
+        
+        # 🔥 FIX: Flat key prioritaire pour timeout
+        timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', stagnation_config.get('timeout_seconds', 120))
         
         # Pas encore timeout
         if elapsed < timeout:
             return None
         
-        # Vérifier les conditions de sortie
-        min_pnl_to_stay = (
-            stagnation_config.get('min_pnl_to_stay') or
-            TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', 0.10)
-        )
-        max_loss_to_exit = (
-            stagnation_config.get('max_loss_to_exit') or
-            TRADING_CONFIG.get('stagnation_exit_max_loss_to_exit', -0.05)
-        )
+        # 🔥 FIX: Flat keys prioritaires pour seuils
+        min_pnl_to_stay = TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', stagnation_config.get('min_pnl_to_stay', 0.10))
+        max_loss_to_exit = TRADING_CONFIG.get('stagnation_exit_max_loss_to_exit', stagnation_config.get('max_loss_to_exit', -0.05))
         
         # Rester si PnL suffisant
         if pnl >= min_pnl_to_stay:
