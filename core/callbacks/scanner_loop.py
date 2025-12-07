@@ -1071,6 +1071,27 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'reject_category': 'momentum_filter'
                     }
             
+            # 🔥 OPT #20: RSI Extreme Filter - Rejeter LONG si RSI > 70, SHORT si RSI < 30
+            indicators_1m = analysis.get('indicators_1m', {})
+            rsi_1m = indicators_1m.get('rsi')
+            if rsi_1m:
+                if direction == 'LONG' and rsi_1m > 70:
+                    logger.info(f"📈 {symbol} LONG rejeté: RSI={rsi_1m:.1f} > 70 (overbought)")
+                    return {
+                        'symbol': symbol,
+                        'reason': f"RSI trop élevé pour LONG ({rsi_1m:.1f} > 70)",
+                        'reject_category': 'rsi_extreme_filter',
+                        'rsi': rsi_1m
+                    }
+                elif direction == 'SHORT' and rsi_1m < 30:
+                    logger.info(f"📉 {symbol} SHORT rejeté: RSI={rsi_1m:.1f} < 30 (oversold)")
+                    return {
+                        'symbol': symbol,
+                        'reason': f"RSI trop bas pour SHORT ({rsi_1m:.1f} < 30)",
+                        'reject_category': 'rsi_extreme_filter',
+                        'rsi': rsi_1m
+                    }
+            
             # 🔥 OPT #17: Vérifier cooldown spécifique au symbole
             cooldown_mgr = get_cooldown_manager()
             can_trade, cooldown_reason = cooldown_mgr.can_trade(symbol)
