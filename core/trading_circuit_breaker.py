@@ -444,8 +444,8 @@ class TradingCircuitBreaker:
         🔥 SPRINT 1: Logger l'événement dans circuit_breaker_events
         """
         try:
-            from core.postgresql_datalogger import get_postgresql_datalogger
-            pg_logger = get_postgresql_datalogger()
+            from core.postgresql_datalogger import get_pg_datalogger
+            pg_logger = get_pg_datalogger()
             
             if not pg_logger or not pg_logger.enabled:
                 logger.debug("PostgreSQL logger non disponible pour CB events")
