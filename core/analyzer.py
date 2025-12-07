@@ -616,7 +616,8 @@ class TechnicalAnalyzer:
                 long_condition_types=long_condition_types,
                 short_condition_types=short_condition_types,
                 adx=adx,
-                trend_data=trend_data
+                trend_data=trend_data,
+                symbol=symbol  # 🔥 SPRINT 2: Passer le symbol pour pair scorer
             )
 
             direction = evaluation['direction']
@@ -625,6 +626,8 @@ class TechnicalAnalyzer:
             short_score = evaluation['short_score']
             min_score_required = evaluation['min_required']
             trend_score_bonus = evaluation['trend_bonus']
+            pair_adjustment = evaluation.get('pair_adjustment', 0.0)  # 🔥 SPRINT 2
+            effective_min_score = evaluation.get('effective_min_score', min_score_required)  # 🔥 SPRINT 2
 
             # Divergence RSI/MACD (calcul avant direction finale)
             divergence_bonus = apply_divergence_bonus(
@@ -645,23 +648,25 @@ class TechnicalAnalyzer:
                 else:
                     short_score = calculate_weighted_score(short_condition_types) + trend_score_bonus
 
-            # Réévaluer direction après divergence
+            # Réévaluer direction après divergence (utiliser effective_min_score)
             direction = 'NEUTRAL'
-            if long_score >= min_score_required:
+            if long_score >= effective_min_score:
                 direction = 'LONG'
-            elif short_score >= min_score_required:
+            elif short_score >= effective_min_score:
                 direction = 'SHORT'
 
             # Logs détaillés si score insuffisant
             if direction == 'NEUTRAL':
                 if use_weighted:
+                    # 🔥 SPRINT 2: Afficher l'ajustement pair si présent
+                    pair_info = f" (pair adj: {pair_adjustment:+.1f})" if pair_adjustment != 0 else ""
                     reason = (
                         f"Score insuffisant: Long={len(long_conditions)}+{trend_score_bonus:.1f} "
-                        f"[{', '.join(long_condition_types[:5])}] → Score: {long_score:.1f}/{min_score_required:.1f} ❌ | "
-                        f"Short={len(short_conditions)} [{', '.join(short_condition_types[:5])}] → Score: {short_score:.1f}/{min_score_required:.1f} ❌"
+                        f"[{', '.join(long_condition_types[:5])}] → Score: {long_score:.1f}/{effective_min_score:.1f}{pair_info} ❌ | "
+                        f"Short={len(short_conditions)} [{', '.join(short_condition_types[:5])}] → Score: {short_score:.1f}/{effective_min_score:.1f} ❌"
                     )
                 else:
-                    reason = f"Conditions insuffisantes: Long={len(long_conditions)} Short={len(short_conditions)} (min={min_score_required} requis)"
+                    reason = f"Conditions insuffisantes: Long={len(long_conditions)} Short={len(short_conditions)} (min={effective_min_score} requis)"
 
                 if return_reason:
                     result_dict = build_indicators_dict(reason, filters=filter_metrics, reject_category='score_insufficient')
@@ -804,6 +809,8 @@ class TechnicalAnalyzer:
                 'long_score': long_score if use_weighted else None,  # 🔥 FIX: Ajouter long_score pour les fallbacks
                 'short_score': short_score if use_weighted else None,  # 🔥 FIX: Ajouter short_score pour les fallbacks
                 'min_score_required': min_score_required,
+                'pair_score_adjustment': pair_adjustment,  # 🔥 SPRINT 2: Ajustement pair scorer
+                'effective_min_score': effective_min_score,  # 🔥 SPRINT 2: Score min effectif
                 'timeframe': timeframe,
                 'volatility': atr / price if price > 0 else 0,
                 'atr': atr,

@@ -5654,6 +5654,73 @@ async def handle_client_command(command: str, params: dict):
             except Exception as e:
                 logger.warning(f"⚠️ Erreur propagation CB: {e}")
 
+        # 🔥 SPRINT 2: Pair Scorer - Score Pair Dynamique
+        if 'pair_scorer_enabled' in params:
+            TRADING_CONFIG['pair_scorer_enabled'] = bool(params['pair_scorer_enabled'])
+            updated['pair_scorer_enabled'] = TRADING_CONFIG['pair_scorer_enabled']
+            logger.info(f"✅ pair_scorer_enabled: {TRADING_CONFIG['pair_scorer_enabled']}")
+            # Propager à l'instance existante
+            try:
+                from core.pair_scorer import get_pair_scorer
+                ps = get_pair_scorer()
+                ps.enabled = TRADING_CONFIG['pair_scorer_enabled']
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation pair_scorer: {e}")
+        
+        if 'pair_scorer_min_trades' in params:
+            val = int(params['pair_scorer_min_trades'])
+            val = max(5, min(100, val))  # Clamp 5-100
+            TRADING_CONFIG['pair_scorer_min_trades'] = val
+            updated['pair_scorer_min_trades'] = val
+            logger.info(f"✅ pair_scorer_min_trades: {val}")
+            try:
+                from core.pair_scorer import get_pair_scorer
+                ps = get_pair_scorer()
+                ps.min_trades = val
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation pair_scorer: {e}")
+        
+        if 'pair_scorer_max_adjustment' in params:
+            val = float(params['pair_scorer_max_adjustment'])
+            val = max(0.5, min(5.0, val))  # Clamp 0.5-5.0
+            TRADING_CONFIG['pair_scorer_max_adjustment'] = val
+            updated['pair_scorer_max_adjustment'] = val
+            logger.info(f"✅ pair_scorer_max_adjustment: ±{val}")
+            try:
+                from core.pair_scorer import get_pair_scorer
+                ps = get_pair_scorer()
+                ps.max_adjustment = val
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation pair_scorer: {e}")
+        
+        if 'pair_scorer_lookback_days' in params:
+            val = int(params['pair_scorer_lookback_days'])
+            val = max(7, min(90, val))  # Clamp 7-90
+            TRADING_CONFIG['pair_scorer_lookback_days'] = val
+            updated['pair_scorer_lookback_days'] = val
+            logger.info(f"✅ pair_scorer_lookback_days: {val} jours")
+            try:
+                from core.pair_scorer import get_pair_scorer
+                ps = get_pair_scorer()
+                ps.lookback_days = val
+                # Forcer un refresh des stats avec la nouvelle période
+                ps.refresh_stats()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation pair_scorer: {e}")
+        
+        if 'pair_scorer_refresh_minutes' in params:
+            val = int(params['pair_scorer_refresh_minutes'])
+            val = max(15, min(240, val))  # Clamp 15-240
+            TRADING_CONFIG['pair_scorer_refresh_minutes'] = val
+            updated['pair_scorer_refresh_minutes'] = val
+            logger.info(f"✅ pair_scorer_refresh_minutes: {val} min")
+            try:
+                from core.pair_scorer import get_pair_scorer
+                ps = get_pair_scorer()
+                ps.refresh_interval = val * 60  # Convertir en secondes
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation pair_scorer: {e}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))

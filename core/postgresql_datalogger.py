@@ -1575,6 +1575,9 @@ class PostgreSQLDataLogger:
                 ('entry_consecutive_losses', trade_data.get('entry_consecutive_losses', 0)),
                 ('entry_daily_pnl_pct', _extract_numeric_value(trade_data.get('entry_daily_pnl_pct'))),
                 ('entry_cb_score_boost', _extract_numeric_value(trade_data.get('entry_cb_score_boost'))),
+                # 🔥 SPRINT 2: Pair Scorer context
+                ('entry_pair_score_adjustment', _extract_numeric_value(trade_data.get('entry_pair_score_adjustment'))),
+                ('entry_effective_min_score', _extract_numeric_value(trade_data.get('entry_effective_min_score'))),
                 ('win', win),
                 # 🔥 FIX: ml_confidence toujours loggé (pas seulement pour live trades)
                 ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence')))

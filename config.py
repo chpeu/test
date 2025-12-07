@@ -443,6 +443,19 @@ TRADING_CONFIG = {
     "trading_cb_pause_duration_minutes": 30,      # Durée pause automatique (min)
     "trading_cb_score_boost_enabled": True,       # Activer score boost après pertes
     "trading_cb_score_boost_per_loss": 0.5,       # Score boost par perte consécutive
+    
+    # ============================================================
+    # 🔥 SPRINT 2: PAIR SCORER - Score Pair Dynamique
+    # ============================================================
+    # Ajuste le score minimum par paire selon performance historique
+    # Bonus pour paires performantes, malus pour paires sous-performantes
+    # ============================================================
+    
+    "pair_scorer_enabled": True,                  # Activer l'ajustement de score par paire
+    "pair_scorer_min_trades": 15,                 # Trades minimum pour calculer un ajustement
+    "pair_scorer_max_adjustment": 2.0,            # Ajustement max (±2.0 points)
+    "pair_scorer_lookback_days": 30,              # Jours d'historique à analyser
+    "pair_scorer_refresh_minutes": 60,            # Intervalle de refresh des stats (min)
 }
 
 # Risk management

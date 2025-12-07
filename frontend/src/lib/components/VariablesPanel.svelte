@@ -183,7 +183,13 @@
 		trading_cb_daily_drawdown_stop_pct: -5.0,
 		trading_cb_pause_duration_minutes: 30,
 		trading_cb_score_boost_enabled: true,
-		trading_cb_score_boost_per_loss: 0.5
+		trading_cb_score_boost_per_loss: 0.5,
+		// 🔥 SPRINT 2: Pair Scorer - Score Pair Dynamique
+		pair_scorer_enabled: true,
+		pair_scorer_min_trades: 15,
+		pair_scorer_max_adjustment: 2.0,
+		pair_scorer_lookback_days: 30,
+		pair_scorer_refresh_minutes: 60
 	};
 
 	let config = { ...DEFAULTS };
@@ -740,6 +746,15 @@
 				break_even_atr_mult: tradingConfig.break_even_atr_mult,
 				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
 				max_position_time: tradingConfig.max_position_time,
+			},
+			// 🔥 SPRINT 2: Adaptations ML - Score Pair Dynamique
+			'🎯 Adaptations ML': {
+				// === Pair Scorer ===
+				pair_scorer_enabled: tradingConfig.pair_scorer_enabled,
+				pair_scorer_min_trades: tradingConfig.pair_scorer_min_trades,
+				pair_scorer_max_adjustment: tradingConfig.pair_scorer_max_adjustment,
+				pair_scorer_lookback_days: tradingConfig.pair_scorer_lookback_days,
+				pair_scorer_refresh_minutes: tradingConfig.pair_scorer_refresh_minutes,
 			},
 		};
 	}
@@ -1350,6 +1365,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'protection'} on:click={() => activeSubTab = 'protection'} data-debug-name="activeSubTab">
 			🛡️ Protection & Régime
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'adaptations'} on:click={() => activeSubTab = 'adaptations'} data-debug-name="activeSubTab">
+			🎯 Adaptations ML
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'ml'} on:click={() => activeSubTab = 'ml'} data-debug-name="activeSubTab">
 			🤖 Machine Learning
@@ -3728,6 +3746,151 @@
 		</section>
 	{/if}
 
+	<!-- 🎯 ONGLET ADAPTATIONS ML (SPRINT 2) -->
+	{#if activeSubTab === 'adaptations'}
+		<section class="variable-section adaptations-section">
+			<h3>🎯 Adaptations ML - Score Dynamique par Paire</h3>
+			<p class="section-info">
+				Ajuste automatiquement le score minimum par paire selon performance historique.
+				<strong>Bonus</strong> pour paires performantes (score min réduit), <strong>Malus</strong> pour paires sous-performantes (score min augmenté).
+			</p>
+
+			<!-- Pair Scorer -->
+			<div class="subsection">
+				<h4>📊 Pair Scorer</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="pair_scorer_enabled">
+						<span class="label-text">Activer le Pair Scorer</span>
+						<span class="label-hint">Ajuste le score min selon performance par paire</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="pair_scorer_enabled"
+								bind:checked={config.pair_scorer_enabled}
+								on:change={() => triggerAutoSave('pair_scorer_enabled', config.pair_scorer_enabled ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.pair_scorer_enabled ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.pair_scorer_enabled}
+					<!-- Trades minimum -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_min_trades">
+								<span class="var-name">📊 Trades minimum</span>
+								<span class="var-desc">Nombre de trades requis avant calcul d'ajustement</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_min_trades')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_min_trades"
+								min="5"
+								max="50"
+								step="5"
+								bind:value={config.pair_scorer_min_trades}
+								on:change={() => triggerAutoSave('pair_scorer_min_trades', config.pair_scorer_min_trades)}
+							/>
+							<span class="slider-value">{config.pair_scorer_min_trades} trades</span>
+						</div>
+					</div>
+
+					<!-- Ajustement maximum -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_max_adjustment">
+								<span class="var-name">📏 Ajustement maximum</span>
+								<span class="var-desc">Bonus/malus max appliqué au score (±)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_max_adjustment')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_max_adjustment"
+								min="0.5"
+								max="4.0"
+								step="0.5"
+								bind:value={config.pair_scorer_max_adjustment}
+								on:change={() => triggerAutoSave('pair_scorer_max_adjustment', `±${Number(config.pair_scorer_max_adjustment).toFixed(1)}`)}
+							/>
+							<span class="slider-value">±{Number(config.pair_scorer_max_adjustment).toFixed(1)} pts</span>
+						</div>
+					</div>
+
+					<!-- Période d'analyse -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_lookback_days">
+								<span class="var-name">📅 Période d'analyse</span>
+								<span class="var-desc">Jours d'historique à analyser</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_lookback_days')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_lookback_days"
+								min="7"
+								max="90"
+								step="7"
+								bind:value={config.pair_scorer_lookback_days}
+								on:change={() => triggerAutoSave('pair_scorer_lookback_days', `${config.pair_scorer_lookback_days} jours`)}
+							/>
+							<span class="slider-value">{config.pair_scorer_lookback_days} jours</span>
+						</div>
+					</div>
+
+					<!-- Intervalle de refresh -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_refresh_minutes">
+								<span class="var-name">🔄 Intervalle de refresh</span>
+								<span class="var-desc">Fréquence de mise à jour des stats</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_refresh_minutes')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_refresh_minutes"
+								min="15"
+								max="240"
+								step="15"
+								bind:value={config.pair_scorer_refresh_minutes}
+								on:change={() => triggerAutoSave('pair_scorer_refresh_minutes', `${config.pair_scorer_refresh_minutes} min`)}
+							/>
+							<span class="slider-value">{config.pair_scorer_refresh_minutes} min</span>
+						</div>
+					</div>
+
+					<!-- Explication du calcul -->
+					<div class="info-box">
+						<h5>📐 Formule de calcul</h5>
+						<div class="formula">
+							<code>adjustment = (winrate - 50) / 10 × 0.6 + (avg_pnl / 0.1) × 0.4</code>
+						</div>
+						<div class="examples">
+							<p><strong>Exemples:</strong></p>
+							<ul>
+								<li>WR 62%, PnL +0.18% → <span class="bonus">+1.4</span> (score min réduit)</li>
+								<li>WR 42%, PnL -0.05% → <span class="malus">-0.7</span> (score min augmenté)</li>
+								<li>WR 51%, PnL +0.02% → <span class="neutral">+0.1</span> (quasi neutre)</li>
+							</ul>
+						</div>
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
+
 	{#if activeSubTab === 'ml'}
 	<!-- Titre et sélecteurs Version ML -->
 	<div class="ml-header">
@@ -6013,6 +6176,69 @@
 		padding: 8px;
 		background: rgba(245, 158, 11, 0.1);
 		border-radius: 6px;
+	}
+
+	/* 🎯 SPRINT 2: Adaptations ML Styles */
+	.adaptations-section {
+		background: linear-gradient(135deg, rgba(30, 50, 80, 0.95), rgba(20, 35, 65, 0.95));
+	}
+
+	.adaptations-section h3 {
+		color: #00ff88;
+		margin-bottom: 10px;
+	}
+
+	.adaptations-section .info-box {
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid #2a4a7b;
+		border-radius: 8px;
+		padding: 15px;
+		margin-top: 20px;
+	}
+
+	.adaptations-section .info-box h5 {
+		color: #00ff88;
+		font-size: 13px;
+		margin: 0 0 10px 0;
+	}
+
+	.adaptations-section .formula {
+		background: rgba(0, 0, 0, 0.4);
+		padding: 10px 15px;
+		border-radius: 6px;
+		margin-bottom: 15px;
+	}
+
+	.adaptations-section .formula code {
+		font-family: 'Courier New', monospace;
+		color: #00ff88;
+		font-size: 12px;
+	}
+
+	.adaptations-section .examples ul {
+		margin: 10px 0 0 0;
+		padding-left: 20px;
+	}
+
+	.adaptations-section .examples li {
+		color: #aaa;
+		font-size: 12px;
+		margin-bottom: 5px;
+	}
+
+	.adaptations-section .bonus {
+		color: #10b981;
+		font-weight: 600;
+	}
+
+	.adaptations-section .malus {
+		color: #ef4444;
+		font-weight: 600;
+	}
+
+	.adaptations-section .neutral {
+		color: #6b7280;
+		font-weight: 600;
 	}
 
 </style>
