@@ -17,7 +17,7 @@ import csv
 import io
 import subprocess
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple, Callable
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -1047,6 +1047,7 @@ async def scanner_loop_callback() -> None:
         - Le nombre de paires scannées est configurable (top_pairs_limit)
     """
     global price_provider  # 🔥 FIX: Utiliser variable globale
+    from config import TRADING_CONFIG  # 🔥 FIX: Import global pour disponibilité dans toute la fonction
     
     init_instances()
     
@@ -1060,7 +1061,7 @@ async def scanner_loop_callback() -> None:
         
         # 🔥 SPRINT 1: Vérifier Trading Circuit Breaker avant de scanner
         try:
-            from config import TRADING_CONFIG
+            # TRADING_CONFIG déjà importé au début de la fonction
             if TRADING_CONFIG.get('trading_circuit_breaker_enabled', True):
                 from core.trading_circuit_breaker import get_trading_circuit_breaker
                 trading_cb = get_trading_circuit_breaker()
@@ -1117,12 +1118,34 @@ async def scanner_loop_callback() -> None:
                         adx_values.append(float(adx))
                 
                 if atr_values:
+                    # 🔥 FIX: Stocker les échantillons pour l'affichage dans le widget
+                    regime_selector.atr_sample_count = len(atr_values)
+                    
+                    # 🔥 FIX: Forcer la vérification si on a plus de données qu'avant (ex: démarrage progressif)
+                    # Si on avait peu d'échantillons (<5) et qu'on en a maintenant beaucoup (>=5), on re-vérifie
+                    # sans attendre l'intervalle de 60 minutes.
+                    force_check = False
+                    old_sample_count = getattr(regime_selector, '_last_sample_count', 0)
+                    if old_sample_count < 5 and len(atr_values) >= 5:
+                        force_check = True
+                        logger.info(f"🔄 Forcing regime check: Samples improved ({old_sample_count} -> {len(atr_values)})")
+                    regime_selector._last_sample_count = len(atr_values)
+
                     new_regime, changed = await regime_selector.check_regime(
                         atr_values=atr_values,
                         adx_values=adx_values,
-                        force=False,
+                        force=force_check,
                         trigger="auto"
                     )
+                    
+                    # 🔥 FIX: Appliquer TOUJOURS les valeurs du régime actif à TRADING_CONFIG
+                    # Pas seulement lors d'un changement - garantit la cohérence au démarrage
+                    active_config = regime_selector.get_active_config()
+                    if active_config:
+                        for k, v in active_config.items():
+                            if v is not None and TRADING_CONFIG.get(k) != v:
+                                TRADING_CONFIG[k] = v
+                                logger.debug(f"  -> Régime appliqué: {k} = {v}")
                     
                     if changed:
                         regime_status = regime_selector.get_status()
@@ -5418,6 +5441,176 @@ async def handle_client_command(command: str, params: dict):
             updated['ml_calib_bucket_size'] = val
             logger.info(f"✅ ml_calib_bucket_size: {val}")
 
+        # ============================================================
+        # 🛡️ PROTECTION & RÉGIME: Market Regime Selector
+        # ============================================================
+        if 'market_regime_enabled' in params:
+            new_enabled = bool(params['market_regime_enabled'])
+            old_enabled = TRADING_CONFIG.get('market_regime_enabled', True)
+            TRADING_CONFIG['market_regime_enabled'] = new_enabled
+            updated['market_regime_enabled'] = new_enabled
+            logger.info(f"✅ market_regime_enabled: {new_enabled}")
+            
+            # 🔥 FIX: Si on DÉSACTIVE le régime, restaurer les valeurs originales de config.py
+            if old_enabled and not new_enabled:
+                logger.info("🔄 Régime désactivé -> Restauration des valeurs config.py originales")
+                
+                # Valeurs par défaut de config.py (sans régime)
+                # Ces valeurs sont celles définies dans config.py AVANT toute modification par le régime
+                default_values = {
+                    'min_score_required': 6.5,      # Valeur par défaut config.py
+                    'atr_mult_sl': 1.2,             # Valeur par défaut config.py
+                    'atr_mult_tp': 3.0,             # Valeur par défaut config.py
+                    'optimal_atr_min_1m': 0.12,     # Valeur par défaut config.py
+                    'optimal_atr_max_1m': 0.75,     # Valeur par défaut config.py
+                }
+                
+                for key, default_val in default_values.items():
+                    TRADING_CONFIG[key] = default_val
+                    updated[key] = default_val
+                    logger.info(f"  -> Restauré: {key} = {default_val}")
+                
+                # Reset le régime selector à UNKNOWN
+                try:
+                    from core.market_regime_selector import get_regime_selector, MarketRegime
+                    selector = get_regime_selector()
+                    selector.current_regime = MarketRegime.UNKNOWN
+                    logger.info("  -> Régime reset à UNKNOWN")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur reset régime: {e}")
+        
+        if 'market_regime_check_interval' in params:
+            val = int(params['market_regime_check_interval'])
+            val = max(15, min(120, val))  # Clamp 15-120 min
+            TRADING_CONFIG['market_regime_check_interval'] = val
+            updated['market_regime_check_interval'] = val
+            logger.info(f"✅ market_regime_check_interval: {val}min")
+            # 🔥 FIX: Propager à l'instance existante
+            try:
+                from core.market_regime_selector import get_regime_selector
+                selector = get_regime_selector()
+                selector.check_interval = timedelta(minutes=val)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation check_interval: {e}")
+        
+        if 'market_regime_sample_count' in params:
+            val = int(params['market_regime_sample_count'])
+            val = max(5, min(20, val))  # Clamp 5-20
+            TRADING_CONFIG['market_regime_sample_count'] = val
+            updated['market_regime_sample_count'] = val
+            logger.info(f"✅ market_regime_sample_count: {val}")
+            # 🔥 FIX: Propager à l'instance existante
+            try:
+                from core.market_regime_selector import get_regime_selector
+                selector = get_regime_selector()
+                selector.atr_sample_size = val
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation sample_count: {e}")
+        
+        if 'market_regime_atr_calme_max' in params:
+            val = float(params['market_regime_atr_calme_max'])
+            val = max(0.10, min(0.30, val))  # Clamp 0.10-0.30%
+            TRADING_CONFIG['market_regime_atr_calme_max'] = val
+            updated['market_regime_atr_calme_max'] = val
+            logger.info(f"✅ market_regime_atr_calme_max: {val}%")
+        
+        if 'market_regime_atr_normal_max' in params:
+            val = float(params['market_regime_atr_normal_max'])
+            val = max(0.25, min(0.60, val))  # Clamp 0.25-0.60%
+            TRADING_CONFIG['market_regime_atr_normal_max'] = val
+            updated['market_regime_atr_normal_max'] = val
+            logger.info(f"✅ market_regime_atr_normal_max: {val}%")
+        
+        if 'market_regime_adx_choppy' in params:
+            val = int(params['market_regime_adx_choppy'])
+            val = max(15, min(30, val))  # Clamp 15-30
+            TRADING_CONFIG['market_regime_adx_choppy'] = val
+            updated['market_regime_adx_choppy'] = val
+            logger.info(f"✅ market_regime_adx_choppy: {val}")
+
+        # ============================================================
+        # 🛡️ PROTECTION & RÉGIME: Trading Circuit Breaker
+        # ============================================================
+        if 'trading_circuit_breaker_enabled' in params:
+            TRADING_CONFIG['trading_circuit_breaker_enabled'] = bool(params['trading_circuit_breaker_enabled'])
+            updated['trading_circuit_breaker_enabled'] = TRADING_CONFIG['trading_circuit_breaker_enabled']
+            logger.info(f"✅ trading_circuit_breaker_enabled: {TRADING_CONFIG['trading_circuit_breaker_enabled']}")
+        
+        if 'trading_cb_max_consecutive_losses' in params:
+            val = int(params['trading_cb_max_consecutive_losses'])
+            val = max(3, min(10, val))  # Clamp 3-10
+            TRADING_CONFIG['trading_cb_max_consecutive_losses'] = val
+            updated['trading_cb_max_consecutive_losses'] = val
+            logger.info(f"✅ trading_cb_max_consecutive_losses: {val}")
+            # 🔥 FIX: Propager à l'instance existante
+            try:
+                from core.trading_circuit_breaker import get_trading_circuit_breaker
+                cb = get_trading_circuit_breaker()
+                cb.update_config(max_consecutive_losses=val)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation CB: {e}")
+        
+        if 'trading_cb_daily_drawdown_pause_pct' in params:
+            val = float(params['trading_cb_daily_drawdown_pause_pct'])
+            val = max(-5.0, min(-1.0, val))  # Clamp -5% à -1%
+            TRADING_CONFIG['trading_cb_daily_drawdown_pause_pct'] = val
+            updated['trading_cb_daily_drawdown_pause_pct'] = val
+            logger.info(f"✅ trading_cb_daily_drawdown_pause_pct: {val}%")
+            # 🔥 FIX: Propager à l'instance existante
+            try:
+                from core.trading_circuit_breaker import get_trading_circuit_breaker
+                cb = get_trading_circuit_breaker()
+                cb.update_config(daily_drawdown_pause_pct=val)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation CB: {e}")
+        
+        if 'trading_cb_daily_drawdown_stop_pct' in params:
+            val = float(params['trading_cb_daily_drawdown_stop_pct'])
+            val = max(-10.0, min(-3.0, val))  # Clamp -10% à -3%
+            TRADING_CONFIG['trading_cb_daily_drawdown_stop_pct'] = val
+            updated['trading_cb_daily_drawdown_stop_pct'] = val
+            logger.info(f"✅ trading_cb_daily_drawdown_stop_pct: {val}%")
+            # 🔥 FIX: Propager à l'instance existante
+            try:
+                from core.trading_circuit_breaker import get_trading_circuit_breaker
+                cb = get_trading_circuit_breaker()
+                cb.update_config(daily_drawdown_stop_pct=val)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation CB: {e}")
+        
+        if 'trading_cb_pause_duration_minutes' in params:
+            val = int(params['trading_cb_pause_duration_minutes'])
+            val = max(5, min(120, val))  # Clamp 5-120 min
+            TRADING_CONFIG['trading_cb_pause_duration_minutes'] = val
+            updated['trading_cb_pause_duration_minutes'] = val
+            logger.info(f"✅ trading_cb_pause_duration_minutes: {val}min")
+            # 🔥 FIX: Propager à l'instance existante
+            try:
+                from core.trading_circuit_breaker import get_trading_circuit_breaker
+                cb = get_trading_circuit_breaker()
+                cb.update_config(pause_duration_minutes=val)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation CB: {e}")
+        
+        if 'trading_cb_score_boost_enabled' in params:
+            TRADING_CONFIG['trading_cb_score_boost_enabled'] = bool(params['trading_cb_score_boost_enabled'])
+            updated['trading_cb_score_boost_enabled'] = TRADING_CONFIG['trading_cb_score_boost_enabled']
+            logger.info(f"✅ trading_cb_score_boost_enabled: {TRADING_CONFIG['trading_cb_score_boost_enabled']}")
+        
+        if 'trading_cb_score_boost_per_loss' in params:
+            val = float(params['trading_cb_score_boost_per_loss'])
+            val = max(0.25, min(1.5, val))  # Clamp 0.25-1.5
+            TRADING_CONFIG['trading_cb_score_boost_per_loss'] = val
+            updated['trading_cb_score_boost_per_loss'] = val
+            logger.info(f"✅ trading_cb_score_boost_per_loss: +{val}")
+            # 🔥 FIX: Propager à l'instance existante
+            try:
+                from core.trading_circuit_breaker import get_trading_circuit_breaker
+                cb = get_trading_circuit_breaker()
+                cb.update_config(score_boost_per_loss=val)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation CB: {e}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -6541,6 +6734,12 @@ async def export_datalogger_excel(
                     base_query += f" ORDER BY updated_at DESC LIMIT {limit}"
                 elif table_name == 'ml_calibration_history':
                     base_query += f" ORDER BY created_at DESC LIMIT {limit}"
+                elif table_name == 'circuit_breaker_events':
+                    # 🔥 SPRINT 1: Événements circuit breaker triés par timestamp
+                    base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
+                elif table_name == 'market_regime_history':
+                    # 🔥 SPRINT 1: Historique régime trié par timestamp
+                    base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp:
                     base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp_entry:
@@ -6560,6 +6759,11 @@ async def export_datalogger_excel(
                     # S'assurer que reject_reason_category est présent
                     if 'reject_reason_category' not in headers:
                         headers.append('reject_reason_category')
+                    # 🔥 SPRINT 1: S'assurer que les colonnes régime sont présentes
+                    regime_columns = ['market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx']
+                    for col in regime_columns:
+                        if col not in headers:
+                            headers.append(col)
                 # 🔥 FIX: Pour trades, masquer config_snapshot et s'assurer que les colonnes config_* sont présentes
                 if table_name == 'trades':
                     headers = [h for h in headers if h != 'config_snapshot']
@@ -6575,7 +6779,11 @@ async def export_datalogger_excel(
                         'config_cooldown_seconds', 'config_cooldown_same_symbol',
                         'config_use_candle_close', 'config_candle_close_threshold_seconds',
                         'config_use_momentum_continuity', 'config_momentum_lookback',
-                        'delta_volume', 'imbalance_normalized', 'book_depth_ratio'
+                        'delta_volume', 'imbalance_normalized', 'book_depth_ratio',
+                        # 🔥 SPRINT 1: Colonnes Market Regime et Circuit Breaker
+                        'entry_market_regime', 'entry_market_regime_avg_atr', 'entry_market_regime_avg_adx',
+                        'entry_min_score_required', 'entry_atr_mult_sl', 'entry_atr_mult_tp',
+                        'entry_cb_state', 'entry_consecutive_losses', 'entry_daily_pnl_pct', 'entry_cb_score_boost'
                     ]
                     for col in config_columns:
                         if col not in headers:

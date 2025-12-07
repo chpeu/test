@@ -60,6 +60,43 @@ class ScalabilityScanner:
         
         return (std / mean) * 100 if mean > 0 else 0.0
     
+    def calculate_atr(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> float:
+        """
+        Calcul Average True Range (ATR)
+        
+        Args:
+            highs: Liste des prix high
+            lows: Liste des prix low
+            closes: Liste des prix de clôture
+            period: Période de calcul (défaut: 14)
+            
+        Returns:
+            ATR en valeur absolue
+        """
+        if len(closes) < period + 1 or len(highs) < period + 1 or len(lows) < period + 1:
+            # Fallback: utiliser high - low moyen
+            if len(highs) >= 5:
+                return sum(highs[-5:][i] - lows[-5:][i] for i in range(5)) / 5
+            return 0.0
+        
+        true_ranges = []
+        for i in range(1, len(closes)):
+            high = highs[i]
+            low = lows[i]
+            prev_close = closes[i - 1]
+            
+            tr = max(
+                high - low,
+                abs(high - prev_close),
+                abs(low - prev_close)
+            )
+            true_ranges.append(tr)
+        
+        # Utiliser les dernières 'period' valeurs
+        recent_tr = true_ranges[-period:] if len(true_ranges) >= period else true_ranges
+        
+        return sum(recent_tr) / len(recent_tr) if recent_tr else 0.0
+    
     async def fetch_spread_data(self, symbol: str) -> Dict:
         """
         🔥 OPT #7: Récupère spread et profondeur avec CACHE
@@ -401,6 +438,11 @@ class ScalabilityScanner:
             # 🔥 OPT #4: Calculer ADX pour trend strength
             adx = self.calculate_adx(highs, lows, closes)
             
+            # 🔥 FIX: Calculer ATR pour Market Regime Selector
+            atr = self.calculate_atr(highs, lows, closes)
+            current_price = closes[-1] if closes else 1
+            atr_percent = (atr / current_price) * 100 if current_price > 0 else 0.25
+            
             # Récupérer spread & depth (avec cache)
             spread_data = await self.fetch_spread_data(symbol)
             
@@ -429,6 +471,8 @@ class ScalabilityScanner:
                 'directionBias': spread_data.get('directionBias', 'NEUTRAL'),
                 'bidAskRatio': spread_data.get('bidAskRatio', 0.5),
                 'adx': adx,  # 🔥 OPT #4: ADX pour trend strength
+                'atr': atr,  # 🔥 FIX: ATR valeur absolue pour Market Regime
+                'atr_percent': atr_percent,  # 🔥 FIX: ATR en % pour Market Regime
                 # 🔥 ORDER FLOW: 6 nouvelles métriques pour ML
                 'delta_volume': orderflow_metrics['delta_volume'],
                 'imbalance_normalized': orderflow_metrics['imbalance_normalized'],
@@ -618,6 +662,8 @@ class ScalabilityScanner:
                             'askVol': 0,
                             'price': 0,
                             'adx': 0,
+                            'atr': 0,  # 🔥 FIX: ATR par défaut
+                            'atr_percent': 0,  # 🔥 FIX: ATR% par défaut
                             'directionBias': 'NEUTRAL'
                         })
                 

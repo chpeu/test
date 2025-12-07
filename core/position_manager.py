@@ -2591,6 +2591,31 @@ class PositionManager:
                         'ml_confidence': getattr(self.active_position, 'ml_confidence', None)
                     }
                     
+                    # 🔥 SPRINT 1: Ajouter contexte Market Regime et Circuit Breaker
+                    try:
+                        from core.market_regime_selector import get_regime_selector
+                        regime_selector = get_regime_selector()
+                        regime_status = regime_selector.get_status()
+                        trade_data['entry_market_regime'] = regime_status.get('current_regime', 'UNKNOWN')
+                        trade_data['entry_market_regime_avg_atr'] = regime_status.get('avg_atr', 0)
+                        trade_data['entry_market_regime_avg_adx'] = regime_status.get('avg_adx', 0)
+                        trade_data['entry_min_score_required'] = TRADING_CONFIG.get('min_score_required')
+                        trade_data['entry_atr_mult_sl'] = TRADING_CONFIG.get('atr_mult_sl')
+                        trade_data['entry_atr_mult_tp'] = TRADING_CONFIG.get('atr_mult_tp')
+                    except Exception as e:
+                        logger.debug(f"⚠️ Impossible de récupérer régime: {e}")
+                    
+                    try:
+                        from core.trading_circuit_breaker import get_trading_circuit_breaker
+                        trading_cb = get_trading_circuit_breaker()
+                        cb_status = trading_cb.get_status()
+                        trade_data['entry_cb_state'] = cb_status.get('state', 'ACTIVE')
+                        trade_data['entry_consecutive_losses'] = cb_status.get('consecutive_losses', 0)
+                        trade_data['entry_daily_pnl_pct'] = cb_status.get('daily_pnl_pct', 0)
+                        trade_data['entry_cb_score_boost'] = cb_status.get('score_boost', 0)
+                    except Exception as e:
+                        logger.debug(f"⚠️ Impossible de récupérer CB: {e}")
+                    
                     # Récupérer opportunity_id et scan_log_id si disponibles
                     opportunity_id = getattr(self.active_position, '_opportunity_id', None)
                     scan_log_id = getattr(self.active_position, '_scan_log_id', None)

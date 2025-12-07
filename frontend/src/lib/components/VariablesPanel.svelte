@@ -717,6 +717,30 @@
 				recovery_mode: tradingConfig.recovery_mode,
 				tp_escalier: tradingConfig.tp_escalier,
 			},
+			'🛡️ Protection & Régime': {
+				// === Market Regime Selector ===
+				market_regime_enabled: tradingConfig.market_regime_enabled,
+				market_regime_check_interval: tradingConfig.market_regime_check_interval,
+				market_regime_sample_count: tradingConfig.market_regime_sample_count,
+				market_regime_atr_calme_max: tradingConfig.market_regime_atr_calme_max,
+				market_regime_atr_normal_max: tradingConfig.market_regime_atr_normal_max,
+				market_regime_adx_choppy: tradingConfig.market_regime_adx_choppy,
+				// === Trading Circuit Breaker ===
+				trading_circuit_breaker_enabled: tradingConfig.trading_circuit_breaker_enabled,
+				trading_cb_max_consecutive_losses: tradingConfig.trading_cb_max_consecutive_losses,
+				trading_cb_daily_drawdown_pause_pct: tradingConfig.trading_cb_daily_drawdown_pause_pct,
+				trading_cb_daily_drawdown_stop_pct: tradingConfig.trading_cb_daily_drawdown_stop_pct,
+				trading_cb_pause_duration_minutes: tradingConfig.trading_cb_pause_duration_minutes,
+				trading_cb_score_boost_enabled: tradingConfig.trading_cb_score_boost_enabled,
+				trading_cb_score_boost_per_loss: tradingConfig.trading_cb_score_boost_per_loss,
+				// === Valeurs actives du régime (appliquées dynamiquement) ===
+				min_score_required: tradingConfig.min_score_required,
+				atr_mult_sl: tradingConfig.atr_mult_sl,
+				atr_mult_tp: tradingConfig.atr_mult_tp,
+				break_even_atr_mult: tradingConfig.break_even_atr_mult,
+				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
+				max_position_time: tradingConfig.max_position_time,
+			},
 		};
 	}
 	
@@ -4376,6 +4400,22 @@
 				<p class="popup-hint">
 					💡 Défaut: 50 lignes. Maximum recommandé: 1000 lignes pour éviter les fichiers trop volumineux.
 				</p>
+				<div class="popup-tables-info">
+					<span class="popup-tables-title">📋 Tables incluses :</span>
+					<div class="popup-tables-list">
+						<span class="table-tag">trades</span>
+						<span class="table-tag">scan_logs</span>
+						<span class="table-tag">opportunities</span>
+						<span class="table-tag">trading_sessions</span>
+						<span class="table-tag">market_context</span>
+						<span class="table-tag new">circuit_breaker_events</span>
+						<span class="table-tag new">market_regime_history</span>
+						<span class="table-tag">ml_calibration</span>
+					</div>
+					<p class="popup-hint" style="margin-top: 8px;">
+						🆕 Nouvelles colonnes: <code>entry_market_regime</code>, <code>entry_cb_state</code>, <code>entry_consecutive_losses</code>
+					</p>
+				</div>
 			</div>
 			<div class="popup-actions">
 				<button class="btn-secondary" on:click={closeExportPopup}>Annuler</button>
@@ -5843,6 +5883,51 @@
 		display: flex;
 		gap: 12px;
 		justify-content: flex-end;
+	}
+
+	/* 🔥 SPRINT 1: Tables list in export popup */
+	.popup-tables-info {
+		margin-top: 16px;
+		padding-top: 12px;
+		border-top: 1px solid #2a3a6b;
+	}
+
+	.popup-tables-title {
+		display: block;
+		color: #aaa;
+		font-size: 12px;
+		margin-bottom: 8px;
+	}
+
+	.popup-tables-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.table-tag {
+		display: inline-block;
+		padding: 3px 8px;
+		background: rgba(59, 130, 246, 0.15);
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		border-radius: 4px;
+		font-size: 11px;
+		color: #93c5fd;
+	}
+
+	.table-tag.new {
+		background: rgba(16, 185, 129, 0.15);
+		border-color: rgba(16, 185, 129, 0.3);
+		color: #6ee7b7;
+	}
+
+	.popup-hint code {
+		background: rgba(0, 0, 0, 0.3);
+		padding: 2px 6px;
+		border-radius: 3px;
+		font-family: 'Courier New', monospace;
+		font-size: 11px;
+		color: #00ff88;
 	}
 
 	/* 🛡️ SPRINT 1: Protection & Régime Styles */

@@ -156,6 +156,7 @@ class MarketRegimeSelector:
         self.avg_atr: float = 0.0
         self.avg_adx: float = 0.0
         self.atr_values: List[float] = []
+        self.atr_sample_count: int = 0  # 🔥 FIX: Compteur pour widget Samples
         
         # Historique
         self.history: List[RegimeChange] = []
@@ -233,14 +234,25 @@ class MarketRegimeSelector:
         Returns:
             MarketRegime détecté
         """
+        # 🔥 FIX: Utiliser les seuils de TRADING_CONFIG au lieu de valeurs hardcodées
+        try:
+            from config import TRADING_CONFIG
+            adx_choppy = TRADING_CONFIG.get('market_regime_adx_choppy', 20)
+            atr_calme_max = TRADING_CONFIG.get('market_regime_atr_calme_max', 0.20)
+            atr_normal_max = TRADING_CONFIG.get('market_regime_atr_normal_max', 0.40)
+        except ImportError:
+            adx_choppy = 20
+            atr_calme_max = 0.20
+            atr_normal_max = 0.40
+        
         # Choppy si ADX très faible (pas de tendance)
-        if avg_adx < 20:
+        if avg_adx < adx_choppy:
             return MarketRegime.CHOPPY
         
         # Sinon basé sur ATR
-        if avg_atr < 0.20:
+        if avg_atr < atr_calme_max:
             return MarketRegime.CALME
-        elif avg_atr < 0.40:
+        elif avg_atr < atr_normal_max:
             return MarketRegime.NORMAL
         else:
             return MarketRegime.VOLATILE
@@ -266,6 +278,12 @@ class MarketRegimeSelector:
         """
         now = datetime.now()
         
+        # 🔥 FIX: Toujours mettre à jour les valeurs ATR/ADX pour le widget Samples
+        # (même si on ne fait pas de check complet)
+        if atr_values:
+            self.atr_values = atr_values
+            self.atr_sample_count = len(atr_values)
+        
         # Vérifier si on doit checker
         if not force and self.last_check:
             if now < self.last_check + self.check_interval:
@@ -275,8 +293,6 @@ class MarketRegimeSelector:
         if not atr_values:
             logger.warning("⚠️ Pas de valeurs ATR fournies")
             return self.current_regime, False
-        
-        self.atr_values = atr_values
         self.avg_atr = sum(atr_values) / len(atr_values)
         self.avg_adx = sum(adx_values) / len(adx_values) if adx_values else 25.0
         
@@ -350,7 +366,7 @@ class MarketRegimeSelector:
             "next_check": self.next_check.isoformat() if self.next_check else None,
             "regime_since": self.regime_since.isoformat() if self.regime_since else None,
             "config_active": self.get_active_config(),
-            "atr_sample_count": len(self.atr_values),
+            "atr_sample_count": self.atr_sample_count,  # 🔥 FIX: Utiliser le compteur dédié
             "check_interval_minutes": self.check_interval.total_seconds() / 60
         }
     

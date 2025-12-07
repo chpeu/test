@@ -4,6 +4,7 @@
 
 	// Types
 	interface CBStatus {
+		enabled: boolean;
 		can_trade: boolean;
 		state: string;
 		consecutive_losses: number;
@@ -26,6 +27,7 @@
 
 	// État
 	let cbData: CBStatus = {
+		enabled: true,
 		can_trade: true,
 		state: 'ACTIVE',
 		consecutive_losses: 0,
@@ -102,6 +104,7 @@
 				const data = await res.json();
 				if (data.success !== false) {
 					cbData = {
+						enabled: data.enabled !== false,  // 🔥 FIX: Récupérer l'état enabled
 						can_trade: data.can_trade ?? true,
 						state: data.state || 'ACTIVE',
 						consecutive_losses: data.consecutive_losses || 0,
@@ -188,19 +191,25 @@
 <div 
 	class="cb-widget" 
 	class:paused={!cbData.can_trade}
-	style="border-color: {statusColor}"
+	class:disabled={!cbData.enabled}
+	style="border-color: {cbData.enabled ? statusColor : '#4b5563'}"
 >
 	<div class="cb-header">
-		<span class="cb-icon">🛑</span>
+		<span class="cb-icon">{cbData.enabled ? '🛑' : '⏸️'}</span>
 		<h4>Circuit Breaker</h4>
-		<span 
-			class="cb-status" 
-			style="background: {statusColor}20; color: {statusColor}"
-		>
-			{statusIcon} {statusText}
-		</span>
+		{#if !cbData.enabled}
+			<span class="disabled-badge">DÉSACTIVÉ</span>
+		{:else}
+			<span 
+				class="cb-status" 
+				style="background: {statusColor}20; color: {statusColor}"
+			>
+				{statusIcon} {statusText}
+			</span>
+		{/if}
 	</div>
 	
+	{#if cbData.enabled}
 	<div class="cb-metrics">
 		<div class="metric" class:warning={lossLevel === 'warning'} class:critical={lossLevel === 'critical'}>
 			<span class="label">Pertes consec.</span>
@@ -272,6 +281,12 @@
 			{loading ? '⏳' : '🔄'} Reset
 		</button>
 	</div>
+	{:else}
+		<div class="disabled-message">
+			<p>La protection Circuit Breaker est désactivée.</p>
+			<p class="hint">Activez dans Protection & Régime → Trading Circuit Breaker</p>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -456,5 +471,39 @@
 	.reset-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	/* 🔥 Styles pour état DÉSACTIVÉ */
+	.cb-widget.disabled {
+		opacity: 0.7;
+		background: rgba(75, 85, 99, 0.15);
+	}
+
+	.disabled-badge {
+		background: rgba(239, 68, 68, 0.2);
+		color: #ef4444;
+		padding: 2px 8px;
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+	}
+
+	.disabled-message {
+		padding: 15px 10px;
+		text-align: center;
+	}
+
+	.disabled-message p {
+		margin: 0 0 8px 0;
+		font-size: 12px;
+		color: #888;
+	}
+
+	.disabled-message .hint {
+		font-size: 10px;
+		color: #666;
+		font-style: italic;
+		margin: 0;
 	}
 </style>

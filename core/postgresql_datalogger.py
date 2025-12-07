@@ -1564,6 +1564,17 @@ class PostgreSQLDataLogger:
                 ('config_use_momentum_continuity', config_use_momentum_continuity),
                 ('config_momentum_lookback', config_momentum_lookback),
                 ('config_snapshot', config_snapshot),
+                # 🔥 SPRINT 1: Market Regime & Circuit Breaker context
+                ('entry_market_regime', trade_data.get('entry_market_regime')),
+                ('entry_market_regime_avg_atr', _extract_numeric_value(trade_data.get('entry_market_regime_avg_atr'))),
+                ('entry_market_regime_avg_adx', _extract_numeric_value(trade_data.get('entry_market_regime_avg_adx'))),
+                ('entry_min_score_required', _extract_numeric_value(trade_data.get('entry_min_score_required'))),
+                ('entry_atr_mult_sl', _extract_numeric_value(trade_data.get('entry_atr_mult_sl'))),
+                ('entry_atr_mult_tp', _extract_numeric_value(trade_data.get('entry_atr_mult_tp'))),
+                ('entry_cb_state', trade_data.get('entry_cb_state')),
+                ('entry_consecutive_losses', trade_data.get('entry_consecutive_losses', 0)),
+                ('entry_daily_pnl_pct', _extract_numeric_value(trade_data.get('entry_daily_pnl_pct'))),
+                ('entry_cb_score_boost', _extract_numeric_value(trade_data.get('entry_cb_score_boost'))),
                 ('win', win),
                 # 🔥 FIX: ml_confidence toujours loggé (pas seulement pour live trades)
                 ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence')))

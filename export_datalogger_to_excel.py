@@ -56,7 +56,9 @@ class DataLoggerExporter:
         'model_predictions',
         'features_engineered',
         'ml_calibration',  # 🔥 NOUVEAU: Table calibration ML
-        'ml_calibration_history'  # 🔥 NOUVEAU: Historique calibration
+        'ml_calibration_history',  # 🔥 NOUVEAU: Historique calibration
+        'circuit_breaker_events',  # 🔥 SPRINT 1: Événements du circuit breaker trading
+        'market_regime_history'  # 🔥 SPRINT 1: Historique des changements de régime
     ]
 
     def __init__(

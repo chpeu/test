@@ -125,6 +125,44 @@ class TradingCircuitBreaker:
             f"Stop DD: {daily_drawdown_stop_pct}%"
         )
     
+    def update_config(
+        self,
+        max_consecutive_losses: Optional[int] = None,
+        daily_drawdown_pause_pct: Optional[float] = None,
+        daily_drawdown_stop_pct: Optional[float] = None,
+        pause_duration_minutes: Optional[int] = None,
+        score_boost_per_loss: Optional[float] = None
+    ) -> None:
+        """
+        🔥 FIX: Met à jour la configuration à chaud sans recréer l'instance.
+        
+        Args:
+            max_consecutive_losses: Nouvelle valeur (None = pas de changement)
+            daily_drawdown_pause_pct: Nouvelle valeur
+            daily_drawdown_stop_pct: Nouvelle valeur
+            pause_duration_minutes: Nouvelle valeur
+            score_boost_per_loss: Nouvelle valeur
+        """
+        if max_consecutive_losses is not None:
+            self.max_consecutive_losses = max_consecutive_losses
+            logger.info(f"🔄 CB: max_consecutive_losses → {max_consecutive_losses}")
+        
+        if daily_drawdown_pause_pct is not None:
+            self.daily_drawdown_pause_pct = daily_drawdown_pause_pct
+            logger.info(f"🔄 CB: daily_drawdown_pause_pct → {daily_drawdown_pause_pct}%")
+        
+        if daily_drawdown_stop_pct is not None:
+            self.daily_drawdown_stop_pct = daily_drawdown_stop_pct
+            logger.info(f"🔄 CB: daily_drawdown_stop_pct → {daily_drawdown_stop_pct}%")
+        
+        if pause_duration_minutes is not None:
+            self.pause_duration = timedelta(minutes=pause_duration_minutes)
+            logger.info(f"🔄 CB: pause_duration → {pause_duration_minutes}min")
+        
+        if score_boost_per_loss is not None:
+            self.score_boost_per_loss = score_boost_per_loss
+            logger.info(f"🔄 CB: score_boost_per_loss → {score_boost_per_loss}")
+    
     def _get_day_start(self) -> datetime:
         """Retourne le début du jour courant (minuit UTC)"""
         now = datetime.utcnow()

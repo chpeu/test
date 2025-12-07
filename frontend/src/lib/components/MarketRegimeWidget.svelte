@@ -4,6 +4,7 @@
 
 	// Types
 	interface RegimeStatus {
+		enabled: boolean;
 		current_regime: string;
 		avg_atr: number;
 		avg_adx: number;
@@ -17,6 +18,7 @@
 
 	// État
 	let regimeData: RegimeStatus = {
+		enabled: true,
 		current_regime: 'UNKNOWN',
 		avg_atr: 0,
 		avg_adx: 0,
@@ -38,10 +40,14 @@
 		'NORMAL': { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6', icon: '🔵', text: '#3b82f6' },
 		'VOLATILE': { bg: 'rgba(245, 158, 11, 0.15)', border: '#f59e0b', icon: '🟠', text: '#f59e0b' },
 		'CHOPPY': { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', icon: '🔴', text: '#ef4444' },
-		'UNKNOWN': { bg: 'rgba(107, 114, 128, 0.15)', border: '#6b7280', icon: '⚪', text: '#6b7280' }
+		'UNKNOWN': { bg: 'rgba(107, 114, 128, 0.15)', border: '#6b7280', icon: '⚪', text: '#6b7280' },
+		'DISABLED': { bg: 'rgba(75, 85, 99, 0.15)', border: '#4b5563', icon: '⏸️', text: '#4b5563' }
 	};
 
-	$: colors = REGIME_COLORS[regimeData.current_regime] || REGIME_COLORS['UNKNOWN'];
+	// 🔥 FIX: Si désactivé, afficher couleur "DISABLED"
+	$: colors = !regimeData.enabled 
+		? REGIME_COLORS['DISABLED'] 
+		: (REGIME_COLORS[regimeData.current_regime] || REGIME_COLORS['UNKNOWN']);
 
 	onMount(async () => {
 		await loadRegimeStatus();
@@ -67,6 +73,7 @@
 				const data = await res.json();
 				if (data.success) {
 					regimeData = {
+						enabled: data.enabled !== false,  // 🔥 FIX: Récupérer l'état enabled
 						current_regime: data.current_regime || 'UNKNOWN',
 						avg_atr: data.avg_atr || 0,
 						avg_adx: data.avg_adx || 0,
@@ -152,62 +159,72 @@
 
 <div 
 	class="regime-widget" 
+	class:disabled={!regimeData.enabled}
 	style="background: {colors.bg}; border-color: {colors.border}"
 >
 	<div class="regime-header">
 		<span class="regime-icon">{colors.icon}</span>
 		<h4>Market Regime</h4>
-		{#if error}
+		{#if !regimeData.enabled}
+			<span class="disabled-badge">DÉSACTIVÉ</span>
+		{:else if error}
 			<span class="error-badge" title={error}>⚠️</span>
 		{/if}
 	</div>
 	
-	<div class="regime-main">
-		<span class="regime-name" style="color: {colors.text}">{regimeData.current_regime}</span>
-		{#if regimeData.regime_since}
-			<span class="regime-since">depuis {formatDuration(regimeData.regime_since)}</span>
+	{#if regimeData.enabled}
+		<div class="regime-main">
+			<span class="regime-name" style="color: {colors.text}">{regimeData.current_regime}</span>
+			{#if regimeData.regime_since}
+				<span class="regime-since">depuis {formatDuration(regimeData.regime_since)}</span>
+			{/if}
+		</div>
+		
+		<div class="regime-metrics">
+			<div class="metric">
+				<span class="label">ATR</span>
+				<span class="value">{regimeData.avg_atr.toFixed(3)}%</span>
+			</div>
+			<div class="metric">
+				<span class="label">ADX</span>
+				<span class="value">{regimeData.avg_adx.toFixed(0)}</span>
+			</div>
+			<div class="metric">
+				<span class="label">Samples</span>
+				<span class="value">{regimeData.atr_sample_count}</span>
+			</div>
+		</div>
+		
+		{#if regimeData.config_active && Object.keys(regimeData.config_active).length > 0}
+			<div class="config-preview">
+				<span class="config-item" title="Score minimum requis">
+					Score: {regimeData.config_active.min_score_required || '-'}
+				</span>
+				<span class="config-item" title="Multiplicateur SL">
+					SL: {regimeData.config_active.atr_mult_sl || '-'}x
+				</span>
+			</div>
 		{/if}
-	</div>
-	
-	<div class="regime-metrics">
-		<div class="metric">
-			<span class="label">ATR</span>
-			<span class="value">{regimeData.avg_atr.toFixed(3)}%</span>
-		</div>
-		<div class="metric">
-			<span class="label">ADX</span>
-			<span class="value">{regimeData.avg_adx.toFixed(0)}</span>
-		</div>
-		<div class="metric">
-			<span class="label">Samples</span>
-			<span class="value">{regimeData.atr_sample_count}</span>
-		</div>
-	</div>
-	
-	{#if regimeData.config_active && Object.keys(regimeData.config_active).length > 0}
-		<div class="config-preview">
-			<span class="config-item" title="Score minimum requis">
-				Score: {regimeData.config_active.min_score_required || '-'}
+		
+		<div class="regime-footer">
+			<span class="last-check" title="Dernière vérification">
+				MAJ: {formatTime(regimeData.last_check)}
 			</span>
-			<span class="config-item" title="Multiplicateur SL">
-				SL: {regimeData.config_active.atr_mult_sl || '-'}x
-			</span>
+			<button 
+				class="force-btn" 
+				on:click={forceCheck} 
+				disabled={loading}
+				title="Forcer une vérification immédiate"
+			>
+				{loading ? '⏳' : '🔄'} Vérifier
+			</button>
+		</div>
+	{:else}
+		<div class="disabled-message">
+			<p>La détection automatique du régime de marché est désactivée.</p>
+			<p class="hint">Activez dans Protection & Régime → Market Regime Selector</p>
 		</div>
 	{/if}
-	
-	<div class="regime-footer">
-		<span class="last-check" title="Dernière vérification">
-			MAJ: {formatTime(regimeData.last_check)}
-		</span>
-		<button 
-			class="force-btn" 
-			on:click={forceCheck} 
-			disabled={loading}
-			title="Forcer une vérification immédiate"
-		>
-			{loading ? '⏳' : '🔄'} Vérifier
-		</button>
-	</div>
 </div>
 
 <style>
@@ -330,5 +347,38 @@
 	.force-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* 🔥 Styles pour état DÉSACTIVÉ */
+	.regime-widget.disabled {
+		opacity: 0.7;
+	}
+
+	.disabled-badge {
+		background: rgba(239, 68, 68, 0.2);
+		color: #ef4444;
+		padding: 2px 8px;
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+	}
+
+	.disabled-message {
+		padding: 15px 10px;
+		text-align: center;
+	}
+
+	.disabled-message p {
+		margin: 0 0 8px 0;
+		font-size: 12px;
+		color: #888;
+	}
+
+	.disabled-message .hint {
+		font-size: 10px;
+		color: #666;
+		font-style: italic;
+		margin: 0;
 	}
 </style>

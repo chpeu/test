@@ -27,6 +27,7 @@ async def get_regime_status():
     
     Returns:
         JSONResponse avec:
+        - enabled: Fonctionnalité activée ou non
         - current_regime: CALME, NORMAL, VOLATILE, CHOPPY, UNKNOWN
         - avg_atr: ATR moyen calculé
         - avg_adx: ADX moyen
@@ -35,19 +36,25 @@ async def get_regime_status():
         - config_active: Configuration active pour ce régime
     """
     try:
+        from config import TRADING_CONFIG
         from core.market_regime_selector import get_regime_selector
+        
+        # 🔥 FIX: Inclure l'état enabled pour le frontend
+        enabled = TRADING_CONFIG.get('market_regime_enabled', True)
         
         selector = get_regime_selector()
         status = selector.get_status()
         
         return JSONResponse({
             "success": True,
+            "enabled": enabled,
             **status
         })
     except Exception as e:
         logger.error(f"❌ Erreur récupération statut régime: {e}")
         return JSONResponse({
             "success": False,
+            "enabled": False,
             "error": str(e),
             "current_regime": "UNKNOWN",
             "avg_atr": 0,
@@ -89,11 +96,16 @@ async def force_regime_check():
         except Exception as e:
             logger.warning(f"⚠️ Impossible de récupérer ATR depuis scanner: {e}")
         
-        # Si pas de données, utiliser des valeurs par défaut
+        # Si pas de données, utiliser des valeurs par défaut mais signaler le problème
+        using_defaults = False
         if not atr_values:
             logger.warning("⚠️ Pas de données ATR disponibles, utilisation valeurs par défaut")
             atr_values = [0.25]  # Valeur moyenne par défaut
             adx_values = [25.0]
+            using_defaults = True
+        
+        # 🔥 FIX: Logger le nombre de samples pour debug
+        logger.info(f"🔍 Force check avec {len(atr_values)} samples (defaults={using_defaults})")
         
         # Forcer la vérification
         new_regime, changed = await selector.check_regime(
@@ -104,6 +116,10 @@ async def force_regime_check():
         )
         
         status = selector.get_status()
+        
+        # 🔥 FIX: Ajouter info sur les defaults dans la réponse
+        if using_defaults:
+            status['warning'] = "Données ATR non disponibles, valeurs par défaut utilisées"
         
         return JSONResponse({
             "success": True,
@@ -236,6 +252,7 @@ async def get_trading_cb_status():
     
     Returns:
         JSONResponse avec:
+        - enabled: Fonctionnalité activée ou non
         - can_trade: True si trading autorisé
         - state: ACTIVE, PAUSED, STOPPED
         - consecutive_losses: Nombre de pertes consécutives
@@ -245,19 +262,25 @@ async def get_trading_cb_status():
         - thresholds: Configuration des seuils
     """
     try:
+        from config import TRADING_CONFIG
         from core.trading_circuit_breaker import get_trading_circuit_breaker
+        
+        # 🔥 FIX: Inclure l'état enabled pour le frontend
+        enabled = TRADING_CONFIG.get('trading_circuit_breaker_enabled', True)
         
         cb = get_trading_circuit_breaker()
         status = cb.get_status()
         
         return JSONResponse({
             "success": True,
+            "enabled": enabled,
             **status
         })
     except Exception as e:
         logger.error(f"❌ Erreur récupération statut CB trading: {e}")
         return JSONResponse({
             "success": False,
+            "enabled": False,
             "error": str(e),
             "can_trade": True,
             "state": "UNKNOWN",
