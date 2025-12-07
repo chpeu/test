@@ -227,6 +227,9 @@ class TradingCircuitBreaker:
             f"🛑 Circuit Breaker: {old_state.value} → {new_state.value} | {reason}"
         )
         
+        # 🔥 SPRINT 1: Logger dans circuit_breaker_events
+        self._log_event_to_db(event)
+        
         # Notifier les callbacks
         for callback in self._on_state_change_callbacks:
             try:
@@ -435,6 +438,61 @@ class TradingCircuitBreaker:
             self.score_boost_per_loss = score_boost_per_loss
         
         logger.info(f"⚙️ Config Circuit Breaker mise à jour")
+    
+    def _log_event_to_db(self, event: CircuitBreakerEvent) -> None:
+        """
+        🔥 SPRINT 1: Logger l'événement dans circuit_breaker_events
+        """
+        try:
+            from core.postgresql_datalogger import get_postgresql_datalogger
+            pg_logger = get_postgresql_datalogger()
+            
+            if not pg_logger or not pg_logger.enabled:
+                logger.debug("PostgreSQL logger non disponible pour CB events")
+                return
+            
+            # Calculer durée de pause si c'est un resume
+            pause_duration = None
+            if event.event_type == "resume" and self.pause_duration:
+                # Utiliser la durée de pause configurée comme estimation
+                pause_duration = self.pause_duration.total_seconds()
+            
+            query = """
+                INSERT INTO circuit_breaker_events (
+                    timestamp, session_id, event_type, reason,
+                    state_before, state_after,
+                    consecutive_losses, daily_pnl_pct, daily_pnl_usdt,
+                    daily_trades, daily_wins, daily_losses,
+                    score_boost, pause_duration_seconds
+                ) VALUES (
+                    NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """
+            
+            session_id = pg_logger.get_or_create_session()
+            metrics = event.metrics or {}
+            
+            params = (
+                session_id,
+                event.event_type,
+                event.reason[:500] if event.reason else None,  # Limiter la longueur
+                event.state_before,
+                event.state_after,
+                self.consecutive_losses,
+                round(self.daily_pnl_pct, 4),
+                round(self.daily_pnl_usdt, 2),
+                self.daily_trades,
+                self.daily_wins,
+                self.daily_losses,
+                metrics.get('score_boost', 0),
+                pause_duration
+            )
+            
+            pg_logger._execute_query(query, params, commit=True)
+            logger.info(f"📝 Événement CB loggé: {event.event_type}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur logging CB event: {e}")
 
 
 # Instance globale

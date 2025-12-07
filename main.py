@@ -2332,6 +2332,17 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     }
                 }
                 
+                # 🔥 SPRINT 1: Ajouter le contexte Market Regime au scan
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    regime_selector = get_regime_selector()
+                    regime_status = regime_selector.get_status()
+                    scan_data['market_regime'] = regime_status.get('current_regime')
+                    scan_data['market_regime_avg_atr'] = regime_status.get('avg_atr')
+                    scan_data['market_regime_avg_adx'] = regime_status.get('avg_adx')
+                except Exception as e:
+                    logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {e}")
+                
                 # Logger le scan (mode batch par défaut)
                 logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
                 scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
@@ -4147,6 +4158,38 @@ async def scan_top_pairs_task(n):
         await add_log('INFO', 'Scan terminé', f'{len(top_pairs)} paires scalables')
         await ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
         
+        # 🔥 SPRINT 1: Mettre à jour et diffuser le régime de marché
+        try:
+            from core.market_regime_selector import get_regime_selector
+            regime_selector = get_regime_selector()
+            
+            # Extraire ATR et ADX des paires
+            atr_values = [p.get('atr_percent', 0) for p in top_pairs if p.get('atr_percent') is not None]
+            adx_values = [p.get('adx', 0) for p in top_pairs if p.get('adx') is not None]
+            
+            if atr_values:
+                # Forcer la mise à jour pour avoir les métriques fraîches
+                regime, changed = await regime_selector.check_regime(
+                    atr_values=atr_values,
+                    adx_values=adx_values,
+                    force=True,  # On force pour mettre à jour l'affichage
+                    trigger="scan"
+                )
+                
+                # Diffuser le nouvel état
+                status = regime_selector.get_status()
+                # 🔥 FIX: Ajouter l'état enabled depuis TRADING_CONFIG
+                from config import TRADING_CONFIG
+                status['enabled'] = TRADING_CONFIG.get('market_regime_enabled', True)
+                
+                await ws_manager.emit('regime_changed', status)
+                
+                if changed:
+                    logger.info(f"🔄 Régime changé après scan: {regime}")
+                    await add_log('INFO', 'Régime changé', f'Nouveau régime: {regime}')
+        except Exception as e:
+            logger.error(f"Erreur mise à jour régime après scan: {e}")
+
         # 🔥 JOUR 3: Démarrer WebSocket pour les top pairs après le scan
         if price_provider and top_pairs:
             symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]

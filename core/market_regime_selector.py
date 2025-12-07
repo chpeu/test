@@ -331,6 +331,9 @@ class MarketRegimeSelector:
                 f"ATR: {self.avg_atr:.3f}% | ADX: {self.avg_adx:.1f}"
             )
             self._notify_regime_change(old_regime, new_regime)
+            
+            # 🔥 SPRINT 1: Logger dans market_regime_history
+            self._log_regime_change_to_db(old_regime, new_regime, trigger)
         else:
             logger.debug(
                 f"🌡️ Régime stable: {new_regime.value} | "
@@ -406,6 +409,59 @@ class MarketRegimeSelector:
             config.min_score_required = min_score
         
         return self.save_regime_config(regime_name)
+    
+    def _log_regime_change_to_db(
+        self,
+        old_regime: MarketRegime,
+        new_regime: MarketRegime,
+        trigger: str = "auto"
+    ) -> None:
+        """
+        🔥 SPRINT 1: Logger le changement de régime dans market_regime_history
+        """
+        try:
+            from core.postgresql_datalogger import get_postgresql_datalogger
+            pg_logger = get_postgresql_datalogger()
+            
+            if not pg_logger or not pg_logger.enabled:
+                logger.debug("PostgreSQL logger non disponible pour régime history")
+                return
+            
+            # Calculer la durée dans l'ancien régime
+            old_duration_minutes = None
+            if self.regime_since:
+                from datetime import datetime
+                old_duration_minutes = (datetime.now() - self.regime_since).total_seconds() / 60
+            
+            # Insérer dans la table
+            query = """
+                INSERT INTO market_regime_history (
+                    timestamp, session_id, old_regime, new_regime,
+                    avg_atr, avg_adx, sample_count, trigger,
+                    old_regime_duration_minutes
+                ) VALUES (
+                    NOW(), %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """
+            
+            session_id = pg_logger.get_or_create_session()
+            
+            params = (
+                session_id,
+                old_regime.value,
+                new_regime.value,
+                round(self.avg_atr, 4),
+                round(self.avg_adx, 1) if self.avg_adx else None,
+                self.atr_sample_count,
+                trigger,
+                round(old_duration_minutes, 1) if old_duration_minutes else None
+            )
+            
+            pg_logger._execute_query(query, params, commit=True)
+            logger.info(f"📝 Changement régime loggé: {old_regime.value} → {new_regime.value}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur logging régime history: {e}")
 
 
 # Instance globale

@@ -1410,6 +1410,17 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                             f"indicators_1m sont NULL (ex: {null_indicators[:5]})"
                         )
                 
+                # 🔥 SPRINT 1: Ajouter le contexte Market Regime au scan
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    regime_selector = get_regime_selector()
+                    regime_status = regime_selector.get_status()
+                    scan_data['market_regime'] = regime_status.get('current_regime')
+                    scan_data['market_regime_avg_atr'] = regime_status.get('avg_atr')
+                    scan_data['market_regime_avg_adx'] = regime_status.get('avg_adx')
+                except Exception as e:
+                    logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {e}")
+                
                 # 🔥 FIX: Désactiver batch mode pour opportunities (besoin ID immédiat)
                 # Les opportunities sont rares (~1:255) donc impact performance négligeable
                 is_opportunity = scan_data.get('is_opportunity', False)

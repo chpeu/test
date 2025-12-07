@@ -1866,7 +1866,11 @@ class PostgreSQLDataLogger:
                 params_snap.get('use_candle_close'),
                 params_snap.get('candle_close_threshold_seconds'),
                 params_snap.get('use_momentum_continuity'),
-                params_snap.get('momentum_lookback')
+                params_snap.get('momentum_lookback'),
+                # 🔥 SPRINT 1: Market Regime context
+                scan_data.get('market_regime'),
+                scan_data.get('market_regime_avg_atr'),
+                scan_data.get('market_regime_avg_adx')
             )
 
             values.append(value_tuple)
@@ -1927,7 +1931,9 @@ class PostgreSQLDataLogger:
             'config_retest_timeout_seconds', 'config_use_cooldown',
             'config_cooldown_seconds', 'config_cooldown_same_symbol',
             'config_use_candle_close', 'config_candle_close_threshold_seconds',
-            'config_use_momentum_continuity', 'config_momentum_lookback'
+            'config_use_momentum_continuity', 'config_momentum_lookback',
+            # 🔥 SPRINT 1: Market Regime context
+            'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx'
         )
 
         execute_values(
