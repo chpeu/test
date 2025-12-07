@@ -140,5 +140,18 @@
   "ml_calib_decay_days": 7,
   "ml_calib_min_trades": 20,
   "ml_calib_min_winrate": 45.0,
-  "ml_calib_bucket_size": 5
+  "ml_calib_bucket_size": 5,
+  "market_regime_enabled": true,
+  "market_regime_check_interval": 60,
+  "market_regime_sample_count": 10,
+  "market_regime_atr_calme_max": 0.20,
+  "market_regime_atr_normal_max": 0.40,
+  "market_regime_adx_choppy": 20,
+  "trading_circuit_breaker_enabled": true,
+  "trading_cb_max_consecutive_losses": 5,
+  "trading_cb_daily_drawdown_pause_pct": -2.0,
+  "trading_cb_daily_drawdown_stop_pct": -5.0,
+  "trading_cb_pause_duration_minutes": 30,
+  "trading_cb_score_boost_enabled": true,
+  "trading_cb_score_boost_per_loss": 0.5
 }

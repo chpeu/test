@@ -1,0 +1,11 @@
+{
+  "name": "CHOPPY",
+  "optimal_atr_min": 0.0,
+  "optimal_atr_max": 1.0,
+  "min_score_required": 9.0,
+  "atr_mult_sl": 0.8,
+  "atr_mult_tp": 2.0,
+  "break_even_atr_mult": 0.3,
+  "trailing_trigger_atr_mult": 0.6,
+  "max_position_time": 90
+}

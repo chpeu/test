@@ -414,6 +414,35 @@ TRADING_CONFIG = {
     "ml_calib_min_trades": 30,               # Minimum de trades pondérés pour activer (slider: 10-100)
     "ml_calib_min_winrate": 40.0,            # Seuil WR minimum pour accepter un trade (slider: 30-60%)
     "ml_calib_bucket_size": 5,               # Taille des buckets de confiance (ex: 30-35, 35-40)
+    
+    # ============================================================
+    # 🔥 SPRINT 1: MARKET REGIME SELECTOR
+    # ============================================================
+    # Détecte automatiquement le régime de marché et adapte les paramètres
+    # Régimes: CALME (ATR<0.20%), NORMAL (0.20-0.40%), VOLATILE (>0.40%), CHOPPY (ADX<20)
+    # ============================================================
+    
+    "market_regime_enabled": True,           # Activer la détection automatique du régime
+    "market_regime_check_interval": 60,      # Intervalle de vérification en minutes
+    "market_regime_sample_count": 10,        # Nombre de paires pour calcul ATR moyen
+    "market_regime_atr_calme_max": 0.20,     # Seuil ATR max pour régime CALME (%)
+    "market_regime_atr_normal_max": 0.40,    # Seuil ATR max pour régime NORMAL (%)
+    "market_regime_adx_choppy": 20,          # ADX sous ce seuil = CHOPPY
+    
+    # ============================================================
+    # 🔥 SPRINT 1: TRADING CIRCUIT BREAKER
+    # ============================================================
+    # Protège le capital en cas de séries de pertes ou drawdown journalier
+    # PAUSE = temporaire (auto-resume), STOP = manuel requis
+    # ============================================================
+    
+    "trading_circuit_breaker_enabled": True,      # Activer le circuit breaker trading
+    "trading_cb_max_consecutive_losses": 5,       # Pertes consécutives avant PAUSE
+    "trading_cb_daily_drawdown_pause_pct": -2.0,  # Drawdown jour pour PAUSE (%)
+    "trading_cb_daily_drawdown_stop_pct": -5.0,   # Drawdown jour pour STOP (%)
+    "trading_cb_pause_duration_minutes": 30,      # Durée pause automatique (min)
+    "trading_cb_score_boost_enabled": True,       # Activer score boost après pertes
+    "trading_cb_score_boost_per_loss": 0.5,       # Score boost par perte consécutive
 }
 
 # Risk management

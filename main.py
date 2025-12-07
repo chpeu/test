@@ -43,6 +43,7 @@ try:
     from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
     # 🔥 LIVE TRADING: Imports pour live trading
     from api.live_trading_endpoints import router as live_router, register_websocket_commands
+    from api.regime_endpoints import router as regime_router
     from trading.live_order_manager_futures import LiveOrderManagerFutures as LiveOrderManager
     from utils.pricing import get_preferred_price
 except ImportError as e:
@@ -532,6 +533,13 @@ try:
     logger.info("✅ Live trading routes incluses: /api/live/*")
 except Exception as e:
     logger.warning(f"⚠️ Impossible d'inclure live trading routes: {e}")
+
+# 🔥 SPRINT 1: Inclure les routes Market Regime et Circuit Breaker Trading
+try:
+    app.include_router(regime_router)
+    logger.info("✅ Regime & CB Trading routes incluses: /api/regime/*, /api/circuit-breaker/trading/*")
+except Exception as e:
+    logger.warning(f"⚠️ Impossible d'inclure regime routes: {e}")
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -1050,6 +1058,25 @@ async def scanner_loop_callback() -> None:
             logger.debug("⏸️ Scanner ignoré : position active")
             return
         
+        # 🔥 SPRINT 1: Vérifier Trading Circuit Breaker avant de scanner
+        try:
+            from config import TRADING_CONFIG
+            if TRADING_CONFIG.get('trading_circuit_breaker_enabled', True):
+                from core.trading_circuit_breaker import get_trading_circuit_breaker
+                trading_cb = get_trading_circuit_breaker()
+                if not trading_cb.can_trade():
+                    cb_status = trading_cb.get_status()
+                    logger.warning(
+                        f"🛑 Scanner ignoré : Circuit Breaker {cb_status['state']} | "
+                        f"Raison: {cb_status.get('pause_reason', 'N/A')} | "
+                        f"Reprise dans: {cb_status.get('remaining_pause_seconds', '?')}s"
+                    )
+                    # Émettre l'état au frontend
+                    await ws_manager.emit('circuit_breaker_trading_update', cb_status)
+                    return
+        except Exception as e:
+            logger.debug(f"Erreur vérification Circuit Breaker: {e}")
+        
         # 🔥 JOUR 3: Si on n'a pas de top_pairs, on les scanne d'abord
         if not app_state['top_pairs']:
             await add_log('INFO', 'Scanner loop', 'Scan initial des top pairs...')
@@ -1072,6 +1099,41 @@ async def scanner_loop_callback() -> None:
                             await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
                         except Exception as e:
                             logger.warning(f"Erreur démarrage WebSocket: {e}")
+        
+        # 🔥 SPRINT 1: Vérifier et mettre à jour le régime de marché
+        if app_state['top_pairs'] and TRADING_CONFIG.get('market_regime_enabled', True):
+            try:
+                from core.market_regime_selector import get_regime_selector
+                regime_selector = get_regime_selector()
+                
+                # Extraire ATR et ADX des top pairs
+                atr_values = []
+                adx_values = []
+                for pair in app_state['top_pairs'][:10]:
+                    atr = pair.get('atr_percent') or pair.get('atr', 0)
+                    adx = pair.get('adx', 25)
+                    if atr and float(atr) > 0:
+                        atr_values.append(float(atr))
+                        adx_values.append(float(adx))
+                
+                if atr_values:
+                    new_regime, changed = await regime_selector.check_regime(
+                        atr_values=atr_values,
+                        adx_values=adx_values,
+                        force=False,
+                        trigger="auto"
+                    )
+                    
+                    if changed:
+                        regime_status = regime_selector.get_status()
+                        logger.info(
+                            f"🌡️ Régime changé: {new_regime.value} | "
+                            f"ATR: {regime_status['avg_atr']:.3f}% | ADX: {regime_status['avg_adx']:.0f}"
+                        )
+                        # Émettre au frontend
+                        await ws_manager.emit('regime_changed', regime_status)
+            except Exception as e:
+                logger.debug(f"Erreur vérification régime: {e}")
         
         # 🔥 JOUR 3: Scanner plusieurs paires en parallèle (top 20)
         if app_state['top_pairs']:
@@ -1531,6 +1593,32 @@ async def scanner_loop_callback() -> None:
                                         except Exception as gb_error:
                                             logger.error(f"❌ Erreur filtre GradientBoosting: {gb_error}")
                                             logger.warning(f"⚠️ Trade autorisé malgré erreur GB (failsafe)")
+                                    
+                                    # 🔥 SPRINT 1: Appliquer score_boost du Circuit Breaker
+                                    if TRADING_CONFIG.get('trading_cb_score_boost_enabled', True):
+                                        try:
+                                            from core.trading_circuit_breaker import get_trading_circuit_breaker
+                                            trading_cb = get_trading_circuit_breaker()
+                                            score_boost = trading_cb.get_score_boost()
+                                            
+                                            if score_boost > 0:
+                                                setup_score = setup.get('totalScore', 0) or setup.get('score_1m', 0) or 0
+                                                min_score = setup.get('min_score_required', TRADING_CONFIG.get('min_score_required', 7.0))
+                                                adjusted_min = min_score + score_boost
+                                                
+                                                if setup_score < adjusted_min:
+                                                    logger.warning(
+                                                        f"⚠️ {symbol} - Setup rejeté par Circuit Breaker score boost: "
+                                                        f"Score {setup_score:.1f} < {adjusted_min:.1f} (min: {min_score:.1f} + boost: {score_boost:.1f}) | "
+                                                        f"Losses consécutives: {trading_cb.consecutive_losses}"
+                                                    )
+                                                    continue  # Passer au setup suivant
+                                                else:
+                                                    logger.info(
+                                                        f"✅ {symbol} - Score boost appliqué: {setup_score:.1f} >= {adjusted_min:.1f}"
+                                                    )
+                                        except Exception as cb_err:
+                                            logger.debug(f"Erreur score_boost CB: {cb_err}")
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions

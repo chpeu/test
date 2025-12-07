@@ -1,0 +1,11 @@
+{
+  "name": "NORMAL",
+  "optimal_atr_min": 0.20,
+  "optimal_atr_max": 0.40,
+  "min_score_required": 7.0,
+  "atr_mult_sl": 1.2,
+  "atr_mult_tp": 3.0,
+  "break_even_atr_mult": 0.5,
+  "trailing_trigger_atr_mult": 1.0,
+  "max_position_time": 300
+}

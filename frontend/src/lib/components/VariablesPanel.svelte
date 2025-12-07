@@ -168,7 +168,22 @@
 		adaptive_sizing_very_poor_mult: 0.50,
 		adaptive_sizing_max_mult: 1.50,
 		adaptive_sizing_min_mult: 0.50,
-		adaptive_sizing_reset_hours: 8
+		adaptive_sizing_reset_hours: 8,
+		// 🔥 SPRINT 1: Market Regime Selector
+		market_regime_enabled: true,
+		market_regime_check_interval: 60,
+		market_regime_sample_count: 10,
+		market_regime_atr_calme_max: 0.20,
+		market_regime_atr_normal_max: 0.40,
+		market_regime_adx_choppy: 20,
+		// 🔥 SPRINT 1: Trading Circuit Breaker
+		trading_circuit_breaker_enabled: true,
+		trading_cb_max_consecutive_losses: 5,
+		trading_cb_daily_drawdown_pause_pct: -2.0,
+		trading_cb_daily_drawdown_stop_pct: -5.0,
+		trading_cb_pause_duration_minutes: 30,
+		trading_cb_score_boost_enabled: true,
+		trading_cb_score_boost_per_loss: 0.5
 	};
 
 	let config = { ...DEFAULTS };
@@ -1308,6 +1323,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'} data-debug-name="activeSubTab">
 			🎯 TP/SL & Position
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'protection'} on:click={() => activeSubTab = 'protection'} data-debug-name="activeSubTab">
+			🛡️ Protection & Régime
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'ml'} on:click={() => activeSubTab = 'ml'} data-debug-name="activeSubTab">
 			🤖 Machine Learning
@@ -3459,6 +3477,233 @@
 			</section>
 		{/if}
 
+	<!-- 🛡️ ONGLET PROTECTION & RÉGIME (SPRINT 1) -->
+	{#if activeSubTab === 'protection'}
+		<section class="variable-section protection-section">
+			<h3>🛡️ Protection & Régime de Marché</h3>
+			<p class="section-info">
+				Configuration des mécanismes de protection automatique et d'adaptation au régime de marché.
+			</p>
+
+			<!-- MARKET REGIME SELECTOR -->
+			<div class="protection-subsection">
+				<h4>🌡️ Market Regime Selector</h4>
+				<p class="subsection-info">
+					Détecte automatiquement le régime de marché (CALME, NORMAL, VOLATILE, CHOPPY) et adapte les paramètres.
+				</p>
+
+				<div class="variable-item toggle-item">
+					<label>
+						<input
+							type="checkbox"
+							bind:checked={config.market_regime_enabled}
+							on:change={() => triggerAutoSave('market_regime_enabled', config.market_regime_enabled ? 'activé' : 'désactivé')}
+						/>
+						<span class="toggle-label">Activer la détection automatique du régime</span>
+					</label>
+				</div>
+
+				{#if config.market_regime_enabled}
+					<div class="variable-item">
+						<label>Intervalle de vérification (minutes)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="15"
+								max="120"
+								step="15"
+								bind:value={config.market_regime_check_interval}
+								on:change={() => triggerAutoSave('market_regime_check_interval', `${config.market_regime_check_interval}min`)}
+							/>
+							<span class="slider-value">{config.market_regime_check_interval} min</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<label>Nombre de paires analysées</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="5"
+								max="20"
+								step="1"
+								bind:value={config.market_regime_sample_count}
+								on:change={() => triggerAutoSave('market_regime_sample_count', config.market_regime_sample_count)}
+							/>
+							<span class="slider-value">{config.market_regime_sample_count}</span>
+						</div>
+					</div>
+
+					<div class="regime-thresholds">
+						<h5>Seuils ATR par régime (%)</h5>
+						<div class="threshold-grid">
+							<div class="variable-item">
+								<label>🟢 CALME: ATR max</label>
+								<div class="slider-container">
+									<input
+										type="range"
+										min="0.10"
+										max="0.30"
+										step="0.02"
+										bind:value={config.market_regime_atr_calme_max}
+										on:change={() => triggerAutoSave('market_regime_atr_calme_max', `${config.market_regime_atr_calme_max.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{config.market_regime_atr_calme_max.toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item">
+								<label>🔵 NORMAL: ATR max</label>
+								<div class="slider-container">
+									<input
+										type="range"
+										min="0.25"
+										max="0.60"
+										step="0.05"
+										bind:value={config.market_regime_atr_normal_max}
+										on:change={() => triggerAutoSave('market_regime_atr_normal_max', `${config.market_regime_atr_normal_max.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{config.market_regime_atr_normal_max.toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item">
+								<label>🔴 CHOPPY: ADX seuil</label>
+								<div class="slider-container">
+									<input
+										type="range"
+										min="15"
+										max="30"
+										step="1"
+										bind:value={config.market_regime_adx_choppy}
+										on:change={() => triggerAutoSave('market_regime_adx_choppy', config.market_regime_adx_choppy)}
+									/>
+									<span class="slider-value">{config.market_regime_adx_choppy}</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<!-- TRADING CIRCUIT BREAKER -->
+			<div class="protection-subsection">
+				<h4>🛑 Trading Circuit Breaker</h4>
+				<p class="subsection-info">
+					Protège le capital en cas de séries de pertes ou drawdown journalier excessif.
+				</p>
+
+				<div class="variable-item toggle-item">
+					<label>
+						<input
+							type="checkbox"
+							bind:checked={config.trading_circuit_breaker_enabled}
+							on:change={() => triggerAutoSave('trading_circuit_breaker_enabled', config.trading_circuit_breaker_enabled ? 'activé' : 'désactivé')}
+						/>
+						<span class="toggle-label">Activer le Circuit Breaker Trading</span>
+					</label>
+				</div>
+
+				{#if config.trading_circuit_breaker_enabled}
+					<div class="cb-settings">
+						<div class="variable-item">
+							<label>Pertes consécutives max avant PAUSE</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="3"
+									max="10"
+									step="1"
+									bind:value={config.trading_cb_max_consecutive_losses}
+									on:change={() => triggerAutoSave('trading_cb_max_consecutive_losses', config.trading_cb_max_consecutive_losses)}
+								/>
+								<span class="slider-value">{config.trading_cb_max_consecutive_losses}</span>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Drawdown jour pour PAUSE (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="-5"
+									max="-1"
+									step="0.5"
+									bind:value={config.trading_cb_daily_drawdown_pause_pct}
+									on:change={() => triggerAutoSave('trading_cb_daily_drawdown_pause_pct', `${config.trading_cb_daily_drawdown_pause_pct}%`)}
+								/>
+								<span class="slider-value">{config.trading_cb_daily_drawdown_pause_pct}%</span>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Drawdown jour pour STOP (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="-10"
+									max="-3"
+									step="0.5"
+									bind:value={config.trading_cb_daily_drawdown_stop_pct}
+									on:change={() => triggerAutoSave('trading_cb_daily_drawdown_stop_pct', `${config.trading_cb_daily_drawdown_stop_pct}%`)}
+								/>
+								<span class="slider-value">{config.trading_cb_daily_drawdown_stop_pct}%</span>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Durée de pause (minutes)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="5"
+									max="120"
+									step="5"
+									bind:value={config.trading_cb_pause_duration_minutes}
+									on:change={() => triggerAutoSave('trading_cb_pause_duration_minutes', `${config.trading_cb_pause_duration_minutes}min`)}
+								/>
+								<span class="slider-value">{config.trading_cb_pause_duration_minutes} min</span>
+							</div>
+						</div>
+
+						<div class="score-boost-section">
+							<div class="variable-item toggle-item">
+								<label>
+									<input
+										type="checkbox"
+										bind:checked={config.trading_cb_score_boost_enabled}
+										on:change={() => triggerAutoSave('trading_cb_score_boost_enabled', config.trading_cb_score_boost_enabled ? 'activé' : 'désactivé')}
+									/>
+									<span class="toggle-label">Activer Score Boost après pertes</span>
+								</label>
+							</div>
+
+							{#if config.trading_cb_score_boost_enabled}
+								<div class="variable-item">
+									<label>Boost score par perte consécutive</label>
+									<div class="slider-container">
+										<input
+											type="range"
+											min="0.25"
+											max="1.5"
+											step="0.25"
+											bind:value={config.trading_cb_score_boost_per_loss}
+											on:change={() => triggerAutoSave('trading_cb_score_boost_per_loss', `+${config.trading_cb_score_boost_per_loss}`)}
+										/>
+										<span class="slider-value">+{config.trading_cb_score_boost_per_loss}</span>
+									</div>
+								</div>
+								<p class="boost-info">
+									Exemple: 2 pertes → score min = base + {(2 * config.trading_cb_score_boost_per_loss).toFixed(1)}
+								</p>
+							{/if}
+						</div>
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
+
 	{#if activeSubTab === 'ml'}
 	<!-- Titre et sélecteurs Version ML -->
 	<div class="ml-header">
@@ -5598,6 +5843,91 @@
 		display: flex;
 		gap: 12px;
 		justify-content: flex-end;
+	}
+
+	/* 🛡️ SPRINT 1: Protection & Régime Styles */
+	.protection-section {
+		background: linear-gradient(135deg, rgba(30, 39, 73, 0.95), rgba(20, 30, 60, 0.95));
+	}
+
+	.protection-subsection {
+		background: rgba(0, 0, 0, 0.2);
+		border: 1px solid #2a3a6b;
+		border-radius: 10px;
+		padding: 20px;
+		margin-bottom: 20px;
+	}
+
+	.protection-subsection h4 {
+		color: #00ff88;
+		font-size: 16px;
+		margin: 0 0 10px 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.protection-subsection h5 {
+		color: #aaa;
+		font-size: 13px;
+		margin: 15px 0 10px 0;
+	}
+
+	.subsection-info {
+		color: #888;
+		font-size: 12px;
+		margin-bottom: 15px;
+		line-height: 1.5;
+	}
+
+	.toggle-item {
+		display: flex;
+		align-items: center;
+		padding: 10px 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.toggle-item label {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		cursor: pointer;
+	}
+
+	.toggle-label {
+		color: #fff;
+		font-size: 14px;
+	}
+
+	.regime-thresholds {
+		margin-top: 15px;
+		padding-top: 15px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.threshold-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 15px;
+	}
+
+	.cb-settings {
+		margin-top: 15px;
+	}
+
+	.score-boost-section {
+		margin-top: 15px;
+		padding-top: 15px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.boost-info {
+		font-size: 11px;
+		color: #f59e0b;
+		margin-top: 8px;
+		padding: 8px;
+		background: rgba(245, 158, 11, 0.1);
+		border-radius: 6px;
 	}
 
 </style>

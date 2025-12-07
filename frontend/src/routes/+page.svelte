@@ -25,6 +25,8 @@
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
 	import MLVersionTabs from '$lib/components/ml/MLVersionTabs.svelte';
 	import LiveTradingPanel from '$lib/components/LiveTradingPanel.svelte';
+	import MarketRegimeWidget from '$lib/components/MarketRegimeWidget.svelte';
+	import TradingCircuitBreaker from '$lib/components/TradingCircuitBreaker.svelte';
 	import { recentLogs } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
@@ -543,6 +545,12 @@
 						<StatsPanel />
 					</div>
 
+					<!-- 🔥 Sprint 1: Market Regime & Circuit Breaker Trading -->
+					<div class="regime-cb-row" data-debug-name="dashboard.regimeCB">
+						<MarketRegimeWidget />
+						<TradingCircuitBreaker />
+					</div>
+
 					<!-- Sélecteur Mode TP/SL -->
 					<div class="tpsl-mode-selector" data-debug-name="dashboard.tpSlMode">
 						<h3 data-debug-name="dashboard.tpSlMode.title">🎯 Mode TP/SL Actif</h3>
@@ -861,6 +869,19 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
 		gap: 15px;
+	}
+
+	/* 🔥 Sprint 1: Regime & Circuit Breaker row */
+	.regime-cb-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 15px;
+	}
+
+	@media (max-width: 900px) {
+		.regime-cb-row {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	/* Footer */

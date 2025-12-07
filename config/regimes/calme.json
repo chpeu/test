@@ -1,0 +1,11 @@
+{
+  "name": "CALME",
+  "optimal_atr_min": 0.0,
+  "optimal_atr_max": 0.20,
+  "min_score_required": 6.0,
+  "atr_mult_sl": 1.0,
+  "atr_mult_tp": 2.5,
+  "break_even_atr_mult": 0.4,
+  "trailing_trigger_atr_mult": 0.8,
+  "max_position_time": 180
+}

@@ -2822,6 +2822,23 @@ class PositionManager:
         except Exception as e:
             logger.debug(f"Erreur enregistrement cooldown: {e}")
 
+        # 🔥 SPRINT 1: Enregistrer trade dans Trading Circuit Breaker
+        try:
+            from core.trading_circuit_breaker import get_trading_circuit_breaker
+            trading_cb = get_trading_circuit_breaker()
+            can_continue = trading_cb.record_trade(
+                symbol=result['symbol'],
+                pnl_pct=net_pnl_pct,
+                pnl_usdt=net_pnl_usdt
+            )
+            if not can_continue:
+                logger.warning(
+                    f"🛑 Trading Circuit Breaker activé après trade {result['symbol']} | "
+                    f"État: {trading_cb.state.value} | Raison: {trading_cb.pause_reason}"
+                )
+        except Exception as e:
+            logger.debug(f"Erreur enregistrement Trading Circuit Breaker: {e}")
+
         return result
 
     def update_price_cache(self, symbol: str, price: float, data: Any = None):
