@@ -488,7 +488,7 @@ class TradingCircuitBreaker:
                 pause_duration
             )
             
-            pg_logger._execute_query(query, params, commit=True)
+            pg_logger._execute_query(query, params)
             logger.info(f"📝 Événement CB loggé: {event.event_type}")
             
         except Exception as e:

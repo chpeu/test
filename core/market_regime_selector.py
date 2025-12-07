@@ -457,7 +457,7 @@ class MarketRegimeSelector:
                 round(old_duration_minutes, 1) if old_duration_minutes else None
             )
             
-            pg_logger._execute_query(query, params, commit=True)
+            pg_logger._execute_query(query, params)
             logger.info(f"📝 Changement régime loggé: {old_regime.value} → {new_regime.value}")
             
         except Exception as e:
