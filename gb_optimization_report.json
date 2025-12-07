@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-11-30T11:35:39.949066",
+  "model": "gradient_boosting_advanced",
+  "metrics": {
+    "accuracy": 0.6851851851851852,
+    "precision": 0.7064220183486238,
+    "recall": 0.6814159292035398,
+    "f1": 0.6936936936936937,
+    "roc_auc": 0.7032391098891658
+  },
+  "hyperparameters": {
+    "n_estimators": 271,
+    "max_depth": 6,
+    "learning_rate": 0.21737590570527723,
+    "min_samples_split": 48,
+    "min_samples_leaf": 38,
+    "subsample": 0.7337379368806356,
+    "max_features": "sqrt"
+  },
+  "n_features": 28,
+  "selected_features": [
+    "di_plus_1m",
+    "bb_distance_to_upper_5m",
+    "ema_diff_pct_1m",
+    "rsi_1m",
+    "di_plus_5m",
+    "ema_diff_pct_5m",
+    "bb_distance_to_upper_1m",
+    "bb_distance_to_lower_1m",
+    "atr_pct_1m",
+    "rsi_5m"
+  ],
+  "optuna_best_cv_f1": 0.5316325499468769
+}

@@ -20,12 +20,16 @@ from .dashboard import (
     set_websocket_manager as set_websocket_manager_dashboard
 )
 from .ml import router as ml_router
+from .config import router as config_router  # 🆕 Routes config (token MEXC)
+from .ml_calibration import router as ml_calibration_router  # 🆕 Routes ML Calibration
 
 # Créer un router combiné pour compatibilité avec main.py
 router = APIRouter()
 router.include_router(scanner_router)
 router.include_router(dashboard_router)
 router.include_router(ml_router)  # 🆕 Routes ML
+router.include_router(config_router)  # 🆕 Routes config (token MEXC)
+router.include_router(ml_calibration_router)  # 🆕 Routes ML Calibration
 
 # Variables pour les dépendances injectées
 _analytics_db = None

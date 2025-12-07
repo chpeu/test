@@ -154,6 +154,12 @@ class TestFilters:
         # Should pass
         assert result is None
 
+    @patch('core.analyzer.filters.TRADING_CONFIG', {
+        'optimal_atr_min_1m': 0.3,
+        'optimal_atr_max_1m': 1.0,
+        'optimal_atr_min_5m': 0.4,
+        'optimal_atr_max_5m': 2.0
+    })
     def test_check_atr_filter_optimal_range(self):
         """Test ATR filter with optimal ATR"""
         result = check_atr_filter(
@@ -349,6 +355,12 @@ class TestScoring:
         assert score > 0
         assert score >= len(condition_types)  # At least 1.0 per condition
 
+    @patch('core.analyzer.scoring.TRADING_CONFIG', {
+        'min_score_required': 7.5,
+        'min_score_adx_low': 8.0,
+        'min_score_adx_high': 7.0,
+        'use_weighted_scoring': True
+    })
     def test_get_min_score_required_high_adx(self):
         """Test min score with high ADX (lower requirement)"""
         min_score = get_min_score_required(adx_value=35.0, use_weighted=True)

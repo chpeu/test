@@ -34,8 +34,11 @@
 	let saving = false;
 	let saveStatus = '';
 	let showApiKeys = false;
-	let activeTab: 'config' | 'risk' = 'config';
+	let activeTab: 'config' | 'risk' | 'health' = 'config';
 	let emergencyConfirm = false;
+
+	// 🔥 Health Dashboard data
+	let healthData: any = null;
 
 	// Risk Settings (slippage géré dans VariablesPanel via config.max_slippage_pct)
 	let maxLatencyMs = 1000;
@@ -103,14 +106,19 @@
 
 	async function refreshData() {
 		try {
-			// Récupérer stats et balance
-			const [statsRes, balRes] = await Promise.all([
+			// Récupérer stats, balance et health
+			const [statsRes, balRes, healthRes] = await Promise.all([
 				fetch('/api/live/stats'),
-				ws?.sendCommand('get_balance', {})
+				ws?.sendCommand('get_balance', {}),
+				fetch('/api/live/health')  // 🔥 NOUVEAU: Health dashboard
 			]);
 
 			if (statsRes.ok) liveStats = await statsRes.json();
 			if (balRes?.success) balance = balRes.balance || 0;
+			if (healthRes.ok) {
+				const data = await healthRes.json();
+				if (data.success) healthData = data.health;
+			}
 
 			lastUpdate = new Date();
 		} catch (e) {
@@ -252,6 +260,9 @@
 		</button>
 		<button class="tab" class:active={activeTab === 'risk'} on:click={() => activeTab = 'risk'}>
 			🛡️ Risk & Stats
+		</button>
+		<button class="tab" class:active={activeTab === 'health'} on:click={() => activeTab = 'health'}>
+			🏥 Health Dashboard
 		</button>
 	</nav>
 
@@ -401,6 +412,155 @@
 			{/if}
 		</section>
 	{/if}
+
+	<!-- Tab: Health Dashboard -->
+	{#if activeTab === 'health'}
+		<section class="section">
+			<div class="section-header">
+				<h3>🏥 Health Dashboard</h3>
+				<button class="refresh-btn" on:click={refreshData}>🔄</button>
+			</div>
+
+			{#if !healthData}
+				<div class="empty-state">
+					<span class="empty-icon">⏳</span>
+					<p>Chargement des données de santé...</p>
+				</div>
+			{:else}
+				<!-- System Overview -->
+				<div class="health-overview">
+					<div class="health-card">
+						<div class="health-header">
+							<span class="health-icon">🖥️</span>
+							<span class="health-title">Système</span>
+						</div>
+						<div class="health-meta">
+							<span class="meta-label">Mode:</span>
+							<span class="meta-value {healthData.mode}">{healthData.mode.toUpperCase()}</span>
+						</div>
+						<div class="health-meta">
+							<span class="meta-label">Dry Run:</span>
+							<span class="meta-value">{healthData.dry_run ? 'Oui' : 'Non'}</span>
+						</div>
+					</div>
+
+					<!-- Circuit Breaker -->
+					{#if healthData.circuit_breaker?.enabled}
+						<div class="health-card circuit-breaker {healthData.circuit_breaker.state}">
+							<div class="health-header">
+								<span class="health-icon">🔴</span>
+								<span class="health-title">Circuit Breaker</span>
+								<span class="cb-state-badge {healthData.circuit_breaker.state}">
+									{healthData.circuit_breaker.state.toUpperCase()}
+								</span>
+							</div>
+							<div class="health-stats">
+								<div class="stat-item">
+									<span class="stat-label">Échecs:</span>
+									<span class="stat-value">{healthData.circuit_breaker.failure_count}/{healthData.circuit_breaker.threshold}</span>
+								</div>
+								{#if healthData.circuit_breaker.state === 'half_open'}
+									<div class="stat-item">
+										<span class="stat-label">Succès (test):</span>
+										<span class="stat-value success">{healthData.circuit_breaker.success_count}/2</span>
+									</div>
+								{/if}
+							</div>
+						</div>
+					{/if}
+
+					<!-- Token Monitor -->
+					{#if healthData.token_monitor?.enabled}
+						<div class="health-card token-monitor">
+							<div class="health-header">
+								<span class="health-icon">🔑</span>
+								<span class="health-title">Token Monitor</span>
+								<span class="token-status {healthData.token_monitor.is_valid ? 'valid' : 'invalid'}">
+									{healthData.token_monitor.is_valid ? '✓ Valide' : '✗ Expiré'}
+								</span>
+							</div>
+							<div class="health-meta">
+								<span class="meta-label">Check Interval:</span>
+								<span class="meta-value">{healthData.token_monitor.check_interval_sec}s</span>
+							</div>
+							{#if healthData.token_monitor.last_check_time > 0}
+								<div class="health-meta">
+									<span class="meta-label">Dernière vérif:</span>
+									<span class="meta-value">{new Date(healthData.token_monitor.last_check_time * 1000).toLocaleTimeString()}</span>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Rate Limiter -->
+					{#if healthData.rate_limiter?.enabled}
+						<div class="health-card rate-limiter">
+							<div class="health-header">
+								<span class="health-icon">⏱️</span>
+								<span class="health-title">Rate Limiter</span>
+							</div>
+							<div class="rate-gauge">
+								<div class="gauge-bar">
+									<div
+										class="gauge-fill"
+										style="width: {(healthData.rate_limiter.current_rate_per_sec / healthData.rate_limiter.max_rate) * 100}%"
+									></div>
+								</div>
+								<span class="gauge-label">
+									{healthData.rate_limiter.current_rate_per_sec.toFixed(1)} req/s
+								</span>
+							</div>
+							<div class="health-stats">
+								<div class="stat-item">
+									<span class="stat-label">429 consécutifs:</span>
+									<span class="stat-value warn">{healthData.rate_limiter.consecutive_429s}</span>
+								</div>
+								<div class="stat-item">
+									<span class="stat-label">200 consécutifs:</span>
+									<span class="stat-value success">{healthData.rate_limiter.consecutive_200s}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+
+				<!-- System Stats -->
+				<div class="system-stats-grid">
+					<div class="sys-stat">
+						<span class="sys-label">Ordres Placés</span>
+						<span class="sys-value">{healthData.system.orders_placed}</span>
+					</div>
+					<div class="sys-stat">
+						<span class="sys-label">Ordres Remplis</span>
+						<span class="sys-value success">{healthData.system.orders_filled}</span>
+					</div>
+					<div class="sys-stat">
+						<span class="sys-label">Échecs</span>
+						<span class="sys-value warn">{healthData.system.orders_failed}</span>
+					</div>
+					<div class="sys-stat">
+						<span class="sys-label">Success Rate</span>
+						<span class="sys-value">{healthData.system.success_rate_pct.toFixed(1)}%</span>
+					</div>
+					<div class="sys-stat">
+						<span class="sys-label">Latence Moy</span>
+						<span class="sys-value">{healthData.system.avg_latency_ms.toFixed(0)}ms</span>
+					</div>
+					<div class="sys-stat">
+						<span class="sys-label">PnL Total</span>
+						<span class="sys-value {healthData.system.total_pnl_usdt >= 0 ? 'success' : 'error'}">
+							{healthData.system.total_pnl_usdt >= 0 ? '+' : ''}{healthData.system.total_pnl_usdt.toFixed(2)} USDT
+						</span>
+					</div>
+				</div>
+
+				<div class="health-footer">
+					<span class="footer-label">Dernière mise à jour:</span>
+					<span class="footer-value">{new Date(healthData.timestamp).toLocaleString()}</span>
+				</div>
+			{/if}
+		</section>
+	{/if}
 </div>
 
 <style>
@@ -538,11 +698,55 @@
 	.warnings { margin-top: 16px; }
 	.warnings .warning-item { padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; font-size: 12px; color: #fca5a5; margin-bottom: 8px; }
 
+	/* 🔥 Health Dashboard Styles */
+	.health-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px; }
+	.health-card { background: rgba(0,0,0,0.3); border-radius: 10px; padding: 16px; border: 1px solid #374151; }
+	.health-card.circuit-breaker.open { border-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
+	.health-card.circuit-breaker.half_open { border-color: #f59e0b; background: rgba(245, 158, 11, 0.05); }
+	.health-card.circuit-breaker.closed { border-color: #10b981; background: rgba(16, 185, 129, 0.05); }
+	.health-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+	.health-icon { font-size: 20px; }
+	.health-title { font-weight: 600; font-size: 14px; color: #fff; }
+	.cb-state-badge { margin-left: auto; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+	.cb-state-badge.closed { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+	.cb-state-badge.open { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+	.cb-state-badge.half_open { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+	.token-status { margin-left: auto; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+	.token-status.valid { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+	.token-status.invalid { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+	.health-meta { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; }
+	.meta-label { color: #9ca3af; }
+	.meta-value { color: #fff; font-weight: 500; }
+	.meta-value.bypass { color: #a5b4fc; }
+	.meta-value.ccxt { color: #fbbf24; }
+	.health-stats { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+	.stat-item { display: flex; justify-content: space-between; font-size: 12px; }
+	.stat-label { color: #9ca3af; }
+	.stat-value { color: #fff; font-weight: 500; }
+	.stat-value.success { color: #10b981; }
+	.stat-value.warn { color: #f59e0b; }
+	.rate-gauge { margin: 12px 0; }
+	.gauge-bar { height: 8px; background: #1f2937; border-radius: 4px; overflow: hidden; }
+	.gauge-fill { height: 100%; background: linear-gradient(90deg, #10b981, #3b82f6); transition: width 0.3s ease; }
+	.gauge-label { display: block; text-align: center; margin-top: 6px; font-size: 13px; font-weight: 600; color: #10b981; }
+	.system-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+	.sys-stat { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; text-align: center; border: 1px solid #374151; }
+	.sys-label { display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px; text-transform: uppercase; }
+	.sys-value { display: block; font-size: 16px; font-weight: 600; color: #fff; }
+	.sys-value.success { color: #10b981; }
+	.sys-value.warn { color: #f59e0b; }
+	.sys-value.error { color: #ef4444; }
+	.health-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #374151; display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; }
+	.footer-label { color: #9ca3af; }
+	.footer-value { color: #fff; }
+
 	/* Responsive */
 	@media (max-width: 640px) {
 		.mode-selector { grid-template-columns: 1fr; }
 		.pos-details { grid-template-columns: 1fr; }
 		.stats-mini { grid-template-columns: repeat(2, 1fr); }
 		.risk-grid { grid-template-columns: 1fr; }
+		.health-overview { grid-template-columns: 1fr; }
+		.system-stats-grid { grid-template-columns: repeat(2, 1fr); }
 	}
 </style>

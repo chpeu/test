@@ -313,7 +313,7 @@ async def get_ml_prediction_for_opportunity(
     klines: List,
     symbol: str,
     scan_id: Optional[int] = None,
-    model_name: str = "xgboost_v1"
+    model_name: str = "optimized"  # 🔥 CHANGÉ: utiliser optimized par défaut
 ) -> Optional[Dict]:
     """
     Obtenir une prédiction ML pour une opportunité du scanner
@@ -322,7 +322,7 @@ async def get_ml_prediction_for_opportunity(
         klines: Klines de l'opportunité
         symbol: Symbole
         scan_id: ID du scan
-        model_name: Modèle à utiliser
+        model_name: Modèle à utiliser ("optimized", "xgboost_v1", etc.)
         
     Returns:
         Prédiction ML ou None
@@ -333,7 +333,21 @@ async def get_ml_prediction_for_opportunity(
         if not features:
             return None
         
-        # Faire prédiction
+        # 🔥 NOUVEAU: Utiliser le predictor optimisé (GradientBoosting 64-69% accuracy)
+        if model_name in ["optimized", "gradientboosting", "best"]:
+            from optimization.predictor_optimized import predict_trade
+            
+            should_trade, confidence = predict_trade(features, threshold=0.5)
+            
+            return {
+                'prediction': 'win' if should_trade else 'loss',
+                'confidence': confidence,
+                'model': 'GradientBoosting_Optimized',
+                'symbol': symbol,
+                'scan_id': scan_id
+            }
+        
+        # Fallback: ancien predictor XGBoost V1
         from optimization.predictor import predict_opportunity
         
         prediction = predict_opportunity(
@@ -341,7 +355,7 @@ async def get_ml_prediction_for_opportunity(
             model_name=model_name,
             symbol=symbol,
             scan_id=scan_id,
-            log_to_db=True  # Logger automatiquement
+            log_to_db=True
         )
         
         return prediction

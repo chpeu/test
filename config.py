@@ -27,26 +27,58 @@ TRADING_CONFIG = {
     "use_slippage_calculation": True,  # Calculer slippage estimé basé sur spread et profondeur
     "position_timeout": 300,  # 5 minutes
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
-    "scan_interval": 45,  # 45 secondes pour position scan
+    "scan_interval": 30,  # 🔥 OPT #14: 30 secondes pour capture plus rapide des setups
     "scalability_interval": 90,  # 90 secondes pour scalability scan
+    # 🔥 Liste des paires à exclure manuellement (par exemple contraintes de taille minimale)
+    # ZEC retiré - bug contractSize corrigé le 29/11/2025
+    "excluded_symbols": [],
 
     # BUG #14 FIX: Suppression doublon volume_multiplier (défini ligne 77 avec valeur ajustée 0.95)
     "volume_multiplier_range": (0.10, 2.00),
 
-    # TP/SL settings
-    "tp_sl_mode": "FIXE",  # FIXE ou ATR
+    # ============================================================
+    # 🔥 HYBRID INTELLIGENT TP/SL SYSTEM (Option C)
+    # ============================================================
+    # Système adaptatif basé sur ATR - s'adapte à la volatilité réelle
+    # 
+    # Principes:
+    # 1. SL Initial: ATR × 1.2 (dynamique, respire avec le marché)
+    # 2. Break-even: dès que PnL >= 0.5 × ATR
+    # 3. Trailing: distance = ATR × 0.4, trigger = 1 × ATR
+    # 4. Time decay: si stagnation > 2min et PnL < 0.1%, sortie
+    # 5. Pas de TP fixe (laisser trailing capturer)
+    # ============================================================
     
-    # FIXE mode
-    "tp_percent": 0.50,  # 🔥 PHASE 3 : +0.50% (optimisé pour scalping, était 0.6%)
-    "sl_percent": 0.20,  # 🔥 PHASE 3 : -0.20% (SL serré, était 0.25%)
-    "break_even_trigger": 0.3,  # +0.3%
-    "trailing_distance": 0.15,  # 0.15%
+    "tp_sl_mode": "ATR",  # 🔥 HYBRID: Mode ATR dynamique (pas FIXE)
     
-    # ATR mode
-    "atr_mult_tp": 1.5,
-    "atr_mult_sl": 1.0,
-    "atr_min": 0.15,  # %
-    "atr_max": 1.5,  # %
+    # Fallback FIXE mode (si ATR invalide)
+    "tp_percent": 0.80,  # TP large (rarement atteint, trailing prend le relais)
+    "sl_percent": 0.30,  # SL fallback
+    "break_even_trigger": 0.20,  # BE fallback
+    "trailing_distance": 0.15,  # Trailing fallback
+    
+    # 🔥 ATR mode - HYBRID INTELLIGENT
+    "atr_mult_tp": 3.0,   # TP = 3 × ATR (très large, trailing capture avant)
+    "atr_mult_sl": 1.2,   # 🔥 SL = 1.2 × ATR (laisse respirer le trade)
+    "atr_min": 0.10,      # ATR minimum 0.10% (micro-volatilité)
+    "atr_max": 1.0,       # ATR maximum 1.0% (macro-volatilité)
+    
+    # 🔥 Break-even ATR-based (nouveaux paramètres)
+    "break_even_atr_mult": 0.5,  # BE dès PnL >= 0.5 × ATR%
+    "break_even_use_atr": True,  # Utiliser ATR pour BE (pas % fixe)
+    
+    # 🔥 Stagnation Exit (Time Decay)
+    "stagnation_exit": {
+        "enabled": True,
+        "timeout_seconds": 120,    # 2 minutes de stagnation
+        "min_pnl_to_stay": 0.10,   # Rester si PnL > 0.1%
+        "max_loss_to_exit": -0.05, # Sortir si PnL < -0.05% après timeout
+    },
+    # 🔥 FLAT KEYS pour config_overrides.json (copie des valeurs imbriquées)
+    "stagnation_exit_enabled": True,
+    "stagnation_exit_timeout_seconds": 120,
+    "stagnation_exit_min_pnl_to_stay": 0.10,
+    "stagnation_exit_max_loss_to_exit": -0.05,
     
     # Trend timeframe pour calculer trend_data (bonus)
     "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
@@ -95,8 +127,46 @@ TRADING_CONFIG = {
     "top_pairs_limit": 20,
     "balance_score_min": 0.7,
     
+    # 🔥 OPT SCALABILITY: Paramètres configurables (anciennement hardcodés)
+    "scalability_spread_min": 0.001,  # Spread minimum % (évite slippage nul)
+    "scalability_spread_max": 0.02,   # Spread maximum % (évite coûts excessifs)
+    "scalability_volume_min": 100000,  # Volume minimum USDT (5 dernières bougies)
+    "scalability_volume_24h_min": 500000,  # Volume 24h minimum pour pré-filtrage
+    "scalability_funding_rate_max": 0.05,  # Funding rate max % (évite coûts cachés)
+    "scalability_adx_bonus_threshold": 25,  # ADX > seuil = bonus trend
+    "scalability_adx_bonus_multiplier": 1.2,  # Multiplicateur bonus si trend fort
+    "scalability_klines_limit": 30,  # Nombre de klines à récupérer (était 60)
+    "scalability_orderbook_cache_ttl": 30,  # TTL cache orderbook en secondes
+    "scalability_interval_min": 60,  # Intervalle minimum en secondes
+    "scalability_interval_max": 180,  # Intervalle maximum en secondes
+    "scalability_log_rejected": True,  # Logger les paires rejetées avec raison
+    
     # Confluence
     "use_confluence": False,  # False = 1m OU 5m, True = 1m ET 5m
+    
+    # 🔥 OPT #15: Anti-Whipsaw Filter
+    "use_anti_whipsaw": True,  # Détecter et rejeter les marchés en zigzag
+    "whipsaw_lookback": 5,  # Nombre de bougies à analyser
+    "whipsaw_threshold_pct": 0.2,  # Amplitude min pour compter comme mouvement significatif
+    "whipsaw_max_alternations": 3,  # Nombre max d'alternances avant rejet
+    
+    # 🔥 OPT #16: Confirmation Retest Breakout
+    "use_retest_confirmation": False,  # Attendre retest du niveau cassé avant entrée
+    "retest_tolerance_pct": 0.1,  # Tolérance pour considérer un retest valide
+    "retest_timeout_seconds": 300,  # Timeout avant abandon du pending breakout (5 min)
+    
+    # 🔥 OPT #17: Cooldown Post-Trade
+    "use_cooldown": True,  # Activer cooldown entre trades
+    "cooldown_seconds": 30,  # Délai minimum entre fermeture et nouvelle ouverture
+    "cooldown_same_symbol": 60,  # Délai supplémentaire pour même symbole
+    
+    # 🔥 OPT #18: Candle Close Confirmation  
+    "use_candle_close": False,  # Attendre fermeture bougie avant entrée
+    "candle_close_threshold_seconds": 5,  # Seuil pour considérer proche de la fermeture
+    
+    # 🔥 OPT #19: Momentum Continuity Filter
+    "use_momentum_continuity": True,  # Vérifier que le momentum est croissant
+    "momentum_lookback": 3,  # Nombre de bougies pour vérifier continuité
     
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT
@@ -107,6 +177,16 @@ TRADING_CONFIG = {
     # 🔥 FUTURES: Levier par défaut (1-125x pour MEXC)
     "default_leverage": 10,  # Levier 10x par défaut (recommandé pour débuter)
     
+    # 🔥 BYPASS MODE: Token browser pour bypasser blocage API MEXC Futures
+    # Récupérer depuis DevTools > Network > Headers > authorization (commence par "WEB_")
+    # ⚠️ Le token expire après quelques heures, nécessite refresh manuel
+    "mexc_browser_token": os.getenv("MEXC_BROWSER_TOKEN", ""),
+    "use_bypass_mode": True,  # Utiliser le mode bypass (recommandé si API bloquée)
+    # 🔄 Synchronisation des entrées live (éviter décalages prix/size)
+    "live_entry_sync_delay_sec": 2,  # attendre 2s avant lecture de la position réelle (ouverture)
+    "live_resync_delay_sec": 2,  # 🔥 FIX: attendre 2s avant resynchronisation (TP partiel, etc.)
+    "live_entry_sync_use_ccxt": True,  # utiliser l'API clés (CCXT) pour lecture plutôt que bypass quand dispo
+    
     # 🔥 FIX: Validation slippage avant ouverture position
     "max_slippage_pct": 0.03,  # 0.03% maximum de slippage accepté (scalping: 5% du TP, 12% du SL)
     
@@ -115,20 +195,25 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 1: Invalidation précoce (30 premières secondes)
     "early_invalidation": {
-        "enabled": True,
+        "enabled": False,  # 🔥 DÉSACTIVÉ - trop agressif (0% winrate sur 9 trades)
         "delay": 15,  # 🔥 PHASE 2 : 15s au lieu de 10s (laisser plus de temps)
         "threshold_15s": -0.15,  # 🔥 PHASE 2 : -0.15% (était -0.12%, moins agressif)
         "threshold_30s": -0.12,  # 🔥 PHASE 2 : -0.12% (était -0.08%, moins agressif)
     },
     
-    # 🔥 PHASE 2: Trailing stop adaptatif ATR
+    # 🔥 HYBRID: Trailing stop adaptatif ATR
     "trailing_stop": {
         "enabled": True,
-        "trigger_pnl": 0.15,      # 🔥 PHASE 2 : Déclencher à +0.15% (était 0.25%, protection plus tôt)
-        "atr_multiplier": 0.4,   # Distance = ATR × 0.4
-        "min_distance": 0.08,    # Minimum 0.08%
-        "max_distance": 0.25,    # Maximum 0.25%
+        "trigger_pnl": 0.10,        # 🔥 HYBRID: Déclencher à +0.10% (très tôt)
+        "trigger_atr_mult": 1.0,    # 🔥 OU trigger dès PnL >= 1.0 × ATR
+        "use_atr_trigger": True,    # 🔥 Utiliser ATR pour trigger (pas % fixe)
+        "atr_multiplier": 0.4,      # Distance = ATR × 0.4
+        "min_distance": 0.06,       # 🔥 Minimum 0.06% (plus serré)
+        "max_distance": 0.20,       # Maximum 0.20%
     },
+    # 🔥 FLAT KEYS pour config_overrides.json (copie des valeurs trailing_stop)
+    "trailing_use_atr_trigger": True,
+    "trailing_trigger_atr_mult": 1.0,
     
     # 🔥 PHASE 8: Seuils adaptatifs ATR pour invalidation
     "adaptive_thresholds": {
@@ -221,6 +306,23 @@ TRADING_CONFIG = {
         ]
     },
     
+    # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session (basé sur WR temps réel)
+    "adaptive_sizing_enabled": True,
+    "adaptive_sizing_min_trades": 3,        # Minimum trades avant ajustement
+    "adaptive_sizing_excellent_wr": 0.75,   # WR >= 75% = excellent
+    "adaptive_sizing_good_wr": 0.60,        # WR >= 60% = bon
+    "adaptive_sizing_poor_wr": 0.40,        # WR <= 40% = mauvais
+    "adaptive_sizing_very_poor_wr": 0.30,   # WR <= 30% = très mauvais
+    "adaptive_sizing_excellent_mult": 1.50, # +50% si excellent
+    "adaptive_sizing_good_mult": 1.25,      # +25% si bon
+    "adaptive_sizing_poor_mult": 0.70,      # -30% si mauvais
+    "adaptive_sizing_very_poor_mult": 0.50, # -50% si très mauvais
+    "adaptive_sizing_max_mult": 1.50,       # Limite max
+    "adaptive_sizing_min_mult": 0.50,       # Limite min
+    "adaptive_sizing_reset_hours": 8,       # Reset après 8h d'inactivité
+    "adaptive_sizing_reset_big_loss": True, # Reset si grosse perte
+    "adaptive_sizing_big_loss_threshold": -2.0, # Seuil grosse perte %
+
     # ✅ TP Escalier / Multi-Level TP (paramètres individuels pour frontend)
     "partial_tp_percent": 50,  # % de position vendue au 1er TP (mode FIXE)
     "escalier_level1_pnl": 0.20,
@@ -285,6 +387,33 @@ TRADING_CONFIG = {
     "ml_v2_subsample": 0.70,
     "ml_v2_colsample_bytree": 0.70,
     "ml_v2_gamma": 0.50,
+    
+    # HistGradientBoosting (Modèle Optimisé 64-69% accuracy)
+    # Note: Utilise HistGradientBoostingClassifier (10x plus rapide)
+    "gb_filter_enabled": True,  # Activé par défaut car performant
+    "gb_min_confidence": 0.55,  # 55% seuil de confiance
+    "gb_max_iter": 100,         # Nombre d'itérations (équivalent n_estimators)
+    "gb_max_depth": 3,          # Profondeur max (2-4 recommandé)
+    "gb_learning_rate": 0.08,   # Taux d'apprentissage
+    "gb_min_samples_leaf": 30,  # Samples minimum par feuille
+    "gb_l2_regularization": 0.5,  # Régularisation L2 (évite overfitting)
+    "gb_n_features": 30,        # Nombre de features sélectionnées
+    "gb_model_type": "histgb",  # Toujours HistGradientBoosting maintenant
+    
+    # ============================================================
+    # 🔥 ML AUTO-CALIBRATION SYSTEM
+    # ============================================================
+    # Recalibre automatiquement la confiance ML basée sur les résultats live réels
+    # La confiance affichée devient le winrate réel observé par bucket
+    # ============================================================
+    
+    "ml_calibration_enabled": True,          # Activer l'auto-calibration
+    "ml_calib_live_weight": 1.0,             # Poids des trades LIVE (slider: 0.5-1.0)
+    "ml_calib_dryrun_weight": 0.5,           # Poids des trades DRY-RUN (slider: 0.0-1.0)
+    "ml_calib_decay_days": 14,               # Demi-vie en jours (slider: 7-60)
+    "ml_calib_min_trades": 30,               # Minimum de trades pondérés pour activer (slider: 10-100)
+    "ml_calib_min_winrate": 40.0,            # Seuil WR minimum pour accepter un trade (slider: 30-60%)
+    "ml_calib_bucket_size": 5,               # Taille des buckets de confiance (ex: 30-35, 35-40)
 }
 
 # Risk management
@@ -415,8 +544,8 @@ ML_CONFIG = {
     # Activation du filtre ML pour le trading
     "enabled": os.getenv('ML_FILTER_ENABLED', 'false').lower() == 'true',
 
-    # Modèle à utiliser
-    "model_name": os.getenv('ML_MODEL_NAME', 'xgboost_v1'),
+    # Modèle à utiliser ("optimized" = GradientBoosting 64-69% accuracy, "xgboost_v1" = ancien ~50%)
+    "model_name": os.getenv('ML_MODEL_NAME', 'optimized'),
 
     # Seuil de confiance minimum pour accepter un trade
     "min_confidence": float(os.getenv('ML_MIN_CONFIDENCE', '0.60')),  # 60% par défaut
@@ -427,7 +556,11 @@ ML_CONFIG = {
     # Mode de fonctionnement
     # - "STRICT": Accepter uniquement les prédictions 'win' avec confiance >= min_confidence
     # - "SOFT": Rejeter seulement les prédictions 'loss' avec confiance >= max_loss_confidence
-    "mode": os.getenv('ML_MODE', 'STRICT'),
+    # - "NEGATIVE": 🔥 NOUVEAU - Rejeter si P(loss) >= loss_threshold (filtre négatif, +6.8% win rate)
+    "mode": os.getenv('ML_MODE', 'NEGATIVE'),  # 🔥 NEGATIVE par défaut (meilleurs résultats)
+    
+    # 🔥 NOUVEAU: Seuil pour le mode NEGATIVE (rejeter si P(loss) >= ce seuil)
+    "loss_threshold": float(os.getenv('ML_LOSS_THRESHOLD', '0.45')),  # 45% = +6.8% win rate
 
     # Logger les prédictions dans PostgreSQL
     "log_predictions": True,
@@ -449,9 +582,13 @@ try:
         ML_CONFIG['enabled'] = TRADING_CONFIG['ml_filter_enabled']
     if 'ml_min_confidence' in TRADING_CONFIG:
         ML_CONFIG['min_confidence'] = TRADING_CONFIG['ml_min_confidence']
+    if 'ml_filter_mode' in TRADING_CONFIG:
+        ML_CONFIG['mode'] = TRADING_CONFIG['ml_filter_mode']
+    if 'ml_loss_threshold' in TRADING_CONFIG:
+        ML_CONFIG['loss_threshold'] = TRADING_CONFIG['ml_loss_threshold']
     
     import logging
-    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}")
+    logging.info(f"✅ ML_CONFIG synchronisé: enabled={ML_CONFIG['enabled']}, mode={ML_CONFIG.get('mode', 'NEGATIVE')}, loss_threshold={ML_CONFIG.get('loss_threshold', 0.45)}")
     
 except Exception as e:
     import logging

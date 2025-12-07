@@ -51,6 +51,20 @@ def check_config_columns_scan_logs():
             'config_snr_threshold',
             'config_use_confluence',
             'config_volume_multiplier',
+            'config_use_anti_whipsaw',
+            'config_whipsaw_lookback',
+            'config_whipsaw_threshold_pct',
+            'config_whipsaw_max_alternations',
+            'config_use_retest_confirmation',
+            'config_retest_tolerance_pct',
+            'config_retest_timeout_seconds',
+            'config_use_cooldown',
+            'config_cooldown_seconds',
+            'config_cooldown_same_symbol',
+            'config_use_candle_close',
+            'config_candle_close_threshold_seconds',
+            'config_use_momentum_continuity',
+            'config_momentum_lookback',
         ]
         
         if result:
@@ -110,6 +124,20 @@ def check_config_columns_trades():
             'config_snr_threshold',
             'config_use_confluence',
             'config_volume_multiplier',
+            'config_use_anti_whipsaw',
+            'config_whipsaw_lookback',
+            'config_whipsaw_threshold_pct',
+            'config_whipsaw_max_alternations',
+            'config_use_retest_confirmation',
+            'config_retest_tolerance_pct',
+            'config_retest_timeout_seconds',
+            'config_use_cooldown',
+            'config_cooldown_seconds',
+            'config_cooldown_same_symbol',
+            'config_use_candle_close',
+            'config_candle_close_threshold_seconds',
+            'config_use_momentum_continuity',
+            'config_momentum_lookback',
         ]
         
         if result:

@@ -69,13 +69,26 @@ class WebSocketLogHandler(logging.Handler):
                 'raw_message': message_with_colors  # Message sans couleur pour recherche
             }
             
-            # Envoyer via WebSocket (asynchrone, donc on crée une tâche)
+            # Envoyer via WebSocket (asynchrone, fire-and-forget)
             import asyncio
             try:
                 loop = asyncio.get_running_loop()
-                async def send_log():
-                    await self.ws_manager.emit('log', entry)
-                loop.create_task(send_log())
+                
+                async def send_log_safe():
+                    try:
+                        await asyncio.wait_for(
+                            self.ws_manager.emit('log', entry),
+                            timeout=1.0  # Timeout court pour éviter blocage
+                        )
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        pass  # Ignorer silencieusement
+                    except Exception:
+                        pass  # Ignorer les erreurs d'envoi
+                
+                # Créer la tâche avec gestion d'erreur
+                task = loop.create_task(send_log_safe())
+                # Supprimer la référence pour éviter les warnings
+                task.add_done_callback(lambda t: None)
             except RuntimeError:
                 # Pas de loop en cours, ignorer
                 pass

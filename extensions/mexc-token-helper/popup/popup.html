@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>MEXC Token Helper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔐 MEXC Token</h1>
+    </div>
+    
+    <div id="status" class="status">
+      <span class="status-icon">⏳</span>
+      <span class="status-text">Vérification...</span>
+    </div>
+    
+    <div id="token-section" class="token-section hidden">
+      <label>Token récupéré :</label>
+      <div class="token-display">
+        <input type="text" id="token-value" readonly>
+        <button id="copy-btn" class="btn-copy" title="Copier">📋</button>
+      </div>
+      <div class="token-info">
+        <span id="token-length"></span>
+      </div>
+    </div>
+    
+    <div id="actions" class="actions">
+      <button id="refresh-btn" class="btn btn-primary">🔄 Rafraîchir</button>
+      <button id="send-btn" class="btn btn-success hidden">📤 Envoyer au Bot</button>
+    </div>
+    
+    <div id="send-section" class="send-section hidden">
+      <label>URL du Bot (optionnel) :</label>
+      <input type="text" id="bot-url" placeholder="http://localhost:8000" value="http://localhost:8000">
+      <button id="save-url-btn" class="btn btn-small">💾 Sauver</button>
+    </div>
+    
+    <div id="message" class="message hidden"></div>
+    
+    <div class="footer">
+      <a href="https://futures.mexc.com" target="_blank">Ouvrir MEXC Futures</a>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
