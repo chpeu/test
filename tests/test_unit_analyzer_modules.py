@@ -356,13 +356,14 @@ class TestScoring:
         assert score > 0
         assert score >= len(condition_types)  # At least 1.0 per condition
 
+    @patch('utils.effective_config.get_effective_value', return_value=None)
     @patch('core.analyzer.scoring.TRADING_CONFIG', {
         'min_score_required': 7.5,
         'min_score_adx_low': 8.0,
         'min_score_adx_high': 7.0,
         'use_weighted_scoring': True
     })
-    def test_get_min_score_required_high_adx(self):
+    def test_get_min_score_required_high_adx(self, mock_config, mock_get_effective):
         """Test min score with high ADX (lower requirement)"""
         result = get_min_score_required(adx_value=35.0, use_weighted=True)
         
@@ -376,13 +377,14 @@ class TestScoring:
         assert min_score > 0
         assert min_score <= 8.0
 
+    @patch('utils.effective_config.get_effective_value', return_value=None)
     @patch('core.analyzer.scoring.TRADING_CONFIG', {
         'min_score_required': 7.5,
         'min_score_adx_low': 8.0,
         'min_score_adx_high': 7.0,
         'use_weighted_scoring': True
     })
-    def test_get_min_score_required_low_adx(self):
+    def test_get_min_score_required_low_adx(self, mock_config, mock_get_effective):
         """Test min score with low ADX (higher requirement)"""
         result = get_min_score_required(adx_value=20.0, use_weighted=True)
         
