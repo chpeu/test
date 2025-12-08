@@ -161,7 +161,7 @@ class TestFilters:
         'optimal_atr_min_5m': 0.4,
         'optimal_atr_max_5m': 2.0
     })
-    def test_check_atr_filter_optimal_range(self, mock_get_effective):
+    def test_check_atr_filter_optimal_range(self):
         """Test ATR filter with optimal ATR"""
         result = check_atr_filter(
             atr_percent=0.5,  # Within 0.3-1.0% for 1m
@@ -363,7 +363,7 @@ class TestScoring:
         'min_score_adx_high': 7.0,
         'use_weighted_scoring': True
     })
-    def test_get_min_score_required_high_adx(self, mock_config, mock_get_effective):
+    def test_get_min_score_required_high_adx(self):
         """Test min score with high ADX (lower requirement)"""
         result = get_min_score_required(adx_value=35.0, use_weighted=True)
         
@@ -384,7 +384,7 @@ class TestScoring:
         'min_score_adx_high': 7.0,
         'use_weighted_scoring': True
     })
-    def test_get_min_score_required_low_adx(self, mock_config, mock_get_effective):
+    def test_get_min_score_required_low_adx(self):
         """Test min score with low ADX (higher requirement)"""
         result = get_min_score_required(adx_value=20.0, use_weighted=True)
         

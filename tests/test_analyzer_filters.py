@@ -323,7 +323,7 @@ class TestCheckATRFilter:
         'optimal_atr_min_5m': 0.4,
         'optimal_atr_max_5m': 2.0
     })
-    def test_atr_optimal_1m(self, mock_get_effective, mock_config):
+    def test_atr_optimal_1m(self):
         """Test ATR optimal pour 1m"""
         result = check_atr_filter(
             atr_percent=0.8,  # Dans [0.3, 1.5]
@@ -340,7 +340,7 @@ class TestCheckATRFilter:
         'optimal_atr_min_5m': 0.4,
         'optimal_atr_max_5m': 2.0
     })
-    def test_atr_optimal_5m(self, mock_get_effective, mock_config):
+    def test_atr_optimal_5m(self):
         """Test ATR optimal pour 5m"""
         result = check_atr_filter(
             atr_percent=1.0,  # Dans [0.4, 2.0]
@@ -356,7 +356,7 @@ class TestCheckATRFilter:
         'optimal_atr_max_1m': 1.5
     })
     @patch('core.analyzer.filters.DEBUG_ENABLED', True)
-    def test_atr_too_low_return_reason(self, mock_get_effective, mock_config):
+    def test_atr_too_low_return_reason(self):
         """Test ATR trop bas avec return_reason=True"""
         result = check_atr_filter(
             atr_percent=0.1,  # < 0.3
@@ -374,7 +374,7 @@ class TestCheckATRFilter:
         'optimal_atr_max_1m': 1.5
     })
     @patch('core.analyzer.filters.DEBUG_ENABLED', True)
-    def test_atr_too_high_return_reason(self, mock_get_effective, mock_config):
+    def test_atr_too_high_return_reason(self):
         """Test ATR trop élevé avec return_reason=True"""
         result = check_atr_filter(
             atr_percent=2.0,  # > 1.5
@@ -392,7 +392,7 @@ class TestCheckATRFilter:
         'optimal_atr_max_1m': 1.5
     })
     @patch('core.analyzer.filters.DEBUG_ENABLED', True)
-    def test_atr_too_low_no_return_reason(self, mock_get_effective, mock_config):
+    def test_atr_too_low_no_return_reason(self):
         """Test ATR trop bas sans return_reason=True (mais logs debug)"""
         result = check_atr_filter(
             atr_percent=0.1,  # < 0.3
@@ -420,7 +420,7 @@ class TestIntegration:
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.5
     })
-    def test_all_filters_pass(self, mock_get_effective):
+    def test_all_filters_pass(self):
         """Test tous les filtres passent"""
         # Volume
         vol_result = check_volume_filter(2.0, 1.0, 'BTC/USDT:USDT', '1m', 0.8, 1.0)
