@@ -5,7 +5,7 @@ Version refactorisée - Délègue aux modules dans core/analyzer/
 """
 import asyncio
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import math
 
 from api.mexc import get_mexc_client
@@ -13,6 +13,7 @@ from api.price_provider import get_price_provider
 from core.indicators import Indicators
 from config import TRADING_CONFIG, DEBUG_ENABLED, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
 from utils.logger import get_logger
+from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
 
 # Imports des modules refactorisés
 from core.analyzer.filters import (
@@ -871,19 +872,21 @@ class TechnicalAnalyzer:
         symbol: str,
         trend_data: Optional[Dict] = None,
         volume_multiplier: float = 1.0,
-        use_confluence: bool = False,
+        use_confluence: bool = True,
         return_reason: bool = False,
         active_positions: Optional[List[str]] = None,
-        position_manager = None
+        position_manager: Optional[Any] = None
     ) -> Optional[Dict]:
         """
         Analyse une paire sur 1m et 5m
 
         Args:
             symbol: Symbole de la paire
-            trend_data: Données de tendance
+            trend_data: Donnes de tendance
             volume_multiplier: Multiplicateur de volume
             use_confluence: True = 1m ET 5m, False = 1m OU 5m
+            active_positions: Liste des symboles avec positions actives (pour Correlation Filter)
+            position_manager: Instance du PositionManager (pour Recovery Mode)
 
         Returns:
             Meilleur setup ou None
@@ -891,11 +894,17 @@ class TechnicalAnalyzer:
         try:
             start_time = time.time()  # Pour calculer scan_duration_ms
             
+            # : Utiliser volume_multiplier dynamique du rgime si disponible
+            eff_vol_mult = get_effective_value('volume_multiplier')
+            if eff_vol_mult is not None:
+                volume_multiplier = eff_vol_mult
+            
             # Toujours calculer trend_data (au lieu d'optionnel)
             if trend_data is None:
                 trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
                 trend_data = await self.calculate_trend_data(symbol, trend_timeframe)
                 if trend_data:
+                    logger.debug(f" {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
                     logger.debug(f"📊 {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
 
             # Analyser 1m et 5m

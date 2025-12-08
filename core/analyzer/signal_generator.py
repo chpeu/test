@@ -5,6 +5,7 @@ Analyse les conditions techniques pour générer des signaux de trading
 
 from typing import List, Tuple, Dict
 from config import TRADING_CONFIG
+from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
 
 
 def check_ema_condition(ema9: float, ema21: float, direction: str) -> Tuple[bool, str, float]:
@@ -40,22 +41,35 @@ def check_rsi_condition(
 ) -> Tuple[bool, str]:
     """
     Vérifie condition RSI (rebound/pullback pour LONG, overbought/rejection pour SHORT)
-
+    
     Args:
         rsi: RSI actuel
         rsi_prev: RSI précédent
         adx: Dict ADX avec 'adx', 'diPlus', 'diMinus'
         macd: Dict MACD avec 'histogram'
         direction: 'LONG' ou 'SHORT'
-
+        
     Returns:
         (condition_met, description)
     """
+    # 🔥 Récupérer le mode de filtrage RSI depuis la config effective (régime)
+    rsi_mode = get_effective_value('rsi_filter_mode') or 'STANDARD'
+    
+    # 🛑 Mode STRICT (Régime CALME): Rejeter RSI extrêmes car pas assez de force pour retournement
+    if rsi_mode == 'STRICT':
+        if rsi < 30 or rsi > 70:
+            return False, ""  # Rejet strict des extrêmes
+            
     if direction == 'LONG':
         # RSI Rebound (oversold recovery)
         rsi_rebound = rsi >= 30 and rsi <= 40 and adx['adx'] < 20 and rsi > rsi_prev
         # RSI Pullback (healthy correction in uptrend)
         rsi_pullback = rsi >= 45 and rsi <= 55 and macd['histogram'] > 0 and adx['adx'] > 25 and rsi > rsi_prev
+        
+        # 🟢 Mode PERMISSIVE (Régime NORMAL/VOLATILE): Accepter aussi les rebonds profonds (<30)
+        if rsi_mode == 'PERMISSIVE':
+            if rsi < 30 and rsi > rsi_prev:  # Deep oversold bounce
+                return True, f"Deep RSI Rebound↑ (Oversold <30)"
 
         if rsi_rebound:
             return True, f"RSI Rebound↑ (ADX<{adx['adx']:.1f})"
@@ -67,6 +81,11 @@ def check_rsi_condition(
         rsi_overbought = rsi >= 60 and rsi <= 70 and adx['adx'] < 20 and rsi < rsi_prev
         # RSI Rejection (rejection from resistance)
         rsi_rejection = rsi >= 45 and rsi <= 55 and macd['histogram'] < 0 and adx['adx'] > 25 and rsi < rsi_prev
+
+        # 🟢 Mode PERMISSIVE: Accepter aussi les rejets extrêmes (>70)
+        if rsi_mode == 'PERMISSIVE':
+            if rsi > 70 and rsi < rsi_prev:  # Deep overbought rejection
+                return True, f"Deep RSI Rejection↓ (Overbought >70)"
 
         if rsi_overbought:
             return True, f"RSI Overbought↓ (ADX<{adx['adx']:.1f})"

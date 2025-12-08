@@ -1571,6 +1571,11 @@ class PostgreSQLDataLogger:
                 ('entry_min_score_required', _extract_numeric_value(trade_data.get('entry_min_score_required'))),
                 ('entry_atr_mult_sl', _extract_numeric_value(trade_data.get('entry_atr_mult_sl'))),
                 ('entry_atr_mult_tp', _extract_numeric_value(trade_data.get('entry_atr_mult_tp'))),
+                # 🔥 NOUVEAU: Paramètres dynamiques additionnels du régime
+                ('entry_volume_multiplier', _extract_numeric_value(trade_data.get('entry_volume_multiplier'))),
+                ('entry_rsi_filter_mode', trade_data.get('entry_rsi_filter_mode')),
+                ('entry_position_timeout', trade_data.get('entry_position_timeout')),
+                ('entry_optimal_atr_max_1m', _extract_numeric_value(trade_data.get('entry_optimal_atr_max_1m'))),
                 ('entry_cb_state', trade_data.get('entry_cb_state')),
                 ('entry_consecutive_losses', trade_data.get('entry_consecutive_losses', 0)),
                 ('entry_daily_pnl_pct', _extract_numeric_value(trade_data.get('entry_daily_pnl_pct'))),

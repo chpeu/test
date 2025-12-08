@@ -40,6 +40,8 @@ class RegimeConfig:
     break_even_atr_mult: float
     trailing_trigger_atr_mult: float
     max_position_time: int  # secondes
+    volume_multiplier: float = 1.0  # 🔥 NOUVEAU
+    rsi_filter_mode: str = "STANDARD"  # 🔥 NOUVEAU: STRICT, STANDARD, PERMISSIVE
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -66,51 +68,68 @@ class RegimeChange:
         }
 
 
-# Configurations par régime (valeurs par défaut)
+# 🔥 FIX 08/12/2025: Configurations par régime ajustées selon analyse du jour
+# CALME: 35.7% WR avec score=6.0 → TROP BAS, augmenté à 8.5
+# NORMAL: 75% WR avec score=7.0 → OK, légèrement augmenté
+# VOLATILE: bon ratio, ajusté pour capture momentum
+# CHOPPY: 100% WR (3 trades) → strict OK
+# 🔥 FIX 08/12/2025: Seuils PLUS STRICTS pour filtrer les mauvais trades
+# CALME: Peu de mouvement = exiger score très élevé
+# NORMAL: Score 8+ pour qualité
+# VOLATILE: Mouvements clairs = signaux fiables, score légèrement réduit
+# CHOPPY: Pas de tendance = très strict
 DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
     "CALME": RegimeConfig(
         name="CALME",
         optimal_atr_min=0.0,
-        optimal_atr_max=0.20,
-        min_score_required=6.0,  # Plus permissif en marché calme
-        atr_mult_sl=1.0,
-        atr_mult_tp=2.5,
-        break_even_atr_mult=0.4,
-        trailing_trigger_atr_mult=0.8,
-        max_position_time=180  # 3 min max
+        optimal_atr_max=0.15,
+        min_score_required=9.0,  # 🔥 Très strict (peu de mouvement = danger)
+        atr_mult_sl=0.8,
+        atr_mult_tp=1.8,
+        break_even_atr_mult=0.8,
+        trailing_trigger_atr_mult=1.0,
+        max_position_time=360,
+        volume_multiplier=1.0,
+        rsi_filter_mode="STRICT"
     ),
     "NORMAL": RegimeConfig(
         name="NORMAL",
-        optimal_atr_min=0.20,
-        optimal_atr_max=0.40,
-        min_score_required=7.0,
+        optimal_atr_min=0.15,
+        optimal_atr_max=0.25,
+        min_score_required=8.0,  # 🔥 Plus strict (était 7.5)
         atr_mult_sl=1.2,
-        atr_mult_tp=3.0,
-        break_even_atr_mult=0.5,
-        trailing_trigger_atr_mult=1.0,
-        max_position_time=300  # 5 min
+        atr_mult_tp=2.2,
+        break_even_atr_mult=1.2,
+        trailing_trigger_atr_mult=1.5,
+        max_position_time=300,
+        volume_multiplier=1.1,
+        rsi_filter_mode="PERMISSIVE"
     ),
     "VOLATILE": RegimeConfig(
         name="VOLATILE",
-        optimal_atr_min=0.40,
+        optimal_atr_min=0.35,
         optimal_atr_max=1.0,
-        min_score_required=8.0,  # Plus strict en volatile
+        min_score_required=7.5,  # 🔥 Légèrement moins strict (mouvements clairs)
         atr_mult_sl=1.5,
-        atr_mult_tp=4.0,
-        break_even_atr_mult=0.6,
-        trailing_trigger_atr_mult=1.2,
-        max_position_time=120  # 2 min max (sorties rapides)
+        atr_mult_tp=2.5,
+        break_even_atr_mult=1.5,
+        trailing_trigger_atr_mult=2.0,
+        max_position_time=180,
+        volume_multiplier=1.5,
+        rsi_filter_mode="PERMISSIVE"
     ),
     "CHOPPY": RegimeConfig(
         name="CHOPPY",
         optimal_atr_min=0.0,
-        optimal_atr_max=1.0,
-        min_score_required=9.0,  # Très strict (ADX < 20)
-        atr_mult_sl=0.8,
-        atr_mult_tp=2.0,
-        break_even_atr_mult=0.3,
-        trailing_trigger_atr_mult=0.6,
-        max_position_time=90  # 1.5 min max
+        optimal_atr_max=0.20,
+        min_score_required=10.0,  # 🔥 Très strict (pas de tendance = danger)
+        atr_mult_sl=0.7,
+        atr_mult_tp=1.5,
+        break_even_atr_mult=0.5,
+        trailing_trigger_atr_mult=0.8,
+        max_position_time=60,
+        volume_multiplier=0.8,
+        rsi_filter_mode="STRICT"
     )
 }
 
@@ -357,6 +376,10 @@ class MarketRegimeSelector:
             "break_even_atr_mult": self.current_config.break_even_atr_mult,
             "trailing_trigger_atr_mult": self.current_config.trailing_trigger_atr_mult,
             "position_timeout": self.current_config.max_position_time,
+            "optimal_atr_min_1m": self.current_config.optimal_atr_min,
+            "optimal_atr_max_1m": self.current_config.optimal_atr_max,
+            "volume_multiplier": self.current_config.volume_multiplier,
+            "rsi_filter_mode": self.current_config.rsi_filter_mode
         }
     
     def get_status(self) -> Dict[str, Any]:

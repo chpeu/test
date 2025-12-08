@@ -7,6 +7,13 @@ from typing import List, Dict, Optional
 from config import CONDITION_WEIGHTS, TRADING_CONFIG, TREND_BONUS_CONFIG
 from utils.logger import get_logger
 
+# 🔥 FIX 08/12/2025: Import pour utiliser effective_config
+try:
+    from utils.effective_config import get_effective_value
+    HAS_EFFECTIVE_CONFIG = True
+except ImportError:
+    HAS_EFFECTIVE_CONFIG = False
+
 
 logger = get_logger()
 
@@ -50,8 +57,11 @@ def get_min_score_required(
     pair_adjustment = 0.0
     
     if use_weighted:
-        # 🔥 FIX: Toujours lire depuis TRADING_CONFIG (mis à jour dynamiquement)
-        base_min_score = TRADING_CONFIG.get('min_score_required', 7.5)
+        # 🔥 FIX 08/12/2025: Utiliser effective_config pour avoir les valeurs ajustées par régime
+        if HAS_EFFECTIVE_CONFIG:
+            base_min_score = get_effective_value('min_score_required') or TRADING_CONFIG.get('min_score_required', 7.5)
+        else:
+            base_min_score = TRADING_CONFIG.get('min_score_required', 7.5)
         
         # 🔥 FIX: Si l'utilisateur a modifié min_score_required (≠ 7.5), utiliser directement cette valeur
         # Sinon, appliquer les ajustements ADX selon les valeurs par défaut

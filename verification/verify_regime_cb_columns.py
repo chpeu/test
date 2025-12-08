@@ -78,6 +78,12 @@ def check_columns_trades(conn):
         'entry_min_score_required',
         'entry_atr_mult_sl',
         'entry_atr_mult_tp',
+        # Nouveaux paramètres dynamiques
+        'entry_volume_multiplier',
+        'entry_rsi_filter_mode',
+        'entry_position_timeout',
+        'entry_optimal_atr_max_1m',
+        # Circuit Breaker
         'entry_cb_state',
         'entry_consecutive_losses',
         'entry_daily_pnl_pct',

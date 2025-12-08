@@ -197,12 +197,42 @@
 		
 		{#if regimeData.config_active && Object.keys(regimeData.config_active).length > 0}
 			<div class="config-preview">
-				<span class="config-item" title="Score minimum requis">
-					Score: {regimeData.config_active.min_score_required || '-'}
-				</span>
-				<span class="config-item" title="Multiplicateur SL">
-					SL: {regimeData.config_active.atr_mult_sl || '-'}x
-				</span>
+				<!-- Ligne 1: Score & TP/SL -->
+				<div class="config-row">
+					<span class="config-item" title="Score minimum requis pour ouvrir un trade">
+						📊 Score: {regimeData.config_active.min_score_required || '-'}
+					</span>
+					<span class="config-item" title="Multiplicateur ATR pour Stop Loss">
+						🛑 SL: {regimeData.config_active.atr_mult_sl || '-'}x
+					</span>
+					<span class="config-item" title="Multiplicateur ATR pour Take Profit">
+						🎯 TP: {regimeData.config_active.atr_mult_tp || '-'}x
+					</span>
+				</div>
+				<!-- Ligne 2: Filtres dynamiques -->
+				<div class="config-row">
+					<span class="config-item" title="ATR Max pour filtrer les trades trop volatils">
+						📈 ATR Max: {regimeData.config_active.optimal_atr_max_1m ? regimeData.config_active.optimal_atr_max_1m.toFixed(2) + '%' : '-'}
+					</span>
+					<span class="config-item" title="Multiplicateur volume (exigence de volume)">
+						📊 Vol: {regimeData.config_active.volume_multiplier || '-'}x
+					</span>
+					<span class="config-item" title="Mode filtrage RSI (STRICT rejette extrêmes, PERMISSIVE accepte tout)">
+						📉 RSI: {regimeData.config_active.rsi_filter_mode || '-'}
+					</span>
+				</div>
+				<!-- Ligne 3: Timeout -->
+				<div class="config-row">
+					<span class="config-item" title="Durée max position avant sortie stagnation">
+						⏱️ Timeout: {regimeData.config_active.position_timeout ? Math.floor(regimeData.config_active.position_timeout / 60) + 'min' : '-'}
+					</span>
+					<span class="config-item" title="Break-Even trigger (multiplicateur ATR)">
+						💰 BE: {regimeData.config_active.break_even_atr_mult || '-'}x
+					</span>
+					<span class="config-item" title="Trailing Stop trigger (multiplicateur ATR)">
+						🔄 TS: {regimeData.config_active.trailing_trigger_atr_mult || '-'}x
+					</span>
+				</div>
 			</div>
 		{/if}
 		
@@ -304,10 +334,17 @@
 
 	.config-preview {
 		display: flex;
-		gap: 12px;
-		padding: 6px 10px;
+		flex-direction: column;
+		gap: 6px;
+		padding: 8px 10px;
 		background: rgba(0, 0, 0, 0.2);
 		border-radius: 6px;
+	}
+
+	.config-row {
+		display: flex;
+		gap: 12px;
+		flex-wrap: wrap;
 	}
 
 	.config-item {

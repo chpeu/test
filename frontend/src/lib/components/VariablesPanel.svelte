@@ -51,16 +51,16 @@
 		break_even_trigger: 0.3,
 		trailing_distance: 0.15,
 		// Mode ATR
-		atr_mult_tp: 3.0,
+		atr_mult_tp: 2.2,  // 🔥 TP plus atteignable (était 3.0)
 		atr_mult_sl: 1.2,
 		atr_min: 0.10,
 		atr_max: 1.0,
-		// 🔥 HYBRID: Break-even ATR
+		// 🔥 HYBRID: Break-even ATR (moins agressif)
 		break_even_use_atr: true,
-		break_even_atr_mult: 0.5,
-		// 🔥 HYBRID: Trailing ATR trigger
+		break_even_atr_mult: 1.2,  // 🔥 BE plus tard (était 0.5, trop serré)
+		// 🔥 HYBRID: Trailing ATR trigger (moins agressif)
 		trailing_use_atr_trigger: true,
-		trailing_trigger_atr_mult: 1.0,
+		trailing_trigger_atr_mult: 1.5,  // 🔥 TS plus tard (était 1.0, trop tôt)
 		// 🔥 HYBRID: Stagnation Exit (Time Decay)
 		stagnation_exit_enabled: true,
 		stagnation_exit_timeout_seconds: 120,
@@ -75,12 +75,12 @@
 		escalier_level3_size: 25,
 		escalier_level4_pnl: 0.80,
 		escalier_level4_size: 25,
-		// Trailing Stop Adaptatif (tous modes)
+		// Trailing Stop Adaptatif (tous modes - moins agressif)
 		trailing_enabled: true,
-		trailing_trigger_pnl: 0.15,  // 🔥 PHASE 2 : 0.15 (était 0.25)
-		trailing_atr_multiplier: 0.4,
-		trailing_min_distance: 0.08,
-		trailing_max_distance: 0.25,
+		trailing_trigger_pnl: 0.20,  // 🔥 Fallback si ATR désactivé (était 0.15)
+		trailing_atr_multiplier: 0.8,  // 🔥 Distance plus large (était 0.4, trop serré)
+		trailing_min_distance: 0.10,  // 🔥 Minimum augmenté (était 0.08)
+		trailing_max_distance: 0.30,  // 🔥 Maximum augmenté (était 0.25)
 		// Machine Learning V1
 		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
 		ml_filter_mode: 'NEGATIVE',  // 🔥 Mode NEGATIVE = filtre négatif (+2.9% win rate)
@@ -4371,71 +4371,92 @@
 					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig} data-debug-name="variablesPanel.current.refreshButton">
 						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
 					</button>
-					<button
-			class="btn-export"
-			on:click={exportCurrentConfigXlsx}
-			disabled={exportingCurrentConfig}
-			title="Exporter l'ensemble des variables en .xlsx"
-			data-debug-name="variablesPanel.current.exportButton"
-		>
-			{exportingCurrentConfig ? '⏳ Export...' : '📤 Export XLSX'}
-		</button>
-				</div>
+					<button class="btn-export" on:click={exportCurrentConfigXlsx} disabled={exportingCurrentConfig} title="Exporter l'ensemble des variables en .xlsx">
+					{exportingCurrentConfig ? '⏳ Export...' : '📤 Export XLSX'}
+				</button>
+			</div>
 				<p class="section-desc" data-debug-name="variablesPanel.current.description">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
 
 				{#if loadingCompleteConfig}
-					<div class="loading-message" data-debug-name="loadingCompleteConfig">
-						⏳ Chargement de la configuration complète...
-					</div>
-				{:else if completeConfigError}
-					<div class="error-message" data-debug-name="completeConfigError">
-						❌ Erreur: {completeConfigError}
-					</div>
-				{:else if completeConfig}
-					<div class="complete-config-container" data-debug-name="completeConfig">
-						<!-- TRADING_CONFIG organisé par catégories -->
-						<div class="config-category main-category" data-debug-name="completeConfig.trading_config">
-							<h4 class="category-title" data-debug-name="completeConfig.trading_config.title">🔧 TRADING_CONFIG</h4>
-							{#each Object.entries(organizeTradingConfig(completeConfig.trading_config)) as [categoryName, categoryVars]}
-								<div class="config-subcategory" data-debug-name="completeConfig.trading_config.{categoryName}">
-									<h5 class="subcategory-title" data-debug-name="completeConfig.trading_config.{categoryName}.title">{categoryName}</h5>
-									<div class="config-grid" data-debug-name="completeConfig.trading_config.{categoryName}">
-										{#each Object.entries(categoryVars) as [key, value]}
-											{#if value !== undefined && value !== null}
-												<div class="config-item" data-debug-name="completeConfig.trading_config.{categoryName}.{key}">
-													<span class="config-key" data-debug-name="completeConfig.trading_config.{categoryName}.{key}">{key}:</span>
-													<span class="config-value" title={typeof value === 'object' ? formatFullValue(value) : ''} data-debug-name="completeConfig.trading_config.{categoryName}.{key}">
-														{formatValue(value)}
+				<div class="loading-message" data-debug-name="loadingCompleteConfig">
+					⏳ Chargement de la configuration complète...
+				</div>
+			{:else if completeConfigError}
+				<div class="error-message" data-debug-name="completeConfigError">
+					❌ Erreur: {completeConfigError}
+				</div>
+			{:else if completeConfig}
+				<div class="complete-config-container" data-debug-name="completeConfig">
+					<!-- 🔥 FIX 08/12/2025: Afficher les ajustements actifs si régime/CB activé -->
+					{#if completeConfig.adjustments_summary && (completeConfig.adjustments_summary.regime_enabled || completeConfig.adjustments_summary.cb_enabled)}
+						<div class="config-category adjustments-category" data-debug-name="completeConfig.adjustments">
+							<h4 class="category-title">🌡️ AJUSTEMENTS ACTIFS (Régime/CB)</h4>
+							<p class="adjustments-info">Les valeurs ci-dessous incluent les ajustements automatiques.</p>
+							
+							{#if completeConfig.adjustments_summary.differences && Object.keys(completeConfig.adjustments_summary.differences).length > 0}
+								<div class="config-grid">
+									{#each Object.entries(completeConfig.adjustments_summary.differences) as [key, diff]}
+										<div class="config-item difference-item">
+											<span class="config-key">{key}:</span>
+											<span class="config-value">
+												{diff.base} → <strong>{diff.effective}</strong>
+												{#if diff.delta}
+													<span class="diff-delta" class:positive={diff.delta > 0} class:negative={diff.delta < 0}>
+														({diff.delta > 0 ? '+' : ''}{diff.delta.toFixed(2)})
 													</span>
-												</div>
-											{/if}
-										{/each}
-									</div>
-									{#if Object.values(categoryVars).some(v => typeof v === 'object' && v !== null && !Array.isArray(v))}
-										<!-- Afficher les objets complexes en détail -->
-										{#each Object.entries(categoryVars) as [key, value]}
-											{#if typeof value === 'object' && value !== null && !Array.isArray(value)}
-												<div class="config-object-detail">
-													<details>
-														<summary class="config-object-summary">{key} (détails)</summary>
-														<pre class="config-object-content">{formatFullValue(value)}</pre>
-													</details>
-												</div>
-											{/if}
-										{/each}
-									{/if}
+												{/if}
+											</span>
+										</div>
+									{/each}
 								</div>
-							{/each}
+							{:else}
+								<p class="no-differences">Aucune différence entre base et effective.</p>
+							{/if}
 						</div>
+					{/if}
 
-						<!-- RISK_CONFIG -->
+					<!-- 🔥 FIX 08/12/2025: Utiliser effective_config au lieu de trading_config -->
+					<div class="config-category main-category" data-debug-name="completeConfig.effective_config">
+						<h4 class="category-title">🔧 CONFIGURATION EFFECTIVE</h4>
+						{#each Object.entries(organizeTradingConfig(completeConfig.effective_config || completeConfig.trading_config)) as [categoryName, categoryVars]}
+							<div class="config-subcategory" data-debug-name="completeConfig.effective_config.{categoryName}">
+								<h5 class="subcategory-title">{categoryName}</h5>
+								<div class="config-grid">
+									{#each Object.entries(categoryVars) as [key, value]}
+										{#if value !== undefined && value !== null}
+											<div class="config-item">
+												<span class="config-key">{key}:</span>
+												<span class="config-value" title={typeof value === 'object' ? formatFullValue(value) : ''}>
+													{formatValue(value)}
+												</span>
+											</div>
+										{/if}
+									{/each}
+								</div>
+								{#if Object.values(categoryVars).some(v => typeof v === 'object' && v !== null && !Array.isArray(v))}
+									{#each Object.entries(categoryVars) as [key, value]}
+										{#if typeof value === 'object' && value !== null && !Array.isArray(value)}
+											<div class="config-object-detail">
+												<details>
+													<summary class="config-object-summary">{key} (détails)</summary>
+													<pre class="config-object-content">{formatFullValue(value)}</pre>
+												</details>
+											</div>
+										{/if}
+									{/each}
+								{/if}
+							</div>
+						{/each}
+					</div>
+
+					<!-- RISK_CONFIG -->
 						<div class="config-category" data-debug-name="completeConfig.risk_config">
 							<h4 class="category-title" data-debug-name="completeConfig.risk_config.title">⚠️ RISK_CONFIG</h4>
 							<div class="config-grid" data-debug-name="completeConfig.risk_config">
 								{#each Object.entries(completeConfig.risk_config || {}) as [key, value]}
 									<div class="config-item" data-debug-name="completeConfig.risk_config.{key}">
-										<span class="config-key" data-debug-name="completeConfig.risk_config.{key}">{key}:</span>
-										<span class="config-value" data-debug-name="completeConfig.risk_config.{key}">{formatValue(value)}</span>
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>

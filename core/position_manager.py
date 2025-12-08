@@ -663,9 +663,10 @@ class PositionManager:
         # FIX: Mettre à jour paramètres FIXE depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
         self.tpsl_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
         self.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
-        # Mettre à jour paramètres ATR depuis TRADING_CONFIG
-        self.tpsl_config.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
-        self.tpsl_config.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
+        # 🔥 FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
+        from utils.effective_config import get_effective_value
+        self.tpsl_config.atr_mult_tp = get_effective_value('atr_mult_tp', 1.5)
+        self.tpsl_config.atr_mult_sl = get_effective_value('atr_mult_sl', 1.0)
         self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         self.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
         
@@ -1942,6 +1943,7 @@ class PositionManager:
             'STAGNATION' si doit être fermé, None sinon
         """
         from config import TRADING_CONFIG  # 🔥 FIX: Import manquant
+        from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
         
         # 🔥 FIX: Prioriser les FLAT KEYS (mises à jour via frontend) sur le dict imbriqué
         stagnation_config = TRADING_CONFIG.get('stagnation_exit', {})
@@ -1957,8 +1959,11 @@ class PositionManager:
         import time
         elapsed = time.time() - self.active_position.start_time
         
-        # 🔥 FIX: Flat key prioritaire pour timeout
-        timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', stagnation_config.get('timeout_seconds', 120))
+        # 🔥 Utiliser timeout dynamique du régime (position_timeout) si dispo, sinon config
+        effective_timeout = get_effective_value('position_timeout')
+        default_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', stagnation_config.get('timeout_seconds', 120))
+        
+        timeout = effective_timeout if effective_timeout is not None else default_timeout
         
         # Pas encore timeout
         if elapsed < timeout:
@@ -2594,14 +2599,21 @@ class PositionManager:
                     # 🔥 SPRINT 1: Ajouter contexte Market Regime et Circuit Breaker
                     try:
                         from core.market_regime_selector import get_regime_selector
+                        from utils.effective_config import get_effective_value
                         regime_selector = get_regime_selector()
                         regime_status = regime_selector.get_status()
                         trade_data['entry_market_regime'] = regime_status.get('current_regime', 'UNKNOWN')
                         trade_data['entry_market_regime_avg_atr'] = regime_status.get('avg_atr', 0)
                         trade_data['entry_market_regime_avg_adx'] = regime_status.get('avg_adx', 0)
-                        trade_data['entry_min_score_required'] = TRADING_CONFIG.get('min_score_required')
-                        trade_data['entry_atr_mult_sl'] = TRADING_CONFIG.get('atr_mult_sl')
-                        trade_data['entry_atr_mult_tp'] = TRADING_CONFIG.get('atr_mult_tp')
+                        # 🔥 FIX: Utiliser valeurs EFFECTIVES (régime) pas valeurs base
+                        trade_data['entry_min_score_required'] = get_effective_value('min_score_required')
+                        trade_data['entry_atr_mult_sl'] = get_effective_value('atr_mult_sl')
+                        trade_data['entry_atr_mult_tp'] = get_effective_value('atr_mult_tp')
+                        # 🔥 NOUVEAU: Paramètres dynamiques additionnels
+                        trade_data['entry_volume_multiplier'] = get_effective_value('volume_multiplier')
+                        trade_data['entry_rsi_filter_mode'] = get_effective_value('rsi_filter_mode')
+                        trade_data['entry_position_timeout'] = get_effective_value('position_timeout')
+                        trade_data['entry_optimal_atr_max_1m'] = get_effective_value('optimal_atr_max_1m')
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de récupérer régime: {e}")
                     

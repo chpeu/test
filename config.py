@@ -43,8 +43,8 @@ TRADING_CONFIG = {
     # 
     # Principes:
     # 1. SL Initial: ATR × 1.2 (dynamique, respire avec le marché)
-    # 2. Break-even: dès que PnL >= 0.5 × ATR
-    # 3. Trailing: distance = ATR × 0.4, trigger = 1 × ATR
+    # 2. Break-even: dès que PnL >= 1.2 × ATR (laisse respirer)
+    # 3. Trailing: distance = ATR × 0.8, trigger = 1.5 × ATR
     # 4. Time decay: si stagnation > 2min et PnL < 0.1%, sortie
     # 5. Pas de TP fixe (laisser trailing capturer)
     # ============================================================
@@ -58,13 +58,13 @@ TRADING_CONFIG = {
     "trailing_distance": 0.15,  # Trailing fallback
     
     # 🔥 ATR mode - HYBRID INTELLIGENT
-    "atr_mult_tp": 3.0,   # TP = 3 × ATR (très large, trailing capture avant)
+    "atr_mult_tp": 2.2,   # 🔥 TP = 2.2 × ATR (plus atteignable, était 3.0)
     "atr_mult_sl": 1.2,   # 🔥 SL = 1.2 × ATR (laisse respirer le trade)
     "atr_min": 0.10,      # ATR minimum 0.10% (micro-volatilité)
     "atr_max": 1.0,       # ATR maximum 1.0% (macro-volatilité)
     
-    # 🔥 Break-even ATR-based (nouveaux paramètres)
-    "break_even_atr_mult": 0.5,  # BE dès PnL >= 0.5 × ATR%
+    # 🔥 Break-even ATR-based (moins agressif pour laisser respirer)
+    "break_even_atr_mult": 1.2,  # 🔥 BE dès PnL >= 1.2 × ATR% (était 0.5, trop serré)
     "break_even_use_atr": True,  # Utiliser ATR pour BE (pas % fixe)
     
     # 🔥 Stagnation Exit (Time Decay)
@@ -201,19 +201,19 @@ TRADING_CONFIG = {
         "threshold_30s": -0.12,  # 🔥 PHASE 2 : -0.12% (était -0.08%, moins agressif)
     },
     
-    # 🔥 HYBRID: Trailing stop adaptatif ATR
+    # 🔥 HYBRID: Trailing stop adaptatif ATR (moins agressif)
     "trailing_stop": {
         "enabled": True,
-        "trigger_pnl": 0.10,        # 🔥 HYBRID: Déclencher à +0.10% (très tôt)
-        "trigger_atr_mult": 1.0,    # 🔥 OU trigger dès PnL >= 1.0 × ATR
+        "trigger_pnl": 0.20,        # 🔥 Déclencher à +0.20% (fallback si ATR désactivé)
+        "trigger_atr_mult": 1.5,    # 🔥 Trigger dès PnL >= 1.5 × ATR (était 1.0, trop tôt)
         "use_atr_trigger": True,    # 🔥 Utiliser ATR pour trigger (pas % fixe)
-        "atr_multiplier": 0.4,      # Distance = ATR × 0.4
-        "min_distance": 0.06,       # 🔥 Minimum 0.06% (plus serré)
-        "max_distance": 0.20,       # Maximum 0.20%
+        "atr_multiplier": 0.8,      # 🔥 Distance = ATR × 0.8 (était 0.4, trop serré)
+        "min_distance": 0.08,       # 🔥 Minimum 0.08%
+        "max_distance": 0.25,       # Maximum 0.25%
     },
     # 🔥 FLAT KEYS pour config_overrides.json (copie des valeurs trailing_stop)
     "trailing_use_atr_trigger": True,
-    "trailing_trigger_atr_mult": 1.0,
+    "trailing_trigger_atr_mult": 1.5,  # 🔥 (était 1.0, trop tôt)
     
     # 🔥 PHASE 8: Seuils adaptatifs ATR pour invalidation
     "adaptive_thresholds": {
@@ -334,12 +334,12 @@ TRADING_CONFIG = {
     "escalier_level4_pnl": 0.80,
     "escalier_level4_size": 25,
 
-    # ✅ Trailing Stop Adaptatif (paramètres individuels)
+    # ✅ Trailing Stop Adaptatif (paramètres individuels - moins agressif)
     "trailing_enabled": True,
-    "trailing_trigger_pnl": 0.15,  # 🔥 PHASE 2 : 0.15% (était 0.25%)
-    "trailing_atr_multiplier": 0.4,
-    "trailing_min_distance": 0.08,
-    "trailing_max_distance": 0.25,
+    "trailing_trigger_pnl": 0.20,  # 🔥 Fallback 0.20% (si ATR désactivé)
+    "trailing_atr_multiplier": 0.8,  # 🔥 Distance = ATR × 0.8 (était 0.4, trop serré)
+    "trailing_min_distance": 0.10,  # 🔥 Minimum 0.10% (était 0.08)
+    "trailing_max_distance": 0.30,  # 🔥 Maximum 0.30% (était 0.25)
 
     # 🔥 PHASE 7: TP Escalier (Multi-Level TP) - Format legacy
     "tp_escalier": {

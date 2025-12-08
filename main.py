@@ -1138,14 +1138,14 @@ async def scanner_loop_callback() -> None:
                         trigger="auto"
                     )
                     
-                    # 🔥 FIX: Appliquer TOUJOURS les valeurs du régime actif à TRADING_CONFIG
-                    # Pas seulement lors d'un changement - garantit la cohérence au démarrage
+                    # 🔥 FIX 08/12/2025: NE PLUS modifier TRADING_CONFIG directement!
+                    # Utiliser le système effective_config pour séparer base vs effective
+                    # Les sliders gardent leurs valeurs, seules les valeurs EFFECTIVES changent
                     active_config = regime_selector.get_active_config()
                     if active_config:
-                        for k, v in active_config.items():
-                            if v is not None and TRADING_CONFIG.get(k) != v:
-                                TRADING_CONFIG[k] = v
-                                logger.debug(f"  -> Régime appliqué: {k} = {v}")
+                        from utils.effective_config import set_regime_adjustments
+                        set_regime_adjustments(active_config)
+                        logger.debug(f"  -> Ajustements régime stockés: {list(active_config.keys())}")
                     
                     if changed:
                         regime_status = regime_selector.get_status()
@@ -5494,24 +5494,18 @@ async def handle_client_command(command: str, params: dict):
             updated['market_regime_enabled'] = new_enabled
             logger.info(f"✅ market_regime_enabled: {new_enabled}")
             
-            # 🔥 FIX: Si on DÉSACTIVE le régime, restaurer les valeurs originales de config.py
+            # 🔥 FIX 08/12/2025: Si on DÉSACTIVE le régime, effacer les ajustements
+            # Les valeurs BASE (sliders) ne changent pas, on efface juste les overrides du régime
             if old_enabled and not new_enabled:
-                logger.info("🔄 Régime désactivé -> Restauration des valeurs config.py originales")
+                logger.info("🔄 Régime désactivé -> Effacement des ajustements régime")
                 
-                # Valeurs par défaut de config.py (sans régime)
-                # Ces valeurs sont celles définies dans config.py AVANT toute modification par le régime
-                default_values = {
-                    'min_score_required': 6.5,      # Valeur par défaut config.py
-                    'atr_mult_sl': 1.2,             # Valeur par défaut config.py
-                    'atr_mult_tp': 3.0,             # Valeur par défaut config.py
-                    'optimal_atr_min_1m': 0.12,     # Valeur par défaut config.py
-                    'optimal_atr_max_1m': 0.75,     # Valeur par défaut config.py
-                }
-                
-                for key, default_val in default_values.items():
-                    TRADING_CONFIG[key] = default_val
-                    updated[key] = default_val
-                    logger.info(f"  -> Restauré: {key} = {default_val}")
+                # Effacer les ajustements du régime (les valeurs base des sliders restent)
+                try:
+                    from utils.effective_config import set_regime_adjustments
+                    set_regime_adjustments({})  # Effacer les ajustements
+                    logger.info("  -> Ajustements régime effacés")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur effacement ajustements: {e}")
                 
                 # Reset le régime selector à UNKNOWN
                 try:
@@ -6033,14 +6027,30 @@ async def api_get_config():
 @app.get("/api/config/complete")
 async def api_get_complete_config():
     """
-    🔥 NOUVEAU: Récupérer TOUTES les variables de configuration (TRADING_CONFIG complet)
-    Utile pour vérifier toutes les variables prises en compte par le bot
+    🔥 NOUVEAU: Récupérer TOUTES les variables de configuration
+    
+    Retourne:
+    - trading_config: Valeurs BASE (sliders, ne changent jamais automatiquement)
+    - effective_config: Valeurs RÉELLES utilisées par le bot (base + ajustements régime/CB)
+    - adjustments_summary: Détail des ajustements actifs
     """
     from config import TRADING_CONFIG, RISK_CONFIG, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
     from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG
     
+    # 🔥 FIX 08/12/2025: Inclure effective_config pour l'onglet "Variables en cours"
+    try:
+        from utils.effective_config import get_effective_config, get_config_summary
+        effective = get_effective_config()
+        summary = get_config_summary()
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur chargement effective_config: {e}")
+        effective = TRADING_CONFIG
+        summary = {}
+    
     return JSONResponse({
-        'trading_config': TRADING_CONFIG,
+        'trading_config': TRADING_CONFIG,  # Valeurs BASE (pour les sliders)
+        'effective_config': effective,      # Valeurs EFFECTIVES (pour "Variables en cours")
+        'adjustments_summary': summary,     # Détail des ajustements
         'risk_config': RISK_CONFIG,
         'condition_weights': CONDITION_WEIGHTS,
         'trend_bonus_config': TREND_BONUS_CONFIG,
@@ -6049,6 +6059,37 @@ async def api_get_complete_config():
         'websocket_config': WEBSOCKET_CONFIG,
         'timestamp': time.time()
     })
+
+
+@app.get("/api/config/effective")
+async def api_get_effective_config():
+    """
+    🔥 NOUVEAU: Récupérer uniquement les valeurs EFFECTIVES utilisées par le bot.
+    Ces valeurs incluent les ajustements du régime, circuit breaker, et pair scorer.
+    """
+    try:
+        from utils.effective_config import get_effective_config, get_config_summary
+        effective = get_effective_config()
+        summary = get_config_summary()
+        
+        return JSONResponse({
+            'success': True,
+            'effective_config': effective,
+            'adjustments': summary.get('adjustments', {}),
+            'differences': summary.get('differences', {}),
+            'regime_enabled': summary.get('regime_enabled', False),
+            'cb_enabled': summary.get('cb_enabled', False),
+            'timestamp': time.time()
+        })
+    except Exception as e:
+        logger.error(f"❌ Erreur récupération effective_config: {e}")
+        from config import TRADING_CONFIG
+        return JSONResponse({
+            'success': False,
+            'error': str(e),
+            'effective_config': TRADING_CONFIG,
+            'timestamp': time.time()
+        })
 
 
 @app.get("/api/metrics/conditions")

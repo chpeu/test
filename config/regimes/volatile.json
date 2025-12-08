@@ -1,11 +1,13 @@
 {
   "name": "VOLATILE",
-  "optimal_atr_min": 0.40,
+  "optimal_atr_min": 0.35,
   "optimal_atr_max": 1.0,
-  "min_score_required": 8.0,
+  "min_score_required": 7.5,
   "atr_mult_sl": 1.5,
-  "atr_mult_tp": 4.0,
-  "break_even_atr_mult": 0.6,
-  "trailing_trigger_atr_mult": 1.2,
-  "max_position_time": 120
+  "atr_mult_tp": 2.5,
+  "break_even_atr_mult": 1.5,
+  "trailing_trigger_atr_mult": 2.0,
+  "max_position_time": 180,
+  "volume_multiplier": 1.5,
+  "rsi_filter_mode": "PERMISSIVE"
 }
