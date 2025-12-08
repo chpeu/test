@@ -316,129 +316,129 @@ class TestCheckWickFilter:
 class TestCheckATRFilter:
     """Tests pour check_atr_filter"""
 
-    @patch('core.analyzer.filters.get_effective_value', return_value=None)
-    @patch('core.analyzer.filters.TRADING_CONFIG', {
-        'optimal_atr_min_1m': 0.3,
-        'optimal_atr_max_1m': 1.5,
-        'optimal_atr_min_5m': 0.4,
-        'optimal_atr_max_5m': 2.0
-    })
     def test_atr_optimal_1m(self):
         """Test ATR optimal pour 1m"""
-        result = check_atr_filter(
-            atr_percent=0.8,  # Dans [0.3, 1.5]
-            timeframe='1m',
-            symbol='BTC/USDT:USDT',
-            return_reason=False
-        )
-        assert result is None
+        with patch('core.analyzer.filters.get_effective_value', return_value=None), \
+             patch('core.analyzer.filters.TRADING_CONFIG', {
+                 'optimal_atr_min_1m': 0.3,
+                 'optimal_atr_max_1m': 1.5,
+                 'optimal_atr_min_5m': 0.4,
+                 'optimal_atr_max_5m': 2.0
+             }):
+            result = check_atr_filter(
+                atr_percent=0.8,  # Dans [0.3, 1.5]
+                timeframe='1m',
+                symbol='BTC/USDT:USDT',
+                return_reason=False
+            )
+            assert result is None
 
-    @patch('core.analyzer.filters.get_effective_value', return_value=None)
-    @patch('core.analyzer.filters.TRADING_CONFIG', {
-        'optimal_atr_min_1m': 0.3,
-        'optimal_atr_max_1m': 1.5,
-        'optimal_atr_min_5m': 0.4,
-        'optimal_atr_max_5m': 2.0
-    })
     def test_atr_optimal_5m(self):
         """Test ATR optimal pour 5m"""
-        result = check_atr_filter(
-            atr_percent=1.0,  # Dans [0.4, 2.0]
-            timeframe='5m',
-            symbol='BTC/USDT:USDT',
-            return_reason=False
-        )
-        assert result is None
+        with patch('core.analyzer.filters.get_effective_value', return_value=None), \
+             patch('core.analyzer.filters.TRADING_CONFIG', {
+                 'optimal_atr_min_1m': 0.3,
+                 'optimal_atr_max_1m': 1.5,
+                 'optimal_atr_min_5m': 0.4,
+                 'optimal_atr_max_5m': 2.0
+             }):
+            result = check_atr_filter(
+                atr_percent=1.0,  # Dans [0.4, 2.0]
+                timeframe='5m',
+                symbol='BTC/USDT:USDT',
+                return_reason=False
+            )
+            assert result is None
 
-    @patch('core.analyzer.filters.get_effective_value', return_value=None)
-    @patch('core.analyzer.filters.TRADING_CONFIG', {
-        'optimal_atr_min_1m': 0.3,
-        'optimal_atr_max_1m': 1.5
-    })
-    @patch('core.analyzer.filters.DEBUG_ENABLED', True)
     def test_atr_too_low_return_reason(self):
         """Test ATR trop bas avec return_reason=True"""
-        result = check_atr_filter(
-            atr_percent=0.1,  # < 0.3
-            timeframe='1m',
-            symbol='BTC/USDT:USDT',
-            return_reason=True
-        )
-        assert result is not None
-        assert 'ATR sous-optimal' in result['reason']
-        assert 'trop bas' in result['reason']
+        with patch('core.analyzer.filters.get_effective_value', return_value=None), \
+             patch('core.analyzer.filters.TRADING_CONFIG', {
+                 'optimal_atr_min_1m': 0.3,
+                 'optimal_atr_max_1m': 1.5
+             }), \
+             patch('core.analyzer.filters.DEBUG_ENABLED', True):
+            result = check_atr_filter(
+                atr_percent=0.1,  # < 0.3
+                timeframe='1m',
+                symbol='BTC/USDT:USDT',
+                return_reason=True
+            )
+            assert result is not None
+            assert 'ATR sous-optimal' in result['reason']
+            assert 'trop bas' in result['reason']
 
-    @patch('core.analyzer.filters.get_effective_value', return_value=None)
-    @patch('core.analyzer.filters.TRADING_CONFIG', {
-        'optimal_atr_min_1m': 0.3,
-        'optimal_atr_max_1m': 1.5
-    })
-    @patch('core.analyzer.filters.DEBUG_ENABLED', True)
     def test_atr_too_high_return_reason(self):
         """Test ATR trop élevé avec return_reason=True"""
-        result = check_atr_filter(
-            atr_percent=2.0,  # > 1.5
-            timeframe='1m',
-            symbol='BTC/USDT:USDT',
-            return_reason=True
-        )
-        assert result is not None
-        assert 'ATR sous-optimal' in result['reason']
-        assert 'trop élevé' in result['reason']
+        with patch('core.analyzer.filters.get_effective_value', return_value=None), \
+             patch('core.analyzer.filters.TRADING_CONFIG', {
+                 'optimal_atr_min_1m': 0.3,
+                 'optimal_atr_max_1m': 1.5
+             }), \
+             patch('core.analyzer.filters.DEBUG_ENABLED', True):
+            result = check_atr_filter(
+                atr_percent=2.0,  # > 1.5
+                timeframe='1m',
+                symbol='BTC/USDT:USDT',
+                return_reason=True
+            )
+            assert result is not None
+            assert 'ATR sous-optimal' in result['reason']
+            assert 'trop élevé' in result['reason']
 
-    @patch('core.analyzer.filters.get_effective_value', return_value=None)
-    @patch('core.analyzer.filters.TRADING_CONFIG', {
-        'optimal_atr_min_1m': 0.3,
-        'optimal_atr_max_1m': 1.5
-    })
-    @patch('core.analyzer.filters.DEBUG_ENABLED', True)
     def test_atr_too_low_no_return_reason(self):
         """Test ATR trop bas sans return_reason=True (mais logs debug)"""
-        result = check_atr_filter(
-            atr_percent=0.1,  # < 0.3
-            timeframe='1m',
-            symbol='BTC/USDT:USDT',
-            return_reason=False
-        )
-        # return_reason=False returns dict with rejected=True if failed
-        assert result is not None
-        assert result['rejected'] is True
-        assert 'ATR sous-optimal' in result['reason']
+        with patch('core.analyzer.filters.get_effective_value', return_value=None), \
+             patch('core.analyzer.filters.TRADING_CONFIG', {
+                 'optimal_atr_min_1m': 0.3,
+                 'optimal_atr_max_1m': 1.5
+             }), \
+             patch('core.analyzer.filters.DEBUG_ENABLED', True):
+            result = check_atr_filter(
+                atr_percent=0.1,  # < 0.3
+                timeframe='1m',
+                symbol='BTC/USDT:USDT',
+                return_reason=False
+            )
+            # return_reason=False returns dict with rejected=True if failed
+            assert result is not None
+            assert result['rejected'] is True
+            assert 'ATR sous-optimal' in result['reason']
 
 
 class TestIntegration:
     """Tests d'intégration"""
 
-    @patch('core.analyzer.filters.get_effective_value', return_value=None)
-    @patch('core.analyzer.filters.TRADING_CONFIG', {
-        'use_snr': True,
-        'snr_threshold': 0.3,
-        'use_breakout': True,
-        'breakout_threshold': 0.3,
-        'use_wick': True,
-        'wick_ratio_max': 2.5,
-        'optimal_atr_min_1m': 0.3,
-        'optimal_atr_max_1m': 1.5
-    })
     def test_all_filters_pass(self):
         """Test tous les filtres passent"""
-        # Volume
-        vol_result = check_volume_filter(2.0, 1.0, 'BTC/USDT:USDT', '1m', 0.8, 1.0)
-        assert vol_result is None
+        with patch('core.analyzer.filters.get_effective_value', return_value=None), \
+             patch('core.analyzer.filters.TRADING_CONFIG', {
+                 'use_snr': True,
+                 'snr_threshold': 0.3,
+                 'use_breakout': True,
+                 'breakout_threshold': 0.3,
+                 'use_wick': True,
+                 'wick_ratio_max': 2.5,
+                 'optimal_atr_min_1m': 0.3,
+                 'optimal_atr_max_1m': 1.5
+             }):
+            # Volume
+            vol_result = check_volume_filter(2.0, 1.0, 'BTC/USDT:USDT', '1m', 0.8, 1.0)
+            assert vol_result is None
 
-        # SNR
-        snr_result = check_snr_filter(50000, 49500, 100, 'BTC/USDT:USDT', '1m')
-        assert snr_result is None
+            # SNR
+            snr_result = check_snr_filter(50000, 49500, 100, 'BTC/USDT:USDT', '1m')
+            assert snr_result is None
 
-        # Breakout
-        breakout_result = check_breakout_filter(50000, 49500, 100, 'BTC/USDT:USDT', '1m')
-        assert breakout_result is None
+            # Breakout
+            breakout_result = check_breakout_filter(50000, 49500, 100, 'BTC/USDT:USDT', '1m')
+            assert breakout_result is None
 
-        # Wick
-        candle = [1234567890, 50000, 50600, 49900, 50500, 1000]
-        wick_result = check_wick_filter(candle, 'BTC/USDT:USDT', '1m')
-        assert wick_result is None
+            # Wick
+            candle = [1234567890, 50000, 50600, 49900, 50500, 1000]
+            wick_result = check_wick_filter(candle, 'BTC/USDT:USDT', '1m')
+            assert wick_result is None
 
-        # ATR
-        atr_result = check_atr_filter(0.8, '1m', 'BTC/USDT:USDT')
-        assert atr_result is None
+            # ATR
+            atr_result = check_atr_filter(0.8, '1m', 'BTC/USDT:USDT')
+            assert atr_result is None
