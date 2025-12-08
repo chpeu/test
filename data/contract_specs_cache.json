@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765103581.649523,
+  "timestamp": 1765178864.6078398,
   "specs": {
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -200,6 +200,16 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "LDO_USDT": {
+      "symbol": "LDO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 700000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
