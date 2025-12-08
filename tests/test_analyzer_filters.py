@@ -316,13 +316,14 @@ class TestCheckWickFilter:
 class TestCheckATRFilter:
     """Tests pour check_atr_filter"""
 
+    @patch('core.analyzer.filters.get_effective_value', return_value=None)
     @patch('core.analyzer.filters.TRADING_CONFIG', {
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.5,
         'optimal_atr_min_5m': 0.4,
         'optimal_atr_max_5m': 2.0
     })
-    def test_atr_optimal_1m(self):
+    def test_atr_optimal_1m(self, mock_get_effective, mock_config):
         """Test ATR optimal pour 1m"""
         result = check_atr_filter(
             atr_percent=0.8,  # Dans [0.3, 1.5]
@@ -332,13 +333,14 @@ class TestCheckATRFilter:
         )
         assert result is None
 
+    @patch('core.analyzer.filters.get_effective_value', return_value=None)
     @patch('core.analyzer.filters.TRADING_CONFIG', {
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.5,
         'optimal_atr_min_5m': 0.4,
         'optimal_atr_max_5m': 2.0
     })
-    def test_atr_optimal_5m(self):
+    def test_atr_optimal_5m(self, mock_get_effective, mock_config):
         """Test ATR optimal pour 5m"""
         result = check_atr_filter(
             atr_percent=1.0,  # Dans [0.4, 2.0]
@@ -348,12 +350,13 @@ class TestCheckATRFilter:
         )
         assert result is None
 
+    @patch('core.analyzer.filters.get_effective_value', return_value=None)
     @patch('core.analyzer.filters.TRADING_CONFIG', {
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.5
     })
     @patch('core.analyzer.filters.DEBUG_ENABLED', True)
-    def test_atr_too_low_return_reason(self):
+    def test_atr_too_low_return_reason(self, mock_get_effective, mock_config):
         """Test ATR trop bas avec return_reason=True"""
         result = check_atr_filter(
             atr_percent=0.1,  # < 0.3
@@ -365,12 +368,13 @@ class TestCheckATRFilter:
         assert 'ATR sous-optimal' in result['reason']
         assert 'trop bas' in result['reason']
 
+    @patch('core.analyzer.filters.get_effective_value', return_value=None)
     @patch('core.analyzer.filters.TRADING_CONFIG', {
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.5
     })
     @patch('core.analyzer.filters.DEBUG_ENABLED', True)
-    def test_atr_too_high_return_reason(self):
+    def test_atr_too_high_return_reason(self, mock_get_effective, mock_config):
         """Test ATR trop élevé avec return_reason=True"""
         result = check_atr_filter(
             atr_percent=2.0,  # > 1.5
@@ -382,26 +386,30 @@ class TestCheckATRFilter:
         assert 'ATR sous-optimal' in result['reason']
         assert 'trop élevé' in result['reason']
 
+    @patch('core.analyzer.filters.get_effective_value', return_value=None)
     @patch('core.analyzer.filters.TRADING_CONFIG', {
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.5
     })
     @patch('core.analyzer.filters.DEBUG_ENABLED', True)
-    def test_atr_too_low_no_return_reason(self):
-        """Test ATR trop bas avec return_reason=False"""
+    def test_atr_too_low_no_return_reason(self, mock_get_effective, mock_config):
+        """Test ATR trop bas sans return_reason=True (mais logs debug)"""
         result = check_atr_filter(
-            atr_percent=0.1,
+            atr_percent=0.1,  # < 0.3
             timeframe='1m',
             symbol='BTC/USDT:USDT',
             return_reason=False
         )
+        # return_reason=False returns dict with rejected=True if failed
         assert result is not None
         assert result['rejected'] is True
+        assert 'ATR sous-optimal' in result['reason']
 
 
 class TestIntegration:
     """Tests d'intégration"""
 
+    @patch('core.analyzer.filters.get_effective_value', return_value=None)
     @patch('core.analyzer.filters.TRADING_CONFIG', {
         'use_snr': True,
         'snr_threshold': 0.3,
@@ -412,7 +420,7 @@ class TestIntegration:
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.5
     })
-    def test_all_filters_pass(self):
+    def test_all_filters_pass(self, mock_get_effective):
         """Test tous les filtres passent"""
         # Volume
         vol_result = check_volume_filter(2.0, 1.0, 'BTC/USDT:USDT', '1m', 0.8, 1.0)

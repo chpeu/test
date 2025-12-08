@@ -154,13 +154,14 @@ class TestFilters:
         # Should pass
         assert result is None
 
+    @patch('core.analyzer.filters.get_effective_value', return_value=None)
     @patch('core.analyzer.filters.TRADING_CONFIG', {
         'optimal_atr_min_1m': 0.3,
         'optimal_atr_max_1m': 1.0,
         'optimal_atr_min_5m': 0.4,
         'optimal_atr_max_5m': 2.0
     })
-    def test_check_atr_filter_optimal_range(self):
+    def test_check_atr_filter_optimal_range(self, mock_get_effective):
         """Test ATR filter with optimal ATR"""
         result = check_atr_filter(
             atr_percent=0.5,  # Within 0.3-1.0% for 1m
@@ -363,7 +364,13 @@ class TestScoring:
     })
     def test_get_min_score_required_high_adx(self):
         """Test min score with high ADX (lower requirement)"""
-        min_score = get_min_score_required(adx_value=35.0, use_weighted=True)
+        result = get_min_score_required(adx_value=35.0, use_weighted=True)
+        
+        # Le résultat est un tuple (base, adj, effective)
+        if isinstance(result, tuple):
+            min_score = result[2]  # effective_min_score
+        else:
+            min_score = result
 
         # High ADX should require less score
         assert min_score > 0
@@ -377,7 +384,13 @@ class TestScoring:
     })
     def test_get_min_score_required_low_adx(self):
         """Test min score with low ADX (higher requirement)"""
-        min_score = get_min_score_required(adx_value=20.0, use_weighted=True)
+        result = get_min_score_required(adx_value=20.0, use_weighted=True)
+        
+        # Le résultat est un tuple (base, adj, effective)
+        if isinstance(result, tuple):
+            min_score = result[2]  # effective_min_score
+        else:
+            min_score = result
 
         # Low ADX should require more score
         assert min_score >= 7.5
