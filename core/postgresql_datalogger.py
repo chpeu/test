@@ -1576,6 +1576,7 @@ class PostgreSQLDataLogger:
                 ('entry_rsi_filter_mode', trade_data.get('entry_rsi_filter_mode')),
                 ('entry_position_timeout', trade_data.get('entry_position_timeout')),
                 ('entry_optimal_atr_max_1m', _extract_numeric_value(trade_data.get('entry_optimal_atr_max_1m'))),
+                ('entry_sl_exchange_percent', _extract_numeric_value(trade_data.get('entry_sl_exchange_percent'))),
                 ('entry_cb_state', trade_data.get('entry_cb_state')),
                 ('entry_consecutive_losses', trade_data.get('entry_consecutive_losses', 0)),
                 ('entry_daily_pnl_pct', _extract_numeric_value(trade_data.get('entry_daily_pnl_pct'))),

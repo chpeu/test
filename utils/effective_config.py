@@ -38,6 +38,7 @@ REGIME_ADJUSTABLE_KEYS = [
     'optimal_atr_max_1m',
     'volume_multiplier',
     'rsi_filter_mode',
+    'sl_exchange_percent',  # 🔥 SL MEXC fixe par régime
 ]
 
 # Stockage des ajustements actifs (ne modifie pas TRADING_CONFIG)

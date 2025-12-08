@@ -980,6 +980,27 @@ class LiveOrderManagerFutures:
                     logger.warning(f"⚠️ Impossible de configurer le levier: {e} (peut déjà être configuré)")
                 
                 # Appeler le client bypass (async) via helper thread-safe
+                # 🔥 SL MEXC par régime (filet de sécurité) - TP géré par le bot
+                from utils.effective_config import get_effective_value
+                
+                # Récupérer SL% selon le régime actif (CALME=0.25, NORMAL=0.30, VOLATILE=0.35, CHOPPY=0.20)
+                sl_exchange_percent = get_effective_value('sl_exchange_percent', 0.30) / 100
+                
+                if direction == 'LONG':
+                    sl_price = entry_price * (1 - sl_exchange_percent)
+                else:  # SHORT
+                    sl_price = entry_price * (1 + sl_exchange_percent)
+                
+                # Arrondir selon les specs du contrat
+                if contract_spec:
+                    sl_price = contract_spec.round_price(sl_price)
+                
+                logger.warning(
+                    f"🛡️ [SL MEXC] {direction} {bypass_symbol} | "
+                    f"Entry: {entry_price} | SL: {sl_price} ({sl_exchange_percent*100:.2f}%) | "
+                    f"TP: Géré par bot (trailing/escalier)"
+                )
+                
                 bypass_result = run_async_safely(
                     self.bypass_client.submit_order(
                         symbol=bypass_symbol,
@@ -988,7 +1009,9 @@ class LiveOrderManagerFutures:
                         price=entry_price,
                         order_type=OrderType.MARKET,
                         open_type=OpenType.ISOLATED,
-                        leverage=leverage
+                        leverage=leverage,
+                        stop_loss_price=sl_price,      # 🔥 SL MEXC (filet de sécurité)
+                        take_profit_price=None         # 🔥 Pas de TP MEXC (géré par bot)
                     )
                 )
                 
@@ -1682,9 +1705,25 @@ class LiveOrderManagerFutures:
                         logger.error(
                             f"❌ [BYPASS] REJET SILENCIEUX fermeture: {bypass_symbol} | "
                             f"Order ID: {bypass_result.order_id} | "
-                            f"Code: {error_code} | Message: {error_details} | "
-                            f"Vol envoyé: {amount:.6f} | Prix envoyé: {current_price}"
+                            f"Code: {error_code} | Message: {error_details}"
                         )
+                        
+                        # 🔥 RACE CONDITION: Vérifier si la position a disparu (fermée par SL Exchange ?)
+                        try:
+                            check_pos = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                            if check_pos is not None and len(check_pos) == 0:
+                                logger.warning(f"🛑 Position disparue: Probablement fermée par SL Exchange pendant l'envoi de l'ordre")
+                                return FuturesOrderResult(
+                                    success=True,
+                                    order_id="sl_exchange_race_condition",
+                                    filled_price=current_price,  # Estimation
+                                    filled_amount=amount,
+                                    filled_size_usdt=amount * current_price,
+                                    actual_pnl_usdt=0.0,  # Inconnu
+                                    latency_ms=latency_ms
+                                )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Impossible de vérifier position après échec: {e}")
 
                         # 🔥 TELEGRAM: Notifier rejet silencieux fermeture
                         if self.telegram_notifier:
@@ -1712,6 +1751,23 @@ class LiveOrderManagerFutures:
                             f"❌ [BYPASS] Fermeture REJETÉE: {bypass_symbol} | "
                             f"Order ID: {bypass_result.order_id} | State: {order_state}"
                         )
+                        
+                        # 🔥 RACE CONDITION: Même chose pour les rejets explicites
+                        try:
+                            check_pos = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                            if check_pos is not None and len(check_pos) == 0:
+                                logger.warning(f"🛑 Position disparue (Rejet explicite): Fermée par SL Exchange ?")
+                                return FuturesOrderResult(
+                                    success=True,
+                                    order_id="sl_exchange_race_condition",
+                                    filled_price=current_price,
+                                    filled_amount=amount,
+                                    filled_size_usdt=amount * current_price,
+                                    actual_pnl_usdt=0.0,
+                                    latency_ms=latency_ms
+                                )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Impossible de vérifier position après rejet: {e}")
 
                         # 🔥 TELEGRAM: Notifier fermeture rejetée
                         if self.telegram_notifier:

@@ -42,7 +42,8 @@ def verify_regime(regime_name: str):
         "optimal_atr_min_1m": config.optimal_atr_min,
         "optimal_atr_max_1m": config.optimal_atr_max,
         "volume_multiplier": config.volume_multiplier,
-        "rsi_filter_mode": config.rsi_filter_mode
+        "rsi_filter_mode": config.rsi_filter_mode,
+        "sl_exchange_percent": config.sl_exchange_percent
     }
     
     set_regime_adjustments(adjustments)
@@ -91,6 +92,13 @@ def verify_regime(regime_name: str):
         errors.append(f"TP Mult: Attendu {config.atr_mult_tp}, Reçu {eff_tp}")
     else:
         print(f"✅ TP Mult: {eff_tp}x")
+
+    # 7. SL Exchange (MEXC)
+    eff_sl_exchange = get_effective_value("sl_exchange_percent")
+    if eff_sl_exchange != config.sl_exchange_percent:
+        errors.append(f"SL Exchange: Attendu {config.sl_exchange_percent}%, Reçu {eff_sl_exchange}%")
+    else:
+        print(f"✅ SL Exchange: {eff_sl_exchange}%")
 
     if errors:
         print(f"❌ ECHEC {regime_name}:")

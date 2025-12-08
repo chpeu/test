@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765178864.6078398,
+  "timestamp": 1765230800.8662932,
   "specs": {
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -210,6 +210,16 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "BNB_USDT": {
+      "symbol": "BNB_USDT",
+      "min_vol": 1.0,
+      "max_vol": 360000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.1,
+      "price_precision": 1,
+      "vol_precision": 1,
+      "contract_size": 0.01
     }
   }
 }

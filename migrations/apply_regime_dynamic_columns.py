@@ -30,6 +30,7 @@ COLUMNS_TO_ADD = [
     ('trades', 'entry_rsi_filter_mode', 'TEXT', 'Mode filtre RSI effectif: STRICT, PERMISSIVE, STANDARD'),
     ('trades', 'entry_position_timeout', 'INTEGER', 'Timeout position en secondes effectif'),
     ('trades', 'entry_optimal_atr_max_1m', 'REAL', 'ATR max 1m autorisé effectif'),
+    ('trades', 'entry_sl_exchange_percent', 'REAL', 'SL MEXC fixe effectif (filet de securite)'),
     # Optionnel: scan_logs
     ('scan_logs', 'volume_multiplier', 'REAL', 'Multiplicateur volume pour ce scan'),
     ('scan_logs', 'rsi_filter_mode', 'TEXT', 'Mode filtre RSI pour ce scan'),

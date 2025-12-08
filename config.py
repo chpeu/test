@@ -53,7 +53,8 @@ TRADING_CONFIG = {
     
     # Fallback FIXE mode (si ATR invalide)
     "tp_percent": 0.80,  # TP large (rarement atteint, trailing prend le relais)
-    "sl_percent": 0.30,  # SL fallback
+    "sl_percent": 0.30,  # SL fallback (mode FIXE)
+    "sl_exchange_percent": 0.30,  # 🔥 SL MEXC fixe (filet de sécurité) - dynamique par régime
     "break_even_trigger": 0.20,  # BE fallback
     "trailing_distance": 0.15,  # Trailing fallback
     

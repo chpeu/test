@@ -42,6 +42,7 @@ class RegimeConfig:
     max_position_time: int  # secondes
     volume_multiplier: float = 1.0  # 🔥 NOUVEAU
     rsi_filter_mode: str = "STANDARD"  # 🔥 NOUVEAU: STRICT, STANDARD, PERMISSIVE
+    sl_exchange_percent: float = 0.30  # 🔥 SL MEXC fixe par régime (filet de sécurité)
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -90,7 +91,8 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=1.0,
         max_position_time=360,
         volume_multiplier=1.0,
-        rsi_filter_mode="STRICT"
+        rsi_filter_mode="STRICT",
+        sl_exchange_percent=0.25
     ),
     "NORMAL": RegimeConfig(
         name="NORMAL",
@@ -103,7 +105,8 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=1.5,
         max_position_time=300,
         volume_multiplier=1.1,
-        rsi_filter_mode="PERMISSIVE"
+        rsi_filter_mode="PERMISSIVE",
+        sl_exchange_percent=0.30
     ),
     "VOLATILE": RegimeConfig(
         name="VOLATILE",
@@ -116,7 +119,8 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=2.0,
         max_position_time=180,
         volume_multiplier=1.5,
-        rsi_filter_mode="PERMISSIVE"
+        rsi_filter_mode="PERMISSIVE",
+        sl_exchange_percent=0.35
     ),
     "CHOPPY": RegimeConfig(
         name="CHOPPY",
@@ -129,7 +133,8 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=0.8,
         max_position_time=60,
         volume_multiplier=0.8,
-        rsi_filter_mode="STRICT"
+        rsi_filter_mode="STRICT",
+        sl_exchange_percent=0.20
     )
 }
 
@@ -379,7 +384,8 @@ class MarketRegimeSelector:
             "optimal_atr_min_1m": self.current_config.optimal_atr_min,
             "optimal_atr_max_1m": self.current_config.optimal_atr_max,
             "volume_multiplier": self.current_config.volume_multiplier,
-            "rsi_filter_mode": self.current_config.rsi_filter_mode
+            "rsi_filter_mode": self.current_config.rsi_filter_mode,
+            "sl_exchange_percent": self.current_config.sl_exchange_percent  # 🔥 SL MEXC
         }
     
     def get_status(self) -> Dict[str, Any]:

@@ -221,7 +221,7 @@
 						📉 RSI: {regimeData.config_active.rsi_filter_mode || '-'}
 					</span>
 				</div>
-				<!-- Ligne 3: Timeout -->
+				<!-- Ligne 3: Timeout & Trailing -->
 				<div class="config-row">
 					<span class="config-item" title="Durée max position avant sortie stagnation">
 						⏱️ Timeout: {regimeData.config_active.position_timeout ? Math.floor(regimeData.config_active.position_timeout / 60) + 'min' : '-'}
@@ -231,6 +231,12 @@
 					</span>
 					<span class="config-item" title="Trailing Stop trigger (multiplicateur ATR)">
 						🔄 TS: {regimeData.config_active.trailing_trigger_atr_mult || '-'}x
+					</span>
+				</div>
+				<!-- Ligne 4: SL Exchange (filet de sécurité) -->
+				<div class="config-row">
+					<span class="config-item sl-exchange" title="Stop Loss MEXC fixe (filet de sécurité si bot crash)">
+						🛡️ SL MEXC: {regimeData.config_active.sl_exchange_percent ? regimeData.config_active.sl_exchange_percent.toFixed(2) + '%' : '-'}
 					</span>
 				</div>
 			</div>
@@ -351,6 +357,14 @@
 		font-size: 11px;
 		color: #aaa;
 		cursor: help;
+	}
+
+	.config-item.sl-exchange {
+		color: #ff9800;
+		font-weight: 500;
+		background: rgba(255, 152, 0, 0.1);
+		padding: 2px 6px;
+		border-radius: 4px;
 	}
 
 	.regime-footer {

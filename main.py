@@ -2517,6 +2517,30 @@ async def position_check_loop_callback() -> None:
         # Check position (renvoie None ou raison de fermeture)
         close_reason = await position_manager.check_position(current_price)
         
+        # 🔥 NOUVEAU: Vérifier si la position a été fermée par MEXC (SL Exchange)
+        # On vérifie toutes les 5 secondes pour réactivité accrue
+        if not close_reason and live_order_manager and hasattr(live_order_manager, 'bypass_client') and live_order_manager.bypass_client:
+            import time
+            last_mexc_check = getattr(position_manager, '_last_mexc_sync_check', 0)
+            if time.time() - last_mexc_check > 5:  # Vérifier toutes les 5 secondes
+                position_manager._last_mexc_sync_check = time.time()
+                try:
+                    from trading.live_order_manager_futures import run_async_safely
+                    bypass_symbol = position_manager.active_position.symbol.replace('/', '_').replace(':USDT', '')
+                    mexc_positions = run_async_safely(
+                        live_order_manager.bypass_client.get_open_positions(symbol=bypass_symbol)
+                    )
+                    
+                    # Si aucune position MEXC mais le bot pense en avoir une → SL Exchange touché
+                    if mexc_positions is not None and len(mexc_positions) == 0:
+                        logger.warning(
+                            f"🛑 SL MEXC TOUCHÉ: Position {position_manager.active_position.symbol} fermée par exchange | "
+                            f"Dernier prix: {current_price}"
+                        )
+                        close_reason = "SL_EXCHANGE"
+                except Exception as e:
+                    logger.debug(f"⚠️ Impossible de vérifier sync MEXC: {e}")
+        
         # 🔥 FIX: Émettre position_update même si pas de fermeture (pour affichage frontend)
         if not close_reason:
             # Calculer PnL pour affichage

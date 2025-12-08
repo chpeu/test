@@ -83,6 +83,7 @@ def check_columns_trades(conn):
         'entry_rsi_filter_mode',
         'entry_position_timeout',
         'entry_optimal_atr_max_1m',
+        'entry_sl_exchange_percent',  # SL MEXC fixe
         # Circuit Breaker
         'entry_cb_state',
         'entry_consecutive_losses',

@@ -2614,6 +2614,7 @@ class PositionManager:
                         trade_data['entry_rsi_filter_mode'] = get_effective_value('rsi_filter_mode')
                         trade_data['entry_position_timeout'] = get_effective_value('position_timeout')
                         trade_data['entry_optimal_atr_max_1m'] = get_effective_value('optimal_atr_max_1m')
+                        trade_data['entry_sl_exchange_percent'] = get_effective_value('sl_exchange_percent')
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de récupérer régime: {e}")
                     
