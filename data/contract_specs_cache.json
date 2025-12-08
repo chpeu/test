@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765163887.7778397,
+  "timestamp": 1765203323.161814,
   "specs": {
     "ZEC_USDT": {
       "symbol": "ZEC_USDT",
@@ -160,6 +160,16 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "ETC_USDT": {
+      "symbol": "ETC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 560000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }
