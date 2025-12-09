@@ -32,17 +32,24 @@ class MarketRegime(Enum):
 class RegimeConfig:
     """Configuration associée à un régime"""
     name: str
-    optimal_atr_min: float
-    optimal_atr_max: float
+    optimal_atr_min: float  # ATR 1m min
+    optimal_atr_max: float  # ATR 1m max
     min_score_required: float
     atr_mult_sl: float
     atr_mult_tp: float
     break_even_atr_mult: float
     trailing_trigger_atr_mult: float
     max_position_time: int  # secondes
-    volume_multiplier: float = 1.0  # 🔥 NOUVEAU
-    rsi_filter_mode: str = "STANDARD"  # 🔥 NOUVEAU: STRICT, STANDARD, PERMISSIVE
-    sl_exchange_percent: float = 0.30  # 🔥 SL MEXC fixe par régime (filet de sécurité)
+    volume_multiplier: float = 1.0
+    rsi_filter_mode: str = "STANDARD"  # STRICT, STANDARD, PERMISSIVE
+    sl_exchange_percent: float = 0.30  # SL MEXC fixe par régime
+    # Paramètres stagnation par régime
+    stagnation_timeout: int = 120  # secondes avant sortie stagnation
+    stagnation_min_pnl: float = 0.05  # PnL% minimum pour rester
+    stagnation_max_loss: float = -0.08  # PnL% max loss avant sortie
+    # 🔥 ATR 5m avec valeurs par défaut (compatibilité DB)
+    optimal_atr_min_5m: float = 0.15  # ATR 5m min par défaut
+    optimal_atr_max_5m: float = 0.80  # ATR 5m max par défaut
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -82,51 +89,68 @@ class RegimeChange:
 DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
     "CALME": RegimeConfig(
         name="CALME",
-        optimal_atr_min=0.0,
-        optimal_atr_max=0.15,
-        min_score_required=9.0,  # 🔥 Très strict (peu de mouvement = danger)
+        optimal_atr_min=0.05,
+        optimal_atr_max=0.20,
+        optimal_atr_min_5m=0.10,  # 🔥 ATR 5m adapté au calme
+        optimal_atr_max_5m=0.35,  # 🔥 ATR 5m adapté au calme
+        min_score_required=8.5,
         atr_mult_sl=0.8,
         atr_mult_tp=1.8,
         break_even_atr_mult=0.8,
         trailing_trigger_atr_mult=1.0,
-        max_position_time=360,
+        max_position_time=180,
         volume_multiplier=1.0,
         rsi_filter_mode="STRICT",
-        sl_exchange_percent=0.25
+        sl_exchange_percent=0.25,
+        stagnation_timeout=360,
+        stagnation_min_pnl=0.05,
+        stagnation_max_loss=-0.08
     ),
     "NORMAL": RegimeConfig(
         name="NORMAL",
         optimal_atr_min=0.15,
-        optimal_atr_max=0.25,
-        min_score_required=8.0,  # 🔥 Plus strict (était 7.5)
+        optimal_atr_max=0.40,
+        optimal_atr_min_5m=0.20,  # 🔥 ATR 5m adapté au normal
+        optimal_atr_max_5m=0.60,  # 🔥 ATR 5m adapté au normal
+        min_score_required=8.0,
         atr_mult_sl=1.2,
         atr_mult_tp=2.2,
         break_even_atr_mult=1.2,
         trailing_trigger_atr_mult=1.5,
-        max_position_time=300,
+        max_position_time=240,
         volume_multiplier=1.1,
-        rsi_filter_mode="PERMISSIVE",
-        sl_exchange_percent=0.30
+        rsi_filter_mode="STANDARD",
+        sl_exchange_percent=0.30,
+        stagnation_timeout=480,
+        stagnation_min_pnl=0.04,
+        stagnation_max_loss=-0.10
     ),
     "VOLATILE": RegimeConfig(
         name="VOLATILE",
-        optimal_atr_min=0.35,
-        optimal_atr_max=1.0,
-        min_score_required=7.5,  # 🔥 Légèrement moins strict (mouvements clairs)
+        optimal_atr_min=0.30,
+        optimal_atr_max=1.5,
+        optimal_atr_min_5m=0.40,  # 🔥 ATR 5m adapté au volatile
+        optimal_atr_max_5m=2.0,   # 🔥 ATR 5m adapté au volatile
+        min_score_required=7.5,
         atr_mult_sl=1.5,
         atr_mult_tp=2.5,
         break_even_atr_mult=1.5,
         trailing_trigger_atr_mult=2.0,
         max_position_time=180,
         volume_multiplier=1.5,
-        rsi_filter_mode="PERMISSIVE",
-        sl_exchange_percent=0.35
+        rsi_filter_mode="STANDARD",
+        sl_exchange_percent=0.35,
+        stagnation_timeout=600,
+        stagnation_min_pnl=0.02,
+        stagnation_max_loss=-0.12
     ),
     "CHOPPY": RegimeConfig(
         name="CHOPPY",
-        optimal_atr_min=0.0,
-        optimal_atr_max=0.20,
-        min_score_required=10.0,  # 🔥 Très strict (pas de tendance = danger)
+        optimal_atr_min=0.05,
+        optimal_atr_max=0.25,
+        optimal_atr_min_5m=0.10,  # 🔥 ATR 5m adapté au choppy
+        optimal_atr_max_5m=0.40,  # 🔥 ATR 5m adapté au choppy
+        min_score_required=10.0,
         atr_mult_sl=0.7,
         atr_mult_tp=1.5,
         break_even_atr_mult=0.5,
@@ -134,7 +158,10 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         max_position_time=60,
         volume_multiplier=0.8,
         rsi_filter_mode="STRICT",
-        sl_exchange_percent=0.20
+        sl_exchange_percent=0.20,
+        stagnation_timeout=180,
+        stagnation_min_pnl=0.08,
+        stagnation_max_loss=-0.05
     )
 }
 
@@ -207,7 +234,23 @@ class MarketRegimeSelector:
                 try:
                     with open(config_file, 'r') as f:
                         data = json.load(f)
+                        # 🔥 FIX: Fusionner avec valeurs par défaut pour compatibilité
+                        default_config = DEFAULT_REGIME_CONFIGS.get(regime_name)
+                        updated = False
+                        if default_config:
+                            default_data = default_config.to_dict()
+                            # Ajouter les clés manquantes depuis les defaults
+                            for key, value in default_data.items():
+                                if key not in data:
+                                    data[key] = value
+                                    updated = True
+                                    logger.info(f"⚙️ Ajout paramètre manquant {key}={value} pour {regime_name}")
                         self.regime_configs[regime_name] = RegimeConfig(**data)
+                        # Sauvegarder si des paramètres ont été ajoutés
+                        if updated:
+                            with open(config_file, 'w') as fw:
+                                json.dump(data, fw, indent=2)
+                            logger.info(f"💾 Config régime {regime_name} mise à jour avec nouveaux paramètres")
                         logger.debug(f"✅ Config régime {regime_name} chargée depuis {config_file}")
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur chargement config {regime_name}: {e}")
@@ -383,9 +426,15 @@ class MarketRegimeSelector:
             "position_timeout": self.current_config.max_position_time,
             "optimal_atr_min_1m": self.current_config.optimal_atr_min,
             "optimal_atr_max_1m": self.current_config.optimal_atr_max,
+            "optimal_atr_min_5m": self.current_config.optimal_atr_min_5m,  # 🔥 ATR 5m
+            "optimal_atr_max_5m": self.current_config.optimal_atr_max_5m,  # 🔥 ATR 5m
             "volume_multiplier": self.current_config.volume_multiplier,
             "rsi_filter_mode": self.current_config.rsi_filter_mode,
-            "sl_exchange_percent": self.current_config.sl_exchange_percent  # 🔥 SL MEXC
+            "sl_exchange_percent": self.current_config.sl_exchange_percent,
+            # Paramètres stagnation par régime
+            "stagnation_exit_timeout_seconds": self.current_config.stagnation_timeout,
+            "stagnation_exit_min_pnl_to_stay": self.current_config.stagnation_min_pnl,
+            "stagnation_exit_max_loss_to_exit": self.current_config.stagnation_max_loss
         }
     
     def get_status(self) -> Dict[str, Any]:

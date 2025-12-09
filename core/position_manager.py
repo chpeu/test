@@ -1959,8 +1959,10 @@ class PositionManager:
         import time
         elapsed = time.time() - self.active_position.start_time
         
-        # 🔥 Utiliser timeout dynamique du régime (position_timeout) si dispo, sinon config
-        effective_timeout = get_effective_value('position_timeout')
+        # 🔥 Utiliser valeurs dynamiques du régime (priorité effective_config > TRADING_CONFIG)
+        effective_timeout = get_effective_value('stagnation_exit_timeout_seconds')
+        if effective_timeout is None:
+            effective_timeout = get_effective_value('position_timeout')
         default_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', stagnation_config.get('timeout_seconds', 120))
         
         timeout = effective_timeout if effective_timeout is not None else default_timeout
@@ -1969,9 +1971,12 @@ class PositionManager:
         if elapsed < timeout:
             return None
         
-        # 🔥 FIX: Flat keys prioritaires pour seuils
-        min_pnl_to_stay = TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', stagnation_config.get('min_pnl_to_stay', 0.10))
-        max_loss_to_exit = TRADING_CONFIG.get('stagnation_exit_max_loss_to_exit', stagnation_config.get('max_loss_to_exit', -0.05))
+        # 🔥 Utiliser valeurs dynamiques du régime pour les seuils
+        effective_min_pnl = get_effective_value('stagnation_exit_min_pnl_to_stay')
+        effective_max_loss = get_effective_value('stagnation_exit_max_loss_to_exit')
+        
+        min_pnl_to_stay = effective_min_pnl if effective_min_pnl is not None else TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', stagnation_config.get('min_pnl_to_stay', 0.10))
+        max_loss_to_exit = effective_max_loss if effective_max_loss is not None else TRADING_CONFIG.get('stagnation_exit_max_loss_to_exit', stagnation_config.get('max_loss_to_exit', -0.05))
         
         # Rester si PnL suffisant
         if pnl >= min_pnl_to_stay:
@@ -2222,10 +2227,10 @@ class PositionManager:
                     error_msg = order_result.error_message or ""
                     # Note: FuturesOrderResult n'a pas error_code, seulement error_message
                     if "2009" in error_msg or "nonexistent" in error_msg.lower() or "closed" in error_msg.lower():
-                        logger.warning(
-                            f"⚠️ Position DÉJÀ FERMÉE sur MEXC: {self.active_position.symbol} | "
+                        logger.info(
+                            f"✅ Position DÉJÀ FERMÉE sur MEXC: {self.active_position.symbol} | "
                             f"Message: {error_msg} | "
-                            f"Fermeture locale (paper close) avec prix actuel"
+                            f"Synchronisation locale (paper close)"
                         )
                         # Marquer comme succès pour éviter boucle infinie
                         # La position est DÉJÀ fermée sur l'exchange
