@@ -21,8 +21,7 @@ from core.analyzer.filters import (
     check_snr_filter,
     check_breakout_filter,
     check_wick_filter,
-    check_atr_filter,
-    check_rsi_direction_coherence  # 🔥 NOUVEAU: Filtre cohérence RSI/Direction
+    check_atr_filter
 )
 from core.analyzer.signal_generator import (
     generate_long_conditions,
@@ -657,25 +656,6 @@ class TechnicalAnalyzer:
             elif short_score >= effective_min_score:
                 direction = 'SHORT'
 
-            # 🔥 NOUVEAU: Filtre cohérence RSI/Direction (bloque SHORT sur RSI survendu, LONG sur RSI suracheté)
-            if direction != 'NEUTRAL':
-                rsi_coherence_result = check_rsi_direction_coherence(
-                    rsi=rsi,
-                    direction=direction,
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    return_reason=return_reason
-                )
-                if rsi_coherence_result:
-                    if return_reason:
-                        result_dict = build_indicators_dict(
-                            rsi_coherence_result.get('reason') if isinstance(rsi_coherence_result, dict) else str(rsi_coherence_result),
-                            filters=filter_metrics,
-                            reject_category='rsi_direction_incoherence'
-                        )
-                        return result_dict
-                    return None
-
             # Logs détaillés si score insuffisant
             if direction == 'NEUTRAL':
                 if use_weighted:
@@ -1135,18 +1115,23 @@ class TechnicalAnalyzer:
                     best_setup = analysis_5m
 
             if best_setup:
-                # 🔥 FIX: Vérification RSI FINALE avant les autres vérifications
-                final_rsi = best_setup.get('rsi', 50)
-                direction = best_setup.get('direction', 'NEUTRAL')
-                RSI_OVERSOLD_LIMIT = 35
-                RSI_OVERBOUGHT_LIMIT = 65
+                # 🔥 FIX: Vérification RSI FINALE avant les autres vérifications (configurable)
+                rsi_filter_enabled = get_effective_value('rsi_final_filter_enabled')
+                if rsi_filter_enabled is None:
+                    rsi_filter_enabled = TRADING_CONFIG.get('rsi_final_filter_enabled', True)
                 
-                if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
-                    logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
-                    return None
-                if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
-                    logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
-                    return None
+                if rsi_filter_enabled:
+                    final_rsi = best_setup.get('rsi', 50)
+                    direction = best_setup.get('direction', 'NEUTRAL')
+                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or TRADING_CONFIG.get('rsi_final_short_min', 35)
+                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
+                    
+                    if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
+                        return None
+                    if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
+                        return None
 
                 # === VÉRIFICATIONS DE MARCHÉ ===
 
@@ -1949,19 +1934,23 @@ class TechnicalAnalyzer:
                 best['indicators_1m'] = indicators_1m
                 best['indicators_5m'] = indicators_5m
 
-                # 🔥 FIX: Vérification RSI FINALE - bloque LONG sur RSI suracheté, SHORT sur RSI survendu
-                # Utilise le RSI du timeframe retenu (1m ou 5m)
-                final_rsi = best.get('rsi', 50)
-                direction = best.get('direction', 'NEUTRAL')
-                RSI_OVERSOLD_LIMIT = 35
-                RSI_OVERBOUGHT_LIMIT = 65
+                # 🔥 FIX: Vérification RSI FINALE (configurable) - bloque LONG sur RSI suracheté, SHORT sur RSI survendu
+                rsi_filter_enabled = get_effective_value('rsi_final_filter_enabled')
+                if rsi_filter_enabled is None:
+                    rsi_filter_enabled = TRADING_CONFIG.get('rsi_final_filter_enabled', True)
                 
-                if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
-                    logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
-                    return None
-                if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
-                    logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
-                    return None
+                if rsi_filter_enabled:
+                    final_rsi = best.get('rsi', 50)
+                    direction = best.get('direction', 'NEUTRAL')
+                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or TRADING_CONFIG.get('rsi_final_short_min', 35)
+                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
+                    
+                    if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
+                        return None
+                    if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
+                        return None
 
                 logger.info(
                     f"✅ {symbol}: SETUP (Mode permissif) - {best['direction']} | "

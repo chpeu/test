@@ -41,7 +41,6 @@ class RegimeConfig:
     trailing_trigger_atr_mult: float
     max_position_time: int  # secondes
     volume_multiplier: float = 1.0
-    rsi_filter_mode: str = "STANDARD"  # STRICT, STANDARD, PERMISSIVE
     sl_exchange_percent: float = 0.30  # SL MEXC fixe par régime
     # Paramètres stagnation par régime
     stagnation_timeout: int = 120  # secondes avant sortie stagnation
@@ -100,7 +99,6 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=1.0,
         max_position_time=180,
         volume_multiplier=1.0,
-        rsi_filter_mode="STRICT",
         sl_exchange_percent=0.25,
         stagnation_timeout=360,
         stagnation_min_pnl=0.05,
@@ -119,7 +117,6 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=1.5,
         max_position_time=240,
         volume_multiplier=1.1,
-        rsi_filter_mode="STANDARD",
         sl_exchange_percent=0.30,
         stagnation_timeout=480,
         stagnation_min_pnl=0.04,
@@ -138,7 +135,6 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=2.0,
         max_position_time=180,
         volume_multiplier=1.5,
-        rsi_filter_mode="STANDARD",
         sl_exchange_percent=0.35,
         stagnation_timeout=600,
         stagnation_min_pnl=0.02,
@@ -157,7 +153,6 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         trailing_trigger_atr_mult=0.8,
         max_position_time=60,
         volume_multiplier=0.8,
-        rsi_filter_mode="STRICT",
         sl_exchange_percent=0.20,
         stagnation_timeout=180,
         stagnation_min_pnl=0.08,
@@ -429,7 +424,6 @@ class MarketRegimeSelector:
             "optimal_atr_min_5m": self.current_config.optimal_atr_min_5m,  # 🔥 ATR 5m
             "optimal_atr_max_5m": self.current_config.optimal_atr_max_5m,  # 🔥 ATR 5m
             "volume_multiplier": self.current_config.volume_multiplier,
-            "rsi_filter_mode": self.current_config.rsi_filter_mode,
             "sl_exchange_percent": self.current_config.sl_exchange_percent,
             # Paramètres stagnation par régime
             "stagnation_exit_timeout_seconds": self.current_config.stagnation_timeout,

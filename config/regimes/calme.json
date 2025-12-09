@@ -10,5 +10,10 @@
   "max_position_time": 360,
   "volume_multiplier": 1.0,
   "rsi_filter_mode": "STRICT",
-  "sl_exchange_percent": 0.25
+  "sl_exchange_percent": 0.25,
+  "stagnation_timeout": 360,
+  "stagnation_min_pnl": 0.05,
+  "stagnation_max_loss": -0.08,
+  "optimal_atr_min_5m": 0.1,
+  "optimal_atr_max_5m": 0.35
 }

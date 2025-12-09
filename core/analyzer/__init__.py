@@ -21,8 +21,7 @@ from .filters import (
     check_snr_filter,
     check_breakout_filter,
     check_wick_filter,
-    check_atr_filter,
-    check_rsi_direction_coherence  # 🔥 NOUVEAU
+    check_atr_filter
 )
 
 from .signal_generator import (
@@ -83,7 +82,6 @@ __all__ = [
     'check_breakout_filter',
     'check_wick_filter',
     'check_atr_filter',
-    'check_rsi_direction_coherence',  # 🔥 NOUVEAU
     # Signal Generator
     'generate_long_conditions',
     'generate_short_conditions',

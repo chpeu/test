@@ -145,6 +145,11 @@ TRADING_CONFIG = {
     # Confluence
     "use_confluence": False,  # False = 1m OU 5m, True = 1m ET 5m
     
+    # 🔥 Filtre RSI Final (bloque trades contre-logiques)
+    "rsi_final_filter_enabled": True,  # Activer le filtre RSI final
+    "rsi_final_long_max": 65,  # LONG bloqué si RSI > ce seuil (suracheté)
+    "rsi_final_short_min": 35,  # SHORT bloqué si RSI < ce seuil (survendu)
+    
     # 🔥 OPT #15: Anti-Whipsaw Filter
     "use_anti_whipsaw": True,  # Détecter et rejeter les marchés en zigzag
     "whipsaw_lookback": 5,  # Nombre de bougies à analyser

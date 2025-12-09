@@ -1,7 +1,7 @@
 {
   "name": "CHOPPY",
   "optimal_atr_min": 0.0,
-  "optimal_atr_max": 0.20,
+  "optimal_atr_max": 0.2,
   "min_score_required": 10.0,
   "atr_mult_sl": 0.7,
   "atr_mult_tp": 1.5,
@@ -10,5 +10,10 @@
   "max_position_time": 60,
   "volume_multiplier": 0.8,
   "rsi_filter_mode": "STRICT",
-  "sl_exchange_percent": 0.20
+  "sl_exchange_percent": 0.2,
+  "stagnation_timeout": 180,
+  "stagnation_min_pnl": 0.08,
+  "stagnation_max_loss": -0.05,
+  "optimal_atr_min_5m": 0.1,
+  "optimal_atr_max_5m": 0.4
 }

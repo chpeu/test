@@ -36,6 +36,10 @@
 		volume_multiplier: 0.95,
 		min_score_required: 6.5,  // 🔥 PHASE 1 : 6.5 (était 7.5)
 		max_slippage_pct: 0.03,
+		// 🔥 Filtre RSI Final (bloque trades contre-logiques)
+		rsi_final_filter_enabled: true,
+		rsi_final_long_max: 65,  // LONG bloqué si RSI > ce seuil
+		rsi_final_short_min: 35, // SHORT bloqué si RSI < ce seuil
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
@@ -528,6 +532,9 @@
 				min_score_adx_low: tradingConfig.min_score_adx_low,
 				dynamic_tolerance_adx_high: tradingConfig.dynamic_tolerance_adx_high,
 				dynamic_tolerance_adx_low: tradingConfig.dynamic_tolerance_adx_low,
+				rsi_final_filter_enabled: tradingConfig.rsi_final_filter_enabled,
+				rsi_final_long_max: tradingConfig.rsi_final_long_max,
+				rsi_final_short_min: tradingConfig.rsi_final_short_min,
 			},
 			'🎯 Patterns Techniques': {
 				use_breakout: tradingConfig.use_breakout,
@@ -1883,6 +1890,69 @@
 							<span class="slider-value" data-debug-name="config.max_slippage_pct">{Number(config.max_slippage_pct).toFixed(2)}%</span>
 						</div>
 					</div>
+
+					<!-- 🔥 Filtre RSI Final -->
+					<div class="variable-item checkbox" data-debug-name="config.rsi_final_filter_enabled">
+						<label for="rsi-final-filter">
+							<input
+								id="rsi-final-filter"
+								type="checkbox"
+								bind:checked={config.rsi_final_filter_enabled}
+								on:change={() => triggerAutoSave('rsi_final_filter_enabled', config.rsi_final_filter_enabled ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🎯 Filtre RSI Final</span>
+							<span class="var-desc">Bloquer LONG si RSI suracheté, SHORT si RSI survendu</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('rsi_final_filter_enabled')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.rsi_final_filter_enabled}
+						<div class="pattern-indicators">
+							<div class="variable-item" data-debug-name="config.rsi_final_long_max">
+								<div class="var-header">
+									<label for="rsi-final-long-max">
+										<span class="var-name">RSI Max LONG</span>
+										<span class="var-desc">LONG bloqué si RSI &gt; ce seuil (suracheté)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('rsi_final_long_max')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="rsi-final-long-max"
+										type="range"
+										step="1"
+										min="50"
+										max="85"
+										bind:value={config.rsi_final_long_max}
+										on:change={() => triggerAutoSave('rsi_final_long_max', config.rsi_final_long_max)}
+									/>
+									<span class="slider-value">{config.rsi_final_long_max}</span>
+								</div>
+							</div>
+
+							<div class="variable-item" data-debug-name="config.rsi_final_short_min">
+								<div class="var-header">
+									<label for="rsi-final-short-min">
+										<span class="var-name">RSI Min SHORT</span>
+										<span class="var-desc">SHORT bloqué si RSI &lt; ce seuil (survendu)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('rsi_final_short_min')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="rsi-final-short-min"
+										type="range"
+										step="1"
+										min="15"
+										max="50"
+										bind:value={config.rsi_final_short_min}
+										on:change={() => triggerAutoSave('rsi_final_short_min', config.rsi_final_short_min)}
+									/>
+									<span class="slider-value">{config.rsi_final_short_min}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
 				</div>
 			</section>
 

@@ -5256,6 +5256,26 @@ async def handle_client_command(command: str, params: dict):
             val = max(2, min(10, val))  # Clamp 2-10
             TRADING_CONFIG['momentum_lookback'] = val
             updated['momentum_lookback'] = val
+        
+        # 🔥 Filtre RSI Final (bloque trades contre-logiques)
+        if 'rsi_final_filter_enabled' in params:
+            TRADING_CONFIG['rsi_final_filter_enabled'] = bool(params['rsi_final_filter_enabled'])
+            updated['rsi_final_filter_enabled'] = TRADING_CONFIG['rsi_final_filter_enabled']
+            logger.info(f"✅ rsi_final_filter_enabled: {TRADING_CONFIG['rsi_final_filter_enabled']}")
+        
+        if 'rsi_final_long_max' in params:
+            val = int(params['rsi_final_long_max'])
+            val = max(50, min(85, val))  # Clamp 50-85
+            TRADING_CONFIG['rsi_final_long_max'] = val
+            updated['rsi_final_long_max'] = val
+            logger.info(f"✅ rsi_final_long_max: {val}")
+        
+        if 'rsi_final_short_min' in params:
+            val = int(params['rsi_final_short_min'])
+            val = max(15, min(50, val))  # Clamp 15-50
+            TRADING_CONFIG['rsi_final_short_min'] = val
+            updated['rsi_final_short_min'] = val
+            logger.info(f"✅ rsi_final_short_min: {val}")
 
         # 🔥 GradientBoosting (Modèle Optimisé 64-69% accuracy)
         if 'gb_filter_enabled' in params:
@@ -6310,6 +6330,23 @@ async def api_update_config(request: Request):
             updated['atr_max'] = val
             if position_config:
                 position_config.atr_max = val
+        
+        # 🔥 Filtre RSI Final (bloque trades contre-logiques)
+        if 'rsi_final_filter_enabled' in data:
+            TRADING_CONFIG['rsi_final_filter_enabled'] = bool(data['rsi_final_filter_enabled'])
+            updated['rsi_final_filter_enabled'] = TRADING_CONFIG['rsi_final_filter_enabled']
+        
+        if 'rsi_final_long_max' in data:
+            val = int(data['rsi_final_long_max'])
+            val = max(50, min(85, val))  # Clamp 50-85
+            TRADING_CONFIG['rsi_final_long_max'] = val
+            updated['rsi_final_long_max'] = val
+        
+        if 'rsi_final_short_min' in data:
+            val = int(data['rsi_final_short_min'])
+            val = max(15, min(50, val))  # Clamp 15-50
+            TRADING_CONFIG['rsi_final_short_min'] = val
+            updated['rsi_final_short_min'] = val
         
         if updated:
             logger.info(f"✅ Configuration mise à jour: {updated}")

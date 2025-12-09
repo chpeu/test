@@ -39,12 +39,15 @@ REGIME_ADJUSTABLE_KEYS = [
     'optimal_atr_min_5m',  # 🔥 ATR 5m par régime
     'optimal_atr_max_5m',  # 🔥 ATR 5m par régime
     'volume_multiplier',
-    'rsi_filter_mode',
     'sl_exchange_percent',  # 🔥 SL MEXC fixe par régime
     # 🔥 NOUVEAU: Paramètres stagnation par régime
     'stagnation_exit_timeout_seconds',
     'stagnation_exit_min_pnl_to_stay',
     'stagnation_exit_max_loss_to_exit',
+    # 🔥 Filtre RSI Final (configurable)
+    'rsi_final_filter_enabled',
+    'rsi_final_long_max',
+    'rsi_final_short_min',
 ]
 
 # Stockage des ajustements actifs (ne modifie pas TRADING_CONFIG)
