@@ -1804,6 +1804,10 @@ class PostgreSQLDataLogger:
             # Max/Min atteints
             max_pnl_reached = _extract_numeric_value(trade_data.get('max_pnl_reached'))
             min_pnl_reached = _extract_numeric_value(trade_data.get('min_pnl_reached'))
+            max_price_reached = _extract_numeric_value(trade_data.get('max_price_reached'))
+            min_price_reached = _extract_numeric_value(trade_data.get('min_price_reached'))
+            time_to_max_pnl = trade_data.get('time_to_max_pnl_seconds')
+            time_to_min_pnl = trade_data.get('time_to_min_pnl_seconds')
             
             # Calculer SL MEXC dynamique (SL ATR × 1.1)
             sl_mexc_margin = 1.1
@@ -1821,6 +1825,7 @@ class PostgreSQLDataLogger:
                     sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
             
             # Construire la requête
+            # 🔥 PHASE 0.5: Ajout max/min price et time_to_max/min
             query = """
                 INSERT INTO trade_atr_metrics (
                     trade_id,
@@ -1835,9 +1840,11 @@ class PostgreSQLDataLogger:
                     be_triggered, be_triggered_at,
                     trailing_activated, trailing_activated_at,
                     max_pnl_reached, min_pnl_reached,
+                    max_price_reached, min_price_reached,
+                    time_to_max_pnl_seconds, time_to_min_pnl_seconds,
                     sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 ) RETURNING id
             """
             
@@ -1854,6 +1861,8 @@ class PostgreSQLDataLogger:
                 be_triggered, be_triggered_at,
                 trailing_activated, trailing_activated_at,
                 max_pnl_reached, min_pnl_reached,
+                max_price_reached, min_price_reached,
+                time_to_max_pnl, time_to_min_pnl,
                 sl_mexc_price, sl_mexc_pct, sl_mexc_margin
             )
             

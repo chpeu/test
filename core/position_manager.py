@@ -64,6 +64,17 @@ class Position:
     # State flags
     break_even_set: bool = False
     partial_tp_sold: bool = False
+    
+    # 🔥 PHASE 0.5: Timestamps et tracking pour trade_atr_metrics
+    break_even_triggered_at: Optional[float] = None  # Timestamp quand BE activé
+    trailing_activated: bool = False
+    trailing_activated_at: Optional[float] = None    # Timestamp quand trailing activé
+    max_price_reached: Optional[float] = None        # Prix max atteint pendant le trade
+    min_price_reached: Optional[float] = None        # Prix min atteint pendant le trade
+    max_pnl_reached: Optional[float] = None          # PnL% max atteint
+    min_pnl_reached: Optional[float] = None          # PnL% min atteint
+    max_pnl_timestamp: Optional[float] = None        # Quand max PnL atteint
+    min_pnl_timestamp: Optional[float] = None        # Quand min PnL atteint
 
     # Dynamic SL (for trailing)
     dynamic_sl: Optional[float] = None
@@ -167,7 +178,14 @@ class Position:
             'start_time': self.start_time,
             'opened_at': opened_at,  # 🔥 NOUVEAU: Ajouté pour le frontend (compte à rebours)
             'break_even_set': self.break_even_set,
+            'break_even_triggered_at': datetime.fromtimestamp(self.break_even_triggered_at).isoformat() if self.break_even_triggered_at else None,
             'partial_tp_sold': self.partial_tp_sold,
+            'trailing_activated': self.trailing_activated,
+            'trailing_activated_at': datetime.fromtimestamp(self.trailing_activated_at).isoformat() if self.trailing_activated_at else None,
+            'max_price_reached': self.max_price_reached,
+            'min_price_reached': self.min_price_reached,
+            'max_pnl_reached': self.max_pnl_reached,
+            'min_pnl_reached': self.min_pnl_reached,
             'dynamic_sl': self.dynamic_sl,
             'size_remaining': self.size_remaining,
             'partial_profit_usdt': self.partial_profit_usdt,
@@ -1544,6 +1562,23 @@ class PositionManager:
             'pnl_pct': pnl,
             'pnl_usdt': pnl_usdt
         })
+        
+        # 🔥 PHASE 0.5: Tracker max/min price et pnl
+        now_ts = time.time()
+        # Max price
+        if self.active_position.max_price_reached is None or current_price > self.active_position.max_price_reached:
+            self.active_position.max_price_reached = current_price
+        # Min price
+        if self.active_position.min_price_reached is None or current_price < self.active_position.min_price_reached:
+            self.active_position.min_price_reached = current_price
+        # Max PnL
+        if self.active_position.max_pnl_reached is None or pnl > self.active_position.max_pnl_reached:
+            self.active_position.max_pnl_reached = pnl
+            self.active_position.max_pnl_timestamp = now_ts
+        # Min PnL
+        if self.active_position.min_pnl_reached is None or pnl < self.active_position.min_pnl_reached:
+            self.active_position.min_pnl_reached = pnl
+            self.active_position.min_pnl_timestamp = now_ts
 
         # 1. Early Invalidation (10-30s)
         early_invalidation_data = None
@@ -1800,6 +1835,9 @@ class PositionManager:
                 )
                 self.active_position.sl = new_sl
                 self.active_position.break_even_set = True
+                # 🔥 PHASE 0.5: Enregistrer timestamp BE
+                if not self.active_position.break_even_triggered_at:
+                    self.active_position.break_even_triggered_at = datetime.now().timestamp()
                 self._schedule_position_sync(self.active_position.symbol)
                 
                 logger.info(
@@ -1834,6 +1872,11 @@ class PositionManager:
         trailing_should_activate = self.active_position.partial_tp_sold or pnl >= trailing_trigger
         
         if trailing_should_activate:
+            # 🔥 PHASE 0.5: Enregistrer timestamp trailing activation
+            if not self.active_position.trailing_activated:
+                self.active_position.trailing_activated = True
+                self.active_position.trailing_activated_at = datetime.now().timestamp()
+            
             if pnl >= trailing_trigger:  # Remplace should_trigger()
                 # 🔥 FIX: En mode FIXE, utiliser trailing_distance directement depuis TRADING_CONFIG
                 tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
@@ -2542,7 +2585,9 @@ class PositionManager:
                         'duration_seconds': duration,
                         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
                         'break_even_triggered': self.active_position.break_even_set,
-                        'trailing_stop_triggered': (reason == 'TS'),
+                        'break_even_triggered_at': datetime.fromtimestamp(self.active_position.break_even_triggered_at).isoformat() if self.active_position.break_even_triggered_at else None,
+                        'trailing_stop_triggered': self.active_position.trailing_activated or (reason == 'TS'),
+                        'trailing_stop_triggered_at': datetime.fromtimestamp(self.active_position.trailing_activated_at).isoformat() if self.active_position.trailing_activated_at else None,
                         'partial_tp_triggered': self.active_position.partial_tp_sold,
                         # Early Invalidation
                         'early_invalidation_triggered': (reason == 'EARLY_INVALIDATION'),
@@ -2556,8 +2601,13 @@ class PositionManager:
                             {'level': i+1, 'profit': p.get('profit', 0)}
                             for i, p in enumerate(self.active_position.tp_escalier_profits)
                         ] if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else [],
-                        'max_pnl_reached': max([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None,
-                        'min_pnl_reached': min([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None,
+                        # 🔥 PHASE 0.5: Utiliser les valeurs trackées directement
+                        'max_pnl_reached': self.active_position.max_pnl_reached if self.active_position.max_pnl_reached is not None else (max([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None),
+                        'min_pnl_reached': self.active_position.min_pnl_reached if self.active_position.min_pnl_reached is not None else (min([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None),
+                        'max_price_reached': self.active_position.max_price_reached,
+                        'min_price_reached': self.active_position.min_price_reached,
+                        'time_to_max_pnl_seconds': int(self.active_position.max_pnl_timestamp - self.active_position.start_time) if self.active_position.max_pnl_timestamp and self.active_position.start_time else None,
+                        'time_to_min_pnl_seconds': int(self.active_position.min_pnl_timestamp - self.active_position.start_time) if self.active_position.min_pnl_timestamp and self.active_position.start_time else None,
                         'pnl_history': pnl_history,  # Pour calculer max_favorable_excursion
                         'entry_indicators': entry_indicators,
                         'entry_conditions': entry_conditions,

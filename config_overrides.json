@@ -155,11 +155,11 @@
   "trading_cb_pause_duration_minutes": 30,
   "trading_cb_score_boost_enabled": true,
   "trading_cb_score_boost_per_loss": 0.5,
-  "pair_scorer_enabled": false,
+  "pair_scorer_enabled": true,
   "pair_scorer_min_trades": 15,
   "pair_scorer_max_adjustment": 2.0,
   "pair_scorer_lookback_days": 7,
-  "pair_scorer_refresh_minutes": 60,
+  "pair_scorer_refresh_minutes": 30,
   "rsi_final_filter_enabled": false,
   "rsi_final_long_max": 70,
   "rsi_final_short_min": 30
