@@ -665,8 +665,9 @@ class PositionManager:
         self.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
         # 🔥 FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
         from utils.effective_config import get_effective_value
-        self.tpsl_config.atr_mult_tp = get_effective_value('atr_mult_tp', 1.5)
-        self.tpsl_config.atr_mult_sl = get_effective_value('atr_mult_sl', 1.0)
+        # 🔥 FIX: get_effective_value ne prend pas de default, utiliser or pour fallback
+        self.tpsl_config.atr_mult_tp = get_effective_value('atr_mult_tp') or 1.5
+        self.tpsl_config.atr_mult_sl = get_effective_value('atr_mult_sl') or 1.0
         self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         self.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
         
@@ -2881,6 +2882,47 @@ class PositionManager:
                 )
         except Exception as e:
             logger.debug(f"Erreur enregistrement Trading Circuit Breaker: {e}")
+
+        # 🔥 ATR OPTIMIZATION: Calculer What-If scénarios pour optimisation
+        try:
+            from core.analysis.what_if_simulator import process_trade_whatif
+            
+            # Préparer données pour What-If
+            trade_id = getattr(self.active_position, '_trade_id', None)
+            if trade_id:
+                whatif_data = {
+                    'id': trade_id,
+                    'symbol': result['symbol'],
+                    'direction': result['direction'],
+                    'entry_price': result['entry'],
+                    'exit_price': result['exit'],
+                    'sl': self.active_position.sl,
+                    'tp': self.active_position.tp,
+                    'size_usdt': self.active_position.size,
+                    'max_price_reached': getattr(self.active_position, 'max_price_reached', result['exit']),
+                    'min_price_reached': getattr(self.active_position, 'min_price_reached', result['exit']),
+                    'break_even_triggered': result.get('break_even_triggered', False),
+                    'break_even_price': result.get('break_even_price'),
+                    'trailing_stop_triggered': result.get('trailing_stop_triggered', False),
+                    'trailing_final_sl': result.get('trailing_final_sl'),
+                    'config_atr_mult_sl': TRADING_CONFIG.get('atr_mult_sl', 1.2),
+                    'config_atr_mult_tp': TRADING_CONFIG.get('atr_mult_tp', 2.2),
+                    'config_trailing_trigger_atr_mult': TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5),
+                    'config_trailing_distance_atr_mult': TRADING_CONFIG.get('trailing_distance_atr_mult', 0.8),
+                    'config_be_atr_mult': TRADING_CONFIG.get('break_even_atr_mult', 1.0),
+                    'entry_atr_pct_1m': getattr(self.active_position, 'atr', 0) / result['entry'] * 100 if getattr(self.active_position, 'atr', None) else 0.2
+                }
+                
+                # Lancer le calcul What-If (non-bloquant)
+                import threading
+                threading.Thread(
+                    target=process_trade_whatif,
+                    args=(whatif_data,),
+                    daemon=True
+                ).start()
+                logger.debug(f"📊 What-If lancé pour trade {trade_id[:8]}...")
+        except Exception as e:
+            logger.debug(f"Erreur What-If (non-bloquant): {e}")
 
         return result
 

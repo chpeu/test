@@ -344,6 +344,7 @@ TRADING_CONFIG = {
     "trailing_enabled": True,
     "trailing_trigger_pnl": 0.20,  # 🔥 Fallback 0.20% (si ATR désactivé)
     "trailing_atr_multiplier": 0.8,  # 🔥 Distance = ATR × 0.8 (était 0.4, trop serré)
+    "trailing_distance_atr_mult": 0.8,  # 🔥 ALIAS clair pour trailing_atr_multiplier
     "trailing_min_distance": 0.10,  # 🔥 Minimum 0.10% (était 0.08)
     "trailing_max_distance": 0.30,  # 🔥 Maximum 0.30% (était 0.25)
 

@@ -62,9 +62,9 @@
 		// 🔥 HYBRID: Break-even ATR (moins agressif)
 		break_even_use_atr: true,
 		break_even_atr_mult: 1.2,  // 🔥 BE plus tard (était 0.5, trop serré)
-		// 🔥 HYBRID: Trailing ATR trigger (moins agressif)
-		trailing_use_atr_trigger: true,
-		trailing_trigger_atr_mult: 1.5,  // 🔥 TS plus tard (était 1.0, trop tôt)
+		// 🔥 HYBRID: Trailing ATR (trigger + distance)
+		trailing_trigger_atr_mult: 1.5,  // 🔥 Quand activer le trailing (PnL >= X × ATR%)
+		trailing_distance_atr_mult: 0.8,  // 🔥 Distance du trailing (ATR × X)
 		// 🔥 HYBRID: Stagnation Exit (Time Decay)
 		stagnation_exit_enabled: true,
 		stagnation_exit_timeout_seconds: 120,
@@ -581,16 +581,16 @@
 				atr_min: tradingConfig.atr_min,
 				atr_max: tradingConfig.atr_max,
 			},
-			'🎯 Hybrid: Break-Even ATR': {
-				break_even_use_atr: tradingConfig.break_even_use_atr,
+			'🛡️ SL MEXC Dynamique': {
+				sl_mexc_margin: '1.1x (SL ATR × 1.1)',
+				sl_mexc_estimated_pct: `~${(((tradingConfig.atr_min + tradingConfig.atr_max) / 2) * tradingConfig.atr_mult_sl * 1.1).toFixed(3)}%`,
+			},
+			'🎯 Break-Even ATR': {
 				break_even_atr_mult: tradingConfig.break_even_atr_mult,
 			},
-			'📈 Hybrid: Trailing ATR': {
-				trailing_use_atr_trigger: tradingConfig.trailing_use_atr_trigger,
+			'📈 Trailing ATR': {
 				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
-				trailing_atr_multiplier: tradingConfig.trailing_atr_multiplier,
-				trailing_min_distance: tradingConfig.trailing_min_distance,
-				trailing_max_distance: tradingConfig.trailing_max_distance,
+				trailing_distance_atr_mult: tradingConfig.trailing_distance_atr_mult || tradingConfig.trailing_atr_multiplier,
 			},
 			'💰 Hybrid: TP Partiel': {
 				partial_tp_percent: tradingConfig.partial_tp_percent,
@@ -752,6 +752,7 @@
 				atr_mult_tp: tradingConfig.atr_mult_tp,
 				break_even_atr_mult: tradingConfig.break_even_atr_mult,
 				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
+				trailing_distance_atr_mult: tradingConfig.trailing_distance_atr_mult || tradingConfig.trailing_atr_multiplier,
 				max_position_time: tradingConfig.max_position_time,
 			},
 			// 🔥 SPRINT 2: Adaptations ML - Score Pair Dynamique
@@ -2952,92 +2953,86 @@
 								</div>
 							</div>
 
-							<!-- 🔥 HYBRID: Break-even ATR -->
+							<!-- 🎯 Break-Even ATR (simplifié - toujours actif en Mode ATR) -->
 							<div class="hybrid-section">
 								<h4 class="hybrid-title">🎯 Break-Even ATR</h4>
 								
-								<div class="variable-item checkbox-item">
-									<label class="checkbox-label">
-										<input
-											type="checkbox"
-											bind:checked={config.break_even_use_atr}
-											on:change={() => triggerAutoSave('break_even_use_atr', config.break_even_use_atr ? 'Activé' : 'Désactivé')}
-										/>
-										<span class="checkmark"></span>
-										<span class="checkbox-text">
-											<span class="var-name">Break-Even basé ATR</span>
-											<span class="var-desc">BE déclenché dès PnL ≥ X × ATR% (au lieu d'un % fixe)</span>
-										</span>
-									</label>
-								</div>
-
-								{#if config.break_even_use_atr}
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="be-atr-mult">
-												<span class="var-name">BE ATR Mult</span>
-												<span class="var-desc">Break-even dès PnL ≥ {(config.break_even_atr_mult).toFixed(1)} × ATR%</span>
-											</label>
-											<button class="btn-reset" on:click={() => resetVariable('break_even_atr_mult')} title="Réinitialiser">⟲</button>
-										</div>
-										<div class="slider-container">
-											<input
-												id="be-atr-mult"
-												type="range"
-												step="0.1"
-												min="0.2"
-												max="2.0"
-												bind:value={config.break_even_atr_mult}
-												on:change={() => triggerAutoSave('break_even_atr_mult', `${config.break_even_atr_mult.toFixed(1)}x ATR`)}
-											/>
-											<span class="slider-value">{Number(config.break_even_atr_mult).toFixed(1)}x ATR</span>
-										</div>
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="be-atr-mult">
+											<span class="var-name">BE Trigger</span>
+											<span class="var-desc">Break-even dès PnL ≥ {(config.break_even_atr_mult).toFixed(1)} × ATR%</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('break_even_atr_mult')} title="Réinitialiser">⟲</button>
 									</div>
-								{/if}
+									<div class="slider-container">
+										<input
+											id="be-atr-mult"
+											type="range"
+											step="0.1"
+											min="0.2"
+											max="2.5"
+											bind:value={config.break_even_atr_mult}
+											on:change={() => triggerAutoSave('break_even_atr_mult', `${config.break_even_atr_mult.toFixed(1)}x ATR`)}
+										/>
+										<span class="slider-value">{Number(config.break_even_atr_mult).toFixed(1)}x ATR</span>
+									</div>
+								</div>
 							</div>
 
-							<!-- 🔥 HYBRID: Trailing ATR Trigger -->
+							<!-- 📈 Trailing Stop ATR (simplifié - toujours actif en Mode ATR) -->
 							<div class="hybrid-section">
 								<h4 class="hybrid-title">📈 Trailing Stop ATR</h4>
 								
-								<div class="variable-item checkbox-item">
-									<label class="checkbox-label">
-										<input
-											type="checkbox"
-											bind:checked={config.trailing_use_atr_trigger}
-											on:change={() => triggerAutoSave('trailing_use_atr_trigger', config.trailing_use_atr_trigger ? 'Activé' : 'Désactivé')}
-										/>
-										<span class="checkmark"></span>
-										<span class="checkbox-text">
-											<span class="var-name">Trailing Trigger basé ATR</span>
-											<span class="var-desc">Trailing activé dès PnL ≥ X × ATR% (au lieu d'un % fixe)</span>
-										</span>
-									</label>
-								</div>
-
-								{#if config.trailing_use_atr_trigger}
-									<div class="variable-item">
-										<div class="var-header">
-											<label for="trailing-atr-trigger-mult">
-												<span class="var-name">Trailing Trigger ATR Mult</span>
-												<span class="var-desc">Trailing activé dès PnL ≥ {(config.trailing_trigger_atr_mult).toFixed(1)} × ATR%</span>
-											</label>
-											<button class="btn-reset" on:click={() => resetVariable('trailing_trigger_atr_mult')} title="Réinitialiser">⟲</button>
-										</div>
-										<div class="slider-container">
-											<input
-												id="trailing-atr-trigger-mult"
-												type="range"
-												step="0.1"
-												min="0.5"
-												max="3.0"
-												bind:value={config.trailing_trigger_atr_mult}
-												on:change={() => triggerAutoSave('trailing_trigger_atr_mult', `${config.trailing_trigger_atr_mult.toFixed(1)}x ATR`)}
-											/>
-											<span class="slider-value">{Number(config.trailing_trigger_atr_mult).toFixed(1)}x ATR</span>
-										</div>
+								<!-- Trailing Trigger: Quand activer le trailing -->
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-atr-trigger-mult">
+											<span class="var-name">Trailing Trigger</span>
+											<span class="var-desc">Trailing activé dès PnL ≥ {(config.trailing_trigger_atr_mult).toFixed(1)} × ATR%</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_trigger_atr_mult')} title="Réinitialiser">⟲</button>
 									</div>
-								{/if}
+									<div class="slider-container">
+										<input
+											id="trailing-atr-trigger-mult"
+											type="range"
+											step="0.1"
+											min="0.5"
+											max="3.0"
+											bind:value={config.trailing_trigger_atr_mult}
+											on:change={() => triggerAutoSave('trailing_trigger_atr_mult', `${config.trailing_trigger_atr_mult.toFixed(1)}x ATR`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_trigger_atr_mult).toFixed(1)}x ATR</span>
+									</div>
+								</div>
+								
+								<!-- Trailing Distance: Distance du stop suiveur -->
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-distance-atr-mult">
+											<span class="var-name">Trailing Distance</span>
+											<span class="var-desc">Stop suit le prix à {(config.trailing_distance_atr_mult || config.trailing_atr_multiplier || 0.8).toFixed(1)} × ATR%</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_distance_atr_mult')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-distance-atr-mult"
+											type="range"
+											step="0.1"
+											min="0.3"
+											max="2.0"
+											bind:value={config.trailing_distance_atr_mult}
+											on:change={() => {
+												// Sync avec l'ancien nom pour compatibilité
+												config.trailing_atr_multiplier = config.trailing_distance_atr_mult;
+												triggerAutoSave('trailing_distance_atr_mult', `${config.trailing_distance_atr_mult.toFixed(1)}x ATR`);
+											}}
+										/>
+										<span class="slider-value">{Number(config.trailing_distance_atr_mult || config.trailing_atr_multiplier || 0.8).toFixed(1)}x ATR</span>
+									</div>
+								</div>
 							</div>
 
 							<!-- 🔥 HYBRID: Stagnation Exit (Time Decay) -->

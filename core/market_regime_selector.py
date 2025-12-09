@@ -13,7 +13,7 @@ import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -240,7 +240,16 @@ class MarketRegimeSelector:
                                     data[key] = value
                                     updated = True
                                     logger.info(f"⚙️ Ajout paramètre manquant {key}={value} pour {regime_name}")
-                        self.regime_configs[regime_name] = RegimeConfig(**data)
+                        # 🔥 FIX: Filtrer les clés obsolètes (ex: rsi_filter_mode supprimé)
+                        valid_keys = {f.name for f in fields(RegimeConfig)}
+                        filtered_data = {k: v for k, v in data.items() if k in valid_keys}
+                        # Supprimer les clés obsolètes du fichier
+                        if len(filtered_data) < len(data):
+                            obsolete_keys = set(data.keys()) - valid_keys
+                            logger.info(f"🗑️ Suppression clés obsolètes {obsolete_keys} pour {regime_name}")
+                            data = filtered_data
+                            updated = True
+                        self.regime_configs[regime_name] = RegimeConfig(**filtered_data)
                         # Sauvegarder si des paramètres ont été ajoutés
                         if updated:
                             with open(config_file, 'w') as fw:

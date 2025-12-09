@@ -4929,7 +4929,17 @@ async def handle_client_command(command: str, params: dict):
             val = float(params['trailing_atr_multiplier'])
             val = max(0.1, min(5.0, val))  # Clamp 0.1-5.0x
             TRADING_CONFIG['trailing_atr_multiplier'] = val
+            TRADING_CONFIG['trailing_distance_atr_mult'] = val  # Sync alias
             updated['trailing_atr_multiplier'] = val
+        
+        # 🔥 NOUVEAU: trailing_distance_atr_mult (alias clair pour trailing_atr_multiplier)
+        if 'trailing_distance_atr_mult' in params:
+            val = float(params['trailing_distance_atr_mult'])
+            val = max(0.3, min(2.0, val))  # Clamp 0.3-2.0x
+            TRADING_CONFIG['trailing_distance_atr_mult'] = val
+            TRADING_CONFIG['trailing_atr_multiplier'] = val  # Sync avec ancien nom
+            updated['trailing_distance_atr_mult'] = val
+            updated['trailing_atr_multiplier'] = val  # Aussi notifier l'ancien
         
         if 'trailing_min_distance' in params:
             val = float(params['trailing_min_distance'])
@@ -4956,7 +4966,7 @@ async def handle_client_command(command: str, params: dict):
         
         # 🔥 FIX: Mettre à jour dynamiquement le trailing_stop manager si paramètres trailing changés
         trailing_keys = ['trailing_enabled', 'trailing_trigger_pnl', 'trailing_atr_multiplier', 
-                         'trailing_min_distance', 'trailing_max_distance']
+                         'trailing_distance_atr_mult', 'trailing_min_distance', 'trailing_max_distance']
         if any(k in updated for k in trailing_keys) and position_manager and hasattr(position_manager, 'trailing_stop'):
             from core.position.trailing_stop import TrailingStopConfig
             position_manager.trailing_stop.config = TrailingStopConfig(

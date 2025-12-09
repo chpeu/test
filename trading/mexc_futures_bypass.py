@@ -985,9 +985,11 @@ class MexcFuturesBypass:
             body["externalOid"] = external_oid
         
         # 🔥 DEBUG: Log critique pour diagnostiquer les ordres qui echouent
+        # Note: valeur_usdt ici est APPROXIMATIVE (ne tient pas compte du contract_size)
+        # La vraie valeur = vol * price * contract_size (calculée par l'appelant)
         logger.warning(
-            f"🚀 SUBMIT ORDER CRITIQUE: {symbol} | side={side} | vol={vol} | price={price} | "
-            f"leverage={leverage}x | valeur_usdt={vol * price:.2f} USDT"
+            f"🚀 SUBMIT ORDER CRITIQUE: {symbol} | side={side} | vol={vol} contrats | price={price} | "
+            f"leverage={leverage}x | SL={body.get('stopLossPrice', 'N/A')}"
         )
         logger.info(f"📋 Order body: {body}")
         

@@ -879,9 +879,10 @@ class LiveOrderManagerFutures:
                     # 🔥 Calcul correct: amount (contrats) * entry_price * contract_size = valeur en USDT
                     actual_size_usdt = amount * entry_price * contract_spec.contract_size
                     
-                    logger.debug(
-                        f"📊 DEBUG {bypass_symbol}: amount={amount:.6f} contrats, entry_price={entry_price}, "
-                        f"contract_size={contract_spec.contract_size}, value={actual_size_usdt:.2f} USDT"
+                    # 🔥 Upgrade DEBUG → WARNING pour diagnostic sizing
+                    logger.warning(
+                        f"📊 SIZING {bypass_symbol}: {amount:.2f} contrats × {entry_price} × contract_size={contract_spec.contract_size} = "
+                        f"{actual_size_usdt:.2f} USDT (demandé: {size_usdt:.2f} USDT)"
                     )
                     
                     if actual_size_usdt < MIN_ORDER_USDT:
@@ -980,20 +981,53 @@ class LiveOrderManagerFutures:
                     logger.warning(f"⚠️ Impossible de configurer le levier: {e} (peut déjà être configuré)")
                 
                 # Appeler le client bypass (async) via helper thread-safe
-                # 🔥 SL MEXC par régime (filet de sécurité) - TP géré par le bot
+                # 🔥 SL MEXC DYNAMIQUE: Basé sur SL ATR × 1.1 (10% marge de sécurité)
                 from utils.effective_config import get_effective_value
+                from config import TRADING_CONFIG
                 
-                # Récupérer SL% selon le régime actif (CALME=0.25, NORMAL=0.30, VOLATILE=0.35, CHOPPY=0.20)
-                sl_exchange_percent = get_effective_value('sl_exchange_percent', 0.30) / 100
+                # Calculer le SL ATR (même logique que position_manager)
+                atr_mult_sl = get_effective_value('atr_mult_sl') or TRADING_CONFIG.get('atr_mult_sl', 1.2)
+                atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+                
+                # Estimation ATR% (utiliser la moyenne de la plage configurée)
+                # En production, on pourrait récupérer l'ATR réel depuis le cache
+                estimated_atr_pct = (atr_min + atr_max) / 2  # ~0.825%
+                
+                # SL ATR calculé (ce que le bot utiliserait)
+                sl_atr_distance_pct = estimated_atr_pct * atr_mult_sl  # ex: 0.825 * 1.2 = 0.99%
+                
+                # SL MEXC = SL ATR × 1.1 (10% de marge de sécurité)
+                SL_MEXC_MARGIN = 1.1
+                sl_exchange_percent = sl_atr_distance_pct * SL_MEXC_MARGIN / 100
                 
                 if direction == 'LONG':
                     sl_price = entry_price * (1 - sl_exchange_percent)
                 else:  # SHORT
                     sl_price = entry_price * (1 + sl_exchange_percent)
                 
+                # Log pour traçabilité
+                logger.info(
+                    f"📐 SL MEXC Dynamique: ATR_mult={atr_mult_sl}x | ATR_range=[{atr_min}-{atr_max}%] | "
+                    f"SL_ATR={sl_atr_distance_pct:.3f}% | SL_MEXC={sl_exchange_percent*100:.3f}% (×{SL_MEXC_MARGIN})"
+                )
+                
                 # Arrondir selon les specs du contrat
+                sl_price_before_round = sl_price  # 🔥 DEBUG
                 if contract_spec:
                     sl_price = contract_spec.round_price(sl_price)
+                
+                # 🔥 FIX CRITIQUE: Si SL arrondi à 0, utiliser le SL non-arrondi ou entry - 0.1%
+                if sl_price <= 0:
+                    logger.warning(
+                        f"⚠️ SL arrondi à 0! Avant arrondi: {sl_price_before_round:.8f} | "
+                        f"Fallback à SL non-arrondi"
+                    )
+                    sl_price = sl_price_before_round
+                    # Si toujours 0, utiliser un fallback minimal
+                    if sl_price <= 0:
+                        sl_price = entry_price * 0.99  # 1% de marge de sécurité
+                        logger.warning(f"⚠️ SL fallback ultime: {sl_price:.8f}")
                 
                 logger.warning(
                     f"🛡️ [SL MEXC] {direction} {bypass_symbol} | "

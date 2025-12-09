@@ -217,8 +217,8 @@
 					<span class="config-item" title="Multiplicateur volume (exigence de volume)">
 						📊 Vol: {regimeData.config_active.volume_multiplier || '-'}x
 					</span>
-					<span class="config-item" title="Mode filtrage RSI (STRICT rejette extrêmes, PERMISSIVE accepte tout)">
-						📉 RSI: {regimeData.config_active.rsi_filter_mode || '-'}
+					<span class="config-item" title="ATR 5m range optimal">
+						📊 ATR5m: {regimeData.config_active.optimal_atr_min_5m?.toFixed(2) || '-'}-{regimeData.config_active.optimal_atr_max_5m?.toFixed(2) || '-'}%
 					</span>
 				</div>
 				<!-- Ligne 3: Timeout & Trailing -->

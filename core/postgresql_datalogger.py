@@ -1272,6 +1272,11 @@ class PostgreSQLDataLogger:
             config_candle_close_threshold_seconds = _extract_numeric_value(config_snapshot_dict.get('candle_close_threshold_seconds'))
             config_use_momentum_continuity = config_snapshot_dict.get('use_momentum_continuity')
             config_momentum_lookback = _extract_numeric_value(config_snapshot_dict.get('momentum_lookback'))
+            
+            # 🔥 RSI Final Filter columns
+            config_rsi_filter_enabled = config_snapshot_dict.get('rsi_final_filter_enabled', False)
+            config_rsi_long_max = _extract_numeric_value(config_snapshot_dict.get('rsi_final_long_max', 70.0))
+            config_rsi_short_min = _extract_numeric_value(config_snapshot_dict.get('rsi_final_short_min', 30.0))
 
             def _normalize_bool(val):
                 if isinstance(val, str):
@@ -1284,6 +1289,7 @@ class PostgreSQLDataLogger:
             config_use_cooldown = _normalize_bool(config_use_cooldown)
             config_use_candle_close = _normalize_bool(config_use_candle_close)
             config_use_momentum_continuity = _normalize_bool(config_use_momentum_continuity)
+            config_rsi_filter_enabled = _normalize_bool(config_rsi_filter_enabled)
             if isinstance(config_use_confluence, str):
                 config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
             elif config_use_confluence is None:
@@ -1563,6 +1569,10 @@ class PostgreSQLDataLogger:
                 ('config_candle_close_threshold_seconds', config_candle_close_threshold_seconds),
                 ('config_use_momentum_continuity', config_use_momentum_continuity),
                 ('config_momentum_lookback', config_momentum_lookback),
+                # 🔥 RSI Final Filter config
+                ('config_rsi_filter_enabled', config_rsi_filter_enabled),
+                ('config_rsi_long_max', config_rsi_long_max),
+                ('config_rsi_short_min', config_rsi_short_min),
                 ('config_snapshot', config_snapshot),
                 # 🔥 SPRINT 1: Market Regime & Circuit Breaker context
                 ('entry_market_regime', trade_data.get('entry_market_regime')),
@@ -1689,11 +1699,173 @@ class PostgreSQLDataLogger:
             if result:
                 trade_id = result[0][0]
                 logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {trade_id})")
+                
+                # 🔥 ATR OPTIMIZATION: Logger les métriques ATR pour ce trade
+                try:
+                    self.log_trade_atr_metrics(trade_id, trade_data, entry_indicators, config_snapshot_dict)
+                except Exception as atr_err:
+                    logger.warning(f"⚠️ Erreur logging ATR metrics: {atr_err}")
+                
                 return trade_id
             return None
             
         except Exception as e:
             logger.error(f"❌ Erreur logging trade {trade_data.get('symbol')}: {e}")
+            return None
+    
+    def log_trade_atr_metrics(
+        self,
+        trade_id: str,
+        trade_data: Dict[str, Any],
+        entry_indicators: Dict[str, Any],
+        config_snapshot: Dict[str, Any]
+    ) -> Optional[int]:
+        """
+        Logger les métriques ATR détaillées pour un trade.
+        
+        Args:
+            trade_id: UUID du trade
+            trade_data: Données complètes du trade
+            entry_indicators: Indicateurs à l'entrée
+            config_snapshot: Snapshot de la configuration
+        
+        Returns:
+            ID de la métrique loggée ou None
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            # Extraire les paramètres ATR utilisés
+            param_atr_mult_sl = _extract_numeric_value(config_snapshot.get('atr_mult_sl'))
+            param_atr_mult_tp = _extract_numeric_value(config_snapshot.get('atr_mult_tp'))
+            param_trailing_trigger_mult = _extract_numeric_value(config_snapshot.get('trailing_trigger_atr_mult'))
+            param_trailing_distance_mult = _extract_numeric_value(
+                config_snapshot.get('trailing_distance_atr_mult') or 
+                config_snapshot.get('trailing_atr_multiplier')
+            )
+            param_be_atr_mult = _extract_numeric_value(config_snapshot.get('break_even_atr_mult'))
+            param_stagnation_timeout = config_snapshot.get('stagnation_exit_timeout_seconds')
+            param_stagnation_min_pnl = _extract_numeric_value(config_snapshot.get('stagnation_exit_min_pnl_to_stay'))
+            
+            # Extraire le contexte ATR à l'entrée
+            entry_atr_1m = _extract_numeric_value(entry_indicators.get('atr_1m'))
+            entry_atr_5m = _extract_numeric_value(entry_indicators.get('atr_5m'))
+            entry_atr_pct_1m = _extract_numeric_value(entry_indicators.get('atr_pct_1m'))
+            entry_atr_pct_5m = _extract_numeric_value(entry_indicators.get('atr_pct_5m'))
+            entry_adx = _extract_numeric_value(entry_indicators.get('adx_1m'))
+            
+            # Déterminer le régime de volatilité
+            market_volatility_state = None
+            if entry_atr_pct_1m is not None:
+                if entry_atr_pct_1m < 0.2:
+                    market_volatility_state = 'LOW'
+                elif entry_atr_pct_1m < 0.5:
+                    market_volatility_state = 'MEDIUM'
+                else:
+                    market_volatility_state = 'HIGH'
+            
+            # Déterminer le régime de trend
+            market_trend_state = None
+            if entry_adx is not None:
+                if entry_adx < 20:
+                    market_trend_state = 'RANGING'
+                elif entry_adx < 30:
+                    market_trend_state = 'TRENDING_WEAK'
+                else:
+                    market_trend_state = 'TRENDING_STRONG'
+            
+            # Niveaux calculés
+            entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+            sl_price = _extract_numeric_value(trade_data.get('sl'))
+            tp_price = _extract_numeric_value(trade_data.get('tp'))
+            
+            calculated_sl_pct = None
+            calculated_tp_pct = None
+            if entry_price and sl_price:
+                calculated_sl_pct = abs(entry_price - sl_price) / entry_price * 100
+            if entry_price and tp_price:
+                calculated_tp_pct = abs(tp_price - entry_price) / entry_price * 100
+            
+            calculated_be_trigger_pnl_pct = None
+            if param_be_atr_mult and entry_atr_pct_1m:
+                calculated_be_trigger_pnl_pct = param_be_atr_mult * entry_atr_pct_1m
+            
+            calculated_trailing_trigger_pnl_pct = None
+            if param_trailing_trigger_mult and entry_atr_pct_1m:
+                calculated_trailing_trigger_pnl_pct = param_trailing_trigger_mult * entry_atr_pct_1m
+            
+            # Événements
+            be_triggered = trade_data.get('break_even_triggered', False)
+            be_triggered_at = trade_data.get('break_even_triggered_at')
+            trailing_activated = trade_data.get('trailing_stop_triggered', False)
+            trailing_activated_at = trade_data.get('trailing_stop_triggered_at')
+            
+            # Max/Min atteints
+            max_pnl_reached = _extract_numeric_value(trade_data.get('max_pnl_reached'))
+            min_pnl_reached = _extract_numeric_value(trade_data.get('min_pnl_reached'))
+            
+            # Calculer SL MEXC dynamique (SL ATR × 1.1)
+            sl_mexc_margin = 1.1
+            sl_mexc_pct = None
+            sl_mexc_price = None
+            entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+            
+            if entry_atr_pct_1m and param_atr_mult_sl and entry_price:
+                sl_atr_pct = entry_atr_pct_1m * param_atr_mult_sl
+                sl_mexc_pct = sl_atr_pct * sl_mexc_margin
+                direction = trade_data.get('direction', 'LONG')
+                if direction == 'LONG':
+                    sl_mexc_price = entry_price * (1 - sl_mexc_pct / 100)
+                else:
+                    sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
+            
+            # Construire la requête
+            query = """
+                INSERT INTO trade_atr_metrics (
+                    trade_id,
+                    entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                    param_atr_mult_sl, param_atr_mult_tp,
+                    param_trailing_trigger_mult, param_trailing_distance_mult,
+                    param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
+                    market_volatility_state, market_trend_state, entry_adx,
+                    calculated_sl_price, calculated_tp_price,
+                    calculated_sl_pct, calculated_tp_pct,
+                    calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
+                    be_triggered, be_triggered_at,
+                    trailing_activated, trailing_activated_at,
+                    max_pnl_reached, min_pnl_reached,
+                    sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id
+            """
+            
+            params = (
+                trade_id,
+                entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                param_atr_mult_sl, param_atr_mult_tp,
+                param_trailing_trigger_mult, param_trailing_distance_mult,
+                param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
+                market_volatility_state, market_trend_state, entry_adx,
+                sl_price, tp_price,
+                calculated_sl_pct, calculated_tp_pct,
+                calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
+                be_triggered, be_triggered_at,
+                trailing_activated, trailing_activated_at,
+                max_pnl_reached, min_pnl_reached,
+                sl_mexc_price, sl_mexc_pct, sl_mexc_margin
+            )
+            
+            result = self._execute_query(query, params, fetch=True)
+            if result:
+                metric_id = result[0][0]
+                logger.debug(f"📊 ATR metrics loggées pour trade {trade_id[:8]}... (metric_id: {metric_id})")
+                return metric_id
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur logging ATR metrics pour trade {trade_id[:8] if trade_id else 'N/A'}: {e}")
             return None
     
     def _batch_insert_scans(self, cursor, scan_items: List[Dict[str, Any]]) -> None:
