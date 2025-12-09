@@ -69,13 +69,15 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m}
         setup_5m = None
         
-        # Mock check_spread (AsyncMock car await)
-        mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05})
-        mock_calculate_trend = AsyncMock(return_value={'trend': 'NEUTRAL', 'strength': 0})
+        # Mock check_spread et check_orderbook_imbalance (AsyncMock car await)
+        mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
+        mock_calculate_trend = AsyncMock(return_value={'trend': 'NEUTRAL', 'strength': 0, 'bonus': 0})
+        mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
         
         patches = {
             'check_spread': mock_check_spread, 
-            'calculate_trend_data': mock_calculate_trend
+            'calculate_trend_data': mock_calculate_trend,
+            'check_orderbook_imbalance': mock_orderbook
         }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
@@ -159,10 +161,16 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         setup_1m = {'direction': 'LONG', 'rsi': 55, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10}
         setup_5m = None
         
-        mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05})
+        mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
+        mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
+        
+        patches = {
+            'check_spread': mock_check_spread,
+            'check_orderbook_imbalance': mock_orderbook
+        }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
-             with patch.dict(self.analyzer_globals, {'check_spread': mock_check_spread}):
+             with patch.dict(self.analyzer_globals, patches):
                 result = await self.analyzer.analyze_pair('BTC/USDT')
         
         self.assertIsNotNone(result)

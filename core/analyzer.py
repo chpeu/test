@@ -872,7 +872,7 @@ class TechnicalAnalyzer:
         symbol: str,
         trend_data: Optional[Dict] = None,
         volume_multiplier: float = 1.0,
-        use_confluence: bool = True,
+        use_confluence: bool = False,
         return_reason: bool = False,
         active_positions: Optional[List[str]] = None,
         position_manager: Optional[Any] = None
