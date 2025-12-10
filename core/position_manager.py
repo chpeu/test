@@ -2870,6 +2870,8 @@ class PositionManager:
                     
                     if trade_id:
                         logger.debug(f"📊 Trade loggé dans PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
+                        # 🔥 FIX 10/12/2025: Stocker le trade_id correct pour What-If
+                        self.active_position._trade_id = trade_id
                         
                         # 🔥 ML AUTO-CALIBRATION: Mettre à jour les stats après chaque trade
                         try:
@@ -2919,6 +2921,13 @@ class PositionManager:
                     try:
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
+                            # 🔥 FIX 10/12/2025: Capturer les valeurs AVANT la task async
+                            # car self.active_position sera None quand la task s'exécute
+                            pos_break_even_set = getattr(self.active_position, 'break_even_set', False)
+                            pos_partial_tp_sold = getattr(self.active_position, 'partial_tp_sold', False)
+                            pos_partial_profit_usdt = getattr(self.active_position, 'partial_profit_usdt', 0)
+                            pos_tp_escalier_profits = getattr(self.active_position, 'tp_escalier_profits', []) or []
+                            
                             # Créer une task non-bloquante
                             async def log_exit():
                                 await data_logger.log_trade_exit(
@@ -2935,12 +2944,12 @@ class PositionManager:
                                     net_pnl_usdt=result['net_pnl_usdt'],
                                     net_pnl_pct=result['net_pnl_pct'],
                                     win=net_pnl_pct > 0,
-                                    break_even_set=self.active_position.break_even_set,
-                                    partial_tp_executed=self.active_position.partial_tp_sold,
-                                    partial_tp_profit=self.active_position.partial_profit_usdt if self.active_position.partial_tp_sold else None,
-                                    partial_tp_percent=0.5 if self.active_position.partial_tp_sold else None,
-                                    tp_escalier_levels_executed=len(self.active_position.tp_escalier_profits) if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else 0,
-                                    tp_escalier_profits=sum(p.get('profit', 0) for p in self.active_position.tp_escalier_profits) if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else 0,
+                                    break_even_set=pos_break_even_set,
+                                    partial_tp_executed=pos_partial_tp_sold,
+                                    partial_tp_profit=pos_partial_profit_usdt if pos_partial_tp_sold else None,
+                                    partial_tp_percent=0.5 if pos_partial_tp_sold else None,
+                                    tp_escalier_levels_executed=len(pos_tp_escalier_profits),
+                                    tp_escalier_profits=sum(p.get('profit', 0) for p in pos_tp_escalier_profits),
                                     trailing_stop_activated=(reason == 'TS'),
                                     max_favorable_excursion=trade_data.get('max_pnl_reached'),
                                     max_adverse_excursion=trade_data.get('min_pnl_reached')
@@ -3119,6 +3128,8 @@ class PositionManager:
             
             # Préparer données pour What-If
             trade_id = getattr(self.active_position, '_trade_id', None)
+            if not trade_id:
+                logger.warning(f"⚠️ What-If ignoré: trade_id non disponible pour {result['symbol']}")
             if trade_id:
                 whatif_data = {
                     'id': trade_id,

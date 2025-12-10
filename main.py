@@ -6984,6 +6984,18 @@ async def export_datalogger_excel(
                 elif table_name == 'market_regime_history':
                     # 🔥 SPRINT 1: Historique régime trié par timestamp
                     base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
+                elif table_name == 'trade_atr_metrics':
+                    # 🔥 FIX 10/12/2025: Trier par created_at DESC (plus récent en haut)
+                    base_query += f" ORDER BY created_at DESC LIMIT {limit}"
+                elif table_name == 'trades':
+                    # 🔥 FIX 10/12/2025: Trier par created_at DESC (plus récent en haut)
+                    base_query += f" ORDER BY created_at DESC LIMIT {limit}"
+                elif table_name == 'scan_logs':
+                    # 🔥 FIX 10/12/2025: Trier par timestamp DESC (plus récent en haut)
+                    base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
+                elif table_name == 'opportunities':
+                    # 🔥 FIX 10/12/2025: Trier par timestamp DESC (plus récent en haut)
+                    base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp:
                     base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp_entry:

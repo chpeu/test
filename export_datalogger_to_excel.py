@@ -117,6 +117,16 @@ class DataLoggerExporter:
             self.conn.close()
             logger.info("🔌 Déconnecté de PostgreSQL")
 
+    # Tables avec ORDER BY spécifique (plus récent en haut)
+    TABLE_ORDER_BY = {
+        'trades': 'created_at DESC',
+        'scan_logs': 'created_at DESC',
+        'trade_atr_metrics': 'created_at DESC',
+        'circuit_breaker_events': 'created_at DESC',
+        'market_regime_history': 'created_at DESC',
+        'opportunities': 'created_at DESC',
+    }
+
     def get_table_data(self, table_name: str, limit: Optional[int] = None) -> Optional[pd.DataFrame]:
         """
         Récupérer les données d'une table
@@ -130,6 +140,11 @@ class DataLoggerExporter:
         """
         try:
             query = f"SELECT * FROM {table_name}"
+            
+            # Ajouter ORDER BY si défini pour cette table
+            if table_name in self.TABLE_ORDER_BY:
+                query += f" ORDER BY {self.TABLE_ORDER_BY[table_name]}"
+            
             if limit:
                 query += f" LIMIT {limit}"
 
