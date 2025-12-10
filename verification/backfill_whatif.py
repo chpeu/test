@@ -52,7 +52,6 @@ def backfill_whatif():
         JOIN trades t ON tam.trade_id = t.id
         WHERE tam.pnl_if_no_be IS NULL
         ORDER BY tam.created_at DESC
-        LIMIT 10
     ''')
     
     rows = cur.fetchall()

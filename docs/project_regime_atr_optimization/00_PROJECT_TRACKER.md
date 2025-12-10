@@ -307,6 +307,25 @@ docs/project_regime_atr_optimization/
 
 ---
 
+## 🔧 DETTE TECHNIQUE
+
+### Coverage Tests (Actuel: 30.95%)
+| Fichier | Coverage | Priorité | Notes |
+|---------|----------|----------|-------|
+| `core/analyzer.py` | 3.6% | 🔴 HAUTE | Cœur du système, logique critique |
+| `core/scanner_loop.py` | 6% | 🔴 HAUTE | Boucle principale |
+| `core/position_manager.py` | 12% | 🟠 MOYENNE | Amélioré récemment |
+| `core/postgresql_datalogger.py` | 4% | 🟠 MOYENNE | Logging critique |
+| `api/live_trading_endpoints.py` | 10% | 🟡 BASSE | Endpoints API |
+
+**Objectif:** Atteindre 50% coverage sur les fichiers `core/` critiques.
+
+**Approche pour nouveau code:**
+- Test-First ou Test-Strict pour chaque nouvelle fonctionnalité
+- Chaque fichier `utils/session_detector.py` → `tests/test_session_detector.py`
+
+---
+
 ## 📋 POUR REPRENDRE LE TRAVAIL
 
 1. **Lire ce fichier** pour connaître l'état actuel
