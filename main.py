@@ -5623,9 +5623,31 @@ async def handle_client_command(command: str, params: dict):
         # 🛡️ PROTECTION & RÉGIME: Trading Circuit Breaker
         # ============================================================
         if 'trading_circuit_breaker_enabled' in params:
-            TRADING_CONFIG['trading_circuit_breaker_enabled'] = bool(params['trading_circuit_breaker_enabled'])
-            updated['trading_circuit_breaker_enabled'] = TRADING_CONFIG['trading_circuit_breaker_enabled']
-            logger.info(f"✅ trading_circuit_breaker_enabled: {TRADING_CONFIG['trading_circuit_breaker_enabled']}")
+            new_enabled = bool(params['trading_circuit_breaker_enabled'])
+            old_enabled = TRADING_CONFIG.get('trading_circuit_breaker_enabled', True)
+            TRADING_CONFIG['trading_circuit_breaker_enabled'] = new_enabled
+            updated['trading_circuit_breaker_enabled'] = new_enabled
+            logger.info(f"✅ trading_circuit_breaker_enabled: {new_enabled}")
+            
+            # 🔥 FIX 10/12/2025: Si on DÉSACTIVE le CB, reset son état
+            # Évite qu'un état accumulé précédemment ne bloque le trading à la réactivation
+            if old_enabled and not new_enabled:
+                logger.info("🔄 Circuit Breaker désactivé -> Reset de l'état")
+                try:
+                    from core.trading_circuit_breaker import get_trading_circuit_breaker
+                    cb = get_trading_circuit_breaker()
+                    cb.reset()  # Reset complet: état ACTIVE, compteurs à 0
+                    logger.info("  -> Circuit Breaker reset à ACTIVE")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur reset CB: {e}")
+                
+                # Effacer les ajustements du CB dans effective_config
+                try:
+                    from utils.effective_config import set_circuit_breaker_adjustments
+                    set_circuit_breaker_adjustments({})
+                    logger.info("  -> Ajustements CB effacés")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur effacement ajustements CB: {e}")
         
         if 'trading_cb_max_consecutive_losses' in params:
             val = int(params['trading_cb_max_consecutive_losses'])

@@ -33,6 +33,7 @@ REGIME_ADJUSTABLE_KEYS = [
     'atr_mult_tp',
     'break_even_atr_mult',
     'trailing_trigger_atr_mult',
+    'trailing_distance_mult',  # 🔥 SPRINT 3: Distance trailing adaptative
     'position_timeout',
     'optimal_atr_min_1m',
     'optimal_atr_max_1m',
@@ -55,6 +56,7 @@ _active_adjustments: Dict[str, Dict[str, Any]] = {
     'regime': {},      # Ajustements du Market Regime Selector
     'circuit_breaker': {},  # Ajustements du Circuit Breaker (ex: score_boost)
     'pair_scorer': {},  # Ajustements du Pair Scorer
+    'local_trade': {},  # 🔥 SPRINT 3: Ajustements locaux du trade actif (ATR adaptatif)
 }
 
 
@@ -106,13 +108,35 @@ def set_pair_scorer_adjustments(adjustments: Dict[str, Any]) -> None:
         logger.debug(f"📊 Ajustements Pair Scorer mis à jour: {_active_adjustments['pair_scorer']}")
 
 
+def set_local_trade_adjustments(adjustments: Dict[str, Any]) -> None:
+    """
+    🔥 SPRINT 3: Définit les ajustements locaux du trade actif.
+    Ces ajustements sont calculés à l'ouverture du trade basés sur l'ATR local.
+    
+    Args:
+        adjustments: Dict avec les valeurs adaptées (ex: {'atr_mult_tp': 1.2, 'local_regime': 'MEDIUM'})
+    """
+    with _config_lock:
+        _active_adjustments['local_trade'] = deepcopy(adjustments) if adjustments else {}
+        if adjustments:
+            logger.info(f"⚡ Ajustements trade local: régime={adjustments.get('local_regime', 'UNKNOWN')} | {adjustments.get('adjustment_reason', '')}")
+
+
 def clear_all_adjustments() -> None:
     """Réinitialise tous les ajustements (ex: quand régime est désactivé)."""
     with _config_lock:
         _active_adjustments['regime'] = {}
         _active_adjustments['circuit_breaker'] = {}
         _active_adjustments['pair_scorer'] = {}
+        _active_adjustments['local_trade'] = {}
         logger.info("🔄 Tous les ajustements effacés")
+
+
+def clear_local_trade_adjustments() -> None:
+    """🔥 SPRINT 3: Efface les ajustements du trade local (appelé à la fermeture du trade)."""
+    with _config_lock:
+        _active_adjustments['local_trade'] = {}
+        logger.debug("🔄 Ajustements trade local effacés")
 
 
 def get_active_adjustments() -> Dict[str, Dict[str, Any]]:
@@ -150,6 +174,17 @@ def get_effective_config() -> Dict[str, Any]:
                 current_min_score = effective.get('min_score_required', 7.0)
                 effective['min_score_required'] = current_min_score + score_boost
                 effective['_cb_score_boost'] = score_boost  # Pour affichage
+        
+        # 🔥 SPRINT 3: Appliquer les ajustements locaux du trade actif
+        local_adj = _active_adjustments.get('local_trade', {})
+        if local_adj:
+            for key, value in local_adj.items():
+                if value is not None and key in REGIME_ADJUSTABLE_KEYS:
+                    effective[key] = value
+            # Ajouter métadonnées pour affichage
+            effective['_local_regime'] = local_adj.get('local_regime', 'UNKNOWN')
+            effective['_local_atr_pct'] = local_adj.get('atr_pct')
+            effective['_local_adjustment_reason'] = local_adj.get('adjustment_reason')
         
         # Les ajustements Pair Scorer sont appliqués dynamiquement par paire
         # (pas ici car dépend du symbole)

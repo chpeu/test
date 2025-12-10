@@ -1,7 +1,8 @@
 # ATR Optimization - Prochaines Étapes
 
 > **Document créé:** 09/12/2025
-> **Status actuel:** Phase 1.3 complétée, en attente de données
+> **Dernière mise à jour:** 10/12/2025 19:15
+> **Status actuel:** Phase 1.3a complétée, paramètres MEDIUM ajustés agressivement
 
 ---
 
@@ -17,8 +18,29 @@
 | Context Tagging | Volatility/Trend state + ADX | ✅ 100% rempli |
 | WhatIfSimulator | Calcul scénarios alternatifs | ✅ Fonctionnel |
 | Backfill script | Remplissage trades existants | ✅ Disponible |
+| Local Adaptation | Ajustement dynamique par trade (Sprint 3) | ✅ Validé |
 
-### Colonnes Remplies (8 trades analysés)
+### Phase 1.3a: Local Trade Adaptation (Sprint 3) ✅
+**Objectif:** Appliquer dynamiquement des paramètres ATR adaptés au régime de volatilité local à l'ouverture du trade, sans modifier les sliders globaux.
+
+**Réalisations:**
+- **Adaptation Locale:** `PositionManager` calcule le régime (LOW/MEDIUM/HIGH) à l'ouverture.
+- **Paramètres Adaptatifs:**
+
+| Régime | ATR% | TP | SL | BE | Trail Trigger | Trail Dist | Stag Timeout |
+|--------|------|-----|-----|-----|---------------|------------|--------------|
+| **LOW** | < 0.2% | ×1.0 | ×1.0 | ×1.0 | ×1.0 | ×1.0 | ×1.0 |
+| **MEDIUM** | 0.2-0.5% | **×0.6** | **×0.8** | **×0.5** | **×0.6** | **×0.7** | **×0.7** |
+| **HIGH** | > 0.5% | ×1.0 | ×1.2 | ×1.2 | ×1.2 | ×1.5 | ×1.5 |
+
+- **Performance Observée (10/12/2025):**
+  - LOW: 52% WR, +0.10% avg PnL ✅
+  - MEDIUM: 15% WR → ajustement agressif appliqué
+  - HIGH: 100% WR (1 trade)
+- **Transparence:** Les valeurs effectives sont exposées via `effective_config` et visibles dans le frontend ("Variables en cours").
+- **Vérification:** Script `verification/verify_adaptive_behavior.py` valide la logique.
+
+### Colonnes Remplies (45+ trades analysés au 10/12/2025)
 
 ```
 ✅ 100% rempli:
@@ -26,17 +48,18 @@
    - Context: market_volatility_state, market_trend_state, entry_adx
    - Events: be_triggered, trailing_activated, stagnation_detected
    - PnL: max_pnl_reached, min_pnl_reached
+   - Niveaux calculés: calculated_sl_price, calculated_tp_price, calculated_sl_pct, calculated_tp_pct
+   - Prix extrêmes: max_price_reached, min_price_reached
+   - Timing: time_to_max_pnl_seconds, time_to_min_pnl_seconds
+   - Stagnation (si applicable): stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit
 
 ⚠️ 50-100% rempli (via What-If):
    - pnl_if_no_be, pnl_if_no_trailing, pnl_if_fixed_tp
    - pnl_if_wider_sl, pnl_if_tighter_sl
    - sl_efficiency, tp_efficiency, trailing_capture_pct
 
-❌ 0% rempli (à implémenter si besoin):
-   - entry_atr_percentile (calcul percentile historique)
-   - calculated_sl_price, calculated_tp_price (extraction trade_data)
-   - Timestamps détaillés (be_triggered_at, trailing_activated_at)
-   - Prix extrêmes (max_price_reached, min_price_reached)
+❌ Non implémenté (non prioritaire):
+   - entry_atr_percentile (requiert calcul percentile vs historique)
 ```
 
 ---

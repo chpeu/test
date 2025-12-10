@@ -1775,10 +1775,10 @@ class PostgreSQLDataLogger:
                 else:
                     market_trend_state = 'TRENDING_STRONG'
             
-            # Niveaux calculés
+            # Niveaux calculés - 🔥 FIX: Utiliser les bonnes clés (sl_price/tp_price)
             entry_price = _extract_numeric_value(trade_data.get('entry_price'))
-            sl_price = _extract_numeric_value(trade_data.get('sl'))
-            tp_price = _extract_numeric_value(trade_data.get('tp'))
+            sl_price = _extract_numeric_value(trade_data.get('sl_price') or trade_data.get('sl'))
+            tp_price = _extract_numeric_value(trade_data.get('tp_price') or trade_data.get('tp'))
             
             calculated_sl_pct = None
             calculated_tp_pct = None
@@ -1809,6 +1809,16 @@ class PostgreSQLDataLogger:
             time_to_max_pnl = trade_data.get('time_to_max_pnl_seconds')
             time_to_min_pnl = trade_data.get('time_to_min_pnl_seconds')
             
+            # 🔥 PHASE 0.5 Extended: BE, Trailing, Stagnation details
+            be_triggered_pnl_pct = _extract_numeric_value(trade_data.get('break_even_pnl_pct'))
+            be_price_at_trigger = _extract_numeric_value(trade_data.get('break_even_price'))
+            trailing_final_distance_pct = _extract_numeric_value(trade_data.get('trailing_distance_pct'))
+            trailing_final_sl_price = _extract_numeric_value(trade_data.get('trailing_final_sl'))
+            stagnation_detected = trade_data.get('stagnation_detected', False)
+            stagnation_detected_at = trade_data.get('stagnation_detected_at')
+            stagnation_duration_seconds = trade_data.get('stagnation_duration_seconds')
+            stagnation_pnl_at_exit = _extract_numeric_value(trade_data.get('stagnation_pnl_at_exit'))
+            
             # Calculer SL MEXC dynamique (SL ATR × 1.1)
             sl_mexc_margin = 1.1
             sl_mexc_pct = None
@@ -1825,7 +1835,7 @@ class PostgreSQLDataLogger:
                     sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
             
             # Construire la requête
-            # 🔥 PHASE 0.5: Ajout max/min price et time_to_max/min
+            # 🔥 PHASE 0.5 Extended: Ajout BE, trailing, stagnation details
             query = """
                 INSERT INTO trade_atr_metrics (
                     trade_id,
@@ -1837,14 +1847,15 @@ class PostgreSQLDataLogger:
                     calculated_sl_price, calculated_tp_price,
                     calculated_sl_pct, calculated_tp_pct,
                     calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
-                    be_triggered, be_triggered_at,
-                    trailing_activated, trailing_activated_at,
+                    be_triggered, be_triggered_at, be_triggered_pnl_pct, be_price_at_trigger,
+                    trailing_activated, trailing_activated_at, trailing_final_distance_pct, trailing_final_sl_price,
                     max_pnl_reached, min_pnl_reached,
                     max_price_reached, min_price_reached,
                     time_to_max_pnl_seconds, time_to_min_pnl_seconds,
+                    stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
                     sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 ) RETURNING id
             """
             
@@ -1858,11 +1869,12 @@ class PostgreSQLDataLogger:
                 sl_price, tp_price,
                 calculated_sl_pct, calculated_tp_pct,
                 calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
-                be_triggered, be_triggered_at,
-                trailing_activated, trailing_activated_at,
+                be_triggered, be_triggered_at, be_triggered_pnl_pct, be_price_at_trigger,
+                trailing_activated, trailing_activated_at, trailing_final_distance_pct, trailing_final_sl_price,
                 max_pnl_reached, min_pnl_reached,
                 max_price_reached, min_price_reached,
                 time_to_max_pnl, time_to_min_pnl,
+                stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
                 sl_mexc_price, sl_mexc_pct, sl_mexc_margin
             )
             

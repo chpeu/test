@@ -67,14 +67,20 @@ class Position:
     
     # 🔥 PHASE 0.5: Timestamps et tracking pour trade_atr_metrics
     break_even_triggered_at: Optional[float] = None  # Timestamp quand BE activé
+    be_price_at_trigger: Optional[float] = None      # Prix quand BE activé
+    be_pnl_at_trigger: Optional[float] = None        # PnL% quand BE activé
     trailing_activated: bool = False
     trailing_activated_at: Optional[float] = None    # Timestamp quand trailing activé
+    trailing_final_sl: Optional[float] = None        # SL final du trailing
+    trailing_distance_pct: Optional[float] = None    # Distance trailing en %
     max_price_reached: Optional[float] = None        # Prix max atteint pendant le trade
     min_price_reached: Optional[float] = None        # Prix min atteint pendant le trade
     max_pnl_reached: Optional[float] = None          # PnL% max atteint
     min_pnl_reached: Optional[float] = None          # PnL% min atteint
     max_pnl_timestamp: Optional[float] = None        # Quand max PnL atteint
     min_pnl_timestamp: Optional[float] = None        # Quand min PnL atteint
+    stagnation_detected_at: Optional[float] = None   # Timestamp détection stagnation
+    stagnation_pnl_at_detection: Optional[float] = None  # PnL% à la détection
 
     # Dynamic SL (for trailing)
     dynamic_sl: Optional[float] = None
@@ -144,6 +150,9 @@ class Position:
     ml_calibrated_winrate: Optional[float] = None  # 🔥 WR Réel calibré (si disponible)
     adaptive_sizing_multiplier: Optional[float] = None  # Multiplicateur sizing adaptatif (0.5-1.5)
     
+    # 🔥 Configuration effective (pour adaptation dynamique)
+    effective_config: Dict[str, Any] = field(default_factory=dict)
+    
     # 🔥 FIX: Min contract amount pour validation TP partiel
     min_contract_amount: Optional[float] = None  # Minimum du contrat en tokens
     force_full_tp_for_partial: bool = False  # Si True, le TP partiel fermera 100% car qty < min
@@ -179,13 +188,19 @@ class Position:
             'opened_at': opened_at,  # 🔥 NOUVEAU: Ajouté pour le frontend (compte à rebours)
             'break_even_set': self.break_even_set,
             'break_even_triggered_at': datetime.fromtimestamp(self.break_even_triggered_at).isoformat() if self.break_even_triggered_at else None,
+            'break_even_price': self.be_price_at_trigger,
+            'break_even_pnl_pct': self.be_pnl_at_trigger,
             'partial_tp_sold': self.partial_tp_sold,
             'trailing_activated': self.trailing_activated,
             'trailing_activated_at': datetime.fromtimestamp(self.trailing_activated_at).isoformat() if self.trailing_activated_at else None,
+            'trailing_final_sl': self.trailing_final_sl,
+            'trailing_distance_pct': self.trailing_distance_pct,
             'max_price_reached': self.max_price_reached,
             'min_price_reached': self.min_price_reached,
             'max_pnl_reached': self.max_pnl_reached,
             'min_pnl_reached': self.min_pnl_reached,
+            'stagnation_detected_at': datetime.fromtimestamp(self.stagnation_detected_at).isoformat() if self.stagnation_detected_at else None,
+            'stagnation_pnl_at_detection': self.stagnation_pnl_at_detection,
             'dynamic_sl': self.dynamic_sl,
             'size_remaining': self.size_remaining,
             'partial_profit_usdt': self.partial_profit_usdt,
@@ -683,11 +698,83 @@ class PositionManager:
         self.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
         # 🔥 FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
         from utils.effective_config import get_effective_value
-        # 🔥 FIX: get_effective_value ne prend pas de default, utiliser or pour fallback
-        self.tpsl_config.atr_mult_tp = get_effective_value('atr_mult_tp') or 1.5
-        self.tpsl_config.atr_mult_sl = get_effective_value('atr_mult_sl') or 1.0
+        
+        # 🔥 ADAPTATION LOCALE DYNAMIQUE (Sprint 3)
+        # Calculer le régime local basé sur ATR
+        effective_params = {}
+        atr_pct = (atr / entry * 100) if atr and entry else 0
+        local_regime = 'UNKNOWN'
+        
+        if atr_pct > 0:
+            if atr_pct < 0.20:
+                local_regime = 'LOW'
+            elif atr_pct < 0.50:
+                local_regime = 'MEDIUM'
+            else:
+                local_regime = 'HIGH'
+        
+        effective_params['local_regime'] = local_regime
+        effective_params['atr_pct'] = atr_pct
+        
+        # Valeurs de base (depuis config manuelle/globale)
+        base_mult_tp = get_effective_value('atr_mult_tp') or 1.5
+        base_mult_sl = get_effective_value('atr_mult_sl') or 1.0
+        base_be_mult = TRADING_CONFIG.get('break_even_atr_mult', 1.0)
+        base_trailing_trigger = TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5)
+        base_trailing_dist = TRADING_CONFIG.get('trailing_distance_mult', 1.0)
+        base_stagnation_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', 120)
+        base_stagnation_min_pnl = TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', 0.05)
+        
+        # Ajustements selon régime local (Optimisation 10/12/2025)
+        # Basé sur analyse trade_atr_metrics et doc BRAINSTORM_ATR_OPTIMIZATION
+        
+        # MEDIUM (0.2-0.5% ATR): Performance TRÈS faible (winrate 15% au 10/12/2025)
+        # → AGRESSIF: TP très court, BE très tôt, Stagnation rapide
+        if local_regime == 'MEDIUM':
+            effective_params['atr_mult_tp'] = base_mult_tp * 0.6  # TP très court (ex: 2.2 -> 1.32)
+            effective_params['atr_mult_sl'] = base_mult_sl * 0.8  # SL plus serré aussi
+            effective_params['break_even_atr_mult'] = base_be_mult * 0.5  # BE très tôt (ex: 1.0 -> 0.5)
+            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.6  # Trigger très tôt
+            effective_params['trailing_distance_mult'] = base_trailing_dist * 0.7  # Distance serrée
+            effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 0.7)  # Timeout réduit
+            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 1.5  # Plus exigeant
+            effective_params['adjustment_reason'] = 'MEDIUM_VOLATILITY_AGGRESSIVE'
+            logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode AGRESSIF (TP×0.6, BE×0.5)")
+            
+        # HIGH (>0.5% ATR): BE 100% mais ratio PnL/ATR faible (0.30-0.65x)
+        # → Élargir Trailing & Stagnation pour laisser respirer
+        elif local_regime == 'HIGH':
+            effective_params['atr_mult_tp'] = base_mult_tp
+            effective_params['atr_mult_sl'] = base_mult_sl * 1.2  # SL légèrement plus large (bruit)
+            effective_params['break_even_atr_mult'] = base_be_mult * 1.2  # BE moins agressif
+            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 1.2  # Trigger plus tard
+            effective_params['trailing_distance_mult'] = base_trailing_dist * 1.5  # Distance plus large
+            effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 1.5)  # Plus de temps
+            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 0.5  # Moins exigeant
+            effective_params['adjustment_reason'] = 'HIGH_VOLATILITY_WIDEN'
+            logger.info(f"⚡ Régime HIGH détecté ({atr_pct:.2f}%) -> Élargissement SL/Trailing/Stagnation")
+            
+        # LOW (<0.2% ATR): Performance excellente (ratio 1.27x, 47% BE/Trail)
+        # → Garder valeurs de base, c'est le "sweet spot"
+        else:
+            effective_params['atr_mult_tp'] = base_mult_tp
+            effective_params['atr_mult_sl'] = base_mult_sl
+            effective_params['break_even_atr_mult'] = base_be_mult
+            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger
+            effective_params['trailing_distance_mult'] = base_trailing_dist
+            effective_params['stagnation_exit_timeout_seconds'] = base_stagnation_timeout
+            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl
+            effective_params['adjustment_reason'] = 'LOW_VOLATILITY_KEEPER'
+
+        # Appliquer à la config TPSL
+        self.tpsl_config.atr_mult_tp = effective_params['atr_mult_tp']
+        self.tpsl_config.atr_mult_sl = effective_params['atr_mult_sl']
         self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
         self.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+        
+        # 🔥 SPRINT 3: Propager les ajustements au système global pour affichage "Variables en cours"
+        from utils.effective_config import set_local_trade_adjustments
+        set_local_trade_adjustments(effective_params)
         
         # 🔥 FIX: Mettre à jour use_atr depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
@@ -747,7 +834,8 @@ class PositionManager:
             scalability_data=scalability_data,
             condition_types=condition_types or [],
             price_precision=price_precision,
-            tick_size=tick_size
+            tick_size=tick_size,
+            effective_config=effective_params  # 🔥 Stocker la config effective
         )
 
         # ✅ Initialiser les tailles en contrats même en mode paper/dry-run
@@ -1014,7 +1102,7 @@ class PositionManager:
             f"🟢 POSITION OUVERTE: {direction} {symbol} | "
             f"Entry: {self._format_price(entry)} | "
             f"SL: {self._format_price(sl)} | TP: {self._format_price(tp)} | "
-            f"Size: {executed_size_usdt:.2f} USDT | Mode: {'ATR' if self.config.use_atr else 'FIXE'}"
+            f"Size: {executed_size_usdt:.2f} USDT | Mode: {'ATR' if use_atr else 'FIXE'}"
             + (f" | TP Escalier: {len(levels_config)} niveaux" if levels_config else "")
             + (f" | LIVE: {self.live_order_manager.dry_run and 'DRY-RUN' or 'RÉEL'}" if self.live_order_manager else " | PAPER")
         )
@@ -1679,10 +1767,17 @@ class PositionManager:
         if not self.active_position.tp_escalier_enabled:
             # 🔥 HYBRID: Break-even basé sur ATR ou % fixe
             break_even_use_atr = TRADING_CONFIG.get('break_even_use_atr', False)
+            
+            # 🔥 SPRINT 3: Utiliser config effective si disponible (Adaptation Régime)
+            effective_config = getattr(self.active_position, 'effective_config', {})
+            
             if break_even_use_atr:
                 # 🔥 Mode ATR: BE dès PnL >= X × ATR%
                 atr_pct = self._get_position_atr_percent()
-                be_atr_mult = TRADING_CONFIG.get('break_even_atr_mult', 0.5)
+                
+                # Utiliser le multiplicateur effectif s'il existe (adapté au régime), sinon config globale
+                be_atr_mult = effective_config.get('break_even_atr_mult') or TRADING_CONFIG.get('break_even_atr_mult', 0.5)
+                
                 break_even_trigger = atr_pct * be_atr_mult
                 logger.debug(f"🎯 BE ATR: trigger={break_even_trigger:.3f}% (ATR={atr_pct:.3f}% × {be_atr_mult})")
             else:
@@ -1835,9 +1930,11 @@ class PositionManager:
                 )
                 self.active_position.sl = new_sl
                 self.active_position.break_even_set = True
-                # 🔥 PHASE 0.5: Enregistrer timestamp BE
+                # 🔥 PHASE 0.5: Enregistrer timestamp, prix et PnL au moment du BE
                 if not self.active_position.break_even_triggered_at:
                     self.active_position.break_even_triggered_at = datetime.now().timestamp()
+                    self.active_position.be_price_at_trigger = current_price
+                    self.active_position.be_pnl_at_trigger = pnl
                 self._schedule_position_sync(self.active_position.symbol)
                 
                 logger.info(
@@ -1854,14 +1951,25 @@ class PositionManager:
             TRADING_CONFIG.get('trailing_use_atr_trigger', False)
         )
         
+        # 🔥 SPRINT 3: Utiliser config effective si disponible (Adaptation Régime)
+        effective_config = getattr(self.active_position, 'effective_config', {})
+        
         if use_atr_trigger:
             # 🔥 Mode ATR: trigger dès PnL >= X × ATR%
             atr_pct = self._get_position_atr_percent()
-            trigger_atr_mult = (
-                trailing_config.get('trigger_atr_mult', 1.0) or
-                TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.0)
-            )
+            
+            # Utiliser les multiplicateurs effectifs s'ils existent (adaptés au régime)
+            trigger_atr_mult = effective_config.get('trailing_trigger_atr_mult') or TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5)
+            # Distance trailing adaptée (ex: plus large en HIGH volatility)
+            distance_atr_mult = effective_config.get('trailing_distance_mult') or TRADING_CONFIG.get('trailing_distance_mult', 1.0)
+            
             trailing_trigger = atr_pct * trigger_atr_mult
+            trailing_distance = atr_pct * distance_atr_mult
+            
+            logger.debug(
+                f"🎢 Trailing ATR: trigger={trailing_trigger:.3f}% ({trigger_atr_mult}×ATR), "
+                f"distance={trailing_distance:.3f}% ({distance_atr_mult}×ATR)"
+            )
         else:
             # Mode FIXE
             trailing_trigger = (
@@ -1887,16 +1995,27 @@ class PositionManager:
                     if new_sl:
                         self.active_position.sl = new_sl
                         self.active_position.dynamic_sl = new_sl
+                        # 🔥 PHASE 0.5: Capturer trailing final SL et distance
+                        self.active_position.trailing_final_sl = new_sl
+                        self.active_position.trailing_distance_pct = trailing_distance
                 else:
                     # Mode ATR : utiliser distance adaptative
+                    # 🔥 FIX SPRINT 3: Passer la distance calculée avec les multiplicateurs adaptatifs
+                    custom_dist = trailing_distance if use_atr_trigger else None
+                    
                     new_sl = self.trailing_stop.update_trailing_stop(
                         position=self.active_position.to_dict(),
                         current_price=current_price,
-                        pnl_percent=pnl
+                        pnl_percent=pnl,
+                        custom_distance_pct=custom_dist
                     )
                     if new_sl:
                         self.active_position.sl = new_sl
                         self.active_position.dynamic_sl = new_sl
+                        # 🔥 PHASE 0.5: Capturer trailing final SL et distance
+                        self.active_position.trailing_final_sl = new_sl
+                        entry = self.active_position.entry or 1
+                        self.active_position.trailing_distance_pct = abs(current_price - new_sl) / entry * 100
 
         # 5. 🔥 HYBRID: Stagnation Exit (Time Decay)
         stagnation_reason = self._check_stagnation_exit(pnl)
@@ -2003,8 +2122,11 @@ class PositionManager:
         import time
         elapsed = time.time() - self.active_position.start_time
         
-        # 🔥 Utiliser valeurs dynamiques du régime (priorité effective_config > TRADING_CONFIG)
-        effective_timeout = get_effective_value('stagnation_exit_timeout_seconds')
+        # 🔥 Utiliser valeurs dynamiques du régime (priorité effective_config du trade > effective global > TRADING_CONFIG)
+        effective_config_local = getattr(self.active_position, 'effective_config', {}) if self.active_position else {}
+        effective_timeout = effective_config_local.get('stagnation_exit_timeout_seconds')
+        if effective_timeout is None:
+            effective_timeout = get_effective_value('stagnation_exit_timeout_seconds')
         if effective_timeout is None:
             effective_timeout = get_effective_value('position_timeout')
         default_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', stagnation_config.get('timeout_seconds', 120))
@@ -2016,7 +2138,9 @@ class PositionManager:
             return None
         
         # 🔥 Utiliser valeurs dynamiques du régime pour les seuils
-        effective_min_pnl = get_effective_value('stagnation_exit_min_pnl_to_stay')
+        effective_min_pnl = effective_config_local.get('stagnation_exit_min_pnl_to_stay')
+        if effective_min_pnl is None:
+            effective_min_pnl = get_effective_value('stagnation_exit_min_pnl_to_stay')
         effective_max_loss = get_effective_value('stagnation_exit_max_loss_to_exit')
         
         min_pnl_to_stay = effective_min_pnl if effective_min_pnl is not None else TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', stagnation_config.get('min_pnl_to_stay', 0.10))
@@ -2028,6 +2152,10 @@ class PositionManager:
         
         # Sortir si perte ou stagnation après timeout
         if pnl < max_loss_to_exit or (pnl >= max_loss_to_exit and pnl < min_pnl_to_stay):
+            # 🔥 PHASE 0.5: Capturer stagnation détection
+            if not self.active_position.stagnation_detected_at:
+                self.active_position.stagnation_detected_at = time.time()
+                self.active_position.stagnation_pnl_at_detection = pnl
             logger.warning(
                 f"⏰ STAGNATION EXIT {self.active_position.symbol}: "
                 f"PnL={pnl:.2f}% après {elapsed:.0f}s (timeout={timeout}s)"
@@ -2525,6 +2653,13 @@ class PositionManager:
                     # Copier TRADING_CONFIG avec sérialisation safe
                     if TRADING_CONFIG:
                         config_snapshot.update(serialize_config_safe(TRADING_CONFIG))
+                    
+                    # 🔥 SPRINT 3: Injecter la config effective locale (prioritaire pour le logging)
+                    if hasattr(self.active_position, 'effective_config') and self.active_position.effective_config:
+                        effective_conf_safe = serialize_config_safe(self.active_position.effective_config)
+                        config_snapshot.update(effective_conf_safe)
+                        config_snapshot['effective_config_used'] = True  # Marqueur pour le frontend
+                    
                     # Ajouter les variables définies séparément avec sérialisation safe
                     config_snapshot['RISK_CONFIG'] = serialize_config_safe(RISK_CONFIG) if RISK_CONFIG else {}
                     config_snapshot['CONDITION_WEIGHTS'] = serialize_config_safe(CONDITION_WEIGHTS) if CONDITION_WEIGHTS else {}
@@ -2608,6 +2743,35 @@ class PositionManager:
                         'min_price_reached': self.active_position.min_price_reached,
                         'time_to_max_pnl_seconds': int(self.active_position.max_pnl_timestamp - self.active_position.start_time) if self.active_position.max_pnl_timestamp and self.active_position.start_time else None,
                         'time_to_min_pnl_seconds': int(self.active_position.min_pnl_timestamp - self.active_position.start_time) if self.active_position.min_pnl_timestamp and self.active_position.start_time else None,
+                        # 🔥 PHASE 0.5 Extended: BE, Trailing, Stagnation details
+                        'break_even_price': self.active_position.be_price_at_trigger,
+                        'break_even_pnl_pct': self.active_position.be_pnl_at_trigger,
+                        # Trailing: capture sl final même si dynamic_sl non défini
+                        'trailing_final_sl': (
+                            self.active_position.dynamic_sl
+                            if self.active_position.trailing_activated and self.active_position.dynamic_sl
+                            else (self.active_position.sl if self.active_position.trailing_activated or reason == 'TS' else None)
+                        ),
+                        'trailing_distance_pct': (
+                            abs((self.active_position.entry or exit_price) - (
+                                self.active_position.dynamic_sl
+                                if self.active_position.dynamic_sl
+                                else self.active_position.sl
+                            )) / (self.active_position.entry or exit_price) * 100
+                            if (self.active_position.trailing_activated or reason == 'TS')
+                            and (self.active_position.dynamic_sl or self.active_position.sl)
+                            and (self.active_position.entry or exit_price)
+                            else None
+                        ),
+                        'stagnation_detected': reason == 'STAGNATION',
+                        'stagnation_detected_at': datetime.fromtimestamp(self.active_position.stagnation_detected_at).isoformat() if self.active_position.stagnation_detected_at else None,
+                        # Stagnation duration: temps depuis détection OU depuis le timeout
+                        'stagnation_duration_seconds': (
+                            int(time.time() - self.active_position.stagnation_detected_at) 
+                            if self.active_position.stagnation_detected_at 
+                            else (int(duration) if reason == 'STAGNATION' else None)
+                        ),
+                        'stagnation_pnl_at_exit': self.active_position.stagnation_pnl_at_detection if self.active_position.stagnation_pnl_at_detection else (result['net_pnl_pct'] if reason == 'STAGNATION' else None),
                         'pnl_history': pnl_history,  # Pour calculer max_favorable_excursion
                         'entry_indicators': entry_indicators,
                         'entry_conditions': entry_conditions,
@@ -2674,14 +2838,21 @@ class PositionManager:
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de récupérer régime: {e}")
                     
+                    # 🔥 FIX 10/12/2025: Ne récupérer l'état CB que s'il est activé
                     try:
-                        from core.trading_circuit_breaker import get_trading_circuit_breaker
-                        trading_cb = get_trading_circuit_breaker()
-                        cb_status = trading_cb.get_status()
-                        trade_data['entry_cb_state'] = cb_status.get('state', 'ACTIVE')
-                        trade_data['entry_consecutive_losses'] = cb_status.get('consecutive_losses', 0)
-                        trade_data['entry_daily_pnl_pct'] = cb_status.get('daily_pnl_pct', 0)
-                        trade_data['entry_cb_score_boost'] = cb_status.get('score_boost', 0)
+                        if TRADING_CONFIG.get('trading_circuit_breaker_enabled', True):
+                            from core.trading_circuit_breaker import get_trading_circuit_breaker
+                            trading_cb = get_trading_circuit_breaker()
+                            cb_status = trading_cb.get_status()
+                            trade_data['entry_cb_state'] = cb_status.get('state', 'ACTIVE')
+                            trade_data['entry_consecutive_losses'] = cb_status.get('consecutive_losses', 0)
+                            trade_data['entry_daily_pnl_pct'] = cb_status.get('daily_pnl_pct', 0)
+                            trade_data['entry_cb_score_boost'] = cb_status.get('score_boost', 0)
+                        else:
+                            trade_data['entry_cb_state'] = 'DISABLED'
+                            trade_data['entry_consecutive_losses'] = 0
+                            trade_data['entry_daily_pnl_pct'] = 0
+                            trade_data['entry_cb_score_boost'] = 0
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de récupérer CB: {e}")
                     
@@ -2843,6 +3014,10 @@ class PositionManager:
             is_dry_run=is_dry_run_mode
         )
 
+        # 🔥 SPRINT 3: Effacer les ajustements locaux du trade
+        from utils.effective_config import clear_local_trade_adjustments
+        clear_local_trade_adjustments()
+        
         # Réinitialiser position
         self.active_position = None
 
@@ -2917,19 +3092,24 @@ class PositionManager:
             logger.debug(f"Erreur enregistrement cooldown: {e}")
 
         # 🔥 SPRINT 1: Enregistrer trade dans Trading Circuit Breaker
+        # 🔥 FIX 10/12/2025: Ne pas enregistrer si le CB est désactivé
         try:
-            from core.trading_circuit_breaker import get_trading_circuit_breaker
-            trading_cb = get_trading_circuit_breaker()
-            can_continue = trading_cb.record_trade(
-                symbol=result['symbol'],
-                pnl_pct=net_pnl_pct,
-                pnl_usdt=net_pnl_usdt
-            )
-            if not can_continue:
-                logger.warning(
-                    f"🛑 Trading Circuit Breaker activé après trade {result['symbol']} | "
-                    f"État: {trading_cb.state.value} | Raison: {trading_cb.pause_reason}"
+            from config import TRADING_CONFIG
+            if TRADING_CONFIG.get('trading_circuit_breaker_enabled', True):
+                from core.trading_circuit_breaker import get_trading_circuit_breaker
+                trading_cb = get_trading_circuit_breaker()
+                can_continue = trading_cb.record_trade(
+                    symbol=result['symbol'],
+                    pnl_pct=net_pnl_pct,
+                    pnl_usdt=net_pnl_usdt
                 )
+                if not can_continue:
+                    logger.warning(
+                        f"🛑 Trading Circuit Breaker activé après trade {result['symbol']} | "
+                        f"État: {trading_cb.state.value} | Raison: {trading_cb.pause_reason}"
+                    )
+            else:
+                logger.debug("Trading Circuit Breaker désactivé - trade non enregistré dans CB")
         except Exception as e:
             logger.debug(f"Erreur enregistrement Trading Circuit Breaker: {e}")
 

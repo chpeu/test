@@ -1,9 +1,9 @@
 # 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 10/12/2025 00:24
-> **Status global:** 📝 PLANIFICATION FINALISÉE
-> **Phase actuelle:** Phase 0 (Prêt à démarrer)
+> **Dernière mise à jour:** 10/12/2025 19:15
+> **Status global:** 🚀 PHASE 1.3a COMPLÉTÉE (Local Regime Adaptation)
+> **Phase actuelle:** Phase 1.3a terminée, accumulation données en cours
 
 ---
 
@@ -45,6 +45,35 @@ docs/project_regime_atr_optimization/
 ---
 
 ## 📅 TIMELINE & STATUS
+
+### ✅ Phase 1.3a: Local Regime Adaptation (SPRINT 3) - COMPLÉTÉE
+> **Concept:** Adaptation des paramètres TP/SL/BE/Trailing PAR TRADE basée sur l'ATR% local
+
+| Tâche | Status | Date | Notes |
+|-------|--------|------|-------|
+| Calcul régime LOCAL (LOW/MEDIUM/HIGH) | ✅ DONE | 10/12 | ATR% < 0.2/0.2-0.5/>0.5 |
+| Adaptation TP/SL multiplicateurs | ✅ DONE | 10/12 | MEDIUM agressif (×0.6) |
+| Adaptation BE/Trailing | ✅ DONE | 10/12 | BE×0.5, Trail×0.6 en MEDIUM |
+| Adaptation Stagnation timeout | ✅ DONE | 10/12 | ×0.7 en MEDIUM |
+| Stockage `effective_config` par trade | ✅ DONE | 10/12 | Dans Position dataclass |
+| Logging dans `trade_atr_metrics` | ✅ DONE | 10/12 | Colonnes param_* remplies |
+| Script vérification | ✅ DONE | 10/12 | `verify_adaptive_behavior.py` |
+| **PHASE 1.3a COMPLETE** | ✅ | 10/12 | - |
+
+#### Régimes LOCAL vs GLOBAL
+| Régime LOCAL | ATR% | Ajustements | Winrate Observé |
+|--------------|------|-------------|-----------------|
+| **LOW** | < 0.2% | Base (aucun) | 52% ✅ |
+| **MEDIUM** | 0.2-0.5% | TP×0.6, BE×0.5, Trail×0.6, Stag×0.7 | 15% → En test |
+| **HIGH** | > 0.5% | SL×1.2, Trail×1.5, Stag×1.5 | 100% (1 trade) |
+
+#### Fichiers Modifiés
+- `core/position_manager.py` : Calcul régime + adaptation params
+- `core/position/trailing_stop.py` : Support `custom_distance_pct`
+- `utils/effective_config.py` : `set_local_trade_adjustments()`
+- `verification/verify_adaptive_behavior.py` : Script de test
+
+---
 
 ### Phase 0: Infrastructure
 | Tâche | Status | Date | Notes |
@@ -184,6 +213,14 @@ docs/project_regime_atr_optimization/
 
 ## 🔧 FICHIERS MODIFIÉS/CRÉÉS
 
+### Phase 1.3a (Sprint 3) - COMPLÉTÉE ✅
+- [x] `core/position_manager.py` - Calcul régime LOCAL + adaptation params
+- [x] `core/position/trailing_stop.py` - Support `custom_distance_pct`
+- [x] `utils/effective_config.py` - `set_local_trade_adjustments()`
+- [x] `main.py` - Fix toggle flags CB + reset à désactivation
+- [x] `verification/verify_adaptive_behavior.py` - Script test régime LOCAL
+- [x] `verification/verify_toggle_flags.py` - Script test toggles
+
 ### Phase 0
 - [ ] `database/migrations/add_regime_v2_columns.sql`
 - [ ] `utils/session_detector.py`
@@ -216,7 +253,25 @@ docs/project_regime_atr_optimization/
 
 ## 📝 NOTES DE DÉVELOPPEMENT
 
-### 10/12/2025 - Planification
+### 10/12/2025 19:00 - Phase 1.3a COMPLÉTÉE (Sprint 3)
+**Régime LOCAL par trade implémenté et vérifié**
+
+- ✅ Calcul régime LOCAL (LOW/MEDIUM/HIGH) basé sur ATR% du trade
+- ✅ Adaptation paramètres TP/SL/BE/Trailing selon régime
+- ✅ Stockage `effective_config` dans Position pour chaque trade
+- ✅ Logging complet dans `trade_atr_metrics` (colonnes param_*)
+- ✅ Script vérification `verify_adaptive_behavior.py`
+- ✅ Correction bug toggle flags (CB désactivé mais actif)
+- ✅ Analyse performance: LOW 52% WR, MEDIUM 15% WR → ajustement agressif
+
+**Paramètres MEDIUM ajustés (19:00):**
+- TP: ×0.8 → ×0.6 (plus court)
+- SL: ×1.0 → ×0.8 (plus serré)
+- BE: ×0.8 → ×0.5 (très tôt)
+- Trailing: ×0.9 → ×0.6 (trigger tôt)
+- Stagnation: ×1.0 → ×0.7 (timeout court)
+
+### 10/12/2025 00:24 - Planification
 - Création de la documentation complète
 - 10 documents créés
 - Structure phases définitive
