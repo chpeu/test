@@ -257,8 +257,8 @@ class TestPostgreSQLDataLogger:
         trade_id = logger.log_trade(trade_data)
 
         assert trade_id is not None
-        # 🔥 FIX: 2 appels attendus (1 pour session, 1 pour trade)
-        assert cursor.execute.call_count == 2
+        # 🔥 FIX: 3 appels attendus (1 session check + 1 insert trade + 1 insert atr_metrics)
+        assert cursor.execute.call_count == 3
 
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
@@ -270,14 +270,13 @@ class TestPostgreSQLDataLogger:
 
         logger = PostgreSQLDataLogger(**datalogger_config)
 
-        captured = {
-            'query': None,
-            'params': None,
-        }
+        captured_queries = []
 
         def fake_execute(query, params=None, fetch=False):
-            captured['query'] = query
-            captured['params'] = params
+            captured_queries.append({
+                'query': query,
+                'params': params
+            })
             return [(42,)] if fetch else None
 
         logger._execute_query = MagicMock(side_effect=fake_execute)
@@ -328,13 +327,20 @@ class TestPostgreSQLDataLogger:
         trade_id = logger.log_trade(trade_data, opportunity_id=1, scan_log_id=1, session_id=session_id)
 
         assert trade_id == 42
-        assert captured['query'] is not None
-        assert captured['params'] is not None
-        placeholders = captured['query'].count('%s')
-        assert placeholders == len(captured['params'])
+        
+        # Trouver la requête d'insertion du trade
+        trade_insert = None
+        for q in captured_queries:
+            if 'INSERT INTO trades' in q['query']:
+                trade_insert = q
+                break
+        
+        assert trade_insert is not None
+        placeholders = trade_insert['query'].count('%s')
+        assert placeholders == len(trade_insert['params'])
         # S'assurer que quelques colonnes critiques sont bien présentes
-        assert 'timestamp_entry' in captured['query']
-        assert 'config_snapshot' in captured['query']
+        assert 'timestamp_entry' in trade_insert['query']
+        assert 'config_snapshot' in trade_insert['query']
     
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')

@@ -100,9 +100,32 @@ PHASE 3A: ML Regime Training (8h)   ← Classifier régime optimal
 PHASE 3B: GB Feature Integration (4h)← Régime comme feature GB
     │
     ▼
+PHASE 3B+: Context-Aware Entry Model (8h) ← 🆕 Réentraînement GB avec contexte
+    │                                          (= Modèle unique enrichi)
+    ▼
 PHASE 3C: Auto-Apply & Rollback (8h)← Application auto + sécurités
                                        (= ATR_OPT Phase 2.2-2.4)
 ```
+
+---
+
+## 🧠 ARCHITECTURE ML EN COUCHES
+
+Cette approche combine votre GradientBoosting actuel (Moteur) avec le nouveau système de Régime (Contexte).
+
+1.  **Niveau 1 : Régime ML (Contexte)**
+    *   *Question :* "Est-ce que le marché est favorable ?"
+    *   *Sortie :* `CALME` | `NORMAL` | `VOLATILE` | `CHOPPY`
+
+2.  **Niveau 2 : Entry ML (Décision)**
+    *   *Question :* "Dois-je entrer sur ce trade ?"
+    *   *Entrée :* Indicateurs techniques + **Features Régime (Niveau 1)**
+    *   *Sortie :* Score Confiance (ex: 72%)
+
+3.  **Niveau 3 : Param Optimizer (Exécution)**
+    *   *Question :* "Quels TP/SL pour ce contexte ?"
+    *   *Entrée :* Régime (Niveau 1) + Historique
+    *   *Sortie :* `atr_mult_tp=0.6`, `atr_mult_sl=0.8`
 
 ---
 

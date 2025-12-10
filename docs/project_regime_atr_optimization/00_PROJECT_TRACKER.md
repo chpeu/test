@@ -169,24 +169,34 @@ docs/project_regime_atr_optimization/
 ### Phase 3A: ML Regime Detector
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| regime_classifier.py | ⬜ TODO | - | - |
-| Training | ⬜ TODO | - | - |
-| Accuracy > 70% | ⬜ TODO | - | - |
-| **PHASE 3A COMPLETE** | ⬜ | - | - |
+| regime_classifier.py | TODO | - | - |
+| Training | TODO | - | - |
+| Accuracy > 70% | TODO | - | - |
+| **PHASE 3A COMPLETE** | TODO | - | - |
 
-### Phase 3B: GB Integration
+### Phase 3B: GB Feature Integration
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| Features régime ajoutées | ⬜ TODO | - | - |
-| Réentraînement GB | ⬜ TODO | - | - |
-| **PHASE 3B COMPLETE** | ⬜ | - | - |
+| Feature Engineering: ml_features | TODO | - | - |
+| Retraining pipeline | TODO | - | - |
+| **PHASE 3B COMPLETE** | TODO | - | - |
+
+### Phase 3B+: Context-Aware Entry Model (NOUVEAU)
+| Tâche | Status | Date | Notes |
+|-------|--------|------|-------|
+| Ajout `market_regime_index` features | TODO | - | - |
+| Support features catégorielles Trainer | TODO | - | - |
+| Calibration contextuelle par régime | TODO | - | - |
+| Réentraînement modèle unique enrichi | TODO | - | - |
+| **PHASE 3B+ COMPLETE** | TODO | - | - |
 
 ### Phase 3C: Auto-Apply & Rollback
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| auto_apply_engine.py | ⬜ TODO | - | - |
-| rollback_manager.py | ⬜ TODO | - | - |
-| Tests validation | ⬜ TODO | - | - |
+| auto_apply_engine.py | TODO | - | - |
+| rollback_manager.py | TODO | - | - |
+| Tests validation | TODO | - | - |
+| **PHASE 3C COMPLETE** | TODO | - | - |
 | **PHASE 3C COMPLETE** | ⬜ | - | - |
 
 ---
