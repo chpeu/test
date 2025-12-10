@@ -20,6 +20,7 @@ _sio = None  # 🔥 MIGRATION: Gardé pour compatibilité, mais utiliser _ws_man
 _ws_manager = None  # 🔥 FIX BUG #13: Ajouter variable globale pour WebSocket natif
 _position_lock = None
 _analytics_db = None
+_notification_manager = None
 
 
 def set_position_manager(position_manager):
@@ -62,6 +63,35 @@ def set_analytics_db(analytics_db):
     """Injecter la base de données analytics"""
     global _analytics_db
     _analytics_db = analytics_db
+
+
+def set_notification_manager(notification_manager):
+    """Injecter NotificationManager pour les alertes Telegram"""
+    global _notification_manager
+    _notification_manager = notification_manager
+
+
+async def _notify_error(error_type: str, details: str):
+    """Notifier Telegram en cas d'erreur critique"""
+    if not _notification_manager:
+        return
+
+    try:
+        snippet = (details or "Unknown")
+        if len(snippet) > 500:
+            snippet = snippet[:500] + "..."
+
+        await _notification_manager.notify(
+            'error',
+            {
+                'error_type': error_type,
+                'details': snippet
+            },
+            priority='error',
+            channels=['telegram']
+        )
+    except Exception as notify_err:
+        logger.error(f"❌ Erreur notification Telegram (error_type={error_type}): {notify_err}")
 
 
 def _update_session_stats(result: dict):
@@ -137,10 +167,19 @@ async def position_check_loop_callback():
             return
 
         # Vérifier la position (retourne None ou raison de fermeture)
+        # Stocker le SL avant pour détecter les changements
+        sl_before = position.sl if hasattr(position, 'sl') else None
+        
         close_reason = await _position_manager.check_position(current_price)
 
         # Si position toujours active, émettre mise à jour
         if not close_reason:
+            # 🔥 FIX SL MISMATCH: Mettre à jour SL temps réel si changé (trailing stop)
+            sl_after = position.sl if hasattr(position, 'sl') else None
+            if sl_before != sl_after and sl_after and _price_provider:
+                if hasattr(_price_provider, 'update_sl_level'):
+                    _price_provider.update_sl_level(sl_after)
+            
             await _emit_position_update(position, current_price)
             return
 
@@ -173,6 +212,20 @@ async def position_check_loop_callback():
                         await _price_provider.stop_websocket()
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur arrêt WebSocket: {e}")
+                        await _notify_error('stop_websocket_position', str(e))
+                
+                # 🔥 FIX SL MISMATCH: Désactiver callback SL temps réel
+                if _price_provider and hasattr(_price_provider, 'set_sl_check_callback'):
+                    _price_provider.set_sl_check_callback(None)
+                
+                # 🔥 FIX SL MISMATCH V2: Annuler tâche SL en attente
+                try:
+                    from main import cancel_pending_sl_task
+                    closed_symbol = result.get('symbol') if result else None
+                    if closed_symbol:
+                        cancel_pending_sl_task(closed_symbol)
+                except ImportError:
+                    pass
 
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
@@ -182,6 +235,7 @@ async def position_check_loop_callback():
 
     except Exception as e:
         logger.error(f"❌ Erreur position_check_loop_callback: {e}")
+        await _notify_error('position_check_loop', str(e))
 
 
 async def _emit_position_update(position, current_price: float):
@@ -266,7 +320,16 @@ async def _emit_position_update(position, current_price: float):
             'position_size_contracts': getattr(position, 'position_size_contracts', None),
             'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
             'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
-            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None  # 🔥 FIX: Niveaux TP escalier
+            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None,  # 🔥 FIX: Niveaux TP escalier
+            # 🔥 FIX: Ajouter levier utilisé pour affichage correct (levier auto adapté)
+            'leverage_used': getattr(position, 'leverage_used', None),
+            # 🔥 FIX: Ajouter force_full_tp_for_partial pour affichage message TP
+            'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
+            # 🔥 FIX: Ajouter multiplicateur sizing adaptatif
+            'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
+            # 🔥 FIX: Ajouter ML confidence et calibrated winrate pour affichage badge
+            'ml_confidence': getattr(position, 'ml_confidence', None),
+            'ml_calibrated_winrate': getattr(position, 'ml_calibrated_winrate', None)
         }
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
@@ -289,6 +352,7 @@ async def _emit_position_update(position, current_price: float):
 
     except Exception as e:
         logger.error(f"❌ Erreur émission position_update: {e}")
+        await _notify_error('emit_position_update', str(e))
 
 
 async def _emit_stats_update():

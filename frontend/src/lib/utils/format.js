@@ -173,9 +173,10 @@ export function formatPrice(price, precision = null) {
 			decimals = precision;
 		}
 		
-		// Use the calculated decimals if available
+		// Use the calculated decimals if available (max 20 to avoid RangeError)
 		if (decimals !== null && decimals !== undefined && decimals >= 0) {
-			return num.toFixed(decimals);
+			const safeDecimals = Math.min(Math.max(0, Math.floor(decimals)), 20);
+			return num.toFixed(safeDecimals);
 		}
 	}
 

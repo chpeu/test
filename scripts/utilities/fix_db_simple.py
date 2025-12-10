@@ -74,6 +74,21 @@ def main():
             'config_atr_max_5m': 'FLOAT',
             'config_volume_multiplier': 'FLOAT',
             'config_use_confluence': 'BOOLEAN',
+            # 🔥 OPT #15-19
+            'config_use_anti_whipsaw': 'BOOLEAN',
+            'config_whipsaw_lookback': 'INTEGER',
+            'config_whipsaw_threshold_pct': 'FLOAT',
+            'config_whipsaw_max_alternations': 'INTEGER',
+            'config_use_retest_confirmation': 'BOOLEAN',
+            'config_retest_tolerance_pct': 'FLOAT',
+            'config_retest_timeout_seconds': 'INTEGER',
+            'config_use_cooldown': 'BOOLEAN',
+            'config_cooldown_seconds': 'INTEGER',
+            'config_cooldown_same_symbol': 'INTEGER',
+            'config_use_candle_close': 'BOOLEAN',
+            'config_candle_close_threshold_seconds': 'INTEGER',
+            'config_use_momentum_continuity': 'BOOLEAN',
+            'config_momentum_lookback': 'INTEGER',
         }
         
         added_scan_logs = 0
@@ -111,6 +126,21 @@ def main():
             'config_optimal_atr_max_5m': 'FLOAT',
             'config_volume_multiplier': 'FLOAT',
             'config_use_confluence': 'BOOLEAN',
+            # 🔥 OPT #15-19
+            'config_use_anti_whipsaw': 'BOOLEAN',
+            'config_whipsaw_lookback': 'INTEGER',
+            'config_whipsaw_threshold_pct': 'FLOAT',
+            'config_whipsaw_max_alternations': 'INTEGER',
+            'config_use_retest_confirmation': 'BOOLEAN',
+            'config_retest_tolerance_pct': 'FLOAT',
+            'config_retest_timeout_seconds': 'INTEGER',
+            'config_use_cooldown': 'BOOLEAN',
+            'config_cooldown_seconds': 'INTEGER',
+            'config_cooldown_same_symbol': 'INTEGER',
+            'config_use_candle_close': 'BOOLEAN',
+            'config_candle_close_threshold_seconds': 'INTEGER',
+            'config_use_momentum_continuity': 'BOOLEAN',
+            'config_momentum_lookback': 'INTEGER',
         }
         
         added_trades = 0
@@ -153,7 +183,21 @@ def main():
                         config_atr_min_5m = (params_snapshot->'optimal_atr'->'5m'->>'min')::FLOAT,
                         config_atr_max_5m = (params_snapshot->'optimal_atr'->'5m'->>'max')::FLOAT,
                         config_volume_multiplier = (params_snapshot->>'volume_multiplier')::FLOAT,
-                        config_use_confluence = (params_snapshot->>'use_confluence')::BOOLEAN
+                        config_use_confluence = (params_snapshot->>'use_confluence')::BOOLEAN,
+                        config_use_anti_whipsaw = (params_snapshot->>'use_anti_whipsaw')::BOOLEAN,
+                        config_whipsaw_lookback = (params_snapshot->>'whipsaw_lookback')::INTEGER,
+                        config_whipsaw_threshold_pct = (params_snapshot->>'whipsaw_threshold_pct')::FLOAT,
+                        config_whipsaw_max_alternations = (params_snapshot->>'whipsaw_max_alternations')::INTEGER,
+                        config_use_retest_confirmation = (params_snapshot->>'use_retest_confirmation')::BOOLEAN,
+                        config_retest_tolerance_pct = (params_snapshot->>'retest_tolerance_pct')::FLOAT,
+                        config_retest_timeout_seconds = (params_snapshot->>'retest_timeout_seconds')::INTEGER,
+                        config_use_cooldown = (params_snapshot->>'use_cooldown')::BOOLEAN,
+                        config_cooldown_seconds = (params_snapshot->>'cooldown_seconds')::INTEGER,
+                        config_cooldown_same_symbol = (params_snapshot->>'cooldown_same_symbol')::INTEGER,
+                        config_use_candle_close = (params_snapshot->>'use_candle_close')::BOOLEAN,
+                        config_candle_close_threshold_seconds = (params_snapshot->>'candle_close_threshold_seconds')::INTEGER,
+                        config_use_momentum_continuity = (params_snapshot->>'use_momentum_continuity')::BOOLEAN,
+                        config_momentum_lookback = (params_snapshot->>'momentum_lookback')::INTEGER
                     WHERE params_snapshot IS NOT NULL
                       AND config_min_score_required IS NULL
                 """)
@@ -179,7 +223,21 @@ def main():
                         config_optimal_atr_min_5m = (config_snapshot->'optimal_atr'->'5m'->>'min')::FLOAT,
                         config_optimal_atr_max_5m = (config_snapshot->'optimal_atr'->'5m'->>'max')::FLOAT,
                         config_volume_multiplier = (config_snapshot->>'volume_multiplier')::FLOAT,
-                        config_use_confluence = (config_snapshot->>'use_confluence')::BOOLEAN
+                        config_use_confluence = (config_snapshot->>'use_confluence')::BOOLEAN,
+                        config_use_anti_whipsaw = (config_snapshot->>'use_anti_whipsaw')::BOOLEAN,
+                        config_whipsaw_lookback = (config_snapshot->>'whipsaw_lookback')::INTEGER,
+                        config_whipsaw_threshold_pct = (config_snapshot->>'whipsaw_threshold_pct')::FLOAT,
+                        config_whipsaw_max_alternations = (config_snapshot->>'whipsaw_max_alternations')::INTEGER,
+                        config_use_retest_confirmation = (config_snapshot->>'use_retest_confirmation')::BOOLEAN,
+                        config_retest_tolerance_pct = (config_snapshot->>'retest_tolerance_pct')::FLOAT,
+                        config_retest_timeout_seconds = (config_snapshot->>'retest_timeout_seconds')::INTEGER,
+                        config_use_cooldown = (config_snapshot->>'use_cooldown')::BOOLEAN,
+                        config_cooldown_seconds = (config_snapshot->>'cooldown_seconds')::INTEGER,
+                        config_cooldown_same_symbol = (config_snapshot->>'cooldown_same_symbol')::INTEGER,
+                        config_use_candle_close = (config_snapshot->>'use_candle_close')::BOOLEAN,
+                        config_candle_close_threshold_seconds = (config_snapshot->>'candle_close_threshold_seconds')::INTEGER,
+                        config_use_momentum_continuity = (config_snapshot->>'use_momentum_continuity')::BOOLEAN,
+                        config_momentum_lookback = (config_snapshot->>'momentum_lookback')::INTEGER
                     WHERE config_snapshot IS NOT NULL
                       AND config_min_score_required IS NULL
                 """)

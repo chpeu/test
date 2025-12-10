@@ -21,7 +21,7 @@ import optuna
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 from optuna.trial import Trial
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, precision_score, recall_score
 import xgboost as xgb
 
 from optimization.data.feature_loader import load_features_from_postgres
@@ -101,28 +101,36 @@ class OptunaV2Tuner:
     def _suggest_hyperparameters(self, trial: Trial) -> Dict[str, Any]:
         """
         Espace de recherche hyperparamètres (optimisé pour éviter overfitting)
+        
+        🔥 V2.1: Espace élargi + fix scale_pos_weight
         """
         params = {
             # Structure (limité pour éviter overfitting)
-            'max_depth': trial.suggest_int('max_depth', 2, 6),
-            'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
+            'max_depth': trial.suggest_int('max_depth', 2, 7),
+            'min_child_weight': trial.suggest_int('min_child_weight', 1, 15),
 
-            # Régularisation
-            'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 10.0),
-            'reg_lambda': trial.suggest_float('reg_lambda', 0.5, 10.0),
+            # Régularisation (plus forte pour éviter overfitting)
+            'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 15.0, log=True),
+            'reg_lambda': trial.suggest_float('reg_lambda', 0.5, 15.0, log=True),
 
             # Échantillonnage
-            'subsample': trial.suggest_float('subsample', 0.6, 0.95),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 0.95),
-            'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.6, 0.95),
+            'subsample': trial.suggest_float('subsample', 0.5, 0.95),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 0.95),
+            'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.5, 0.95),
 
             # Learning
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),
-            'n_estimators': trial.suggest_int('n_estimators', 200, 800, step=100),
+            'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.15, log=True),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=50),
 
             # Autres
-            'gamma': trial.suggest_float('gamma', 0.0, 5.0),
-            'scale_pos_weight': trial.suggest_float('scale_pos_weight', 0.8, 1.6),
+            'gamma': trial.suggest_float('gamma', 0.0, 10.0),
+            
+            # 🔥 FIX: Multiplicateur au lieu de valeur absolue (évite écrasement)
+            'scale_pos_weight_mult': trial.suggest_float('scale_pos_weight_mult', 0.7, 1.5),
+            
+            # 🔥 NEW: Paramètres supplémentaires
+            'max_bin': trial.suggest_int('max_bin', 128, 512, step=64),
+            'grow_policy': trial.suggest_categorical('grow_policy', ['depthwise', 'lossguide']),
         }
 
         return params
@@ -131,52 +139,65 @@ class OptunaV2Tuner:
         self,
         y_true: np.ndarray,
         y_pred: np.ndarray,
-        y_proba: np.ndarray
+        y_proba: np.ndarray,
+        pnl_values: Optional[np.ndarray] = None
     ) -> float:
         """
         Calculer métrique selon configuration
-
-        trading_composite: 0.4*F1 + 0.3*Accuracy + 0.2*ROC-AUC + 0.1*Recall
+        
+        🔥 V2.1: Ajout métriques trading (profit_factor, precision)
+        
+        trading_composite: 0.35*F1 + 0.25*Accuracy + 0.20*ROC-AUC + 0.10*Recall + 0.10*Precision
+        trading_profit: Optimise pour profit réel si pnl_values fourni
         """
+        f1 = f1_score(y_true, y_pred, zero_division=0)
+        accuracy = accuracy_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred, zero_division=0)
+        recall = recall_score(y_true, y_pred, zero_division=0)
+        
+        try:
+            auc = roc_auc_score(y_true, y_proba)
+        except:
+            auc = 0.5
+        
         if self.metric == "trading_composite":
-            f1 = f1_score(y_true, y_pred, zero_division=0)
-            accuracy = accuracy_score(y_true, y_pred)
-            try:
-                auc = roc_auc_score(y_true, y_proba)
-            except:
-                auc = 0.5
-
-            # Recall sur classe 1 (wins)
-            win_mask = y_true == 1
-            if win_mask.sum() > 0:
-                recall_win = (y_pred[win_mask] == 1).mean()
-            else:
-                recall_win = 0.0
-
-            # Score composite
+            # Score composite équilibré
             score = (
-                0.40 * f1 +
-                0.30 * accuracy +
+                0.35 * f1 +
+                0.25 * accuracy +
                 0.20 * auc +
-                0.10 * recall_win
+                0.10 * recall +
+                0.10 * precision
             )
-
             return score
-
+        
+        elif self.metric == "trading_profit" and pnl_values is not None:
+            # 🔥 NEW: Optimiser pour profit réel
+            predicted_wins = y_pred == 1
+            if predicted_wins.sum() > 0:
+                # Profit moyen des trades prédits gagnants
+                avg_profit = pnl_values[predicted_wins].mean()
+                # Win rate réel des prédictions
+                actual_win_rate = y_true[predicted_wins].mean()
+                # Score = profit * win_rate * precision
+                score = max(0, avg_profit) * actual_win_rate * precision
+                return score
+            return 0.0
+        
         elif self.metric == "f1_score":
-            return f1_score(y_true, y_pred, zero_division=0)
-
+            return f1
+        
         elif self.metric == "accuracy":
-            return accuracy_score(y_true, y_pred)
-
+            return accuracy
+        
         elif self.metric == "roc_auc":
-            try:
-                return roc_auc_score(y_true, y_proba)
-            except:
-                return 0.5
-
+            return auc
+        
+        elif self.metric == "precision":
+            return precision
+        
         else:
-            return f1_score(y_true, y_pred, zero_division=0)
+            return f1
 
     def _objective(
         self,
@@ -186,55 +207,104 @@ class OptunaV2Tuner:
         X_test: pd.DataFrame,
         y_train: pd.Series,
         y_val: pd.Series,
-        y_test: pd.Series
+        y_test: pd.Series,
+        pnl_val: Optional[pd.Series] = None
     ) -> float:
         """
         Fonction objectif (temporal split)
-
+        
+        🔥 V2.1: Ajout pénalité overfitting + métriques avancées
+        
         Entraîne sur train, valide sur val, évalue sur test
         """
         # Suggérer hyperparamètres
         params = self._suggest_hyperparameters(trial)
-
-        # Class weights
+        
+        # 🔥 FIX: Calculer scale_pos_weight de base puis appliquer multiplicateur
         class_weights = handle_class_imbalance(y_train, strategy="balanced")
-        params['scale_pos_weight'] = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
-
+        base_spw = class_weights.get(1, 1.0) / class_weights.get(0, 1.0)
+        spw_mult = params.pop('scale_pos_weight_mult', 1.0)
+        params['scale_pos_weight'] = base_spw * spw_mult
+        
+        # Extraire grow_policy et max_bin (pas supportés par tous les tree_method)
+        grow_policy = params.pop('grow_policy', 'depthwise')
+        max_bin = params.pop('max_bin', 256)
+        
         # Entraîner modèle sur train
         model = xgb.XGBClassifier(
             **params,
+            tree_method='hist',
+            grow_policy=grow_policy,
+            max_bin=max_bin,
             random_state=42,
             use_label_encoder=False,
             eval_metric='logloss',
             early_stopping_rounds=30
         )
-
-        model.fit(
-            X_train, y_train,
-            eval_set=[(X_val, y_val)],
-            verbose=False
-        )
-
+        
+        try:
+            model.fit(
+                X_train, y_train,
+                eval_set=[(X_val, y_val)],
+                verbose=False
+            )
+        except Exception as e:
+            logger.warning(f"Trial {trial.number} failed: {e}")
+            raise optuna.TrialPruned()
+        
+        # Évaluer sur train (pour détecter overfitting)
+        y_train_pred = model.predict(X_train)
+        y_train_proba = model.predict_proba(X_train)[:, 1]
+        train_score = self._calculate_metric(y_train, y_train_pred, y_train_proba)
+        
         # Évaluer sur validation
         y_val_pred = model.predict(X_val)
         y_val_proba = model.predict_proba(X_val)[:, 1]
-
-        val_score = self._calculate_metric(y_val, y_val_pred, y_val_proba)
-
+        val_score = self._calculate_metric(
+            y_val, y_val_pred, y_val_proba,
+            pnl_values=pnl_val.values if pnl_val is not None else None
+        )
+        
         # Évaluer sur test (pour monitoring, pas pour optimisation)
         y_test_pred = model.predict(X_test)
         y_test_proba = model.predict_proba(X_test)[:, 1]
-
         test_score = self._calculate_metric(y_test, y_test_pred, y_test_proba)
-
-        # Log
+        
+        # 🔥 NEW: Calculer gap overfitting
+        overfit_gap = train_score - val_score
+        
+        # 🔥 NEW: Pénaliser overfitting sévèrement
+        if overfit_gap > 0.20:
+            # Overfitting sévère: pénalité 50%
+            final_score = val_score * 0.5
+            logger.warning(f"[Trial {trial.number}] ⚠️ OVERFITTING: gap={overfit_gap:.3f} → score pénalisé")
+        elif overfit_gap > 0.15:
+            # Overfitting modéré: pénalité 25%
+            final_score = val_score * 0.75
+            logger.info(f"[Trial {trial.number}] ⚠️ Overfitting modéré: gap={overfit_gap:.3f}")
+        elif overfit_gap > 0.10:
+            # Overfitting léger: pénalité 10%
+            final_score = val_score * 0.90
+        else:
+            # Bon généralisation
+            final_score = val_score
+        
+        # Log détaillé
         logger.info(
-            f"[Trial {trial.number}] {self.metric}: val={val_score:.4f}, test={test_score:.4f} | "
-            f"max_depth={params['max_depth']}, lr={params['learning_rate']:.4f}"
+            f"[Trial {trial.number}] {self.metric}: "
+            f"train={train_score:.4f}, val={val_score:.4f}, test={test_score:.4f}, "
+            f"gap={overfit_gap:.3f}, final={final_score:.4f} | "
+            f"depth={params['max_depth']}, lr={params['learning_rate']:.4f}, "
+            f"reg_α={params['reg_alpha']:.2f}, reg_λ={params['reg_lambda']:.2f}"
         )
-
-        # Retourner score validation (pas test, sinon c'est de l'overfitting !)
-        return val_score
+        
+        # Stocker métriques supplémentaires
+        trial.set_user_attr('train_score', train_score)
+        trial.set_user_attr('val_score', val_score)
+        trial.set_user_attr('test_score', test_score)
+        trial.set_user_attr('overfit_gap', overfit_gap)
+        
+        return final_score
 
     def optimize(
         self,

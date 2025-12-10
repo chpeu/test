@@ -70,6 +70,10 @@ class MLPredictorV2:
             if self.metadata and 'selected_features' in self.metadata:
                 self.selected_features = self.metadata['selected_features']
                 self.feature_names = self.selected_features
+            elif isinstance(self.preprocessor, dict) and 'feature_names' in self.preprocessor:
+                # Format dictionnaire avec feature_names
+                self.feature_names = list(self.preprocessor['feature_names'])
+                self.selected_features = self.feature_names
             elif hasattr(self.preprocessor, 'feature_names_in_'):
                 self.feature_names = list(self.preprocessor.feature_names_in_)
             else:
@@ -227,8 +231,24 @@ class MLPredictorV2:
             df = df.replace([np.inf, -np.inf], 0)
             df = df.fillna(0)
             
-            # Preprocesser
-            X = self.preprocessor.transform(df)
+            # Preprocesser - gérer différents formats
+            if isinstance(self.preprocessor, dict):
+                # Format dictionnaire: extraire scaler et imputer
+                scaler = self.preprocessor.get('scaler')
+                imputer = self.preprocessor.get('imputer')
+                
+                if imputer is not None:
+                    df = pd.DataFrame(imputer.transform(df), columns=df.columns)
+                if scaler is not None:
+                    X = scaler.transform(df)
+                else:
+                    X = df.values
+            elif hasattr(self.preprocessor, 'transform'):
+                # Format sklearn standard
+                X = self.preprocessor.transform(df)
+            else:
+                # Pas de preprocessor, utiliser directement
+                X = df.values
             
             # Prédiction PNL%
             predicted_pnl = float(self.model.predict(X)[0])

@@ -619,6 +619,95 @@ async def get_funding_rate(symbol: str):
         return JSONResponse({'success': False, 'error': str(e), 'rate': 0})
 
 
+@router.get('/token/status')
+async def get_token_status():
+    """
+    🔥 NOUVEAU: Récupérer le statut du token MEXC
+    
+    Returns:
+        - token_healthy: Token valide
+        - token_age_hours: Âge du token en heures
+        - estimated_expiry_hours: Temps restant estimé avant expiration
+        - proactive_alert_sent: Alerte proactive envoyée
+    """
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({
+                'success': False,
+                'message': 'Live trading non initialisé'
+            })
+        
+        # Récupérer le client MEXC bypass
+        if hasattr(live_order_manager, 'client') and live_order_manager.client:
+            client = live_order_manager.client
+            
+            # Récupérer le token monitor
+            if hasattr(client, '_token_monitor') and client._token_monitor:
+                status = client._token_monitor.get_status()
+                return JSONResponse({
+                    'success': True,
+                    **status
+                })
+        
+        return JSONResponse({
+            'success': False,
+            'message': 'Token monitor non disponible'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération statut token: {e}")
+        return JSONResponse({'success': False, 'error': str(e)})
+
+
+@router.post('/token/reset-timer')
+async def reset_token_timer():
+    """
+    🔥 NOUVEAU: Réinitialiser le timer du token après renouvellement manuel
+    
+    Appeler cette API après avoir:
+    1. Mis à jour MEXC_BROWSER_TOKEN dans .env
+    2. Redémarré le bot
+    
+    Cela réinitialise le compteur d'âge du token pour les alertes proactives.
+    """
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({
+                'success': False,
+                'message': 'Live trading non initialisé'
+            })
+        
+        # Récupérer le client MEXC bypass
+        if hasattr(live_order_manager, 'client') and live_order_manager.client:
+            client = live_order_manager.client
+            
+            # Récupérer le token monitor
+            if hasattr(client, '_token_monitor') and client._token_monitor:
+                client._token_monitor.reset_token_timer()
+                status = client._token_monitor.get_status()
+                
+                logger.info("✅ Timer token MEXC réinitialisé via API")
+                
+                return JSONResponse({
+                    'success': True,
+                    'message': 'Timer token réinitialisé',
+                    **status
+                })
+        
+        return JSONResponse({
+            'success': False,
+            'message': 'Token monitor non disponible'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur reset timer token: {e}")
+        return JSONResponse({'success': False, 'error': str(e)})
+
+
 # ============================================================================
 # WebSocket Commands Handlers
 # ============================================================================
@@ -724,3 +813,140 @@ def register_websocket_commands(ws_manager):
             return {'success': False, 'error': str(e)}
 
     logger.info("✅ Commandes WebSocket live trading enregistrées")
+
+
+# ========== DIAGNOSTIC LEVIER ==========
+
+@router.get("/leverage/diagnostic")
+async def diagnostic_leverage():
+    """
+    🔍 Diagnostic complet du levier - Vérifie toutes les sources de config
+    
+    Returns:
+        Dict avec le levier depuis chaque source et celui effectivement utilisé
+    """
+    try:
+        from config import TRADING_CONFIG
+        import main
+        
+        # 1. TRADING_CONFIG (config.py + config_overrides.json)
+        trading_config_leverage = TRADING_CONFIG.get('default_leverage', 'NON_DEFINI')
+        
+        # 2. live_config (config_live_persistent.json)
+        live_config = load_live_config()
+        live_config_leverage = live_config.get('default_leverage', 'NON_DEFINI')
+        
+        # 3. config_overrides.json directement
+        overrides_leverage = 'NON_DEFINI'
+        try:
+            from utils.config_persistence import load_config_overrides
+            overrides = load_config_overrides()
+            overrides_leverage = overrides.get('default_leverage', 'NON_DEFINI')
+        except:
+            pass
+        
+        # 4. LiveOrderManager actuel
+        live_manager_leverage = 'NON_INITIALISE'
+        if hasattr(main, 'live_order_manager') and main.live_order_manager:
+            live_manager_leverage = getattr(main.live_order_manager, 'default_leverage', 'NON_DEFINI')
+        
+        # 5. PositionManager
+        position_manager_leverage = 'NON_INITIALISE'
+        if hasattr(main, 'position_manager') and main.position_manager:
+            if hasattr(main.position_manager, 'live_order_manager') and main.position_manager.live_order_manager:
+                position_manager_leverage = getattr(main.position_manager.live_order_manager, 'default_leverage', 'NON_DEFINI')
+        
+        # Déterminer le levier effectif (celui qui sera réellement utilisé)
+        # Ordre de priorité: TRADING_CONFIG (car passé explicitement dans position_manager)
+        effective_leverage = trading_config_leverage if trading_config_leverage != 'NON_DEFINI' else 10
+        
+        # Vérifier la cohérence
+        inconsistencies = []
+        if trading_config_leverage != live_config_leverage:
+            inconsistencies.append(f"TRADING_CONFIG ({trading_config_leverage}) != live_config ({live_config_leverage})")
+        if live_manager_leverage != 'NON_INITIALISE' and live_manager_leverage != effective_leverage:
+            inconsistencies.append(f"LiveOrderManager ({live_manager_leverage}x) != effective ({effective_leverage}x)")
+        
+        return {
+            'success': True,
+            'sources': {
+                'TRADING_CONFIG': trading_config_leverage,
+                'config_overrides.json': overrides_leverage,
+                'config_live_persistent.json': live_config_leverage,
+                'LiveOrderManager.default_leverage': live_manager_leverage,
+                'PositionManager→LiveOrderManager': position_manager_leverage,
+            },
+            'effective_leverage': effective_leverage,
+            'inconsistencies': inconsistencies,
+            'is_consistent': len(inconsistencies) == 0,
+            'recommendation': (
+                "✅ Cohérent" if len(inconsistencies) == 0 
+                else f"⚠️ Incohérence détectée: {'; '.join(inconsistencies)}"
+            )
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur diagnostic levier: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@router.post("/leverage/sync")
+async def sync_leverage(leverage: int = 1):
+    """
+    🔄 Synchroniser le levier dans TOUTES les sources de config
+    
+    Args:
+        leverage: Levier souhaité (1-125)
+        
+    Returns:
+        Dict avec le résultat de la synchronisation
+    """
+    try:
+        from config import TRADING_CONFIG
+        from utils.config_persistence import save_config_overrides, load_config_overrides
+        import main
+        
+        # Borner le levier
+        leverage = max(1, min(125, leverage))
+        
+        updates = []
+        
+        # 1. Mettre à jour TRADING_CONFIG en mémoire
+        TRADING_CONFIG['default_leverage'] = leverage
+        updates.append(f"TRADING_CONFIG: {leverage}x")
+        
+        # 2. Persister dans config_overrides.json
+        overrides = load_config_overrides()
+        overrides['default_leverage'] = leverage
+        save_config_overrides(overrides)
+        updates.append(f"config_overrides.json: {leverage}x")
+        
+        # 3. Mettre à jour config_live_persistent.json
+        live_config = load_live_config()
+        live_config['default_leverage'] = leverage
+        save_live_config(live_config)
+        updates.append(f"config_live_persistent.json: {leverage}x")
+        
+        # 4. Mettre à jour LiveOrderManager si actif
+        if hasattr(main, 'live_order_manager') and main.live_order_manager:
+            main.live_order_manager.default_leverage = leverage
+            updates.append(f"LiveOrderManager.default_leverage: {leverage}x")
+        
+        logger.info(f"✅ Levier synchronisé à {leverage}x dans toutes les sources")
+        
+        return {
+            'success': True,
+            'leverage': leverage,
+            'updates': updates,
+            'message': f"Levier synchronisé à {leverage}x dans {len(updates)} sources"
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur sync levier: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e)
+        }

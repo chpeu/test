@@ -13,6 +13,7 @@ Fonctionnalités :
 import asyncio
 import logging
 from typing import Optional, Dict, List, Union
+import hashlib
 from datetime import datetime, timedelta
 import time
 from collections import deque
@@ -56,6 +57,14 @@ class TelegramNotifier:
         self.last_message_time = 0
         self.message_queue: deque = deque(maxlen=100)
         
+        # 🔥 FIX: Rate limit handling (429 errors)
+        self.rate_limit_until = 0  # Timestamp jusqu'à quand on ne peut pas envoyer
+        self.rate_limit_logged = False  # Éviter spam logs
+        
+        # 🔥 FIX: Déduplication - éviter doublons pour même événement
+        self.sent_events: Dict[str, float] = {}  # event_key -> timestamp
+        self.dedup_cooldown_seconds = 60  # Cooldown avant de réenvoyer même événement
+        
         if self.enabled:
             logger.info(f"📱 Telegram Notifier activé | Chat ID: {chat_id}")
         else:
@@ -83,6 +92,33 @@ class TelegramNotifier:
             result = result.replace(char, f'\\{char}')
         return result
     
+    def _is_duplicate_event(self, event_key: str) -> bool:
+        """
+        🔥 Vérifie si un événement a déjà été notifié récemment
+        
+        Args:
+            event_key: Clé unique de l'événement (ex: "position_closed_ASTER/USDT")
+        
+        Returns:
+            True si doublon (ne pas envoyer), False si OK
+        """
+        now = time.time()
+        
+        # Nettoyer anciens événements (> cooldown)
+        expired_keys = [k for k, t in self.sent_events.items() if now - t > self.dedup_cooldown_seconds]
+        for k in expired_keys:
+            del self.sent_events[k]
+        
+        # Vérifier si déjà envoyé
+        if event_key in self.sent_events:
+            elapsed = now - self.sent_events[event_key]
+            logger.debug(f"📱 Doublon ignoré: {event_key} (envoyé il y a {elapsed:.1f}s)")
+            return True
+        
+        # Enregistrer cet événement
+        self.sent_events[event_key] = now
+        return False
+    
     async def send_message(
         self,
         message: str,
@@ -102,6 +138,11 @@ class TelegramNotifier:
         """
         if not self.enabled:
             logger.debug(f"📱 [TELEGRAM DISABLED] {message}")
+            return False
+        
+        # 🔥 FIX: Vérifier rate limit avant envoi
+        if time.time() < self.rate_limit_until:
+            # Silencieusement ignorer (log déjà fait lors du rate limit initial)
             return False
         
         # Throttling
@@ -142,6 +183,7 @@ class TelegramNotifier:
                 async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status == 200:
                         self.last_message_time = time.time()
+                        self.rate_limit_logged = False  # Reset flag
                         self.message_queue.append({
                             'message': message,
                             'timestamp': time.time(),
@@ -149,6 +191,19 @@ class TelegramNotifier:
                         })
                         logger.debug(f"✅ Message Telegram envoyé")
                         return True
+                    elif response.status == 429:
+                        # 🔥 FIX: Rate limit - extraire retry_after et attendre
+                        try:
+                            import json
+                            error_json = json.loads(await response.text())
+                            retry_after = error_json.get('parameters', {}).get('retry_after', 60)
+                            self.rate_limit_until = time.time() + retry_after
+                            if not self.rate_limit_logged:
+                                logger.warning(f"⚠️ Telegram rate limit: attendre {retry_after}s")
+                                self.rate_limit_logged = True
+                        except:
+                            self.rate_limit_until = time.time() + 60  # Fallback 60s
+                        return False
                     else:
                         error_text = await response.text()
                         logger.error(f"❌ Erreur Telegram API: {response.status} - {error_text}")
@@ -173,6 +228,11 @@ class TelegramNotifier:
             position_data: Dict avec symbol, direction, entry, size, tp, sl, etc.
         """
         symbol = position_data.get('symbol', '?')
+        
+        # 🔥 FIX: Déduplication - 1 seule notif par ouverture
+        event_key = f"opened_{symbol}_{position_data.get('entry', 0):.6f}"
+        if self._is_duplicate_event(event_key):
+            return
         direction = position_data.get('direction', '?')
         entry = position_data.get('entry', 0)
         size = position_data.get('size', 0)
@@ -228,6 +288,12 @@ class TelegramNotifier:
             result: Résultat fermeture (exit_reason, pnl_pct, etc.)
         """
         symbol = position_data.get('symbol', '?')
+        
+        # 🔥 FIX: Déduplication - 1 seule notif par fermeture
+        exit_reason = result.get('exit_reason', '?')
+        event_key = f"closed_{symbol}_{exit_reason}"
+        if self._is_duplicate_event(event_key):
+            return
         direction = position_data.get('direction', '?')
         exit_reason = result.get('exit_reason', '?')
         pnl_pct = result.get('pnl_pct', 0)
@@ -285,6 +351,11 @@ class TelegramNotifier:
         """
         symbol = level_data.get('symbol', '?')
         level = level_data.get('level', 0)
+        
+        # 🔥 FIX: Déduplication - 1 seule notif par niveau TP
+        event_key = f"tp_escalier_{symbol}_{level}"
+        if self._is_duplicate_event(event_key):
+            return
         total_levels = level_data.get('total_levels', 0)
         profit_usdt = level_data.get('profit_usdt', 0)
         profit_pct = level_data.get('profit_pct', 0)
@@ -313,6 +384,11 @@ class TelegramNotifier:
             position_data: Données position
         """
         symbol = position_data.get('symbol', '?')
+        
+        # 🔥 FIX: Déduplication - 1 seule notif par invalidation
+        event_key = f"early_invalidation_{symbol}"
+        if self._is_duplicate_event(event_key):
+            return
         direction = position_data.get('direction', '?')
         pnl_pct = position_data.get('pnl_pct', 0)
         
@@ -341,6 +417,14 @@ class TelegramNotifier:
             error_type: Type erreur
             details: Détails
         """
+        # 🔥 FIX: Déduplication - 1 seule notif par type d'erreur (cooldown 60s)
+        event_key = f"error_{error_type}"
+        if self._is_duplicate_event(event_key):
+            return
+        
+        # 🔥 FIX: Échapper details pour éviter erreurs Markdown
+        details_escaped = self._escape_markdown(str(details))
+        
         # 🔥 NOUVEAU: Ajouter instance port dans le message
         instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
         
@@ -348,7 +432,7 @@ class TelegramNotifier:
 🚨 **ERREUR SYSTÈME** {instance_info} 🚨
 
 ❌ **Type**: {error_type}
-📝 **Détails**: {details}
+📝 **Détails**: {details_escaped}
 
 ⏰ {datetime.now().strftime('%H:%M:%S')}
 """
@@ -362,6 +446,11 @@ class TelegramNotifier:
         Args:
             service: Nom service (ex: 'WebSocket', 'MEXC API')
         """
+        # 🔥 FIX: Déduplication - 1 seule notif par reconnexion service
+        event_key = f"reconnection_{service}"
+        if self._is_duplicate_event(event_key):
+            return
+        
         # 🔥 NOUVEAU: Ajouter instance port dans le message
         instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
         
@@ -418,6 +507,11 @@ class TelegramNotifier:
             level: Niveau recovery (1, 2, 3)
             pause_duration: Durée pause (secondes)
         """
+        # 🔥 FIX: Déduplication - 1 seule notif par niveau recovery
+        event_key = f"recovery_mode_{level}"
+        if self._is_duplicate_event(event_key):
+            return
+        
         # 🔥 NOUVEAU: Ajouter instance port dans le message
         instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
         
@@ -434,7 +528,7 @@ class TelegramNotifier:
     
     def get_stats(self) -> Dict:
         """
-        Obtenir statistiques notifications
+        Récupérer statistiques messages
         
         Returns:
             Dict avec nombre messages envoyés, erreurs, etc.
@@ -448,6 +542,67 @@ class TelegramNotifier:
             'enabled': self.enabled
         }
 
+    def send_alert(self, message: str) -> bool:
+        """
+        🔥 Wrapper SYNCHRONE pour envoyer une alerte d'erreur
+        Compatible avec les appels depuis du code synchrone (ex: LiveOrderManager)
+        
+        Args:
+            message: Message d'alerte à envoyer
+            
+        Returns:
+            True si envoyé (ou si disabled), False si erreur
+        """
+        if not self.enabled:
+            logger.debug(f"📱 [TELEGRAM DISABLED] Alert: {message[:100]}...")
+            return True
+        
+        try:
+            import asyncio
+            
+            # Créer une coroutine pour send_message
+            async def _send():
+                return await self.send_message(message, bypass_throttle=True)
+            
+            # Essayer d'obtenir la loop courante
+            try:
+                loop = asyncio.get_running_loop()
+                # Si une loop est active, planifier la tâche
+                asyncio.ensure_future(_send())
+                return True
+            except RuntimeError:
+                # Pas de loop active, en créer une temporaire
+                return asyncio.run(_send())
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur send_alert: {e}")
+            return False
+
+    def send_error_sync(self, error_type: str, details: str) -> bool:
+        """
+        🔥 Wrapper SYNCHRONE pour notify_error
+        
+        Args:
+            error_type: Type d'erreur
+            details: Détails de l'erreur
+            
+        Returns:
+            True si envoyé, False sinon
+        """
+        # 🔥 FIX: Échapper details pour éviter erreurs Markdown
+        details_escaped = self._escape_markdown(str(details))
+        
+        instance_info = f"[Instance {self.instance_port}]" if self.instance_port else ""
+        
+        message = f"""
+🚨 **ERREUR SYSTÈME** {instance_info} 🚨
+
+❌ **Type**: {error_type}
+📝 **Détails**: {details_escaped}
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        return self.send_alert(message.strip())
 
 # ==================== HELPER ====================
 

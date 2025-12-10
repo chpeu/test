@@ -439,6 +439,9 @@ class PostgreSQLDataLogger:
                     price, spread_pct, book_depth, balance_score,
                     bid_vol, ask_vol, orderbook_imbalance_ratio,
                     recent_volume, vol5, vol15, scalability_score,
+                    -- 🔥 ORDER FLOW: 6 nouvelles métriques
+                    delta_volume, imbalance_normalized, spread_volatility_5,
+                    book_depth_ratio, volume_acceleration, price_momentum_5,
                     
                     -- Indicateurs 1m
                     ema9_1m, ema21_1m, ema_diff_pct_1m,
@@ -486,6 +489,9 @@ class PostgreSQLDataLogger:
                     -- Décision ML
                     is_opportunity, opportunity_direction, reject_reason, reject_reason_category,
                     
+                    -- 🔥 ML Confidence (confiance réelle du modèle)
+                    ml_confidence,
+                    
                     -- Params snapshot
                     params_snapshot,
                     
@@ -493,23 +499,32 @@ class PostgreSQLDataLogger:
                     config_min_score_required, config_snr_threshold,
                     config_atr_min_1m, config_atr_max_1m,
                     config_atr_min_5m, config_atr_max_5m,
-                    config_volume_multiplier, config_use_confluence
+                    config_volume_multiplier, config_use_confluence,
+                    config_use_anti_whipsaw, config_whipsaw_lookback,
+                    config_whipsaw_threshold_pct, config_whipsaw_max_alternations,
+                    config_use_retest_confirmation, config_retest_tolerance_pct,
+                    config_retest_timeout_seconds, config_use_cooldown,
+                    config_cooldown_seconds, config_cooldown_same_symbol,
+                    config_use_candle_close, config_candle_close_threshold_seconds,
+                    config_use_momentum_continuity, config_momentum_lookback
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s,
+                    %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -550,18 +565,43 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
             
+            # 🔥 ORDER FLOW: Calcul automatique si manquant
+            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
+            imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
+            book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
+            
+            # Calculer automatiquement si manquant et bid/ask disponibles
+            if delta_volume is None and bid_vol and ask_vol:
+                delta_volume = float(bid_vol) - float(ask_vol)
+            if imbalance_normalized is None and bid_vol and ask_vol:
+                total = float(bid_vol) + float(ask_vol)
+                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+                book_depth_ratio = float(bid_vol) / float(ask_vol)
+            
             # Préparer les paramètres
             params = (
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
-                market_data.get('bid_vol'), market_data.get('ask_vol'),
+                bid_vol, ask_vol,
                 market_data.get('orderbook_imbalance_ratio'),
                 # Paramètres du scan de scalabilité
                 market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
                 market_data.get('vol5') or scan_data.get('vol5'),
                 market_data.get('vol15') or scan_data.get('vol15'),
                 market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                
+                # 🔥 ORDER FLOW: 6 métriques (calculées auto si manquantes)
+                delta_volume,
+                imbalance_normalized,
+                market_data.get('spread_volatility_5') or scan_data.get('spread_volatility_5'),
+                book_depth_ratio,
+                market_data.get('volume_acceleration') or scan_data.get('volume_acceleration'),
+                market_data.get('price_momentum_5') or scan_data.get('price_momentum_5'),
                 
                 # 1m
                 indicators_1m.get('ema9'), indicators_1m.get('ema21'),
@@ -628,6 +668,9 @@ class PostgreSQLDataLogger:
                 scan_data.get('opportunity_direction'),
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 
+                # 🔥 ML Confidence (confiance réelle du modèle, si disponible)
+                scan_data.get('ml_confidence'),
+                
                 # Params
                 json.dumps(params_snap),
                 
@@ -639,7 +682,21 @@ class PostgreSQLDataLogger:
                 params_snap.get('optimal_atr_min_5m'),
                 params_snap.get('optimal_atr_max_5m'),
                 params_snap.get('volume_multiplier'),
-                params_snap.get('use_confluence')
+                params_snap.get('use_confluence'),
+                params_snap.get('use_anti_whipsaw'),
+                params_snap.get('whipsaw_lookback'),
+                params_snap.get('whipsaw_threshold_pct'),
+                params_snap.get('whipsaw_max_alternations'),
+                params_snap.get('use_retest_confirmation'),
+                params_snap.get('retest_tolerance_pct'),
+                params_snap.get('retest_timeout_seconds'),
+                params_snap.get('use_cooldown'),
+                params_snap.get('cooldown_seconds'),
+                params_snap.get('cooldown_same_symbol'),
+                params_snap.get('use_candle_close'),
+                params_snap.get('candle_close_threshold_seconds'),
+                params_snap.get('use_momentum_continuity'),
+                params_snap.get('momentum_lookback')
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -653,6 +710,146 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur logging scan {symbol}: {e}")
             return None
     
+    def update_ml_confidence(
+        self,
+        symbol: str,
+        ml_confidence: float,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        🔥 FIX: Mettre à jour ml_confidence pour le scan le plus récent d'un symbole
+        
+        Cette méthode est appelée APRÈS la prédiction ML pour mettre à jour
+        le scan_log qui a été créé AVANT la prédiction.
+        
+        Args:
+            symbol: Symbole de la paire
+            ml_confidence: Confiance ML en pourcentage (ex: 34.7)
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
+        
+        Returns:
+            True si mise à jour réussie, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            # Mettre à jour le scan le plus récent pour ce symbole
+            query = """
+                UPDATE scan_logs 
+                SET ml_confidence = %s
+                WHERE symbol = %s 
+                AND timestamp > NOW() - INTERVAL '%s minutes'
+                AND ml_confidence IS NULL
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            # Note: PostgreSQL ne supporte pas LIMIT dans UPDATE directement
+            # On utilise une sous-requête
+            query = """
+                UPDATE scan_logs 
+                SET ml_confidence = %s
+                WHERE id = (
+                    SELECT id FROM scan_logs 
+                    WHERE symbol = %s 
+                    AND timestamp > NOW() - INTERVAL '%s minutes'
+                    AND ml_confidence IS NULL
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                )
+            """
+            
+            result = self._execute_query(query, (ml_confidence, symbol, minutes_ago))
+            if result is not None:
+                logger.info(f"✅ ml_confidence mis à jour pour {symbol}: {ml_confidence:.1f}%")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update ml_confidence pour {symbol}: {e}")
+            return False
+    
+    def get_ml_confidence_for_symbol(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        🔥 FIX: Récupérer ml_confidence depuis PostgreSQL pour un symbole
+        
+        Cette méthode est utilisée pour charger ml_confidence si la position
+        a été ouverte avant que le fix soit en place.
+        
+        Args:
+            symbol: Symbole de la paire (ex: 'SHIB/USDT')
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 60)
+        
+        Returns:
+            ml_confidence en pourcentage ou None si non trouvé
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            query = """
+                SELECT ml_confidence FROM scan_logs 
+                WHERE symbol = %s 
+                AND timestamp > NOW() - (INTERVAL '1 minute' * %s)
+                AND ml_confidence IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            
+            result = self._execute_query(query, (symbol, minutes_ago), fetch=True)
+            if result and len(result) > 0 and result[0][0] is not None:
+                ml_conf = float(result[0][0])
+                logger.debug(f"📊 ml_confidence récupéré pour {symbol}: {ml_conf:.1f}%")
+                return round(ml_conf, 1)  # Arrondir au dixième
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get ml_confidence pour {symbol}: {e}")
+            return None
+    
+    def get_adaptive_sizing_for_symbol(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        🔥 FIX: Récupérer adaptive_sizing_multiplier depuis PostgreSQL
+        
+        Args:
+            symbol: Symbole de la paire
+            minutes_ago: Chercher dans les N dernières minutes
+        
+        Returns:
+            adaptive_sizing_multiplier ou None
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            query = """
+                SELECT adaptive_sizing_multiplier FROM trades 
+                WHERE symbol = %s 
+                AND timestamp_entry > NOW() - (INTERVAL '1 minute' * %s)
+                AND adaptive_sizing_multiplier IS NOT NULL
+                ORDER BY timestamp_entry DESC
+                LIMIT 1
+            """
+            
+            result = self._execute_query(query, (symbol, minutes_ago), fetch=True)
+            if result and len(result) > 0 and result[0][0] is not None:
+                sizing = float(result[0][0])
+                logger.debug(f"📊 sizing_multiplier récupéré pour {symbol}: {sizing:.2f}x")
+                return sizing
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get sizing_multiplier pour {symbol}: {e}")
+            return None
+
     def log_opportunity(
         self,
         scan_id: int,
@@ -1061,6 +1258,38 @@ class PostgreSQLDataLogger:
             config_optimal_atr_max_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_5m'))
             config_volume_multiplier = _extract_numeric_value(config_snapshot_dict.get('volume_multiplier'))
             config_use_confluence = config_snapshot_dict.get('use_confluence')
+            config_use_anti_whipsaw = config_snapshot_dict.get('use_anti_whipsaw')
+            config_whipsaw_lookback = _extract_numeric_value(config_snapshot_dict.get('whipsaw_lookback'))
+            config_whipsaw_threshold_pct = _extract_numeric_value(config_snapshot_dict.get('whipsaw_threshold_pct'))
+            config_whipsaw_max_alternations = _extract_numeric_value(config_snapshot_dict.get('whipsaw_max_alternations'))
+            config_use_retest_confirmation = config_snapshot_dict.get('use_retest_confirmation')
+            config_retest_tolerance_pct = _extract_numeric_value(config_snapshot_dict.get('retest_tolerance_pct'))
+            config_retest_timeout_seconds = _extract_numeric_value(config_snapshot_dict.get('retest_timeout_seconds'))
+            config_use_cooldown = config_snapshot_dict.get('use_cooldown')
+            config_cooldown_seconds = _extract_numeric_value(config_snapshot_dict.get('cooldown_seconds'))
+            config_cooldown_same_symbol = _extract_numeric_value(config_snapshot_dict.get('cooldown_same_symbol'))
+            config_use_candle_close = config_snapshot_dict.get('use_candle_close')
+            config_candle_close_threshold_seconds = _extract_numeric_value(config_snapshot_dict.get('candle_close_threshold_seconds'))
+            config_use_momentum_continuity = config_snapshot_dict.get('use_momentum_continuity')
+            config_momentum_lookback = _extract_numeric_value(config_snapshot_dict.get('momentum_lookback'))
+            
+            # 🔥 RSI Final Filter columns
+            config_rsi_filter_enabled = config_snapshot_dict.get('rsi_final_filter_enabled', False)
+            config_rsi_long_max = _extract_numeric_value(config_snapshot_dict.get('rsi_final_long_max', 70.0))
+            config_rsi_short_min = _extract_numeric_value(config_snapshot_dict.get('rsi_final_short_min', 30.0))
+
+            def _normalize_bool(val):
+                if isinstance(val, str):
+                    return val.lower() in ('true', '1', 'yes')
+                return bool(val) if val is not None else None
+
+            config_use_confluence = _normalize_bool(config_use_confluence)
+            config_use_anti_whipsaw = _normalize_bool(config_use_anti_whipsaw)
+            config_use_retest_confirmation = _normalize_bool(config_use_retest_confirmation)
+            config_use_cooldown = _normalize_bool(config_use_cooldown)
+            config_use_candle_close = _normalize_bool(config_use_candle_close)
+            config_use_momentum_continuity = _normalize_bool(config_use_momentum_continuity)
+            config_rsi_filter_enabled = _normalize_bool(config_rsi_filter_enabled)
             if isinstance(config_use_confluence, str):
                 config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
             elif config_use_confluence is None:
@@ -1106,17 +1335,56 @@ class PostgreSQLDataLogger:
             exit_vol5 = _extract_numeric_value(exit_indicators.get('vol5'))
             exit_vol15 = _extract_numeric_value(exit_indicators.get('vol15'))
             entry_score_value = _extract_numeric_value(entry_indicators.get('score'))
-            entry_spread_pct = _extract_numeric_value(entry_scalability.get('spread_pct'))
-            entry_balance_score = _extract_numeric_value(entry_scalability.get('balance_score'))
-            entry_book_depth = _extract_numeric_value(entry_scalability.get('book_depth')) or _extract_numeric_value(entry_scalability.get('depth'))
-            entry_bid_vol = _extract_numeric_value(entry_scalability.get('bid_vol'))
-            entry_ask_vol = _extract_numeric_value(entry_scalability.get('ask_vol'))
+            entry_spread_pct = _extract_numeric_value(
+                entry_scalability.get('spread_pct') or entry_scalability.get('spread')
+            )
+            # 🔥 FIX: Chercher balance_score avec plusieurs aliases
+            entry_balance_score = _extract_numeric_value(
+                entry_scalability.get('balance_score') 
+                or entry_scalability.get('balanceScore') 
+                or entry_scalability.get('balance')
+            )
+            entry_book_depth = _extract_numeric_value(
+                entry_scalability.get('book_depth') 
+                or entry_scalability.get('bookDepth') 
+                or entry_scalability.get('depth')
+            )
+            entry_bid_vol = _extract_numeric_value(
+                entry_scalability.get('bid_vol') or entry_scalability.get('bidVol')
+            )
+            entry_ask_vol = _extract_numeric_value(
+                entry_scalability.get('ask_vol') or entry_scalability.get('askVol')
+            )
+            # 🔥 FIX: Calculer orderbook_imbalance si non fourni
             entry_orderbook_imbalance = _extract_numeric_value(entry_scalability.get('orderbook_imbalance'))
-            entry_recent_volume = _extract_numeric_value(entry_scalability.get('recent_volume') or entry_scalability.get('recentVolume'))
+            if entry_orderbook_imbalance is None and entry_bid_vol and entry_ask_vol:
+                total_vol = entry_bid_vol + entry_ask_vol
+                if total_vol > 0:
+                    entry_orderbook_imbalance = (entry_bid_vol - entry_ask_vol) / total_vol
+            
+            entry_recent_volume = _extract_numeric_value(
+                entry_scalability.get('recent_volume') or entry_scalability.get('recentVolume')
+            )
             entry_vol5 = _extract_numeric_value(entry_scalability.get('vol5'))
             entry_vol15 = _extract_numeric_value(entry_scalability.get('vol15'))
-            entry_scalability_score = _extract_numeric_value(entry_scalability.get('scalability_score') or entry_scalability.get('score'))
+            entry_scalability_score = _extract_numeric_value(
+                entry_scalability.get('scalability_score') or entry_scalability.get('score')
+            )
+            
+            # 🔥 FIX: Colonnes market_* depuis entry_scalability ou entry_indicators
+            market_volatility_entry = _extract_numeric_value(
+                entry_indicators.get('volatility') or entry_scalability.get('vol5')
+            )
+            spread_at_entry_pct = entry_spread_pct
+            volume_24h_at_entry = _extract_numeric_value(
+                entry_scalability.get('volume_24h') or entry_scalability.get('volume24h')
+            )
+            orderbook_imbalance_entry = entry_orderbook_imbalance
+            atr_at_entry = _extract_numeric_value(entry_indicators.get('atr_1m'))
 
+            # 🔥 FIX: Extraire adaptive_sizing_multiplier
+            adaptive_sizing_multiplier = _extract_numeric_value(trade_data.get('adaptive_sizing_multiplier'))
+            
             fields = []
             fields.extend([
                 ('timestamp_entry', entry_timestamp),
@@ -1131,6 +1399,7 @@ class PostgreSQLDataLogger:
                 ('size_usdt', size_usdt),
                 ('tp_price', tp_price),
                 ('sl_price', sl_price),
+                ('adaptive_sizing_multiplier', adaptive_sizing_multiplier),
                 ('gross_pnl_usdt', gross_pnl_usdt),
                 ('pnl_pct', gross_pnl_pct),
                 ('pnl_usdt', gross_pnl_usdt),
@@ -1215,19 +1484,21 @@ class PostgreSQLDataLogger:
                 ('entry_condition_count', len(entry_conditions)),
                 ('entry_hour_of_day', entry_hour),
                 ('entry_day_of_week', entry_day),
-                ('exit_rsi_1m', exit_indicators.get('rsi_1m')),
-                ('exit_rsi_5m', exit_indicators.get('rsi_5m')),
-                ('exit_macd_hist_1m', exit_indicators.get('macd_hist_1m')),
-                ('exit_macd_hist_5m', exit_indicators.get('macd_hist_5m')),
-                ('exit_adx_1m', exit_indicators.get('adx_1m')),
-                ('exit_adx_5m', exit_indicators.get('adx_5m')),
-                ('exit_atr_pct_1m', exit_indicators.get('atr_pct_1m')),
-                ('exit_atr_pct_5m', exit_indicators.get('atr_pct_5m')),
+                # 🔥 FIX: exit_indicators avec fallback sur entry si vide (mieux que NULL)
+                ('exit_rsi_1m', exit_indicators.get('rsi_1m') or entry_indicators.get('rsi_1m')),
+                ('exit_rsi_5m', exit_indicators.get('rsi_5m') or entry_indicators.get('rsi_5m')),
+                ('exit_macd_hist_1m', exit_indicators.get('macd_hist_1m') or entry_indicators.get('macd_hist_1m')),
+                ('exit_macd_hist_5m', exit_indicators.get('macd_hist_5m') or entry_indicators.get('macd_hist_5m')),
+                ('exit_adx_1m', exit_indicators.get('adx_1m') or entry_indicators.get('adx_1m')),
+                ('exit_adx_5m', exit_indicators.get('adx_5m') or entry_indicators.get('adx_5m')),
+                ('exit_atr_pct_1m', exit_indicators.get('atr_pct_1m') or entry_indicators.get('atr_pct_1m')),
+                ('exit_atr_pct_5m', exit_indicators.get('atr_pct_5m') or entry_indicators.get('atr_pct_5m')),
                 ('exit_score', exit_score),
-                ('exit_volume_ratio_1m', exit_volume_ratio_1m),
-                ('exit_volume_ratio_5m', exit_volume_ratio_5m),
-                ('exit_spread_pct', exit_spread_pct),
-                ('exit_balance_score', exit_balance_score),
+                # 🔥 FIX: Fallback sur entry values si exit vide
+                ('exit_volume_ratio_1m', exit_volume_ratio_1m or entry_indicators.get('volume_ratio_1m')),
+                ('exit_volume_ratio_5m', exit_volume_ratio_5m or entry_indicators.get('volume_ratio_5m')),
+                ('exit_spread_pct', exit_spread_pct or entry_spread_pct),
+                ('exit_balance_score', exit_balance_score or entry_balance_score),
                 ('entry_to_exit_price_change_pct', entry_to_exit_price_change_pct),
                 ('exit_hour_of_day', exit_hour),
                 ('exit_day_of_week', exit_day),
@@ -1249,6 +1520,32 @@ class PostgreSQLDataLogger:
                 ('entry_vol5', entry_vol5),
                 ('entry_vol15', entry_vol15),
                 ('entry_scalability_score', entry_scalability_score),
+                # 🔥 FIX: Ajouter market conditions columns
+                ('market_volatility_entry', market_volatility_entry),
+                ('spread_at_entry_pct', spread_at_entry_pct),
+                ('volume_24h_at_entry', volume_24h_at_entry),
+                ('orderbook_imbalance_entry', orderbook_imbalance_entry),
+                ('atr_at_entry', atr_at_entry),
+                # Exit market conditions (même valeurs car short-term trade)
+                ('market_volatility_exit', market_volatility_entry),
+                ('spread_at_exit_pct', exit_spread_pct or spread_at_entry_pct),
+                ('volume_24h_at_exit', volume_24h_at_entry),
+                ('orderbook_imbalance_exit', entry_orderbook_imbalance),
+                ('atr_at_exit', atr_at_entry),
+                # Technical indicators at entry/exit (simplified)
+                ('rsi_at_entry', entry_indicators.get('rsi_1m')),
+                ('macd_at_entry', entry_indicators.get('macd_hist_1m')),
+                ('adx_at_entry', entry_indicators.get('adx_1m')),
+                ('di_plus_entry', entry_indicators.get('di_plus_1m')),
+                ('di_minus_entry', entry_indicators.get('di_minus_1m')),
+                ('rsi_at_exit', exit_indicators.get('rsi_1m') or entry_indicators.get('rsi_1m')),
+                ('macd_at_exit', exit_indicators.get('macd_hist_1m') or entry_indicators.get('macd_hist_1m')),
+                ('adx_at_exit', exit_indicators.get('adx_1m') or entry_indicators.get('adx_1m')),
+                ('di_plus_exit', exit_indicators.get('di_plus_1m') or entry_indicators.get('di_plus_1m')),
+                ('di_minus_exit', exit_indicators.get('di_minus_1m') or entry_indicators.get('di_minus_1m')),
+                # Risk/reward
+                ('risk_reward_planned', risk_reward_ratio),
+                ('risk_reward_actual', (net_pnl_pct_value / abs(max_adverse_excursion)) if max_adverse_excursion and max_adverse_excursion != 0 else None),
                 # Config snapshot décomposé
                 ('config_min_score_required', config_min_score_required),
                 ('config_snr_threshold', config_snr_threshold),
@@ -1258,8 +1555,48 @@ class PostgreSQLDataLogger:
                 ('config_optimal_atr_max_5m', config_optimal_atr_max_5m),
                 ('config_volume_multiplier', config_volume_multiplier),
                 ('config_use_confluence', config_use_confluence),
+                ('config_use_anti_whipsaw', config_use_anti_whipsaw),
+                ('config_whipsaw_lookback', config_whipsaw_lookback),
+                ('config_whipsaw_threshold_pct', config_whipsaw_threshold_pct),
+                ('config_whipsaw_max_alternations', config_whipsaw_max_alternations),
+                ('config_use_retest_confirmation', config_use_retest_confirmation),
+                ('config_retest_tolerance_pct', config_retest_tolerance_pct),
+                ('config_retest_timeout_seconds', config_retest_timeout_seconds),
+                ('config_use_cooldown', config_use_cooldown),
+                ('config_cooldown_seconds', config_cooldown_seconds),
+                ('config_cooldown_same_symbol', config_cooldown_same_symbol),
+                ('config_use_candle_close', config_use_candle_close),
+                ('config_candle_close_threshold_seconds', config_candle_close_threshold_seconds),
+                ('config_use_momentum_continuity', config_use_momentum_continuity),
+                ('config_momentum_lookback', config_momentum_lookback),
+                # 🔥 RSI Final Filter config
+                ('config_rsi_filter_enabled', config_rsi_filter_enabled),
+                ('config_rsi_long_max', config_rsi_long_max),
+                ('config_rsi_short_min', config_rsi_short_min),
                 ('config_snapshot', config_snapshot),
-                ('win', win)
+                # 🔥 SPRINT 1: Market Regime & Circuit Breaker context
+                ('entry_market_regime', trade_data.get('entry_market_regime')),
+                ('entry_market_regime_avg_atr', _extract_numeric_value(trade_data.get('entry_market_regime_avg_atr'))),
+                ('entry_market_regime_avg_adx', _extract_numeric_value(trade_data.get('entry_market_regime_avg_adx'))),
+                ('entry_min_score_required', _extract_numeric_value(trade_data.get('entry_min_score_required'))),
+                ('entry_atr_mult_sl', _extract_numeric_value(trade_data.get('entry_atr_mult_sl'))),
+                ('entry_atr_mult_tp', _extract_numeric_value(trade_data.get('entry_atr_mult_tp'))),
+                # 🔥 NOUVEAU: Paramètres dynamiques additionnels du régime
+                ('entry_volume_multiplier', _extract_numeric_value(trade_data.get('entry_volume_multiplier'))),
+                ('entry_rsi_filter_mode', trade_data.get('entry_rsi_filter_mode')),
+                ('entry_position_timeout', trade_data.get('entry_position_timeout')),
+                ('entry_optimal_atr_max_1m', _extract_numeric_value(trade_data.get('entry_optimal_atr_max_1m'))),
+                ('entry_sl_exchange_percent', _extract_numeric_value(trade_data.get('entry_sl_exchange_percent'))),
+                ('entry_cb_state', trade_data.get('entry_cb_state')),
+                ('entry_consecutive_losses', trade_data.get('entry_consecutive_losses', 0)),
+                ('entry_daily_pnl_pct', _extract_numeric_value(trade_data.get('entry_daily_pnl_pct'))),
+                ('entry_cb_score_boost', _extract_numeric_value(trade_data.get('entry_cb_score_boost'))),
+                # 🔥 SPRINT 2: Pair Scorer context
+                ('entry_pair_score_adjustment', _extract_numeric_value(trade_data.get('entry_pair_score_adjustment'))),
+                ('entry_effective_min_score', _extract_numeric_value(trade_data.get('entry_effective_min_score'))),
+                ('win', win),
+                # 🔥 FIX: ml_confidence toujours loggé (pas seulement pour live trades)
+                ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence')))
             ])
             
             # 🔥 LIVE TRADING COLUMNS (ajoutées conditionnellement si présentes)
@@ -1314,11 +1651,9 @@ class PostgreSQLDataLogger:
                     ('ws_latency_ms', trade_data.get('ws_latency_ms')),
                     # Score & ML
                     ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
-                    ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence'))),
+                    # ml_confidence déplacé dans fields principaux
                     ('ml_prediction', trade_data.get('ml_prediction')),
-                    # Analyse post-trade
-                    ('risk_reward_actual', _extract_numeric_value(trade_data.get('risk_reward_actual'))),
-                    ('risk_reward_planned', _extract_numeric_value(trade_data.get('risk_reward_planned'))),
+                    # Analyse post-trade (risk_reward déjà ajoutés plus haut)
                     # Notes & Tags
                     ('trade_notes', trade_data.get('trade_notes')),
                     ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),
@@ -1364,11 +1699,194 @@ class PostgreSQLDataLogger:
             if result:
                 trade_id = result[0][0]
                 logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {trade_id})")
+                
+                # 🔥 ATR OPTIMIZATION: Logger les métriques ATR pour ce trade
+                try:
+                    self.log_trade_atr_metrics(trade_id, trade_data, entry_indicators, config_snapshot_dict)
+                except Exception as atr_err:
+                    logger.warning(f"⚠️ Erreur logging ATR metrics: {atr_err}")
+                
                 return trade_id
             return None
             
         except Exception as e:
             logger.error(f"❌ Erreur logging trade {trade_data.get('symbol')}: {e}")
+            return None
+    
+    def log_trade_atr_metrics(
+        self,
+        trade_id: str,
+        trade_data: Dict[str, Any],
+        entry_indicators: Dict[str, Any],
+        config_snapshot: Dict[str, Any]
+    ) -> Optional[int]:
+        """
+        Logger les métriques ATR détaillées pour un trade.
+        
+        Args:
+            trade_id: UUID du trade
+            trade_data: Données complètes du trade
+            entry_indicators: Indicateurs à l'entrée
+            config_snapshot: Snapshot de la configuration
+        
+        Returns:
+            ID de la métrique loggée ou None
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            # Extraire les paramètres ATR utilisés
+            param_atr_mult_sl = _extract_numeric_value(config_snapshot.get('atr_mult_sl'))
+            param_atr_mult_tp = _extract_numeric_value(config_snapshot.get('atr_mult_tp'))
+            param_trailing_trigger_mult = _extract_numeric_value(config_snapshot.get('trailing_trigger_atr_mult'))
+            param_trailing_distance_mult = _extract_numeric_value(
+                config_snapshot.get('trailing_distance_atr_mult') or 
+                config_snapshot.get('trailing_atr_multiplier')
+            )
+            param_be_atr_mult = _extract_numeric_value(config_snapshot.get('break_even_atr_mult'))
+            param_stagnation_timeout = config_snapshot.get('stagnation_exit_timeout_seconds')
+            param_stagnation_min_pnl = _extract_numeric_value(config_snapshot.get('stagnation_exit_min_pnl_to_stay'))
+            
+            # Extraire le contexte ATR à l'entrée
+            entry_atr_1m = _extract_numeric_value(entry_indicators.get('atr_1m'))
+            entry_atr_5m = _extract_numeric_value(entry_indicators.get('atr_5m'))
+            entry_atr_pct_1m = _extract_numeric_value(entry_indicators.get('atr_pct_1m'))
+            entry_atr_pct_5m = _extract_numeric_value(entry_indicators.get('atr_pct_5m'))
+            entry_adx = _extract_numeric_value(entry_indicators.get('adx_1m'))
+            
+            # Déterminer le régime de volatilité
+            market_volatility_state = None
+            if entry_atr_pct_1m is not None:
+                if entry_atr_pct_1m < 0.2:
+                    market_volatility_state = 'LOW'
+                elif entry_atr_pct_1m < 0.5:
+                    market_volatility_state = 'MEDIUM'
+                else:
+                    market_volatility_state = 'HIGH'
+            
+            # Déterminer le régime de trend
+            market_trend_state = None
+            if entry_adx is not None:
+                if entry_adx < 20:
+                    market_trend_state = 'RANGING'
+                elif entry_adx < 30:
+                    market_trend_state = 'TRENDING_WEAK'
+                else:
+                    market_trend_state = 'TRENDING_STRONG'
+            
+            # Niveaux calculés - 🔥 FIX: Utiliser les bonnes clés (sl_price/tp_price)
+            entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+            sl_price = _extract_numeric_value(trade_data.get('sl_price') or trade_data.get('sl'))
+            tp_price = _extract_numeric_value(trade_data.get('tp_price') or trade_data.get('tp'))
+            
+            calculated_sl_pct = None
+            calculated_tp_pct = None
+            if entry_price and sl_price:
+                calculated_sl_pct = abs(entry_price - sl_price) / entry_price * 100
+            if entry_price and tp_price:
+                calculated_tp_pct = abs(tp_price - entry_price) / entry_price * 100
+            
+            calculated_be_trigger_pnl_pct = None
+            if param_be_atr_mult and entry_atr_pct_1m:
+                calculated_be_trigger_pnl_pct = param_be_atr_mult * entry_atr_pct_1m
+            
+            calculated_trailing_trigger_pnl_pct = None
+            if param_trailing_trigger_mult and entry_atr_pct_1m:
+                calculated_trailing_trigger_pnl_pct = param_trailing_trigger_mult * entry_atr_pct_1m
+            
+            # Événements
+            be_triggered = trade_data.get('break_even_triggered', False)
+            be_triggered_at = trade_data.get('break_even_triggered_at')
+            trailing_activated = trade_data.get('trailing_stop_triggered', False)
+            trailing_activated_at = trade_data.get('trailing_stop_triggered_at')
+            
+            # Max/Min atteints
+            max_pnl_reached = _extract_numeric_value(trade_data.get('max_pnl_reached'))
+            min_pnl_reached = _extract_numeric_value(trade_data.get('min_pnl_reached'))
+            max_price_reached = _extract_numeric_value(trade_data.get('max_price_reached'))
+            min_price_reached = _extract_numeric_value(trade_data.get('min_price_reached'))
+            time_to_max_pnl = trade_data.get('time_to_max_pnl_seconds')
+            time_to_min_pnl = trade_data.get('time_to_min_pnl_seconds')
+            
+            # 🔥 PHASE 0.5 Extended: BE, Trailing, Stagnation details
+            be_triggered_pnl_pct = _extract_numeric_value(trade_data.get('break_even_pnl_pct'))
+            be_price_at_trigger = _extract_numeric_value(trade_data.get('break_even_price'))
+            trailing_final_distance_pct = _extract_numeric_value(trade_data.get('trailing_distance_pct'))
+            trailing_final_sl_price = _extract_numeric_value(trade_data.get('trailing_final_sl'))
+            stagnation_detected = trade_data.get('stagnation_detected', False)
+            stagnation_detected_at = trade_data.get('stagnation_detected_at')
+            stagnation_duration_seconds = trade_data.get('stagnation_duration_seconds')
+            stagnation_pnl_at_exit = _extract_numeric_value(trade_data.get('stagnation_pnl_at_exit'))
+            
+            # Calculer SL MEXC dynamique (SL ATR × 1.1)
+            sl_mexc_margin = 1.1
+            sl_mexc_pct = None
+            sl_mexc_price = None
+            entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+            
+            if entry_atr_pct_1m and param_atr_mult_sl and entry_price:
+                sl_atr_pct = entry_atr_pct_1m * param_atr_mult_sl
+                sl_mexc_pct = sl_atr_pct * sl_mexc_margin
+                direction = trade_data.get('direction', 'LONG')
+                if direction == 'LONG':
+                    sl_mexc_price = entry_price * (1 - sl_mexc_pct / 100)
+                else:
+                    sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
+            
+            # Construire la requête
+            # 🔥 PHASE 0.5 Extended: Ajout BE, trailing, stagnation details
+            query = """
+                INSERT INTO trade_atr_metrics (
+                    trade_id,
+                    entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                    param_atr_mult_sl, param_atr_mult_tp,
+                    param_trailing_trigger_mult, param_trailing_distance_mult,
+                    param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
+                    market_volatility_state, market_trend_state, entry_adx,
+                    calculated_sl_price, calculated_tp_price,
+                    calculated_sl_pct, calculated_tp_pct,
+                    calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
+                    be_triggered, be_triggered_at, be_triggered_pnl_pct, be_price_at_trigger,
+                    trailing_activated, trailing_activated_at, trailing_final_distance_pct, trailing_final_sl_price,
+                    max_pnl_reached, min_pnl_reached,
+                    max_price_reached, min_price_reached,
+                    time_to_max_pnl_seconds, time_to_min_pnl_seconds,
+                    stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
+                    sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id
+            """
+            
+            params = (
+                trade_id,
+                entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                param_atr_mult_sl, param_atr_mult_tp,
+                param_trailing_trigger_mult, param_trailing_distance_mult,
+                param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
+                market_volatility_state, market_trend_state, entry_adx,
+                sl_price, tp_price,
+                calculated_sl_pct, calculated_tp_pct,
+                calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
+                be_triggered, be_triggered_at, be_triggered_pnl_pct, be_price_at_trigger,
+                trailing_activated, trailing_activated_at, trailing_final_distance_pct, trailing_final_sl_price,
+                max_pnl_reached, min_pnl_reached,
+                max_price_reached, min_price_reached,
+                time_to_max_pnl, time_to_min_pnl,
+                stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
+                sl_mexc_price, sl_mexc_pct, sl_mexc_margin
+            )
+            
+            result = self._execute_query(query, params, fetch=True)
+            if result:
+                metric_id = result[0][0]
+                logger.debug(f"📊 ATR metrics loggées pour trade {trade_id[:8]}... (metric_id: {metric_id})")
+                return metric_id
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur logging ATR metrics pour trade {trade_id[:8] if trade_id else 'N/A'}: {e}")
             return None
     
     def _batch_insert_scans(self, cursor, scan_items: List[Dict[str, Any]]) -> None:
@@ -1430,18 +1948,42 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
 
+            # 🔥 ORDER FLOW: Calcul automatique si manquant
+            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
+            imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
+            book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
+            
+            # Calculer automatiquement si manquant et bid/ask disponibles
+            if delta_volume is None and bid_vol and ask_vol:
+                delta_volume = float(bid_vol) - float(ask_vol)
+            if imbalance_normalized is None and bid_vol and ask_vol:
+                total = float(bid_vol) + float(ask_vol)
+                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+                book_depth_ratio = float(bid_vol) / float(ask_vol)
+
             value_tuple = (
                 # En-tête
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
-                market_data.get('bid_vol'), market_data.get('ask_vol'),
+                bid_vol, ask_vol,
                 market_data.get('orderbook_imbalance_ratio'),
                 # Scalability
                 market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
                 market_data.get('vol5') or scan_data.get('vol5'),
                 market_data.get('vol15') or scan_data.get('vol15'),
                 market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                # 🔥 ORDER FLOW: 6 métriques (calculées auto si manquantes)
+                delta_volume,
+                imbalance_normalized,
+                market_data.get('spread_volatility_5') or scan_data.get('spread_volatility_5'),
+                book_depth_ratio,
+                market_data.get('volume_acceleration') or scan_data.get('volume_acceleration'),
+                market_data.get('price_momentum_5') or scan_data.get('price_momentum_5'),
                 # 1m
                 indicators_1m.get('ema9'), indicators_1m.get('ema21'),
                 indicators_1m.get('ema_diff_pct'),
@@ -1499,6 +2041,8 @@ class PostgreSQLDataLogger:
                 scan_data.get('is_opportunity', False),
                 scan_data.get('opportunity_direction'),
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
+                # 🔥 ML Confidence (confiance réelle du modèle)
+                scan_data.get('ml_confidence'),
                 # Params
                 json.dumps(params_snap),
                 # Config
@@ -1509,7 +2053,26 @@ class PostgreSQLDataLogger:
                 params_snap.get('optimal_atr_min_5m'),
                 params_snap.get('optimal_atr_max_5m'),
                 params_snap.get('volume_multiplier'),
-                params_snap.get('use_confluence')
+                params_snap.get('use_confluence'),
+                # 🔥 FIX: Ajouter les nouvelles colonnes config_* (OPT #15-19)
+                params_snap.get('use_anti_whipsaw'),
+                params_snap.get('whipsaw_lookback'),
+                params_snap.get('whipsaw_threshold_pct'),
+                params_snap.get('whipsaw_max_alternations'),
+                params_snap.get('use_retest_confirmation'),
+                params_snap.get('retest_tolerance_pct'),
+                params_snap.get('retest_timeout_seconds'),
+                params_snap.get('use_cooldown'),
+                params_snap.get('cooldown_seconds'),
+                params_snap.get('cooldown_same_symbol'),
+                params_snap.get('use_candle_close'),
+                params_snap.get('candle_close_threshold_seconds'),
+                params_snap.get('use_momentum_continuity'),
+                params_snap.get('momentum_lookback'),
+                # 🔥 SPRINT 1: Market Regime context
+                scan_data.get('market_regime'),
+                scan_data.get('market_regime_avg_atr'),
+                scan_data.get('market_regime_avg_adx')
             )
 
             values.append(value_tuple)
@@ -1523,6 +2086,9 @@ class PostgreSQLDataLogger:
             'price', 'spread_pct', 'book_depth', 'balance_score',
             'bid_vol', 'ask_vol', 'orderbook_imbalance_ratio',
             'recent_volume', 'vol5', 'vol15', 'scalability_score',
+            # 🔥 ORDER FLOW: 6 nouvelles colonnes
+            'delta_volume', 'imbalance_normalized', 'spread_volatility_5',
+            'book_depth_ratio', 'volume_acceleration', 'price_momentum_5',
             'ema9_1m', 'ema21_1m', 'ema_diff_pct_1m',
             'rsi_1m', 'rsi_prev_1m',
             'macd_1m', 'macd_signal_1m', 'macd_hist_1m', 'macd_hist_prev_1m',
@@ -1553,11 +2119,23 @@ class PostgreSQLDataLogger:
             'trend_timeframe', 'trend_direction', 'trend_strength', 'trend_bonus',
             'divergence_detected', 'divergence_type', 'divergence_bonus',
             'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
+            # 🔥 ML Confidence (confiance réelle du modèle)
+            'ml_confidence',
             'params_snapshot',
             'config_min_score_required', 'config_snr_threshold',
             'config_atr_min_1m', 'config_atr_max_1m',
             'config_atr_min_5m', 'config_atr_max_5m',
-            'config_volume_multiplier', 'config_use_confluence'
+            'config_volume_multiplier', 'config_use_confluence',
+            # 🔥 FIX: Ajouter les nouvelles colonnes config_* (OPT #15-19)
+            'config_use_anti_whipsaw', 'config_whipsaw_lookback',
+            'config_whipsaw_threshold_pct', 'config_whipsaw_max_alternations',
+            'config_use_retest_confirmation', 'config_retest_tolerance_pct',
+            'config_retest_timeout_seconds', 'config_use_cooldown',
+            'config_cooldown_seconds', 'config_cooldown_same_symbol',
+            'config_use_candle_close', 'config_candle_close_threshold_seconds',
+            'config_use_momentum_continuity', 'config_momentum_lookback',
+            # 🔥 SPRINT 1: Market Regime context
+            'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx'
         )
 
         execute_values(

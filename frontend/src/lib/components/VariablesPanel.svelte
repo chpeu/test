@@ -3,6 +3,7 @@
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import OptimizationPanel from '$lib/components/ml/OptimizationPanel.svelte';
 	import MLCONTENT_V2_Variables from '$lib/components/ml/MLCONTENT_V2_Variables.svelte';
+	import MLCONTENT_GB_Variables from '$lib/components/ml/MLCONTENT_GB_Variables.svelte';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -35,6 +36,10 @@
 		volume_multiplier: 0.95,
 		min_score_required: 6.5,  // 🔥 PHASE 1 : 6.5 (était 7.5)
 		max_slippage_pct: 0.03,
+		// 🔥 Filtre RSI Final (bloque trades contre-logiques)
+		rsi_final_filter_enabled: true,
+		rsi_final_long_max: 65,  // LONG bloqué si RSI > ce seuil
+		rsi_final_short_min: 35, // SHORT bloqué si RSI < ce seuil
 		// Money Management
 		account_size: 1000.0,
 		risk_per_trade: 2.0,
@@ -50,10 +55,21 @@
 		break_even_trigger: 0.3,
 		trailing_distance: 0.15,
 		// Mode ATR
-		atr_mult_tp: 1.5,
-		atr_mult_sl: 1.0,
-		atr_min: 0.15,
-		atr_max: 1.5,
+		atr_mult_tp: 2.2,  // 🔥 TP plus atteignable (était 3.0)
+		atr_mult_sl: 1.2,
+		atr_min: 0.10,
+		atr_max: 1.0,
+		// 🔥 HYBRID: Break-even ATR (moins agressif)
+		break_even_use_atr: true,
+		break_even_atr_mult: 1.2,  // 🔥 BE plus tard (était 0.5, trop serré)
+		// 🔥 HYBRID: Trailing ATR (trigger + distance)
+		trailing_trigger_atr_mult: 1.5,  // 🔥 Quand activer le trailing (PnL >= X × ATR%)
+		trailing_distance_atr_mult: 0.8,  // 🔥 Distance du trailing (ATR × X)
+		// 🔥 HYBRID: Stagnation Exit (Time Decay)
+		stagnation_exit_enabled: true,
+		stagnation_exit_timeout_seconds: 120,
+		stagnation_exit_min_pnl_to_stay: 0.10,
+		stagnation_exit_max_loss_to_exit: -0.05,
 		// Mode ESCALIER (TP_MULTI) - 4 niveaux
 		escalier_level1_pnl: 0.20,
 		escalier_level1_size: 25,
@@ -63,14 +79,16 @@
 		escalier_level3_size: 25,
 		escalier_level4_pnl: 0.80,
 		escalier_level4_size: 25,
-		// Trailing Stop Adaptatif (tous modes)
+		// Trailing Stop Adaptatif (tous modes - moins agressif)
 		trailing_enabled: true,
-		trailing_trigger_pnl: 0.15,  // 🔥 PHASE 2 : 0.15 (était 0.25)
-		trailing_atr_multiplier: 0.4,
-		trailing_min_distance: 0.08,
-		trailing_max_distance: 0.25,
+		trailing_trigger_pnl: 0.20,  // 🔥 Fallback si ATR désactivé (était 0.15)
+		trailing_atr_multiplier: 0.8,  // 🔥 Distance plus large (était 0.4, trop serré)
+		trailing_min_distance: 0.10,  // 🔥 Minimum augmenté (était 0.08)
+		trailing_max_distance: 0.30,  // 🔥 Maximum augmenté (était 0.25)
 		// Machine Learning V1
 		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
+		ml_filter_mode: 'NEGATIVE',  // 🔥 Mode NEGATIVE = filtre négatif (+2.9% win rate)
+		ml_loss_threshold: 0.45,  // Seuil P(loss) pour rejet (mode NEGATIVE)
 		ml_min_confidence: 0.60,  // 60% (si réactivé plus tard)
 		// Hyperparamètres XGBoost V1
 		ml_max_depth: 6,
@@ -102,7 +120,80 @@
 		ml_v2_reg_lambda: 3.0,
 		ml_v2_subsample: 0.7,
 		ml_v2_colsample_bytree: 0.7,
-		ml_v2_gamma: 0.5
+		ml_v2_gamma: 0.5,
+		// HistGradientBoosting (Optimisé 64-68% accuracy)
+		gb_filter_enabled: true,
+		gb_min_confidence: 0.50,
+		gb_max_iter: 100,           // Nombre d'itérations (anciennement n_estimators)
+		gb_max_depth: 3,
+		gb_learning_rate: 0.08,
+		gb_min_samples_leaf: 30,
+		gb_l2_regularization: 0.5,  // Régularisation L2 (spécifique HistGB)
+		gb_model_type: 'histgb',
+		// 🔬 ML Calibration
+		ml_calibration_enabled: true,
+		ml_calib_live_weight: 1.0,
+		ml_calib_dryrun_weight: 0.5,
+		ml_calib_decay_days: 14,
+		ml_calib_min_trades: 30,
+		ml_calib_min_winrate: 40.0,
+		ml_calib_bucket_size: 5,
+		// 🔥 OPT #14: Scan Interval
+		scan_interval: 30,
+		// 🔥 OPT #15: Anti-Whipsaw Filter
+		use_anti_whipsaw: true,
+		whipsaw_lookback: 5,
+		whipsaw_threshold_pct: 0.2,
+		whipsaw_max_alternations: 3,
+		// 🔥 OPT #16: Retest Breakout Confirmation
+		use_retest_confirmation: false,
+		retest_tolerance_pct: 0.1,
+		retest_timeout_seconds: 300,
+		// 🔥 OPT #17: Cooldown Post-Trade
+		use_cooldown: true,
+		cooldown_seconds: 30,
+		cooldown_same_symbol: 60,
+		// 🔥 OPT #18: Candle Close Confirmation
+		use_candle_close: false,
+		candle_close_threshold_seconds: 5,
+		// 🔥 OPT #19: Momentum Continuity
+		use_momentum_continuity: true,
+		momentum_lookback: 3,
+		// 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
+		adaptive_sizing_enabled: true,
+		adaptive_sizing_min_trades: 3,
+		adaptive_sizing_excellent_wr: 0.75,
+		adaptive_sizing_good_wr: 0.60,
+		adaptive_sizing_poor_wr: 0.40,
+		adaptive_sizing_very_poor_wr: 0.30,
+		adaptive_sizing_excellent_mult: 1.50,
+		adaptive_sizing_good_mult: 1.25,
+		adaptive_sizing_poor_mult: 0.70,
+		adaptive_sizing_very_poor_mult: 0.50,
+		adaptive_sizing_max_mult: 1.50,
+		adaptive_sizing_min_mult: 0.50,
+		adaptive_sizing_reset_hours: 8,
+		// 🔥 SPRINT 1: Market Regime Selector
+		market_regime_enabled: true,
+		market_regime_check_interval: 60,
+		market_regime_sample_count: 10,
+		market_regime_atr_calme_max: 0.20,
+		market_regime_atr_normal_max: 0.40,
+		market_regime_adx_choppy: 20,
+		// 🔥 SPRINT 1: Trading Circuit Breaker
+		trading_circuit_breaker_enabled: true,
+		trading_cb_max_consecutive_losses: 5,
+		trading_cb_daily_drawdown_pause_pct: -2.0,
+		trading_cb_daily_drawdown_stop_pct: -5.0,
+		trading_cb_pause_duration_minutes: 30,
+		trading_cb_score_boost_enabled: true,
+		trading_cb_score_boost_per_loss: 0.5,
+		// 🔥 SPRINT 2: Pair Scorer - Score Pair Dynamique
+		pair_scorer_enabled: true,
+		pair_scorer_min_trades: 15,
+		pair_scorer_max_adjustment: 2.0,
+		pair_scorer_lookback_days: 30,
+		pair_scorer_refresh_minutes: 60
 	};
 
 	let config = { ...DEFAULTS };
@@ -122,16 +213,21 @@
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
 	
-	// 🔥 Variables Live Trading
+	// Variables Live Trading
 	let liveConfig = null;
 	let loadingLiveConfig = false;
 	
 	// Variables pour export Excel et reset DB
 	let exportingExcel = false;
+	let exportingCurrentConfig = false;
 	let retrainingML = false;
 	let resettingDB = false;
 	
-	// 🔥 FIX: Variables pour métriques ML dynamiques
+	// 🔥 NOUVEAU: Popup export Excel avec nombre de lignes
+	let showExportPopup = false;
+	let exportRowCount = 50; // Défaut: 50 lignes
+	
+	// FIX: Variables pour métriques ML dynamiques
 	let mlMetrics = {
 		test_accuracy: 55.3,
 		roc_auc: 55.4,
@@ -160,10 +256,40 @@
 				config[`escalier_level${l}_size`] = Math.max(0, Math.round(currentValue - reduction));
 			});
 		}
-
 	}
 
-	function autoAdjustEscalierPnL(changedLevel) {
+	// 🔥 Export XLSX des variables en cours
+	async function exportCurrentConfigXlsx() {
+		if (exportingCurrentConfig) return;
+		try {
+			exportingCurrentConfig = true;
+			saveMessage = '⏳ Export des variables en cours...';
+			const response = await fetch('/api/config/export-xlsx');
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}));
+				throw new Error(error.error || 'Erreur export variables en cours');
+			}
+			const blob = await response.blob();
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `trading_config_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.xlsx`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			window.URL.revokeObjectURL(url);
+			saveMessage = '✅ Export des variables en cours terminé';
+			setTimeout(() => (saveMessage = ''), 3000);
+		} catch (error: any) {
+			console.error('❌ Erreur export XLSM variables en cours:', error);
+			saveMessage = `❌ Erreur export variables en cours: ${error.message || error}`;
+			setTimeout(() => (saveMessage = ''), 5000);
+		} finally {
+			exportingCurrentConfig = false;
+		}
+	}
+
+	function autoAdjustEscalierPnL(changedLevel: number) {
 		// S'assurer que les niveaux suivants sont >= niveau actuel
 		const currentPnl = config[`escalier_level${changedLevel}_pnl`];
 
@@ -406,6 +532,9 @@
 				min_score_adx_low: tradingConfig.min_score_adx_low,
 				dynamic_tolerance_adx_high: tradingConfig.dynamic_tolerance_adx_high,
 				dynamic_tolerance_adx_low: tradingConfig.dynamic_tolerance_adx_low,
+				rsi_final_filter_enabled: tradingConfig.rsi_final_filter_enabled,
+				rsi_final_long_max: tradingConfig.rsi_final_long_max,
+				rsi_final_short_min: tradingConfig.rsi_final_short_min,
 			},
 			'🎯 Patterns Techniques': {
 				use_breakout: tradingConfig.use_breakout,
@@ -452,6 +581,26 @@
 				atr_min: tradingConfig.atr_min,
 				atr_max: tradingConfig.atr_max,
 			},
+			'🛡️ SL MEXC Dynamique': {
+				sl_mexc_margin: '1.1x (SL ATR × 1.1)',
+				sl_mexc_estimated_pct: `~${(((tradingConfig.atr_min + tradingConfig.atr_max) / 2) * tradingConfig.atr_mult_sl * 1.1).toFixed(3)}%`,
+			},
+			'🎯 Break-Even ATR': {
+				break_even_atr_mult: tradingConfig.break_even_atr_mult,
+			},
+			'📈 Trailing ATR': {
+				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
+				trailing_distance_atr_mult: tradingConfig.trailing_distance_atr_mult || tradingConfig.trailing_atr_multiplier,
+			},
+			'💰 Hybrid: TP Partiel': {
+				partial_tp_percent: tradingConfig.partial_tp_percent,
+			},
+			'⏰ Hybrid: Sortie Stagnation': {
+				stagnation_exit_enabled: tradingConfig.stagnation_exit_enabled,
+				stagnation_exit_timeout_seconds: tradingConfig.stagnation_exit_timeout_seconds,
+				stagnation_exit_min_pnl_to_stay: tradingConfig.stagnation_exit_min_pnl_to_stay,
+				stagnation_exit_max_loss_to_exit: tradingConfig.stagnation_exit_max_loss_to_exit,
+			},
 			'🪜 TP Escalier': {
 				partial_tp_percent: tradingConfig.partial_tp_percent,
 				escalier_level1_pnl: tradingConfig.escalier_level1_pnl,
@@ -470,6 +619,21 @@
 				trailing_min_distance: tradingConfig.trailing_min_distance,
 				trailing_max_distance: tradingConfig.trailing_max_distance,
 			},
+			'📊 Sizing Adaptatif': {
+				adaptive_sizing_enabled: tradingConfig.adaptive_sizing_enabled,
+				adaptive_sizing_min_trades: tradingConfig.adaptive_sizing_min_trades,
+				adaptive_sizing_excellent_wr: tradingConfig.adaptive_sizing_excellent_wr,
+				adaptive_sizing_good_wr: tradingConfig.adaptive_sizing_good_wr,
+				adaptive_sizing_poor_wr: tradingConfig.adaptive_sizing_poor_wr,
+				adaptive_sizing_very_poor_wr: tradingConfig.adaptive_sizing_very_poor_wr,
+				adaptive_sizing_excellent_mult: tradingConfig.adaptive_sizing_excellent_mult,
+				adaptive_sizing_good_mult: tradingConfig.adaptive_sizing_good_mult,
+				adaptive_sizing_poor_mult: tradingConfig.adaptive_sizing_poor_mult,
+				adaptive_sizing_very_poor_mult: tradingConfig.adaptive_sizing_very_poor_mult,
+				adaptive_sizing_max_mult: tradingConfig.adaptive_sizing_max_mult,
+				adaptive_sizing_min_mult: tradingConfig.adaptive_sizing_min_mult,
+				adaptive_sizing_reset_hours: tradingConfig.adaptive_sizing_reset_hours,
+			},
 			'⏱️ Timeframe & Trend': {
 				trend_timeframe: tradingConfig.trend_timeframe,
 			},
@@ -479,6 +643,8 @@
 			},
 			'🤖 Machine Learning V1': {
 				ml_filter_enabled: tradingConfig.ml_filter_enabled,
+				ml_filter_mode: tradingConfig.ml_filter_mode,
+				ml_loss_threshold: tradingConfig.ml_loss_threshold,
 				ml_min_confidence: tradingConfig.ml_min_confidence,
 				ml_max_depth: tradingConfig.ml_max_depth,
 				ml_min_child_weight: tradingConfig.ml_min_child_weight,
@@ -511,9 +677,48 @@
 				ml_v2_colsample_bytree: tradingConfig.ml_v2_colsample_bytree,
 				ml_v2_gamma: tradingConfig.ml_v2_gamma,
 			},
+			'🎯 HistGradientBoosting (Optimisé 68%)': {
+				gb_filter_enabled: tradingConfig.gb_filter_enabled,
+				gb_min_confidence: tradingConfig.gb_min_confidence,
+				gb_max_iter: tradingConfig.gb_max_iter,
+				gb_max_depth: tradingConfig.gb_max_depth,
+				gb_learning_rate: tradingConfig.gb_learning_rate,
+				gb_min_samples_leaf: tradingConfig.gb_min_samples_leaf,
+				gb_l2_regularization: tradingConfig.gb_l2_regularization,
+			},
+			'🔬 ML Calibration': {
+				ml_calibration_enabled: tradingConfig.ml_calibration_enabled,
+				ml_calib_live_weight: tradingConfig.ml_calib_live_weight,
+				ml_calib_dryrun_weight: tradingConfig.ml_calib_dryrun_weight,
+				ml_calib_decay_days: tradingConfig.ml_calib_decay_days,
+				ml_calib_min_trades: tradingConfig.ml_calib_min_trades,
+				ml_calib_min_winrate: tradingConfig.ml_calib_min_winrate,
+				ml_calib_bucket_size: tradingConfig.ml_calib_bucket_size,
+			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
 				max_latency_ms: tradingConfig.max_latency_ms,
+			},
+			'🛡️ Filtres Avancés (OPT #15-19)': {
+				// OPT #15: Anti-Whipsaw
+				use_anti_whipsaw: tradingConfig.use_anti_whipsaw,
+				whipsaw_lookback: tradingConfig.whipsaw_lookback,
+				whipsaw_threshold_pct: tradingConfig.whipsaw_threshold_pct,
+				whipsaw_max_alternations: tradingConfig.whipsaw_max_alternations,
+				// OPT #16: Retest Breakout
+				use_retest_confirmation: tradingConfig.use_retest_confirmation,
+				retest_tolerance_pct: tradingConfig.retest_tolerance_pct,
+				retest_timeout_seconds: tradingConfig.retest_timeout_seconds,
+				// OPT #17: Cooldown
+				use_cooldown: tradingConfig.use_cooldown,
+				cooldown_seconds: tradingConfig.cooldown_seconds,
+				cooldown_same_symbol: tradingConfig.cooldown_same_symbol,
+				// OPT #18: Candle Close
+				use_candle_close: tradingConfig.use_candle_close,
+				candle_close_threshold_seconds: tradingConfig.candle_close_threshold_seconds,
+				// OPT #19: Momentum Continuity
+				use_momentum_continuity: tradingConfig.use_momentum_continuity,
+				momentum_lookback: tradingConfig.momentum_lookback,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -524,6 +729,40 @@
 				correlation_filter: tradingConfig.correlation_filter,
 				recovery_mode: tradingConfig.recovery_mode,
 				tp_escalier: tradingConfig.tp_escalier,
+			},
+			'🛡️ Protection & Régime': {
+				// === Market Regime Selector ===
+				market_regime_enabled: tradingConfig.market_regime_enabled,
+				market_regime_check_interval: tradingConfig.market_regime_check_interval,
+				market_regime_sample_count: tradingConfig.market_regime_sample_count,
+				market_regime_atr_calme_max: tradingConfig.market_regime_atr_calme_max,
+				market_regime_atr_normal_max: tradingConfig.market_regime_atr_normal_max,
+				market_regime_adx_choppy: tradingConfig.market_regime_adx_choppy,
+				// === Trading Circuit Breaker ===
+				trading_circuit_breaker_enabled: tradingConfig.trading_circuit_breaker_enabled,
+				trading_cb_max_consecutive_losses: tradingConfig.trading_cb_max_consecutive_losses,
+				trading_cb_daily_drawdown_pause_pct: tradingConfig.trading_cb_daily_drawdown_pause_pct,
+				trading_cb_daily_drawdown_stop_pct: tradingConfig.trading_cb_daily_drawdown_stop_pct,
+				trading_cb_pause_duration_minutes: tradingConfig.trading_cb_pause_duration_minutes,
+				trading_cb_score_boost_enabled: tradingConfig.trading_cb_score_boost_enabled,
+				trading_cb_score_boost_per_loss: tradingConfig.trading_cb_score_boost_per_loss,
+				// === Valeurs actives du régime (appliquées dynamiquement) ===
+				min_score_required: tradingConfig.min_score_required,
+				atr_mult_sl: tradingConfig.atr_mult_sl,
+				atr_mult_tp: tradingConfig.atr_mult_tp,
+				break_even_atr_mult: tradingConfig.break_even_atr_mult,
+				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
+				trailing_distance_atr_mult: tradingConfig.trailing_distance_atr_mult || tradingConfig.trailing_atr_multiplier,
+				max_position_time: tradingConfig.max_position_time,
+			},
+			// 🔥 SPRINT 2: Adaptations ML - Score Pair Dynamique
+			'🎯 Adaptations ML': {
+				// === Pair Scorer ===
+				pair_scorer_enabled: tradingConfig.pair_scorer_enabled,
+				pair_scorer_min_trades: tradingConfig.pair_scorer_min_trades,
+				pair_scorer_max_adjustment: tradingConfig.pair_scorer_max_adjustment,
+				pair_scorer_lookback_days: tradingConfig.pair_scorer_lookback_days,
+				pair_scorer_refresh_minutes: tradingConfig.pair_scorer_refresh_minutes,
 			},
 		};
 	}
@@ -635,6 +874,25 @@
 					ml_v2_gamma: config.ml_v2_gamma,
 					ml_v2_subsample: config.ml_v2_subsample,
 					ml_v2_colsample_bytree: config.ml_v2_colsample_bytree
+				});
+				console.log('✅ HistGB params:', {
+					gb_filter_enabled: config.gb_filter_enabled,
+					gb_min_confidence: config.gb_min_confidence,
+					gb_max_iter: config.gb_max_iter,
+					gb_max_depth: config.gb_max_depth,
+					gb_learning_rate: config.gb_learning_rate,
+					gb_min_samples_leaf: config.gb_min_samples_leaf,
+					gb_l2_regularization: config.gb_l2_regularization,
+					gb_model_type: config.gb_model_type
+				});
+				console.log('✅ ML Calibration params:', {
+					ml_calibration_enabled: config.ml_calibration_enabled,
+					ml_calib_live_weight: config.ml_calib_live_weight,
+					ml_calib_dryrun_weight: config.ml_calib_dryrun_weight,
+					ml_calib_decay_days: config.ml_calib_decay_days,
+					ml_calib_min_trades: config.ml_calib_min_trades,
+					ml_calib_min_winrate: config.ml_calib_min_winrate,
+					ml_calib_bucket_size: config.ml_calib_bucket_size
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -848,6 +1106,21 @@
 				console.log('✅ Paramètres sauvegardés automatiquement via WebSocket:', result.updated);
 				setTimeout(() => (saveMessage = ''), 3000);
 				
+				// 🔥 FIX LEVIER: Si default_leverage a changé, synchroniser dans toutes les sources
+				if (result.updated.default_leverage !== undefined) {
+					try {
+						const syncRes = await fetch(`/api/live/leverage/sync?leverage=${config.default_leverage}`, {
+							method: 'POST'
+						});
+						if (syncRes.ok) {
+							const syncData = await syncRes.json();
+							console.log('✅ Levier synchronisé:', syncData);
+						}
+					} catch (e) {
+						console.warn('⚠️ Sync levier échouée:', e);
+					}
+				}
+				
 				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
 				if (activeSubTab === 'current') {
 					await loadCompleteConfig();
@@ -873,15 +1146,26 @@
 		}
 	}
 	
-	// 🔥 Export Excel du datalogger
+	// 🔥 Export Excel du datalogger - Ouvre le popup
+	function openExportPopup() {
+		showExportPopup = true;
+	}
+	
+	// 🔥 Fermer le popup export
+	function closeExportPopup() {
+		showExportPopup = false;
+	}
+	
+	// 🔥 Export Excel avec nombre de lignes personnalisé
 	async function exportExcel() {
 		if (exportingExcel) return;
 		
+		showExportPopup = false; // Fermer le popup
 		exportingExcel = true;
-		saveMessage = '⏳ Export Excel en cours...';
+		saveMessage = `⏳ Export Excel en cours (${exportRowCount} lignes)...`;
 		
 		try {
-			const response = await fetch('/api/datalogger/export/excel');
+			const response = await fetch(`/api/datalogger/export/excel?limit=${exportRowCount}`);
 			
 			if (!response.ok) {
 				const error = await response.json();
@@ -893,13 +1177,13 @@
 			const url = window.URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = `datalogger_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+			a.download = `datalogger_export_${exportRowCount}rows_${new Date().toISOString().split('T')[0]}.xlsx`;
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
 			window.URL.revokeObjectURL(url);
 			
-			saveMessage = '✅ Export Excel réussi !';
+			saveMessage = `✅ Export Excel réussi (${exportRowCount} lignes) !`;
 			setTimeout(() => saveMessage = '', 3000);
 		} catch (error: any) {
 			saveMessage = `❌ Erreur export Excel: ${error.message}`;
@@ -1061,9 +1345,9 @@
 			<button class="btn-primary" on:click={saveConfig} disabled={loading} title={hasUnsavedChanges ? 'Sauvegarder immédiatement (annule la sauvegarde automatique)' : 'Forcer la sauvegarde'} data-debug-name="variablesPanel.saveButton">
 				{loading ? '⏳ Saving...' : '💾 Save'}
 			</button>
-			<button class="btn-export" on:click={exportExcel} disabled={exportingExcel} title="Exporter les données du datalogger en Excel (.xlsx)" data-debug-name="variablesPanel.exportExcelButton">
-				{exportingExcel ? '⏳ Export...' : '📊 Export Excel'}
-			</button>
+			<button class="btn-export" on:click={openExportPopup} disabled={exportingExcel} title="Exporter les données du datalogger en Excel (.xlsx)" data-debug-name="variablesPanel.exportExcelButton">
+			{exportingExcel ? '⏳ Export...' : '📊 Export Excel'}
+		</button>
 			<button class="btn-danger" on:click={resetDatabase} disabled={resettingDB} title="⚠️ ATTENTION: Supprime TOUTES les données de la base PostgreSQL" data-debug-name="variablesPanel.resetDBButton">
 				{resettingDB ? '⏳ Reset...' : '🗑️ Reset DB'}
 			</button>
@@ -1086,6 +1370,12 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'position'} on:click={() => activeSubTab = 'position'} data-debug-name="activeSubTab">
 			🎯 TP/SL & Position
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'protection'} on:click={() => activeSubTab = 'protection'} data-debug-name="activeSubTab">
+			🛡️ Protection & Régime
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'adaptations'} on:click={() => activeSubTab = 'adaptations'} data-debug-name="activeSubTab">
+			🎯 Adaptations ML
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'ml'} on:click={() => activeSubTab = 'ml'} data-debug-name="activeSubTab">
 			🤖 Machine Learning
@@ -1601,10 +1891,384 @@
 							<span class="slider-value" data-debug-name="config.max_slippage_pct">{Number(config.max_slippage_pct).toFixed(2)}%</span>
 						</div>
 					</div>
+
+					<!-- 🔥 Filtre RSI Final -->
+					<div class="variable-item checkbox" data-debug-name="config.rsi_final_filter_enabled">
+						<label for="rsi-final-filter">
+							<input
+								id="rsi-final-filter"
+								type="checkbox"
+								bind:checked={config.rsi_final_filter_enabled}
+								on:change={() => triggerAutoSave('rsi_final_filter_enabled', config.rsi_final_filter_enabled ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🎯 Filtre RSI Final</span>
+							<span class="var-desc">Bloquer LONG si RSI suracheté, SHORT si RSI survendu</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('rsi_final_filter_enabled')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.rsi_final_filter_enabled}
+						<div class="pattern-indicators">
+							<div class="variable-item" data-debug-name="config.rsi_final_long_max">
+								<div class="var-header">
+									<label for="rsi-final-long-max">
+										<span class="var-name">RSI Max LONG</span>
+										<span class="var-desc">LONG bloqué si RSI &gt; ce seuil (suracheté)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('rsi_final_long_max')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="rsi-final-long-max"
+										type="range"
+										step="1"
+										min="50"
+										max="85"
+										bind:value={config.rsi_final_long_max}
+										on:change={() => triggerAutoSave('rsi_final_long_max', config.rsi_final_long_max)}
+									/>
+									<span class="slider-value">{config.rsi_final_long_max}</span>
+								</div>
+							</div>
+
+							<div class="variable-item" data-debug-name="config.rsi_final_short_min">
+								<div class="var-header">
+									<label for="rsi-final-short-min">
+										<span class="var-name">RSI Min SHORT</span>
+										<span class="var-desc">SHORT bloqué si RSI &lt; ce seuil (survendu)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('rsi_final_short_min')} title="Réinitialiser">⟲</button>
+								</div>
+								<div class="slider-container">
+									<input
+										id="rsi-final-short-min"
+										type="range"
+										step="1"
+										min="15"
+										max="50"
+										bind:value={config.rsi_final_short_min}
+										on:change={() => triggerAutoSave('rsi_final_short_min', config.rsi_final_short_min)}
+									/>
+									<span class="slider-value">{config.rsi_final_short_min}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
 				</div>
 			</section>
 
-			<!-- Section 4: Timeframes & ATR Optimal -->
+			<!-- Section 4: 🔥 Filtres Avancés (OPT #14-19) -->
+			<section class="variable-section">
+				<h3>🛡️ Filtres Avancés</h3>
+				<p class="section-subtitle">Protection contre whipsaw, confirmation breakout, cooldown et momentum</p>
+
+				<div class="variables-list">
+					<!-- Scan Interval -->
+					<div class="variable-item" data-debug-name="config.scan_interval">
+						<div class="var-header">
+							<label for="scan-interval">
+								<span class="var-name">⏱️ Scan Interval</span>
+								<span class="var-desc">Intervalle entre chaque scan (secondes)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('scan_interval')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								id="scan-interval"
+								type="range"
+								step="5"
+								min="15"
+								max="120"
+								bind:value={config.scan_interval}
+								on:change={() => triggerAutoSave('scan_interval', `${config.scan_interval}s`)}
+							/>
+							<span class="slider-value">{config.scan_interval}s</span>
+						</div>
+					</div>
+
+					<!-- Anti-Whipsaw -->
+					<div class="variable-item checkbox">
+						<label for="use-anti-whipsaw">
+							<input
+								id="use-anti-whipsaw"
+								type="checkbox"
+								bind:checked={config.use_anti_whipsaw}
+								on:change={() => triggerAutoSave('use_anti_whipsaw', config.use_anti_whipsaw ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⚡ Anti-Whipsaw</span>
+							<span class="var-desc">Rejeter les marchés en zigzag rapide</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_anti_whipsaw')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_anti_whipsaw}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-lookback">
+										<span class="var-name">Whipsaw Lookback</span>
+										<span class="var-desc">Nombre de bougies à analyser</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-lookback"
+										type="range"
+										step="1"
+										min="3"
+										max="10"
+										bind:value={config.whipsaw_lookback}
+										on:change={() => triggerAutoSave('whipsaw_lookback', config.whipsaw_lookback)}
+									/>
+									<span class="slider-value">{config.whipsaw_lookback}</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-threshold">
+										<span class="var-name">Whipsaw Threshold (%)</span>
+										<span class="var-desc">Amplitude min pour compter comme mouvement</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-threshold"
+										type="range"
+										step="0.05"
+										min="0.1"
+										max="0.5"
+										bind:value={config.whipsaw_threshold_pct}
+										on:change={() => triggerAutoSave('whipsaw_threshold_pct', config.whipsaw_threshold_pct.toFixed(2))}
+									/>
+									<span class="slider-value">{Number(config.whipsaw_threshold_pct).toFixed(2)}%</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="whipsaw-alternations">
+										<span class="var-name">Max Alternations</span>
+										<span class="var-desc">Nombre max d'alternances avant rejet</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="whipsaw-alternations"
+										type="range"
+										step="1"
+										min="2"
+										max="5"
+										bind:value={config.whipsaw_max_alternations}
+										on:change={() => triggerAutoSave('whipsaw_max_alternations', config.whipsaw_max_alternations)}
+									/>
+									<span class="slider-value">{config.whipsaw_max_alternations}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Cooldown Post-Trade -->
+					<div class="variable-item checkbox">
+						<label for="use-cooldown">
+							<input
+								id="use-cooldown"
+								type="checkbox"
+								bind:checked={config.use_cooldown}
+								on:change={() => triggerAutoSave('use_cooldown', config.use_cooldown ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⏸️ Cooldown Post-Trade</span>
+							<span class="var-desc">Délai entre trades pour éviter over-trading</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_cooldown')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_cooldown}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="cooldown-seconds">
+										<span class="var-name">Cooldown (s)</span>
+										<span class="var-desc">Délai minimum entre trades</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="cooldown-seconds"
+										type="range"
+										step="5"
+										min="10"
+										max="120"
+										bind:value={config.cooldown_seconds}
+										on:change={() => triggerAutoSave('cooldown_seconds', `${config.cooldown_seconds}s`)}
+									/>
+									<span class="slider-value">{config.cooldown_seconds}s</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="cooldown-same-symbol">
+										<span class="var-name">Cooldown Same Symbol (s)</span>
+										<span class="var-desc">Délai supplémentaire pour même symbole</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="cooldown-same-symbol"
+										type="range"
+										step="5"
+										min="30"
+										max="300"
+										bind:value={config.cooldown_same_symbol}
+										on:change={() => triggerAutoSave('cooldown_same_symbol', `${config.cooldown_same_symbol}s`)}
+									/>
+									<span class="slider-value">{config.cooldown_same_symbol}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Momentum Continuity -->
+					<div class="variable-item checkbox">
+						<label for="use-momentum-continuity">
+							<input
+								id="use-momentum-continuity"
+								type="checkbox"
+								bind:checked={config.use_momentum_continuity}
+								on:change={() => triggerAutoSave('use_momentum_continuity', config.use_momentum_continuity ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">📈 Momentum Continu</span>
+							<span class="var-desc">Vérifier que le momentum est dans la bonne direction</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_momentum_continuity')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_momentum_continuity}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="momentum-lookback">
+										<span class="var-name">Momentum Lookback</span>
+										<span class="var-desc">Nombre de bougies pour vérifier continuité</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="momentum-lookback"
+										type="range"
+										step="1"
+										min="2"
+										max="10"
+										bind:value={config.momentum_lookback}
+										on:change={() => triggerAutoSave('momentum_lookback', config.momentum_lookback)}
+									/>
+									<span class="slider-value">{config.momentum_lookback}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Candle Close Confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-candle-close">
+							<input
+								id="use-candle-close"
+								type="checkbox"
+								bind:checked={config.use_candle_close}
+								on:change={() => triggerAutoSave('use_candle_close', config.use_candle_close ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🕯️ Attendre Fermeture Bougie</span>
+							<span class="var-desc">N'entrer que proche de la fermeture de bougie</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_candle_close')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_candle_close}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="candle-close-threshold">
+										<span class="var-name">Seuil Fermeture (s)</span>
+										<span class="var-desc">Secondes avant fermeture pour considérer OK</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="candle-close-threshold"
+										type="range"
+										step="1"
+										min="3"
+										max="15"
+										bind:value={config.candle_close_threshold_seconds}
+										on:change={() => triggerAutoSave('candle_close_threshold_seconds', `${config.candle_close_threshold_seconds}s`)}
+									/>
+									<span class="slider-value">{config.candle_close_threshold_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Retest Breakout Confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-retest-confirmation">
+							<input
+								id="use-retest-confirmation"
+								type="checkbox"
+								bind:checked={config.use_retest_confirmation}
+								on:change={() => triggerAutoSave('use_retest_confirmation', config.use_retest_confirmation ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">🔄 Confirmation Retest Breakout</span>
+							<span class="var-desc">Attendre retest du niveau cassé avant entrée (⚠️ Avancé)</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_retest_confirmation')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_retest_confirmation}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="retest-tolerance">
+										<span class="var-name">Tolérance Retest (%)</span>
+										<span class="var-desc">Distance max pour valider le retest</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="retest-tolerance"
+										type="range"
+										step="0.05"
+										min="0.05"
+										max="0.5"
+										bind:value={config.retest_tolerance_pct}
+										on:change={() => triggerAutoSave('retest_tolerance_pct', config.retest_tolerance_pct.toFixed(2))}
+									/>
+									<span class="slider-value">{Number(config.retest_tolerance_pct).toFixed(2)}%</span>
+								</div>
+							</div>
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="retest-timeout">
+										<span class="var-name">Timeout Retest (s)</span>
+										<span class="var-desc">Temps max pour attendre le retest</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="retest-timeout"
+										type="range"
+										step="30"
+										min="60"
+										max="600"
+										bind:value={config.retest_timeout_seconds}
+										on:change={() => triggerAutoSave('retest_timeout_seconds', `${config.retest_timeout_seconds}s`)}
+									/>
+									<span class="slider-value">{config.retest_timeout_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</section>
+
+			<!-- Section 5: Timeframes & ATR Optimal -->
 			<section class="variable-section">
 				<h3>⏱️ Timeframes & ATR Optimal</h3>
 				<p class="section-subtitle">Configuration des timeframes et plages ATR optimales pour filtrage</p>
@@ -1773,6 +2437,219 @@
 								data-debug-name="config.risk_per_trade"
 							/>
 							<span class="slider-value" data-debug-name="config.risk_per_trade">{Number(config.risk_per_trade).toFixed(1)}%</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- 🔥 PHASE 8: Sizing Adaptatif par Paire/Session -->
+				<h3>📊 Sizing Adaptatif</h3>
+				<p class="section-info">
+					Ajuste automatiquement la taille des positions en fonction du winrate par paire pendant la session.
+				</p>
+				<div class="variables-list">
+					<div class="variable-item toggle-item">
+						<div class="var-header">
+							<label for="adaptive-sizing-enabled">
+								<span class="var-name">Sizing Adaptatif</span>
+								<span class="var-desc">Activer l'ajustement automatique de la taille</span>
+							</label>
+						</div>
+						<label class="toggle">
+							<input type="checkbox" id="adaptive-sizing-enabled" bind:checked={config.adaptive_sizing_enabled} 
+								on:change={() => triggerAutoSave('adaptive_sizing_enabled', config.adaptive_sizing_enabled ? 'ON' : 'OFF')} />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-min-trades">
+								<span class="var-name">Trades min avant ajustement</span>
+								<span class="var-desc">Nombre minimum de trades avant d'ajuster la taille</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_min_trades')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-min-trades" step="1" min="2" max="10" 
+								bind:value={config.adaptive_sizing_min_trades}
+								on:change={() => triggerAutoSave('adaptive_sizing_min_trades', config.adaptive_sizing_min_trades)} />
+							<span class="slider-value">{config.adaptive_sizing_min_trades}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-excellent-wr">
+								<span class="var-name">Seuil WR Excellent (%)</span>
+								<span class="var-desc">WR au-dessus = multiplicateur excellent</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_excellent_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-excellent-wr" step="0.05" min="0.60" max="0.90" 
+								bind:value={config.adaptive_sizing_excellent_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_excellent_wr', `${(config.adaptive_sizing_excellent_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_excellent_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-excellent-mult">
+								<span class="var-name">Mult. Excellent</span>
+								<span class="var-desc">Multiplicateur si WR excellent (ex: 1.5 = +50%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_excellent_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-excellent-mult" step="0.05" min="1.0" max="2.0" 
+								bind:value={config.adaptive_sizing_excellent_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_excellent_mult', `x${config.adaptive_sizing_excellent_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_excellent_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-good-wr">
+								<span class="var-name">Seuil WR Bon (%)</span>
+								<span class="var-desc">WR au-dessus = multiplicateur bon</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_good_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-good-wr" step="0.05" min="0.50" max="0.75" 
+								bind:value={config.adaptive_sizing_good_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_good_wr', `${(config.adaptive_sizing_good_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_good_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-good-mult">
+								<span class="var-name">Mult. Bon</span>
+								<span class="var-desc">Multiplicateur si WR bon (ex: 1.25 = +25%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_good_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-good-mult" step="0.05" min="1.0" max="1.5" 
+								bind:value={config.adaptive_sizing_good_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_good_mult', `x${config.adaptive_sizing_good_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_good_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-poor-wr">
+								<span class="var-name">Seuil WR Mauvais (%)</span>
+								<span class="var-desc">WR en-dessous = multiplicateur réduit</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_poor_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-poor-wr" step="0.05" min="0.20" max="0.50" 
+								bind:value={config.adaptive_sizing_poor_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_poor_wr', `${(config.adaptive_sizing_poor_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_poor_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-poor-mult">
+								<span class="var-name">Mult. Mauvais</span>
+								<span class="var-desc">Multiplicateur si WR mauvais (ex: 0.7 = -30%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_poor_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-poor-mult" step="0.05" min="0.30" max="1.0" 
+								bind:value={config.adaptive_sizing_poor_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_poor_mult', `x${config.adaptive_sizing_poor_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_poor_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-very-poor-wr">
+								<span class="var-name">Seuil WR Très Mauvais (%)</span>
+								<span class="var-desc">WR en-dessous = multiplicateur minimal</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_very_poor_wr')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-very-poor-wr" step="0.05" min="0.10" max="0.40" 
+								bind:value={config.adaptive_sizing_very_poor_wr}
+								on:change={() => triggerAutoSave('adaptive_sizing_very_poor_wr', `${(config.adaptive_sizing_very_poor_wr * 100).toFixed(0)}%`)} />
+							<span class="slider-value">{(config.adaptive_sizing_very_poor_wr * 100).toFixed(0)}%</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-very-poor-mult">
+								<span class="var-name">Mult. Très Mauvais</span>
+								<span class="var-desc">Multiplicateur si WR très mauvais (ex: 0.5 = -50%)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_very_poor_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-very-poor-mult" step="0.05" min="0.20" max="0.80" 
+								bind:value={config.adaptive_sizing_very_poor_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_very_poor_mult', `x${config.adaptive_sizing_very_poor_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_very_poor_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-max-mult">
+								<span class="var-name">Limite Max Mult.</span>
+								<span class="var-desc">Sécurité: jamais plus de ce multiplicateur</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_max_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-max-mult" step="0.05" min="1.10" max="2.00" 
+								bind:value={config.adaptive_sizing_max_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_max_mult', `x${config.adaptive_sizing_max_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_max_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-min-mult">
+								<span class="var-name">Limite Min Mult.</span>
+								<span class="var-desc">Sécurité: jamais moins de ce multiplicateur</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_min_mult')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-min-mult" step="0.05" min="0.20" max="0.80" 
+								bind:value={config.adaptive_sizing_min_mult}
+								on:change={() => triggerAutoSave('adaptive_sizing_min_mult', `x${config.adaptive_sizing_min_mult.toFixed(2)}`)} />
+							<span class="slider-value">x{Number(config.adaptive_sizing_min_mult).toFixed(2)}</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="adaptive-reset-hours">
+								<span class="var-name">Reset après (heures)</span>
+								<span class="var-desc">Reset les stats après X heures d'inactivité</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('adaptive_sizing_reset_hours')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input type="range" id="adaptive-reset-hours" step="1" min="1" max="24" 
+								bind:value={config.adaptive_sizing_reset_hours}
+								on:change={() => triggerAutoSave('adaptive_sizing_reset_hours', `${config.adaptive_sizing_reset_hours}h`)} />
+							<span class="slider-value">{config.adaptive_sizing_reset_hours}h</span>
 						</div>
 					</div>
 				</div>
@@ -2073,6 +2950,274 @@
 										data-debug-name="config.atr_max"
 									/>
 									<span class="slider-value" data-debug-name="config.atr_max">{Number(config.atr_max).toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<!-- 🎯 Break-Even ATR (simplifié - toujours actif en Mode ATR) -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">🎯 Break-Even ATR</h4>
+								
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="be-atr-mult">
+											<span class="var-name">BE Trigger</span>
+											<span class="var-desc">Break-even dès PnL ≥ {(config.break_even_atr_mult).toFixed(1)} × ATR%</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('break_even_atr_mult')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="be-atr-mult"
+											type="range"
+											step="0.1"
+											min="0.2"
+											max="2.5"
+											bind:value={config.break_even_atr_mult}
+											on:change={() => triggerAutoSave('break_even_atr_mult', `${config.break_even_atr_mult.toFixed(1)}x ATR`)}
+										/>
+										<span class="slider-value">{Number(config.break_even_atr_mult).toFixed(1)}x ATR</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- 📈 Trailing Stop ATR (simplifié - toujours actif en Mode ATR) -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">📈 Trailing Stop ATR</h4>
+								
+								<!-- Trailing Trigger: Quand activer le trailing -->
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-atr-trigger-mult">
+											<span class="var-name">Trailing Trigger</span>
+											<span class="var-desc">Trailing activé dès PnL ≥ {(config.trailing_trigger_atr_mult).toFixed(1)} × ATR%</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_trigger_atr_mult')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-atr-trigger-mult"
+											type="range"
+											step="0.1"
+											min="0.5"
+											max="3.0"
+											bind:value={config.trailing_trigger_atr_mult}
+											on:change={() => triggerAutoSave('trailing_trigger_atr_mult', `${config.trailing_trigger_atr_mult.toFixed(1)}x ATR`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_trigger_atr_mult).toFixed(1)}x ATR</span>
+									</div>
+								</div>
+								
+								<!-- Trailing Distance: Distance du stop suiveur -->
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-distance-atr-mult">
+											<span class="var-name">Trailing Distance</span>
+											<span class="var-desc">Stop suit le prix à {(config.trailing_distance_atr_mult || config.trailing_atr_multiplier || 0.8).toFixed(1)} × ATR%</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_distance_atr_mult')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-distance-atr-mult"
+											type="range"
+											step="0.1"
+											min="0.3"
+											max="2.0"
+											bind:value={config.trailing_distance_atr_mult}
+											on:change={() => {
+												// Sync avec l'ancien nom pour compatibilité
+												config.trailing_atr_multiplier = config.trailing_distance_atr_mult;
+												triggerAutoSave('trailing_distance_atr_mult', `${config.trailing_distance_atr_mult.toFixed(1)}x ATR`);
+											}}
+										/>
+										<span class="slider-value">{Number(config.trailing_distance_atr_mult || config.trailing_atr_multiplier || 0.8).toFixed(1)}x ATR</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- 🔥 HYBRID: Stagnation Exit (Time Decay) -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">⏰ Sortie Stagnation (Time Decay)</h4>
+								
+								<div class="variable-item checkbox-item">
+									<label class="checkbox-label">
+										<input
+											type="checkbox"
+											bind:checked={config.stagnation_exit_enabled}
+											on:change={() => triggerAutoSave('stagnation_exit_enabled', config.stagnation_exit_enabled ? 'Activé' : 'Désactivé')}
+										/>
+										<span class="checkmark"></span>
+										<span class="checkbox-text">
+											<span class="var-name">Sortie Stagnation</span>
+											<span class="var-desc">Ferme les trades stagnants après un timeout</span>
+										</span>
+									</label>
+								</div>
+
+								{#if config.stagnation_exit_enabled}
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="stagnation-timeout">
+												<span class="var-name">Timeout (secondes)</span>
+												<span class="var-desc">Durée avant de considérer le trade comme stagnant</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('stagnation_exit_timeout_seconds')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="stagnation-timeout"
+												type="range"
+												step="30"
+												min="60"
+												max="600"
+												bind:value={config.stagnation_exit_timeout_seconds}
+												on:change={() => triggerAutoSave('stagnation_exit_timeout_seconds', `${config.stagnation_exit_timeout_seconds}s`)}
+											/>
+											<span class="slider-value">{Number(config.stagnation_exit_timeout_seconds).toFixed(0)}s</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="stagnation-min-pnl">
+												<span class="var-name">PnL Min pour rester (%)</span>
+												<span class="var-desc">Rester si PnL ≥ ce seuil après timeout</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('stagnation_exit_min_pnl_to_stay')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="stagnation-min-pnl"
+												type="range"
+												step="0.01"
+												min="0.01"
+												max="0.50"
+												bind:value={config.stagnation_exit_min_pnl_to_stay}
+												on:change={() => triggerAutoSave('stagnation_exit_min_pnl_to_stay', `${config.stagnation_exit_min_pnl_to_stay.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.stagnation_exit_min_pnl_to_stay).toFixed(2)}%</span>
+										</div>
+									</div>
+
+									<div class="variable-item">
+										<div class="var-header">
+											<label for="stagnation-max-loss">
+												<span class="var-name">Perte Max pour sortir (%)</span>
+												<span class="var-desc">Sortir immédiatement si PnL ≤ ce seuil après timeout</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('stagnation_exit_max_loss_to_exit')} title="Réinitialiser">⟲</button>
+										</div>
+										<div class="slider-container">
+											<input
+												id="stagnation-max-loss"
+												type="range"
+												step="0.01"
+												min="-0.30"
+												max="0.00"
+												bind:value={config.stagnation_exit_max_loss_to_exit}
+												on:change={() => triggerAutoSave('stagnation_exit_max_loss_to_exit', `${config.stagnation_exit_max_loss_to_exit.toFixed(2)}%`)}
+											/>
+											<span class="slider-value">{Number(config.stagnation_exit_max_loss_to_exit).toFixed(2)}%</span>
+										</div>
+									</div>
+								{/if}
+							</div>
+
+							<!-- 🔥 HYBRID: TP Partiel -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">💰 TP Partiel</h4>
+								
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="partial-tp-atr">
+											<span class="var-name">TP Partiel (%)</span>
+											<span class="var-desc">% de position vendue au break-even trigger</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('partial_tp_percent')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="partial-tp-atr"
+											type="range"
+											step="5"
+											min="25"
+											max="100"
+											bind:value={config.partial_tp_percent}
+											on:change={() => triggerAutoSave('partial_tp_percent', `${config.partial_tp_percent}%`)}
+										/>
+										<span class="slider-value">{Number(config.partial_tp_percent).toFixed(0)}%</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- 🔥 HYBRID: Trailing Distance -->
+							<div class="hybrid-section">
+								<h4 class="hybrid-title">📏 Distance Trailing</h4>
+								
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-atr-mult-hybrid">
+											<span class="var-name">ATR Multiplier</span>
+											<span class="var-desc">Distance trailing = ATR × ce multiplicateur</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_atr_multiplier')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-atr-mult-hybrid"
+											type="range"
+											step="0.1"
+											min="0.2"
+											max="1.5"
+											bind:value={config.trailing_atr_multiplier}
+											on:change={() => triggerAutoSave('trailing_atr_multiplier', `${config.trailing_atr_multiplier.toFixed(1)}x`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_atr_multiplier).toFixed(1)}x ATR</span>
+									</div>
+								</div>
+
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-min-dist-hybrid">
+											<span class="var-name">Distance Min (%)</span>
+											<span class="var-desc">Distance trailing minimum (clamp bas)</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_min_distance')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-min-dist-hybrid"
+											type="range"
+											step="0.01"
+											min="0.03"
+											max="0.15"
+											bind:value={config.trailing_min_distance}
+											on:change={() => triggerAutoSave('trailing_min_distance', `${config.trailing_min_distance.toFixed(2)}%`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_min_distance).toFixed(2)}%</span>
+									</div>
+								</div>
+
+								<div class="variable-item">
+									<div class="var-header">
+										<label for="trailing-max-dist-hybrid">
+											<span class="var-name">Distance Max (%)</span>
+											<span class="var-desc">Distance trailing maximum (clamp haut)</span>
+										</label>
+										<button class="btn-reset" on:click={() => resetVariable('trailing_max_distance')} title="Réinitialiser">⟲</button>
+									</div>
+									<div class="slider-container">
+										<input
+											id="trailing-max-dist-hybrid"
+											type="range"
+											step="0.01"
+											min="0.10"
+											max="0.50"
+											bind:value={config.trailing_max_distance}
+											on:change={() => triggerAutoSave('trailing_max_distance', `${config.trailing_max_distance.toFixed(2)}%`)}
+										/>
+										<span class="slider-value">{Number(config.trailing_max_distance).toFixed(2)}%</span>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -2439,6 +3584,378 @@
 			</section>
 		{/if}
 
+	<!-- 🛡️ ONGLET PROTECTION & RÉGIME (SPRINT 1) -->
+	{#if activeSubTab === 'protection'}
+		<section class="variable-section protection-section">
+			<h3>🛡️ Protection & Régime de Marché</h3>
+			<p class="section-info">
+				Configuration des mécanismes de protection automatique et d'adaptation au régime de marché.
+			</p>
+
+			<!-- MARKET REGIME SELECTOR -->
+			<div class="protection-subsection">
+				<h4>🌡️ Market Regime Selector</h4>
+				<p class="subsection-info">
+					Détecte automatiquement le régime de marché (CALME, NORMAL, VOLATILE, CHOPPY) et adapte les paramètres.
+				</p>
+
+				<div class="variable-item toggle-item">
+					<label>
+						<input
+							type="checkbox"
+							bind:checked={config.market_regime_enabled}
+							on:change={() => triggerAutoSave('market_regime_enabled', config.market_regime_enabled ? 'activé' : 'désactivé')}
+						/>
+						<span class="toggle-label">Activer la détection automatique du régime</span>
+					</label>
+				</div>
+
+				{#if config.market_regime_enabled}
+					<div class="variable-item">
+						<label>Intervalle de vérification (minutes)</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="15"
+								max="120"
+								step="15"
+								bind:value={config.market_regime_check_interval}
+								on:change={() => triggerAutoSave('market_regime_check_interval', `${config.market_regime_check_interval}min`)}
+							/>
+							<span class="slider-value">{config.market_regime_check_interval} min</span>
+						</div>
+					</div>
+
+					<div class="variable-item">
+						<label>Nombre de paires analysées</label>
+						<div class="slider-container">
+							<input
+								type="range"
+								min="5"
+								max="20"
+								step="1"
+								bind:value={config.market_regime_sample_count}
+								on:change={() => triggerAutoSave('market_regime_sample_count', config.market_regime_sample_count)}
+							/>
+							<span class="slider-value">{config.market_regime_sample_count}</span>
+						</div>
+					</div>
+
+					<div class="regime-thresholds">
+						<h5>Seuils ATR par régime (%)</h5>
+						<div class="threshold-grid">
+							<div class="variable-item">
+								<label>🟢 CALME: ATR max</label>
+								<div class="slider-container">
+									<input
+										type="range"
+										min="0.10"
+										max="0.30"
+										step="0.02"
+										bind:value={config.market_regime_atr_calme_max}
+										on:change={() => triggerAutoSave('market_regime_atr_calme_max', `${config.market_regime_atr_calme_max.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{config.market_regime_atr_calme_max.toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item">
+								<label>🔵 NORMAL: ATR max</label>
+								<div class="slider-container">
+									<input
+										type="range"
+										min="0.25"
+										max="0.60"
+										step="0.05"
+										bind:value={config.market_regime_atr_normal_max}
+										on:change={() => triggerAutoSave('market_regime_atr_normal_max', `${config.market_regime_atr_normal_max.toFixed(2)}%`)}
+									/>
+									<span class="slider-value">{config.market_regime_atr_normal_max.toFixed(2)}%</span>
+								</div>
+							</div>
+
+							<div class="variable-item">
+								<label>🔴 CHOPPY: ADX seuil</label>
+								<div class="slider-container">
+									<input
+										type="range"
+										min="15"
+										max="30"
+										step="1"
+										bind:value={config.market_regime_adx_choppy}
+										on:change={() => triggerAutoSave('market_regime_adx_choppy', config.market_regime_adx_choppy)}
+									/>
+									<span class="slider-value">{config.market_regime_adx_choppy}</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<!-- TRADING CIRCUIT BREAKER -->
+			<div class="protection-subsection">
+				<h4>🛑 Trading Circuit Breaker</h4>
+				<p class="subsection-info">
+					Protège le capital en cas de séries de pertes ou drawdown journalier excessif.
+				</p>
+
+				<div class="variable-item toggle-item">
+					<label>
+						<input
+							type="checkbox"
+							bind:checked={config.trading_circuit_breaker_enabled}
+							on:change={() => triggerAutoSave('trading_circuit_breaker_enabled', config.trading_circuit_breaker_enabled ? 'activé' : 'désactivé')}
+						/>
+						<span class="toggle-label">Activer le Circuit Breaker Trading</span>
+					</label>
+				</div>
+
+				{#if config.trading_circuit_breaker_enabled}
+					<div class="cb-settings">
+						<div class="variable-item">
+							<label>Pertes consécutives max avant PAUSE</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="3"
+									max="10"
+									step="1"
+									bind:value={config.trading_cb_max_consecutive_losses}
+									on:change={() => triggerAutoSave('trading_cb_max_consecutive_losses', config.trading_cb_max_consecutive_losses)}
+								/>
+								<span class="slider-value">{config.trading_cb_max_consecutive_losses}</span>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Drawdown jour pour PAUSE (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="-5"
+									max="-1"
+									step="0.5"
+									bind:value={config.trading_cb_daily_drawdown_pause_pct}
+									on:change={() => triggerAutoSave('trading_cb_daily_drawdown_pause_pct', `${config.trading_cb_daily_drawdown_pause_pct}%`)}
+								/>
+								<span class="slider-value">{config.trading_cb_daily_drawdown_pause_pct}%</span>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Drawdown jour pour STOP (%)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="-10"
+									max="-3"
+									step="0.5"
+									bind:value={config.trading_cb_daily_drawdown_stop_pct}
+									on:change={() => triggerAutoSave('trading_cb_daily_drawdown_stop_pct', `${config.trading_cb_daily_drawdown_stop_pct}%`)}
+								/>
+								<span class="slider-value">{config.trading_cb_daily_drawdown_stop_pct}%</span>
+							</div>
+						</div>
+
+						<div class="variable-item">
+							<label>Durée de pause (minutes)</label>
+							<div class="slider-container">
+								<input
+									type="range"
+									min="5"
+									max="120"
+									step="5"
+									bind:value={config.trading_cb_pause_duration_minutes}
+									on:change={() => triggerAutoSave('trading_cb_pause_duration_minutes', `${config.trading_cb_pause_duration_minutes}min`)}
+								/>
+								<span class="slider-value">{config.trading_cb_pause_duration_minutes} min</span>
+							</div>
+						</div>
+
+						<div class="score-boost-section">
+							<div class="variable-item toggle-item">
+								<label>
+									<input
+										type="checkbox"
+										bind:checked={config.trading_cb_score_boost_enabled}
+										on:change={() => triggerAutoSave('trading_cb_score_boost_enabled', config.trading_cb_score_boost_enabled ? 'activé' : 'désactivé')}
+									/>
+									<span class="toggle-label">Activer Score Boost après pertes</span>
+								</label>
+							</div>
+
+							{#if config.trading_cb_score_boost_enabled}
+								<div class="variable-item">
+									<label>Boost score par perte consécutive</label>
+									<div class="slider-container">
+										<input
+											type="range"
+											min="0.25"
+											max="1.5"
+											step="0.25"
+											bind:value={config.trading_cb_score_boost_per_loss}
+											on:change={() => triggerAutoSave('trading_cb_score_boost_per_loss', `+${config.trading_cb_score_boost_per_loss}`)}
+										/>
+										<span class="slider-value">+{config.trading_cb_score_boost_per_loss}</span>
+									</div>
+								</div>
+								<p class="boost-info">
+									Exemple: 2 pertes → score min = base + {(2 * config.trading_cb_score_boost_per_loss).toFixed(1)}
+								</p>
+							{/if}
+						</div>
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
+
+	<!-- 🎯 ONGLET ADAPTATIONS ML (SPRINT 2) -->
+	{#if activeSubTab === 'adaptations'}
+		<section class="variable-section adaptations-section">
+			<h3>🎯 Adaptations ML - Score Dynamique par Paire</h3>
+			<p class="section-info">
+				Ajuste automatiquement le score minimum par paire selon performance historique.
+				<strong>Bonus</strong> pour paires performantes (score min réduit), <strong>Malus</strong> pour paires sous-performantes (score min augmenté).
+			</p>
+
+			<!-- Pair Scorer -->
+			<div class="subsection">
+				<h4>📊 Pair Scorer</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="pair_scorer_enabled">
+						<span class="label-text">Activer le Pair Scorer</span>
+						<span class="label-hint">Ajuste le score min selon performance par paire</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="pair_scorer_enabled"
+								bind:checked={config.pair_scorer_enabled}
+								on:change={() => triggerAutoSave('pair_scorer_enabled', config.pair_scorer_enabled ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.pair_scorer_enabled ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.pair_scorer_enabled}
+					<!-- Trades minimum -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_min_trades">
+								<span class="var-name">📊 Trades minimum</span>
+								<span class="var-desc">Nombre de trades requis avant calcul d'ajustement</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_min_trades')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_min_trades"
+								min="5"
+								max="50"
+								step="5"
+								bind:value={config.pair_scorer_min_trades}
+								on:change={() => triggerAutoSave('pair_scorer_min_trades', config.pair_scorer_min_trades)}
+							/>
+							<span class="slider-value">{config.pair_scorer_min_trades} trades</span>
+						</div>
+					</div>
+
+					<!-- Ajustement maximum -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_max_adjustment">
+								<span class="var-name">📏 Ajustement maximum</span>
+								<span class="var-desc">Bonus/malus max appliqué au score (±)</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_max_adjustment')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_max_adjustment"
+								min="0.5"
+								max="4.0"
+								step="0.5"
+								bind:value={config.pair_scorer_max_adjustment}
+								on:change={() => triggerAutoSave('pair_scorer_max_adjustment', `±${Number(config.pair_scorer_max_adjustment).toFixed(1)}`)}
+							/>
+							<span class="slider-value">±{Number(config.pair_scorer_max_adjustment).toFixed(1)} pts</span>
+						</div>
+					</div>
+
+					<!-- Période d'analyse -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_lookback_days">
+								<span class="var-name">📅 Période d'analyse</span>
+								<span class="var-desc">Jours d'historique à analyser</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_lookback_days')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_lookback_days"
+								min="7"
+								max="90"
+								step="7"
+								bind:value={config.pair_scorer_lookback_days}
+								on:change={() => triggerAutoSave('pair_scorer_lookback_days', `${config.pair_scorer_lookback_days} jours`)}
+							/>
+							<span class="slider-value">{config.pair_scorer_lookback_days} jours</span>
+						</div>
+					</div>
+
+					<!-- Intervalle de refresh -->
+					<div class="variable-item">
+						<div class="var-header">
+							<label for="pair_scorer_refresh_minutes">
+								<span class="var-name">🔄 Intervalle de refresh</span>
+								<span class="var-desc">Fréquence de mise à jour des stats</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('pair_scorer_refresh_minutes')} title="Réinitialiser">⟲</button>
+						</div>
+						<div class="slider-container">
+							<input
+								type="range"
+								id="pair_scorer_refresh_minutes"
+								min="15"
+								max="240"
+								step="15"
+								bind:value={config.pair_scorer_refresh_minutes}
+								on:change={() => triggerAutoSave('pair_scorer_refresh_minutes', `${config.pair_scorer_refresh_minutes} min`)}
+							/>
+							<span class="slider-value">{config.pair_scorer_refresh_minutes} min</span>
+						</div>
+					</div>
+
+					<!-- Explication du calcul -->
+					<div class="info-box">
+						<h5>📐 Formule de calcul</h5>
+						<div class="formula">
+							<code>adjustment = (winrate - 50) / 10 × 0.6 + (avg_pnl / 0.1) × 0.4</code>
+						</div>
+						<div class="examples">
+							<p><strong>Exemples:</strong></p>
+							<ul>
+								<li>WR 62%, PnL +0.18% → <span class="bonus">+1.4</span> (score min réduit)</li>
+								<li>WR 42%, PnL -0.05% → <span class="malus">-0.7</span> (score min augmenté)</li>
+								<li>WR 51%, PnL +0.02% → <span class="neutral">+0.1</span> (quasi neutre)</li>
+							</ul>
+						</div>
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
+
 	{#if activeSubTab === 'ml'}
 	<!-- Titre et sélecteurs Version ML -->
 	<div class="ml-header">
@@ -2461,15 +3978,25 @@
 				<span class="version-icon-compact">🚀</span>
 				<span class="version-label-compact">XGBoost V2</span>
 			</button>
+
+			<button
+				class="version-btn-compact recommended"
+				class:active={mlVersion === 'gb'}
+				on:click={() => (mlVersion = 'gb')}
+			>
+				<span class="version-icon-compact">🎯</span>
+				<span class="version-label-compact">GradientBoosting</span>
+				<span class="badge-recommended">64%</span>
+			</button>
 		</div>
 	</div>
 
+	<!-- 🔥 SECTION FILTRAGE ML - UNIQUEMENT POUR XGBOOST V1 -->
 	{#if mlVersion === 'v1'}
-	<!-- 1. Section Filtrage ML (inchangée) -->
-	<section class="variable-section">
-		<h3>🎯 Filtrage ML des Trades</h3>
+	<section class="variable-section ml-common-section">
+		<h3>🎯 Filtrage ML XGBoost V1</h3>
 		<p class="section-desc">
-			Activez le filtrage pour que le bot rejette automatiquement les opportunités avec faible confiance ML.
+			Ces paramètres s'appliquent uniquement à XGBoost V1. Pour GradientBoosting, utilisez l'onglet dédié.
 		</p>
 
 		<div class="variable-item">
@@ -2492,6 +4019,49 @@
 
 		<div class="variable-item" class:disabled={!config.ml_filter_enabled}>
 			<div class="variable-label-container">
+				<label for="ml_filter_mode">
+					<span class="variable-name">Mode de Filtrage</span>
+					<span class="variable-desc">NEGATIVE = rejette les mauvais trades (+2.9% win rate)</span>
+				</label>
+			</div>
+			<select
+				id="ml_filter_mode"
+				bind:value={config.ml_filter_mode}
+				on:change={() => triggerAutoSave('ml_filter_mode', config.ml_filter_mode)}
+				disabled={!config.ml_filter_enabled}
+				class="select-input"
+			>
+				<option value="NEGATIVE">NEGATIVE (Recommandé)</option>
+				<option value="STRICT">STRICT</option>
+				<option value="SOFT">SOFT</option>
+			</select>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.ml_filter_enabled || config.ml_filter_mode !== 'NEGATIVE'}>
+			<div class="variable-label-container">
+				<label for="ml_loss_threshold">
+					<span class="variable-name">Seuil P(loss) pour Rejet</span>
+					<span class="variable-desc">Rejeter si P(loss) >= ce seuil (30-80%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="ml_loss_threshold"
+					min="0.30"
+					max="0.80"
+					step="0.05"
+					bind:value={config.ml_loss_threshold}
+					on:change={() => triggerAutoSave('ml_loss_threshold', Math.round(config.ml_loss_threshold * 100) + '%')}
+					disabled={!config.ml_filter_enabled || config.ml_filter_mode !== 'NEGATIVE'}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.ml_loss_threshold * 100)}%</span>
+			</div>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.ml_filter_enabled || config.ml_filter_mode === 'NEGATIVE'}>
+			<div class="variable-label-container">
 				<label for="ml_min_confidence">
 					<span class="variable-name">Seuil de Confiance Minimum</span>
 					<span class="variable-desc">Confiance minimale pour accepter un trade (50-90%)</span>
@@ -2506,14 +4076,16 @@
 					step="0.05"
 					bind:value={config.ml_min_confidence}
 					on:change={() => triggerAutoSave('ml_min_confidence', Math.round(config.ml_min_confidence * 100) + '%')}
-					disabled={!config.ml_filter_enabled}
+					disabled={!config.ml_filter_enabled || config.ml_filter_mode === 'NEGATIVE'}
 					class="slider"
 				/>
 				<span class="slider-value">{Math.round(config.ml_min_confidence * 100)}%</span>
 			</div>
 		</div>
 	</section>
+	{/if}
 
+	{#if mlVersion === 'v1'}
 	<!-- 2. Métriques du Modèle Actuel (déplacée ici) -->
 	<section class="variable-section">
 		<h3>📊 Métriques du Modèle Actuel</h3>
@@ -2851,6 +4423,9 @@
 	{:else if mlVersion === 'v2'}
 	<!-- Contenu XGBoost V2 -->
 	<MLCONTENT_V2_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
+	{:else if mlVersion === 'gb'}
+	<!-- Contenu GradientBoosting (Modèle Optimisé) -->
+	<MLCONTENT_GB_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
 	{/if}
 	{/if}
 
@@ -2861,62 +4436,92 @@
 					<button class="btn-refresh" on:click={loadCompleteConfig} disabled={loadingCompleteConfig} data-debug-name="variablesPanel.current.refreshButton">
 						{loadingCompleteConfig ? '⏳ Chargement...' : '🔄 Actualiser'}
 					</button>
-				</div>
+					<button class="btn-export" on:click={exportCurrentConfigXlsx} disabled={exportingCurrentConfig} title="Exporter l'ensemble des variables en .xlsx">
+					{exportingCurrentConfig ? '⏳ Export...' : '📤 Export XLSX'}
+				</button>
+			</div>
 				<p class="section-desc" data-debug-name="variablesPanel.current.description">Récapitulatif de toutes les variables actuellement prises en compte par le bot</p>
 
 				{#if loadingCompleteConfig}
-					<div class="loading-message" data-debug-name="loadingCompleteConfig">
-						⏳ Chargement de la configuration complète...
-					</div>
-				{:else if completeConfigError}
-					<div class="error-message" data-debug-name="completeConfigError">
-						❌ Erreur: {completeConfigError}
-					</div>
-				{:else if completeConfig}
-					<div class="complete-config-container" data-debug-name="completeConfig">
-						<!-- TRADING_CONFIG organisé par catégories -->
-						<div class="config-category main-category" data-debug-name="completeConfig.trading_config">
-							<h4 class="category-title" data-debug-name="completeConfig.trading_config.title">🔧 TRADING_CONFIG</h4>
-							{#each Object.entries(organizeTradingConfig(completeConfig.trading_config)) as [categoryName, categoryVars]}
-								<div class="config-subcategory" data-debug-name="completeConfig.trading_config.{categoryName}">
-									<h5 class="subcategory-title" data-debug-name="completeConfig.trading_config.{categoryName}.title">{categoryName}</h5>
-									<div class="config-grid" data-debug-name="completeConfig.trading_config.{categoryName}">
-										{#each Object.entries(categoryVars) as [key, value]}
-											{#if value !== undefined && value !== null}
-												<div class="config-item" data-debug-name="completeConfig.trading_config.{categoryName}.{key}">
-													<span class="config-key" data-debug-name="completeConfig.trading_config.{categoryName}.{key}">{key}:</span>
-													<span class="config-value" title={typeof value === 'object' ? formatFullValue(value) : ''} data-debug-name="completeConfig.trading_config.{categoryName}.{key}">
-														{formatValue(value)}
+				<div class="loading-message" data-debug-name="loadingCompleteConfig">
+					⏳ Chargement de la configuration complète...
+				</div>
+			{:else if completeConfigError}
+				<div class="error-message" data-debug-name="completeConfigError">
+					❌ Erreur: {completeConfigError}
+				</div>
+			{:else if completeConfig}
+				<div class="complete-config-container" data-debug-name="completeConfig">
+					<!-- 🔥 FIX 08/12/2025: Afficher les ajustements actifs si régime/CB activé -->
+					{#if completeConfig.adjustments_summary && (completeConfig.adjustments_summary.regime_enabled || completeConfig.adjustments_summary.cb_enabled)}
+						<div class="config-category adjustments-category" data-debug-name="completeConfig.adjustments">
+							<h4 class="category-title">🌡️ AJUSTEMENTS ACTIFS (Régime/CB)</h4>
+							<p class="adjustments-info">Les valeurs ci-dessous incluent les ajustements automatiques.</p>
+							
+							{#if completeConfig.adjustments_summary.differences && Object.keys(completeConfig.adjustments_summary.differences).length > 0}
+								<div class="config-grid">
+									{#each Object.entries(completeConfig.adjustments_summary.differences) as [key, diff]}
+										<div class="config-item difference-item">
+											<span class="config-key">{key}:</span>
+											<span class="config-value">
+												{diff.base} → <strong>{diff.effective}</strong>
+												{#if diff.delta}
+													<span class="diff-delta" class:positive={diff.delta > 0} class:negative={diff.delta < 0}>
+														({diff.delta > 0 ? '+' : ''}{diff.delta.toFixed(2)})
 													</span>
-												</div>
-											{/if}
-										{/each}
-									</div>
-									{#if Object.values(categoryVars).some(v => typeof v === 'object' && v !== null && !Array.isArray(v))}
-										<!-- Afficher les objets complexes en détail -->
-										{#each Object.entries(categoryVars) as [key, value]}
-											{#if typeof value === 'object' && value !== null && !Array.isArray(value)}
-												<div class="config-object-detail">
-													<details>
-														<summary class="config-object-summary">{key} (détails)</summary>
-														<pre class="config-object-content">{formatFullValue(value)}</pre>
-													</details>
-												</div>
-											{/if}
-										{/each}
-									{/if}
+												{/if}
+											</span>
+										</div>
+									{/each}
 								</div>
-							{/each}
+							{:else}
+								<p class="no-differences">Aucune différence entre base et effective.</p>
+							{/if}
 						</div>
+					{/if}
 
-						<!-- RISK_CONFIG -->
+					<!-- 🔥 FIX 08/12/2025: Utiliser effective_config au lieu de trading_config -->
+					<div class="config-category main-category" data-debug-name="completeConfig.effective_config">
+						<h4 class="category-title">🔧 CONFIGURATION EFFECTIVE</h4>
+						{#each Object.entries(organizeTradingConfig(completeConfig.effective_config || completeConfig.trading_config)) as [categoryName, categoryVars]}
+							<div class="config-subcategory" data-debug-name="completeConfig.effective_config.{categoryName}">
+								<h5 class="subcategory-title">{categoryName}</h5>
+								<div class="config-grid">
+									{#each Object.entries(categoryVars) as [key, value]}
+										{#if value !== undefined && value !== null}
+											<div class="config-item">
+												<span class="config-key">{key}:</span>
+												<span class="config-value" title={typeof value === 'object' ? formatFullValue(value) : ''}>
+													{formatValue(value)}
+												</span>
+											</div>
+										{/if}
+									{/each}
+								</div>
+								{#if Object.values(categoryVars).some(v => typeof v === 'object' && v !== null && !Array.isArray(v))}
+									{#each Object.entries(categoryVars) as [key, value]}
+										{#if typeof value === 'object' && value !== null && !Array.isArray(value)}
+											<div class="config-object-detail">
+												<details>
+													<summary class="config-object-summary">{key} (détails)</summary>
+													<pre class="config-object-content">{formatFullValue(value)}</pre>
+												</details>
+											</div>
+										{/if}
+									{/each}
+								{/if}
+							</div>
+						{/each}
+					</div>
+
+					<!-- RISK_CONFIG -->
 						<div class="config-category" data-debug-name="completeConfig.risk_config">
 							<h4 class="category-title" data-debug-name="completeConfig.risk_config.title">⚠️ RISK_CONFIG</h4>
 							<div class="config-grid" data-debug-name="completeConfig.risk_config">
 								{#each Object.entries(completeConfig.risk_config || {}) as [key, value]}
 									<div class="config-item" data-debug-name="completeConfig.risk_config.{key}">
-										<span class="config-key" data-debug-name="completeConfig.risk_config.{key}">{key}:</span>
-										<span class="config-value" data-debug-name="completeConfig.risk_config.{key}">{formatValue(value)}</span>
+										<span class="config-key">{key}:</span>
+										<span class="config-value">{formatValue(value)}</span>
 									</div>
 								{/each}
 							</div>
@@ -3020,6 +4625,56 @@
 		{/if}
 	</div>
 </div>
+
+<!-- 🔥 POPUP Export Excel avec nombre de lignes -->
+{#if showExportPopup}
+	<div class="popup-overlay" on:click={closeExportPopup}>
+		<div class="popup-content" on:click|stopPropagation>
+			<div class="popup-header">
+				<h3>📊 Export Excel</h3>
+				<button class="popup-close" on:click={closeExportPopup}>✕</button>
+			</div>
+			<div class="popup-body">
+				<label for="export-row-count">
+					<span class="popup-label">Nombre de lignes à exporter par table :</span>
+				</label>
+				<input
+					id="export-row-count"
+					type="number"
+					min="1"
+					max="10000"
+					bind:value={exportRowCount}
+					class="popup-input"
+				/>
+				<p class="popup-hint">
+					💡 Défaut: 50 lignes. Maximum recommandé: 1000 lignes pour éviter les fichiers trop volumineux.
+				</p>
+				<div class="popup-tables-info">
+					<span class="popup-tables-title">📋 Tables incluses :</span>
+					<div class="popup-tables-list">
+						<span class="table-tag">trades</span>
+						<span class="table-tag">scan_logs</span>
+						<span class="table-tag">opportunities</span>
+						<span class="table-tag">trading_sessions</span>
+						<span class="table-tag">market_context</span>
+						<span class="table-tag new">circuit_breaker_events</span>
+						<span class="table-tag new">market_regime_history</span>
+						<span class="table-tag">ml_calibration</span>
+					</div>
+					<p class="popup-hint" style="margin-top: 8px;">
+						🆕 Nouvelles colonnes: <code>entry_market_regime</code>, <code>entry_cb_state</code>, <code>entry_consecutive_losses</code>
+					</p>
+				</div>
+			</div>
+			<div class="popup-actions">
+				<button class="btn-secondary" on:click={closeExportPopup}>Annuler</button>
+				<button class="btn-primary" on:click={exportExcel} disabled={exportingExcel || exportRowCount < 1}>
+					{exportingExcel ? '⏳ Export...' : `📥 Exporter ${exportRowCount} lignes`}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	/* Sélecteurs Version ML */
@@ -3168,6 +4823,31 @@
 	.version-label-compact {
 		font-size: 0.875rem;
 		white-space: nowrap;
+	}
+
+	.version-btn-compact.recommended {
+		border-color: rgba(16, 185, 129, 0.5);
+		background: rgba(16, 185, 129, 0.1);
+		position: relative;
+	}
+
+	.version-btn-compact.recommended.active {
+		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+		border-color: #10b981;
+		box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+	}
+
+	.badge-recommended {
+		position: absolute;
+		top: -8px;
+		right: -8px;
+		background: linear-gradient(135deg, #10b981, #059669);
+		color: white;
+		font-size: 10px;
+		font-weight: 700;
+		padding: 2px 6px;
+		border-radius: 8px;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 	}
 
 	.variables-panel {
@@ -3586,6 +5266,60 @@
 		flex-direction: column;
 		gap: 12px;
 		margin-top: 8px;
+	}
+
+	/* 🔥 HYBRID: Section styles */
+	.hybrid-section {
+		background: rgba(255, 170, 0, 0.05);
+		border: 1px solid rgba(255, 170, 0, 0.25);
+		border-radius: 8px;
+		padding: 14px;
+		margin-top: 12px;
+	}
+
+	.hybrid-title {
+		color: #ffaa00;
+		font-size: 14px;
+		font-weight: 600;
+		margin: 0 0 12px 0;
+		padding-bottom: 8px;
+		border-bottom: 1px solid rgba(255, 170, 0, 0.3);
+	}
+
+	.checkbox-item {
+		margin-bottom: 8px;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: flex-start;
+		cursor: pointer;
+		gap: 10px;
+	}
+
+	.checkbox-label input[type="checkbox"] {
+		width: 18px;
+		height: 18px;
+		margin-top: 2px;
+		accent-color: #00ff88;
+		cursor: pointer;
+	}
+
+	.checkbox-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.checkbox-text .var-name {
+		color: #00ff88;
+		font-size: 13px;
+		font-weight: 500;
+	}
+
+	.checkbox-text .var-desc {
+		color: #888;
+		font-size: 11px;
 	}
 
 	@media (max-width: 768px) {
@@ -4301,6 +6035,296 @@
 		.optimization-grid {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	/* 🔥 POPUP Export Excel */
+	.popup-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.7);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		backdrop-filter: blur(4px);
+	}
+
+	.popup-content {
+		background: #1e2749;
+		border: 2px solid #2a3a6b;
+		border-radius: 16px;
+		padding: 24px;
+		min-width: 400px;
+		max-width: 500px;
+		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+	}
+
+	.popup-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 20px;
+		padding-bottom: 16px;
+		border-bottom: 1px solid #2a3a6b;
+	}
+
+	.popup-header h3 {
+		margin: 0;
+		color: #00ff88;
+		font-size: 20px;
+	}
+
+	.popup-close {
+		background: transparent;
+		border: none;
+		color: #888;
+		font-size: 20px;
+		cursor: pointer;
+		padding: 4px 8px;
+		border-radius: 4px;
+		transition: all 0.2s;
+	}
+
+	.popup-close:hover {
+		color: #f87171;
+		background: rgba(248, 113, 113, 0.1);
+	}
+
+	.popup-body {
+		margin-bottom: 24px;
+	}
+
+	.popup-label {
+		display: block;
+		color: #ccc;
+		margin-bottom: 12px;
+		font-size: 14px;
+	}
+
+	.popup-input {
+		width: 100%;
+		padding: 12px 16px;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid #2a3a6b;
+		border-radius: 8px;
+		color: white;
+		font-size: 16px;
+		transition: all 0.2s;
+	}
+
+	.popup-input:focus {
+		outline: none;
+		border-color: #00ff88;
+		box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
+	}
+
+	.popup-hint {
+		margin-top: 12px;
+		font-size: 12px;
+		color: #888;
+		line-height: 1.5;
+	}
+
+	.popup-actions {
+		display: flex;
+		gap: 12px;
+		justify-content: flex-end;
+	}
+
+	/* 🔥 SPRINT 1: Tables list in export popup */
+	.popup-tables-info {
+		margin-top: 16px;
+		padding-top: 12px;
+		border-top: 1px solid #2a3a6b;
+	}
+
+	.popup-tables-title {
+		display: block;
+		color: #aaa;
+		font-size: 12px;
+		margin-bottom: 8px;
+	}
+
+	.popup-tables-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.table-tag {
+		display: inline-block;
+		padding: 3px 8px;
+		background: rgba(59, 130, 246, 0.15);
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		border-radius: 4px;
+		font-size: 11px;
+		color: #93c5fd;
+	}
+
+	.table-tag.new {
+		background: rgba(16, 185, 129, 0.15);
+		border-color: rgba(16, 185, 129, 0.3);
+		color: #6ee7b7;
+	}
+
+	.popup-hint code {
+		background: rgba(0, 0, 0, 0.3);
+		padding: 2px 6px;
+		border-radius: 3px;
+		font-family: 'Courier New', monospace;
+		font-size: 11px;
+		color: #00ff88;
+	}
+
+	/* 🛡️ SPRINT 1: Protection & Régime Styles */
+	.protection-section {
+		background: linear-gradient(135deg, rgba(30, 39, 73, 0.95), rgba(20, 30, 60, 0.95));
+	}
+
+	.protection-subsection {
+		background: rgba(0, 0, 0, 0.2);
+		border: 1px solid #2a3a6b;
+		border-radius: 10px;
+		padding: 20px;
+		margin-bottom: 20px;
+	}
+
+	.protection-subsection h4 {
+		color: #00ff88;
+		font-size: 16px;
+		margin: 0 0 10px 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.protection-subsection h5 {
+		color: #aaa;
+		font-size: 13px;
+		margin: 15px 0 10px 0;
+	}
+
+	.subsection-info {
+		color: #888;
+		font-size: 12px;
+		margin-bottom: 15px;
+		line-height: 1.5;
+	}
+
+	.toggle-item {
+		display: flex;
+		align-items: center;
+		padding: 10px 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.toggle-item label {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		cursor: pointer;
+	}
+
+	.toggle-label {
+		color: #fff;
+		font-size: 14px;
+	}
+
+	.regime-thresholds {
+		margin-top: 15px;
+		padding-top: 15px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.threshold-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 15px;
+	}
+
+	.cb-settings {
+		margin-top: 15px;
+	}
+
+	.score-boost-section {
+		margin-top: 15px;
+		padding-top: 15px;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.boost-info {
+		font-size: 11px;
+		color: #f59e0b;
+		margin-top: 8px;
+		padding: 8px;
+		background: rgba(245, 158, 11, 0.1);
+		border-radius: 6px;
+	}
+
+	/* 🎯 SPRINT 2: Adaptations ML Styles */
+	.adaptations-section {
+		background: linear-gradient(135deg, rgba(30, 50, 80, 0.95), rgba(20, 35, 65, 0.95));
+	}
+
+	.adaptations-section h3 {
+		color: #00ff88;
+		margin-bottom: 10px;
+	}
+
+	.adaptations-section .info-box {
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid #2a4a7b;
+		border-radius: 8px;
+		padding: 15px;
+		margin-top: 20px;
+	}
+
+	.adaptations-section .info-box h5 {
+		color: #00ff88;
+		font-size: 13px;
+		margin: 0 0 10px 0;
+	}
+
+	.adaptations-section .formula {
+		background: rgba(0, 0, 0, 0.4);
+		padding: 10px 15px;
+		border-radius: 6px;
+		margin-bottom: 15px;
+	}
+
+	.adaptations-section .formula code {
+		font-family: 'Courier New', monospace;
+		color: #00ff88;
+		font-size: 12px;
+	}
+
+	.adaptations-section .examples ul {
+		margin: 10px 0 0 0;
+		padding-left: 20px;
+	}
+
+	.adaptations-section .examples li {
+		color: #aaa;
+		font-size: 12px;
+		margin-bottom: 5px;
+	}
+
+	.adaptations-section .bonus {
+		color: #10b981;
+		font-weight: 600;
+	}
+
+	.adaptations-section .malus {
+		color: #ef4444;
+		font-weight: 600;
+	}
+
+	.adaptations-section .neutral {
+		color: #6b7280;
+		font-weight: 600;
 	}
 
 </style>

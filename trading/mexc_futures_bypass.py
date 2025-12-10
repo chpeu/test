@@ -237,12 +237,13 @@ class AccountAsset:
 class ContractSpec:
     """Spécifications d'un contrat futures"""
     symbol: str
-    min_vol: float          # Volume minimum
-    max_vol: float          # Volume maximum
+    min_vol: float          # Volume minimum (en contrats)
+    max_vol: float          # Volume maximum (en contrats)
     vol_unit: float         # Unité de volume (step)
     price_unit: float       # Unité de prix (tick size)
     price_precision: int    # Décimales prix
     vol_precision: int      # Décimales volume
+    contract_size: float = 1.0  # 🔥 Taille du contrat (1 contrat = X tokens)
     
     def round_volume(self, vol: float) -> float:
         """Arrondir le volume selon les specs du contrat"""
@@ -279,6 +280,8 @@ ENDPOINTS = {
     "OPEN_POSITIONS": "/private/position/open_positions",
     "POSITION_HISTORY": "/private/position/list/history_positions",
     "ACCOUNT_ASSET": "/private/account/asset",
+    "CHANGE_LEVERAGE": "/private/position/change_leverage",  # 🔥 Changer levier (position existante)
+    "SET_LEVERAGE": "/private/account/change_leverage",  # 🔥 Changer levier par défaut (avant ouverture)
     
     # Public endpoints
     "TICKER": "/contract/ticker",
@@ -437,13 +440,17 @@ class TokenHealthMonitor:
 
     Vérifie périodiquement la validité du token et envoie des alertes si expiré.
     Check toutes les 5 minutes (configurable).
+    
+    🔥 NOUVEAU: Alertes proactives basées sur l'âge du token
     """
 
     def __init__(
         self,
         client: 'MexcFuturesBypass',
         check_interval: int = 300,  # 5 minutes
-        telegram_notifier: Optional[Any] = None
+        telegram_notifier: Optional[Any] = None,
+        token_max_age_hours: float = 20.0,  # 🔥 Durée max token avant alerte (20h par défaut)
+        proactive_alert_hours: float = 4.0  # 🔥 Alerter X heures avant expiration estimée
     ):
         """
         Initialiser le moniteur
@@ -452,6 +459,8 @@ class TokenHealthMonitor:
             client: Instance du client MexcFuturesBypass
             check_interval: Intervalle de vérification en secondes (défaut 300s = 5min)
             telegram_notifier: Instance du TelegramNotifier pour alertes
+            token_max_age_hours: 🔥 Durée de vie estimée du token en heures (défaut 20h)
+            proactive_alert_hours: 🔥 Alerter X heures avant expiration estimée (défaut 4h)
         """
         self.client = client
         self.check_interval = check_interval
@@ -461,6 +470,12 @@ class TokenHealthMonitor:
         self._last_check_time = 0
         self._consecutive_failures = 0
         self._token_healthy = True
+        
+        # 🔥 NOUVEAU: Tracking de l'âge du token
+        self._token_start_time = time.time()  # Heure de démarrage du monitoring
+        self._token_max_age_seconds = token_max_age_hours * 3600
+        self._proactive_alert_seconds = proactive_alert_hours * 3600
+        self._proactive_alert_sent = False  # Éviter les alertes répétées
 
     async def start(self):
         """Démarrer le monitoring"""
@@ -500,6 +515,37 @@ class TokenHealthMonitor:
         """Vérifier la santé du token"""
         try:
             self._last_check_time = time.time()
+            
+            # 🔥 NOUVEAU: Vérification proactive de l'âge du token
+            token_age = time.time() - self._token_start_time
+            time_until_expiry = self._token_max_age_seconds - token_age
+            
+            # Alerter si le token approche de son expiration estimée
+            if time_until_expiry <= self._proactive_alert_seconds and not self._proactive_alert_sent:
+                hours_remaining = time_until_expiry / 3600
+                hours_used = token_age / 3600
+                
+                warning_msg = (
+                    f"⚠️ TOKEN MEXC - RENOUVELLEMENT RECOMMANDÉ\n\n"
+                    f"Le token est utilisé depuis {hours_used:.1f}h.\n"
+                    f"Expiration estimée dans ~{hours_remaining:.1f}h.\n\n"
+                    f"🔄 Actions recommandées:\n"
+                    f"1. Ouvrir DevTools sur mexc.com\n"
+                    f"2. Copier nouveau token (Headers > authorization)\n"
+                    f"3. Mettre à jour MEXC_BROWSER_TOKEN dans .env\n"
+                    f"4. Redémarrer le bot\n\n"
+                    f"💡 Renouvelez le token MAINTENANT pour éviter une interruption"
+                )
+                
+                logger.warning(f"⏰ {warning_msg}")
+                
+                if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_message'):
+                    try:
+                        await self.telegram_notifier.send_message(warning_msg, bypass_throttle=True)
+                    except Exception as e:
+                        logger.error(f"Erreur envoi alerte proactive Telegram: {e}")
+                
+                self._proactive_alert_sent = True
 
             # Tenter de récupérer l'asset USDT (requête simple)
             response = await self.client.get_account_asset("USDT")
@@ -569,13 +615,31 @@ class TokenHealthMonitor:
 
     def get_status(self) -> Dict:
         """Récupérer le statut du moniteur"""
+        token_age_seconds = time.time() - self._token_start_time
+        time_until_expiry = max(0, self._token_max_age_seconds - token_age_seconds)
+        
         return {
             'running': self._running,
             'token_healthy': self._token_healthy,
             'consecutive_failures': self._consecutive_failures,
             'last_check_time': self._last_check_time,
-            'next_check_in': max(0, self.check_interval - (time.time() - self._last_check_time))
+            'next_check_in': max(0, self.check_interval - (time.time() - self._last_check_time)),
+            # 🔥 NOUVEAU: Info sur l'âge du token
+            'token_age_hours': round(token_age_seconds / 3600, 2),
+            'estimated_expiry_hours': round(time_until_expiry / 3600, 2),
+            'proactive_alert_sent': self._proactive_alert_sent,
+            'token_max_age_hours': round(self._token_max_age_seconds / 3600, 1)
         }
+    
+    def reset_token_timer(self):
+        """
+        🔥 NOUVEAU: Réinitialiser le timer du token après renouvellement manuel
+        
+        Appeler cette méthode après avoir mis à jour le token dans .env et redémarré.
+        """
+        self._token_start_time = time.time()
+        self._proactive_alert_sent = False
+        logger.info("✅ Timer token réinitialisé - Prochain check d'expiration dans ~16h")
 
 
 # ============================================================================
@@ -630,6 +694,9 @@ class MexcFuturesBypass:
         self.timeout = timeout
         self.debug = debug
         self._session: Optional[aiohttp.ClientSession] = None
+        
+        # 🔥 TELEGRAM: Stocker le notifier pour les erreurs critiques
+        self.telegram_notifier = telegram_notifier
 
         # 🔥 AMÉLIORATION 2: Cache persistant chargé depuis fichier
         cached_specs = load_specs_cache()
@@ -756,6 +823,12 @@ class MexcFuturesBypass:
                     if resp.status == 403:
                         _rate_limiter.on_response_403()  # 🔥 Callback rate limiter
                         logger.error("❌ Accès refusé (403) - token expiré ou IP bannie?")
+                        # 🔥 TELEGRAM: Notifier erreur 403
+                        if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_error_sync'):
+                            self.telegram_notifier.send_error_sync(
+                                "Token MEXC expiré (403)",
+                                "Accès refusé - token browser expiré ou IP bannie"
+                            )
                         return {"success": False, "code": 403, "message": "Access denied - check token"}
                     data = await resp.json()
             else:  # POST
@@ -772,6 +845,12 @@ class MexcFuturesBypass:
                     if resp.status == 403:
                         _rate_limiter.on_response_403()  # 🔥 Callback rate limiter
                         logger.error("❌ Accès refusé (403) - token expiré ou IP bannie?")
+                        # 🔥 TELEGRAM: Notifier erreur 403
+                        if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_error_sync'):
+                            self.telegram_notifier.send_error_sync(
+                                "Token MEXC expiré (403)",
+                                "Accès refusé - token browser expiré ou IP bannie"
+                            )
                         return {"success": False, "code": 403, "message": "Access denied - check token"}
                     data = await resp.json()
 
@@ -794,6 +873,60 @@ class MexcFuturesBypass:
     # ========================================================================
     # Trading Methods
     # ========================================================================
+    
+    async def set_leverage(
+        self,
+        symbol: str,
+        leverage: int,
+        open_type: Union[OpenType, int] = OpenType.ISOLATED,
+        position_type: int = 1  # 1=long, 2=short
+    ) -> bool:
+        """
+        🔥 Configurer le levier pour une paire AVANT d'ouvrir une position
+        
+        IMPORTANT: En mode marge isolée, le levier doit être configuré
+        sur le compte pour chaque paire avant de passer un ordre.
+        
+        Args:
+            symbol: Symbole (ex: "DOGE_USDT")
+            leverage: Levier souhaité (1-125)
+            open_type: Type de marge (1=isolated, 2=cross)
+            position_type: Type de position (1=long, 2=short)
+            
+        Returns:
+            True si succès, False sinon
+        """
+        leverage = min(125, max(1, leverage))
+        
+        # 🔥 Format MEXC: positionType + leverage + openType + symbol
+        body = {
+            "symbol": symbol,
+            "positionType": position_type,  # 1=long, 2=short
+            "leverage": leverage,
+            "openType": int(open_type),
+        }
+        
+        logger.info(f"⚙️ Configuration levier: {symbol} → {leverage}x (posType={position_type}, openType={open_type})")
+        
+        # Essayer d'abord l'endpoint account
+        response = await self._request("POST", ENDPOINTS.get("SET_LEVERAGE", ENDPOINTS["CHANGE_LEVERAGE"]), body=body)
+        
+        if response.get("success") and response.get("code") == 0:
+            logger.info(f"✅ Levier configuré: {symbol} = {leverage}x")
+            return True
+        
+        # Si échec, essayer l'endpoint position
+        if response.get("code") != 0:
+            response = await self._request("POST", ENDPOINTS["CHANGE_LEVERAGE"], body=body)
+            if response.get("success") and response.get("code") == 0:
+                logger.info(f"✅ Levier configuré (fallback): {symbol} = {leverage}x")
+                return True
+        
+        error_msg = response.get("message", "Unknown error")
+        error_code = response.get("code", -1)
+        logger.warning(f"⚠️ Échec configuration levier {symbol}: code={error_code}, msg={error_msg}")
+        # Ne pas bloquer - le levier dans l'ordre pourrait quand même fonctionner
+        return False
     
     async def submit_order(
         self,
@@ -851,9 +984,17 @@ class MexcFuturesBypass:
         if external_oid:
             body["externalOid"] = external_oid
         
-        logger.info(f"🚀 Submit order: {symbol} side={side} vol={vol} price={price} leverage={leverage}x")
+        # 🔥 DEBUG: Log critique pour diagnostiquer les ordres qui echouent
+        # Note: valeur_usdt ici est APPROXIMATIVE (ne tient pas compte du contract_size)
+        # La vraie valeur = vol * price * contract_size (calculée par l'appelant)
+        logger.warning(
+            f"🚀 SUBMIT ORDER CRITIQUE: {symbol} | side={side} | vol={vol} contrats | price={price} | "
+            f"leverage={leverage}x | SL={body.get('stopLossPrice', 'N/A')}"
+        )
+        logger.info(f"📋 Order body: {body}")
         
         response = await self._request("POST", ENDPOINTS["SUBMIT_ORDER"], body=body)
+        logger.info(f"📋 Order response: {response}")
         
         if response.get("success") and response.get("code") == 0:
             order_id = response.get("data")
@@ -863,6 +1004,16 @@ class MexcFuturesBypass:
             error_msg = response.get("message", "Unknown error")
             error_code = response.get("code", -1)
             logger.error(f"❌ Order failed: code={error_code}, message={error_msg}")
+            
+            # 🔥 TELEGRAM: Notifier erreurs critiques (401, 403, etc.)
+            if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_error_sync'):
+                # Erreurs d'authentification critiques
+                if error_code in [401, 403] or "login" in error_msg.lower() or "expired" in error_msg.lower():
+                    self.telegram_notifier.send_error_sync(
+                        f"Erreur MEXC ({error_code})",
+                        f"{symbol} | {error_msg}"
+                    )
+            
             return OrderResult(
                 success=False,
                 error_code=error_code,
@@ -1128,6 +1279,37 @@ class MexcFuturesBypass:
             vol_precision = len(str(vol_unit).split('.')[-1]) if '.' in str(vol_unit) else 0
             price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
             
+            # 🔥 Récupérer contractSize (taille du contrat en tokens)
+            raw_contract_size = data.get("contractSize")
+            contract_size = float(raw_contract_size) if raw_contract_size is not None else 1.0
+            
+            # 🔥 VALIDATION contractSize pour éviter erreurs de sizing
+            if contract_size <= 0:
+                logger.error(
+                    f"❌ contractSize INVALIDE pour {symbol}: {contract_size} (brut: {raw_contract_size}) "
+                    f"→ Fallback à 1.0 (RISQUE DE SIZING INCORRECT!)"
+                )
+                contract_size = 1.0
+            elif contract_size == 1.0 and raw_contract_size is None:
+                # API n'a pas retourné de contractSize, on utilise le défaut
+                logger.warning(
+                    f"⚠️ contractSize ABSENT pour {symbol}, utilisation défaut 1.0 "
+                    f"(vérifier manuellement si micro-contrat)"
+                )
+            
+            # 🔥 FIX: Corriger contractSize UNIQUEMENT pour symboles où MEXC API retourne 1.0 alors que c'est faux
+            # NOTE: La plupart des symboles (SHIB, BTC, ETH, etc.) sont CORRECTS dans l'API
+            # Ces overrides sont pour les cas où l'API ment (retourne 1.0 alors que c'est différent)
+            CONTRACT_SIZE_OVERRIDES = {
+                # Micro-contrats: API dit 1.0 mais c'est faux
+                # 'SOL_USDT': 0.1,     # Désactivé: l'API retourne bien 0.1 maintenant (problème de cache)
+                # Ajouter ici d'autres symboles si nécessaire après vérification manuelle
+            }
+            if symbol in CONTRACT_SIZE_OVERRIDES and contract_size == 1.0:
+                correct_size = CONTRACT_SIZE_OVERRIDES[symbol]
+                logger.warning(f"⚠️ Override contractSize pour {symbol}: {contract_size} → {correct_size}")
+                contract_size = correct_size
+            
             spec = ContractSpec(
                 symbol=symbol,
                 min_vol=float(data.get("minVol", 1)),
@@ -1136,12 +1318,15 @@ class MexcFuturesBypass:
                 price_unit=price_unit,
                 price_precision=price_precision,
                 vol_precision=vol_precision,
+                contract_size=contract_size,
             )
+            
+            logger.info(f"📋 ContractSpec {symbol}: contractSize={contract_size}, minVol={spec.min_vol}")
             
             # Cacher en mémoire
             self._contract_specs[symbol] = spec
 
-            # 🔥 AMÉLIORATION 2: Sauvegarder dans cache persistant
+            # 🔥 AMÉLIORATION 2: Sauvegarder dans cache persistant (avec contract_size!)
             specs_dict = {
                 s: {
                     'symbol': sp.symbol,
@@ -1150,7 +1335,8 @@ class MexcFuturesBypass:
                     'vol_unit': sp.vol_unit,
                     'price_unit': sp.price_unit,
                     'price_precision': sp.price_precision,
-                    'vol_precision': sp.vol_precision
+                    'vol_precision': sp.vol_precision,
+                    'contract_size': sp.contract_size,  # 🔥 CRITIQUE
                 }
                 for s, sp in self._contract_specs.items()
             }

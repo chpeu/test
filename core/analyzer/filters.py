@@ -6,6 +6,7 @@ Filtre les setups selon volume, SNR, breakout, wicks, et ATR
 from typing import Dict, Optional
 from config import TRADING_CONFIG, DEBUG_ENABLED
 from utils.logger import get_logger
+from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
 
 
 logger = get_logger()
@@ -199,19 +200,24 @@ def check_atr_filter(
 ) -> Optional[Dict]:
     """
     Filtre ATR optimal - Rejette si ATR trop bas ou trop élevé
-
+    
     Args:
         atr_percent: ATR en pourcentage
         timeframe: '1m' ou '5m'
         symbol: Symbole de la paire
         return_reason: Si True, retourner raison du rejet
-
+        
     Returns:
         None si valide, Dict avec raison si rejeté
     """
     if timeframe == '1m':
-        optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
-        optimal_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
+        # 🔥 Utiliser valeurs dynamiques du régime si disponibles
+        optimal_atr_min = get_effective_value('optimal_atr_min_1m')
+        optimal_atr_max = get_effective_value('optimal_atr_max_1m')
+        
+        # Fallback si None (ne devrait pas arriver avec config par défaut)
+        if optimal_atr_min is None: optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
+        if optimal_atr_max is None: optimal_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
     else:
         optimal_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
         optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']

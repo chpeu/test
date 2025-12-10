@@ -1,0 +1,40 @@
+{
+  "manifest_version": 2,
+  "name": "MEXC Token Helper",
+  "version": "1.0.0",
+  "description": "Récupère facilement le token d'authentification MEXC pour le trading bot",
+  "author": "Trading Bot",
+  
+  "permissions": [
+    "cookies",
+    "activeTab",
+    "storage",
+    "clipboardWrite",
+    "*://*.mexc.com/*"
+  ],
+  
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+  
+  "browser_action": {
+    "default_icon": {
+      "48": "icons/icon-48.png"
+    },
+    "default_title": "MEXC Token Helper",
+    "default_popup": "popup/popup.html"
+  },
+  
+  "background": {
+    "scripts": ["background/background.js"]
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["*://*.mexc.com/*", "*://futures.mexc.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

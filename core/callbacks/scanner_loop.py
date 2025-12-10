@@ -1,12 +1,21 @@
 """
 Callbacks pour la boucle de scanner automatique
-Exécuté toutes les 45 secondes pour scanner les setups
+Exécuté toutes les 30 secondes pour scanner les setups (🔥 OPT #14)
 """
 
 import asyncio
 import logging
+import time
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
+
+# 🔥 OPT #15-19: Import des filtres avancés
+from core.analyzer.advanced_filters import (
+    check_whipsaw_filter,
+    check_momentum_continuity,
+    check_candle_close_filter,
+    get_cooldown_manager
+)
 # from core.simple_pg_logger import SimplePGLogger  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger
 
 logger = logging.getLogger(__name__)
@@ -22,6 +31,8 @@ _ws_manager = None  # 🔥 MIGRATION COMPLÈTE: WebSocket natif
 _scanner_lock = None
 _pg_datalogger = None  # 🔥 PHASE 1: PostgreSQL DataLogger pour ML (injection)
 _pg_datalogger_instance = None  # 🔥 Force Initialization: Instance créée automatiquement
+# Notifications
+_notification_manager = None
 # _simple_logger = SimplePGLogger()  # 🔥 DÉSACTIVÉ: On utilise PostgreSQLDataLogger pour les 46 features ML
 
 
@@ -66,6 +77,32 @@ def set_websocket_manager(ws_manager):
     _ws_manager = ws_manager
 
 
+def set_notification_manager(notification_manager):
+    """Injecter NotificationManager pour remonter les erreurs critiques"""
+    global _notification_manager
+    _notification_manager = notification_manager
+
+
+async def notify_error_telegram(error_type: str, details: str):
+    """
+    🔥 NOUVEAU: Notifier une erreur via Telegram si TELEGRAM_NOTIFY_ERROR est activé.
+    
+    Args:
+        error_type: Type d'erreur (ex: 'Scalability Data', 'API Error')
+        details: Détails de l'erreur
+    """
+    global _notification_manager
+    try:
+        if _notification_manager:
+            if _notification_manager.telegram_notify_settings.get('error', True):
+                await _notification_manager.notify('error', {
+                    'error_type': error_type,
+                    'details': details
+                }, priority='high')
+    except Exception as e:
+        logger.debug(f"⚠️ Impossible de notifier l'erreur via Telegram: {e}")
+
+
 def set_scanner_lock(lock):
     """Injecter le lock du scanner"""
     global _scanner_lock
@@ -98,16 +135,40 @@ def get_pg_datalogger():
     return _pg_datalogger_instance
 
 
+async def _notify_error(error_type: str, details: str):
+    """Envoyer une notification Telegram d'erreur si configuré"""
+    if not _notification_manager:
+        return
+
+    try:
+        snippet = (details or "Unknown")
+        if len(snippet) > 500:
+            snippet = snippet[:500] + "..."
+
+        await _notification_manager.notify(
+            'error',
+            {
+                'error_type': error_type,
+                'details': snippet
+            },
+            priority='error',
+            channels=['telegram']
+        )
+    except Exception as notify_err:
+        logger.error(f"❌ Erreur notification Telegram (error_type={error_type}): {notify_err}")
+
+
 async def scanner_loop_callback():
     """
-    Callback appelé toutes les 45 secondes pour scanner les setups
+    Callback appelé toutes les 30 secondes pour scanner les setups (🔥 OPT #14)
 
     Procédure:
-    1. Vérifier qu'aucune position n'est active
-    2. Si top_pairs vide, effectuer scan initial
-    3. Scanner les top N paires en parallèle
-    4. Analyser les résultats et ouvrir position si setup trouvé
-    5. Émettre événements SocketIO de mise à jour
+    1. 🔥 OPT #17: Vérifier cooldown post-trade
+    2. Vérifier qu'aucune position n'est active
+    3. Si top_pairs vide, effectuer scan initial
+    4. Scanner les top N paires en parallèle
+    5. Analyser les résultats et ouvrir position si setup trouvé
+    6. Émettre événements SocketIO de mise à jour
     """
     if not _scanner or not _app_state or not _scanner_lock:
         logger.debug("⚠️ Instances non disponibles pour scanner_loop_callback")
@@ -116,6 +177,13 @@ async def scanner_loop_callback():
     try:
         # Acquérir le lock pour éviter les scans multiples en parallèle
         async with _scanner_lock:
+            # 🔥 OPT #17: Vérifier cooldown post-trade
+            cooldown_mgr = get_cooldown_manager()
+            can_trade, cooldown_reason = cooldown_mgr.can_trade("")  # Check général
+            if not can_trade:
+                logger.info(f"⏸️ Scanner ignoré: {cooldown_reason}")
+                return
+            
             # Vérifier qu'on n'a pas déjà une position active
             if _app_state.get('active_position') or (
                 _position_manager and _position_manager.active_position
@@ -136,6 +204,7 @@ async def scanner_loop_callback():
 
     except Exception as e:
         logger.error(f"❌ Erreur scanner_loop_callback: {e}")
+        await _notify_error('scanner_loop_callback', str(e))
 
 
 async def _scan_initial_top_pairs():
@@ -167,6 +236,7 @@ async def _scan_initial_top_pairs():
                         logger.info(f"✅ WebSocket démarré: {len(symbols)} symboles")
                     except Exception as e:
                         logger.warning(f"⚠️ Erreur démarrage WebSocket: {e}")
+                        await _notify_error('start_websocket_top_pairs', str(e))
 
             # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
             if _ws_manager:
@@ -174,6 +244,7 @@ async def _scan_initial_top_pairs():
 
     except Exception as e:
         logger.error(f"❌ Erreur scan initial: {e}")
+        await _notify_error('scan_initial_top_pairs', str(e))
 
 
 async def _scan_top_pairs():
@@ -266,6 +337,16 @@ async def _scan_top_pairs():
                     min_risk=0.005,  # 0.5%
                     max_risk=0.03   # 3%
                 )
+                
+                # 🔥 Récupérer le multiplicateur adaptatif pour affichage frontend
+                adaptive_sizing_mult = 1.0
+                if TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+                    try:
+                        from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                        adaptive_manager = get_adaptive_sizing_manager()
+                        adaptive_sizing_mult = adaptive_manager.get_size_multiplier(best_setup.get('symbol', ''))
+                    except Exception:
+                        pass
 
                 # BUG #5 FIX: Récupérer scalability_data depuis top_pairs
                 symbol = best_setup.get('symbol')
@@ -326,6 +407,13 @@ async def _scan_top_pairs():
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
                                 'score': pair.get('score'),  # Alias
+                                # 🔥 ORDER FLOW: 6 nouvelles métriques
+                                'delta_volume': pair.get('delta_volume'),
+                                'imbalance_normalized': pair.get('imbalance_normalized'),
+                                'spread_volatility_5': pair.get('spread_volatility_5'),
+                                'book_depth_ratio': pair.get('book_depth_ratio'),
+                                'volume_acceleration': pair.get('volume_acceleration'),
+                                'price_momentum_5': pair.get('price_momentum_5'),
                             }
                             
                             logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
@@ -376,15 +464,70 @@ async def _scan_top_pairs():
                             }
                             logger.info(f"💹 Données scalabilité depuis best_setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                         else:
-                            logger.error(f"💹 ERREUR: Impossible de récupérer spread_pct depuis best_setup pour {symbol}")
+                            # ⚠️ Warning non-bloquant: spread_pct manquant (rare, ~1x/4-5h)
+                            logger.warning(f"💹 spread_pct non disponible dans best_setup pour {symbol} (non-bloquant)")
                 else:
                     logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 
                 # 🔥 NOUVEAU: Filtre ML avant ouverture de position
-                from config import ML_CONFIG
+                from config import ML_CONFIG, TRADING_CONFIG
                 
+                # 🌳 FILTRE GRADIENTBOOSTING (modèle optimisé 64-69% accuracy)
+                if TRADING_CONFIG.get('gb_filter_enabled', False):
+                    logger.info(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
+                    
+                    try:
+                        from optimization.predictor_optimized import get_predictor
+                        
+                        # Obtenir les features depuis best_setup
+                        features = {}
+                        
+                        # Extraire indicateurs 1m
+                        indicators_1m = best_setup.get('indicators_1m', {})
+                        for key, value in indicators_1m.items():
+                            if isinstance(value, (int, float)):
+                                features[f"{key}_1m" if not key.endswith('_1m') else key] = value
+                        
+                        # Extraire indicateurs 5m
+                        indicators_5m = best_setup.get('indicators_5m', {})
+                        for key, value in indicators_5m.items():
+                            if isinstance(value, (int, float)):
+                                features[f"{key}_5m" if not key.endswith('_5m') else key] = value
+                        
+                        # Ajouter scores et autres métriques
+                        if 'score_1m' in best_setup:
+                            features['score_1m'] = best_setup['score_1m']
+                        if 'score_5m' in best_setup:
+                            features['score_5m'] = best_setup['score_5m']
+                        
+                        if features:
+                            predictor = get_predictor()
+                            if predictor.is_loaded:
+                                gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.55)
+                                should_trade, confidence = predictor.predict(features, threshold=gb_min_confidence)
+                                
+                                logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
+                                
+                                # 🔥 FIX: Stocker la confiance ML dans best_setup pour le logging
+                                best_setup['ml_confidence'] = confidence * 100  # En pourcentage
+                                
+                                if not should_trade:
+                                    logger.warning(f"❌ GradientBoosting REJETTE le trade: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
+                                    return  # Bloquer l'ouverture
+                                else:
+                                    logger.info(f"✅ GradientBoosting APPROUVE le trade (confiance: {confidence*100:.1f}%)")
+                            else:
+                                logger.warning(f"⚠️ Modèle GradientBoosting non chargé, trade autorisé par défaut")
+                        else:
+                            logger.warning(f"⚠️ Pas de features pour GradientBoosting, trade autorisé par défaut")
+                            
+                    except Exception as gb_error:
+                        logger.error(f"❌ Erreur filtre GradientBoosting: {gb_error}", exc_info=True)
+                        logger.warning(f"⚠️ Trade autorisé malgré erreur GB (failsafe)")
+                
+                # 🤖 FILTRE ML XGBoost V1 (ancien système)
                 logger.info(f"🔍 ML_CONFIG state: enabled={ML_CONFIG.get('enabled', False)}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}, mode={ML_CONFIG.get('mode', 'STRICT')}")
 
                 if ML_CONFIG.get('enabled', False):
@@ -434,6 +577,50 @@ async def _scan_top_pairs():
                                         should_reject = True
                                         reject_reason = f"ML prédit loss avec forte confiance {confidence*100:.1f}% (seuil: {max_loss_confidence*100:.1f}%)"
 
+                                elif mode == 'NEGATIVE':
+                                    # 🔥 Mode NEGATIVE: Utiliser le filtre négatif (+6.8% win rate)
+                                    # Rejeter si P(loss) >= threshold (éviter les mauvais trades)
+                                    try:
+                                        from optimization.predictor_negative import get_negative_predictor
+                                        
+                                        neg_predictor = get_negative_predictor()
+                                        loss_threshold = ML_CONFIG.get('loss_threshold', 0.45)
+                                        
+                                        # Extraire les features depuis best_setup
+                                        indicators_1m = best_setup.get('indicators_1m', {})
+                                        indicators_5m = best_setup.get('indicators_5m', {})
+                                        
+                                        # Construire le dict de features pour le prédicteur
+                                        features_for_ml = {}
+                                        
+                                        # Features 1m
+                                        for key, val in indicators_1m.items():
+                                            if isinstance(val, (int, float)) and val is not None:
+                                                features_for_ml[f"{key}_1m" if not key.endswith('_1m') else key] = val
+                                        
+                                        # Features 5m
+                                        for key, val in indicators_5m.items():
+                                            if isinstance(val, (int, float)) and val is not None:
+                                                features_for_ml[f"{key}_5m" if not key.endswith('_5m') else key] = val
+                                        
+                                        # Prédiction
+                                        if features_for_ml:
+                                            neg_result = neg_predictor.predict(features_for_ml, threshold=loss_threshold)
+                                            p_loss = neg_result.get('p_loss', 0)
+                                            neg_should_reject = neg_result.get('should_reject', False)
+                                            
+                                            logger.info(f"🔮 Filtre Négatif: P(loss)={p_loss*100:.1f}% (seuil={loss_threshold*100:.0f}%)")
+                                            
+                                            if neg_should_reject:
+                                                should_reject = True
+                                                reject_reason = f"Filtre Négatif: P(loss)={p_loss*100:.1f}% >= seuil {loss_threshold*100:.0f}%"
+                                        else:
+                                            logger.warning(f"⚠️ Pas de features pour filtre négatif, trade autorisé")
+                                            
+                                    except Exception as neg_err:
+                                        logger.error(f"❌ Erreur filtre négatif: {neg_err}")
+                                        # En cas d'erreur, ne pas bloquer le trade
+
                                 if should_reject:
                                     logger.warning(f"❌ ML REJETTE le trade: {reject_reason}")
                                     return  # Bloquer l'ouverture de position
@@ -477,7 +664,9 @@ async def _scan_top_pairs():
                     atr5m=atr5m,  # BUG #12: Avec fallback
                     confirmed_by=', '.join(best_setup.get('condition_types', [])),
                     scalability_data=scalability_data,  # BUG #5: Données récupérées
-                    condition_types=best_setup.get('condition_types', [])
+                    condition_types=best_setup.get('condition_types', []),
+                    ml_confidence=best_setup.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
+                    adaptive_sizing_multiplier=adaptive_sizing_mult  # 🔥 Multiplicateur adaptatif
                 )
 
                 logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
@@ -501,10 +690,21 @@ async def _scan_top_pairs():
                         if hasattr(_price_provider, 'start_websocket'):
                             await _price_provider.start_websocket([symbol])
                             logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
+                        
+                        # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
+                        if hasattr(_price_provider, 'set_sl_check_callback') and position_result:
+                            try:
+                                from main import setup_realtime_sl_check
+                                await setup_realtime_sl_check(position_result, _price_provider)
+                            except ImportError:
+                                logger.warning("⚠️ Impossible d'importer setup_realtime_sl_check")
+                            except Exception as sl_err:
+                                logger.error(f"❌ Erreur configuration SL temps réel: {sl_err}")
                     except Exception as e:
                         logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
                         import traceback
                         logger.debug(traceback.format_exc())
+                        await _notify_error('restart_websocket_position', f"{symbol}: {e}")
 
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
                 if _ws_manager:
@@ -514,6 +714,7 @@ async def _scan_top_pairs():
                 logger.error(f"❌ Erreur validation position: {e}")
             except Exception as e:
                 logger.error(f"❌ Erreur ouverture position: {e}", exc_info=True)
+                await _notify_error('open_position', f"{symbol}: {e}")
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
         if _ws_manager:
@@ -525,6 +726,7 @@ async def _scan_top_pairs():
 
     except Exception as e:
         logger.error(f"❌ Erreur scan top pairs: {e}")
+        await _notify_error('scan_top_pairs', str(e))
 
 
 def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -827,7 +1029,79 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         #     logger.debug(f"Traceback: {traceback.format_exc()}")
 
         # 🔥 DEBUG: Vérifier que le code atteint cette section
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT calcul durée scan")
+        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT filtres avancés")
+
+        # =================================================================
+        # 🔥 OPT #15-19: Filtres Avancés
+        # =================================================================
+        if analysis and isinstance(analysis, dict) and 'direction' in analysis:
+            direction = analysis.get('direction')
+            
+            # 🔥 OPT #15: Anti-Whipsaw Filter
+            klines_1m = analysis.get('klines_1m') or analysis.get('klines')
+            if klines_1m:
+                whipsaw_result = check_whipsaw_filter(klines_1m, symbol)
+                if whipsaw_result:
+                    logger.info(f"⚡ {symbol} rejeté par filtre anti-whipsaw: {whipsaw_result.get('reason')}")
+                    # Retourner le rejet au lieu du setup
+                    return {
+                        'symbol': symbol,
+                        'reason': whipsaw_result.get('reason'),
+                        'reject_category': 'whipsaw_filter'
+                    }
+            
+            # 🔥 OPT #18: Candle Close Confirmation
+            candle_close_result = check_candle_close_filter(symbol, '1m')
+            if candle_close_result:
+                logger.info(f"⏰ {symbol} rejeté par filtre candle close: {candle_close_result.get('reason')}")
+                return {
+                    'symbol': symbol,
+                    'reason': candle_close_result.get('reason'),
+                    'reject_category': 'candle_close_filter'
+                }
+            
+            # 🔥 OPT #19: Momentum Continuity Filter
+            if klines_1m:
+                momentum_result = check_momentum_continuity(klines_1m, direction, symbol)
+                if momentum_result:
+                    logger.info(f"📉 {symbol} rejeté par filtre momentum: {momentum_result.get('reason')}")
+                    return {
+                        'symbol': symbol,
+                        'reason': momentum_result.get('reason'),
+                        'reject_category': 'momentum_filter'
+                    }
+            
+            # 🔥 OPT #20: RSI Extreme Filter - Rejeter LONG si RSI > 70, SHORT si RSI < 30
+            indicators_1m = analysis.get('indicators_1m', {})
+            rsi_1m = indicators_1m.get('rsi')
+            if rsi_1m:
+                if direction == 'LONG' and rsi_1m > 70:
+                    logger.info(f"📈 {symbol} LONG rejeté: RSI={rsi_1m:.1f} > 70 (overbought)")
+                    return {
+                        'symbol': symbol,
+                        'reason': f"RSI trop élevé pour LONG ({rsi_1m:.1f} > 70)",
+                        'reject_category': 'rsi_extreme_filter',
+                        'rsi': rsi_1m
+                    }
+                elif direction == 'SHORT' and rsi_1m < 30:
+                    logger.info(f"📉 {symbol} SHORT rejeté: RSI={rsi_1m:.1f} < 30 (oversold)")
+                    return {
+                        'symbol': symbol,
+                        'reason': f"RSI trop bas pour SHORT ({rsi_1m:.1f} < 30)",
+                        'reject_category': 'rsi_extreme_filter',
+                        'rsi': rsi_1m
+                    }
+            
+            # 🔥 OPT #17: Vérifier cooldown spécifique au symbole
+            cooldown_mgr = get_cooldown_manager()
+            can_trade, cooldown_reason = cooldown_mgr.can_trade(symbol)
+            if not can_trade:
+                logger.info(f"⏸️ {symbol} rejeté par cooldown: {cooldown_reason}")
+                return {
+                    'symbol': symbol,
+                    'reason': cooldown_reason,
+                    'reject_category': 'cooldown_filter'
+                }
 
         # 🔥 PHASE 3: Calculer durée du scan
         try:
@@ -879,15 +1153,24 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                                 'balance_score': balance_score,
                                 'bidVol': bid_vol,
                                 'askVol': ask_vol,
+                                'bid_vol': bid_vol,
+                                'ask_vol': ask_vol,
                                 'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
                                 'recentVolume': pair.get('recentVolume'),
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
-                                'score': pair.get('score')
+                                'score': pair.get('score'),
+                                # 🔥 ORDER FLOW: 6 nouvelles métriques
+                                'delta_volume': pair.get('delta_volume'),
+                                'imbalance_normalized': pair.get('imbalance_normalized'),
+                                'spread_volatility_5': pair.get('spread_volatility_5'),
+                                'book_depth_ratio': pair.get('book_depth_ratio'),
+                                'volume_acceleration': pair.get('volume_acceleration'),
+                                'price_momentum_5': pair.get('price_momentum_5'),
                             }
-                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}")
+                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}, delta_vol={pair.get('delta_volume')}")
                             break
                 
                 # 🔥 DEBUG: Vérifier si scalability_data a été rempli
@@ -912,6 +1195,16 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         except Exception:
                             imbalance = None
 
+                    # 🔥 ORDER FLOW: Calculer les métriques depuis bid/ask disponibles
+                    delta_volume = None
+                    imbalance_normalized = None
+                    book_depth_ratio = None
+                    if bid_value and ask_value:
+                        delta_volume = bid_value - ask_value
+                        total_vol = bid_value + ask_value
+                        imbalance_normalized = (bid_value - ask_value) / total_vol if total_vol > 0 else 0.0
+                        book_depth_ratio = bid_value / ask_value if ask_value > 0 else 1.0
+                    
                     scalability_data = {
                         'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
                         'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
@@ -921,6 +1214,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'balance_score': analysis_obj.get('orderbook_balance'),
                         'bidVol': bid_value,
                         'askVol': ask_value,
+                        'bid_vol': bid_value,
+                        'ask_vol': ask_value,
                         'orderbook_imbalance_ratio': imbalance,
                         'recent_volume': analysis_obj.get('recent_volume'),
                         'recentVolume': analysis_obj.get('recent_volume'),  # Alias
@@ -928,8 +1223,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'vol15': analysis_obj.get('vol15'),
                         'scalability_score': analysis_obj.get('scalability_score'),
                         'score': analysis_obj.get('scalability_score'),  # Alias
+                        # 🔥 ORDER FLOW: Métriques calculées depuis bid/ask
+                        'delta_volume': delta_volume,
+                        'imbalance_normalized': imbalance_normalized,
+                        'spread_volatility_5': None,  # Nécessite historique
+                        'book_depth_ratio': book_depth_ratio,
+                        'volume_acceleration': None,  # Nécessite historique
+                        'price_momentum_5': None,  # Nécessite historique
                     }
-                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
+                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}, delta_vol={delta_volume}")
 
                 scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
@@ -967,12 +1269,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'spread_pct': scalability_data.get('spread'),
                         'book_depth': scalability_data.get('bookDepth'),
                         'balance_score': scalability_data.get('balanceScore'),
-                        'bid_vol': scalability_data.get('bidVol'),
-                        'ask_vol': scalability_data.get('askVol'),
+                        'bid_vol': scalability_data.get('bidVol') or scalability_data.get('bid_vol'),
+                        'ask_vol': scalability_data.get('askVol') or scalability_data.get('ask_vol'),
                         # Calculer imbalance ratio si bid/ask disponibles
                         'orderbook_imbalance_ratio': (
-                            scalability_data.get('bidVol') / scalability_data.get('askVol')
-                            if scalability_data.get('askVol') and scalability_data.get('askVol') > 0
+                            (scalability_data.get('bidVol') or scalability_data.get('bid_vol', 0)) / 
+                            (scalability_data.get('askVol') or scalability_data.get('ask_vol', 1))
+                            if (scalability_data.get('askVol') or scalability_data.get('ask_vol', 0)) > 0
                             else None
                         ),
                         # Paramètres du scan de scalabilité
@@ -980,6 +1283,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'vol5': scalability_data.get('vol5'),
                         'vol15': scalability_data.get('vol15'),
                         'scalability_score': scalability_data.get('scalability_score'),
+                        # 🔥 ORDER FLOW: 6 nouvelles métriques
+                        'delta_volume': scalability_data.get('delta_volume'),
+                        'imbalance_normalized': scalability_data.get('imbalance_normalized'),
+                        'spread_volatility_5': scalability_data.get('spread_volatility_5'),
+                        'book_depth_ratio': scalability_data.get('book_depth_ratio'),
+                        'volume_acceleration': scalability_data.get('volume_acceleration'),
+                        'price_momentum_5': scalability_data.get('price_momentum_5'),
                     },
                     # Ajouter aussi au niveau racine pour les fallbacks
                     'price': scan_price,  # 🔥 FIX: Ajouter le prix au niveau racine pour les fallbacks
@@ -1060,6 +1370,21 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),
                         'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+                        # OPT #15-19 : filtres avancés
+                        'use_anti_whipsaw': TRADING_CONFIG.get('use_anti_whipsaw'),
+                        'whipsaw_lookback': TRADING_CONFIG.get('whipsaw_lookback'),
+                        'whipsaw_threshold_pct': TRADING_CONFIG.get('whipsaw_threshold_pct'),
+                        'whipsaw_max_alternations': TRADING_CONFIG.get('whipsaw_max_alternations'),
+                        'use_retest_confirmation': TRADING_CONFIG.get('use_retest_confirmation'),
+                        'retest_tolerance_pct': TRADING_CONFIG.get('retest_tolerance_pct'),
+                        'retest_timeout_seconds': TRADING_CONFIG.get('retest_timeout_seconds'),
+                        'use_cooldown': TRADING_CONFIG.get('use_cooldown'),
+                        'cooldown_seconds': TRADING_CONFIG.get('cooldown_seconds'),
+                        'cooldown_same_symbol': TRADING_CONFIG.get('cooldown_same_symbol'),
+                        'use_candle_close': TRADING_CONFIG.get('use_candle_close'),
+                        'candle_close_threshold_seconds': TRADING_CONFIG.get('candle_close_threshold_seconds'),
+                        'use_momentum_continuity': TRADING_CONFIG.get('use_momentum_continuity'),
+                        'momentum_lookback': TRADING_CONFIG.get('momentum_lookback'),
                     }
                 }
                 
@@ -1084,6 +1409,17 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                             f"⚠️ {symbol}: {len(null_indicators)}/{len(indicators_1m_check)} "
                             f"indicators_1m sont NULL (ex: {null_indicators[:5]})"
                         )
+                
+                # 🔥 SPRINT 1: Ajouter le contexte Market Regime au scan
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    regime_selector = get_regime_selector()
+                    regime_status = regime_selector.get_status()
+                    scan_data['market_regime'] = regime_status.get('current_regime')
+                    scan_data['market_regime_avg_atr'] = regime_status.get('avg_atr')
+                    scan_data['market_regime_avg_adx'] = regime_status.get('avg_adx')
+                except Exception as e:
+                    logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {e}")
                 
                 # 🔥 FIX: Désactiver batch mode pour opportunities (besoin ID immédiat)
                 # Les opportunities sont rares (~1:255) donc impact performance négligeable
@@ -1158,6 +1494,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
 
     except Exception as e:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
+        await _notify_error('scan_pair_for_setup', f"{symbol}: {e}")
         
         # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
         # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire
