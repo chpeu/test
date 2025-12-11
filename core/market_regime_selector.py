@@ -10,6 +10,7 @@ Date: 07/12/2025
 import logging
 import json
 import asyncio
+import statistics
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
@@ -214,6 +215,13 @@ class MarketRegimeSelector:
         # Callbacks
         self._on_regime_change_callbacks: List[callable] = []
         
+        # 🔥 PHASE 1B: Attributs V2 pour médiane, smoothing, hystérésis
+        self.last_atr_median: Optional[float] = None
+        self.last_atr_smoothed: Optional[float] = None
+        self.last_outliers_count: int = 0
+        self.hysteresis_was_applied: bool = False
+        self._ema_value: Optional[float] = None
+        
         # Initialiser
         self._load_regime_configs()
         logger.info("✅ MarketRegimeSelector initialisé")
@@ -282,6 +290,203 @@ class MarketRegimeSelector:
             logger.error(f"❌ Erreur sauvegarde config {regime_name}: {e}")
             return False
     
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔥 PHASE 1B: Méthodes V2 (médiane, smoothing, hystérésis)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    def calculate_atr_metric(self, atr_values: List[float]) -> float:
+        """
+        Calcule la métrique ATR selon la config V2.
+        
+        Features:
+        - Filtrage des outliers (si activé)
+        - Médiane au lieu de moyenne (si activé)
+        
+        Returns:
+            ATR calculé (médiane ou moyenne selon config)
+        """
+        from utils.config_persistence import get_config_value
+        
+        use_median = get_config_value('market_regime_use_median', False)
+        outlier_filter = get_config_value('market_regime_outlier_filter', True)
+        outlier_threshold = get_config_value('market_regime_outlier_std_threshold', 2.5)
+        
+        values = atr_values.copy()
+        self.last_outliers_count = 0
+        
+        # Filtrer les outliers si activé et assez de données
+        if outlier_filter and len(values) >= 5:
+            mean = statistics.mean(values)
+            try:
+                std = statistics.stdev(values)
+                if std > 0:
+                    original_count = len(values)
+                    values = [v for v in values if abs(v - mean) <= outlier_threshold * std]
+                    self.last_outliers_count = original_count - len(values)
+                    
+                    if self.last_outliers_count > 0:
+                        logger.debug(
+                            f"🔍 Outliers filtrés: {self.last_outliers_count} paires exclues "
+                            f"(seuil: {outlier_threshold}σ)"
+                        )
+            except statistics.StatisticsError:
+                pass  # Pas assez de variance
+        
+        # Fallback si tout filtré
+        if not values:
+            values = atr_values
+        
+        # Calcul final
+        if use_median:
+            result = statistics.median(values)
+            self.last_atr_median = result
+            logger.debug(f"📊 ATR Médian: {result:.4f}% (n={len(values)})")
+        else:
+            result = sum(values) / len(values)
+            self.last_atr_median = None
+            logger.debug(f"📊 ATR Moyen: {result:.4f}% (n={len(values)})")
+        
+        return result
+    
+    def apply_smoothing(self, new_value: float) -> float:
+        """
+        Applique un lissage EMA pour stabiliser les changements.
+        
+        Formula: EMA = α × new + (1-α) × previous
+        
+        Returns:
+            Valeur lissée (ou brute si smoothing désactivé)
+        """
+        from utils.config_persistence import get_config_value
+        
+        use_smoothing = get_config_value('market_regime_use_smoothing', False)
+        alpha = get_config_value('market_regime_smoothing_alpha', 0.3)
+        
+        if not use_smoothing:
+            self.last_atr_smoothed = new_value
+            return new_value
+        
+        # Initialisation au premier appel
+        if self._ema_value is None:
+            self._ema_value = new_value
+            self.last_atr_smoothed = new_value
+            logger.debug(f"📈 EMA initialisé: {new_value:.4f}%")
+            return new_value
+        
+        # Calcul EMA
+        smoothed = alpha * new_value + (1 - alpha) * self._ema_value
+        self._ema_value = smoothed
+        self.last_atr_smoothed = smoothed
+        
+        logger.debug(
+            f"📈 Lissage EMA: brut={new_value:.4f}% → lissé={smoothed:.4f}% (α={alpha})"
+        )
+        
+        return smoothed
+    
+    def should_change_regime(
+        self,
+        current: MarketRegime,
+        proposed: MarketRegime,
+        atr_value: float
+    ) -> bool:
+        """
+        Applique l'hystérésis pour éviter le flip-flop.
+        
+        Avec buffer 10%:
+        - CALME→NORMAL: ATR > 0.22 (pas 0.20)
+        - NORMAL→CALME: ATR < 0.18 (pas 0.20)
+        
+        Returns:
+            True si le changement doit être appliqué
+        """
+        from utils.config_persistence import get_config_value
+        
+        use_hysteresis = get_config_value('market_regime_use_hysteresis', False)
+        buffer = get_config_value('market_regime_hysteresis_buffer', 0.10)
+        
+        self.hysteresis_was_applied = False
+        
+        if not use_hysteresis:
+            return current != proposed
+        
+        if current == proposed:
+            return False
+        
+        # Seuils de base
+        threshold_calme = get_config_value('market_regime_atr_calme_max', 0.20)
+        threshold_normal = get_config_value('market_regime_atr_normal_max', 0.40)
+        
+        # Map des transitions avec seuils bufferisés
+        transitions = {
+            # Montées (plus difficile)
+            (MarketRegime.CALME, MarketRegime.NORMAL): (threshold_calme * (1 + buffer), '>'),
+            (MarketRegime.NORMAL, MarketRegime.VOLATILE): (threshold_normal * (1 + buffer), '>'),
+            (MarketRegime.CALME, MarketRegime.VOLATILE): (threshold_normal * (1 + buffer), '>'),
+            
+            # Descentes (plus difficile)
+            (MarketRegime.NORMAL, MarketRegime.CALME): (threshold_calme * (1 - buffer), '<'),
+            (MarketRegime.VOLATILE, MarketRegime.NORMAL): (threshold_normal * (1 - buffer), '<'),
+            (MarketRegime.VOLATILE, MarketRegime.CALME): (threshold_calme * (1 - buffer), '<'),
+        }
+        
+        key = (current, proposed)
+        if key not in transitions:
+            return True  # Transition non définie → autoriser
+        
+        threshold_with_buffer, direction = transitions[key]
+        
+        # Vérifier si le seuil bufferisé est franchi
+        if direction == '>':
+            should_change = atr_value > threshold_with_buffer
+        else:
+            should_change = atr_value < threshold_with_buffer
+        
+        # Logger si bloqué par hystérésis
+        if not should_change and current != proposed:
+            self.hysteresis_was_applied = True
+            logger.info(
+                f"🚫 Hystérésis: {current.value}→{proposed.value} BLOQUÉ | "
+                f"ATR={atr_value:.3f}% {direction} {threshold_with_buffer:.3f}% requis"
+            )
+        
+        return should_change
+    
+    def calculate_combined_atr(
+        self,
+        atr_1m_values: List[float],
+        atr_5m_values: List[float]
+    ) -> float:
+        """
+        Combine ATR 1m et 5m avec pondération configurable.
+        
+        Returns:
+            ATR combiné (ou ATR 1m seul si 5m désactivé)
+        """
+        from utils.config_persistence import get_config_value
+        
+        use_atr_5m = get_config_value('market_regime_use_atr_5m', False)
+        weight_1m = get_config_value('market_regime_atr_1m_weight', 0.40)
+        weight_5m = get_config_value('market_regime_atr_5m_weight', 0.60)
+        
+        # Calcul ATR 1m (avec médiane/outliers si activés)
+        atr_1m = self.calculate_atr_metric(atr_1m_values)
+        
+        if not use_atr_5m or not atr_5m_values:
+            return atr_1m
+        
+        # Calcul ATR 5m
+        atr_5m = self.calculate_atr_metric(atr_5m_values)
+        
+        # Pondération
+        combined = weight_1m * atr_1m + weight_5m * atr_5m
+        
+        logger.debug(
+            f"📊 ATR Combiné: 1m={atr_1m:.4f}%×{weight_1m} + 5m={atr_5m:.4f}%×{weight_5m} = {combined:.4f}%"
+        )
+        
+        return combined
+
     def on_regime_change(self, callback: callable) -> None:
         """Enregistre un callback appelé lors d'un changement de régime"""
         self._on_regime_change_callbacks.append(callback)
@@ -498,10 +703,12 @@ class MarketRegimeSelector:
         trigger: str = "auto"
     ) -> None:
         """
-        🔥 SPRINT 1: Logger le changement de régime dans market_regime_history
+        🔥 SPRINT 1 + PHASE 1A: Logger le changement de régime dans market_regime_history
         """
         try:
             from core.postgresql_datalogger import get_pg_datalogger
+            from utils.session_detector import get_current_session
+            
             pg_logger = get_pg_datalogger()
             
             if not pg_logger or not pg_logger.enabled:
@@ -514,14 +721,31 @@ class MarketRegimeSelector:
                 from datetime import datetime
                 old_duration_minutes = (datetime.now() - self.regime_since).total_seconds() / 60
             
-            # Insérer dans la table
+            # 🔥 PHASE 1A: Contexte session
+            session_info = get_current_session()
+            session_market = session_info['name']
+            
+            # 🔥 PHASE 1A: Metadata V2 (valeurs par défaut pour V1)
+            detection_method = 'RULE_BASED_V1'
+            atr_median = getattr(self, 'last_atr_median', None)
+            atr_smoothed = getattr(self, 'last_atr_smoothed', None)
+            hysteresis_applied = getattr(self, 'hysteresis_was_applied', False)
+            outliers_count = getattr(self, 'last_outliers_count', 0)
+            ml_confidence = None  # Phase 3
+            
+            # Insérer dans la table avec colonnes Phase 1A
             query = """
                 INSERT INTO market_regime_history (
                     timestamp, session_id, old_regime, new_regime,
                     avg_atr, avg_adx, sample_count, trigger,
-                    old_regime_duration_minutes
+                    old_regime_duration_minutes,
+                    -- PHASE 1A columns
+                    detection_method, atr_median, atr_smoothed,
+                    session_market, hysteresis_applied, outliers_filtered_count,
+                    ml_confidence
                 ) VALUES (
-                    NOW(), %s, %s, %s, %s, %s, %s, %s, %s
+                    NOW(), %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s
                 )
             """
             
@@ -535,11 +759,19 @@ class MarketRegimeSelector:
                 round(self.avg_adx, 1) if self.avg_adx else None,
                 self.atr_sample_count,
                 trigger,
-                round(old_duration_minutes, 1) if old_duration_minutes else None
+                round(old_duration_minutes, 1) if old_duration_minutes else None,
+                # PHASE 1A values
+                detection_method,
+                atr_median,
+                atr_smoothed,
+                session_market,
+                hysteresis_applied,
+                outliers_count,
+                ml_confidence
             )
             
             pg_logger._execute_query(query, params)
-            logger.info(f"📝 Changement régime loggé: {old_regime.value} → {new_regime.value}")
+            logger.info(f"📝 Changement régime loggé: {old_regime.value} → {new_regime.value} [{session_market}]")
             
         except Exception as e:
             logger.error(f"❌ Erreur logging régime history: {e}")

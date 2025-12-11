@@ -620,6 +620,76 @@ ML_CONFIG = {
 }
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MARKET REGIME V2 CONFIGURATION
+# Phase 0: Infrastructure pour détection avancée des régimes de marché
+# ═══════════════════════════════════════════════════════════════════════════
+
+MARKET_REGIME_V2_CONFIG = {
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ MASTER TOGGLES                                                      │
+    # │ Tous désactivés par défaut = comportement V1 inchangé              │
+    # └─────────────────────────────────────────────────────────────────────┘
+    "v2_enabled": False,
+    "use_median": False,
+    "use_hysteresis": False,
+    "use_smoothing": False,
+    "use_atr_5m": False,
+    "use_seasonality": False,
+    "use_ml_regime": False,
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ CALCUL ATR                                                          │
+    # └─────────────────────────────────────────────────────────────────────┘
+    "outlier_filter_enabled": True,
+    "outlier_std_threshold": 2.5,
+    "min_pairs_for_valid_regime": 5,
+    "atr_1m_weight": 0.40,
+    "atr_5m_weight": 0.60,
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ HYSTÉRÉSIS                                                          │
+    # └─────────────────────────────────────────────────────────────────────┘
+    "hysteresis_buffer_percent": 0.10,
+    "threshold_calme_max": 0.20,
+    "threshold_normal_max": 0.40,
+    "threshold_adx_choppy": 20,
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ LISSAGE TEMPOREL                                                    │
+    # └─────────────────────────────────────────────────────────────────────┘
+    "smoothing_alpha": 0.3,
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ STABILITÉ                                                           │
+    # └─────────────────────────────────────────────────────────────────────┘
+    "min_regime_duration_minutes": 30,
+    "confirmation_required_checks": 2,
+    "cooldown_after_change_minutes": 15,
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ SESSIONS (heures UTC)                                               │
+    # └─────────────────────────────────────────────────────────────────────┘
+    "sessions": {
+        "ASIA":        {"start_hour_utc": 0,  "end_hour_utc": 7,  "atr_threshold_multiplier": 0.80, "min_score_adjustment": 0.5},
+        "EUROPE_OPEN": {"start_hour_utc": 7,  "end_hour_utc": 9,  "atr_threshold_multiplier": 1.20, "min_score_adjustment": 0.0},
+        "EUROPE":      {"start_hour_utc": 9,  "end_hour_utc": 13, "atr_threshold_multiplier": 1.00, "min_score_adjustment": 0.0},
+        "US_PREMARKET":{"start_hour_utc": 13, "end_hour_utc": 14, "atr_threshold_multiplier": 1.10, "min_score_adjustment": 0.3},
+        "US_OPEN":     {"start_hour_utc": 14, "end_hour_utc": 16, "atr_threshold_multiplier": 1.50, "min_score_adjustment": -0.5},
+        "US_SESSION":  {"start_hour_utc": 16, "end_hour_utc": 20, "atr_threshold_multiplier": 1.20, "min_score_adjustment": 0.0},
+        "US_CLOSE":    {"start_hour_utc": 20, "end_hour_utc": 21, "atr_threshold_multiplier": 1.30, "min_score_adjustment": -0.3},
+        "NIGHT":       {"start_hour_utc": 21, "end_hour_utc": 24, "atr_threshold_multiplier": 0.70, "min_score_adjustment": 1.0},
+    },
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ LOGGING                                                             │
+    # └─────────────────────────────────────────────────────────────────────┘
+    "log_regime_details": True,
+    "log_session_changes": True,
+    "emit_websocket_on_change": True,
+}
+
+
 # 🔥 FIX: Appliquer les overrides persistés depuis config_overrides.json
 # Permet de conserver les modifications faites via l'UI entre redémarrages
 try:

@@ -16,6 +16,9 @@ import threading
 
 from utils.pricing import get_preferred_price
 
+# 🔥 PHASE 1A: Import session detector pour contexte
+from utils.session_detector import get_current_session, get_day_info
+
 try:
     import psycopg2
     from psycopg2.extras import execute_values, RealDictCursor
@@ -1834,8 +1837,36 @@ class PostgreSQLDataLogger:
                 else:
                     sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
             
+            # ═══════════════════════════════════════════════════════════════════
+            # 🔥 PHASE 1A: Contexte Session/Heure
+            # ═══════════════════════════════════════════════════════════════════
+            
+            session_info = get_current_session()
+            day_info = get_day_info()
+            
+            session_market = session_info['name']
+            hour_utc = day_info['hour_utc']
+            day_of_week = day_info['day_of_week']
+            is_weekend = day_info['is_weekend']
+            session_atr_multiplier = session_info['atr_multiplier']
+            
+            # Méthode de détection (V1 par défaut)
+            regime_detection_method = 'RULE_BASED_V1'
+            
+            # Calculer stabilité régime
+            regime_stability_minutes = None
+            regime_confidence = None
+            try:
+                from core.market_regime_selector import get_regime_selector
+                rs = get_regime_selector()
+                if rs and hasattr(rs, 'regime_since') and rs.regime_since:
+                    delta = datetime.now() - rs.regime_since
+                    regime_stability_minutes = int(delta.total_seconds() / 60)
+            except Exception:
+                pass
+            
             # Construire la requête
-            # 🔥 PHASE 0.5 Extended: Ajout BE, trailing, stagnation details
+            # 🔥 PHASE 0.5 Extended + PHASE 1A: Ajout BE, trailing, stagnation, session/heure
             query = """
                 INSERT INTO trade_atr_metrics (
                     trade_id,
@@ -1853,9 +1884,15 @@ class PostgreSQLDataLogger:
                     max_price_reached, min_price_reached,
                     time_to_max_pnl_seconds, time_to_min_pnl_seconds,
                     stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
-                    sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used
+                    sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used,
+                    -- PHASE 1A: Session/Heure context
+                    session_market, hour_utc, day_of_week, is_weekend,
+                    regime_detection_method, regime_stability_minutes, regime_confidence,
+                    session_atr_multiplier
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    -- PHASE 1A values
+                    %s, %s, %s, %s, %s, %s, %s, %s
                 ) RETURNING id
             """
             
@@ -1875,7 +1912,11 @@ class PostgreSQLDataLogger:
                 max_price_reached, min_price_reached,
                 time_to_max_pnl, time_to_min_pnl,
                 stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
-                sl_mexc_price, sl_mexc_pct, sl_mexc_margin
+                sl_mexc_price, sl_mexc_pct, sl_mexc_margin,
+                # PHASE 1A values
+                session_market, hour_utc, day_of_week, is_weekend,
+                regime_detection_method, regime_stability_minutes, regime_confidence,
+                session_atr_multiplier
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -1903,6 +1944,21 @@ class PostgreSQLDataLogger:
 
             if not symbol or not isinstance(scan_data, dict):
                 continue
+
+            # 🔥 PHASE 1A: Enrichir scan_data avec session/régime si manquant
+            if 'session_market' not in scan_data or scan_data.get('session_market') is None:
+                session_info = get_current_session()
+                scan_data['session_market'] = session_info['name']
+                scan_data['hour_utc'] = session_info['hour_utc']
+            
+            if 'regime_at_scan' not in scan_data or scan_data.get('regime_at_scan') is None:
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    rs = get_regime_selector()
+                    if rs and hasattr(rs, 'current_regime') and rs.current_regime:
+                        scan_data['regime_at_scan'] = rs.current_regime.value
+                except Exception:
+                    pass
 
             market_data = scan_data.get('market_data') or {}
             indicators_1m = scan_data.get('indicators_1m') or {}
@@ -2072,7 +2128,12 @@ class PostgreSQLDataLogger:
                 # 🔥 SPRINT 1: Market Regime context
                 scan_data.get('market_regime'),
                 scan_data.get('market_regime_avg_atr'),
-                scan_data.get('market_regime_avg_adx')
+                scan_data.get('market_regime_avg_adx'),
+                # 🔥 PHASE 1A: Session/Heure context
+                scan_data.get('session_market'),
+                scan_data.get('hour_utc'),
+                scan_data.get('regime_at_scan'),
+                scan_data.get('regime_confidence_at_scan')
             )
 
             values.append(value_tuple)
@@ -2135,7 +2196,9 @@ class PostgreSQLDataLogger:
             'config_use_candle_close', 'config_candle_close_threshold_seconds',
             'config_use_momentum_continuity', 'config_momentum_lookback',
             # 🔥 SPRINT 1: Market Regime context
-            'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx'
+            'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx',
+            # 🔥 PHASE 1A: Session/Heure context
+            'session_market', 'hour_utc', 'regime_at_scan', 'regime_confidence_at_scan'
         )
 
         execute_values(

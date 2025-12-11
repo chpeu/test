@@ -728,18 +728,18 @@ class PositionManager:
         # Ajustements selon régime local (Optimisation 10/12/2025)
         # Basé sur analyse trade_atr_metrics et doc BRAINSTORM_ATR_OPTIMIZATION
         
-        # MEDIUM (0.2-0.5% ATR): Performance TRÈS faible (winrate 15% au 10/12/2025)
-        # → AGRESSIF: TP très court, BE très tôt, Stagnation rapide
+        # MEDIUM (0.2-0.5% ATR): Performance faible - SL trop serré cause pertes
+        # → FIX 11/12/2025: SL plus large, TP court, BE tôt pour protéger
         if local_regime == 'MEDIUM':
-            effective_params['atr_mult_tp'] = base_mult_tp * 0.6  # TP très court (ex: 2.2 -> 1.32)
-            effective_params['atr_mult_sl'] = base_mult_sl * 0.8  # SL plus serré aussi
-            effective_params['break_even_atr_mult'] = base_be_mult * 0.5  # BE très tôt (ex: 1.0 -> 0.5)
-            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.6  # Trigger très tôt
-            effective_params['trailing_distance_mult'] = base_trailing_dist * 0.7  # Distance serrée
-            effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 0.7)  # Timeout réduit
-            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 1.5  # Plus exigeant
-            effective_params['adjustment_reason'] = 'MEDIUM_VOLATILITY_AGGRESSIVE'
-            logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode AGRESSIF (TP×0.6, BE×0.5)")
+            effective_params['atr_mult_tp'] = base_mult_tp * 0.7  # TP court (prendre profits tôt)
+            effective_params['atr_mult_sl'] = base_mult_sl * 1.3  # 🔥 FIX: SL PLUS LARGE (éviter SL prématurés)
+            effective_params['break_even_atr_mult'] = base_be_mult * 0.6  # BE tôt pour protéger
+            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.7  # Trigger tôt
+            effective_params['trailing_distance_mult'] = base_trailing_dist * 0.8  # Distance modérée
+            effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 0.8)  # Timeout réduit
+            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 1.2  # Légèrement exigeant
+            effective_params['adjustment_reason'] = 'MEDIUM_VOLATILITY_PROTECTIVE'
+            logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode PROTECTIF (SL×1.3, TP×0.7, BE×0.6)")
             
         # HIGH (>0.5% ATR): BE 100% mais ratio PnL/ATR faible (0.30-0.65x)
         # → Élargir Trailing & Stagnation pour laisser respirer
@@ -912,7 +912,8 @@ class PositionManager:
                     direction=direction,
                     entry_price=entry,
                     size_usdt=size,
-                    leverage=configured_leverage
+                    leverage=configured_leverage,
+                    bot_sl_price=sl  # 🔥 FIX: Passer le SL calculé pour SL MEXC = SL × 1.1
                 )
 
                 if order_result.success:
@@ -2253,6 +2254,15 @@ class PositionManager:
                 f"Finalisation du trade sans envoyer d'ordre..."
             )
             skip_order = True
+        
+        # 🔥 FIX Phase 1D: Si SL_EXCHANGE, la position est DÉJÀ fermée par MEXC
+        # Ne pas envoyer d'ordre de fermeture (évite erreur 2009)
+        if reason == 'SL_EXCHANGE':
+            logger.info(
+                f"📋 Position fermée par SL MEXC: {self.active_position.symbol} | "
+                f"Skip ordre de fermeture (déjà exécuté par exchange)"
+            )
+            skip_order = True
 
         # ✅ FIX: Validation exit_price avec fallback multi-niveaux
         exit_price_source = "api"  # Pour tracking
@@ -2901,6 +2911,58 @@ class PositionManager:
                                 logger.debug(f"📊 Calibration ML mise à jour: {self.active_position.symbol}")
                         except Exception as calib_err:
                             logger.debug(f"Calibration update ignoré (non-bloquant): {calib_err}")
+                        
+                        # 🔥 PHASE 1C + 2A: Calcul What-If Régime + BE/Trailing automatique
+                        try:
+                            from core.analysis.what_if_simulator import WhatIfSimulator, TradeData
+                            
+                            # Calculer entry_atr_pct
+                            entry_atr_pct = 0.2  # Valeur par défaut
+                            if self.active_position.atr and self.active_position.entry:
+                                entry_atr_pct = (self.active_position.atr / self.active_position.entry) * 100
+                            
+                            # Construire TradeData complet (une seule fois)
+                            whatif_trade = TradeData(
+                                trade_id=str(trade_id),
+                                symbol=self.active_position.symbol,
+                                direction=self.active_position.direction,
+                                entry_price=self.active_position.entry,
+                                exit_price=exit_price,
+                                sl_price=self.active_position.sl,
+                                tp_price=self.active_position.tp,
+                                size_usdt=self.active_position.size,
+                                max_price=getattr(self.active_position, 'max_price_reached', exit_price),
+                                min_price=getattr(self.active_position, 'min_price_reached', exit_price),
+                                be_triggered=getattr(self.active_position, 'break_even_set', False),
+                                be_price_at_trigger=getattr(self.active_position, 'break_even_price', None),
+                                trailing_activated=getattr(self.active_position, 'trailing_active', False),
+                                trailing_final_sl=getattr(self.active_position, 'trailing_sl', None),
+                                atr_mult_sl=self.tpsl_config.atr_mult_sl if self.tpsl_config else 1.2,
+                                atr_mult_tp=self.tpsl_config.atr_mult_tp if self.tpsl_config else 2.2,
+                                entry_atr_pct=entry_atr_pct
+                            )
+                            
+                            simulator = WhatIfSimulator()
+                            
+                            # 1. What-If Régime
+                            regime_results = simulator.simulate_regime_scenarios(whatif_trade, atr_pct=entry_atr_pct)
+                            if regime_results:
+                                simulator.update_regime_whatif(str(trade_id), regime_results)
+                                logger.info(
+                                    f"📊 What-If Régime: {self.active_position.symbol} | "
+                                    f"Optimal: {regime_results.get('optimal_regime_retrospective', 'N/A')}"
+                                )
+                            
+                            # 2. What-If BE/Trailing/TP
+                            whatif_result = simulator.simulate(whatif_trade)
+                            if whatif_result:
+                                simulator.update_database(str(trade_id), whatif_result)
+                                logger.info(
+                                    f"📊 What-If BE/Trail calculé: {self.active_position.symbol} | "
+                                    f"no_be={whatif_result.pnl_if_no_be:.2f}%, no_trail={whatif_result.pnl_if_no_trailing:.2f}%"
+                                )
+                        except Exception as whatif_err:
+                            logger.warning(f"⚠️ What-If erreur: {whatif_err}")
                             
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur logging PostgreSQL trade: {e}")

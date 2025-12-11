@@ -7049,6 +7049,43 @@ async def export_datalogger_excel(
                     if 'data_complete' not in headers:
                         headers.append('data_complete')
 
+                # 🔥 PHASE 0: Pour trade_atr_metrics, s'assurer que les colonnes V2 sont présentes
+                if table_name == 'trade_atr_metrics':
+                    v2_columns = [
+                        # Saisonnalité
+                        'session_market', 'hour_utc', 'day_of_week', 'is_weekend',
+                        # Régime V2 Metadata
+                        'regime_detection_method', 'regime_atr_median', 'regime_atr_smoothed',
+                        'regime_confidence', 'regime_stability_minutes',
+                        # ML Régime
+                        'regime_ml_predicted', 'regime_ml_confidence', 'regime_ml_vs_rule_match',
+                        # What-If Régime
+                        'pnl_if_calme_params', 'pnl_if_normal_params', 'pnl_if_volatile_params',
+                        'optimal_regime_retrospective',
+                        # Session multiplier
+                        'session_atr_multiplier'
+                    ]
+                    for col in v2_columns:
+                        if col not in headers:
+                            headers.append(col)
+
+                # 🔥 PHASE 0: Pour scan_logs, ajouter colonnes session/régime
+                if table_name == 'scan_logs':
+                    scan_v2_columns = ['session_market', 'hour_utc', 'regime_at_scan', 'regime_confidence_at_scan']
+                    for col in scan_v2_columns:
+                        if col not in headers:
+                            headers.append(col)
+
+                # 🔥 PHASE 0: Pour market_regime_history, ajouter colonnes V2
+                if table_name == 'market_regime_history':
+                    mrh_v2_columns = [
+                        'detection_method', 'atr_median', 'atr_smoothed', 
+                        'session_market', 'hysteresis_applied', 'outliers_filtered_count', 'ml_confidence'
+                    ]
+                    for col in mrh_v2_columns:
+                        if col not in headers:
+                            headers.append(col)
+
                 if headers:
                     ws.append(headers)
                     for cell in ws[1]:

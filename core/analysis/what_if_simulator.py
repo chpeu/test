@@ -377,6 +377,87 @@ class WhatIfSimulator:
             actual_move = trade.entry_price - trade.exit_price
             return max(0, (actual_move / max_move) * 100)
     
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔥 PHASE 1C: Simulation par régime
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    def simulate_regime_scenarios(self, trade: TradeData, atr_pct: float = None) -> Dict[str, Any]:
+        """
+        Simule le PnL avec les paramètres de chaque régime.
+        
+        Permet de déterminer rétrospectivement quel régime aurait été optimal.
+        
+        Args:
+            trade: TradeData du trade
+            atr_pct: ATR% au moment de l'entrée (optionnel, sinon estimé)
+            
+        Returns:
+            Dict avec pnl_if_calme/normal/volatile_params et optimal_regime_retrospective
+        """
+        from core.market_regime_selector import DEFAULT_REGIME_CONFIGS
+        
+        # ATR par défaut si non fourni
+        if atr_pct is None:
+            atr_pct = 0.5  # Valeur médiane typique
+        
+        if not trade.entry_price or not trade.exit_price:
+            return {}
+        
+        results = {}
+        
+        for regime_name, config in DEFAULT_REGIME_CONFIGS.items():
+            if regime_name == "CHOPPY":
+                continue  # Skip CHOPPY pour simplifier
+            
+            # Calculer SL/TP avec les params de ce régime
+            sl_distance_pct = (atr_pct * config.atr_mult_sl) / 100
+            tp_distance_pct = (atr_pct * config.atr_mult_tp) / 100
+            
+            if trade.direction == 'LONG':
+                sim_sl = trade.entry_price * (1 - sl_distance_pct)
+                sim_tp = trade.entry_price * (1 + tp_distance_pct)
+            else:  # SHORT
+                sim_sl = trade.entry_price * (1 + sl_distance_pct)
+                sim_tp = trade.entry_price * (1 - tp_distance_pct)
+            
+            # Simuler où le trade aurait fermé avec ces params
+            # On utilise min_price/max_price pour vérifier si SL/TP auraient été touchés
+            
+            if trade.direction == 'LONG':
+                # Vérifier si SL aurait été touché
+                if trade.min_price <= sim_sl:
+                    sim_pnl = -sl_distance_pct * 100
+                # Vérifier si TP aurait été touché
+                elif trade.max_price >= sim_tp:
+                    sim_pnl = tp_distance_pct * 100
+                else:
+                    # Ni SL ni TP touchés, utiliser exit_price réel
+                    sim_pnl = ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100
+            else:  # SHORT
+                if trade.max_price >= sim_sl:
+                    sim_pnl = -sl_distance_pct * 100
+                elif trade.min_price <= sim_tp:
+                    sim_pnl = tp_distance_pct * 100
+                else:
+                    sim_pnl = ((trade.entry_price - trade.exit_price) / trade.entry_price) * 100
+            
+            results[f"pnl_if_{regime_name.lower()}_params"] = round(sim_pnl, 4)
+        
+        # Déterminer le régime optimal (celui avec le meilleur PnL simulé)
+        if results:
+            best_key = max(results, key=results.get)
+            results["optimal_regime_retrospective"] = best_key.replace("pnl_if_", "").replace("_params", "").upper()
+        
+        logger.debug(
+            f"📊 Régime What-If pour {trade.symbol}: "
+            f"CALME={results.get('pnl_if_calme_params', 'N/A'):.3f}%, "
+            f"NORMAL={results.get('pnl_if_normal_params', 'N/A'):.3f}%, "
+            f"VOLATILE={results.get('pnl_if_volatile_params', 'N/A'):.3f}% | "
+            f"Optimal: {results.get('optimal_regime_retrospective', 'N/A')}"
+        )
+        
+        return results
+    
     def update_database(self, trade_id: str, result: WhatIfResult) -> bool:
         """
         Mettre à jour la table trade_atr_metrics avec les résultats What-If.
@@ -449,6 +530,69 @@ class WhatIfSimulator:
             
         except Exception as e:
             logger.error(f"❌ Erreur update What-If pour {trade_id[:8]}: {e}")
+            return False
+    
+    def update_regime_whatif(self, trade_id: str, regime_results: Dict[str, Any]) -> bool:
+        """
+        🔥 PHASE 1C: Mettre à jour les colonnes What-If régime.
+        
+        Args:
+            trade_id: UUID du trade
+            regime_results: Dict avec pnl_if_calme_params, etc.
+            
+        Returns:
+            True si mise à jour réussie
+        """
+        try:
+            import psycopg2
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            
+            conn = self.db_connection
+            if not conn:
+                conn = psycopg2.connect(
+                    host=os.getenv('POSTGRES_HOST', 'localhost'),
+                    port=int(os.getenv('POSTGRES_PORT', '5432')),
+                    database=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
+                    user=os.getenv('POSTGRES_USER', 'postgres'),
+                    password=os.getenv('POSTGRES_PASSWORD', '')
+                )
+            
+            cur = conn.cursor()
+            
+            query = """
+                UPDATE trade_atr_metrics SET
+                    pnl_if_calme_params = %s,
+                    pnl_if_normal_params = %s,
+                    pnl_if_volatile_params = %s,
+                    optimal_regime_retrospective = %s,
+                    updated_at = NOW()
+                WHERE trade_id = %s
+            """
+            
+            params = (
+                regime_results.get('pnl_if_calme_params'),
+                regime_results.get('pnl_if_normal_params'),
+                regime_results.get('pnl_if_volatile_params'),
+                regime_results.get('optimal_regime_retrospective'),
+                trade_id
+            )
+            
+            cur.execute(query, params)
+            
+            if not self.db_connection:
+                conn.commit()
+                conn.close()
+            
+            logger.debug(
+                f"✅ Régime What-If mis à jour pour trade {trade_id[:8]}: "
+                f"optimal={regime_results.get('optimal_regime_retrospective', 'N/A')}"
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update Régime What-If pour {trade_id[:8]}: {e}")
             return False
 
 

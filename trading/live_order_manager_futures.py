@@ -586,7 +586,8 @@ class LiveOrderManagerFutures:
         direction: str,
         entry_price: float,
         size_usdt: float,
-        leverage: int = None
+        leverage: int = None,
+        bot_sl_price: float = None  # 🔥 FIX: SL calculé par le bot pour SL MEXC
     ) -> FuturesOrderResult:
         """
         Ouvrir une position futures (LONG ou SHORT)
@@ -597,6 +598,7 @@ class LiveOrderManagerFutures:
             entry_price: Prix d'entrée théorique
             size_usdt: Taille en USDT (marge × levier)
             leverage: Levier pour ce trade (défaut: self.default_leverage)
+            bot_sl_price: SL calculé par le bot (pour SL MEXC = SL bot × 1.1)
 
         Returns:
             FuturesOrderResult avec détails
@@ -981,36 +983,46 @@ class LiveOrderManagerFutures:
                     logger.warning(f"⚠️ Impossible de configurer le levier: {e} (peut déjà être configuré)")
                 
                 # Appeler le client bypass (async) via helper thread-safe
-                # 🔥 SL MEXC DYNAMIQUE: Basé sur SL ATR × 1.1 (10% marge de sécurité)
-                from utils.effective_config import get_effective_value
-                from config import TRADING_CONFIG
+                # 🔥 SL MEXC DYNAMIQUE: Basé sur SL bot × 1.1 (10% marge de sécurité)
+                SL_MEXC_MARGIN = 1.1  # 10% plus large que le SL bot
                 
-                # Calculer le SL ATR (même logique que position_manager)
-                atr_mult_sl = get_effective_value('atr_mult_sl') or TRADING_CONFIG.get('atr_mult_sl', 1.2)
-                atr_min = TRADING_CONFIG.get('atr_min', 0.15)
-                atr_max = TRADING_CONFIG.get('atr_max', 1.5)
-                
-                # Estimation ATR% (utiliser la moyenne de la plage configurée)
-                # En production, on pourrait récupérer l'ATR réel depuis le cache
-                estimated_atr_pct = (atr_min + atr_max) / 2  # ~0.825%
-                
-                # SL ATR calculé (ce que le bot utiliserait)
-                sl_atr_distance_pct = estimated_atr_pct * atr_mult_sl  # ex: 0.825 * 1.2 = 0.99%
-                
-                # SL MEXC = SL ATR × 1.1 (10% de marge de sécurité)
-                SL_MEXC_MARGIN = 1.1
-                sl_exchange_percent = sl_atr_distance_pct * SL_MEXC_MARGIN / 100
-                
-                if direction == 'LONG':
-                    sl_price = entry_price * (1 - sl_exchange_percent)
-                else:  # SHORT
-                    sl_price = entry_price * (1 + sl_exchange_percent)
-                
-                # Log pour traçabilité
-                logger.info(
-                    f"📐 SL MEXC Dynamique: ATR_mult={atr_mult_sl}x | ATR_range=[{atr_min}-{atr_max}%] | "
-                    f"SL_ATR={sl_atr_distance_pct:.3f}% | SL_MEXC={sl_exchange_percent*100:.3f}% (×{SL_MEXC_MARGIN})"
-                )
+                if bot_sl_price and bot_sl_price > 0:
+                    # 🔥 FIX: Utiliser le SL calculé par le bot + marge
+                    if direction == 'LONG':
+                        # SL bot est en dessous de entry, SL MEXC encore plus bas
+                        sl_distance_pct = abs(entry_price - bot_sl_price) / entry_price
+                        sl_price = entry_price * (1 - sl_distance_pct * SL_MEXC_MARGIN)
+                    else:  # SHORT
+                        # SL bot est au dessus de entry, SL MEXC encore plus haut
+                        sl_distance_pct = abs(bot_sl_price - entry_price) / entry_price
+                        sl_price = entry_price * (1 + sl_distance_pct * SL_MEXC_MARGIN)
+                    
+                    sl_exchange_percent = sl_distance_pct * SL_MEXC_MARGIN
+                    logger.info(
+                        f"📐 SL MEXC (basé sur bot): SL_bot={bot_sl_price:.6f} | "
+                        f"Distance={sl_distance_pct*100:.3f}% | SL_MEXC={sl_price:.6f} ({sl_exchange_percent*100:.3f}%) (×{SL_MEXC_MARGIN})"
+                    )
+                else:
+                    # Fallback: Estimation si pas de SL bot fourni
+                    from utils.effective_config import get_effective_value
+                    from config import TRADING_CONFIG
+                    
+                    atr_mult_sl = get_effective_value('atr_mult_sl') or TRADING_CONFIG.get('atr_mult_sl', 1.2)
+                    atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                    atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+                    estimated_atr_pct = (atr_min + atr_max) / 2
+                    sl_atr_distance_pct = estimated_atr_pct * atr_mult_sl
+                    sl_exchange_percent = sl_atr_distance_pct * SL_MEXC_MARGIN / 100
+                    
+                    if direction == 'LONG':
+                        sl_price = entry_price * (1 - sl_exchange_percent)
+                    else:  # SHORT
+                        sl_price = entry_price * (1 + sl_exchange_percent)
+                    
+                    logger.warning(
+                        f"📐 SL MEXC (FALLBACK estimation): ATR_range=[{atr_min}-{atr_max}%] | "
+                        f"SL_MEXC={sl_exchange_percent*100:.3f}% (×{SL_MEXC_MARGIN}) ⚠️ Pas de SL bot fourni"
+                    )
                 
                 # Arrondir selon les specs du contrat
                 sl_price_before_round = sl_price  # 🔥 DEBUG

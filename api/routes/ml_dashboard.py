@@ -390,4 +390,69 @@ async def get_performance_analysis(
 # ========== MODELS ==========
 
 
-logger.info("✅ ML dashboard router initialized (4 routes)")
+# ========== PHASE 2A: CORRELATION ANALYTICS ==========
+
+
+@router.get("/analytics/correlations")
+async def get_correlation_analytics(
+    days: int = Query(7, ge=1, le=90, description="Nombre de jours à analyser")
+):
+    """
+    🔥 PHASE 2A: Analyse des corrélations Session/Régime/Performance.
+    
+    Retourne:
+    - Performance par session (ASIA, EUROPE, US, NIGHT)
+    - Performance par régime local (LOW, MEDIUM, HIGH)
+    - Performance par heure UTC
+    - Performance par exit_reason
+    - Distribution des régimes optimaux (What-If)
+    - Suggestions d'optimisation
+    """
+    try:
+        from core.analysis.correlation_engine import get_correlation_engine
+        
+        engine = get_correlation_engine()
+        report = engine.get_full_analysis_report(days)
+        
+        return {
+            'status': 'success',
+            'period_days': days,
+            'generated_at': report.get('generated_at'),
+            'by_session': report.get('by_session', []),
+            'by_local_regime': report.get('by_local_regime', []),
+            'by_hour': report.get('by_hour', []),
+            'by_exit_reason': report.get('by_exit_reason', []),
+            'optimal_regime_distribution': report.get('optimal_regime_distribution', {}),
+            'suggestions': report.get('suggestions', [])
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_correlation_analytics: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.get("/analytics/suggestions")
+async def get_optimization_suggestions(
+    days: int = Query(7, ge=1, le=90, description="Nombre de jours à analyser")
+):
+    """
+    Retourne uniquement les suggestions d'optimisation prioritaires.
+    """
+    try:
+        from core.analysis.correlation_engine import get_correlation_engine
+        
+        engine = get_correlation_engine()
+        suggestions = engine.generate_suggestions(days)
+        
+        return {
+            'status': 'success',
+            'period_days': days,
+            'suggestions': [s.__dict__ for s in suggestions]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_optimization_suggestions: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+logger.info("✅ ML dashboard router initialized (6 routes)")

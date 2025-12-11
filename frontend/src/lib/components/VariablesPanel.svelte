@@ -180,6 +180,17 @@
 		market_regime_atr_calme_max: 0.20,
 		market_regime_atr_normal_max: 0.40,
 		market_regime_adx_choppy: 20,
+		// 🔥 PHASE 1D: Market Regime V2 (toggles OFF par défaut)
+		market_regime_v2_enabled: false,
+		market_regime_use_median: false,
+		market_regime_outlier_filter: true,
+		market_regime_use_hysteresis: false,
+		market_regime_hysteresis_buffer: 0.10,
+		market_regime_use_smoothing: false,
+		market_regime_smoothing_alpha: 0.3,
+		market_regime_use_atr_5m: false,
+		market_regime_use_seasonality: false,
+		market_regime_min_duration_minutes: 30,
 		// 🔥 SPRINT 1: Trading Circuit Breaker
 		trading_circuit_breaker_enabled: true,
 		trading_cb_max_consecutive_losses: 5,
@@ -477,6 +488,32 @@
 				}
 			});
 		}
+		// 🔥 PHASE 1D: Synchroniser aussi effective_config pour affichage temps réel
+		if (completeConfig.effective_config) {
+			Object.keys(config).forEach(key => {
+				if (config[key] !== completeConfig.effective_config[key]) {
+					completeConfig.effective_config[key] = config[key];
+				}
+			});
+		}
+	}
+	
+	// 🔥 PHASE 1D: Synchroniser immédiatement quand config change (pour toutes les variables V2)
+	$: if (completeConfig && config) {
+		// Mettre à jour effective_config en temps réel pour que "Variables en cours" soit à jour
+		if (completeConfig.effective_config) {
+			const v2Keys = [
+				'market_regime_v2_enabled', 'market_regime_use_median', 'market_regime_outlier_filter',
+				'market_regime_use_hysteresis', 'market_regime_hysteresis_buffer',
+				'market_regime_use_smoothing', 'market_regime_smoothing_alpha',
+				'market_regime_use_atr_5m', 'market_regime_use_seasonality', 'market_regime_min_duration_minutes'
+			];
+			v2Keys.forEach(key => {
+				if (config[key] !== undefined && config[key] !== completeConfig.effective_config[key]) {
+					completeConfig.effective_config[key] = config[key];
+				}
+			});
+		}
 	}
 	
 	// Fonction pour formater une valeur selon son type
@@ -763,6 +800,19 @@
 				pair_scorer_max_adjustment: tradingConfig.pair_scorer_max_adjustment,
 				pair_scorer_lookback_days: tradingConfig.pair_scorer_lookback_days,
 				pair_scorer_refresh_minutes: tradingConfig.pair_scorer_refresh_minutes,
+			},
+			// 🔥 PHASE 1D: Market Regime V2
+			'🌡️ Régime V2': {
+				market_regime_v2_enabled: tradingConfig.market_regime_v2_enabled,
+				market_regime_use_median: tradingConfig.market_regime_use_median,
+				market_regime_outlier_filter: tradingConfig.market_regime_outlier_filter,
+				market_regime_use_hysteresis: tradingConfig.market_regime_use_hysteresis,
+				market_regime_hysteresis_buffer: tradingConfig.market_regime_hysteresis_buffer,
+				market_regime_use_smoothing: tradingConfig.market_regime_use_smoothing,
+				market_regime_smoothing_alpha: tradingConfig.market_regime_smoothing_alpha,
+				market_regime_use_atr_5m: tradingConfig.market_regime_use_atr_5m,
+				market_regime_use_seasonality: tradingConfig.market_regime_use_seasonality,
+				market_regime_min_duration_minutes: tradingConfig.market_regime_min_duration_minutes,
 			},
 		};
 	}
@@ -1373,6 +1423,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'protection'} on:click={() => activeSubTab = 'protection'} data-debug-name="activeSubTab">
 			🛡️ Protection & Régime
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'regimev2'} on:click={() => activeSubTab = 'regimev2'} data-debug-name="activeSubTab">
+			🌡️ Régime V2
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'adaptations'} on:click={() => activeSubTab = 'adaptations'} data-debug-name="activeSubTab">
 			🎯 Adaptations ML
@@ -3811,6 +3864,259 @@
 		</section>
 	{/if}
 
+	<!-- 🌡️ ONGLET RÉGIME V2 (Phase 1D) -->
+	{#if activeSubTab === 'regimev2'}
+		<section class="variable-section regimev2-section">
+			<h3>🌡️ Market Regime V2 - Détection Améliorée</h3>
+			<p class="section-info">
+				Améliorations de la détection du régime de marché : médiane anti-outliers, hystérésis anti-flip-flop, 
+				lissage EMA, et combinaison ATR 1m+5m. <strong>Tous les toggles OFF par défaut</strong> pour préserver le comportement V1.
+			</p>
+
+			<!-- Toggle Principal V2 -->
+			<div class="subsection">
+				<h4>⚡ Activation V2</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_v2_enabled">
+						<span class="label-text">Activer Régime V2</span>
+						<span class="label-hint">Active toutes les améliorations V2 (sinon comportement V1)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_v2_enabled"
+								bind:checked={config.market_regime_v2_enabled}
+								on:change={() => triggerAutoSave('market_regime_v2_enabled', config.market_regime_v2_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_v2_enabled ? 'V2 ACTIF' : 'V1 (défaut)'}</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Calcul ATR Amélioré -->
+			<div class="subsection">
+				<h4>📊 Calcul ATR Amélioré</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_median">
+						<span class="label-text">Utiliser Médiane</span>
+						<span class="label-hint">Médiane au lieu de moyenne (plus robuste aux outliers)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_median"
+								bind:checked={config.market_regime_use_median}
+								on:change={() => triggerAutoSave('market_regime_use_median', config.market_regime_use_median ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_median ? 'Médiane' : 'Moyenne'}</span>
+					</div>
+				</div>
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_outlier_filter">
+						<span class="label-text">Filtrer Outliers</span>
+						<span class="label-hint">Exclure les valeurs ATR extrêmes (>2.5σ)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_outlier_filter"
+								bind:checked={config.market_regime_outlier_filter}
+								on:change={() => triggerAutoSave('market_regime_outlier_filter', config.market_regime_outlier_filter ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_outlier_filter ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_atr_5m">
+						<span class="label-text">Combiner ATR 5m</span>
+						<span class="label-hint">Pondérer ATR 1m (40%) + ATR 5m (60%)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_atr_5m"
+								bind:checked={config.market_regime_use_atr_5m}
+								on:change={() => triggerAutoSave('market_regime_use_atr_5m', config.market_regime_use_atr_5m ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_atr_5m ? 'Combiné' : '1m seul'}</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Stabilité du Régime -->
+			<div class="subsection">
+				<h4>🔒 Stabilité du Régime</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_hysteresis">
+						<span class="label-text">Hystérésis Anti-Flip</span>
+						<span class="label-hint">Buffer ±10% pour éviter les changements rapides</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_hysteresis"
+								bind:checked={config.market_regime_use_hysteresis}
+								on:change={() => triggerAutoSave('market_regime_use_hysteresis', config.market_regime_use_hysteresis ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_hysteresis ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_use_hysteresis}
+				<div class="form-row">
+					<label for="market_regime_hysteresis_buffer">
+						<span class="label-text">Buffer Hystérésis</span>
+						<span class="label-hint">Marge avant changement de régime (0.10 = 10%)</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_hysteresis_buffer"
+							bind:value={config.market_regime_hysteresis_buffer}
+							min="0.05"
+							max="0.25"
+							step="0.01"
+							on:change={() => triggerAutoSave('market_regime_hysteresis_buffer', config.market_regime_hysteresis_buffer)}
+						/>
+						<span class="value">{(config.market_regime_hysteresis_buffer * 100).toFixed(0)}%</span>
+					</div>
+				</div>
+				{/if}
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_smoothing">
+						<span class="label-text">Lissage EMA</span>
+						<span class="label-hint">Moyenne mobile exponentielle pour stabilité temporelle</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_smoothing"
+								bind:checked={config.market_regime_use_smoothing}
+								on:change={() => triggerAutoSave('market_regime_use_smoothing', config.market_regime_use_smoothing ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_smoothing ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_use_smoothing}
+				<div class="form-row">
+					<label for="market_regime_smoothing_alpha">
+						<span class="label-text">Alpha EMA</span>
+						<span class="label-hint">Réactivité du lissage (0.1=lent, 0.5=rapide)</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_smoothing_alpha"
+							bind:value={config.market_regime_smoothing_alpha}
+							min="0.1"
+							max="0.5"
+							step="0.05"
+							on:change={() => triggerAutoSave('market_regime_smoothing_alpha', config.market_regime_smoothing_alpha)}
+						/>
+						<span class="value">{config.market_regime_smoothing_alpha}</span>
+					</div>
+				</div>
+				{/if}
+
+				<div class="form-row">
+					<label for="market_regime_min_duration_minutes">
+						<span class="label-text">Durée Min Régime</span>
+						<span class="label-hint">Minutes minimum avant changement</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_min_duration_minutes"
+							bind:value={config.market_regime_min_duration_minutes}
+							min="5"
+							max="120"
+							step="5"
+							on:change={() => triggerAutoSave('market_regime_min_duration_minutes', config.market_regime_min_duration_minutes)}
+						/>
+						<span class="value">{config.market_regime_min_duration_minutes} min</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Saisonnalité -->
+			<div class="subsection">
+				<h4>🕐 Saisonnalité</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_seasonality">
+						<span class="label-text">Ajuster par Session</span>
+						<span class="label-hint">Seuils adaptés selon session marché (ASIA, EUROPE, US...)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_seasonality"
+								bind:checked={config.market_regime_use_seasonality}
+								on:change={() => triggerAutoSave('market_regime_use_seasonality', config.market_regime_use_seasonality ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_seasonality ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Info Performance Session -->
+			<div class="subsection info-box">
+				<h4>📈 Insights Performance (données historiques)</h4>
+				<div class="performance-grid">
+					<div class="perf-item good">
+						<span class="session">EUROPE_OPEN</span>
+						<span class="pnl">+0.31%</span>
+						<span class="winrate">71% win</span>
+					</div>
+					<div class="perf-item good">
+						<span class="session">NIGHT</span>
+						<span class="pnl">+0.21%</span>
+						<span class="winrate">64% win</span>
+					</div>
+					<div class="perf-item neutral">
+						<span class="session">ASIA</span>
+						<span class="pnl">+0.05%</span>
+						<span class="winrate">45% win</span>
+					</div>
+					<div class="perf-item bad">
+						<span class="session">US_OPEN</span>
+						<span class="pnl">-0.17%</span>
+						<span class="winrate">0% win</span>
+					</div>
+				</div>
+				<p class="info-note">75% des trades auraient mieux performé avec params CALME</p>
+			</div>
+		</section>
+	{/if}
+
 	<!-- 🎯 ONGLET ADAPTATIONS ML (SPRINT 2) -->
 	{#if activeSubTab === 'adaptations'}
 		<section class="variable-section adaptations-section">
@@ -6182,6 +6488,84 @@
 	/* 🛡️ SPRINT 1: Protection & Régime Styles */
 	.protection-section {
 		background: linear-gradient(135deg, rgba(30, 39, 73, 0.95), rgba(20, 30, 60, 0.95));
+	}
+
+	/* 🌡️ PHASE 1D: Régime V2 Styles */
+	.regimev2-section {
+		background: linear-gradient(135deg, rgba(40, 30, 60, 0.95), rgba(25, 20, 50, 0.95));
+	}
+
+	.regimev2-section .info-box {
+		background: rgba(0, 100, 200, 0.1);
+		border: 1px solid rgba(0, 150, 255, 0.3);
+		border-radius: 10px;
+		padding: 15px;
+		margin-top: 20px;
+	}
+
+	.regimev2-section .performance-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 10px;
+		margin: 15px 0;
+	}
+
+	.regimev2-section .perf-item {
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		padding: 10px;
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.regimev2-section .perf-item.good {
+		border: 1px solid rgba(0, 255, 136, 0.4);
+	}
+
+	.regimev2-section .perf-item.neutral {
+		border: 1px solid rgba(255, 200, 0, 0.4);
+	}
+
+	.regimev2-section .perf-item.bad {
+		border: 1px solid rgba(255, 80, 80, 0.4);
+	}
+
+	.regimev2-section .perf-item .session {
+		font-size: 11px;
+		color: #aaa;
+		font-weight: 600;
+	}
+
+	.regimev2-section .perf-item .pnl {
+		font-size: 14px;
+		font-weight: 700;
+	}
+
+	.regimev2-section .perf-item.good .pnl {
+		color: #00ff88;
+	}
+
+	.regimev2-section .perf-item.neutral .pnl {
+		color: #ffc800;
+	}
+
+	.regimev2-section .perf-item.bad .pnl {
+		color: #ff5050;
+	}
+
+	.regimev2-section .perf-item .winrate {
+		font-size: 10px;
+		color: #888;
+	}
+
+	.regimev2-section .info-note {
+		color: #ffc800;
+		font-size: 12px;
+		text-align: center;
+		margin-top: 10px;
+		font-style: italic;
 	}
 
 	.protection-subsection {

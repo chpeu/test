@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765370193.5317962,
+  "timestamp": 1765439834.0833414,
   "specs": {
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -140,6 +140,46 @@
       "price_precision": 3,
       "vol_precision": 1,
       "contract_size": 0.1
+    },
+    "DOGE_USDT": {
+      "symbol": "DOGE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 250000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 100.0
+    },
+    "SPX_USDT": {
+      "symbol": "SPX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 160000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "APT_USDT": {
+      "symbol": "APT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 6000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "LDO_USDT": {
+      "symbol": "LDO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 700000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
