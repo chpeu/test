@@ -96,7 +96,7 @@ def test_threshold_optimizer_update():
         trades_after = stats_after.total_trades if stats_after else 0
         
         passed = trades_after == trades_before + 1
-        return passed, f"Trades: {trades_before} → {trades_after}"
+        return passed, f"Trades: {trades_before} -> {trades_after}"
     except Exception as e:
         return False, str(e)
 
@@ -115,7 +115,7 @@ def test_drift_detector_update():
         trades_after = detector.total_trades
         passed = trades_after == trades_before + 1
         
-        details = f"Trades: {trades_before} → {trades_after}, Drift: {result.get('drift_detected', False)}"
+        details = f"Trades: {trades_before} -> {trades_after}, Drift: {result.get('drift_detected', False)}"
         return passed, details
     except Exception as e:
         return False, str(e)
@@ -167,7 +167,7 @@ def test_api_config_returns_phase2d():
     try:
         import requests
         
-        response = requests.get('http://localhost:8000/api/config', timeout=5)
+        response = requests.get('http://localhost:5000/api/config', timeout=5)
         if response.status_code != 200:
             return False, f"HTTP {response.status_code}"
         

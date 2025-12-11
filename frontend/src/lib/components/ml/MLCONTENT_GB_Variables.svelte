@@ -1202,7 +1202,7 @@
 	<section class="variable-section trades-stats-section">
 		<h3>🔢 Données ML Disponibles</h3>
 		<p class="section-desc">
-			Nombre de trades utilisables pour l'entraînement ML après filtrage (exclusion des trades manuels et configs différentes).
+			Trades utilisables pour l'entraînement ML: <strong>LIVE uniquement</strong>, <strong>mode ATR</strong>, <strong>exits propres (TP/SL/TS)</strong>.
 		</p>
 		
 		{#if loadingTradesStats}
@@ -1218,22 +1218,30 @@
 				</div>
 				
 				<div class="stat-card excluded">
-					<span class="stat-icon">🚫</span>
+					<span class="stat-icon">🔴</span>
 					<div class="stat-content">
-						<span class="stat-value">-{mlTradesStats.manual_excluded || 0}</span>
-						<span class="stat-label">Manuels exclus</span>
+						<span class="stat-value">-{mlTradesStats.dryrun_excluded || 0}</span>
+						<span class="stat-label">Dry-run exclus</span>
 					</div>
 				</div>
 				
 				<div class="stat-card excluded">
 					<span class="stat-icon">⚙️</span>
 					<div class="stat-content">
-						<span class="stat-value">-{mlTradesStats.different_config_excluded || 0}</span>
-						<span class="stat-label">Configs différentes</span>
+						<span class="stat-value">-{mlTradesStats.non_atr_excluded || 0}</span>
+						<span class="stat-label">Non-ATR exclus</span>
 					</div>
 				</div>
 				
-				<div class="stat-card final" class:good={mlTradesStats.config_filtered_trades >= 500} class:warning={mlTradesStats.config_filtered_trades < 500}>
+				<div class="stat-card excluded">
+					<span class="stat-icon">🚫</span>
+					<div class="stat-content">
+						<span class="stat-value">-{mlTradesStats.bad_exits_excluded || 0}</span>
+						<span class="stat-label">MANUAL/STAGNATION</span>
+					</div>
+				</div>
+				
+				<div class="stat-card final" class:good={mlTradesStats.config_filtered_trades >= 300} class:warning={mlTradesStats.config_filtered_trades < 300}>
 					<span class="stat-icon">✅</span>
 					<div class="stat-content">
 						<span class="stat-value">{mlTradesStats.config_filtered_trades?.toLocaleString() || 0}</span>
@@ -2826,7 +2834,7 @@
 	/* 🔢 Stats Trades ML */
 	.trades-stats-grid {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(5, 1fr);
 		gap: 12px;
 		margin-bottom: 16px;
 	}
@@ -2922,6 +2930,12 @@
 		color: #fca5a5;
 	}
 
+	@media (max-width: 1200px) {
+		.trades-stats-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+	
 	@media (max-width: 768px) {
 		.trades-stats-grid {
 			grid-template-columns: repeat(2, 1fr);

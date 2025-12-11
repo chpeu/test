@@ -244,11 +244,34 @@ async def get_ml_trades_count():
         total_trades = int(pd.read_sql("SELECT COUNT(*) as cnt FROM trades", engine).iloc[0]['cnt'])
         
         # ═══════════════════════════════════════════════════════════════════
-        # 3. COMPTER TRADES NON-MANUELS
+        # 3. NOUVEAUX FILTRES ML STRICTS (11/12/2025)
         # ═══════════════════════════════════════════════════════════════════
-        non_manual = int(pd.read_sql("""
+        
+        # 3a. Exclure DRY-RUN (uniquement LIVE)
+        dryrun_excluded = int(pd.read_sql("""
             SELECT COUNT(*) as cnt FROM trades 
-            WHERE exit_reason IS NULL OR exit_reason != 'MANUAL'
+            WHERE is_live_trade = false OR is_live_trade IS NULL
+        """, engine).iloc[0]['cnt'])
+        
+        # 3b. Exclure non-ATR (uniquement mode ATR)
+        non_atr_excluded = int(pd.read_sql("""
+            SELECT COUNT(*) as cnt FROM trades 
+            WHERE is_live_trade = true AND (tp_sl_mode != 'ATR' OR tp_sl_mode IS NULL)
+        """, engine).iloc[0]['cnt'])
+        
+        # 3c. Exclure MANUAL + STAGNATION
+        bad_exits_excluded = int(pd.read_sql("""
+            SELECT COUNT(*) as cnt FROM trades 
+            WHERE is_live_trade = true AND tp_sl_mode = 'ATR' 
+              AND exit_reason IN ('MANUAL', 'STAGNATION')
+        """, engine).iloc[0]['cnt'])
+        
+        # Compteur après filtres de base (LIVE + ATR + exits propres)
+        base_filtered = int(pd.read_sql("""
+            SELECT COUNT(*) as cnt FROM trades 
+            WHERE is_live_trade = true 
+              AND tp_sl_mode = 'ATR'
+              AND (exit_reason IS NULL OR exit_reason NOT IN ('MANUAL', 'STAGNATION'))
         """, engine).iloc[0]['cnt'])
         
         # ═══════════════════════════════════════════════════════════════════
@@ -307,23 +330,20 @@ async def get_ml_trades_count():
         engine.dispose()
         
         # ═══════════════════════════════════════════════════════════════════
-        # 6. RETOURNER LE RÉSULTAT
+        # 6. RETOURNER LE RÉSULTAT (simplifié - sans filtre config)
         # ═══════════════════════════════════════════════════════════════════
         return {
             'total_trades': total_trades,
-            'manual_excluded': total_trades - non_manual,
-            'non_manual_trades': non_manual,
-            'config_filtered_trades': clean_count,
-            'different_config_excluded': non_manual - clean_count,
+            # 🔥 Compteurs stricts (11/12/2025)
+            'dryrun_excluded': dryrun_excluded,
+            'non_atr_excluded': non_atr_excluded,
+            'bad_exits_excluded': bad_exits_excluded,
+            'config_filtered_trades': base_filtered,  # = clean_count sans filtre config
             'current_config': current_config,
-            'config_breakdown': config_breakdown,
             'filters_applied': {
-                'setup_validation': ['min_score', 'snr_threshold', 'volume_mult', 'confluence', 'atr_1m', 'atr_5m'],
-                'additional_filters': ['anti_whipsaw', 'candle_close', 'cooldown', 'momentum', 'retest'],
-                # 🔥 TP/SL exclus du filtre ML (gestion post-entrée, n'affecte pas la qualité du signal)
-                'patterns_techniques': ['use_breakout', 'breakout_threshold', 'use_snr', 'snr_threshold', 'use_wick', 'wick_ratio_max', 'use_divergence', 'di_gap_min', 'di_gap_adx_threshold']
+                'strict_filters': ['LIVE only', 'ATR mode only', 'No MANUAL/STAGNATION'],
             },
-            'message': f"✅ {clean_count} trades avec config actuelle (sur {total_trades} total)"
+            'message': f"✅ {base_filtered} trades ML utilisables (LIVE + ATR + exits propres)"
         }
         
     except Exception as e:

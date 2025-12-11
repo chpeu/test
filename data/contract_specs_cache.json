@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765460091.3102772,
+  "timestamp": 1765481444.7035117,
   "specs": {
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -190,6 +190,16 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "AAVE_USDT": {
+      "symbol": "AAVE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
     }
   }
 }

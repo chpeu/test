@@ -94,17 +94,19 @@ PHASE 2D: ML Param Optimizer (10h)  ← 🆕 ML optimise SL/TP par régime
 ══════════════════════════════════════════════════════════════
     │
     ▼
-PHASE 3A: ML Regime Training (8h)   ← Classifier régime optimal
+PHASE 3: Ensemble Learning (8h)     ← Multi-Model Voting + Stacking
+    │                                    GB + XGBoost + LightGBM
+    ▼
+PHASE 4: Feature Engineering (10h)  ← 🆕 21 nouvelles features (Brainstorm 11/12)
+    │                                    Lag, Rolling, BTC, Sentiment
+    ▼
+PHASE 5: Séquences Temporelles (8h) ← GRU/LSTM (prérequis: 1000+ trades)
     │
     ▼
-PHASE 3B: GB Feature Integration (4h)← Régime comme feature GB
+PHASE 6: Reinforcement Learning     ← PPO (prérequis: GPU + 1000+ trades)
     │
     ▼
-PHASE 3B+: Context-Aware Entry Model (8h) ← 🆕 Réentraînement GB avec contexte
-    │                                          (= Modèle unique enrichi)
-    ▼
-PHASE 3C: Auto-Apply & Rollback (8h)← Application auto + sécurités
-                                       (= ATR_OPT Phase 2.2-2.4)
+PHASE 7: MLOps & Production (8h)    ← Auto-retrain, A/B testing, Registry
 ```
 
 ---

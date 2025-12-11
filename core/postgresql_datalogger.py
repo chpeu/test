@@ -252,7 +252,7 @@ class PostgreSQLDataLogger:
             except Exception as e:
                 logger.error(f"❌ Erreur retour connexion: {e}")
     
-    def _execute_query(self, query: str, params: tuple = None, fetch: bool = False):
+    def _execute_query(self, query: str, params: tuple = None, fetch: bool = False, cursor_factory=None):
         """
         Exécuter une requête SQL
         
@@ -260,6 +260,7 @@ class PostgreSQLDataLogger:
             query: Requête SQL
             params: Paramètres (tuple)
             fetch: Si True, retourner les résultats
+            cursor_factory: Factory de curseur (ex: RealDictCursor)
         
         Returns:
             Résultats si fetch=True, sinon None
@@ -272,7 +273,7 @@ class PostgreSQLDataLogger:
             return None
         
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=cursor_factory)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "SQL exec: %s | params=%s",

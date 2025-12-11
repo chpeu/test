@@ -1,9 +1,9 @@
 # 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 11/12/2025 13:00
-> **Status global:** ✅ PHASE 1 COMPLÈTE + Architecture ML Unifiée définie
-> **Phase actuelle:** Phase 2D (Auto-Adaptation ML) - Implémentation
+> **Dernière mise à jour:** 11/12/2025 21:15
+> **Status global:** ✅ PHASES 1-2E COMPLÈTES | Phase 3 démarrée (LightGBM prêt)
+> **Phase actuelle:** ⏸️ PAUSE ACCUMULATION - Phase 3 en attente
 
 ---
 
@@ -168,6 +168,17 @@ docs/project_regime_atr_optimization/
 | `MLConfigPanel.svelte` | ✅ DONE | 11/12/2025 | UI toggles + stats |
 | **PHASE 2D COMPLETE** | ✅ | 11/12/2025 | - |
 
+### Phase 2E: Filtres ML Stricts ✅
+| Tâche | Status | Date | Notes |
+|-------|--------|------|-------|
+| Filtre LIVE uniquement | ✅ DONE | 11/12/2025 | `is_live_trade = true` |
+| Filtre ATR mode uniquement | ✅ DONE | 11/12/2025 | `tp_sl_mode = 'ATR'` |
+| Exclure MANUAL + STAGNATION | ✅ DONE | 11/12/2025 | `exit_reason NOT IN (...)` |
+| Retirer filtre configs différentes | ✅ DONE | 11/12/2025 | Plus de données (548 trades) |
+| API ml_trades_count mise à jour | ✅ DONE | 11/12/2025 | Nouveaux compteurs |
+| Frontend MLCONTENT_GB_Variables | ✅ DONE | 11/12/2025 | 5 cartes stats |
+| **PHASE 2E COMPLETE** | ✅ | 11/12/2025 | 548 trades ML utilisables |
+
 ### ⏸️ Pause Accumulation (200+ trades)
 | Métrique | Objectif | Actuel | Status |
 |----------|----------|--------|--------|
@@ -175,45 +186,51 @@ docs/project_regime_atr_optimization/
 | Trades NORMAL | 50+ | 0 | ⬜ |
 | Trades CALME | 30+ | 0 | ⬜ |
 
-### Phase 3A: ML Regime Classifier
+### Phase 3: Ensemble Learning (EN COURS - PAUSÉ)
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| `core/ml/regime_classifier.py` | ⬜ TODO | - | LightGBM + GPU |
-| Training sur What-If data | ⬜ TODO | - | Besoin 500+ trades |
-| Accuracy > 70% | ⬜ TODO | - | - |
-| Intégration market_regime_selector | ⬜ TODO | - | Remplace seuils ATR |
-| **PHASE 3A COMPLETE** | ⬜ | - | - |
+| LightGBM Trainer | ✅ DONE | 11/12/2025 | `optimization/models/lightgbm_trainer.py` |
+| Fix model_logger.py | ✅ DONE | 11/12/2025 | RealDictCursor pour PostgreSQL |
+| Fix postgresql_datalogger.py | ✅ DONE | 11/12/2025 | Param cursor_factory rétrocompatible |
+| Multi-Model Voting | ⬜ TODO | - | GB + XGBoost + LightGBM |
+| Stacking Meta-Model | ⬜ TODO | - | Combine prédictions |
+| Confidence Calibration | ⬜ TODO | - | Platt Scaling / Isotonic |
+| **PHASE 3 COMPLETE** | ⏸️ PAUSÉ | - | En attente accumulation trades |
 
-### Phase 3B: Dynamic SL/TP Predictor
+### Phase 4: Feature Engineering Avancé (21 features) - PLANIFIÉ
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| `core/ml/sltp_predictor.py` | ⬜ TODO | - | CatBoost + GPU |
-| Training sur MFE/MAE | ⬜ TODO | - | Besoin 500+ trades |
-| Intégration position_manager | ⬜ TODO | - | SL/TP par setup |
-| **PHASE 3B COMPLETE** | ⬜ | - | - |
+| Lag Features (1-3 trades) | ⬜ TODO | - | 6 features: pnl + win/loss |
+| Rolling Windows (5+10) | ⬜ TODO | - | 6 features: winrate, avg, std |
+| BTC Features (MEXC) | ⬜ TODO | - | 4 features: price, trend, ma20 |
+| Funding Rate (Binance) | ⬜ TODO | - | 1 feature: public API |
+| Sentiment (F&G + L/S) | ⬜ TODO | - | 2 features: alternative.me + Bybit |
+| Order Flow cumulatifs | ⬜ TODO | - | 2 features: delta_10, trend_5 |
+| **PHASE 4 COMPLETE** | ⬜ | - | 21 nouvelles features |
 
-### Phase 3C: Online Learning
+### Phase 5: Séquences Temporelles (GRU/LSTM)
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| `core/ml/online_learner.py` | ⬜ TODO | - | River library |
-| Intégration feedback loop | ⬜ TODO | - | Update temps réel |
-| **PHASE 3C COMPLETE** | ⬜ | - | - |
+| GRU Séquences 10-20 scans | ⬜ TODO | - | River ou PyTorch |
+| Transformer Attention | ⬜ TODO | - | Multi-timeframe |
+| **PHASE 5 COMPLETE** | ⬜ | - | Prérequis: 1000+ trades |
 
-### Phase 3D: Frontend Dashboard ML
+### Phase 6: Reinforcement Learning (PPO)
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| `MLDashboard.svelte` | ⬜ TODO | - | Vue d'ensemble |
-| `ThresholdOptimizer.svelte` | ⬜ TODO | - | Visualisation seuils |
-| `DriftIndicator.svelte` | ⬜ TODO | - | Alertes drift |
-| **PHASE 3D COMPLETE** | ⬜ | - | - |
+| Environment Simulation | ⬜ TODO | - | Gym-like trading env |
+| Agent PPO | ⬜ TODO | - | Entrée + gestion position |
+| Reward Shaping | ⬜ TODO | - | Optimiser Sharpe, pas PnL |
+| **PHASE 6 COMPLETE** | ⬜ | - | Prérequis: GPU + 1000+ trades |
 
-### Phase 3E: Auto-Apply & Rollback
+### Phase 7: MLOps & Production
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| auto_apply_engine.py | ⬜ TODO | - | Application auto configs |
-| rollback_manager.py | ⬜ TODO | - | Rollback si dégradation |
-| Tests validation | ⬜ TODO | - | A/B testing |
-| **PHASE 3E COMPLETE** | ⬜ | - | - |
+| Auto-Retrain hebdomadaire | ⬜ TODO | - | Si drift détecté |
+| A/B Testing modèles | ⬜ TODO | - | Comparaison parallèle |
+| Model Registry (MLflow) | ⬜ TODO | - | Versioning modèles |
+| Monitoring & Alertes | ⬜ TODO | - | Si performance dégradée |
+| **PHASE 7 COMPLETE** | ⬜ | - | - |
 
 ---
 
@@ -277,15 +294,72 @@ docs/project_regime_atr_optimization/
 - [ ] `frontend/.../RegimeAnalyticsDashboard.svelte`
 - [ ] `api/regime_analytics.py`
 
-### Phase 3
-- [ ] `core/ml/regime_classifier.py`
-- [ ] `ml/feature_loader.py`
-- [ ] `core/analysis/auto_apply_engine.py`
-- [ ] `core/analysis/rollback_manager.py`
+### Phase 3 (Ensemble Learning) - EN COURS
+- [x] `optimization/models/lightgbm_trainer.py` - LightGBM avec split temporel + calibration
+- [x] `optimization/models/model_logger.py` - Fix RealDictCursor pour PostgreSQL
+- [x] `core/postgresql_datalogger.py` - Param cursor_factory (rétrocompatible)
+- [x] `verification/verify_lightgbm.py` - Script de test
+- [ ] Multi-Model Voting (GB + XGBoost + LightGBM)
+- [ ] Stacking Meta-Model
+- [ ] Confidence Calibration
+
+### Phase 4 (Feature Engineering)
+- [ ] `optimization/data/feature_engineering_v2.py` - 21 nouvelles features
+- [ ] `core/data/btc_data_fetcher.py` - BTC depuis MEXC
+- [ ] `core/data/market_sentiment.py` - F&G + Funding + L/S Ratio
+- [ ] Modifier `optimization/data/feature_loader.py`
 
 ---
 
 ## 📝 NOTES DE DÉVELOPPEMENT
+
+### 11/12/2025 21:15 - Phase 3 démarrée puis PAUSÉE
+**Accumulation trades en cours - Phase 3 en attente**
+
+**Travail effectué:**
+- ✅ Créé `optimization/models/lightgbm_trainer.py` - LightGBM aligné avec XGBoost V2.1
+  - Split temporel, filtrage qualité, calibration probabilités
+  - Intégration Optuna, logging PostgreSQL
+- ✅ Installé package `lightgbm` (4.6.0)
+- ✅ Corrigé `optimization/models/model_logger.py` - ajout RealDictCursor
+- ✅ Corrigé `core/postgresql_datalogger.py` - param cursor_factory (rétrocompatible)
+- ✅ Créé `verification/verify_lightgbm.py` - script de test
+- ✅ Vérifié que LightGBM fonctionne correctement
+
+**⚠️ AUCUNE PERTURBATION DU BOT:**
+- Tous les fichiers créés/modifiés sont rétrocompatibles
+- Le bot continue de fonctionner normalement pendant l'accumulation
+
+**Pour reprendre Phase 3:**
+1. Lire ce tracker
+2. Prochaine étape: `Voting Classifier (GB + XGBoost + LightGBM)`
+3. Fichier existant à utiliser comme base: `optimization/models/train_enhanced.py` (contient déjà un ensemble XGB+LGBM)
+4. Objectif: combiner 3 modèles avec Voting soft + Stacking
+
+---
+
+### 11/12/2025 19:30 - Filtres ML Stricts (Phase 2E)
+**Nouveaux critères de filtrage pour l'entraînement ML**
+
+- ✅ Uniquement trades LIVE (`is_live_trade = true`)
+- ✅ Uniquement mode TP/SL ATR (`tp_sl_mode = 'ATR'`)
+- ✅ Exclure exits MANUAL et STAGNATION
+- ✅ Retrait du filtre "configs différentes" (trop restrictif)
+- ✅ Résultat: **548 trades ML utilisables** (vs 137 avant)
+
+**Fichiers modifiés:**
+- `optimization/data/feature_loader.py` - build_config_filter_conditions()
+- `api/routes/ml_dashboard.py` - Nouveaux compteurs
+- `frontend/.../MLCONTENT_GB_Variables.svelte` - 5 cartes stats
+
+**Breakdown trades:**
+| Étape | Trades |
+|-------|--------|
+| Total | 4,513 |
+| - Dry-run exclus | -2,280 |
+| - Non-ATR exclus | -1,141 |
+| - MANUAL/STAGNATION | -544 |
+| **= ML utilisables** | **548** |
 
 ### 10/12/2025 19:00 - Phase 1.3a COMPLÉTÉE (Sprint 3)
 **Régime LOCAL par trade implémenté et vérifié**

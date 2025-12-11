@@ -2472,15 +2472,12 @@ class PositionManager:
         total_costs = pnl_data['fees'] + slippage_usdt
 
         # PnL net
-        # 🔥 FIX Option B: Utiliser size_executed_usdt (taille réellement exécutée) pour précision
-        # Si TP partiel, reconstruire la taille totale exécutée
-        if self.active_position.partial_tp_sold:
-            # Si TP partiel fait, size actuelle = reste, donc taille totale = size / (1 - partial_pct)
-            partial_pct = TRADING_CONFIG.get('partial_tp_percent', 50.0) / 100.0
-            size_for_pct = self.active_position.size / (1 - partial_pct) if partial_pct < 1 else self.active_position.size
-        else:
-            # Priorité: size_executed_usdt > size (taille actuelle)
-            size_for_pct = getattr(self.active_position, 'size_executed_usdt', None) or self.active_position.size
+        # 🔥 FIX CRITIQUE: Toujours utiliser la taille ACTUELLE (size) pour calculer le % PnL
+        # Le net_pnl_usdt représente le PnL sur la portion restante, donc le % doit être
+        # calculé sur cette même portion, pas sur une taille reconstruite.
+        # Cela garantit cohérence: si size=25 USDT et pnl=0.0363 USDT → pnl%=0.1452%
+        # (et non pas size=62.5 USDT reconstruit → pnl%=0.058% incorrect)
+        size_for_pct = getattr(self.active_position, 'size_executed_usdt', None) or self.active_position.size
         
         gross_pnl_pct = pnl_data['pnl_pct']
         
