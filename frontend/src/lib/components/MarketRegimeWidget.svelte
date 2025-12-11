@@ -233,10 +233,10 @@
 						🔄 TS: {regimeData.config_active.trailing_trigger_atr_mult || '-'}x
 					</span>
 				</div>
-				<!-- Ligne 4: SL Exchange (filet de sécurité) -->
+				<!-- Ligne 4: SL Exchange dynamique (filet de sécurité) -->
 				<div class="config-row">
-					<span class="config-item sl-exchange" title="Stop Loss MEXC fixe (filet de sécurité si bot crash)">
-						🛡️ SL MEXC: {regimeData.config_active.sl_exchange_percent ? regimeData.config_active.sl_exchange_percent.toFixed(2) + '%' : '-'}
+					<span class="config-item sl-exchange" title="Stop Loss MEXC dynamique = SL ATR × 1.1 (filet de sécurité si bot crash)">
+						🛡️ SL MEXC: SL×1.1 (~{regimeData.config_active.atr_mult_sl ? (regimeData.config_active.atr_mult_sl * 1.1).toFixed(1) : '-'}x ATR)
 					</span>
 				</div>
 			</div>
