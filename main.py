@@ -1584,10 +1584,40 @@ async def scanner_loop_callback() -> None:
                                             if gb_features:
                                                 predictor = get_predictor()
                                                 if predictor.is_loaded:
+                                                    # 🔥 PHASE 2D: Seuil dynamique via Threshold Optimizer
                                                     gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.55)
+                                                    threshold_source = "config"
+                                                    
+                                                    if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
+                                                        try:
+                                                            from core.ml import get_threshold_optimizer
+                                                            from core.market_regime_selector import get_regime_selector
+                                                            from utils.session_detector import detect_current_session
+                                                            
+                                                            # Récupérer le contexte
+                                                            regime_selector = get_regime_selector()
+                                                            current_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
+                                                            current_session = detect_current_session()
+                                                            current_hour = datetime.now().hour
+                                                            
+                                                            # Obtenir le seuil dynamique
+                                                            optimizer = get_threshold_optimizer()
+                                                            gb_min_confidence = optimizer.get_threshold(
+                                                                regime=current_regime,
+                                                                session=current_session,
+                                                                hour=current_hour
+                                                            )
+                                                            threshold_source = f"optimizer({current_regime}/{current_session})"
+                                                            
+                                                            # Stocker le contexte dans le setup pour le feedback loop
+                                                            setup['_market_regime'] = current_regime
+                                                            setup['_trading_session'] = current_session
+                                                        except Exception as opt_err:
+                                                            logger.debug(f"⚠️ Threshold optimizer error, using default: {opt_err}")
+                                                    
                                                     should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
                                                     
-                                                    logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
+                                                    logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}% [{threshold_source}])")
                                                     
                                                     # 🔥 FIX: Stocker la confiance ML pour le logging (arrondi au dixième)
                                                     ml_conf_pct = round(confidence * 100, 1)  # En pourcentage, arrondi 0.1
@@ -5367,6 +5397,87 @@ async def handle_client_command(command: str, params: dict):
                 updated['gb_model_type'] = val
                 logger.info(f"✅ GB model_type: {val} ({'HistGradientBoosting' if val == 'histgb' else 'GradientBoosting'})")
 
+        # 🔥 HistGB Hyperparameters (max_iter, l2_regularization)
+        if 'gb_max_iter' in params:
+            val = int(params['gb_max_iter'])
+            val = max(50, min(500, val))  # Clamp 50-500
+            TRADING_CONFIG['gb_max_iter'] = val
+            updated['gb_max_iter'] = val
+            logger.info(f"✅ GB max_iter: {val}")
+        
+        if 'gb_l2_regularization' in params:
+            val = float(params['gb_l2_regularization'])
+            val = max(0.1, min(2.0, val))  # Clamp 0.1-2.0
+            TRADING_CONFIG['gb_l2_regularization'] = val
+            updated['gb_l2_regularization'] = val
+            logger.info(f"✅ GB l2_regularization: {val}")
+
+        # 🔥 ML Calibration
+        if 'ml_calibration_enabled' in params:
+            TRADING_CONFIG['ml_calibration_enabled'] = bool(params['ml_calibration_enabled'])
+            updated['ml_calibration_enabled'] = TRADING_CONFIG['ml_calibration_enabled']
+            logger.info(f"✅ ml_calibration_enabled: {TRADING_CONFIG['ml_calibration_enabled']}")
+        
+        if 'ml_calib_min_winrate' in params:
+            val = int(params['ml_calib_min_winrate'])
+            val = max(30, min(60, val))  # Clamp 30-60
+            TRADING_CONFIG['ml_calib_min_winrate'] = val
+            updated['ml_calib_min_winrate'] = val
+            logger.info(f"✅ ml_calib_min_winrate: {val}%")
+        
+        if 'ml_calib_live_weight' in params:
+            val = float(params['ml_calib_live_weight'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_calib_live_weight'] = val
+            updated['ml_calib_live_weight'] = val
+            logger.info(f"✅ ml_calib_live_weight: {val}")
+        
+        if 'ml_calib_dryrun_weight' in params:
+            val = float(params['ml_calib_dryrun_weight'])
+            val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
+            TRADING_CONFIG['ml_calib_dryrun_weight'] = val
+            updated['ml_calib_dryrun_weight'] = val
+            logger.info(f"✅ ml_calib_dryrun_weight: {val}")
+        
+        if 'ml_calib_decay_days' in params:
+            val = int(params['ml_calib_decay_days'])
+            val = max(7, min(60, val))  # Clamp 7-60
+            TRADING_CONFIG['ml_calib_decay_days'] = val
+            updated['ml_calib_decay_days'] = val
+            logger.info(f"✅ ml_calib_decay_days: {val}j")
+        
+        if 'ml_calib_min_trades' in params:
+            val = int(params['ml_calib_min_trades'])
+            val = max(10, min(100, val))  # Clamp 10-100
+            TRADING_CONFIG['ml_calib_min_trades'] = val
+            updated['ml_calib_min_trades'] = val
+            logger.info(f"✅ ml_calib_min_trades: {val}")
+
+        # 🔥 Phase 2D: Threshold Optimizer & Drift Detection
+        if 'threshold_optimizer_enabled' in params:
+            TRADING_CONFIG['threshold_optimizer_enabled'] = bool(params['threshold_optimizer_enabled'])
+            updated['threshold_optimizer_enabled'] = TRADING_CONFIG['threshold_optimizer_enabled']
+            logger.info(f"✅ threshold_optimizer_enabled: {TRADING_CONFIG['threshold_optimizer_enabled']}")
+        
+        if 'threshold_min' in params:
+            val = float(params['threshold_min'])
+            val = max(0.40, min(0.60, val))  # Clamp 40-60%
+            TRADING_CONFIG['threshold_min'] = val
+            updated['threshold_min'] = val
+            logger.info(f"✅ threshold_min: {val*100:.0f}%")
+        
+        if 'threshold_max' in params:
+            val = float(params['threshold_max'])
+            val = max(0.55, min(0.80, val))  # Clamp 55-80%
+            TRADING_CONFIG['threshold_max'] = val
+            updated['threshold_max'] = val
+            logger.info(f"✅ threshold_max: {val*100:.0f}%")
+        
+        if 'drift_detection_enabled' in params:
+            TRADING_CONFIG['drift_detection_enabled'] = bool(params['drift_detection_enabled'])
+            updated['drift_detection_enabled'] = TRADING_CONFIG['drift_detection_enabled']
+            logger.info(f"✅ drift_detection_enabled: {TRADING_CONFIG['drift_detection_enabled']}")
+
         # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
         if 'adaptive_sizing_enabled' in params:
             TRADING_CONFIG['adaptive_sizing_enabled'] = bool(params['adaptive_sizing_enabled'])
@@ -6076,27 +6187,47 @@ async def api_get_config():
     """Récupérer la configuration actuelle (tous les paramètres)"""
     from config import TRADING_CONFIG
     return JSONResponse({
-        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # 🔥 Valeur mise à jour
-        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # 🔥 PHASE 6: Score minimum
+        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
         'use_confluence': TRADING_CONFIG.get('use_confluence', False),
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-        # 🔥 4 seuils configurables - Valeurs mises à jour
+        # 4 seuils configurables
         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
         'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
         'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-        # 🔥 Seuils ATR optimal - Valeurs mises à jour
+        # Seuils ATR optimal
         'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
         'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
         'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
         'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-        # 🔥 Trend timeframe
+        # Trend timeframe
         'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
         'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-        'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
+        'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+        # 🔥 ML Config - Filtrage GradientBoosting
+        'gb_filter_enabled': TRADING_CONFIG.get('gb_filter_enabled', True),
+        'gb_min_confidence': TRADING_CONFIG.get('gb_min_confidence', 0.55),
+        # 🔥 ML Config - Calibration
+        'ml_calibration_enabled': TRADING_CONFIG.get('ml_calibration_enabled', False),
+        'ml_calib_min_winrate': TRADING_CONFIG.get('ml_calib_min_winrate', 45),
+        'ml_calib_live_weight': TRADING_CONFIG.get('ml_calib_live_weight', 1.0),
+        'ml_calib_dryrun_weight': TRADING_CONFIG.get('ml_calib_dryrun_weight', 0.5),
+        'ml_calib_decay_days': TRADING_CONFIG.get('ml_calib_decay_days', 30),
+        'ml_calib_min_trades': TRADING_CONFIG.get('ml_calib_min_trades', 50),
+        # 🔥 ML Config - Threshold Optimizer & Drift Detection
+        'threshold_optimizer_enabled': TRADING_CONFIG.get('threshold_optimizer_enabled', False),
+        'threshold_min': TRADING_CONFIG.get('threshold_min', 0.45),
+        'threshold_max': TRADING_CONFIG.get('threshold_max', 0.70),
+        'drift_detection_enabled': TRADING_CONFIG.get('drift_detection_enabled', True),
+        # 🔥 ML Config - GradientBoosting Hyperparameters
+        'gb_max_iter': TRADING_CONFIG.get('gb_max_iter', 200),
+        'gb_max_depth': TRADING_CONFIG.get('gb_max_depth', 5),
+        'gb_learning_rate': TRADING_CONFIG.get('gb_learning_rate', 0.1),
+        'gb_l2_regularization': TRADING_CONFIG.get('gb_l2_regularization', 0.5)
     })
 
 

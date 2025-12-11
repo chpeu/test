@@ -2912,6 +2912,38 @@ class PositionManager:
                         except Exception as calib_err:
                             logger.debug(f"Calibration update ignoré (non-bloquant): {calib_err}")
                         
+                        # 🔥 PHASE 2D: Feedback loop pour Threshold Optimizer + Drift Detection
+                        try:
+                            from core.ml import get_threshold_optimizer, get_drift_detector
+                            
+                            # Récupérer le contexte du trade
+                            trade_regime = getattr(self.active_position, '_market_regime', 'UNKNOWN')
+                            trade_session = getattr(self.active_position, '_trading_session', 'UNKNOWN')
+                            trade_hour = datetime.now().hour
+                            trade_win = net_pnl_pct > 0
+                            
+                            # 1. Update Threshold Optimizer
+                            threshold_optimizer = get_threshold_optimizer()
+                            if threshold_optimizer.enabled:
+                                threshold_optimizer.update(
+                                    regime=trade_regime,
+                                    session=trade_session,
+                                    hour=trade_hour,
+                                    win=trade_win,
+                                    pnl=net_pnl_pct
+                                )
+                            
+                            # 2. Update Drift Detector
+                            drift_detector = get_drift_detector()
+                            if drift_detector.enabled:
+                                drift_result = drift_detector.update(pnl=net_pnl_pct, win=trade_win)
+                                if drift_result.get('drift_detected'):
+                                    logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {self.active_position.symbol}!")
+                            
+                            logger.debug(f"📊 Phase 2D feedback: {trade_regime}/{trade_session} | Win: {trade_win}")
+                        except Exception as phase2d_err:
+                            logger.debug(f"Phase 2D feedback ignoré (non-bloquant): {phase2d_err}")
+                        
                         # 🔥 PHASE 1C + 2A: Calcul What-If Régime + BE/Trailing automatique
                         try:
                             from core.analysis.what_if_simulator import WhatIfSimulator, TradeData
@@ -3183,6 +3215,74 @@ class PositionManager:
                 logger.debug("Trading Circuit Breaker désactivé - trade non enregistré dans CB")
         except Exception as e:
             logger.debug(f"Erreur enregistrement Trading Circuit Breaker: {e}")
+
+        # 🔥 PHASE 2D: Feedback loop pour Threshold Optimizer + Drift Detector
+        try:
+            from config import TRADING_CONFIG
+            
+            # Récupérer le contexte du trade (stocké lors de l'entrée)
+            market_regime = getattr(self.active_position, '_market_regime', None)
+            trading_session = getattr(self.active_position, '_trading_session', None)
+            trade_hour = getattr(self.active_position, '_trade_hour', None)
+            
+            # Si pas de contexte stocké, essayer de le recalculer
+            if not market_regime or not trading_session:
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    from utils.session_detector import detect_current_session
+                    regime_selector = get_regime_selector()
+                    market_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
+                    trading_session = detect_current_session()
+                    trade_hour = datetime.now().hour
+                except:
+                    market_regime = 'UNKNOWN'
+                    trading_session = 'UNKNOWN'
+                    trade_hour = 0
+            
+            is_win = net_pnl_pct > 0
+            
+            # 1. Mettre à jour Threshold Optimizer
+            if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
+                try:
+                    from core.ml import get_threshold_optimizer
+                    optimizer = get_threshold_optimizer()
+                    optimizer.update(
+                        regime=market_regime,
+                        session=trading_session,
+                        hour=trade_hour or 0,
+                        win=is_win,
+                        pnl=net_pnl_pct
+                    )
+                    logger.debug(f"📊 Threshold Optimizer updated: {market_regime}/{trading_session} {'WIN' if is_win else 'LOSS'}")
+                except Exception as opt_err:
+                    logger.debug(f"⚠️ Erreur update Threshold Optimizer: {opt_err}")
+            
+            # 2. Mettre à jour Drift Detector
+            if TRADING_CONFIG.get('drift_detection_enabled', True):
+                try:
+                    from core.ml import get_drift_detector
+                    detector = get_drift_detector()
+                    drift_result = detector.update(pnl=net_pnl_pct, win=is_win)
+                    
+                    if drift_result.get('drift_detected'):
+                        logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {result['symbol']}! "
+                                      f"PnL drift: {drift_result.get('pnl_drift')}, "
+                                      f"WinRate drift: {drift_result.get('winrate_drift')}")
+                        
+                        # Si drift détecté, reset le Threshold Optimizer
+                        if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
+                            try:
+                                from core.ml import get_threshold_optimizer
+                                optimizer = get_threshold_optimizer()
+                                optimizer.reset_all()
+                                logger.warning("🔄 Threshold Optimizer RESET suite à drift détecté")
+                            except:
+                                pass
+                except Exception as drift_err:
+                    logger.debug(f"⚠️ Erreur update Drift Detector: {drift_err}")
+                    
+        except Exception as phase2d_err:
+            logger.debug(f"⚠️ Erreur Phase 2D feedback: {phase2d_err}")
 
         # 🔥 ATR OPTIMIZATION: Calculer What-If scénarios pour optimisation
         try:

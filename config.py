@@ -423,6 +423,26 @@ TRADING_CONFIG = {
     "ml_calib_bucket_size": 5,               # Taille des buckets de confiance (ex: 30-35, 35-40)
     
     # ============================================================
+    # 🔥 PHASE 2D: AUTO-ADAPTATION ML
+    # ============================================================
+    # Système d'adaptation automatique des seuils et paramètres ML
+    # basé sur les performances par contexte (régime, session, heure)
+    # ============================================================
+    
+    # Threshold Optimizer (Thompson Sampling)
+    "threshold_optimizer_enabled": False,    # Activer l'optimisation dynamique des seuils
+    "threshold_min": 0.45,                   # Seuil minimum (mode agressif)
+    "threshold_max": 0.70,                   # Seuil maximum (mode conservateur)
+    "threshold_exploration_bonus": 0.05,     # Bonus d'exploration pour nouveaux contextes
+    
+    # Drift Detection (ADWIN)
+    "drift_detection_enabled": True,         # Activer la détection de drift
+    "drift_pnl_delta": 0.002,                # Sensibilité PnL (plus petit = plus sensible)
+    "drift_winrate_delta": 0.005,            # Sensibilité WinRate
+    "drift_min_window": 20,                  # Minimum trades avant détection
+    "drift_alert_cooldown": 50,              # Trades entre alertes
+    
+    # ============================================================
     # 🔥 SPRINT 1: MARKET REGIME SELECTOR
     # ============================================================
     # Détecte automatiquement le régime de marché et adapte les paramètres

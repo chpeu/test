@@ -2,8 +2,6 @@
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import OptimizationPanel from '$lib/components/ml/OptimizationPanel.svelte';
-	import MLCONTENT_V2_Variables from '$lib/components/ml/MLCONTENT_V2_Variables.svelte';
-	import MLCONTENT_GB_Variables from '$lib/components/ml/MLCONTENT_GB_Variables.svelte';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -138,6 +136,11 @@
 		ml_calib_min_trades: 30,
 		ml_calib_min_winrate: 40.0,
 		ml_calib_bucket_size: 5,
+		// 🔥 Phase 2D: Threshold Optimizer & Drift Detection
+		threshold_optimizer_enabled: false,
+		threshold_min: 0.45,
+		threshold_max: 0.70,
+		drift_detection_enabled: true,
 		// 🔥 OPT #14: Scan Interval
 		scan_interval: 30,
 		// 🔥 OPT #15: Anti-Whipsaw Filter
@@ -211,7 +214,6 @@
 	let loading = false;
 	let saveMessage = '';
 	let activeSubTab = 'setups';
-	let mlVersion = 'v1'; // 'v1' ou 'v2' pour les sous-onglets ML
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
 	
 	// 🔥 NOUVEAU: Système de sauvegarde automatique avec debounce
@@ -732,6 +734,12 @@
 				ml_calib_min_winrate: tradingConfig.ml_calib_min_winrate,
 				ml_calib_bucket_size: tradingConfig.ml_calib_bucket_size,
 			},
+			'📊 Phase 2D: Seuils Dynamiques': {
+				threshold_optimizer_enabled: tradingConfig.threshold_optimizer_enabled,
+				threshold_min: tradingConfig.threshold_min,
+				threshold_max: tradingConfig.threshold_max,
+				drift_detection_enabled: tradingConfig.drift_detection_enabled,
+			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
 				max_latency_ms: tradingConfig.max_latency_ms,
@@ -943,6 +951,12 @@
 					ml_calib_min_trades: config.ml_calib_min_trades,
 					ml_calib_min_winrate: config.ml_calib_min_winrate,
 					ml_calib_bucket_size: config.ml_calib_bucket_size
+				});
+				console.log('✅ Phase 2D params:', {
+					threshold_optimizer_enabled: config.threshold_optimizer_enabled,
+					threshold_min: config.threshold_min,
+					threshold_max: config.threshold_max,
+					drift_detection_enabled: config.drift_detection_enabled
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -4263,46 +4277,19 @@
 	{/if}
 
 	{#if activeSubTab === 'ml'}
-	<!-- Titre et sélecteurs Version ML -->
+	<!-- Titre ML -->
 	<div class="ml-header">
-		<h3 class="ml-title">🤖 Machine Learning</h3>
-		<div class="ml-version-selector-compact">
-			<button
-				class="version-btn-compact"
-				class:active={mlVersion === 'v1'}
-				on:click={() => (mlVersion = 'v1')}
-			>
-				<span class="version-icon-compact">📊</span>
-				<span class="version-label-compact">XGBoost V1</span>
-			</button>
-
-			<button
-				class="version-btn-compact"
-				class:active={mlVersion === 'v2'}
-				on:click={() => (mlVersion = 'v2')}
-			>
-				<span class="version-icon-compact">🚀</span>
-				<span class="version-label-compact">XGBoost V2</span>
-			</button>
-
-			<button
-				class="version-btn-compact recommended"
-				class:active={mlVersion === 'gb'}
-				on:click={() => (mlVersion = 'gb')}
-			>
-				<span class="version-icon-compact">🎯</span>
-				<span class="version-label-compact">GradientBoosting</span>
-				<span class="badge-recommended">64%</span>
-			</button>
-		</div>
+		<h3 class="ml-title">🤖 Machine Learning - XGBoost V1</h3>
+		<p class="ml-redirect-hint">
+			🎯 <strong>GradientBoosting (64% accuracy)</strong> → Onglet <em>ML → Optimisation GB</em>
+		</p>
 	</div>
 
-	<!-- 🔥 SECTION FILTRAGE ML - UNIQUEMENT POUR XGBOOST V1 -->
-	{#if mlVersion === 'v1'}
+	<!-- SECTION FILTRAGE ML XGBOOST V1 -->
 	<section class="variable-section ml-common-section">
 		<h3>🎯 Filtrage ML XGBoost V1</h3>
 		<p class="section-desc">
-			Ces paramètres s'appliquent uniquement à XGBoost V1. Pour GradientBoosting, utilisez l'onglet dédié.
+			Paramètres du modèle XGBoost V1.
 		</p>
 
 		<div class="variable-item">
@@ -4389,10 +4376,100 @@
 			</div>
 		</div>
 	</section>
-	{/if}
 
-	{#if mlVersion === 'v1'}
-	<!-- 2. Métriques du Modèle Actuel (déplacée ici) -->
+	<!-- 🔥 SECTION PHASE 2D: Threshold Optimizer & Drift Detection -->
+	<section class="variable-section ml-common-section">
+		<h3>📊 Phase 2D: Seuils Dynamiques</h3>
+		<p class="section-desc">
+			Ajustement automatique des seuils ML selon le contexte et détection de drift.
+		</p>
+
+		<!-- Threshold Optimizer -->
+		<div class="variable-item">
+			<div class="variable-label-container">
+				<label for="threshold_optimizer_enabled">
+					<span class="variable-name">Activer Threshold Optimizer</span>
+					<span class="variable-desc">Seuil dynamique par contexte (régime, session)</span>
+				</label>
+			</div>
+			<label class="toggle">
+				<input
+					type="checkbox"
+					id="threshold_optimizer_enabled"
+					bind:checked={config.threshold_optimizer_enabled}
+					on:change={() => triggerAutoSave('threshold_optimizer_enabled', config.threshold_optimizer_enabled ? 'Activé' : 'Désactivé')}
+				/>
+				<span class="toggle-slider"></span>
+			</label>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.threshold_optimizer_enabled}>
+			<div class="variable-label-container">
+				<label for="threshold_min">
+					<span class="variable-name">Seuil Minimum</span>
+					<span class="variable-desc">Mode agressif (40-60%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="threshold_min"
+					min="0.40"
+					max="0.60"
+					step="0.05"
+					bind:value={config.threshold_min}
+					on:change={() => triggerAutoSave('threshold_min', Math.round(config.threshold_min * 100) + '%')}
+					disabled={!config.threshold_optimizer_enabled}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.threshold_min * 100)}%</span>
+			</div>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.threshold_optimizer_enabled}>
+			<div class="variable-label-container">
+				<label for="threshold_max">
+					<span class="variable-name">Seuil Maximum</span>
+					<span class="variable-desc">Mode conservateur (55-80%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="threshold_max"
+					min="0.55"
+					max="0.80"
+					step="0.05"
+					bind:value={config.threshold_max}
+					on:change={() => triggerAutoSave('threshold_max', Math.round(config.threshold_max * 100) + '%')}
+					disabled={!config.threshold_optimizer_enabled}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.threshold_max * 100)}%</span>
+			</div>
+		</div>
+
+		<!-- Drift Detection -->
+		<div class="variable-item" style="margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+			<div class="variable-label-container">
+				<label for="drift_detection_enabled">
+					<span class="variable-name">Activer Drift Detection</span>
+					<span class="variable-desc">Détecte les changements de comportement marché (ADWIN)</span>
+				</label>
+			</div>
+			<label class="toggle">
+				<input
+					type="checkbox"
+					id="drift_detection_enabled"
+					bind:checked={config.drift_detection_enabled}
+					on:change={() => triggerAutoSave('drift_detection_enabled', config.drift_detection_enabled ? 'Activé' : 'Désactivé')}
+				/>
+				<span class="toggle-slider"></span>
+			</label>
+		</div>
+	</section>
+
+	<!-- 2. Métriques du Modèle Actuel -->
 	<section class="variable-section">
 		<h3>📊 Métriques du Modèle Actuel</h3>
 		{#if loadingMLMetrics}
@@ -4726,13 +4803,6 @@
 			</p>
 		</div>
 	</section>
-	{:else if mlVersion === 'v2'}
-	<!-- Contenu XGBoost V2 -->
-	<MLCONTENT_V2_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
-	{:else if mlVersion === 'gb'}
-	<!-- Contenu GradientBoosting (Modèle Optimisé) -->
-	<MLCONTENT_GB_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
-	{/if}
 	{/if}
 
 	{#if activeSubTab === 'current'}
@@ -5066,11 +5136,11 @@
 		}
 	}
 
-	/* ML Header avec sélecteur compact */
+	/* ML Header */
 	.ml-header {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
+		flex-direction: column;
+		gap: 0.5rem;
 		margin-bottom: 1.5rem;
 		padding: 1rem 1.5rem;
 		background: rgba(42, 58, 107, 0.2);
@@ -5085,13 +5155,23 @@
 		font-weight: 700;
 	}
 
-	.ml-version-selector-compact {
-		display: flex;
-		gap: 0.5rem;
-		background: rgba(0, 0, 0, 0.2);
-		padding: 0.25rem;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+	.ml-redirect-hint {
+		margin: 0;
+		font-size: 0.85rem;
+		color: #888;
+		padding: 0.5rem 0.75rem;
+		background: rgba(74, 158, 255, 0.1);
+		border-radius: 6px;
+		border-left: 3px solid #4a9eff;
+	}
+
+	.ml-redirect-hint strong {
+		color: #4a9eff;
+	}
+
+	.ml-redirect-hint em {
+		color: #aaa;
+		font-style: normal;
 	}
 
 	.version-btn-compact {

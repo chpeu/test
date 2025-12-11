@@ -14,6 +14,8 @@ project_regime_atr_optimization/
 │
 ├── 01_SYNTHESE_COMPLETE.md        ← Vue complète du projet
 ├── 02_MASTER_PLAN.md              ← Roadmap des phases
+├── 03_ML_UNIFIED_ARCHITECTURE.md  ← 🆕 Architecture ML unifiée (Phase 2D+3)
+├── 04_UI_FRONTEND_SPECS.md        ← 🆕 Spécifications UI frontend
 │
 ├── phases/                        ← Détails d'implémentation par phase
 │   ├── PHASE_0_INFRASTRUCTURE.md

@@ -442,33 +442,38 @@ class CorrelationEngine:
         """
         Générer des suggestions d'optimisation basées sur les corrélations.
         
+        IMPORTANT: On ne suggère JAMAIS d'arrêter de trader (sessions, paires, etc.)
+        Le but est d'ADAPTER les paramètres pour améliorer les performances.
+        
         Returns:
             Liste de suggestions prioritaires
         """
         suggestions = []
         
-        # Analyser par régime local
+        # Analyser par régime local - suggérer d'adapter les paramètres, pas d'arrêter
         regime_results = self.analyze_by_local_regime(days)
         for r in regime_results:
             if r.recommendation == "AVOID" and r.trades >= 10:
+                # Au lieu d'éviter, on suggère d'augmenter le score requis pour ce régime
                 suggestions.append(OptimizationSuggestion(
-                    parameter=f"trading_hours_{r.value.lower()}_regime",
-                    current_value=1.0,
-                    suggested_value=0.5,
-                    expected_improvement=f"Réduire exposition régime {r.value} (WR={r.winrate}%)",
+                    parameter=f"min_score_{r.value.lower()}_regime",
+                    current_value=9.0,
+                    suggested_value=10.0,
+                    expected_improvement=f"Augmenter score requis en régime {r.value} (WR actuel={r.winrate}%)",
                     confidence="HIGH" if r.trades >= 20 else "MEDIUM",
                     based_on_trades=r.trades
                 ))
         
-        # Analyser par session
+        # Analyser par session - suggérer d'adapter les paramètres, PAS de désactiver
         session_results = self.analyze_by_session(days)
         for r in session_results:
             if r.recommendation == "AVOID" and r.trades >= 5:
+                # Au lieu de désactiver la session, suggérer d'augmenter le score requis
                 suggestions.append(OptimizationSuggestion(
-                    parameter=f"session_{r.value.lower()}_enabled",
-                    current_value=1.0,
-                    suggested_value=0.0,
-                    expected_improvement=f"Éviter session {r.value} (WR={r.winrate}%, PnL={r.total_pnl})",
+                    parameter=f"min_score_{r.value.lower()}_session",
+                    current_value=9.0,
+                    suggested_value=10.5,
+                    expected_improvement=f"Augmenter score requis session {r.value} (WR={r.winrate}%)",
                     confidence="MEDIUM",
                     based_on_trades=r.trades
                 ))

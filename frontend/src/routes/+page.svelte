@@ -23,7 +23,7 @@
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
-	import MLVersionTabs from '$lib/components/ml/MLVersionTabs.svelte';
+	import MLPanel from '$lib/components/ml/MLPanel.svelte';
 	import LiveTradingPanel from '$lib/components/LiveTradingPanel.svelte';
 	import MarketRegimeWidget from '$lib/components/MarketRegimeWidget.svelte';
 	import TradingCircuitBreaker from '$lib/components/TradingCircuitBreaker.svelte';
@@ -589,7 +589,7 @@
 				</div>
 			{:else if activeTab === 'ml'}
 				<div class="tab-content">
-					<MLVersionTabs />
+					<MLPanel />
 				</div>
 			{:else if activeTab === 'live'}
 				<div class="tab-content">

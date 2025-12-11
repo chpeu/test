@@ -61,22 +61,6 @@
 	{:else if error}
 		<div class="error">❌ {error}</div>
 	{:else if data}
-		<!-- Suggestions prioritaires -->
-		{#if data.suggestions && data.suggestions.length > 0}
-			<div class="section suggestions">
-				<h3>💡 Suggestions d'Optimisation</h3>
-				<div class="suggestion-list">
-					{#each data.suggestions as suggestion}
-						<div class="suggestion-card {getConfidenceClass(suggestion.confidence)}">
-							<span class="confidence">[{suggestion.confidence}]</span>
-							<span class="improvement">{suggestion.expected_improvement}</span>
-							<span class="trades">({suggestion.based_on_trades} trades)</span>
-						</div>
-					{/each}
-				</div>
-			</div>
-		{/if}
-		
 		<!-- Performance par Session -->
 		<div class="section">
 			<h3>🌍 Performance par Session</h3>
@@ -281,49 +265,6 @@
 		margin: 0 0 1rem 0;
 		color: var(--text-primary, #fff);
 		font-size: 1rem;
-	}
-	
-	.suggestions {
-		background: linear-gradient(135deg, #1a3a5c 0%, #252540 100%);
-		border: 1px solid #4a9eff33;
-	}
-	
-	.suggestion-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	
-	.suggestion-card {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem;
-		background: var(--bg-secondary, #1a1a2e);
-		border-radius: 4px;
-		border-left: 3px solid;
-	}
-	
-	.suggestion-card.high { border-left-color: #ff6b6b; }
-	.suggestion-card.medium { border-left-color: #ffc107; }
-	.suggestion-card.low { border-left-color: #6c757d; }
-	
-	.confidence {
-		font-weight: bold;
-		font-size: 0.8rem;
-	}
-	
-	.suggestion-card.high .confidence { color: #ff6b6b; }
-	.suggestion-card.medium .confidence { color: #ffc107; }
-	
-	.improvement {
-		flex: 1;
-		color: var(--text-primary, #fff);
-	}
-	
-	.trades {
-		color: var(--text-secondary, #888);
-		font-size: 0.85rem;
 	}
 	
 	.table-container {

@@ -1,9 +1,9 @@
 # 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 11/12/2025 00:30
-> **Status global:** ✅ PHASE 1 COMPLÈTE (Infrastructure + Logging + V2 + Frontend)
-> **Phase actuelle:** Accumulation données en cours (50+ nouveaux trades requis pour Phase 2)
+> **Dernière mise à jour:** 11/12/2025 13:00
+> **Status global:** ✅ PHASE 1 COMPLÈTE + Architecture ML Unifiée définie
+> **Phase actuelle:** Phase 2D (Auto-Adaptation ML) - Implémentation
 
 ---
 
@@ -138,35 +138,35 @@ docs/project_regime_atr_optimization/
 - EUROPE_OPEN: +0.31% avg (meilleure session)
 - US_OPEN: -0.17% avg (à éviter)
 
-### Phase 2A: Analyse Corrélations
+### Phase 2A: Analyse Corrélations ✅
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| correlation_engine.py | ⬜ TODO | - | - |
-| Script analyse | ⬜ TODO | - | - |
-| **PHASE 2A COMPLETE** | ⬜ | - | - |
+| correlation_engine.py | ✅ DONE | 11/12/2025 | Analyse sessions/régimes/heures |
+| API endpoint | ✅ DONE | 11/12/2025 | /api/ml/analytics/correlations |
+| **PHASE 2A COMPLETE** | ✅ | 11/12/2025 | - |
 
-### Phase 2B: Dashboard
+### Phase 2B: Dashboard Corrélations ✅
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| RegimeAnalyticsDashboard.svelte | ⬜ TODO | - | - |
-| API endpoints | ⬜ TODO | - | - |
-| **PHASE 2B COMPLETE** | ⬜ | - | - |
+| CorrelationAnalytics.svelte | ✅ DONE | 11/12/2025 | Tableaux sessions/régimes |
+| MLPanel intégration | ✅ DONE | 11/12/2025 | Onglet "Corrélations" |
+| **PHASE 2B COMPLETE** | ✅ | 11/12/2025 | - |
 
-### Phase 2C: Optimizer Suggestions
-| Tâche | Status | Date | Notes |
-|-------|--------|------|-------|
-| regime_optimizer.py | ⬜ TODO | - | - |
-| API suggestions | ⬜ TODO | - | - |
-| **PHASE 2C COMPLETE** | ⬜ | - | - |
+### Phase 2C: Suggestions (SUPPRIMÉ)
+> ⚠️ Supprimé - Remplacé par Phase 2D Auto-Adaptation
+> L'objectif est l'adaptation AUTOMATIQUE, pas manuelle
 
-### Phase 2D: ML Param Optimizer
+### Phase 2D: Auto-Adaptation ML ✅
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| Feature importance | ⬜ TODO | - | - |
-| Grid search | ⬜ TODO | - | - |
-| Cross-validation | ⬜ TODO | - | - |
-| 4 configs générées | ⬜ TODO | - | - |
-| **PHASE 2D COMPLETE** | ⬜ | - | - |
+| `core/ml/threshold_optimizer.py` | ✅ DONE | 11/12/2025 | Thompson Sampling |
+| `core/ml/drift_detector.py` | ✅ DONE | 11/12/2025 | ADWIN detection |
+| Intégration main.py (seuil dynamique) | ✅ DONE | 11/12/2025 | Via get_threshold_optimizer() |
+| Intégration position_manager.py (feedback) | ✅ DONE | 11/12/2025 | Update après trade |
+| `api/routes/ml_config.py` | ✅ DONE | 11/12/2025 | 6 endpoints API |
+| Config toggles config.py | ✅ DONE | 11/12/2025 | threshold_optimizer_enabled, etc. |
+| `MLConfigPanel.svelte` | ✅ DONE | 11/12/2025 | UI toggles + stats |
+| **PHASE 2D COMPLETE** | ✅ | 11/12/2025 | - |
 
 ### ⏸️ Pause Accumulation (200+ trades)
 | Métrique | Objectif | Actuel | Status |
@@ -175,38 +175,45 @@ docs/project_regime_atr_optimization/
 | Trades NORMAL | 50+ | 0 | ⬜ |
 | Trades CALME | 30+ | 0 | ⬜ |
 
-### Phase 3A: ML Regime Detector
+### Phase 3A: ML Regime Classifier
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| regime_classifier.py | TODO | - | - |
-| Training | TODO | - | - |
-| Accuracy > 70% | TODO | - | - |
-| **PHASE 3A COMPLETE** | TODO | - | - |
+| `core/ml/regime_classifier.py` | ⬜ TODO | - | LightGBM + GPU |
+| Training sur What-If data | ⬜ TODO | - | Besoin 500+ trades |
+| Accuracy > 70% | ⬜ TODO | - | - |
+| Intégration market_regime_selector | ⬜ TODO | - | Remplace seuils ATR |
+| **PHASE 3A COMPLETE** | ⬜ | - | - |
 
-### Phase 3B: GB Feature Integration
+### Phase 3B: Dynamic SL/TP Predictor
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| Feature Engineering: ml_features | TODO | - | - |
-| Retraining pipeline | TODO | - | - |
-| **PHASE 3B COMPLETE** | TODO | - | - |
+| `core/ml/sltp_predictor.py` | ⬜ TODO | - | CatBoost + GPU |
+| Training sur MFE/MAE | ⬜ TODO | - | Besoin 500+ trades |
+| Intégration position_manager | ⬜ TODO | - | SL/TP par setup |
+| **PHASE 3B COMPLETE** | ⬜ | - | - |
 
-### Phase 3B+: Context-Aware Entry Model (NOUVEAU)
+### Phase 3C: Online Learning
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
-| Ajout `market_regime_index` features | TODO | - | - |
-| Support features catégorielles Trainer | TODO | - | - |
-| Calibration contextuelle par régime | TODO | - | - |
-| Réentraînement modèle unique enrichi | TODO | - | - |
-| **PHASE 3B+ COMPLETE** | TODO | - | - |
-
-### Phase 3C: Auto-Apply & Rollback
-| Tâche | Status | Date | Notes |
-|-------|--------|------|-------|
-| auto_apply_engine.py | TODO | - | - |
-| rollback_manager.py | TODO | - | - |
-| Tests validation | TODO | - | - |
-| **PHASE 3C COMPLETE** | TODO | - | - |
+| `core/ml/online_learner.py` | ⬜ TODO | - | River library |
+| Intégration feedback loop | ⬜ TODO | - | Update temps réel |
 | **PHASE 3C COMPLETE** | ⬜ | - | - |
+
+### Phase 3D: Frontend Dashboard ML
+| Tâche | Status | Date | Notes |
+|-------|--------|------|-------|
+| `MLDashboard.svelte` | ⬜ TODO | - | Vue d'ensemble |
+| `ThresholdOptimizer.svelte` | ⬜ TODO | - | Visualisation seuils |
+| `DriftIndicator.svelte` | ⬜ TODO | - | Alertes drift |
+| **PHASE 3D COMPLETE** | ⬜ | - | - |
+
+### Phase 3E: Auto-Apply & Rollback
+| Tâche | Status | Date | Notes |
+|-------|--------|------|-------|
+| auto_apply_engine.py | ⬜ TODO | - | Application auto configs |
+| rollback_manager.py | ⬜ TODO | - | Rollback si dégradation |
+| Tests validation | ⬜ TODO | - | A/B testing |
+| **PHASE 3E COMPLETE** | ⬜ | - | - |
 
 ---
 
