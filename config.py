@@ -456,6 +456,19 @@ TRADING_CONFIG = {
     "market_regime_atr_normal_max": 0.40,    # Seuil ATR max pour régime NORMAL (%)
     "market_regime_adx_choppy": 20,          # ADX sous ce seuil = CHOPPY
     
+    # 🔥 PHASE 1D: Auto-Calibration Seuils ATR (11/12/2025)
+    "market_regime_auto_calibration_enabled": False,  # Toggle principal calibration
+    "market_regime_calibration_lookback_days": 7,     # Fenêtre historique (jours)
+    "market_regime_calibration_percentile_calme": 33, # P33 = seuil CALME
+    "market_regime_calibration_percentile_volatile": 66,  # P66 = seuil VOLATILE
+    "market_regime_calibration_min_samples": 50,      # Minimum samples requis
+    
+    # 🔥 PHASE 1D: BTC Indicator (11/12/2025)
+    "market_regime_btc_indicator_enabled": False,     # Toggle principal BTC
+    "market_regime_btc_volatile_threshold_1h": 2.0,   # % variation 1h = volatile
+    "market_regime_btc_trend_threshold_24h": 5.0,     # % variation 24h = trend fort
+    "market_regime_btc_force_volatile_enabled": True, # Forcer VOLATILE si BTC volatile
+    
     # ============================================================
     # 🔥 SPRINT 1: TRADING CIRCUIT BREAKER
     # ============================================================

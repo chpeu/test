@@ -194,6 +194,14 @@
 		market_regime_use_atr_5m: false,
 		market_regime_use_seasonality: false,
 		market_regime_min_duration_minutes: 30,
+		// 🔥 PHASE 1E: Auto-Calibration + BTC Indicator
+		market_regime_auto_calibration_enabled: false,
+		market_regime_calibration_lookback_days: 7,
+		market_regime_calibration_percentile_calme: 33,
+		market_regime_calibration_percentile_volatile: 66,
+		market_regime_btc_indicator_enabled: false,
+		market_regime_btc_volatile_threshold_1h: 2.0,
+		market_regime_btc_force_volatile_enabled: true,
 		// 🔥 SPRINT 1: Trading Circuit Breaker
 		trading_circuit_breaker_enabled: true,
 		trading_cb_max_consecutive_losses: 5,
@@ -821,6 +829,12 @@
 				market_regime_use_atr_5m: tradingConfig.market_regime_use_atr_5m,
 				market_regime_use_seasonality: tradingConfig.market_regime_use_seasonality,
 				market_regime_min_duration_minutes: tradingConfig.market_regime_min_duration_minutes,
+				// Phase 1E
+				market_regime_auto_calibration_enabled: tradingConfig.market_regime_auto_calibration_enabled,
+				market_regime_calibration_lookback_days: tradingConfig.market_regime_calibration_lookback_days,
+				market_regime_btc_indicator_enabled: tradingConfig.market_regime_btc_indicator_enabled,
+				market_regime_btc_volatile_threshold_1h: tradingConfig.market_regime_btc_volatile_threshold_1h,
+				market_regime_btc_force_volatile_enabled: tradingConfig.market_regime_btc_force_volatile_enabled,
 			},
 		};
 	}
@@ -957,6 +971,15 @@
 					threshold_min: config.threshold_min,
 					threshold_max: config.threshold_max,
 					drift_detection_enabled: config.drift_detection_enabled
+				});
+				console.log('✅ Phase 1E params (Auto-Calibration + BTC):', {
+					market_regime_auto_calibration_enabled: config.market_regime_auto_calibration_enabled,
+					market_regime_calibration_lookback_days: config.market_regime_calibration_lookback_days,
+					market_regime_calibration_percentile_calme: config.market_regime_calibration_percentile_calme,
+					market_regime_calibration_percentile_volatile: config.market_regime_calibration_percentile_volatile,
+					market_regime_btc_indicator_enabled: config.market_regime_btc_indicator_enabled,
+					market_regime_btc_volatile_threshold_1h: config.market_regime_btc_volatile_threshold_1h,
+					market_regime_btc_force_volatile_enabled: config.market_regime_btc_force_volatile_enabled
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -4127,6 +4150,117 @@
 					</div>
 				</div>
 				<p class="info-note">75% des trades auraient mieux performé avec params CALME</p>
+			</div>
+
+			<!-- 🔥 PHASE 1E: Auto-Calibration + BTC Indicator -->
+			<div class="subsection">
+				<h4>🎯 Auto-Calibration Seuils (Phase 1E)</h4>
+				<p class="subsection-hint">Calibre automatiquement les seuils ATR basé sur les percentiles des 7 derniers jours</p>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_auto_calibration_enabled">
+						<span class="label-text">Auto-Calibration</span>
+						<span class="label-hint">P33 = CALME, P66 = VOLATILE (basé sur historique)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_auto_calibration_enabled"
+								bind:checked={config.market_regime_auto_calibration_enabled}
+								on:change={() => triggerAutoSave('market_regime_auto_calibration_enabled', config.market_regime_auto_calibration_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_auto_calibration_enabled ? 'Calibré' : 'Seuils fixes'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_auto_calibration_enabled}
+				<div class="form-row">
+					<label for="market_regime_calibration_lookback_days">
+						<span class="label-text">Fenêtre historique</span>
+						<span class="label-hint">Jours de données pour calibration</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_calibration_lookback_days"
+							bind:value={config.market_regime_calibration_lookback_days}
+							min="3"
+							max="14"
+							step="1"
+							on:change={() => triggerAutoSave('market_regime_calibration_lookback_days', config.market_regime_calibration_lookback_days)}
+						/>
+						<span class="value">{config.market_regime_calibration_lookback_days} jours</span>
+					</div>
+				</div>
+				{/if}
+			</div>
+
+			<!-- BTC Indicator -->
+			<div class="subsection">
+				<h4>₿ BTC Indicator (Phase 1E)</h4>
+				<p class="subsection-hint">Utilise la volatilité BTC comme confirmation du régime de marché</p>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_btc_indicator_enabled">
+						<span class="label-text">Indicateur BTC</span>
+						<span class="label-hint">BTC volatile → confirme ou force VOLATILE</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_btc_indicator_enabled"
+								bind:checked={config.market_regime_btc_indicator_enabled}
+								on:change={() => triggerAutoSave('market_regime_btc_indicator_enabled', config.market_regime_btc_indicator_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_btc_indicator_enabled ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_btc_indicator_enabled}
+				<div class="form-row">
+					<label for="market_regime_btc_volatile_threshold_1h">
+						<span class="label-text">Seuil BTC Volatile</span>
+						<span class="label-hint">% variation 1h pour considérer BTC volatile</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_btc_volatile_threshold_1h"
+							bind:value={config.market_regime_btc_volatile_threshold_1h}
+							min="1"
+							max="5"
+							step="0.5"
+							on:change={() => triggerAutoSave('market_regime_btc_volatile_threshold_1h', config.market_regime_btc_volatile_threshold_1h)}
+						/>
+						<span class="value">{config.market_regime_btc_volatile_threshold_1h}%</span>
+					</div>
+				</div>
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_btc_force_volatile_enabled">
+						<span class="label-text">Forcer VOLATILE</span>
+						<span class="label-hint">Si BTC volatile, forcer le régime VOLATILE</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_btc_force_volatile_enabled"
+								bind:checked={config.market_regime_btc_force_volatile_enabled}
+								on:change={() => triggerAutoSave('market_regime_btc_force_volatile_enabled', config.market_regime_btc_force_volatile_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_btc_force_volatile_enabled ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+				{/if}
 			</div>
 		</section>
 	{/if}

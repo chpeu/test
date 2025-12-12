@@ -5902,6 +5902,122 @@ async def handle_client_command(command: str, params: dict):
             except Exception as e:
                 logger.warning(f"⚠️ Erreur propagation pair_scorer: {e}")
 
+        # 🔥 PHASE 1D: Market Regime V2 - Détection Améliorée
+        if 'market_regime_v2_enabled' in params:
+            TRADING_CONFIG['market_regime_v2_enabled'] = bool(params['market_regime_v2_enabled'])
+            updated['market_regime_v2_enabled'] = TRADING_CONFIG['market_regime_v2_enabled']
+            logger.info(f"✅ market_regime_v2_enabled: {TRADING_CONFIG['market_regime_v2_enabled']}")
+        
+        if 'market_regime_use_median' in params:
+            TRADING_CONFIG['market_regime_use_median'] = bool(params['market_regime_use_median'])
+            updated['market_regime_use_median'] = TRADING_CONFIG['market_regime_use_median']
+            logger.info(f"✅ market_regime_use_median: {TRADING_CONFIG['market_regime_use_median']}")
+        
+        if 'market_regime_outlier_filter' in params:
+            TRADING_CONFIG['market_regime_outlier_filter'] = bool(params['market_regime_outlier_filter'])
+            updated['market_regime_outlier_filter'] = TRADING_CONFIG['market_regime_outlier_filter']
+            logger.info(f"✅ market_regime_outlier_filter: {TRADING_CONFIG['market_regime_outlier_filter']}")
+        
+        if 'market_regime_use_hysteresis' in params:
+            TRADING_CONFIG['market_regime_use_hysteresis'] = bool(params['market_regime_use_hysteresis'])
+            updated['market_regime_use_hysteresis'] = TRADING_CONFIG['market_regime_use_hysteresis']
+            logger.info(f"✅ market_regime_use_hysteresis: {TRADING_CONFIG['market_regime_use_hysteresis']}")
+        
+        if 'market_regime_hysteresis_buffer' in params:
+            val = float(params['market_regime_hysteresis_buffer'])
+            val = max(0.05, min(0.25, val))  # Clamp 5%-25%
+            TRADING_CONFIG['market_regime_hysteresis_buffer'] = val
+            updated['market_regime_hysteresis_buffer'] = val
+            logger.info(f"✅ market_regime_hysteresis_buffer: {val*100:.0f}%")
+        
+        if 'market_regime_use_smoothing' in params:
+            TRADING_CONFIG['market_regime_use_smoothing'] = bool(params['market_regime_use_smoothing'])
+            updated['market_regime_use_smoothing'] = TRADING_CONFIG['market_regime_use_smoothing']
+            logger.info(f"✅ market_regime_use_smoothing: {TRADING_CONFIG['market_regime_use_smoothing']}")
+        
+        if 'market_regime_smoothing_alpha' in params:
+            val = float(params['market_regime_smoothing_alpha'])
+            val = max(0.1, min(0.5, val))  # Clamp 0.1-0.5
+            TRADING_CONFIG['market_regime_smoothing_alpha'] = val
+            updated['market_regime_smoothing_alpha'] = val
+            logger.info(f"✅ market_regime_smoothing_alpha: {val}")
+        
+        if 'market_regime_use_atr_5m' in params:
+            TRADING_CONFIG['market_regime_use_atr_5m'] = bool(params['market_regime_use_atr_5m'])
+            updated['market_regime_use_atr_5m'] = TRADING_CONFIG['market_regime_use_atr_5m']
+            logger.info(f"✅ market_regime_use_atr_5m: {TRADING_CONFIG['market_regime_use_atr_5m']}")
+        
+        if 'market_regime_use_seasonality' in params:
+            TRADING_CONFIG['market_regime_use_seasonality'] = bool(params['market_regime_use_seasonality'])
+            updated['market_regime_use_seasonality'] = TRADING_CONFIG['market_regime_use_seasonality']
+            logger.info(f"✅ market_regime_use_seasonality: {TRADING_CONFIG['market_regime_use_seasonality']}")
+        
+        if 'market_regime_min_duration_minutes' in params:
+            val = int(params['market_regime_min_duration_minutes'])
+            val = max(5, min(120, val))  # Clamp 5-120 min
+            TRADING_CONFIG['market_regime_min_duration_minutes'] = val
+            updated['market_regime_min_duration_minutes'] = val
+            logger.info(f"✅ market_regime_min_duration_minutes: {val} min")
+
+        # 🔥 PHASE 1E: Auto-Calibration Seuils ATR
+        if 'market_regime_auto_calibration_enabled' in params:
+            TRADING_CONFIG['market_regime_auto_calibration_enabled'] = bool(params['market_regime_auto_calibration_enabled'])
+            updated['market_regime_auto_calibration_enabled'] = TRADING_CONFIG['market_regime_auto_calibration_enabled']
+            logger.info(f"✅ market_regime_auto_calibration_enabled: {TRADING_CONFIG['market_regime_auto_calibration_enabled']}")
+        
+        if 'market_regime_calibration_lookback_days' in params:
+            val = int(params['market_regime_calibration_lookback_days'])
+            val = max(3, min(14, val))  # Clamp 3-14
+            TRADING_CONFIG['market_regime_calibration_lookback_days'] = val
+            updated['market_regime_calibration_lookback_days'] = val
+            logger.info(f"✅ market_regime_calibration_lookback_days: {val} jours")
+        
+        if 'market_regime_calibration_percentile_calme' in params:
+            val = int(params['market_regime_calibration_percentile_calme'])
+            val = max(10, min(50, val))  # Clamp 10-50
+            TRADING_CONFIG['market_regime_calibration_percentile_calme'] = val
+            updated['market_regime_calibration_percentile_calme'] = val
+            logger.info(f"✅ market_regime_calibration_percentile_calme: P{val}")
+        
+        if 'market_regime_calibration_percentile_volatile' in params:
+            val = int(params['market_regime_calibration_percentile_volatile'])
+            val = max(50, min(90, val))  # Clamp 50-90
+            TRADING_CONFIG['market_regime_calibration_percentile_volatile'] = val
+            updated['market_regime_calibration_percentile_volatile'] = val
+            logger.info(f"✅ market_regime_calibration_percentile_volatile: P{val}")
+        
+        if 'market_regime_calibration_min_samples' in params:
+            val = int(params['market_regime_calibration_min_samples'])
+            val = max(10, min(200, val))  # Clamp 10-200
+            TRADING_CONFIG['market_regime_calibration_min_samples'] = val
+            updated['market_regime_calibration_min_samples'] = val
+            logger.info(f"✅ market_regime_calibration_min_samples: {val}")
+        
+        # 🔥 PHASE 1E: BTC Indicator
+        if 'market_regime_btc_indicator_enabled' in params:
+            TRADING_CONFIG['market_regime_btc_indicator_enabled'] = bool(params['market_regime_btc_indicator_enabled'])
+            updated['market_regime_btc_indicator_enabled'] = TRADING_CONFIG['market_regime_btc_indicator_enabled']
+            logger.info(f"✅ market_regime_btc_indicator_enabled: {TRADING_CONFIG['market_regime_btc_indicator_enabled']}")
+        
+        if 'market_regime_btc_volatile_threshold_1h' in params:
+            val = float(params['market_regime_btc_volatile_threshold_1h'])
+            val = max(0.5, min(10.0, val))  # Clamp 0.5-10.0
+            TRADING_CONFIG['market_regime_btc_volatile_threshold_1h'] = val
+            updated['market_regime_btc_volatile_threshold_1h'] = val
+            logger.info(f"✅ market_regime_btc_volatile_threshold_1h: {val}%")
+        
+        if 'market_regime_btc_trend_threshold_24h' in params:
+            val = float(params['market_regime_btc_trend_threshold_24h'])
+            val = max(1.0, min(20.0, val))  # Clamp 1.0-20.0
+            TRADING_CONFIG['market_regime_btc_trend_threshold_24h'] = val
+            updated['market_regime_btc_trend_threshold_24h'] = val
+            logger.info(f"✅ market_regime_btc_trend_threshold_24h: {val}%")
+        
+        if 'market_regime_btc_force_volatile_enabled' in params:
+            TRADING_CONFIG['market_regime_btc_force_volatile_enabled'] = bool(params['market_regime_btc_force_volatile_enabled'])
+            updated['market_regime_btc_force_volatile_enabled'] = TRADING_CONFIG['market_regime_btc_force_volatile_enabled']
+            logger.info(f"✅ market_regime_btc_force_volatile_enabled: {TRADING_CONFIG['market_regime_btc_force_volatile_enabled']}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))

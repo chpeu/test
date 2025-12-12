@@ -571,7 +571,7 @@ const state = await fetch('/api/state').then(r => r.json());
 ## 📌 Notes Importantes
 
 1. **Les variables modifiées en runtime** sont stockées dans `TRADING_CONFIG` (dictionnaire Python en mémoire).
-2. **Les modifications ne persistent pas** après redémarrage du backend (sauf si sauvegardées dans un fichier).
+2. **Persistance**: les changements appliqués via l'UI / WebSocket peuvent être persistés dans `config_overrides.json` (voir `utils/config_persistence.py`). Au démarrage, ces overrides sont rechargés et appliqués sur `TRADING_CONFIG`.
 3. **Les variables sont validées** lors de la modification (clamp, validation de type, etc.).
 4. **Les variables sont synchronisées** avec le frontend via WebSocket (`config_updated` event).
 
@@ -588,11 +588,22 @@ const state = await fetch('/api/state').then(r => r.json());
 
 ### Problème : Les variables ne persistent pas
 
-1. Les variables sont en mémoire uniquement (pas de persistance par défaut)
-2. Pour persister, il faudrait ajouter une sauvegarde dans un fichier JSON/DB
-3. Les valeurs par défaut sont dans `config.py`
+1. Vérifier que `config_overrides.json` existe à la racine du projet et contient les clés attendues
+2. Vérifier dans les logs backend: `Config overrides chargés` puis `overrides appliqués sur TRADING_CONFIG`
+3. Vérifier que la clé a un préfixe autorisé (ex: `market_regime_`, `ml_`, `gb_`) si elle n'existe pas encore en dur dans `TRADING_CONFIG`
+4. Les valeurs par défaut restent dans `config.py`
 
 ---
 
-**Dernière mise à jour** : 2025-01-10
+## 🧪 Scripts de Vérification (régime V2)
 
+### Script: `verification/verify_regime_v2_params.py`
+
+Ce script simule une séquence d'ATR et vérifie que:
+- le lissage (EMA) est appliqué si activé
+- l'hystérésis bloque les flip-flops autour des seuils
+- `market_regime_min_duration_minutes` bloque les changements dans les deux sens
+
+---
+
+ **Dernière mise à jour** : 2025-12-12

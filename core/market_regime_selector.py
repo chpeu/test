@@ -99,7 +99,7 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         break_even_atr_mult=0.8,
         trailing_trigger_atr_mult=1.0,
         max_position_time=180,
-        volume_multiplier=1.0,
+        volume_multiplier=0.7,  # 🔥 Optimisé: 0.7 (winrate 41.2% vs 40.9% à 1.0)
         sl_exchange_percent=0.25,
         stagnation_timeout=360,
         stagnation_min_pnl=0.05,
@@ -117,7 +117,7 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         break_even_atr_mult=1.2,
         trailing_trigger_atr_mult=1.5,
         max_position_time=240,
-        volume_multiplier=1.1,
+        volume_multiplier=0.8,  # 🔥 Optimisé: 0.8 (winrate 41.8% vs 40.6% à 1.1)
         sl_exchange_percent=0.30,
         stagnation_timeout=480,
         stagnation_min_pnl=0.04,
@@ -135,7 +135,7 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         break_even_atr_mult=1.5,
         trailing_trigger_atr_mult=2.0,
         max_position_time=180,
-        volume_multiplier=1.5,
+        volume_multiplier=1.2,  # 🔥 Optimisé: 1.2 (100% winrate maintenu, plus de trades)
         sl_exchange_percent=0.35,
         stagnation_timeout=600,
         stagnation_min_pnl=0.02,
@@ -153,7 +153,7 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         break_even_atr_mult=0.5,
         trailing_trigger_atr_mult=0.8,
         max_position_time=60,
-        volume_multiplier=0.8,
+        volume_multiplier=0.7,  # 🔥 Optimisé: 0.7 (winrate 44.4% vs 40% à 0.8)
         sl_exchange_percent=0.20,
         stagnation_timeout=180,
         stagnation_min_pnl=0.08,
@@ -487,6 +487,146 @@ class MarketRegimeSelector:
         
         return combined
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔥 PHASE 1D: Auto-Calibration Seuils ATR + BTC Indicator
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    async def calibrate_thresholds(self) -> Dict[str, float]:
+        """
+        Calibre les seuils ATR basé sur percentiles historiques (7 jours).
+        
+        Returns:
+            Dict avec threshold_calme, threshold_volatile, calibrated
+        """
+        from utils.config_persistence import get_config_value
+        
+        # Valeurs par défaut (fixes)
+        default_thresholds = {
+            'threshold_calme': 0.20,
+            'threshold_volatile': 0.40,
+            'calibrated': False,
+            'samples': 0
+        }
+        
+        if not get_config_value('market_regime_auto_calibration_enabled', False):
+            return default_thresholds
+        
+        lookback_days = get_config_value('market_regime_calibration_lookback_days', 7)
+        p_calme = get_config_value('market_regime_calibration_percentile_calme', 33)
+        p_volatile = get_config_value('market_regime_calibration_percentile_volatile', 66)
+        min_samples = get_config_value('market_regime_calibration_min_samples', 50)
+        
+        try:
+            # Query PostgreSQL pour percentiles
+            from database.postgres_pool import get_postgres_pool
+            pool = get_postgres_pool()
+            
+            if not pool:
+                logger.warning("⚠️ Calibration: Pool PostgreSQL non disponible")
+                return default_thresholds
+            
+            query = f"""
+                SELECT 
+                    COUNT(*) as samples,
+                    PERCENTILE_CONT({p_calme / 100.0}) WITHIN GROUP (ORDER BY avg_atr) as p_calme,
+                    PERCENTILE_CONT({p_volatile / 100.0}) WITHIN GROUP (ORDER BY avg_atr) as p_volatile
+                FROM market_regime_history
+                WHERE created_at > NOW() - INTERVAL '{lookback_days} days'
+                  AND avg_atr IS NOT NULL
+                  AND avg_atr > 0
+            """
+            
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(query)
+            
+            if not row or row['samples'] < min_samples:
+                logger.info(
+                    f"📊 Calibration: Pas assez de données ({row['samples'] if row else 0}/{min_samples}), "
+                    f"utilisation seuils fixes"
+                )
+                return default_thresholds
+            
+            threshold_calme = float(row['p_calme'])
+            threshold_volatile = float(row['p_volatile'])
+            
+            # Stocker en cache
+            self._calibrated_thresholds = {
+                'threshold_calme': round(threshold_calme, 4),
+                'threshold_volatile': round(threshold_volatile, 4),
+                'calibrated': True,
+                'samples': row['samples'],
+                'timestamp': datetime.now()
+            }
+            
+            logger.info(
+                f"✅ Calibration réussie ({row['samples']} samples, {lookback_days}j): "
+                f"CALME < {threshold_calme:.3f}% (P{p_calme}) | "
+                f"VOLATILE > {threshold_volatile:.3f}% (P{p_volatile})"
+            )
+            
+            return self._calibrated_thresholds
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur calibration seuils: {e}")
+            return default_thresholds
+    
+    def get_calibrated_thresholds(self) -> Dict[str, float]:
+        """
+        Retourne les seuils calibrés (cache) ou valeurs par défaut.
+        """
+        if hasattr(self, '_calibrated_thresholds') and self._calibrated_thresholds:
+            # Vérifier si cache encore valide (6h)
+            cache_age = datetime.now() - self._calibrated_thresholds.get('timestamp', datetime.min)
+            if cache_age.total_seconds() < 6 * 3600:  # 6 heures
+                return self._calibrated_thresholds
+        
+        # Retourner valeurs fixes
+        return {
+            'threshold_calme': 0.20,
+            'threshold_volatile': 0.40,
+            'calibrated': False
+        }
+    
+    async def get_btc_status(self) -> Optional[Dict]:
+        """
+        Récupère le status BTC pour confirmation régime.
+        
+        Returns:
+            Dict avec price, pct_change_1h, pct_change_24h, is_volatile, trend
+        """
+        from utils.config_persistence import get_config_value
+        
+        if not get_config_value('market_regime_btc_indicator_enabled', False):
+            return None
+        
+        try:
+            from core.btc_indicator import get_btc_indicator
+            btc = get_btc_indicator()
+            status = await btc.get_btc_status()
+            return status.to_dict() if status else None
+        except Exception as e:
+            logger.debug(f"BTCIndicator non disponible: {e}")
+            return None
+    
+    def should_force_volatile_from_btc(self, current_regime: str) -> bool:
+        """
+        Vérifie si BTC volatil devrait forcer le régime VOLATILE.
+        """
+        from utils.config_persistence import get_config_value
+        
+        if not get_config_value('market_regime_btc_indicator_enabled', False):
+            return False
+        
+        if not get_config_value('market_regime_btc_force_volatile_enabled', True):
+            return False
+        
+        try:
+            from core.btc_indicator import get_btc_indicator
+            btc = get_btc_indicator()
+            return btc.should_force_volatile(current_regime)
+        except Exception:
+            return False
+
     def on_regime_change(self, callback: callable) -> None:
         """Enregistre un callback appelé lors d'un changement de régime"""
         self._on_regime_change_callbacks.append(callback)
@@ -510,28 +650,60 @@ class MarketRegimeSelector:
         Returns:
             MarketRegime détecté
         """
-        # 🔥 FIX: Utiliser les seuils de TRADING_CONFIG au lieu de valeurs hardcodées
+        from utils.config_persistence import get_config_value
+        
+        # 🔥 PHASE 1D: Utiliser seuils calibrés si disponibles
+        calibrated = self.get_calibrated_thresholds()
+        use_calibration = get_config_value('market_regime_auto_calibration_enabled', False)
+        
+        if use_calibration and calibrated.get('calibrated', False):
+            atr_calme_max = calibrated['threshold_calme']
+            atr_normal_max = calibrated['threshold_volatile']
+            logger.debug(f"📊 Seuils calibrés: CALME<{atr_calme_max:.3f}%, VOLATILE>{atr_normal_max:.3f}%")
+        else:
+            # Fallback: seuils fixes depuis config
+            try:
+                from config import TRADING_CONFIG
+                atr_calme_max = TRADING_CONFIG.get('market_regime_atr_calme_max', 0.20)
+                atr_normal_max = TRADING_CONFIG.get('market_regime_atr_normal_max', 0.40)
+            except ImportError:
+                atr_calme_max = 0.20
+                atr_normal_max = 0.40
+
+        if get_config_value('market_regime_use_seasonality', False):
+            hour = datetime.now().hour
+            if 0 <= hour < 7:
+                multiplier = 0.90
+            elif 7 <= hour < 15:
+                multiplier = 1.00
+            else:
+                multiplier = 1.10
+            atr_calme_max = atr_calme_max * multiplier
+            atr_normal_max = atr_normal_max * multiplier
+        
+        # ADX pour choppy
         try:
             from config import TRADING_CONFIG
             adx_choppy = TRADING_CONFIG.get('market_regime_adx_choppy', 20)
-            atr_calme_max = TRADING_CONFIG.get('market_regime_atr_calme_max', 0.20)
-            atr_normal_max = TRADING_CONFIG.get('market_regime_atr_normal_max', 0.40)
         except ImportError:
             adx_choppy = 20
-            atr_calme_max = 0.20
-            atr_normal_max = 0.40
         
         # Choppy si ADX très faible (pas de tendance)
         if avg_adx < adx_choppy:
-            return MarketRegime.CHOPPY
-        
+            regime = MarketRegime.CHOPPY
         # Sinon basé sur ATR
-        if avg_atr < atr_calme_max:
-            return MarketRegime.CALME
+        elif avg_atr < atr_calme_max:
+            regime = MarketRegime.CALME
         elif avg_atr < atr_normal_max:
-            return MarketRegime.NORMAL
+            regime = MarketRegime.NORMAL
         else:
-            return MarketRegime.VOLATILE
+            regime = MarketRegime.VOLATILE
+        
+        # 🔥 PHASE 1D: BTC peut forcer VOLATILE
+        if self.should_force_volatile_from_btc(regime.value):
+            regime = MarketRegime.VOLATILE
+        
+        return regime
     
     async def check_regime(
         self,
@@ -565,17 +737,31 @@ class MarketRegimeSelector:
             if now < self.last_check + self.check_interval:
                 return self.current_regime, False
         
+        from utils.config_persistence import get_config_value
+
         # Calculer moyennes
         if not atr_values:
             logger.warning("⚠️ Pas de valeurs ATR fournies")
             return self.current_regime, False
-        self.avg_atr = sum(atr_values) / len(atr_values)
+
+        v2_enabled = get_config_value('market_regime_v2_enabled', False)
+        if v2_enabled:
+            atr_metric = self.calculate_atr_metric(atr_values)
+            self.avg_atr = self.apply_smoothing(atr_metric)
+        else:
+            self.avg_atr = sum(atr_values) / len(atr_values)
         self.avg_adx = sum(adx_values) / len(adx_values) if adx_values else 25.0
         
         # Déterminer le nouveau régime
         new_regime = self.determine_regime(self.avg_atr, self.avg_adx)
         old_regime = self.current_regime
         changed = new_regime != old_regime
+
+        if changed and not force and trigger == "auto" and self.regime_since:
+            min_duration_minutes = get_config_value('market_regime_min_duration_minutes', 30)
+            if (now - self.regime_since).total_seconds() < (min_duration_minutes * 60):
+                changed = False
+                new_regime = old_regime
         
         # Mettre à jour l'état
         self.last_check = now
@@ -708,6 +894,7 @@ class MarketRegimeSelector:
         try:
             from core.postgresql_datalogger import get_pg_datalogger
             from utils.session_detector import get_current_session
+            from utils.config_persistence import get_config_value
             
             pg_logger = get_pg_datalogger()
             
@@ -725,8 +912,9 @@ class MarketRegimeSelector:
             session_info = get_current_session()
             session_market = session_info['name']
             
-            # 🔥 PHASE 1A: Metadata V2 (valeurs par défaut pour V1)
-            detection_method = 'RULE_BASED_V1'
+            # 🔥 PHASE 1A: Metadata V2
+            v2_enabled = get_config_value('market_regime_v2_enabled', False)
+            detection_method = 'RULE_BASED_V2' if v2_enabled else 'RULE_BASED_V1'
             atr_median = getattr(self, 'last_atr_median', None)
             atr_smoothed = getattr(self, 'last_atr_smoothed', None)
             hysteresis_applied = getattr(self, 'hysteresis_was_applied', False)

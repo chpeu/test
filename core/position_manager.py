@@ -2825,23 +2825,39 @@ class PositionManager:
                     
                     # 🔥 SPRINT 1: Ajouter contexte Market Regime et Circuit Breaker
                     try:
-                        from core.market_regime_selector import get_regime_selector
                         from utils.effective_config import get_effective_value
-                        regime_selector = get_regime_selector()
-                        regime_status = regime_selector.get_status()
-                        trade_data['entry_market_regime'] = regime_status.get('current_regime', 'UNKNOWN')
-                        trade_data['entry_market_regime_avg_atr'] = regime_status.get('avg_atr', 0)
-                        trade_data['entry_market_regime_avg_adx'] = regime_status.get('avg_adx', 0)
-                        # 🔥 FIX: Utiliser valeurs EFFECTIVES (régime) pas valeurs base
+                        from utils.effective_config import get_active_adjustments
+                        # Toujours renseigner les valeurs effectives même si le régime selector est indisponible
                         trade_data['entry_min_score_required'] = get_effective_value('min_score_required')
+                        trade_data['entry_effective_min_score'] = get_effective_value('min_score_required', symbol=self.active_position.symbol)
+
+                        # Pair scorer (optionnel)
+                        try:
+                            adj = get_active_adjustments().get('pair_scorer', {})
+                            symbol_adj = adj.get(self.active_position.symbol, {}) if isinstance(adj, dict) else {}
+                            trade_data['entry_pair_score_adjustment'] = symbol_adj.get('score_adjustment')
+                        except Exception:
+                            trade_data['entry_pair_score_adjustment'] = None
+
+                        # Valeurs effectives additionnelles (optionnelles)
                         trade_data['entry_atr_mult_sl'] = get_effective_value('atr_mult_sl')
                         trade_data['entry_atr_mult_tp'] = get_effective_value('atr_mult_tp')
-                        # 🔥 NOUVEAU: Paramètres dynamiques additionnels
                         trade_data['entry_volume_multiplier'] = get_effective_value('volume_multiplier')
                         trade_data['entry_rsi_filter_mode'] = get_effective_value('rsi_filter_mode')
                         trade_data['entry_position_timeout'] = get_effective_value('position_timeout')
                         trade_data['entry_optimal_atr_max_1m'] = get_effective_value('optimal_atr_max_1m')
                         trade_data['entry_sl_exchange_percent'] = get_effective_value('sl_exchange_percent')
+
+                        # Contexte régime (optionnel)
+                        try:
+                            from core.market_regime_selector import get_regime_selector
+                            regime_selector = get_regime_selector()
+                            regime_status = regime_selector.get_status()
+                            trade_data['entry_market_regime'] = regime_status.get('current_regime', 'UNKNOWN')
+                            trade_data['entry_market_regime_avg_atr'] = regime_status.get('avg_atr', 0)
+                            trade_data['entry_market_regime_avg_adx'] = regime_status.get('avg_adx', 0)
+                        except Exception:
+                            pass
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de récupérer régime: {e}")
                     

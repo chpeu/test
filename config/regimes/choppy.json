@@ -8,7 +8,7 @@
   "break_even_atr_mult": 0.5,
   "trailing_trigger_atr_mult": 0.8,
   "max_position_time": 60,
-  "volume_multiplier": 0.8,
+  "volume_multiplier": 0.7,
   "sl_exchange_percent": 0.2,
   "stagnation_timeout": 180,
   "stagnation_min_pnl": 0.08,

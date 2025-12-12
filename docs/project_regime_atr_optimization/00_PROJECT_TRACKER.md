@@ -1,9 +1,9 @@
 # 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 11/12/2025 21:15
-> **Status global:** ✅ PHASES 1-2E COMPLÈTES | Phase 3 démarrée (LightGBM prêt)
-> **Phase actuelle:** ⏸️ PAUSE ACCUMULATION - Phase 3 en attente
+> **Dernière mise à jour:** 11/12/2025 21:55
+> **Status global:** ✅ PHASES 1-2E + 1E COMPLÈTES | Auto-Calibration + BTC prêts
+> **Phase actuelle:** ⏸️ PAUSE ACCUMULATION - Toggles 1E OFF par défaut
 
 ---
 
@@ -120,6 +120,37 @@ docs/project_regime_atr_optimization/
 | Sliders (buffer, alpha, durée) | ✅ DONE | 11/12/2025 | Conditionnels |
 | Insights performance session | ✅ DONE | 11/12/2025 | Données historiques |
 | **PHASE 1D COMPLETE** | ✅ | 11/12/2025 | Frontend prêt |
+
+### Phase 1E: Auto-Calibration Seuils + BTC Indicator ✅
+> **Objectif:** Améliorer la détection de régime avec seuils dynamiques et confirmation BTC
+> **Décision:** Brainstorm Option D (11/12/2025)
+
+| Tâche | Status | Date | Notes |
+|-------|--------|------|-------|
+| Document PHASE_1D_AUTO_CALIBRATION_BTC.md | ✅ DONE | 11/12/2025 | Plan intégration |
+| `core/btc_indicator.py` (BTCIndicator) | ✅ DONE | 11/12/2025 | MEXC API, cache 5min |
+| `calibrate_thresholds()` (percentiles 7j) | ✅ DONE | 11/12/2025 | P33=CALME, P66=VOLATILE |
+| `get_btc_status()` + `should_force_volatile_from_btc()` | ✅ DONE | 11/12/2025 | BTC volatile → force VOLATILE |
+| Intégration dans `determine_regime()` | ✅ DONE | 11/12/2025 | Seuils calibrés + BTC check |
+| Toggles config.py (8 nouveaux) | ✅ DONE | 11/12/2025 | Tous OFF par défaut |
+| **PHASE 1E COMPLETE** | ✅ | 11/12/2025 | Prêt pour activation |
+
+#### Nouveaux Toggles Phase 1E
+| Toggle | Défaut | Description |
+|--------|--------|-------------|
+| `market_regime_auto_calibration_enabled` | OFF | Active calibration percentiles |
+| `market_regime_calibration_lookback_days` | 7 | Fenêtre historique |
+| `market_regime_calibration_percentile_calme` | 33 | P33 = seuil CALME |
+| `market_regime_calibration_percentile_volatile` | 66 | P66 = seuil VOLATILE |
+| `market_regime_btc_indicator_enabled` | OFF | Active indicateur BTC |
+| `market_regime_btc_volatile_threshold_1h` | 2.0% | Seuil BTC volatile 1h |
+| `market_regime_btc_force_volatile_enabled` | ON | Force VOLATILE si BTC volatile |
+
+#### Fichiers Créés/Modifiés
+- `core/btc_indicator.py` : NOUVEAU - BTCIndicator classe
+- `core/market_regime_selector.py` : +4 méthodes Phase 1E
+- `config.py` : +8 toggles Phase 1E
+- `docs/project_regime_atr_optimization/phases/PHASE_1D_AUTO_CALIBRATION_BTC.md` : Documentation
 
 ### ⏸️ Pause Accumulation (50+ trades)
 | Métrique | Objectif | Actuel | Status |
