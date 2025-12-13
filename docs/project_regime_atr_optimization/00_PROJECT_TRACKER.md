@@ -246,11 +246,93 @@ docs/project_regime_atr_optimization/
 ### ⏸️ Pause Accumulation (200+ trades)
 | Métrique | Objectif | Actuel | Status |
 |----------|----------|--------|--------|
-| Trades VOLATILE | 50+ | 0 | ⬜ |
-| Trades NORMAL | 50+ | 0 | ⬜ |
-| Trades CALME | 30+ | 0 | ⬜ |
+| Trades VOLATILE | 50+ | 6 | ⬜ |
+| Trades NORMAL | 50+ | 82 | ✅ |
+| Trades CALME | 30+ | 138 | ✅ |
+| Trades CHOPPY | 30+ | 10 | ⬜ |
 
-### Phase 3: Ensemble Learning (EN COURS - PAUSÉ)
+> **Note:** Ignorer trades avec `entry_market_regime = NULL` ou `UNKNOWN` (ancien code avant régime V2)
+
+---
+
+### 🆕 Phase 2F: Quick Wins Immédiats (NOUVEAU - 13/12/2025)
+> **Objectif:** Gains rapides sans ML, basés sur les données déjà disponibles
+
+| Tâche | Status | Priorité | Impact estimé |
+|-------|--------|----------|---------------|
+| **Gating US_OPEN** (15% WR → bloquer ou score +2) | ⬜ TODO | 🔴 HAUTE | Éviter ~13 trades perdants |
+| **Orderflow dans scoring** (6 métriques déjà en base) | ⬜ TODO | 🟠 MOYENNE | Filtrer faux breakouts |
+| **Drift detection sur features** (ATR/ADX shift) | ⬜ TODO | 🟠 MOYENNE | Anticiper dégradation |
+
+#### 2F.1 Gating Contextuel US_OPEN
+```
+Si session = US_OPEN:
+  - Option A: No-trade (bloquer)
+  - Option B: min_score += 2 (plus strict)
+Données: 13 trades, 15.4% WR, -1.8% PnL
+```
+
+#### 2F.2 Orderflow dans Scoring
+```
+6 métriques déjà dans scan_logs:
+- delta_volume, imbalance_normalized, book_depth_ratio
+- spread_volatility_5, volume_acceleration, price_momentum_5
+
+Utilisation:
+- LONG + delta_volume < 0 → score -1 (pression vendeuse)
+- Breakout + imbalance < -0.15 → skip (faux breakout)
+```
+
+#### 2F.3 Drift Detection Features (extension ADWIN)
+```
+Actuellement: ADWIN sur PnL/WinRate (détecte APRÈS pertes)
+Amélioration: ADWIN sur ATR/ADX/volume_ratio (détecte AVANT trades)
+
+Logique:
+- Si distribution ATR change significativement → alerte
+- Si ADX moyen baisse → marché devient ranging → ajuster
+```
+
+---
+
+### 🆕 Phase 3A: Mixture-of-Experts par Régime (NOUVEAU - 13/12/2025)
+> **Objectif:** Un modèle ML par régime, activé seulement si assez de données
+
+| Tâche | Status | Prérequis |
+|-------|--------|-----------|
+| Architecture gating (seuil trades par régime) | ⬜ TODO | - |
+| Model CALME (si 50+ trades) | ⬜ TODO | 50 trades CALME |
+| Model NORMAL (si 50+ trades) | ⬜ TODO | 50 trades NORMAL |
+| Model VOLATILE (si 50+ trades) | ⬜ TODO | 50 trades VOLATILE |
+| Model CHOPPY (si 50+ trades) | ⬜ TODO | 50 trades CHOPPY |
+| Fallback rule-based si pas assez de données | ⬜ TODO | - |
+
+#### Architecture
+```
+┌─────────────────────────────────────────────────────────┐
+│                      GATING LOGIC                        │
+│  if trades_count[regime] >= MIN_THRESHOLD (50):         │
+│      → use ML model for this regime                     │
+│  else:                                                  │
+│      → use rule-based (current logic)                   │
+└─────────────────────────────────────────────────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ▼                  ▼                  ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│ Model CALME   │  │ Model NORMAL  │  │ Model VOLATILE│
+│ (138 trades ✅)│  │ (82 trades ✅) │  │ (6 trades ❌) │
+└───────────────┘  └───────────────┘  └───────────────┘
+```
+
+**Avantages:**
+- Chaque modèle apprend les patterns spécifiques à son contexte
+- Pas de contamination entre régimes
+- Activation progressive (dès qu'un régime a 50+ trades)
+
+---
+
+### Phase 3B: Ensemble Learning (RENOMMÉ - ancienne Phase 3)
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
 | LightGBM Trainer | ✅ DONE | 11/12/2025 | `optimization/models/lightgbm_trainer.py` |
@@ -259,9 +341,9 @@ docs/project_regime_atr_optimization/
 | Multi-Model Voting | ⬜ TODO | - | GB + XGBoost + LightGBM |
 | Stacking Meta-Model | ⬜ TODO | - | Combine prédictions |
 | Confidence Calibration | ⬜ TODO | - | Platt Scaling / Isotonic |
-| **PHASE 3 COMPLETE** | ⏸️ PAUSÉ | - | En attente accumulation trades |
+| **PHASE 3B COMPLETE** | ⏸️ PAUSÉ | - | En attente accumulation trades |
 
-### Phase 4: Feature Engineering Avancé (21 features) - PLANIFIÉ
+### Phase 3C: Feature Engineering Avancé (21 features) - RENOMMÉ (ancienne Phase 4)
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
 | Lag Features (1-3 trades) | ⬜ TODO | - | 6 features: pnl + win/loss |
@@ -270,9 +352,9 @@ docs/project_regime_atr_optimization/
 | Funding Rate (Binance) | ⬜ TODO | - | 1 feature: public API |
 | Sentiment (F&G + L/S) | ⬜ TODO | - | 2 features: alternative.me + Bybit |
 | Order Flow cumulatifs | ⬜ TODO | - | 2 features: delta_10, trend_5 |
-| **PHASE 4 COMPLETE** | ⬜ | - | 21 nouvelles features |
+| **PHASE 3C COMPLETE** | ⬜ | - | 21 nouvelles features |
 
-### Phase 5: Séquences Temporelles (GRU/LSTM)
+### Phase 4: Séquences Temporelles (GRU/LSTM) - RENOMMÉ (ancienne Phase 5)
 | Tâche | Status | Date | Notes |
 |-------|--------|------|-------|
 | GRU Séquences 10-20 scans | ⬜ TODO | - | River ou PyTorch |

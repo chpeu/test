@@ -1788,8 +1788,15 @@ class PostgreSQLDataLogger:
             calculated_tp_pct = None
             if entry_price and sl_price:
                 calculated_sl_pct = abs(entry_price - sl_price) / entry_price * 100
+                # 🔥 FIX: Si calculated_sl_pct = 0 (sl_price == entry_price), c'est un bug de données
+                # Dans ce cas, on laisse NULL pour ne pas fausser les analyses
+                if calculated_sl_pct < 0.001:  # Moins de 0.001% = essentiellement 0
+                    calculated_sl_pct = None
             if entry_price and tp_price:
                 calculated_tp_pct = abs(tp_price - entry_price) / entry_price * 100
+                # 🔥 FIX: Même logique pour TP
+                if calculated_tp_pct < 0.001:
+                    calculated_tp_pct = None
             
             calculated_be_trigger_pnl_pct = None
             if param_be_atr_mult and entry_atr_pct_1m:
@@ -1837,6 +1844,11 @@ class PostgreSQLDataLogger:
                     sl_mexc_price = entry_price * (1 - sl_mexc_pct / 100)
                 else:
                     sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
+            
+            # 🔥 FIX: Déterminer si le SL MEXC a été touché (basé sur exit_reason)
+            exit_reason = trade_data.get('reason') or trade_data.get('exit_reason')
+            sl_mexc_touched = exit_reason == 'SL_EXCHANGE'
+            sl_mexc_touched_at = datetime.now() if sl_mexc_touched else None
             
             # ═══════════════════════════════════════════════════════════════════
             # 🔥 PHASE 1A: Contexte Session/Heure
@@ -1886,12 +1898,13 @@ class PostgreSQLDataLogger:
                     time_to_max_pnl_seconds, time_to_min_pnl_seconds,
                     stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
                     sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used,
+                    sl_mexc_touched, sl_mexc_touched_at,
                     -- PHASE 1A: Session/Heure context
                     session_market, hour_utc, day_of_week, is_weekend,
                     regime_detection_method, regime_stability_minutes, regime_confidence,
                     session_atr_multiplier
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     -- PHASE 1A values
                     %s, %s, %s, %s, %s, %s, %s, %s
                 ) RETURNING id
@@ -1914,6 +1927,7 @@ class PostgreSQLDataLogger:
                 time_to_max_pnl, time_to_min_pnl,
                 stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
                 sl_mexc_price, sl_mexc_pct, sl_mexc_margin,
+                sl_mexc_touched, sl_mexc_touched_at,
                 # PHASE 1A values
                 session_market, hour_utc, day_of_week, is_weekend,
                 regime_detection_method, regime_stability_minutes, regime_confidence,
