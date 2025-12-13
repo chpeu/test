@@ -838,6 +838,38 @@ class PositionManager:
             effective_config=effective_params  # 🔥 Stocker la config effective
         )
 
+        try:
+            last_setup_ctx = getattr(self, '_last_setup', None)
+            market_regime = last_setup_ctx.get('_market_regime') if isinstance(last_setup_ctx, dict) else None
+            trading_session = last_setup_ctx.get('_trading_session') if isinstance(last_setup_ctx, dict) else None
+            trade_hour = last_setup_ctx.get('_trade_hour') if isinstance(last_setup_ctx, dict) else None
+
+            if not market_regime or not trading_session or trade_hour is None:
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    from utils.session_detector import get_current_session
+                    regime_selector = get_regime_selector()
+                    if not market_regime:
+                        market_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
+
+                    session_info = get_current_session()
+                    if not trading_session and isinstance(session_info, dict):
+                        trading_session = session_info.get('name', 'UNKNOWN')
+                    if trade_hour is None and isinstance(session_info, dict):
+                        trade_hour = session_info.get('hour_utc', None)
+                except Exception:
+                    pass
+
+            if market_regime:
+                self.active_position._market_regime = market_regime
+            if trading_session:
+                self.active_position._trading_session = trading_session
+            if trade_hour is None:
+                trade_hour = datetime.now(timezone.utc).hour
+            self.active_position._trade_hour = int(trade_hour)
+        except Exception:
+            pass
+
         # ✅ Initialiser les tailles en contrats même en mode paper/dry-run
         try:
             contracts = size / entry if entry else 0.0
@@ -2243,6 +2275,8 @@ class PositionManager:
         
         if not self.active_position:
             raise ValueError("Aucune position active à fermer")
+
+        phase2d_feedback_done = False
         
         # 🔥 FIX: Détecter si la position a déjà été fermée sur MEXC (TP forcé à 100%)
         # Dans ce cas, size_remaining_contracts = 0 et on ne doit pas envoyer d'ordre
@@ -2927,31 +2961,38 @@ class PositionManager:
                         
                         # 🔥 PHASE 2D: Feedback loop pour Threshold Optimizer + Drift Detection
                         try:
+                            from config import TRADING_CONFIG
                             from core.ml import get_threshold_optimizer, get_drift_detector
                             
                             # Récupérer le contexte du trade
                             trade_regime = getattr(self.active_position, '_market_regime', 'UNKNOWN')
                             trade_session = getattr(self.active_position, '_trading_session', 'UNKNOWN')
-                            trade_hour = datetime.now().hour
+                            trade_hour = getattr(self.active_position, '_trade_hour', None)
+                            if trade_hour is None:
+                                trade_hour = datetime.now(timezone.utc).hour
                             trade_win = net_pnl_pct > 0
                             
                             # 1. Update Threshold Optimizer
-                            threshold_optimizer = get_threshold_optimizer()
-                            if threshold_optimizer.enabled:
-                                threshold_optimizer.update(
-                                    regime=trade_regime,
-                                    session=trade_session,
-                                    hour=trade_hour,
-                                    win=trade_win,
-                                    pnl=net_pnl_pct
-                                )
+                            if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
+                                threshold_optimizer = get_threshold_optimizer()
+                                if threshold_optimizer.enabled:
+                                    threshold_optimizer.update(
+                                        regime=trade_regime,
+                                        session=trade_session,
+                                        hour=int(trade_hour),
+                                        win=trade_win,
+                                        pnl=net_pnl_pct
+                                    )
                             
                             # 2. Update Drift Detector
-                            drift_detector = get_drift_detector()
-                            if drift_detector.enabled:
-                                drift_result = drift_detector.update(pnl=net_pnl_pct, win=trade_win)
-                                if drift_result.get('drift_detected'):
-                                    logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {self.active_position.symbol}!")
+                            if TRADING_CONFIG.get('drift_detection_enabled', True):
+                                drift_detector = get_drift_detector()
+                                if drift_detector.enabled:
+                                    drift_result = drift_detector.update(pnl=net_pnl_pct, win=trade_win)
+                                    if drift_result.get('drift_detected'):
+                                        logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {self.active_position.symbol}!")
+
+                            phase2d_feedback_done = True
                             
                             logger.debug(f"📊 Phase 2D feedback: {trade_regime}/{trade_session} | Win: {trade_win}")
                         except Exception as phase2d_err:
@@ -3230,72 +3271,75 @@ class PositionManager:
             logger.debug(f"Erreur enregistrement Trading Circuit Breaker: {e}")
 
         # 🔥 PHASE 2D: Feedback loop pour Threshold Optimizer + Drift Detector
-        try:
-            from config import TRADING_CONFIG
-            
-            # Récupérer le contexte du trade (stocké lors de l'entrée)
-            market_regime = getattr(self.active_position, '_market_regime', None)
-            trading_session = getattr(self.active_position, '_trading_session', None)
-            trade_hour = getattr(self.active_position, '_trade_hour', None)
-            
-            # Si pas de contexte stocké, essayer de le recalculer
-            if not market_regime or not trading_session:
-                try:
-                    from core.market_regime_selector import get_regime_selector
-                    from utils.session_detector import detect_current_session
-                    regime_selector = get_regime_selector()
-                    market_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
-                    trading_session = detect_current_session()
-                    trade_hour = datetime.now().hour
-                except:
-                    market_regime = 'UNKNOWN'
-                    trading_session = 'UNKNOWN'
-                    trade_hour = 0
-            
-            is_win = net_pnl_pct > 0
-            
-            # 1. Mettre à jour Threshold Optimizer
-            if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
-                try:
-                    from core.ml import get_threshold_optimizer
-                    optimizer = get_threshold_optimizer()
-                    optimizer.update(
-                        regime=market_regime,
-                        session=trading_session,
-                        hour=trade_hour or 0,
-                        win=is_win,
-                        pnl=net_pnl_pct
-                    )
-                    logger.debug(f"📊 Threshold Optimizer updated: {market_regime}/{trading_session} {'WIN' if is_win else 'LOSS'}")
-                except Exception as opt_err:
-                    logger.debug(f"⚠️ Erreur update Threshold Optimizer: {opt_err}")
-            
-            # 2. Mettre à jour Drift Detector
-            if TRADING_CONFIG.get('drift_detection_enabled', True):
-                try:
-                    from core.ml import get_drift_detector
-                    detector = get_drift_detector()
-                    drift_result = detector.update(pnl=net_pnl_pct, win=is_win)
-                    
-                    if drift_result.get('drift_detected'):
-                        logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {result['symbol']}! "
-                                      f"PnL drift: {drift_result.get('pnl_drift')}, "
-                                      f"WinRate drift: {drift_result.get('winrate_drift')}")
+        if not phase2d_feedback_done:
+            try:
+                from config import TRADING_CONFIG
+                
+                # Récupérer le contexte du trade (stocké lors de l'entrée)
+                market_regime = getattr(self.active_position, '_market_regime', None)
+                trading_session = getattr(self.active_position, '_trading_session', None)
+                trade_hour = getattr(self.active_position, '_trade_hour', None)
+                
+                # Si pas de contexte stocké, essayer de le recalculer
+                if not market_regime or not trading_session or trade_hour is None:
+                    try:
+                        from core.market_regime_selector import get_regime_selector
+                        from utils.session_detector import get_current_session
+                        regime_selector = get_regime_selector()
+                        market_regime = market_regime or (regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN')
+                        session_info = get_current_session()
+                        trading_session = trading_session or (session_info.get('name', 'UNKNOWN') if isinstance(session_info, dict) else 'UNKNOWN')
+                        if trade_hour is None:
+                            trade_hour = int(session_info.get('hour_utc', datetime.now(timezone.utc).hour)) if isinstance(session_info, dict) else datetime.now(timezone.utc).hour
+                    except Exception:
+                        market_regime = 'UNKNOWN'
+                        trading_session = 'UNKNOWN'
+                        trade_hour = datetime.now(timezone.utc).hour
+                
+                is_win = net_pnl_pct > 0
+                
+                # 1. Mettre à jour Threshold Optimizer
+                if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
+                    try:
+                        from core.ml import get_threshold_optimizer
+                        optimizer = get_threshold_optimizer()
+                        optimizer.update(
+                            regime=market_regime,
+                            session=trading_session,
+                            hour=int(trade_hour),
+                            win=is_win,
+                            pnl=net_pnl_pct
+                        )
+                        logger.debug(f"📊 Threshold Optimizer updated: {market_regime}/{trading_session} {'WIN' if is_win else 'LOSS'}")
+                    except Exception as opt_err:
+                        logger.debug(f"⚠️ Erreur update Threshold Optimizer: {opt_err}")
+                
+                # 2. Mettre à jour Drift Detector
+                if TRADING_CONFIG.get('drift_detection_enabled', True):
+                    try:
+                        from core.ml import get_drift_detector
+                        detector = get_drift_detector()
+                        drift_result = detector.update(pnl=net_pnl_pct, win=is_win)
                         
-                        # Si drift détecté, reset le Threshold Optimizer
-                        if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
-                            try:
-                                from core.ml import get_threshold_optimizer
-                                optimizer = get_threshold_optimizer()
-                                optimizer.reset_all()
-                                logger.warning("🔄 Threshold Optimizer RESET suite à drift détecté")
-                            except:
-                                pass
-                except Exception as drift_err:
-                    logger.debug(f"⚠️ Erreur update Drift Detector: {drift_err}")
-                    
-        except Exception as phase2d_err:
-            logger.debug(f"⚠️ Erreur Phase 2D feedback: {phase2d_err}")
+                        if drift_result.get('drift_detected'):
+                            logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {result['symbol']}! "
+                                          f"PnL drift: {drift_result.get('pnl_drift')}, "
+                                          f"WinRate drift: {drift_result.get('winrate_drift')}")
+                            
+                            # Si drift détecté, reset le Threshold Optimizer
+                            if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
+                                try:
+                                    from core.ml import get_threshold_optimizer
+                                    optimizer = get_threshold_optimizer()
+                                    optimizer.reset_all()
+                                    logger.warning("🔄 Threshold Optimizer RESET suite à drift détecté")
+                                except Exception:
+                                    pass
+                    except Exception as drift_err:
+                        logger.debug(f"⚠️ Erreur update Drift Detector: {drift_err}")
+                        
+            except Exception as phase2d_err:
+                logger.debug(f"⚠️ Erreur Phase 2D feedback: {phase2d_err}")
 
         # 🔥 ATR OPTIMIZATION: Calculer What-If scénarios pour optimisation
         try:

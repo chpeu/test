@@ -18,6 +18,7 @@ Usage:
 """
 import logging
 import json
+import os
 import numpy as np
 import pandas as pd
 import joblib
@@ -26,6 +27,9 @@ from typing import Dict, Tuple, Optional, List
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+if os.name == 'nt':
+    os.environ.setdefault('LOKY_MAX_CPU_COUNT', str(os.cpu_count() or 4))
 
 
 class OptimizedPredictor:
@@ -136,11 +140,15 @@ class OptimizedPredictor:
             if self.preprocessor is not None and isinstance(self.preprocessor, dict):
                 scaler = self.preprocessor.get('scaler')
                 if scaler is not None:
-                    input_data = scaler.transform(df)
+                    scaled = scaler.transform(df)
+                    try:
+                        input_data = pd.DataFrame(scaled, columns=df.columns)
+                    except Exception:
+                        input_data = scaled
                 else:
-                    input_data = df.values
+                    input_data = df
             else:
-                input_data = df.values if isinstance(df, pd.DataFrame) else df
+                input_data = df if isinstance(df, pd.DataFrame) else df
 
             # Prédire
             proba = self.model.predict_proba(input_data)[0, 1]  # Probabilité de WIN

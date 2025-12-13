@@ -113,7 +113,7 @@ class ContextualThresholdOptimizer:
         self._load_state()
         
         # Métriques globales
-        self.total_updates = 0
+        self.total_updates = getattr(self, 'total_updates', 0)
         self.enabled = True
         
         logger.info(f"✅ ContextualThresholdOptimizer initialisé "
@@ -220,7 +220,7 @@ class ContextualThresholdOptimizer:
                    f"New threshold: {self.get_threshold(regime, session, hour, use_sampling=False):.3f}")
         
         # Sauvegarder périodiquement
-        if self.total_updates % 10 == 0:
+        if self.total_updates % 1 == 0:
             self._save_state()
     
     def get_all_thresholds(self) -> Dict[str, dict]:
@@ -309,8 +309,8 @@ class ContextualThresholdOptimizer:
                 'contexts': {k: v.to_dict() for k, v in self._context_stats.items()},
                 'saved_at': datetime.now().isoformat()
             }
-            with open(self.persistence_path, 'w') as f:
-                json.dump(state, f, indent=2)
+            with open(self.persistence_path, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
             logger.debug(f"💾 State saved to {self.persistence_path}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to save state: {e}")
@@ -357,10 +357,41 @@ def get_threshold_optimizer() -> ContextualThresholdOptimizer:
         threshold = optimizer.get_threshold('VOLATILE', 'EUROPE', 14)
     """
     global _optimizer_instance
-    
+
+    try:
+        from utils.config_persistence import get_config_value
+
+        min_threshold = float(get_config_value('threshold_min', 0.45))
+        max_threshold = float(get_config_value('threshold_max', 0.70))
+        default_threshold = float(get_config_value('gb_min_confidence', 0.55))
+        exploration_bonus = float(get_config_value('threshold_exploration_bonus', 0.05))
+        enabled = bool(get_config_value('threshold_optimizer_enabled', False))
+
+        if min_threshold > max_threshold:
+            min_threshold, max_threshold = max_threshold, min_threshold
+
+    except Exception:
+        min_threshold = 0.45
+        max_threshold = 0.70
+        default_threshold = 0.55
+        exploration_bonus = 0.05
+        enabled = True
+
     if _optimizer_instance is None:
-        _optimizer_instance = ContextualThresholdOptimizer()
-    
+        _optimizer_instance = ContextualThresholdOptimizer(
+            min_threshold=min_threshold,
+            max_threshold=max_threshold,
+            default_threshold=default_threshold,
+            exploration_bonus=exploration_bonus
+        )
+    else:
+        _optimizer_instance.min_threshold = min_threshold
+        _optimizer_instance.max_threshold = max_threshold
+        _optimizer_instance.default_threshold = default_threshold
+        _optimizer_instance.exploration_bonus = exploration_bonus
+
+    _optimizer_instance.enabled = enabled
+
     return _optimizer_instance
 
 

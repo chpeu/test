@@ -56,17 +56,19 @@ project_regime_atr_optimization/
 
 | Phase | Description | Status | Durée |
 |-------|-------------|--------|-------|
-| **0** | Infrastructure (SQL, Config, Helpers) | ⬜ TODO | 2h |
-| **1A** | Logging Contextuel | ⬜ TODO | 3h |
-| **1B** | Régime V2 Quick Wins | ⬜ TODO | 4h |
-| **1C** | What-If Régime | ⬜ TODO | 3h |
-| **1D** | Intégration Composants | ⬜ TODO | 4h |
-| ⏸️ | *Accumulation 50+ trades* | - | ~1 sem |
-| **2A** | Analyse Corrélations | ⬜ TODO | 4h |
-| **2B** | Dashboard Monitoring | ⬜ TODO | 6h |
-| **2C** | Optimizer Suggestions | ⬜ TODO | 4h |
-| **2D** | ML Param Optimizer | ⬜ TODO | 10h |
-| ⏸️ | *Accumulation 200+ trades* | - | ~2 sem |
+| **0** | Infrastructure (SQL, Config, Helpers) | ✅ DONE | 2h |
+| **1A** | Logging Contextuel | ✅ DONE | 3h |
+| **1B** | Régime V2 Quick Wins | ✅ DONE | 4h |
+| **1C** | What-If Régime | ✅ DONE | 3h |
+| **1D** | Intégration Composants (Frontend) | ✅ DONE | 4h |
+| **1E** | Auto-Calibration + BTC Indicator | ✅ DONE | ~6h |
+| ⏸️ | *Accumulation 50+ trades* | ✅ DONE | ~1 sem |
+| **2A** | Analyse Corrélations | ✅ DONE | 4h |
+| **2B** | Dashboard Monitoring | ✅ DONE | 6h |
+| **2C** | Optimizer Suggestions | 🗑️ SUPPRIMÉ | - |
+| **2D** | ML Auto-Adaptation (Threshold + Drift) | ✅ DONE | 10h |
+| **2E** | Filtres ML Stricts (dataset training) | ✅ DONE | ~2h |
+| ⏸️ | *Accumulation 200+ trades* | ⏳ EN COURS | ~2 sem |
 | **3A** | ML Regime Detector | ⬜ TODO | 8h |
 | **3B** | GB Feature Integration | ⬜ TODO | 4h |
 | **3C** | Auto-Apply & Rollback | ⬜ TODO | 8h |
@@ -107,3 +109,13 @@ Après chaque session de travail:
 2. Cocher les tâches complétées
 3. Noter les problèmes rencontrés
 4. Ajouter les métriques actuelles
+
+---
+
+## ✅ VÉRIFICATION RAPIDE (runtime)
+
+Scripts:
+
+1. `python verification\verify_runtime_loop.py --loops 1 --interval 1`
+2. `python verification\verify_phase1b_v2_methods.py`
+3. `python verification\verify_phase2d_integration.py`

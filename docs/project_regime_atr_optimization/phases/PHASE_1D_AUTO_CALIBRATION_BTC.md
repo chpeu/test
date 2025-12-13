@@ -1,7 +1,7 @@
-# 🎯 PHASE 1D : Auto-Calibration Seuils ATR + BTC Indicateur
+# 🎯 PHASE 1E : Auto-Calibration Seuils ATR + BTC Indicateur
 
 > **Date création:** 11/12/2025
-> **Status:** 🔄 EN COURS
+> **Status:** ✅ COMPLET
 > **Prérequis:** Phase 1B (Régime V2) - Hystérésis/Médiane
 > **Effort estimé:** ~6h
 > **Décision:** Brainstorming Option D
@@ -88,18 +88,17 @@ Ajouter la tendance/volatilité BTC comme **confirmation** du régime:
 # config.py - Section MARKET_REGIME_V2_CONFIG
 {
     # Auto-calibration (NOUVEAU)
-    "auto_calibration_enabled": False,      # Toggle principal
-    "calibration_lookback_days": 7,         # Fenêtre historique
-    "calibration_percentile_calme": 33,     # P33 = seuil CALME
-    "calibration_percentile_volatile": 66,  # P66 = seuil VOLATILE
-    "calibration_refresh_hours": 6,         # Recalculer toutes les 6h
-    "calibration_min_samples": 50,          # Minimum samples requis
+    "market_regime_auto_calibration_enabled": False,
+    "market_regime_calibration_lookback_days": 7,
+    "market_regime_calibration_percentile_calme": 33,
+    "market_regime_calibration_percentile_volatile": 66,
+    "market_regime_calibration_min_samples": 50,
     
     # BTC Indicator (NOUVEAU)
-    "btc_indicator_enabled": False,         # Toggle principal
-    "btc_volatile_threshold_1h": 2.0,       # % variation 1h = volatile
-    "btc_trend_threshold_24h": 5.0,         # % variation 24h = trend fort
-    "btc_force_volatile_enabled": True,     # Forcer VOLATILE si BTC volatile
+    "market_regime_btc_indicator_enabled": False,
+    "market_regime_btc_volatile_threshold_1h": 2.0,
+    "market_regime_btc_trend_threshold_24h": 5.0,
+    "market_regime_btc_force_volatile_enabled": True,
 }
 ```
 
@@ -126,13 +125,14 @@ async def calibrate_thresholds(self) -> Dict[str, float]:
             'threshold_volatile': 0.40
         }
     
-    lookback_days = get_config_value('calibration_lookback_days', 7)
-    p_calme = get_config_value('calibration_percentile_calme', 33)
-    p_volatile = get_config_value('calibration_percentile_volatile', 66)
-    min_samples = get_config_value('calibration_min_samples', 50)
+    lookback_days = get_config_value('market_regime_calibration_lookback_days', 7)
+    p_calme = get_config_value('market_regime_calibration_percentile_calme', 33)
+    p_volatile = get_config_value('market_regime_calibration_percentile_volatile', 66)
+    min_samples = get_config_value('market_regime_calibration_min_samples', 50)
     
     # Query PostgreSQL pour percentiles
-    # ... (voir implémentation complète)
+    # Implémentation runtime: utilise core.postgresql_datalogger (psycopg2 pool)
+    # pour éviter toute dépendance à asyncpg/database.postgres_pool.
     
     return calibrated_thresholds
 ```
@@ -164,20 +164,20 @@ class BTCIndicator:
 ## ✅ CHECKLIST IMPLÉMENTATION
 
 ### Phase 1D-A: Auto-Calibration (3h)
-- [ ] Ajouter méthode `calibrate_thresholds()` dans MarketRegimeSelector
-- [ ] Query SQL pour percentiles historiques
-- [ ] Cache des seuils calibrés (refresh toutes les 6h)
-- [ ] Toggle dans config + frontend
-- [ ] Log des seuils calibrés
-- [ ] Test: vérifier que seuils changent avec données
+- [x] Ajouter méthode `calibrate_thresholds()` dans MarketRegimeSelector
+- [x] Query SQL pour percentiles historiques
+- [x] Cache des seuils calibrés (refresh 6h)
+- [x] Toggle dans config + frontend
+- [x] Log des seuils calibrés
+- [x] Test: vérifier que seuils changent avec données
 
 ### Phase 1D-B: BTC Indicator (3h)
-- [ ] Créer `core/btc_indicator.py`
-- [ ] Intégrer appel MEXC API (get_ticker BTCUSDT)
-- [ ] Calcul pct_change 1h et 24h
-- [ ] Intégrer dans `determine_regime()` comme confirmation
-- [ ] Toggle dans config + frontend
-- [ ] Test: vérifier que BTC volatile force VOLATILE
+- [x] Créer `core/btc_indicator.py`
+- [x] Intégrer appel MEXC API (get_ticker BTCUSDT)
+- [x] Calcul pct_change 1h et 24h
+- [x] Intégrer dans `determine_regime()` comme confirmation
+- [x] Toggle dans config + frontend
+- [x] Test: vérifier que BTC volatile force VOLATILE
 
 ---
 

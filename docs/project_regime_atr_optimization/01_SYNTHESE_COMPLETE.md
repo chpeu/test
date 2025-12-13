@@ -1,7 +1,7 @@
 # 📋 SYNTHÈSE COMPLÈTE - IMPLÉMENTATION MARKET REGIME V2 + ATR OPTIMIZATION
 ## Document Consolidé Final
 
-> **Version:** 2.0 | **Date:** 10/12/2025 | **Statut:** 📝 Planification Finalisée
+> **Version:** 2.1 | **Date:** 13/12/2025 | **Statut:** ✅ Phases 0-2E implémentées + vérifiées runtime
 > 
 > **Principe Cardinal:** 🔄 **BOT TOUJOURS RUNNING** - Accumulation continue de données
 
@@ -173,7 +173,7 @@ def log_trade_atr_metrics(self, trade_id, trade_data):
 |--------|---------|-------------|
 | MODIFY | `core/market_regime_selector.py` | Ajouter 6 nouvelles méthodes |
 | MODIFY | `frontend/.../VariablesPanel.svelte` | Ajouter toggles V2 |
-| CREATE | `verification/verify_regime_v2.py` | Tests régime V2 |
+| CREATE | `verification/verify_phase1b_v2_methods.py` | Tests régime V2 |
 
 **Nouvelles méthodes:**
 ```python
@@ -189,11 +189,11 @@ def apply_smoothing(self, new_value) -> float
 # 4. Combinaison ATR 1m + 5m
 def calculate_combined_atr(self, atr_1m, atr_5m) -> float
 
-# 5. Seuils ajustés par session
-def get_session_adjusted_thresholds(self) -> Dict
+# 5. Détermination régime (calibration + BTC + saisonnalité optionnelle)
+def determine_regime(self, avg_atr, avg_adx=25.0) -> MarketRegime
 
-# 6. Check complet V2
-async def check_regime_v2(self, atr_1m, atr_5m, adx, force) -> Tuple
+# 6. Check runtime unique (V2 activé via toggles)
+async def check_regime(self, atr_values, atr_5m_values=None, adx_values=None, force=False, trigger='auto') -> Tuple
 ```
 
 **Frontend toggles à ajouter:**

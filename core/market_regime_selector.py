@@ -221,6 +221,9 @@ class MarketRegimeSelector:
         self.last_outliers_count: int = 0
         self.hysteresis_was_applied: bool = False
         self._ema_value: Optional[float] = None
+
+        self._calibration_task = None
+        self._last_calibration_attempt: Optional[datetime] = None
         
         # Initialiser
         self._load_regime_configs()
@@ -471,12 +474,17 @@ class MarketRegimeSelector:
         
         # Calcul ATR 1m (avec médiane/outliers si activés)
         atr_1m = self.calculate_atr_metric(atr_1m_values)
+        last_atr_median_1m = getattr(self, 'last_atr_median', None)
+        last_outliers_count_1m = getattr(self, 'last_outliers_count', 0)
         
         if not use_atr_5m or not atr_5m_values:
             return atr_1m
         
         # Calcul ATR 5m
         atr_5m = self.calculate_atr_metric(atr_5m_values)
+        # Préserver les métriques V2 (médiane/outliers) de l'ATR 1m pour le logging
+        self.last_atr_median = last_atr_median_1m
+        self.last_outliers_count = last_outliers_count_1m
         
         # Pondération
         combined = weight_1m * atr_1m + weight_5m * atr_5m
@@ -518,10 +526,10 @@ class MarketRegimeSelector:
         
         try:
             # Query PostgreSQL pour percentiles
-            from database.postgres_pool import get_postgres_pool
-            pool = get_postgres_pool()
+            from core.postgresql_datalogger import get_pg_datalogger
+            pg_logger = get_pg_datalogger()
             
-            if not pool:
+            if not pg_logger or not getattr(pg_logger, 'enabled', False):
                 logger.warning("⚠️ Calibration: Pool PostgreSQL non disponible")
                 return default_thresholds
             
@@ -535,31 +543,35 @@ class MarketRegimeSelector:
                   AND avg_atr IS NOT NULL
                   AND avg_atr > 0
             """
-            
-            async with pool.acquire() as conn:
-                row = await conn.fetchrow(query)
-            
-            if not row or row['samples'] < min_samples:
+
+            result = pg_logger._execute_query(query, fetch=True)
+            row = result[0] if result else None
+
+            samples = int(row[0]) if row and row[0] is not None else 0
+            p_calme_val = float(row[1]) if row and row[1] is not None else None
+            p_volatile_val = float(row[2]) if row and row[2] is not None else None
+
+            if samples < min_samples or p_calme_val is None or p_volatile_val is None:
                 logger.info(
-                    f"📊 Calibration: Pas assez de données ({row['samples'] if row else 0}/{min_samples}), "
+                    f"📊 Calibration: Pas assez de données ({samples}/{min_samples}), "
                     f"utilisation seuils fixes"
                 )
                 return default_thresholds
             
-            threshold_calme = float(row['p_calme'])
-            threshold_volatile = float(row['p_volatile'])
+            threshold_calme = p_calme_val
+            threshold_volatile = p_volatile_val
             
             # Stocker en cache
             self._calibrated_thresholds = {
                 'threshold_calme': round(threshold_calme, 4),
                 'threshold_volatile': round(threshold_volatile, 4),
                 'calibrated': True,
-                'samples': row['samples'],
+                'samples': samples,
                 'timestamp': datetime.now()
             }
             
             logger.info(
-                f"✅ Calibration réussie ({row['samples']} samples, {lookback_days}j): "
+                f"✅ Calibration réussie ({samples} samples, {lookback_days}j): "
                 f"CALME < {threshold_calme:.3f}% (P{p_calme}) | "
                 f"VOLATILE > {threshold_volatile:.3f}% (P{p_volatile})"
             )
@@ -708,6 +720,7 @@ class MarketRegimeSelector:
     async def check_regime(
         self,
         atr_values: List[float],
+        atr_5m_values: Optional[List[float]] = None,
         adx_values: Optional[List[float]] = None,
         force: bool = False,
         trigger: str = "auto"
@@ -725,20 +738,43 @@ class MarketRegimeSelector:
             Tuple (régime actuel, changement effectué)
         """
         now = datetime.now()
+
+        from utils.config_persistence import get_config_value
+
+        try:
+            if get_config_value('market_regime_btc_indicator_enabled', False):
+                try:
+                    await asyncio.wait_for(self.get_btc_status(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            if get_config_value('market_regime_auto_calibration_enabled', False):
+                should_calibrate = True
+                cache = getattr(self, '_calibrated_thresholds', None)
+                if isinstance(cache, dict):
+                    ts = cache.get('timestamp')
+                    if isinstance(ts, datetime):
+                        if (now - ts).total_seconds() < 6 * 3600:
+                            should_calibrate = False
+
+                if should_calibrate:
+                    last_attempt = getattr(self, '_last_calibration_attempt', None)
+                    if not last_attempt or (now - last_attempt).total_seconds() >= 30 * 60:
+                        task = getattr(self, '_calibration_task', None)
+                        if not task or task.done():
+                            self._calibration_task = asyncio.create_task(self.calibrate_thresholds())
+                        self._last_calibration_attempt = now
+        except Exception:
+            pass
         
         # 🔥 FIX: Toujours mettre à jour les valeurs ATR/ADX pour le widget Samples
         # (même si on ne fait pas de check complet)
         if atr_values:
             self.atr_values = atr_values
             self.atr_sample_count = len(atr_values)
-        
-        # Vérifier si on doit checker
-        if not force and self.last_check:
-            if now < self.last_check + self.check_interval:
-                return self.current_regime, False
-        
-        from utils.config_persistence import get_config_value
-
         # Calculer moyennes
         if not atr_values:
             logger.warning("⚠️ Pas de valeurs ATR fournies")
@@ -746,7 +782,7 @@ class MarketRegimeSelector:
 
         v2_enabled = get_config_value('market_regime_v2_enabled', False)
         if v2_enabled:
-            atr_metric = self.calculate_atr_metric(atr_values)
+            atr_metric = self.calculate_combined_atr(atr_values, atr_5m_values or [])
             self.avg_atr = self.apply_smoothing(atr_metric)
         else:
             self.avg_atr = sum(atr_values) / len(atr_values)
@@ -756,6 +792,11 @@ class MarketRegimeSelector:
         new_regime = self.determine_regime(self.avg_atr, self.avg_adx)
         old_regime = self.current_regime
         changed = new_regime != old_regime
+
+        if changed and v2_enabled:
+            if not self.should_change_regime(old_regime, new_regime, self.avg_atr):
+                changed = False
+                new_regime = old_regime
 
         if changed and not force and trigger == "auto" and self.regime_since:
             min_duration_minutes = get_config_value('market_regime_min_duration_minutes', 30)

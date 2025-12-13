@@ -237,9 +237,10 @@ class MarketDriftDetector:
             self._record_drift_event(pnl_drift, winrate_drift)
             self.trades_since_alert = 0
             logger.warning(f"⚠️ DRIFT DÉTECTÉ! PnL: {pnl_drift}, WinRate: {winrate_drift}")
+            self._save_state()
         
         # Sauvegarder périodiquement
-        if self.total_trades % 50 == 0:
+        if self.total_trades % 10 == 0:
             self._save_state()
         
         return result
@@ -308,6 +309,8 @@ class MarketDriftDetector:
             state = {
                 'total_trades': self.total_trades,
                 'trades_since_alert': self.trades_since_alert,
+                'pnl_window': list(self.pnl_detector.window),
+                'winrate_window': list(self.winrate_detector.window),
                 'drift_history': [d.to_dict() for d in self.drift_history],
                 'saved_at': datetime.now().isoformat()
             }
@@ -327,6 +330,18 @@ class MarketDriftDetector:
             
             self.total_trades = state.get('total_trades', 0)
             self.trades_since_alert = state.get('trades_since_alert', 0)
+
+            pnl_window = state.get('pnl_window', [])
+            if isinstance(pnl_window, list):
+                self.pnl_detector.window.clear()
+                self.pnl_detector.window.extend([float(v) for v in pnl_window if v is not None])
+                self.pnl_detector.width = len(self.pnl_detector.window)
+
+            winrate_window = state.get('winrate_window', [])
+            if isinstance(winrate_window, list):
+                self.winrate_detector.window.clear()
+                self.winrate_detector.window.extend([float(v) for v in winrate_window if v is not None])
+                self.winrate_detector.width = len(self.winrate_detector.window)
             
             for d in state.get('drift_history', []):
                 self.drift_history.append(DriftEvent(**d))
@@ -340,9 +355,42 @@ class MarketDriftDetector:
 def get_drift_detector() -> MarketDriftDetector:
     """Retourne l'instance singleton du détecteur."""
     global _detector_instance
+
+    try:
+        from utils.config_persistence import get_config_value
+
+        pnl_delta = float(get_config_value('drift_pnl_delta', 0.002))
+        winrate_delta = float(get_config_value('drift_winrate_delta', 0.005))
+        min_window = int(get_config_value('drift_min_window', 20))
+        alert_cooldown = int(get_config_value('drift_alert_cooldown', 50))
+        enabled = bool(get_config_value('drift_detection_enabled', True))
+
+    except Exception:
+        pnl_delta = 0.002
+        winrate_delta = 0.005
+        min_window = 20
+        alert_cooldown = 50
+        enabled = True
     
     if _detector_instance is None:
-        _detector_instance = MarketDriftDetector()
+        _detector_instance = MarketDriftDetector(
+            pnl_delta=pnl_delta,
+            winrate_delta=winrate_delta,
+            min_window=min_window,
+            alert_cooldown=alert_cooldown
+        )
+    else:
+        _detector_instance.alert_cooldown = alert_cooldown
+        _detector_instance.enabled = enabled
+        try:
+            _detector_instance.pnl_detector.delta = pnl_delta
+            _detector_instance.winrate_detector.delta = winrate_delta
+            _detector_instance.pnl_detector.min_window = min_window
+            _detector_instance.winrate_detector.min_window = min_window
+        except Exception:
+            pass
+
+    _detector_instance.enabled = enabled
     
     return _detector_instance
 

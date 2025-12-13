@@ -1,7 +1,7 @@
 # 📋 MASTER IMPLEMENTATION PLAN
 ## Market Regime V2 + ATR Optimization + ML Integration
 
-> **Version:** 1.1.0 | **Date:** 10/12/2025 | **Statut:** 📝 Planification
+> **Version:** 1.2.0 | **Date:** 13/12/2025 | **Statut:** ✅ Phases 0-2E opérationnelles (Phase 3 en pause)
 
 ---
 
@@ -83,10 +83,10 @@ PHASE 2A: Analyse Corrélations (4h) ← Session ↔ WinRate, Régime ↔ PnL
 PHASE 2B: Dashboard Monitoring (6h) ← UI visualisation par session/régime
     │                                  (= ATR_OPT Phase 1.5)
     ▼
-PHASE 2C: Optimizer Suggestions (4h)← Suggestions rule-based
+PHASE 2C: Optimizer Suggestions (SUPPRIMÉ) ← remplacé par 2D (auto-adaptation)
     │
     ▼
-PHASE 2D: ML Param Optimizer (10h)  ← 🆕 ML optimise SL/TP par régime
+PHASE 2D: Auto-Adaptation ML (10h)  ← Threshold Optimizer + Drift Detector
     │                                  (= ATR_OPT Phase 2.1)
     ▼
 ══════════════════════════════════════════════════════════════
@@ -150,7 +150,7 @@ Cette approche combine votre GradientBoosting actuel (Moteur) avec le nouveau sy
 | MODIFY | `core/postgresql_datalogger.py` | +session_market, hour_utc dans logs |
 | MODIFY | `core/market_regime_selector.py` | +métadonnées dans regime_history |
 | MODIFY | `export_datalogger_to_excel.py` | Inclure nouvelles colonnes |
-| CREATE | `verification/verify_phase_1a_logging.py` | Vérification |
+| CREATE | `verification/verify_phase1a_logging.py` | Vérification |
 
 ### PHASE 1B: Régime V2
 
@@ -158,7 +158,7 @@ Cette approche combine votre GradientBoosting actuel (Moteur) avec le nouveau sy
 |--------|---------|-------------|
 | MODIFY | `core/market_regime_selector.py` | Médiane, Hystérésis, Lissage, ATR5m |
 | MODIFY | `frontend/.../VariablesPanel.svelte` | Toggles UI |
-| CREATE | `verification/verify_phase_1b_regime_v2.py` | Tests V2 |
+| CREATE | `verification/verify_phase1b_v2_methods.py` | Tests V2 |
 
 ### PHASE 1C: What-If Régime
 
@@ -287,33 +287,33 @@ regime_confidence_at_scan FLOAT
 ## ✅ CHECKLISTS PAR PHASE
 
 ### Phase 0 Checklist
-- [ ] Migration SQL créée
-- [ ] Migration exécutée sans erreur
-- [ ] `session_detector.py` créé et testé
-- [ ] Config variables ajoutées
-- [ ] Export Excel mis à jour
+- [x] Migration SQL créée
+- [x] Migration exécutée sans erreur
+- [x] `session_detector.py` créé et testé
+- [x] Config variables ajoutées
+- [x] Export Excel mis à jour
 
 ### Phase 1A Checklist
-- [ ] Logger trade_atr_metrics enrichi
-- [ ] Logger scan_logs enrichi
-- [ ] Logger regime_history enrichi
-- [ ] Vérification: 1 trade loggé avec session_market
+- [x] Logger trade_atr_metrics enrichi
+- [x] Logger scan_logs enrichi
+- [x] Logger regime_history enrichi
+- [x] Vérification: 1 trade loggé avec session_market
 
 ### Phase 1B Checklist
-- [ ] `calculate_atr_metric()` (médiane) implémenté
-- [ ] `should_change_regime()` (hystérésis) implémenté
-- [ ] `apply_smoothing()` (EMA) implémenté
-- [ ] `calculate_combined_atr()` (1m+5m) implémenté
-- [ ] `get_session_adjusted_thresholds()` implémenté
-- [ ] `check_regime_v2()` assemblé
-- [ ] Frontend toggles ajoutés
-- [ ] Vérification: régime stable sur 2h
+- [x] `calculate_atr_metric()` (médiane) implémenté
+- [x] `should_change_regime()` (hystérésis) implémenté
+- [x] `apply_smoothing()` (EMA) implémenté
+- [x] `calculate_combined_atr()` (1m+5m) implémenté
+- [x] Scanner: calcul `atr_percent_5m`
+- [x] Runtime: `check_regime(atr_values, atr_5m_values, adx_values)`
+- [x] Frontend toggles ajoutés
+- [x] Vérification: régime stable (min duration + hystérésis)
 
 ### Phase 1C Checklist
-- [ ] `simulate_regime_scenarios()` implémenté
-- [ ] Intégration dans `close_position()`
-- [ ] Backfill trades existants
-- [ ] Vue SQL `v_optimal_regime_analysis`
+- [x] `simulate_regime_scenarios()` implémenté
+- [x] Intégration dans `close_position()`
+- [x] Backfill trades existants
+- [x] Vue SQL `v_optimal_regime_analysis`
 
 ---
 
@@ -338,8 +338,8 @@ core/market_regime_selector.py
         ├── should_change_regime() ← NOUVEAU
         ├── apply_smoothing() ← NOUVEAU
         ├── calculate_combined_atr() ← NOUVEAU
-        ├── get_session_adjusted_thresholds() ← NOUVEAU
-        ├── check_regime_v2() ← NOUVEAU (appelle tous les précédents)
+        ├── determine_regime() ← MODIFIÉ (calibration + BTC + saisonnalité optionnelle)
+        ├── check_regime() ← MODIFIÉ (V2 activé via toggles)
         └── _log_regime_change_to_db() ← MODIFIÉ
 ```
 

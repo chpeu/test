@@ -1,9 +1,9 @@
 # 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 11/12/2025 21:55
-> **Status global:** ✅ PHASES 1-2E + 1E COMPLÈTES | Auto-Calibration + BTC prêts
-> **Phase actuelle:** ⏸️ PAUSE ACCUMULATION - Toggles 1E OFF par défaut
+> **Dernière mise à jour:** 13/12/2025 00:48
+> **Status global:** ✅ PHASES 0-2E OPÉRATIONNELLES | Correctifs runtime Phase 1B/1E/2D vérifiés
+> **Phase actuelle:** ▶️ RUNNING (V2 + Auto-Calibration + BTC + 2D ON) | Objectif: accumulation 200+ trades + monitoring drift
 
 ---
 
@@ -16,6 +16,28 @@ Créer un système d'optimisation intelligent qui:
 4. **Applique** les optimisations automatiquement avec rollback de sécurité
 
 ---
+
+## ✅ ÉTAT RUNTIME (13/12/2025)
+
+- **Régime V2**
+  - `market_regime_v2_enabled` utilise:
+    - ATR 5m (`atr_percent_5m`) remonté par le scanner
+    - `calculate_combined_atr()` + `apply_smoothing()`
+    - hystérésis `should_change_regime()`
+- **Phase 1E (Auto-Calibration + BTC)**
+  - Déclenchement périodique depuis `check_regime()` (cache 6h + cooldown tentative)
+  - Calibration via `core.postgresql_datalogger` (pas de module `database.postgres_pool`)
+- **Phase 2D (Auto-Adaptation ML)**
+  - `threshold_optimizer` + `drift_detector` rechargent la config runtime via `config_overrides.json`
+  - Persistence:
+    - `data/ml/threshold_optimizer_state.json` (save à chaque update)
+    - `data/ml/drift_detector_state.json` (créé après volume suffisant)
+
+### Scripts de vérification
+
+- `python verification\verify_runtime_loop.py --loops 1 --interval 1`
+- `python verification\verify_phase1b_v2_methods.py`
+- `python verification\verify_phase2d_integration.py`
 
 ## 📁 STRUCTURE DU DOSSIER
 
@@ -159,7 +181,18 @@ docs/project_regime_atr_optimization/
 | Trades avec What-If régime | 50+ | 56 | ✅ |
 | Nouveaux trades post-Phase 1D | 50+ | 0 | ⏳ EN COURS |
 
-**Paramètres Accumulation (11/12/2025):**
+**Paramètres runtime (13/12/2025):**
+- `market_regime_v2_enabled`: ON
+- `market_regime_use_median`: ON
+- `market_regime_use_hysteresis`: ON
+- `market_regime_use_smoothing`: ON
+- `market_regime_use_atr_5m`: ON
+- `market_regime_auto_calibration_enabled`: ON
+- `market_regime_btc_indicator_enabled`: ON
+- `threshold_optimizer_enabled`: ON
+- `drift_detection_enabled`: ON
+
+**Historique (snapshot 11/12/2025 - accumulation V1):**
 - `market_regime_v2_enabled`: OFF (comportement V1)
 - `market_regime_outlier_filter`: ON (seul toggle actif)
 - Tous autres toggles: OFF

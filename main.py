@@ -1109,13 +1109,17 @@ async def scanner_loop_callback() -> None:
                 
                 # Extraire ATR et ADX des top pairs
                 atr_values = []
+                atr_5m_values = []
                 adx_values = []
                 for pair in app_state['top_pairs'][:10]:
                     atr = pair.get('atr_percent') or pair.get('atr', 0)
+                    atr_5m = pair.get('atr_percent_5m')
                     adx = pair.get('adx', 25)
                     if atr and float(atr) > 0:
                         atr_values.append(float(atr))
                         adx_values.append(float(adx))
+                        if atr_5m is not None and float(atr_5m) > 0:
+                            atr_5m_values.append(float(atr_5m))
                 
                 if atr_values:
                     # 🔥 FIX: Stocker les échantillons pour l'affichage dans le widget
@@ -1133,6 +1137,7 @@ async def scanner_loop_callback() -> None:
 
                     new_regime, changed = await regime_selector.check_regime(
                         atr_values=atr_values,
+                        atr_5m_values=atr_5m_values,
                         adx_values=adx_values,
                         force=force_check,
                         trigger="auto"
@@ -1592,13 +1597,14 @@ async def scanner_loop_callback() -> None:
                                                         try:
                                                             from core.ml import get_threshold_optimizer
                                                             from core.market_regime_selector import get_regime_selector
-                                                            from utils.session_detector import detect_current_session
+                                                            from utils.session_detector import get_current_session
                                                             
                                                             # Récupérer le contexte
                                                             regime_selector = get_regime_selector()
                                                             current_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
-                                                            current_session = detect_current_session()
-                                                            current_hour = datetime.now().hour
+                                                            session_info = get_current_session()
+                                                            current_session = session_info.get('name', 'UNKNOWN') if isinstance(session_info, dict) else 'UNKNOWN'
+                                                            current_hour = int(session_info.get('hour_utc', datetime.utcnow().hour)) if isinstance(session_info, dict) else datetime.utcnow().hour
                                                             
                                                             # Obtenir le seuil dynamique
                                                             optimizer = get_threshold_optimizer()
@@ -1612,6 +1618,7 @@ async def scanner_loop_callback() -> None:
                                                             # Stocker le contexte dans le setup pour le feedback loop
                                                             setup['_market_regime'] = current_regime
                                                             setup['_trading_session'] = current_session
+                                                            setup['_trade_hour'] = current_hour
                                                         except Exception as opt_err:
                                                             logger.debug(f"⚠️ Threshold optimizer error, using default: {opt_err}")
                                                     
@@ -4219,12 +4226,14 @@ async def scan_top_pairs_task(n):
             
             # Extraire ATR et ADX des paires
             atr_values = [p.get('atr_percent', 0) for p in top_pairs if p.get('atr_percent') is not None]
+            atr_5m_values = [p.get('atr_percent_5m', 0) for p in top_pairs if p.get('atr_percent_5m') is not None]
             adx_values = [p.get('adx', 0) for p in top_pairs if p.get('adx') is not None]
             
             if atr_values:
                 # Forcer la mise à jour pour avoir les métriques fraîches
                 regime, changed = await regime_selector.check_regime(
                     atr_values=atr_values,
+                    atr_5m_values=atr_5m_values,
                     adx_values=adx_values,
                     force=True,  # On force pour mettre à jour l'affichage
                     trigger="scan"

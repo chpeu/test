@@ -163,16 +163,37 @@ async def update_ml_config(config: MLConfigUpdate):
             TRADING_CONFIG['threshold_optimizer_enabled'] = config.threshold_optimizer_enabled
             updated['threshold_optimizer_enabled'] = config.threshold_optimizer_enabled
             logger.info(f"✅ Threshold optimizer {'activé' if config.threshold_optimizer_enabled else 'désactivé'}")
+
+            try:
+                from core.ml import get_threshold_optimizer
+                optimizer = get_threshold_optimizer()
+                optimizer.enabled = bool(config.threshold_optimizer_enabled)
+            except Exception:
+                pass
         
         if config.threshold_min is not None:
             val = max(0.30, min(0.60, config.threshold_min))
             TRADING_CONFIG['threshold_min'] = val
             updated['threshold_min'] = val
+
+            try:
+                from core.ml import get_threshold_optimizer
+                optimizer = get_threshold_optimizer()
+                optimizer.min_threshold = float(val)
+            except Exception:
+                pass
         
         if config.threshold_max is not None:
             val = max(0.50, min(0.80, config.threshold_max))
             TRADING_CONFIG['threshold_max'] = val
             updated['threshold_max'] = val
+
+            try:
+                from core.ml import get_threshold_optimizer
+                optimizer = get_threshold_optimizer()
+                optimizer.max_threshold = float(val)
+            except Exception:
+                pass
         
         if config.drift_detection_enabled is not None:
             TRADING_CONFIG['drift_detection_enabled'] = config.drift_detection_enabled
@@ -185,6 +206,37 @@ async def update_ml_config(config: MLConfigUpdate):
                 detector.enabled = config.drift_detection_enabled
             except:
                 pass
+
+        if config.drift_pnl_delta is not None:
+            try:
+                val = float(config.drift_pnl_delta)
+                TRADING_CONFIG['drift_pnl_delta'] = val
+                updated['drift_pnl_delta'] = val
+
+                from core.ml import get_drift_detector
+                detector = get_drift_detector()
+                detector.pnl_detector.delta = val
+            except Exception:
+                pass
+
+        if config.drift_winrate_delta is not None:
+            try:
+                val = float(config.drift_winrate_delta)
+                TRADING_CONFIG['drift_winrate_delta'] = val
+                updated['drift_winrate_delta'] = val
+
+                from core.ml import get_drift_detector
+                detector = get_drift_detector()
+                detector.winrate_detector.delta = val
+            except Exception:
+                pass
+
+        try:
+            if updated:
+                from utils.config_persistence import save_config_overrides
+                save_config_overrides(updated)
+        except Exception:
+            pass
         
         return {
             "success": True,
