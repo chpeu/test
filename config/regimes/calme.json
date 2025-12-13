@@ -1,7 +1,7 @@
 {
   "name": "CALME",
-  "optimal_atr_min": 0.0,
-  "optimal_atr_max": 0.15,
+  "optimal_atr_min": 0.10,
+  "optimal_atr_max": 0.20,
   "min_score_required": 9.0,
   "atr_mult_sl": 0.8,
   "atr_mult_tp": 1.8,
@@ -13,6 +13,6 @@
   "stagnation_timeout": 360,
   "stagnation_min_pnl": 0.05,
   "stagnation_max_loss": -0.08,
-  "optimal_atr_min_5m": 0.1,
-  "optimal_atr_max_5m": 0.35
+  "optimal_atr_min_5m": 0.35,
+  "optimal_atr_max_5m": 0.50
 }

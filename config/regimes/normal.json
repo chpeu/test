@@ -1,7 +1,7 @@
 {
   "name": "NORMAL",
   "optimal_atr_min": 0.15,
-  "optimal_atr_max": 0.25,
+  "optimal_atr_max": 0.30,
   "min_score_required": 8.0,
   "atr_mult_sl": 1.2,
   "atr_mult_tp": 2.2,
@@ -13,6 +13,6 @@
   "stagnation_timeout": 480,
   "stagnation_min_pnl": 0.04,
   "stagnation_max_loss": -0.1,
-  "optimal_atr_min_5m": 0.2,
-  "optimal_atr_max_5m": 0.6
+  "optimal_atr_min_5m": 0.35,
+  "optimal_atr_max_5m": 0.80
 }

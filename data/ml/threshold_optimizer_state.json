@@ -1,5 +1,5 @@
 {
-  "total_updates": 31,
+  "total_updates": 46,
   "contexts": {
     "UNKNOWN_UNKNOWN_5": {
       "alpha": 10.0,
@@ -26,12 +26,12 @@
       "last_update": "2025-12-12T06:14:18.411658"
     },
     "CALME_EUROPE_2": {
-      "alpha": 1.0,
+      "alpha": 2.0,
       "beta": 1.0,
-      "total_trades": 0,
-      "total_wins": 0,
-      "total_pnl": 0.0,
-      "last_update": null
+      "total_trades": 1,
+      "total_wins": 1,
+      "total_pnl": 0.14394554609311866,
+      "last_update": "2025-12-13T11:36:06.131955"
     },
     "NORMAL_US_3": {
       "alpha": 1.0,
@@ -112,7 +112,71 @@
       "total_wins": 0,
       "total_pnl": -0.6140137160198492,
       "last_update": "2025-12-13T10:00:18.891586"
+    },
+    "CALME_EUROPE_3": {
+      "alpha": 2.0,
+      "beta": 3.0,
+      "total_trades": 3,
+      "total_wins": 1,
+      "total_pnl": -0.038554398690857535,
+      "last_update": "2025-12-13T13:45:48.816506"
+    },
+    "CALME_US_PREMARKET_3": {
+      "alpha": 1.0,
+      "beta": 1.0,
+      "total_trades": 0,
+      "total_wins": 0,
+      "total_pnl": 0.0,
+      "last_update": null
+    },
+    "NORMAL_US_PREMARKET_3": {
+      "alpha": 2.0,
+      "beta": 3.0,
+      "total_trades": 3,
+      "total_wins": 1,
+      "total_pnl": -0.09662959811027041,
+      "last_update": "2025-12-13T14:55:29.184586"
+    },
+    "NORMAL_US_OPEN_3": {
+      "alpha": 2.0,
+      "beta": 3.0,
+      "total_trades": 3,
+      "total_wins": 1,
+      "total_pnl": 0.11067815021515323,
+      "last_update": "2025-12-13T16:40:38.391706"
+    },
+    "CALME_US_OPEN_3": {
+      "alpha": 1.0,
+      "beta": 1.0,
+      "total_trades": 0,
+      "total_wins": 0,
+      "total_pnl": 0.0,
+      "last_update": null
+    },
+    "CALME_US_SESSION_4": {
+      "alpha": 1.0,
+      "beta": 4.0,
+      "total_trades": 3,
+      "total_wins": 0,
+      "total_pnl": -0.6201865448313947,
+      "last_update": "2025-12-13T17:28:20.678972"
+    },
+    "NORMAL_US_SESSION_4": {
+      "alpha": 1.0,
+      "beta": 3.0,
+      "total_trades": 2,
+      "total_wins": 0,
+      "total_pnl": -0.7127260466783886,
+      "last_update": "2025-12-13T18:42:36.193710"
+    },
+    "CHOPPY_US_SESSION_4": {
+      "alpha": 1.0,
+      "beta": 1.0,
+      "total_trades": 0,
+      "total_wins": 0,
+      "total_pnl": 0.0,
+      "last_update": null
     }
   },
-  "saved_at": "2025-12-13T10:00:18.891586"
+  "saved_at": "2025-12-13T18:42:36.193710"
 }

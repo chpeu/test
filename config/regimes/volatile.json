@@ -1,7 +1,7 @@
 {
   "name": "VOLATILE",
-  "optimal_atr_min": 0.35,
-  "optimal_atr_max": 1.0,
+  "optimal_atr_min": 0.25,
+  "optimal_atr_max": 0.80,
   "min_score_required": 7.5,
   "atr_mult_sl": 1.5,
   "atr_mult_tp": 2.5,
@@ -13,6 +13,6 @@
   "stagnation_timeout": 600,
   "stagnation_min_pnl": 0.02,
   "stagnation_max_loss": -0.12,
-  "optimal_atr_min_5m": 0.4,
-  "optimal_atr_max_5m": 2.0
+  "optimal_atr_min_5m": 0.50,
+  "optimal_atr_max_5m": 1.50
 }

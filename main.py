@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from core.websocket_manager import get_websocket_manager, WebSocketManager
 import time
+from utils.effective_config import get_effective_value
 # 🔥 FIX: Import colorama pour les couleurs dans les logs
 try:
     import colorama
@@ -2163,6 +2164,24 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             if pg_datalogger and pg_datalogger.enabled:
                 # Calculer durée du scan
                 scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+                eff_volume_multiplier = get_effective_value('volume_multiplier', symbol=symbol)
+                if eff_volume_multiplier is None:
+                    eff_volume_multiplier = volume_multiplier
+                eff_min_score_required = get_effective_value('min_score_required', symbol=symbol)
+                if eff_min_score_required is None:
+                    eff_min_score_required = TRADING_CONFIG.get('min_score_required', 7.5)
+                eff_optimal_atr_min_1m = get_effective_value('optimal_atr_min_1m', symbol=symbol)
+                if eff_optimal_atr_min_1m is None:
+                    eff_optimal_atr_min_1m = TRADING_CONFIG.get('optimal_atr_min_1m', 0.12)
+                eff_optimal_atr_max_1m = get_effective_value('optimal_atr_max_1m', symbol=symbol)
+                if eff_optimal_atr_max_1m is None:
+                    eff_optimal_atr_max_1m = TRADING_CONFIG.get('optimal_atr_max_1m', 0.75)
+                eff_optimal_atr_min_5m = get_effective_value('optimal_atr_min_5m', symbol=symbol)
+                if eff_optimal_atr_min_5m is None:
+                    eff_optimal_atr_min_5m = TRADING_CONFIG.get('optimal_atr_min_5m', 0.22)
+                eff_optimal_atr_max_5m = get_effective_value('optimal_atr_max_5m', symbol=symbol)
+                if eff_optimal_atr_max_5m is None:
+                    eff_optimal_atr_max_5m = TRADING_CONFIG.get('optimal_atr_max_5m', 1.4)
                 
                 # Récupérer les données du scan de scalabilité depuis top_pairs
                 scalability_data = {}
@@ -2334,19 +2353,19 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     # 🔥 ML Confidence: confiance réelle du modèle (si disponible)
                     'ml_confidence': last_ml_confidence,
                     'params_snapshot': {
-                        'volume_multiplier': volume_multiplier,
+                        'volume_multiplier': eff_volume_multiplier,
                         'use_confluence': use_confluence,
                         'trend_timeframe': trend_timeframe,
-                        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                        'min_score_required': eff_min_score_required,
                         'min_conditions': TRADING_CONFIG.get('min_conditions', 6),
                         'use_weighted_scoring': TRADING_CONFIG.get('use_weighted_scoring', True),
                         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-                        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-                        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-                        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                        'optimal_atr_min_1m': eff_optimal_atr_min_1m,
+                        'optimal_atr_max_1m': eff_optimal_atr_max_1m,
+                        'optimal_atr_min_5m': eff_optimal_atr_min_5m,
+                        'optimal_atr_max_5m': eff_optimal_atr_max_5m,
                         'use_breakout': TRADING_CONFIG.get('use_breakout', True),
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),

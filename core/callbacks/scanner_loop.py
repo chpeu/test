@@ -8,6 +8,7 @@ import logging
 import time
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
+from utils.effective_config import get_effective_value
 
 # 🔥 OPT #15-19: Import des filtres avancés
 from core.analyzer.advanced_filters import (
@@ -1352,20 +1353,20 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'reject_reason': analysis.get('reason') if analysis and 'reason' in analysis else None,
                     'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'params_snapshot': {
-                        'volume_multiplier': volume_multiplier,
+                        'volume_multiplier': get_effective_value('volume_multiplier', symbol=symbol) or volume_multiplier,
                         'use_confluence': use_confluence,
                         'trend_timeframe': trend_timeframe,
                         # Ajouter toutes les variables de TRADING_CONFIG pertinentes pour le scan
-                        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                        'min_score_required': get_effective_value('min_score_required', symbol=symbol) or TRADING_CONFIG.get('min_score_required', 7.5),
                         'min_conditions': TRADING_CONFIG.get('min_conditions', 6),
                         'use_weighted_scoring': TRADING_CONFIG.get('use_weighted_scoring', True),
                         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-                        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-                        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-                        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                        'optimal_atr_min_1m': get_effective_value('optimal_atr_min_1m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+                        'optimal_atr_max_1m': get_effective_value('optimal_atr_max_1m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+                        'optimal_atr_min_5m': get_effective_value('optimal_atr_min_5m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+                        'optimal_atr_max_5m': get_effective_value('optimal_atr_max_5m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
                         'use_breakout': TRADING_CONFIG.get('use_breakout', True),
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),

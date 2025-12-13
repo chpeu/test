@@ -1,7 +1,7 @@
 {
   "name": "CHOPPY",
-  "optimal_atr_min": 0.0,
-  "optimal_atr_max": 0.2,
+  "optimal_atr_min": 0.10,
+  "optimal_atr_max": 0.25,
   "min_score_required": 10.0,
   "atr_mult_sl": 0.7,
   "atr_mult_tp": 1.5,
@@ -13,6 +13,6 @@
   "stagnation_timeout": 180,
   "stagnation_min_pnl": 0.08,
   "stagnation_max_loss": -0.05,
-  "optimal_atr_min_5m": 0.1,
-  "optimal_atr_max_5m": 0.4
+  "optimal_atr_min_5m": 0.35,
+  "optimal_atr_max_5m": 0.60
 }

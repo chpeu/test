@@ -214,6 +214,8 @@ def check_atr_filter(
         # 🔥 Utiliser valeurs dynamiques du régime si disponibles
         optimal_atr_min = get_effective_value('optimal_atr_min_1m')
         optimal_atr_max = get_effective_value('optimal_atr_max_1m')
+        base_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
+        base_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
         
         # Fallback si None (ne devrait pas arriver avec config par défaut)
         if optimal_atr_min is None: optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
@@ -222,10 +224,20 @@ def check_atr_filter(
         # 🔥 FIX: Utiliser valeurs dynamiques du régime pour 5m aussi
         optimal_atr_min = get_effective_value('optimal_atr_min_5m')
         optimal_atr_max = get_effective_value('optimal_atr_max_5m')
+        base_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
+        base_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
         
         # Fallback si None
         if optimal_atr_min is None: optimal_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
         if optimal_atr_max is None: optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
+
+    if DEBUG_ENABLED:
+        logger.debug(
+            f"🔍 {symbol} {timeframe}: ATR filter thresholds | "
+            f"atr={atr_percent:.3f}% | "
+            f"effective={optimal_atr_min}-{optimal_atr_max}% | "
+            f"base={base_atr_min}-{base_atr_max}%"
+        )
 
     if atr_percent < optimal_atr_min or atr_percent > optimal_atr_max:
         atr_status = 'trop bas' if atr_percent < optimal_atr_min else 'trop élevé'
