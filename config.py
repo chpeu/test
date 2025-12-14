@@ -81,6 +81,13 @@ TRADING_CONFIG = {
     "stagnation_exit_min_pnl_to_stay": 0.10,
     "stagnation_exit_max_loss_to_exit": -0.05,
     
+    # 🔥 STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+    "stagnation_positive_exit_enabled": True,       # Activer sortie positive anticipée
+    "stagnation_positive_threshold": 0.03,          # Seuil profit minimum (0.03%)
+    "stagnation_positive_timeout_seconds": 60,      # Timeout réduit si en profit (< 120s normal)
+    "stagnation_use_mfe_tracking": True,            # Suivre le MFE pour protection
+    "stagnation_mfe_pullback_pct": 0.08,            # Sortir si pullback > 0.08% depuis MFE
+    
     # Trend timeframe pour calculer trend_data (bonus)
     "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
     

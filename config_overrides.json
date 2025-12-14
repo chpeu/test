@@ -23,7 +23,7 @@
   "optimal_atr_min_1m": 0.05,
   "optimal_atr_max_1m": 0.26,
   "optimal_atr_min_5m": 0.35,
-  "optimal_atr_max_5m": 0.80,
+  "optimal_atr_max_5m": 0.8,
   "trend_timeframe": "30m",
   "account_size": 1000.0,
   "risk_per_trade": 2.5,
@@ -187,5 +187,10 @@
   "market_regime_btc_indicator_enabled": true,
   "market_regime_btc_volatile_threshold_1h": 2.0,
   "market_regime_btc_trend_threshold_24h": 5.0,
-  "market_regime_btc_force_volatile_enabled": true
+  "market_regime_btc_force_volatile_enabled": true,
+  "stagnation_positive_exit_enabled": true,
+  "stagnation_positive_threshold": 0.03,
+  "stagnation_positive_timeout_seconds": 90,
+  "stagnation_use_mfe_tracking": true,
+  "stagnation_mfe_pullback_pct": 0.05
 }

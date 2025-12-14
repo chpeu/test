@@ -1577,6 +1577,16 @@ class PostgreSQLDataLogger:
                 ('config_rsi_filter_enabled', config_rsi_filter_enabled),
                 ('config_rsi_long_max', config_rsi_long_max),
                 ('config_rsi_short_min', config_rsi_short_min),
+                # 🔥 STAGNATION POSITIVE EXIT config
+                ('config_stagnation_positive_exit_enabled', config_snapshot_dict.get('stagnation_positive_exit_enabled')),
+                ('config_stagnation_positive_threshold', _extract_numeric_value(config_snapshot_dict.get('stagnation_positive_threshold'))),
+                ('config_stagnation_positive_timeout_seconds', config_snapshot_dict.get('stagnation_positive_timeout_seconds')),
+                ('config_stagnation_use_mfe_tracking', config_snapshot_dict.get('stagnation_use_mfe_tracking')),
+                ('config_stagnation_mfe_pullback_pct', _extract_numeric_value(config_snapshot_dict.get('stagnation_mfe_pullback_pct'))),
+                # 🔥 STAGNATION POSITIVE EXIT tracking
+                ('stagnation_mfe_at_exit', _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))),
+                ('stagnation_positive_triggered', trade_data.get('stagnation_positive_triggered', False)),
+                ('stagnation_pullback_at_exit', _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))),
                 ('config_snapshot', config_snapshot),
                 # 🔥 SPRINT 1: Market Regime & Circuit Breaker context
                 ('entry_market_regime', trade_data.get('entry_market_regime')),

@@ -82,7 +82,8 @@ def build_config_filter_conditions(for_trades_table: bool = True, use_alias: boo
             # 2. Uniquement mode TP/SL ATR (cohérence avec config actuelle)
             conditions.append(f"{p}tp_sl_mode = 'ATR'")
             
-            # 3. Exclure MANUAL et STAGNATION (sorties non représentatives)
+            # 3. Exclure MANUAL et STAGNATION classique (sorties non représentatives)
+            # 🔥 STAGNATION_POSITIVE et STAGNATION_MFE_PROTECT sont INCLUS (sorties contrôlées)
             conditions.append(f"({p}exit_reason IS NULL OR {p}exit_reason NOT IN ('MANUAL', 'STAGNATION'))")
         
         logger.info(f"✅ {len(conditions)} conditions de filtrage construites")

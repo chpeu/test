@@ -211,14 +211,14 @@
 				</div>
 				<!-- Ligne 2: Filtres dynamiques -->
 				<div class="config-row">
-					<span class="config-item" title="ATR Max pour filtrer les trades trop volatils">
-						📈 ATR Max: {regimeData.config_active.optimal_atr_max_1m ? regimeData.config_active.optimal_atr_max_1m.toFixed(2) + '%' : '-'}
+					<span class="config-item atr-max-disabled" title="ATR Max DÉSACTIVÉ si régime actif (données prouvent ATR haut = rentable)">
+						📈 ATR Max: <span class="disabled-badge">OFF</span>
 					</span>
 					<span class="config-item" title="Multiplicateur volume (exigence de volume)">
 						📊 Vol: {regimeData.config_active.volume_multiplier || '-'}x
 					</span>
-					<span class="config-item" title="ATR 5m range optimal">
-						📊 ATR5m: {regimeData.config_active.optimal_atr_min_5m?.toFixed(2) || '-'}-{regimeData.config_active.optimal_atr_max_5m?.toFixed(2) || '-'}%
+					<span class="config-item" title="ATR 5m range optimal (ATR Min uniquement, Max désactivé)">
+						📊 ATR5m: {regimeData.config_active.optimal_atr_min_5m?.toFixed(2) || '-'}%+
 					</span>
 				</div>
 				<!-- Ligne 3: Timeout & Trailing -->
@@ -365,6 +365,19 @@
 		background: rgba(255, 152, 0, 0.1);
 		padding: 2px 6px;
 		border-radius: 4px;
+	}
+
+	.config-item.atr-max-disabled {
+		color: #888;
+	}
+
+	.disabled-badge {
+		background: rgba(136, 136, 136, 0.3);
+		color: #aaa;
+		padding: 1px 5px;
+		border-radius: 3px;
+		font-size: 10px;
+		font-weight: 600;
 	}
 
 	.regime-footer {

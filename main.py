@@ -2572,6 +2572,42 @@ async def position_check_loop_callback() -> None:
         
         # Check position (renvoie None ou raison de fermeture)
         close_reason = await position_manager.check_position(current_price)
+
+        # 🔥 FIX SL_EXCHANGE: Si le bot détecte un SL interne, vérifier si c'est en fait un SL Exchange
+        if close_reason == 'SL' and live_order_manager and hasattr(live_order_manager, 'bypass_client') and live_order_manager.bypass_client:
+            try:
+                # Vérifier si un ordre SL a été exécuté récemment sur l'exchange
+                from trading.live_order_manager_futures import run_async_safely
+                bypass_symbol = position_manager.active_position.symbol.replace('/', '_').replace(':USDT', '')
+                
+                # Récupérer l'historique récent (dernier ordre)
+                order_history = run_async_safely(
+                    live_order_manager.bypass_client.get_order_history(
+                        symbol=bypass_symbol,
+                        page_size=3  # Juste les derniers ordres
+                    )
+                )
+                
+                if order_history and 'data' in order_history:
+                    orders = order_history.get('data', [])
+                    for order in orders:
+                        # Catégorie 2 = SL/TP trigger sur MEXC
+                        # Vérifier si c'est un ordre de réduction (close) exécuté récemment (< 30s)
+                        is_sl_trigger = order.get('category') == 2 or order.get('type') == 3  # STOP_MARKET
+                        state_filled = order.get('state') == 3  # FILLED
+                        
+                        if is_sl_trigger and state_filled:
+                            # Vérifier le timestamp (si dispo) ou assumer que c'est le dernier
+                            logger.warning(f"🛑 SL détecté par le bot, mais un ordre SL Exchange a été trouvé ! Correction -> SL_EXCHANGE")
+                            close_reason = "SL_EXCHANGE"
+                            
+                            # Tenter de récupérer le prix de fill réel
+                            fill_price = order.get('dealAvgPrice') or order.get('price')
+                            if fill_price and float(fill_price) > 0:
+                                current_price = float(fill_price) # Utiliser le vrai prix d'exécution
+                            break
+            except Exception as e:
+                logger.debug(f"⚠️ Erreur vérification SL Exchange lors du SL interne: {e}")
         
         # 🔥 NOUVEAU: Vérifier si la position a été fermée par MEXC (SL Exchange)
         # On vérifie toutes les 5 secondes pour réactivité accrue
@@ -2587,13 +2623,62 @@ async def position_check_loop_callback() -> None:
                         live_order_manager.bypass_client.get_open_positions(symbol=bypass_symbol)
                     )
                     
-                    # Si aucune position MEXC mais le bot pense en avoir une → SL Exchange touché
+                    # Si aucune position MEXC mais le bot pense en avoir une → Position fermée
                     if mexc_positions is not None and len(mexc_positions) == 0:
-                        logger.warning(
-                            f"🛑 SL MEXC TOUCHÉ: Position {position_manager.active_position.symbol} fermée par exchange | "
-                            f"Dernier prix: {current_price}"
-                        )
-                        close_reason = "SL_EXCHANGE"
+                        # 🔥 FIX: Vérifier si c'est vraiment le SL MEXC qui a été touché
+                        # en comparant le prix actuel avec le SL MEXC calculé
+                        sl_bot = position_manager.active_position.sl
+                        entry = position_manager.active_position.entry
+                        direction = position_manager.active_position.direction
+                        
+                        # Calculer le SL MEXC (SL bot × 1.1 marge)
+                        SL_MEXC_MARGIN = 1.1
+                        if direction == 'LONG':
+                            sl_distance_pct = abs(entry - sl_bot) / entry if entry > 0 else 0
+                            sl_mexc = entry * (1 - sl_distance_pct * SL_MEXC_MARGIN)
+                            # SL MEXC touché si prix <= sl_mexc
+                            is_sl_mexc_touched = current_price <= sl_mexc
+                        else:  # SHORT
+                            sl_distance_pct = abs(sl_bot - entry) / entry if entry > 0 else 0
+                            sl_mexc = entry * (1 + sl_distance_pct * SL_MEXC_MARGIN)
+                            # SL MEXC touché si prix >= sl_mexc
+                            is_sl_mexc_touched = current_price >= sl_mexc
+                        
+                        if is_sl_mexc_touched:
+                            # 🔥 FIX: Récupérer le vrai prix de fill depuis l'historique MEXC
+                            try:
+                                order_history = run_async_safely(
+                                    live_order_manager.bypass_client.get_order_history(
+                                        symbol=bypass_symbol,
+                                        page_size=5
+                                    )
+                                )
+                                if order_history and 'data' in order_history:
+                                    orders = order_history.get('data', [])
+                                    for order in orders:
+                                        # Chercher un ordre SL récent (dans les 60 dernières secondes)
+                                        if order.get('category') == 2:  # SL order
+                                            fill_price = order.get('dealAvgPrice') or order.get('price')
+                                            if fill_price and float(fill_price) > 0:
+                                                current_price = float(fill_price)
+                                                logger.info(f"📊 Prix de fill SL MEXC récupéré: {current_price}")
+                                                break
+                            except Exception as hist_err:
+                                logger.debug(f"⚠️ Impossible de récupérer historique ordres: {hist_err}")
+                            
+                            logger.warning(
+                                f"🛑 SL MEXC TOUCHÉ: Position {position_manager.active_position.symbol} fermée par exchange | "
+                                f"Prix fill: {current_price} | SL MEXC: {sl_mexc:.6f}"
+                            )
+                            close_reason = "SL_EXCHANGE"
+                        else:
+                            # Position fermée mais pas par SL MEXC → probablement race condition
+                            # Le bot a fermé la position mais la vérification arrive après
+                            logger.info(
+                                f"📋 Position {position_manager.active_position.symbol} fermée (sync MEXC) | "
+                                f"Prix: {current_price} | SL MEXC: {sl_mexc:.6f} (non touché)"
+                            )
+                            # Ne pas marquer comme SL_EXCHANGE, laisser le bot gérer normalement
                 except Exception as e:
                     logger.debug(f"⚠️ Impossible de vérifier sync MEXC: {e}")
         
@@ -5628,6 +5713,38 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['stagnation_exit_max_loss_to_exit'] = val
             updated['stagnation_exit_max_loss_to_exit'] = val
             logger.info(f"✅ stagnation_exit_max_loss_to_exit: {val}")
+
+        # 🔥 STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+        if 'stagnation_positive_exit_enabled' in params:
+            TRADING_CONFIG['stagnation_positive_exit_enabled'] = bool(params['stagnation_positive_exit_enabled'])
+            updated['stagnation_positive_exit_enabled'] = TRADING_CONFIG['stagnation_positive_exit_enabled']
+            logger.info(f"✅ stagnation_positive_exit_enabled: {TRADING_CONFIG['stagnation_positive_exit_enabled']}")
+        
+        if 'stagnation_positive_threshold' in params:
+            val = float(params['stagnation_positive_threshold'])
+            val = max(0.01, min(0.20, val))  # Clamp 0.01-0.20%
+            TRADING_CONFIG['stagnation_positive_threshold'] = val
+            updated['stagnation_positive_threshold'] = val
+            logger.info(f"✅ stagnation_positive_threshold: {val}%")
+        
+        if 'stagnation_positive_timeout_seconds' in params:
+            val = int(params['stagnation_positive_timeout_seconds'])
+            val = max(30, min(120, val))  # Clamp 30s-120s (doit être < timeout normal)
+            TRADING_CONFIG['stagnation_positive_timeout_seconds'] = val
+            updated['stagnation_positive_timeout_seconds'] = val
+            logger.info(f"✅ stagnation_positive_timeout_seconds: {val}s")
+        
+        if 'stagnation_use_mfe_tracking' in params:
+            TRADING_CONFIG['stagnation_use_mfe_tracking'] = bool(params['stagnation_use_mfe_tracking'])
+            updated['stagnation_use_mfe_tracking'] = TRADING_CONFIG['stagnation_use_mfe_tracking']
+            logger.info(f"✅ stagnation_use_mfe_tracking: {TRADING_CONFIG['stagnation_use_mfe_tracking']}")
+        
+        if 'stagnation_mfe_pullback_pct' in params:
+            val = float(params['stagnation_mfe_pullback_pct'])
+            val = max(0.03, min(0.25, val))  # Clamp 0.03-0.25%
+            TRADING_CONFIG['stagnation_mfe_pullback_pct'] = val
+            updated['stagnation_mfe_pullback_pct'] = val
+            logger.info(f"✅ stagnation_mfe_pullback_pct: {val}%")
 
         # 🔬 ML Calibration Parameters
         if 'ml_calibration_enabled' in params:

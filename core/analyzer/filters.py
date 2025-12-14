@@ -210,6 +210,13 @@ def check_atr_filter(
     Returns:
         None si valide, Dict avec raison si rejeté
     """
+    # 🔥 14/12/2025: Si regime selector actif, désactiver ATR MAX (données prouvent que ATR haut = rentable)
+    # Garder ATR MAX uniquement si regime selector désactivé (fallback sécurité)
+    regime_enabled = get_effective_value('market_regime_enabled')
+    if regime_enabled is None:
+        regime_enabled = TRADING_CONFIG.get('market_regime_enabled', False)
+    skip_atr_max = regime_enabled  # Si régime actif → pas de limite haute ATR
+    
     if timeframe == '1m':
         # 🔥 Utiliser valeurs dynamiques du régime si disponibles
         optimal_atr_min = get_effective_value('optimal_atr_min_1m')
@@ -236,12 +243,22 @@ def check_atr_filter(
             f"🔍 {symbol} {timeframe}: ATR filter thresholds | "
             f"atr={atr_percent:.3f}% | "
             f"effective={optimal_atr_min}-{optimal_atr_max}% | "
-            f"base={base_atr_min}-{base_atr_max}%"
+            f"base={base_atr_min}-{base_atr_max}% | "
+            f"skip_atr_max={skip_atr_max}"
         )
 
-    if atr_percent < optimal_atr_min or atr_percent > optimal_atr_max:
-        atr_status = 'trop bas' if atr_percent < optimal_atr_min else 'trop élevé'
-        reason = f"ATR sous-optimal: {atr_percent:.3f}% ({atr_status}, optimal: {optimal_atr_min}-{optimal_atr_max}%)"
+    # 🔥 Check ATR MIN (toujours actif)
+    if atr_percent < optimal_atr_min:
+        reason = f"ATR sous-optimal: {atr_percent:.3f}% (trop bas, min: {optimal_atr_min}%)"
+        if return_reason:
+            return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+        if DEBUG_ENABLED:
+            logger.debug(f"{symbol} {timeframe}: {reason}")
+        return {'rejected': True, 'reason': reason}
+    
+    # 🔥 Check ATR MAX (désactivé si regime selector actif)
+    if not skip_atr_max and atr_percent > optimal_atr_max:
+        reason = f"ATR sous-optimal: {atr_percent:.3f}% (trop élevé, max: {optimal_atr_max}%)"
         if return_reason:
             return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
         if DEBUG_ENABLED:

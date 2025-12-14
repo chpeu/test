@@ -2132,11 +2132,17 @@ class PositionManager:
         """
         🔥 HYBRID: Vérifier si le trade doit être fermé pour stagnation (Time Decay)
         
+        Priorités:
+        1. STAGNATION_POSITIVE: Si PnL >= seuil positif ET timeout_positive atteint → SORTIR (profit)
+        2. STAGNATION_MFE_PROTECT: Si MFE tracking ET stagnation ET pullback > seuil → SORTIR (protéger)
+        3. RESTER: Si PnL >= min_pnl_to_stay → RESTER (attendre TP)
+        4. STAGNATION: Si timeout_normal atteint ET PnL < min_pnl_to_stay → SORTIR
+        
         Args:
             pnl: PnL actuel en %
             
         Returns:
-            'STAGNATION' si doit être fermé, None sinon
+            'STAGNATION', 'STAGNATION_POSITIVE', 'STAGNATION_MFE_PROTECT' ou None
         """
         from config import TRADING_CONFIG  # 🔥 FIX: Import manquant
         from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
@@ -2166,7 +2172,50 @@ class PositionManager:
         
         timeout = effective_timeout if effective_timeout is not None else default_timeout
         
-        # Pas encore timeout
+        # ═══════════════════════════════════════════════════════════════════
+        # 🔥 PHASE 1: STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+        # ═══════════════════════════════════════════════════════════════════
+        stagnation_positive_enabled = TRADING_CONFIG.get('stagnation_positive_exit_enabled', True)
+        stagnation_positive_threshold = TRADING_CONFIG.get('stagnation_positive_threshold', 0.03)
+        stagnation_positive_timeout = TRADING_CONFIG.get('stagnation_positive_timeout_seconds', 60)
+        
+        if stagnation_positive_enabled and pnl >= stagnation_positive_threshold:
+            if elapsed >= stagnation_positive_timeout:
+                # Marquer comme sortie positive
+                self.active_position.stagnation_positive_triggered = True
+                self.active_position.stagnation_mfe_at_exit = getattr(self.active_position, 'max_favorable_excursion', pnl) or pnl
+                logger.info(
+                    f"✅ STAGNATION_POSITIVE {self.active_position.symbol}: "
+                    f"PnL={pnl:.2f}% >= seuil={stagnation_positive_threshold:.2f}% après {elapsed:.0f}s"
+                )
+                return 'STAGNATION_POSITIVE'
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # 🔥 PHASE 2: MFE PROTECTION (seulement si stagnation détectée)
+        # ═══════════════════════════════════════════════════════════════════
+        stagnation_use_mfe_tracking = TRADING_CONFIG.get('stagnation_use_mfe_tracking', True)
+        stagnation_mfe_pullback_pct = TRADING_CONFIG.get('stagnation_mfe_pullback_pct', 0.08)
+        
+        # MFE protection seulement si stagnation déjà détectée ET MFE tracking activé
+        if stagnation_use_mfe_tracking and self.active_position.stagnation_detected_at:
+            mfe = getattr(self.active_position, 'max_favorable_excursion', None) or 0
+            if mfe > stagnation_positive_threshold:
+                pullback = mfe - pnl
+                if pullback >= stagnation_mfe_pullback_pct:
+                    # Marquer les métriques
+                    self.active_position.stagnation_mfe_at_exit = mfe
+                    self.active_position.stagnation_pullback_at_exit = pullback
+                    logger.info(
+                        f"📈 STAGNATION_MFE_PROTECT {self.active_position.symbol}: "
+                        f"MFE={mfe:.2f}% → PnL={pnl:.2f}% (pullback={pullback:.2f}% >= {stagnation_mfe_pullback_pct:.2f}%)"
+                    )
+                    return 'STAGNATION_MFE_PROTECT'
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # 🔥 PHASE 3: LOGIQUE EXISTANTE (timeout normal)
+        # ═══════════════════════════════════════════════════════════════════
+        
+        # Pas encore timeout normal
         if elapsed < timeout:
             return None
         
@@ -2189,6 +2238,8 @@ class PositionManager:
             if not self.active_position.stagnation_detected_at:
                 self.active_position.stagnation_detected_at = time.time()
                 self.active_position.stagnation_pnl_at_detection = pnl
+            # Capturer MFE à la sortie
+            self.active_position.stagnation_mfe_at_exit = getattr(self.active_position, 'max_favorable_excursion', None) or pnl
             logger.warning(
                 f"⏰ STAGNATION EXIT {self.active_position.symbol}: "
                 f"PnL={pnl:.2f}% après {elapsed:.0f}s (timeout={timeout}s)"

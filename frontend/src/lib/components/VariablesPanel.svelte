@@ -68,6 +68,12 @@
 		stagnation_exit_timeout_seconds: 120,
 		stagnation_exit_min_pnl_to_stay: 0.10,
 		stagnation_exit_max_loss_to_exit: -0.05,
+		// 🔥 STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+		stagnation_positive_exit_enabled: true,
+		stagnation_positive_threshold: 0.03,
+		stagnation_positive_timeout_seconds: 60,
+		stagnation_use_mfe_tracking: true,
+		stagnation_mfe_pullback_pct: 0.08,
 		// Mode ESCALIER (TP_MULTI) - 4 niveaux
 		escalier_level1_pnl: 0.20,
 		escalier_level1_size: 25,
@@ -647,6 +653,12 @@
 				stagnation_exit_timeout_seconds: tradingConfig.stagnation_exit_timeout_seconds,
 				stagnation_exit_min_pnl_to_stay: tradingConfig.stagnation_exit_min_pnl_to_stay,
 				stagnation_exit_max_loss_to_exit: tradingConfig.stagnation_exit_max_loss_to_exit,
+				// 🔥 STAGNATION POSITIVE EXIT
+				stagnation_positive_exit_enabled: tradingConfig.stagnation_positive_exit_enabled,
+				stagnation_positive_threshold: tradingConfig.stagnation_positive_threshold,
+				stagnation_positive_timeout_seconds: tradingConfig.stagnation_positive_timeout_seconds,
+				stagnation_use_mfe_tracking: tradingConfig.stagnation_use_mfe_tracking,
+				stagnation_mfe_pullback_pct: tradingConfig.stagnation_mfe_pullback_pct,
 			},
 			'🪜 TP Escalier': {
 				partial_tp_percent: tradingConfig.partial_tp_percent,
@@ -3211,6 +3223,116 @@
 										</div>
 									</div>
 								{/if}
+
+								<!-- 🔥 STAGNATION POSITIVE EXIT -->
+								<div class="sub-section">
+									<h5 class="sub-title">✅ Sortie Positive Anticipée</h5>
+									
+									<div class="variable-item checkbox-item">
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												bind:checked={config.stagnation_positive_exit_enabled}
+												on:change={() => triggerAutoSave('stagnation_positive_exit_enabled', config.stagnation_positive_exit_enabled ? 'Activé' : 'Désactivé')}
+											/>
+											<span class="checkmark"></span>
+											<span class="checkbox-text">
+												<span class="var-name">Sortie Positive</span>
+												<span class="var-desc">Sortir en profit si le trade stagne</span>
+											</span>
+										</label>
+									</div>
+
+									{#if config.stagnation_positive_exit_enabled}
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="stagnation-positive-threshold">
+													<span class="var-name">Seuil Profit (%)</span>
+													<span class="var-desc">Profit minimum pour sortie positive</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('stagnation_positive_threshold')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="stagnation-positive-threshold"
+													type="range"
+													step="0.01"
+													min="0.01"
+													max="0.15"
+													bind:value={config.stagnation_positive_threshold}
+													on:change={() => triggerAutoSave('stagnation_positive_threshold', `${config.stagnation_positive_threshold.toFixed(2)}%`)}
+												/>
+												<span class="slider-value">{Number(config.stagnation_positive_threshold).toFixed(2)}%</span>
+											</div>
+										</div>
+
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="stagnation-positive-timeout">
+													<span class="var-name">Timeout Positif (s)</span>
+													<span class="var-desc">Durée réduite avant sortie si en profit</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('stagnation_positive_timeout_seconds')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="stagnation-positive-timeout"
+													type="range"
+													step="15"
+													min="30"
+													max="120"
+													bind:value={config.stagnation_positive_timeout_seconds}
+													on:change={() => triggerAutoSave('stagnation_positive_timeout_seconds', `${config.stagnation_positive_timeout_seconds}s`)}
+												/>
+												<span class="slider-value">{Number(config.stagnation_positive_timeout_seconds).toFixed(0)}s</span>
+											</div>
+										</div>
+									{/if}
+								</div>
+
+								<!-- 🔥 MFE PROTECTION -->
+								<div class="sub-section">
+									<h5 class="sub-title">📈 Protection MFE</h5>
+									
+									<div class="variable-item checkbox-item">
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												bind:checked={config.stagnation_use_mfe_tracking}
+												on:change={() => triggerAutoSave('stagnation_use_mfe_tracking', config.stagnation_use_mfe_tracking ? 'Activé' : 'Désactivé')}
+											/>
+											<span class="checkmark"></span>
+											<span class="checkbox-text">
+												<span class="var-name">Tracking MFE</span>
+												<span class="var-desc">Protéger le profit max atteint</span>
+											</span>
+										</label>
+									</div>
+
+									{#if config.stagnation_use_mfe_tracking}
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="stagnation-mfe-pullback">
+													<span class="var-name">Pullback Max (%)</span>
+													<span class="var-desc">Sortir si le prix chute de X% depuis le MFE</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('stagnation_mfe_pullback_pct')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="stagnation-mfe-pullback"
+													type="range"
+													step="0.01"
+													min="0.03"
+													max="0.20"
+													bind:value={config.stagnation_mfe_pullback_pct}
+													on:change={() => triggerAutoSave('stagnation_mfe_pullback_pct', `${config.stagnation_mfe_pullback_pct.toFixed(2)}%`)}
+												/>
+												<span class="slider-value">{Number(config.stagnation_mfe_pullback_pct).toFixed(2)}%</span>
+											</div>
+										</div>
+									{/if}
+								</div>
 							</div>
 
 							<!-- 🔥 HYBRID: TP Partiel -->

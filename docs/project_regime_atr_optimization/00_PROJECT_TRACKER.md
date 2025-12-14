@@ -1,9 +1,11 @@
 # 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 13/12/2025 00:48
-> **Status global:** ✅ PHASES 0-2E OPÉRATIONNELLES | Correctifs runtime Phase 1B/1E/2D vérifiés
-> **Phase actuelle:** ▶️ RUNNING (V2 + Auto-Calibration + BTC + 2D ON) | Objectif: accumulation 200+ trades + monitoring drift
+> **Dernière mise à jour:** 14/12/2025 10:25
+> **Status global:** ✅ PHASES 0-2E OPÉRATIONNELLES | ✅ Stagnation Positive Exit IMPLÉMENTÉ | 🔧 Fix SL_EXCHANGE
+> **Phase actuelle:** ▶️ RUNNING | Prochaine: Phase 2F Quick Wins (gestion sortie, pas filtrage)
+> 
+> **⚠️ CONTRAINTE MAJEURE:** Aucune modification ne doit réduire le nombre de trades
 
 ---
 
@@ -39,6 +41,50 @@ Créer un système d'optimisation intelligent qui:
 - `python verification\verify_phase1b_v2_methods.py`
 - `python verification\verify_phase2d_integration.py`
 
+## ✅ FEATURE IMPLÉMENTÉE: Stagnation Positive Exit (14/12/2025)
+
+> **Spec:** `05_STAGNATION_POSITIVE_EXIT.md`
+> **Impact estimé:** +16.4% PnL sur trades STAGNATION
+
+### Paramètres implémentés
+| Paramètre | Défaut | Recommandé | Description |
+|-----------|--------|------------|-------------|
+| `stagnation_positive_exit_enabled` | `true` | `true` | Active sortie anticipée en profit |
+| `stagnation_positive_threshold` | `0.03%` | `0.03%` | Seuil profit pour sortir |
+| `stagnation_positive_timeout_seconds` | `60s` | `90s` | Timeout réduit si en profit |
+| `stagnation_use_mfe_tracking` | `true` | `true` | Protéger le MFE atteint |
+| `stagnation_mfe_pullback_pct` | `0.08%` | `0.05%` | Sortir si pullback depuis MFE |
+
+### Checklist implémentation ✅
+- [x] Backend: `position_manager.py` + `config.py` + `main.py` (WebSocket handlers)
+- [x] Frontend: `VariablesPanel.svelte` (UI + export Excel)
+- [x] SQL: Migration `add_stagnation_positive_exit.sql` (8 colonnes)
+- [x] Logging: `postgresql_datalogger.py` (config + tracking)
+- [x] Nouveaux exit_reason: `STAGNATION_POSITIVE`, `STAGNATION_MFE_PROTECT`
+
+### 🔧 Fix SL_EXCHANGE (14/12/2025)
+**Problème:** 4/8 derniers trades marqués SL_EXCHANGE incorrectement
+- Le bot détectait SL_EXCHANGE simplement si `len(mexc_positions) == 0`
+- Le prix de sortie n'était pas le vrai prix de fill MEXC
+
+**Correction:** `main.py` lignes 2590-2645
+- Vérifie si le prix a vraiment atteint le SL MEXC calculé
+- Récupère le vrai prix de fill depuis l'historique MEXC
+- Ne marque pas SL_EXCHANGE si c'est une race condition
+
+### 🔧 Désactivation ATR MAX (14/12/2025)
+**Problème:** ~1,495 scans bloqués/semaine pour ATR trop haut, mais les données montrent:
+- ATR 1m > 0.50% = **+168.96% PnL** (le PLUS rentable)
+- ATR 5m 0.70-1.00% = **57% WinRate** (le MEILLEUR)
+- Le filtre ATR MAX bloquait des trades RENTABLES
+
+**Correction:** `core/analyzer/filters.py` lignes 213-266
+- Si `market_regime_enabled = True` → ATR MAX désactivé (plus de limite haute)
+- Si `market_regime_enabled = False` → ATR MAX conservé (fallback sécurité)
+- ATR MIN toujours actif (filtre les marchés trop calmes)
+
+---
+
 ## 📁 STRUCTURE DU DOSSIER
 
 ```
@@ -48,6 +94,7 @@ docs/project_regime_atr_optimization/
 │
 ├── 01_SYNTHESE_COMPLETE.md        ← Vue complète du projet
 ├── 02_MASTER_PLAN.md              ← Roadmap des phases
+├── 05_STAGNATION_POSITIVE_EXIT.md ← 🆕 Spec sortie stagnation positive
 │
 ├── phases/
 │   ├── PHASE_0_INFRASTRUCTURE.md  ← SQL + Config + Helpers
@@ -255,42 +302,54 @@ docs/project_regime_atr_optimization/
 
 ---
 
-### 🆕 Phase 2F: Quick Wins Immédiats (NOUVEAU - 13/12/2025)
-> **Objectif:** Gains rapides sans ML, basés sur les données déjà disponibles
+### 🆕 Phase 2F: Quick Wins - Gestion Sortie (RÉVISÉ - 14/12/2025)
+> **Objectif:** Améliorer la rentabilité SANS réduire le nombre de trades
+> **Principe:** Optimiser la GESTION des trades, pas leur FILTRAGE
 
-| Tâche | Status | Priorité | Impact estimé |
-|-------|--------|----------|---------------|
-| **Gating US_OPEN** (15% WR → bloquer ou score +2) | ⬜ TODO | 🔴 HAUTE | Éviter ~13 trades perdants |
-| **Orderflow dans scoring** (6 métriques déjà en base) | ⬜ TODO | 🟠 MOYENNE | Filtrer faux breakouts |
-| **Drift detection sur features** (ATR/ADX shift) | ⬜ TODO | 🟠 MOYENNE | Anticiper dégradation |
+| Tâche | Status | Priorité | Impact estimé | Trades |
+|-------|--------|----------|---------------|--------|
+| **✅ Stagnation Positive Exit** | ✅ DONE | 🔴 HAUTE | **+57% PnL** | ✅ Idem |
+| **Trailing MFE Protection (sur SL)** | ⬜ TODO | 🔴 HAUTE | **+64% PnL** | ✅ Idem |
+| **Drift detection sur features** | ⬜ TODO | 🟠 MOYENNE | Anticiper dégradation | ✅ Idem |
+| ~~Gating US_OPEN~~ | ❌ EXCLU | - | - | ❌ Réduit trades |
+| ~~Orderflow skip~~ | ❌ EXCLU | - | - | ❌ Réduit trades |
 
-#### 2F.1 Gating Contextuel US_OPEN
+#### 2F.1 Trailing MFE Protection (NOUVELLE PRIORITÉ)
 ```
-Si session = US_OPEN:
-  - Option A: No-trade (bloquer)
-  - Option B: min_score += 2 (plus strict)
-Données: 13 trades, 15.4% WR, -1.8% PnL
-```
+Problème: 221 trades SL avaient MFE >= 0.05% avant de toucher SL
+           PnL actuel: -29.48% → PnL potentiel: +34.37%
 
-#### 2F.2 Orderflow dans Scoring
-```
-6 métriques déjà dans scan_logs:
-- delta_volume, imbalance_normalized, book_depth_ratio
-- spread_volatility_5, volume_acceleration, price_momentum_5
+Solution:
+- Activer Break-Even dès MFE >= 0.05%
+- Ou Trailing plus agressif après MFE > seuil
 
-Utilisation:
-- LONG + delta_volume < 0 → score -1 (pression vendeuse)
-- Breakout + imbalance < -0.15 → skip (faux breakout)
+Impact: +63.85% PnL récupérable
+Trades: AUCUNE réduction (même trades, meilleure gestion)
 ```
 
-#### 2F.3 Drift Detection Features (extension ADWIN)
+#### 2F.2 Drift Detection Features (extension ADWIN) - CONSERVÉ
 ```
 Actuellement: ADWIN sur PnL/WinRate (détecte APRÈS pertes)
-Amélioration: ADWIN sur ATR/ADX/volume_ratio (détecte AVANT trades)
+Amélioration: ADWIN sur ATR/ADX/volume_ratio (détecte AVANT)
 
 Logique:
-- Si distribution ATR change significativement → alerte
-- Si ADX moyen baisse → marché devient ranging → ajuster
+- Si distribution ATR change → ajuster params (pas bloquer)
+- Si ADX baisse → réduire TP/augmenter trailing (pas bloquer)
+
+Impact: Adaptation dynamique des params
+Trades: AUCUNE réduction
+```
+
+#### ❌ 2F.3 Gating/Filtrage - EXCLU
+```
+⚠️ EXCLU car réduit le nombre de trades:
+- Gating US_OPEN: -243 trades
+- Orderflow skip: -X trades
+- Min score +2: -X trades
+
+Alternative: Utiliser ces signaux pour AJUSTER les params
+(TP plus court, SL plus serré, trailing plus agressif)
+au lieu de BLOQUER les trades.
 ```
 
 ---
@@ -382,14 +441,18 @@ Logique:
 
 ## 📊 MÉTRIQUES DE SUIVI
 
-### Performance Actuelle
-| Métrique | Valeur | Tendance | Objectif Final |
-|----------|--------|----------|----------------|
-| Win Rate | ~48% | - | 60% |
-| Profit Factor | ~1.35 | - | 2.0 |
-| Max Drawdown | ~4.5% | - | 2.0% |
-| Flip-Flop/jour | ~8 | - | 0.5 |
-| Précision Régime | ~50% | - | 85% |
+### Performance Actuelle (14/12/2025)
+| Métrique | Valeur | 7 derniers jours | Objectif |
+|----------|--------|------------------|----------|
+| Win Rate | 44.8% | 47.2% | 52%+ |
+| PnL Total | +226% | -14% ⚠️ | Positif |
+| Avg PnL/trade | +0.098% | -0.026% ⚠️ | +0.15% |
+| Trades | 2,311 | 540 | **Maintenir** |
+
+### Contrainte Majeure
+| Règle | Description |
+|-------|-------------|
+| **⚠️ AUCUNE réduction du nombre de trades** | Les optimisations doivent améliorer la GESTION, pas le FILTRAGE |
 
 ### Données Accumulées
 | Table | Trades | Avec Session | Avec What-If | Avec Params |
@@ -537,7 +600,7 @@ Logique:
 
 | Date | Problème | Solution | Status |
 |------|----------|----------|--------|
-| - | - | - | - |
+| 14/12/2025 | SL_EXCHANGE détecté incorrectement (4/8 trades) | Vérifier si prix atteint SL MEXC + récupérer vrai prix fill | ✅ CORRIGÉ |
 
 ---
 

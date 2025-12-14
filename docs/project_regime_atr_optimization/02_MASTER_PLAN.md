@@ -1,7 +1,9 @@
 # 📋 MASTER IMPLEMENTATION PLAN
 ## Market Regime V2 + ATR Optimization + ML Integration
 
-> **Version:** 1.2.0 | **Date:** 13/12/2025 | **Statut:** ✅ Phases 0-2E opérationnelles (Phase 3 en pause)
+> **Version:** 1.3.0 | **Date:** 14/12/2025 | **Statut:** ✅ Phases 0-2E opérationnelles + Stagnation Positive Exit
+> 
+> **⚠️ CONTRAINTE MAJEURE:** Aucune modification ne doit réduire le nombre de trades
 
 ---
 
@@ -45,19 +47,23 @@
 
 ---
 
-## 🎯 OBJECTIFS & MÉTRIQUES
+## OBJECTIFS & MÉTRIQUES
 
-| Métrique | Actuel | Phase 1 | Phase 2 | Phase 3 |
-|----------|--------|---------|---------|---------|
-| Win Rate | ~48% | 52% | 56% | 60% |
-| Profit Factor | ~1.35 | 1.55 | 1.85 | 2.0 |
-| Max Drawdown | ~4.5% | 3.5% | 2.5% | 2.0% |
-| Flip-Flop Régime/jour | ~8 | ~3 | ~1 | ~0.5 |
-| Adaptation Params | Manuel | Manuel | Semi-auto | Auto |
+| Métrique | Actuel | Phase 2F | Phase 3 | Objectif Final |
+|----------|--------|----------|---------|----------------|
+| Win Rate | 44.8% | 49% | 52% | 55%+ |
+| Avg PnL/trade | +0.098% | +0.15% | +0.20% | +0.25% |
+| Nombre Trades | 2,311 | **2,311** | **2,311** | **MAINTENIR** ⚠️ |
+| Profit Factor | ~1.35 | 1.6 | 1.8 | 2.0 |
+
+### CONTRAINTE ABSOLUE
+| Règle | Impact |
+|-------|--------|
+| **Aucune réduction du nombre de trades** | Toutes les optimisations doivent améliorer la GESTION des trades, pas leur FILTRAGE |
 
 ---
 
-## 📊 VUE D'ENSEMBLE DES PHASES
+## VUE D'ENSEMBLE DES PHASES
 
 ```
 PHASE 0: Infrastructure (2h)        ← SQL + Config + Helpers
@@ -88,6 +94,9 @@ PHASE 2C: Optimizer Suggestions (SUPPRIMÉ) ← remplacé par 2D (auto-adaptatio
     ▼
 PHASE 2D: Auto-Adaptation ML (10h)  ← Threshold Optimizer + Drift Detector
     │                                  (= ATR_OPT Phase 2.1)
+    ▼
+PHASE 2F: Quick Wins Gestion (4h)   ← 🆕 Stagnation Positive + Trailing MFE
+    │                                  ⚠️ Sans réduction trades
     ▼
 ══════════════════════════════════════════════════════════════
     ⏸️ PAUSE: Accumulation 200+ trades (2-3 semaines)
