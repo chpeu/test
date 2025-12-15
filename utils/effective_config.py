@@ -45,6 +45,7 @@ REGIME_ADJUSTABLE_KEYS = [
     'stagnation_exit_timeout_seconds',
     'stagnation_exit_min_pnl_to_stay',
     'stagnation_exit_max_loss_to_exit',
+    'stagnation_positive_timeout_seconds',
     # 🔥 Filtre RSI Final (configurable)
     'rsi_final_filter_enabled',
     'rsi_final_long_max',

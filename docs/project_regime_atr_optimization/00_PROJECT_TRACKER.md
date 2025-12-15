@@ -1,9 +1,9 @@
 # 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 14/12/2025 10:25
-> **Status global:** ✅ PHASES 0-2E OPÉRATIONNELLES | ✅ Stagnation Positive Exit IMPLÉMENTÉ | 🔧 Fix SL_EXCHANGE
-> **Phase actuelle:** ▶️ RUNNING | Prochaine: Phase 2F Quick Wins (gestion sortie, pas filtrage)
+> **Dernière mise à jour:** 14/12/2025 15:30
+> **Status global:** ✅ PHASES 0-2E OPÉRATIONNELLES | ✅ Stagnation Positive Exit | ✅ Optimisation BE Trigger + ATR MIN
+> **Phase actuelle:** ▶️ RUNNING | Prochaine: Phase 2G ML Monitor + Rollback Dual
 > 
 > **⚠️ CONTRAINTE MAJEURE:** Aucune modification ne doit réduire le nombre de trades
 
@@ -83,6 +83,41 @@ Créer un système d'optimisation intelligent qui:
 - Si `market_regime_enabled = False` → ATR MAX conservé (fallback sécurité)
 - ATR MIN toujours actif (filtre les marchés trop calmes)
 
+### 🔧 Optimisation BE Trigger + ATR MIN (14/12/2025)
+**Problème identifié:** Analyse 24h montre:
+- LOW (ATR<0.20%): 23% WR sans BE, **100% WR avec BE** mais seulement 15% des trades atteignent BE
+- MEDIUM (0.20-0.50%): 33% WR, BE trigger insuffisant
+- 50% des scans rejetés par `atr_filter` (ATR MIN trop strict)
+
+**Corrections apportées:**
+
+#### 1. Position Manager - Adaptation locale BE (`core/position_manager.py`)
+| Régime Local | Ancien BE mult | Nouveau BE mult | Impact |
+|--------------|----------------|-----------------|--------|
+| LOW (<0.20%) | 1.0 | **0.7** | BE 30% plus tôt |
+| MEDIUM (0.20-0.50%) | 0.6 | **0.5** | BE 17% plus tôt |
+| HIGH (>0.50%) | 1.2 | **1.0** | BE 17% plus tôt |
+
+#### 2. Configs Régime (`config/regimes/*.json`)
+| Régime | Param | Ancien | Nouveau |
+|--------|-------|--------|---------|
+| CALME | `break_even_atr_mult` | 0.8 | **0.6** |
+| CALME | `trailing_trigger_atr_mult` | 1.0 | **0.8** |
+| CALME | `optimal_atr_min` | 0.10 | **0.08** |
+| NORMAL | `break_even_atr_mult` | 1.2 | **1.0** |
+| NORMAL | `trailing_trigger_atr_mult` | 1.5 | **1.2** |
+| NORMAL | `optimal_atr_min` | 0.15 | **0.10** |
+| VOLATILE | `trailing_trigger_atr_mult` | 2.0 | **1.5** |
+| VOLATILE | `optimal_atr_min` | 0.25 | **0.20** |
+
+#### 3. Config globale (`config.py`)
+- `optimal_atr_min_1m`: 0.12% → **0.08%** (permet marchés calmes)
+
+**Impact attendu:**
+- +30% de trades avec BE trigger en régime LOW
+- +opportunités en marchés calmes (ATR < 0.12%)
+- Dashboard Market Regime affiche les nouvelles valeurs automatiquement
+
 ---
 
 ## 📁 STRUCTURE DU DOSSIER
@@ -94,7 +129,10 @@ docs/project_regime_atr_optimization/
 │
 ├── 01_SYNTHESE_COMPLETE.md        ← Vue complète du projet
 ├── 02_MASTER_PLAN.md              ← Roadmap des phases
-├── 05_STAGNATION_POSITIVE_EXIT.md ← 🆕 Spec sortie stagnation positive
+├── 05_STAGNATION_POSITIVE_EXIT.md ← Spec sortie stagnation positive
+├── 06_ML_MONITOR_MVP.md           ← 🆕 Spec nouvel onglet "ML Monitor"
+├── 07_ROLLBACK_DUAL_SYSTEM.md     ← 🆕 Spec rollback Hard-Stop + Progressive
+├── 08_DATA_BACKFILL_STRATEGY.md   ← 🆕 Stratégie backfill cohérent
 │
 ├── phases/
 │   ├── PHASE_0_INFRASTRUCTURE.md  ← SQL + Config + Helpers
@@ -309,10 +347,40 @@ docs/project_regime_atr_optimization/
 | Tâche | Status | Priorité | Impact estimé | Trades |
 |-------|--------|----------|---------------|--------|
 | **✅ Stagnation Positive Exit** | ✅ DONE | 🔴 HAUTE | **+57% PnL** | ✅ Idem |
+| **~~RSI Extreme Quick Exit~~** | ❌ TESTÉ | - | **-2.07% PnL** (dégrade) | ✅ Idem |
 | **Trailing MFE Protection (sur SL)** | ⬜ TODO | 🔴 HAUTE | **+64% PnL** | ✅ Idem |
 | **Drift detection sur features** | ⬜ TODO | 🟠 MOYENNE | Anticiper dégradation | ✅ Idem |
 | ~~Gating US_OPEN~~ | ❌ EXCLU | - | - | ❌ Réduit trades |
 | ~~Orderflow skip~~ | ❌ EXCLU | - | - | ❌ Réduit trades |
+
+### 🆕 Phase 2G: ML Monitor + Rollback Dual (NOUVEAU - 14/12/2025)
+> **Objectif:** Observabilité complète du système ML ("Glass Box")
+> **Documentation:** `06_ML_MONITOR_MVP.md`, `07_ROLLBACK_DUAL_SYSTEM.md`, `08_DATA_BACKFILL_STRATEGY.md`
+
+| Tâche | Status | Priorité | Description |
+|-------|--------|----------|-------------|
+| **Data Quality Checker** | ⬜ TODO | 🔴 HAUTE | Vérification cohérence backfill |
+| **Rollback Manager** | ⬜ TODO | 🔴 HAUTE | Hard-Stop + Progressive dual system |
+| **ML Monitor Backend** | ⬜ TODO | 🔴 HAUTE | API endpoints pour observabilité |
+| **ML Monitor Frontend** | ⬜ TODO | 🔴 HAUTE | Nouvel onglet "ML Monitor" |
+| **Smart Backfill Script** | ⬜ TODO | 🟠 MOYENNE | Backfill cohérent only |
+
+#### Décisions Phase 2G (14/12/2025)
+
+**1. Stratégie Backfill:**
+- Backfill régime SEULEMENT si données cohérentes
+- Critères: ATR dans plage régime, params SL/TP compatibles, MFE/MAE présents
+- Trades incohérents: marqués `backfill_excluded=TRUE` (pas dans dataset ML)
+
+**2. Rollback Dual System:**
+- **Hard-Stop:** Drawdown >5%, Losing streak ≥5, PF <0.5, WR <25% → Rollback immédiat
+- **Progressive:** Fenêtres 20/50/100 trades, hystérésis -15%/+10%, cooldown 30 trades
+- **Regime-Aware:** Évaluation et rollback ciblé par régime
+
+**3. ML Monitor MVP:**
+- Nouvel onglet "ML Monitor" (sans toucher dashboard actuel)
+- Sections: Data Health, Optimizer Status, Rollback Status, Drift Detection
+- Refresh WebSocket 30s, alertes temps réel
 
 #### 2F.1 Trailing MFE Protection (NOUVELLE PRIORITÉ)
 ```

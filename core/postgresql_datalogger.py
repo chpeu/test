@@ -1762,6 +1762,19 @@ class PostgreSQLDataLogger:
             param_stagnation_timeout = config_snapshot.get('stagnation_exit_timeout_seconds')
             param_stagnation_min_pnl = _extract_numeric_value(config_snapshot.get('stagnation_exit_min_pnl_to_stay'))
             
+            # 🎯 Stagnation Positive config
+            param_stagnation_positive_enabled = config_snapshot.get('stagnation_positive_exit_enabled', False)
+            param_stagnation_positive_threshold = _extract_numeric_value(config_snapshot.get('stagnation_positive_threshold'))
+            param_stagnation_positive_timeout = config_snapshot.get('stagnation_positive_timeout_seconds')
+            
+            # 🎯 Trailing MFE config
+            param_trailing_mfe_enabled = config_snapshot.get('trailing_mfe_enabled', False)
+            param_trailing_mfe_trigger_pct = _extract_numeric_value(config_snapshot.get('trailing_mfe_trigger_pct'))
+            
+            # 🎯 Stagnation MFE Protection config
+            param_stagnation_mfe_tracking = config_snapshot.get('stagnation_use_mfe_tracking', False)
+            param_stagnation_mfe_pullback_pct = _extract_numeric_value(config_snapshot.get('stagnation_mfe_pullback_pct'))
+            
             # Extraire le contexte ATR à l'entrée
             entry_atr_1m = _extract_numeric_value(entry_indicators.get('atr_1m'))
             entry_atr_5m = _extract_numeric_value(entry_indicators.get('atr_5m'))
@@ -1840,6 +1853,17 @@ class PostgreSQLDataLogger:
             stagnation_duration_seconds = trade_data.get('stagnation_duration_seconds')
             stagnation_pnl_at_exit = _extract_numeric_value(trade_data.get('stagnation_pnl_at_exit'))
             
+            # 🎯 Trailing MFE data
+            trailing_mfe_triggered = trade_data.get('trailing_mfe_triggered', False)
+            trailing_mfe_triggered_at = trade_data.get('trailing_mfe_triggered_at')
+            trailing_mfe_trigger_pnl_pct = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_pnl_pct'))
+            trailing_mfe_trigger_price = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_price'))
+            
+            # 🎯 Stagnation Positive/MFE Protect metrics
+            stagnation_positive_triggered = trade_data.get('stagnation_positive_triggered', False)
+            stagnation_mfe_at_exit = _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))
+            stagnation_pullback_at_exit = _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))
+            
             # Calculer SL MEXC dynamique (SL ATR × 1.1)
             sl_mexc_margin = 1.1
             sl_mexc_pct = None
@@ -1907,6 +1931,13 @@ class PostgreSQLDataLogger:
                     max_price_reached, min_price_reached,
                     time_to_max_pnl_seconds, time_to_min_pnl_seconds,
                     stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
+                    -- Trailing MFE
+                    trailing_mfe_triggered, trailing_mfe_triggered_at, trailing_mfe_trigger_pnl_pct, trailing_mfe_trigger_price,
+                    -- Exit config params (Stagnation Positive, Trailing MFE, MFE Protection)
+                    param_stagnation_positive_enabled, param_stagnation_positive_threshold, param_stagnation_positive_timeout,
+                    param_trailing_mfe_enabled, param_trailing_mfe_trigger_pct,
+                    param_stagnation_mfe_tracking, param_stagnation_mfe_pullback_pct,
+                    stagnation_positive_triggered, stagnation_mfe_at_exit, stagnation_pullback_at_exit,
                     sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used,
                     sl_mexc_touched, sl_mexc_touched_at,
                     -- PHASE 1A: Session/Heure context
@@ -1914,7 +1945,13 @@ class PostgreSQLDataLogger:
                     regime_detection_method, regime_stability_minutes, regime_confidence,
                     session_atr_multiplier
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    -- Trailing MFE values
+                    %s, %s, %s, %s,
+                    -- Exit config params values
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    -- SL MEXC values
+                    %s, %s, %s, %s, %s,
                     -- PHASE 1A values
                     %s, %s, %s, %s, %s, %s, %s, %s
                 ) RETURNING id
@@ -1936,6 +1973,14 @@ class PostgreSQLDataLogger:
                 max_price_reached, min_price_reached,
                 time_to_max_pnl, time_to_min_pnl,
                 stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
+                # Trailing MFE values
+                trailing_mfe_triggered, trailing_mfe_triggered_at, trailing_mfe_trigger_pnl_pct, trailing_mfe_trigger_price,
+                # Exit config params values
+                param_stagnation_positive_enabled, param_stagnation_positive_threshold, param_stagnation_positive_timeout,
+                param_trailing_mfe_enabled, param_trailing_mfe_trigger_pct,
+                param_stagnation_mfe_tracking, param_stagnation_mfe_pullback_pct,
+                stagnation_positive_triggered, stagnation_mfe_at_exit, stagnation_pullback_at_exit,
+                # SL MEXC values
                 sl_mexc_price, sl_mexc_pct, sl_mexc_margin,
                 sl_mexc_touched, sl_mexc_touched_at,
                 # PHASE 1A values

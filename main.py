@@ -5746,6 +5746,19 @@ async def handle_client_command(command: str, params: dict):
             updated['stagnation_mfe_pullback_pct'] = val
             logger.info(f"✅ stagnation_mfe_pullback_pct: {val}%")
 
+        # 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil)
+        if 'trailing_mfe_enabled' in params:
+            TRADING_CONFIG['trailing_mfe_enabled'] = bool(params['trailing_mfe_enabled'])
+            updated['trailing_mfe_enabled'] = TRADING_CONFIG['trailing_mfe_enabled']
+            logger.info(f"✅ trailing_mfe_enabled: {TRADING_CONFIG['trailing_mfe_enabled']}")
+
+        if 'trailing_mfe_trigger_pct' in params:
+            val = float(params['trailing_mfe_trigger_pct'])
+            val = max(0.05, min(0.50, val))  # Clamp 0.05-0.50%
+            TRADING_CONFIG['trailing_mfe_trigger_pct'] = val
+            updated['trailing_mfe_trigger_pct'] = val
+            logger.info(f"✅ trailing_mfe_trigger_pct: {val}%")
+
         # 🔬 ML Calibration Parameters
         if 'ml_calibration_enabled' in params:
             TRADING_CONFIG['ml_calibration_enabled'] = bool(params['ml_calibration_enabled'])

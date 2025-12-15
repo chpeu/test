@@ -81,6 +81,17 @@ class Position:
     min_pnl_timestamp: Optional[float] = None        # Quand min PnL atteint
     stagnation_detected_at: Optional[float] = None   # Timestamp détection stagnation
     stagnation_pnl_at_detection: Optional[float] = None  # PnL% à la détection
+    
+    # 🎯 Stagnation Positive/MFE Protect metrics
+    stagnation_positive_triggered: bool = False          # Sortie STAGNATION_POSITIVE déclenchée
+    stagnation_mfe_at_exit: Optional[float] = None       # MFE% au moment de la sortie stagnation
+    stagnation_pullback_at_exit: Optional[float] = None  # Pullback% (MFE - PnL) à la sortie
+    
+    # 🎯 Trailing MFE (SL→BE quand MFE atteint seuil)
+    trailing_mfe_triggered: bool = False                 # SL déplacé à BE via MFE
+    trailing_mfe_triggered_at: Optional[float] = None    # Timestamp du trigger
+    trailing_mfe_trigger_pnl_pct: Optional[float] = None # PnL% au moment du trigger
+    trailing_mfe_trigger_price: Optional[float] = None   # Prix au moment du trigger
 
     # Dynamic SL (for trailing)
     dynamic_sl: Optional[float] = None
@@ -378,11 +389,38 @@ class PositionManager:
                     time.sleep(delay)
 
                 live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
+                current_position = self.active_position
+                
                 if not live_position:
-                    logger.warning(f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée")
+                    # 🔥 FIX: Si pas de position LIVE mais position active dans le bot
+                    # → La position a été fermée par SL exchange sur MEXC
+                    if current_position and current_position.symbol == symbol:
+                        logger.warning(
+                            f"🚨 Position {symbol} fermée par SL EXCHANGE détectée! "
+                            f"(Position bot active mais inexistante sur MEXC)"
+                        )
+                        # Récupérer le prix SL comme prix de sortie estimé
+                        exit_price = current_position.sl if current_position.sl else current_position.entry
+                        
+                        # Appeler close_position avec SL_EXCHANGE (dans le thread principal)
+                        import threading
+                        def _close_sl_exchange():
+                            try:
+                                self.close_position(exit_price, reason='SL_EXCHANGE')
+                            except Exception as close_err:
+                                logger.error(f"❌ Erreur fermeture SL_EXCHANGE pour {symbol}: {close_err}")
+                        
+                        # Exécuter dans un thread séparé pour éviter deadlock
+                        close_thread = threading.Thread(
+                            target=_close_sl_exchange, 
+                            name=f"sl_exchange_close_{symbol}",
+                            daemon=True
+                        )
+                        close_thread.start()
+                    else:
+                        logger.warning(f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée")
                     return
 
-                current_position = self.active_position
                 if not current_position or current_position.symbol != symbol:
                     return
 
@@ -724,47 +762,52 @@ class PositionManager:
         base_trailing_dist = TRADING_CONFIG.get('trailing_distance_mult', 1.0)
         base_stagnation_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', 120)
         base_stagnation_min_pnl = TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', 0.05)
+        base_stagnation_positive_timeout = TRADING_CONFIG.get('stagnation_positive_timeout_seconds', 60)
         
         # Ajustements selon régime local (Optimisation 10/12/2025)
         # Basé sur analyse trade_atr_metrics et doc BRAINSTORM_ATR_OPTIMIZATION
         
         # MEDIUM (0.2-0.5% ATR): Performance faible - SL trop serré cause pertes
-        # → FIX 11/12/2025: SL plus large, TP court, BE tôt pour protéger
+        # → FIX 14/12/2025: BE encore plus tôt (0.5 au lieu de 0.6) pour maximiser BE triggers
         if local_regime == 'MEDIUM':
             effective_params['atr_mult_tp'] = base_mult_tp * 0.7  # TP court (prendre profits tôt)
             effective_params['atr_mult_sl'] = base_mult_sl * 1.3  # 🔥 FIX: SL PLUS LARGE (éviter SL prématurés)
-            effective_params['break_even_atr_mult'] = base_be_mult * 0.6  # BE tôt pour protéger
+            effective_params['break_even_atr_mult'] = base_be_mult * 0.5  # 🔥 FIX 14/12: BE très tôt (était 0.6)
             effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.7  # Trigger tôt
             effective_params['trailing_distance_mult'] = base_trailing_dist * 0.8  # Distance modérée
             effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 0.8)  # Timeout réduit
             effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 1.2  # Légèrement exigeant
+            effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 0.8)  # Sortie positive rapide
             effective_params['adjustment_reason'] = 'MEDIUM_VOLATILITY_PROTECTIVE'
-            logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode PROTECTIF (SL×1.3, TP×0.7, BE×0.6)")
+            logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode PROTECTIF (SL×1.3, TP×0.7, BE×0.5)")
             
         # HIGH (>0.5% ATR): BE 100% mais ratio PnL/ATR faible (0.30-0.65x)
-        # → Élargir Trailing & Stagnation pour laisser respirer
+        # → FIX 14/12/2025: BE légèrement plus tôt (1.0 au lieu de 1.2) pour protéger gains
         elif local_regime == 'HIGH':
             effective_params['atr_mult_tp'] = base_mult_tp
             effective_params['atr_mult_sl'] = base_mult_sl * 1.2  # SL légèrement plus large (bruit)
-            effective_params['break_even_atr_mult'] = base_be_mult * 1.2  # BE moins agressif
+            effective_params['break_even_atr_mult'] = base_be_mult * 1.0  # 🔥 FIX 14/12: BE neutre (était 1.2)
             effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 1.2  # Trigger plus tard
             effective_params['trailing_distance_mult'] = base_trailing_dist * 1.5  # Distance plus large
             effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 1.5)  # Plus de temps
             effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 0.5  # Moins exigeant
+            effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 1.5)  # Plus de temps en volatilité
             effective_params['adjustment_reason'] = 'HIGH_VOLATILITY_WIDEN'
-            logger.info(f"⚡ Régime HIGH détecté ({atr_pct:.2f}%) -> Élargissement SL/Trailing/Stagnation")
+            logger.info(f"⚡ Régime HIGH détecté ({atr_pct:.2f}%) -> Élargissement SL/Trailing/Stagnation (BE×1.0)")
             
-        # LOW (<0.2% ATR): Performance excellente (ratio 1.27x, 47% BE/Trail)
-        # → Garder valeurs de base, c'est le "sweet spot"
+        # LOW (<0.2% ATR): Performance 23% WR sans BE, mais 100% WR avec BE
+        # → FIX 14/12/2025: BE plus tôt (0.7 au lieu de 1.0) pour maximiser BE triggers
         else:
             effective_params['atr_mult_tp'] = base_mult_tp
             effective_params['atr_mult_sl'] = base_mult_sl
-            effective_params['break_even_atr_mult'] = base_be_mult
-            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger
+            effective_params['break_even_atr_mult'] = base_be_mult * 0.7  # 🔥 FIX 14/12: BE plus tôt (était 1.0)
+            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.9  # 🔥 FIX 14/12: Trailing légèrement plus tôt
             effective_params['trailing_distance_mult'] = base_trailing_dist
             effective_params['stagnation_exit_timeout_seconds'] = base_stagnation_timeout
             effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl
-            effective_params['adjustment_reason'] = 'LOW_VOLATILITY_KEEPER'
+            effective_params['stagnation_positive_timeout_seconds'] = base_stagnation_positive_timeout
+            effective_params['adjustment_reason'] = 'LOW_VOLATILITY_EARLY_BE'
+            logger.info(f"⚡ Régime LOW détecté ({atr_pct:.2f}%) -> BE anticipé (BE×0.7, Trail×0.9)")
 
         # Appliquer à la config TPSL
         self.tpsl_config.atr_mult_tp = effective_params['atr_mult_tp']
@@ -1975,6 +2018,45 @@ class PositionManager:
                     f"Break-even activé | Trailing stop activé"
                 )
 
+        # 3.5 🎯 TRAILING MFE: Déplacer SL à break-even quand MFE atteint le seuil
+        # Complémentaire au trailing stop existant - protection précoce du capital
+        if (TRADING_CONFIG.get('trailing_mfe_enabled', False) 
+            and not self.active_position.trailing_mfe_triggered
+            and self.active_position.max_pnl_reached is not None):
+            
+            trailing_mfe_trigger = TRADING_CONFIG.get('trailing_mfe_trigger_pct', 0.10)
+            
+            if self.active_position.max_pnl_reached >= trailing_mfe_trigger:
+                # Déplacer SL à break-even (entry price)
+                new_sl = self.active_position.entry
+                current_sl = self.active_position.sl
+                
+                # Vérifier que le nouveau SL est plus favorable
+                should_update = (
+                    (self.active_position.direction == 'LONG' and new_sl > current_sl) or
+                    (self.active_position.direction == 'SHORT' and new_sl < current_sl)
+                )
+                
+                if should_update:
+                    self.active_position.sl = new_sl
+                    self.active_position.trailing_mfe_triggered = True
+                    self.active_position.trailing_mfe_triggered_at = time.time()
+                    self.active_position.trailing_mfe_trigger_pnl_pct = pnl
+                    self.active_position.trailing_mfe_trigger_price = current_price
+                    
+                    # Marquer aussi break_even_set pour cohérence
+                    if not self.active_position.break_even_set:
+                        self.active_position.break_even_set = True
+                        self.active_position.break_even_triggered_at = time.time()
+                        self.active_position.be_price_at_trigger = current_price
+                        self.active_position.be_pnl_at_trigger = pnl
+                    
+                    logger.info(
+                        f"🎯 TRAILING MFE {self.active_position.symbol}: "
+                        f"SL→BE ({new_sl:.6f}) | MFE={self.active_position.max_pnl_reached:.4f}% >= {trailing_mfe_trigger:.2f}%"
+                    )
+                    self._schedule_position_sync(self.active_position.symbol)
+
         # 4. Trailing Stop (activé après le 1er TP partiel ou si PnL > trigger ATR)
         # 🔥 HYBRID: Trailing trigger basé sur ATR ou % fixe
         # Support both nested (trailing_stop.use_atr_trigger) and flat (trailing_use_atr_trigger) config keys
@@ -2177,13 +2259,23 @@ class PositionManager:
         # ═══════════════════════════════════════════════════════════════════
         stagnation_positive_enabled = TRADING_CONFIG.get('stagnation_positive_exit_enabled', True)
         stagnation_positive_threshold = TRADING_CONFIG.get('stagnation_positive_threshold', 0.03)
-        stagnation_positive_timeout = TRADING_CONFIG.get('stagnation_positive_timeout_seconds', 60)
+        
+        # 🔥 FIX 14/12: Utiliser timeout ajusté par régime si disponible
+        effective_stagnation_positive_timeout = effective_config_local.get('stagnation_positive_timeout_seconds')
+        if effective_stagnation_positive_timeout is None:
+            effective_stagnation_positive_timeout = get_effective_value('stagnation_positive_timeout_seconds')
+        stagnation_positive_timeout = effective_stagnation_positive_timeout if effective_stagnation_positive_timeout is not None else TRADING_CONFIG.get('stagnation_positive_timeout_seconds', 60)
+
+        stagnation_detection_threshold = min(stagnation_positive_timeout, timeout)
+        if elapsed >= stagnation_detection_threshold and not self.active_position.stagnation_detected_at:
+            self.active_position.stagnation_detected_at = time.time()
+            self.active_position.stagnation_pnl_at_detection = pnl
         
         if stagnation_positive_enabled and pnl >= stagnation_positive_threshold:
             if elapsed >= stagnation_positive_timeout:
                 # Marquer comme sortie positive
                 self.active_position.stagnation_positive_triggered = True
-                self.active_position.stagnation_mfe_at_exit = getattr(self.active_position, 'max_favorable_excursion', pnl) or pnl
+                self.active_position.stagnation_mfe_at_exit = self.active_position.max_pnl_reached if self.active_position.max_pnl_reached is not None else pnl
                 logger.info(
                     f"✅ STAGNATION_POSITIVE {self.active_position.symbol}: "
                     f"PnL={pnl:.2f}% >= seuil={stagnation_positive_threshold:.2f}% après {elapsed:.0f}s"
@@ -2198,7 +2290,7 @@ class PositionManager:
         
         # MFE protection seulement si stagnation déjà détectée ET MFE tracking activé
         if stagnation_use_mfe_tracking and self.active_position.stagnation_detected_at:
-            mfe = getattr(self.active_position, 'max_favorable_excursion', None) or 0
+            mfe = self.active_position.max_pnl_reached or 0
             if mfe > stagnation_positive_threshold:
                 pullback = mfe - pnl
                 if pullback >= stagnation_mfe_pullback_pct:
@@ -2239,7 +2331,7 @@ class PositionManager:
                 self.active_position.stagnation_detected_at = time.time()
                 self.active_position.stagnation_pnl_at_detection = pnl
             # Capturer MFE à la sortie
-            self.active_position.stagnation_mfe_at_exit = getattr(self.active_position, 'max_favorable_excursion', None) or pnl
+            self.active_position.stagnation_mfe_at_exit = self.active_position.max_pnl_reached if self.active_position.max_pnl_reached is not None else pnl
             logger.warning(
                 f"⏰ STAGNATION EXIT {self.active_position.symbol}: "
                 f"PnL={pnl:.2f}% après {elapsed:.0f}s (timeout={timeout}s)"
@@ -2855,7 +2947,7 @@ class PositionManager:
                             and (self.active_position.entry or exit_price)
                             else None
                         ),
-                        'stagnation_detected': reason == 'STAGNATION',
+                        'stagnation_detected': isinstance(reason, str) and reason.startswith('STAGNATION'),
                         'stagnation_detected_at': datetime.fromtimestamp(self.active_position.stagnation_detected_at).isoformat() if self.active_position.stagnation_detected_at else None,
                         # Stagnation duration: temps depuis détection OU depuis le timeout
                         'stagnation_duration_seconds': (
@@ -2864,6 +2956,15 @@ class PositionManager:
                             else (int(duration) if reason == 'STAGNATION' else None)
                         ),
                         'stagnation_pnl_at_exit': self.active_position.stagnation_pnl_at_detection if self.active_position.stagnation_pnl_at_detection else (result['net_pnl_pct'] if reason == 'STAGNATION' else None),
+                        # 🎯 Stagnation Positive/MFE Protect metrics
+                        'stagnation_positive_triggered': getattr(self.active_position, 'stagnation_positive_triggered', False),
+                        'stagnation_mfe_at_exit': getattr(self.active_position, 'stagnation_mfe_at_exit', None),
+                        'stagnation_pullback_at_exit': getattr(self.active_position, 'stagnation_pullback_at_exit', None),
+                        # 🎯 Trailing MFE data
+                        'trailing_mfe_triggered': self.active_position.trailing_mfe_triggered,
+                        'trailing_mfe_triggered_at': datetime.fromtimestamp(self.active_position.trailing_mfe_triggered_at).isoformat() if self.active_position.trailing_mfe_triggered_at else None,
+                        'trailing_mfe_trigger_pnl_pct': self.active_position.trailing_mfe_trigger_pnl_pct,
+                        'trailing_mfe_trigger_price': self.active_position.trailing_mfe_trigger_price,
                         'pnl_history': pnl_history,  # Pour calculer max_favorable_excursion
                         'entry_indicators': entry_indicators,
                         'entry_conditions': entry_conditions,

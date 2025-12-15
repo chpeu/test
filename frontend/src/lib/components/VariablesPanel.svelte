@@ -74,6 +74,9 @@
 		stagnation_positive_timeout_seconds: 60,
 		stagnation_use_mfe_tracking: true,
 		stagnation_mfe_pullback_pct: 0.08,
+		// 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil)
+		trailing_mfe_enabled: false,
+		trailing_mfe_trigger_pct: 0.10,
 		// Mode ESCALIER (TP_MULTI) - 4 niveaux
 		escalier_level1_pnl: 0.20,
 		escalier_level1_size: 25,
@@ -659,6 +662,9 @@
 				stagnation_positive_timeout_seconds: tradingConfig.stagnation_positive_timeout_seconds,
 				stagnation_use_mfe_tracking: tradingConfig.stagnation_use_mfe_tracking,
 				stagnation_mfe_pullback_pct: tradingConfig.stagnation_mfe_pullback_pct,
+				// 🎯 TRAILING MFE
+				trailing_mfe_enabled: tradingConfig.trailing_mfe_enabled,
+				trailing_mfe_trigger_pct: tradingConfig.trailing_mfe_trigger_pct,
 			},
 			'🪜 TP Escalier': {
 				partial_tp_percent: tradingConfig.partial_tp_percent,
@@ -992,6 +998,10 @@
 					market_regime_btc_indicator_enabled: config.market_regime_btc_indicator_enabled,
 					market_regime_btc_volatile_threshold_1h: config.market_regime_btc_volatile_threshold_1h,
 					market_regime_btc_force_volatile_enabled: config.market_regime_btc_force_volatile_enabled
+				});
+				console.log('🎯 Trailing MFE params:', {
+					trailing_mfe_enabled: config.trailing_mfe_enabled,
+					trailing_mfe_trigger_pct: config.trailing_mfe_trigger_pct
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -3329,6 +3339,50 @@
 													on:change={() => triggerAutoSave('stagnation_mfe_pullback_pct', `${config.stagnation_mfe_pullback_pct.toFixed(2)}%`)}
 												/>
 												<span class="slider-value">{Number(config.stagnation_mfe_pullback_pct).toFixed(2)}%</span>
+											</div>
+										</div>
+									{/if}
+								</div>
+
+								<!-- 🎯 TRAILING MFE (SL→BE) -->
+								<div class="sub-section">
+									<h5 class="sub-title">🎯 Trailing MFE (SL→BE)</h5>
+									
+									<div class="variable-item checkbox-item">
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												bind:checked={config.trailing_mfe_enabled}
+												on:change={() => triggerAutoSave('trailing_mfe_enabled', config.trailing_mfe_enabled ? 'Activé' : 'Désactivé')}
+											/>
+											<span class="checkmark"></span>
+											<span class="checkbox-text">
+												<span class="var-name">Activer Trailing MFE</span>
+												<span class="var-desc">Déplacer SL à break-even quand MFE atteint le seuil</span>
+											</span>
+										</label>
+									</div>
+
+									{#if config.trailing_mfe_enabled}
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="trailing-mfe-trigger">
+													<span class="var-name">Trigger MFE (%)</span>
+													<span class="var-desc">Seuil MFE pour déplacer SL à break-even</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('trailing_mfe_trigger_pct')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="trailing-mfe-trigger"
+													type="range"
+													step="0.01"
+													min="0.05"
+													max="0.50"
+													bind:value={config.trailing_mfe_trigger_pct}
+													on:change={() => triggerAutoSave('trailing_mfe_trigger_pct', `${config.trailing_mfe_trigger_pct.toFixed(2)}%`)}
+												/>
+												<span class="slider-value">{Number(config.trailing_mfe_trigger_pct).toFixed(2)}%</span>
 											</div>
 										</div>
 									{/if}

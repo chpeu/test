@@ -30,7 +30,7 @@
   "min_risk_per_trade": 1.25,
   "max_risk_per_trade": 5.0,
   "min_score_required": 9.0,
-  "max_slippage_pct": 0.04,
+  "max_slippage_pct": 0.06,
   "use_breakout": true,
   "use_snr": true,
   "use_wick": false,
@@ -160,7 +160,7 @@
   "pair_scorer_max_adjustment": 2.0,
   "pair_scorer_lookback_days": 7,
   "pair_scorer_refresh_minutes": 30,
-  "rsi_final_filter_enabled": false,
+  "rsi_final_filter_enabled": true,
   "rsi_final_long_max": 70,
   "rsi_final_short_min": 30,
   "market_regime_v2_enabled": true,
@@ -190,7 +190,9 @@
   "market_regime_btc_force_volatile_enabled": true,
   "stagnation_positive_exit_enabled": true,
   "stagnation_positive_threshold": 0.03,
-  "stagnation_positive_timeout_seconds": 90,
+  "stagnation_positive_timeout_seconds": 45,
   "stagnation_use_mfe_tracking": true,
-  "stagnation_mfe_pullback_pct": 0.05
+  "stagnation_mfe_pullback_pct": 0.05,
+  "trailing_mfe_enabled": true,
+  "trailing_mfe_trigger_pct": 0.08
 }

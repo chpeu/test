@@ -88,6 +88,10 @@ TRADING_CONFIG = {
     "stagnation_use_mfe_tracking": True,            # Suivre le MFE pour protection
     "stagnation_mfe_pullback_pct": 0.08,            # Sortir si pullback > 0.08% depuis MFE
     
+    # 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil) - Complémentaire à Protection MFE
+    "trailing_mfe_enabled": False,                  # Activer Trailing MFE (désactivé par défaut)
+    "trailing_mfe_trigger_pct": 0.10,               # Seuil MFE% pour déplacer SL à break-even
+    
     # Trend timeframe pour calculer trend_data (bonus)
     "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
     
@@ -125,22 +129,22 @@ TRADING_CONFIG = {
     "di_gap_adx_threshold": 25,  # ADX threshold for DI gap
     
     # Optimal ATR filter (configurables via /api/config) - 🔥 Valeurs mises à jour
-    "optimal_atr_min_1m": 0.12,  # 🔥 Ajusté (était 0.10)
+    "optimal_atr_min_1m": 0.08,  # 🔥 FIX 14/12: Abaissé à 0.08% (permet marchés calmes)
     "optimal_atr_max_1m": 0.75,  # 🔥 Ajusté (était 0.8)
     "optimal_atr_min_5m": 0.22,  # 🔥 Ajusté (était 0.20)
     "optimal_atr_max_5m": 1.4,  # 🔥 Ajusté (était 1.5)
     "volume_multiplier": 0.95,  # 🔥 Ajusté (était 1.0)
     
     # Scalability scanner
-    "top_pairs_limit": 20,
+    "top_pairs_limit": 40,  # 🔥 OPT #10: Augmenté à 40 pour plus d'opportunités
     "balance_score_min": 0.7,
     
     # 🔥 OPT SCALABILITY: Paramètres configurables (anciennement hardcodés)
     "scalability_spread_min": 0.001,  # Spread minimum % (évite slippage nul)
-    "scalability_spread_max": 0.02,   # Spread maximum % (évite coûts excessifs)
-    "scalability_volume_min": 100000,  # Volume minimum USDT (5 dernières bougies)
-    "scalability_volume_24h_min": 500000,  # Volume 24h minimum pour pré-filtrage
-    "scalability_funding_rate_max": 0.05,  # Funding rate max % (évite coûts cachés)
+    "scalability_spread_max": 0.06,   # 🔥 OPT #10: Augmenté à 0.06% (accepte altcoins volatils)
+    "scalability_volume_min": 30000,  # 🔥 OPT #10: Réduit à 30k (capture mouvements naissants)
+    "scalability_volume_24h_min": 200000,  # 🔥 OPT #10: Réduit à 200k (liquidité suffisante)
+    "scalability_funding_rate_max": 0.1,  # 🔥 OPT #10: Augmenté à 0.1% (accepte trends forts)
     "scalability_adx_bonus_threshold": 25,  # ADX > seuil = bonus trend
     "scalability_adx_bonus_multiplier": 1.2,  # Multiplicateur bonus si trend fort
     "scalability_klines_limit": 30,  # Nombre de klines à récupérer (était 60)

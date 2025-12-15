@@ -14,8 +14,12 @@ project_regime_atr_optimization/
 │
 ├── 01_SYNTHESE_COMPLETE.md        ← Vue complète du projet
 ├── 02_MASTER_PLAN.md              ← Roadmap des phases
-├── 03_ML_UNIFIED_ARCHITECTURE.md  ← 🆕 Architecture ML unifiée (Phase 2D+3)
-├── 04_UI_FRONTEND_SPECS.md        ← 🆕 Spécifications UI frontend
+├── 03_ML_UNIFIED_ARCHITECTURE.md  ← Architecture ML unifiée (Phase 2D+3)
+├── 04_UI_FRONTEND_SPECS.md        ← Spécifications UI frontend
+├── 05_STAGNATION_POSITIVE_EXIT.md ← Spec sortie stagnation positive
+├── 06_ML_MONITOR_MVP.md           ← 🆕 Spec nouvel onglet "ML Monitor"
+├── 07_ROLLBACK_DUAL_SYSTEM.md     ← 🆕 Spec rollback Hard-Stop + Progressive
+├── 08_DATA_BACKFILL_STRATEGY.md   ← 🆕 Stratégie backfill cohérent
 │
 ├── phases/                        ← Détails d'implémentation par phase
 │   ├── PHASE_0_INFRASTRUCTURE.md
@@ -68,12 +72,14 @@ project_regime_atr_optimization/
 | **2C** | Optimizer Suggestions | 🗑️ SUPPRIMÉ | - |
 | **2D** | ML Auto-Adaptation (Threshold + Drift) | ✅ DONE | 10h |
 | **2E** | Filtres ML Stricts (dataset training) | ✅ DONE | ~2h |
+| **2F** | Quick Wins Gestion Sortie | ✅ PARTIEL | ~4h |
+| **2G** | ML Monitor + Rollback Dual | 📋 SPÉCIFIÉ | ~8h |
 | ⏸️ | *Accumulation 200+ trades* | ⏳ EN COURS | ~2 sem |
 | **3A** | ML Regime Detector | ⬜ TODO | 8h |
 | **3B** | GB Feature Integration | ⬜ TODO | 4h |
 | **3C** | Auto-Apply & Rollback | ⬜ TODO | 8h |
 
-**Total estimé:** ~70h sur 6 semaines
+**Total estimé:** ~80h sur 6-8 semaines
 
 ---
 
