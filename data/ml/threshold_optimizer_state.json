@@ -1,5 +1,5 @@
 {
-  "total_updates": 82,
+  "total_updates": 84,
   "contexts": {
     "UNKNOWN_UNKNOWN_5": {
       "alpha": 10.0,
@@ -50,12 +50,12 @@
       "last_update": "2025-12-15T03:28:06.358629"
     },
     "NORMAL_EUROPE_2": {
-      "alpha": 2.0,
-      "beta": 1.0,
-      "total_trades": 1,
-      "total_wins": 1,
-      "total_pnl": 0.15,
-      "last_update": "2025-12-13T00:30:40.769597"
+      "alpha": 3.0,
+      "beta": 2.0,
+      "total_trades": 3,
+      "total_wins": 2,
+      "total_pnl": 0.20131942053451485,
+      "last_update": "2025-12-15T11:31:50.456470"
     },
     "CALME_NIGHT_5": {
       "alpha": 2.0,
@@ -266,5 +266,5 @@
       "last_update": "2025-12-15T07:22:01.950686"
     }
   },
-  "saved_at": "2025-12-15T07:22:01.950686"
+  "saved_at": "2025-12-15T11:31:50.456470"
 }
