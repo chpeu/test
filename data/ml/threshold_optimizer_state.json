@@ -1,5 +1,5 @@
 {
-  "total_updates": 81,
+  "total_updates": 82,
   "contexts": {
     "UNKNOWN_UNKNOWN_5": {
       "alpha": 10.0,
@@ -259,12 +259,12 @@
     },
     "NORMAL_ASIA_1": {
       "alpha": 4.0,
-      "beta": 1.0,
-      "total_trades": 3,
+      "beta": 2.0,
+      "total_trades": 4,
       "total_wins": 3,
-      "total_pnl": 0.3950724110591088,
-      "last_update": "2025-12-15T07:07:44.780230"
+      "total_pnl": 0.26238184325963354,
+      "last_update": "2025-12-15T07:22:01.950686"
     }
   },
-  "saved_at": "2025-12-15T07:07:44.780230"
+  "saved_at": "2025-12-15T07:22:01.950686"
 }
