@@ -30,6 +30,13 @@
 			enabled: true
 		},
 		{
+			id: 'correlations',
+			label: 'Corrélations',
+			icon: '🔗',
+			enabled: tradesCount >= 20,
+			minTrades: 20
+		},
+		{
 			id: 'exploratory',
 			label: 'Exploratoire',
 			icon: '📈',

@@ -23,7 +23,10 @@
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
-	import MLDashboard from '$lib/components/ml/MLDashboard.svelte';
+	import MLPanel from '$lib/components/ml/MLPanel.svelte';
+	import LiveTradingPanel from '$lib/components/LiveTradingPanel.svelte';
+	import MarketRegimeWidget from '$lib/components/MarketRegimeWidget.svelte';
+	import TradingCircuitBreaker from '$lib/components/TradingCircuitBreaker.svelte';
 	import { recentLogs } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
@@ -76,11 +79,15 @@
 	let tpSlMode = 'FIXE'; // Mode TP/SL actif du bot
 	let tpSlModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	const TP_SL_MODE_SAVE_DELAY = 2500; // 2.5 secondes d'inactivité avant sauvegarde automatique
+	
+	// 🔥 FIX: Session ID pour détecter les redémarrages du backend
+	let currentSessionId: string | null = null;
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
 		{ id: 'variables', label: 'Variables', icon: '⚙️' },
 		{ id: 'ml', label: 'ML', icon: '🤖' },
+		{ id: 'live', label: 'Live Trading', icon: '🔴' },
 		{ id: 'logs', label: 'Logs', icon: '📝' },
 		{ id: 'charts', label: 'Graphiques', icon: '📉' },
 		{ id: 'history', label: 'Historique', icon: '📜' },
@@ -339,12 +346,9 @@
 		ws.on('disconnect', async () => {
 			console.warn('⚠️ WebSocket déconnecté');
 			backendConnected = false;
-			// 🔥 FIX: Reset trades à la fermeture du backend
-			const { clearHistory } = await import('$lib/stores/trades');
-			clearHistory();
-			// 🔥 FIX: Reset stats session
-			const { resetSessionStats } = await import('$lib/stores/stats');
-			resetSessionStats();
+			// 🔥 FIX: NE PAS effacer l'historique lors de la déconnexion
+			// L'historique doit persister tant que le backend tourne
+			// On ne clear que si le backend émet explicitement 'reset_session'
 			// 🔥 NOUVEAU: Mettre à jour la phase du bot
 			const { setBotPhase } = await import('$lib/stores/botPhase');
 			setBotPhase('arrêt');
@@ -359,10 +363,22 @@
 			// L'état sera mis à jour via WebSocket natif ou le composant BotControls
 		}
 		
+		// 🔥 FIX: Détecter changement de session (redémarrage backend)
+		const { clearHistory, setTradeHistory } = await import('$lib/stores/trades');
+		const newSessionId = data.session_id;
+		if (newSessionId && newSessionId !== currentSessionId) {
+			console.log(`🔄 Nouvelle session détectée: ${newSessionId} (ancienne: ${currentSessionId})`);
+			// Reset l'historique des trades lors d'un nouveau backend
+			clearHistory();
+			currentSessionId = newSessionId;
+			console.log('📝 Historique trades réinitialisé (nouveau backend)');
+		}
+		
 		// 🔥 FIX: Mettre à jour la position active si présente
 		if (data.active_position || data.position?.active) {
 			const { updatePosition } = await import('$lib/stores/position');
-			const positionData = data.active_position || data.position;
+			// data.position a la forme { active: bool, data: {...} } dans la réponse state
+			const positionData = data.active_position || data.position?.data || data.position;
 			if (positionData) {
 				updatePosition(positionData);
 			}
@@ -372,15 +388,13 @@
 			clearPosition();
 		}
 		
-		// 🔥 FIX: Nettoyer et charger l'historique des trades depuis le backend
-		const { setTradeHistory, clearHistory } = await import('$lib/stores/trades');
-		const tradeHistory = data.trade_history || (data.position?.data ? [] : []);
+		// 🔥 FIX: Charger l'historique des trades depuis le backend
+		const tradeHistory = data.trade_history;
 		if (tradeHistory && Array.isArray(tradeHistory) && tradeHistory.length > 0) {
 			setTradeHistory(tradeHistory);
-		} else {
-			// Nettoyer si pas de trades ou liste vide
-			clearHistory();
+			console.log(`✅ Historique chargé: ${tradeHistory.length} trades`);
 		}
+		// L'historique persiste pendant la session backend
 		
 		// 🔥 FIX: Charger les stats depuis le backend (remplace les anciennes stats)
 		const stats = data.stats || {};
@@ -398,12 +412,6 @@
 				avg_trade_duration: Number(stats.avg_trade_duration || 0)
 			};
 			updateStats(cleanStats);
-		}
-		
-		// 🔥 FIX: Nettoyer les graphiques PnL au démarrage si pas de trades
-		if (!tradeHistory || tradeHistory.length === 0) {
-			const { clearHistory: clearTrades } = await import('$lib/stores/trades');
-			clearTrades();
 		}
 	}
 
@@ -537,6 +545,12 @@
 						<StatsPanel />
 					</div>
 
+					<!-- 🔥 Sprint 1: Market Regime & Circuit Breaker Trading -->
+					<div class="regime-cb-row" data-debug-name="dashboard.regimeCB">
+						<MarketRegimeWidget />
+						<TradingCircuitBreaker />
+					</div>
+
 					<!-- Sélecteur Mode TP/SL -->
 					<div class="tpsl-mode-selector" data-debug-name="dashboard.tpSlMode">
 						<h3 data-debug-name="dashboard.tpSlMode.title">🎯 Mode TP/SL Actif</h3>
@@ -575,7 +589,11 @@
 				</div>
 			{:else if activeTab === 'ml'}
 				<div class="tab-content">
-					<MLDashboard />
+					<MLPanel />
+				</div>
+			{:else if activeTab === 'live'}
+				<div class="tab-content">
+					<LiveTradingPanel />
 				</div>
 			{:else if activeTab === 'logs'}
 				<div class="tab-content">
@@ -851,6 +869,19 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
 		gap: 15px;
+	}
+
+	/* 🔥 Sprint 1: Regime & Circuit Breaker row */
+	.regime-cb-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 15px;
+	}
+
+	@media (max-width: 900px) {
+		.regime-cb-row {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	/* Footer */

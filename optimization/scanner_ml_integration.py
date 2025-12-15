@@ -79,7 +79,67 @@ def calculate_technical_indicators(klines: List, symbol: str) -> Optional[Dict]:
         volatility_regime = atr_pct_1m / 1.0  # Normalized
         trend_strength = abs(ema_diff_pct_1m) / 0.5  # Normalized
         market_condition = 1 if ema_diff_pct_1m > 0 else 0
-        
+
+        # 🔥 NOUVELLES FEATURES DISCRIMINANTES (pour améliorer performances ML)
+
+        # 1. Price momentum ratio (1m vs 5m) - Cohérence cross-timeframe
+        price_momentum_ratio_1m_5m = (macd_1m['histogram'] / macd_5m['histogram']) if macd_5m['histogram'] != 0 else 1.0
+
+        # 2. Volume-Price Correlation (14 dernières bougies)
+        if len(df) >= 14:
+            recent_prices = df['close'].iloc[-14:].values
+            recent_volumes = df['volume'].iloc[-14:].values
+            volume_price_correlation = np.corrcoef(recent_prices, recent_volumes)[0, 1] if len(recent_prices) > 1 else 0
+        else:
+            volume_price_correlation = 0
+
+        # 3. Bollinger Squeeze (compression avant explosion)
+        bb_squeeze_1m = 1 if bb_1m['width'] < 0.002 else 0  # Squeeze si BB width < 0.2%
+        bb_squeeze_5m = 1 if bb_5m['width'] < 0.003 else 0  # Squeeze si BB width < 0.3%
+
+        # 4. RSI Divergence Strength (normalisé par volatilité)
+        rsi_divergence_strength = rsi_divergence / (atr_pct_1m + 0.01) if atr_pct_1m > 0 else 0
+
+        # 5. MACD Cross Strength (force du croisement)
+        macd_cross_strength_1m = abs(macd_1m['histogram']) / (atr_1m + 0.0001) if atr_1m > 0 else 0
+        macd_cross_strength_5m = abs(macd_5m['histogram']) / (atr_5m + 0.0001) if atr_5m > 0 else 0
+
+        # 6. ADX Trend Quality (ADX élevé + gap DI significatif)
+        di_gap_1m_val = abs(rsi_1m - 50) / 25  # Proxy DI gap si pas disponible
+        di_gap_5m_val = abs(rsi_5m - 50) / 25
+        adx_trend_quality_1m = (di_gap_1m_val * 25) if rsi_1m > 55 or rsi_1m < 45 else 0  # Proxy ADX
+        adx_trend_quality_5m = (di_gap_5m_val * 25) if rsi_5m > 55 or rsi_5m < 45 else 0
+
+        # 7. EMA Alignment Score (cohérence EMA 1m et 5m)
+        ema_alignment_1m = 1 if ema9_1m > ema21_1m else -1
+        ema_alignment_5m = 1 if ema9_5m > ema21_5m else -1
+        ema_alignment_score = 1 if ema_alignment_1m == ema_alignment_5m else 0  # 1 si alignés, 0 sinon
+
+        # 8. Confluence Score Weighted (pondération 1m=60%, 5m=40%)
+        # Score basé sur conditions techniques
+        confluence_1m = (
+            (1 if rsi_1m > 50 and rsi_1m < 70 else 0) +
+            (1 if macd_1m['histogram'] > 0 else 0) +
+            (1 if ema9_1m > ema21_1m else 0) +
+            (1 if vol_ratio_1m > 1.0 else 0)
+        ) / 4.0  # Score 0-1
+
+        confluence_5m = (
+            (1 if rsi_5m > 50 and rsi_5m < 70 else 0) +
+            (1 if macd_5m['histogram'] > 0 else 0) +
+            (1 if ema9_5m > ema21_5m else 0) +
+            (1 if vol_ratio_5m > 1.0 else 0)
+        ) / 4.0  # Score 0-1
+
+        confluence_score_weighted = (confluence_1m * 0.6) + (confluence_5m * 0.4)
+
+        # 9. Volume Momentum (changement volume récent)
+        volume_momentum_1m = (volumes[-1] - vol_ma_1m) / (vol_ma_1m + 1) if vol_ma_1m > 0 else 0
+
+        # 10. Price Distance from EMA21 (% distance)
+        price_distance_ema21_1m = ((df['close'].iloc[-1] - ema21_1m) / ema21_1m) * 100 if ema21_1m > 0 else 0
+        price_distance_ema21_5m = ((df['close'].iloc[-1] - ema21_5m) / ema21_5m) * 100 if ema21_5m > 0 else 0
+
         # Construire features dict
         features = {
             # Features 1m
@@ -133,6 +193,22 @@ def calculate_technical_indicators(klines: List, symbol: str) -> Optional[Dict]:
             'volatility_regime': volatility_regime,
             'trend_strength': trend_strength,
             'market_condition': market_condition,
+
+            # 🔥 Nouvelles features discriminantes
+            'price_momentum_ratio_1m_5m': price_momentum_ratio_1m_5m,
+            'volume_price_correlation': volume_price_correlation,
+            'bb_squeeze_1m': bb_squeeze_1m,
+            'bb_squeeze_5m': bb_squeeze_5m,
+            'rsi_divergence_strength': rsi_divergence_strength,
+            'macd_cross_strength_1m': macd_cross_strength_1m,
+            'macd_cross_strength_5m': macd_cross_strength_5m,
+            'adx_trend_quality_1m': adx_trend_quality_1m,
+            'adx_trend_quality_5m': adx_trend_quality_5m,
+            'ema_alignment_score': ema_alignment_score,
+            'confluence_score_weighted': confluence_score_weighted,
+            'volume_momentum_1m': volume_momentum_1m,
+            'price_distance_ema21_1m': price_distance_ema21_1m,
+            'price_distance_ema21_5m': price_distance_ema21_5m,
         }
         
         # Remplacer inf/nan par 0
@@ -237,7 +313,7 @@ async def get_ml_prediction_for_opportunity(
     klines: List,
     symbol: str,
     scan_id: Optional[int] = None,
-    model_name: str = "xgboost_v1"
+    model_name: str = "optimized"  # 🔥 CHANGÉ: utiliser optimized par défaut
 ) -> Optional[Dict]:
     """
     Obtenir une prédiction ML pour une opportunité du scanner
@@ -246,7 +322,7 @@ async def get_ml_prediction_for_opportunity(
         klines: Klines de l'opportunité
         symbol: Symbole
         scan_id: ID du scan
-        model_name: Modèle à utiliser
+        model_name: Modèle à utiliser ("optimized", "xgboost_v1", etc.)
         
     Returns:
         Prédiction ML ou None
@@ -257,10 +333,66 @@ async def get_ml_prediction_for_opportunity(
         if not features:
             return None
         
-        # Faire prédiction
+        # 🔥 NOUVEAU: Utiliser le predictor optimisé (GradientBoosting 64-69% accuracy)
+        if model_name in ["optimized", "gradientboosting", "best"]:
+            from optimization.predictor_optimized import predict_trade
+            
+            should_trade, confidence = predict_trade(features, threshold=0.5)
+            
+            return {
+                'prediction': 'win' if should_trade else 'loss',
+                'confidence': confidence,
+                'model': 'GradientBoosting_Optimized',
+                'symbol': symbol,
+                'scan_id': scan_id
+            }
+        
+        # Fallback: ancien predictor XGBoost V1
         from optimization.predictor import predict_opportunity
         
         prediction = predict_opportunity(
+            features=features,
+            model_name=model_name,
+            symbol=symbol,
+            scan_id=scan_id,
+            log_to_db=True
+        )
+        
+        return prediction
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_ml_prediction_for_opportunity: {e}", exc_info=True)
+        return None
+
+
+async def get_ml_v2_prediction_for_opportunity(
+    klines: List,
+    symbol: str,
+    scan_id: Optional[int] = None,
+    model_name: str = "xgboost_v2_latest"
+) -> Optional[Dict]:
+    """
+    Obtenir une prédiction PNL% (V2 Régression) pour une opportunité du scanner
+    
+    Args:
+        klines: Klines de l'opportunité
+        symbol: Symbole
+        scan_id: ID du scan
+        model_name: Modèle V2 à utiliser
+        
+    Returns:
+        Prédiction V2 (PNL% prédit) ou None
+    """
+    try:
+        # Calculer features
+        features = calculate_technical_indicators(klines, symbol)
+        if not features:
+            return None
+        
+        # Faire prédiction V2
+        from optimization.predictor_v2 import predict_pnl
+        
+        prediction = predict_pnl(
             features=features,
             model_name=model_name,
             symbol=symbol,
@@ -271,5 +403,43 @@ async def get_ml_prediction_for_opportunity(
         return prediction
         
     except Exception as e:
-        logger.error(f"❌ Erreur get_ml_prediction_for_opportunity: {e}", exc_info=True)
+        logger.error(f"❌ Erreur get_ml_v2_prediction_for_opportunity: {e}", exc_info=True)
         return None
+
+
+def should_filter_setup_with_ml_v2(
+    klines: List,
+    symbol: str,
+    min_expected_pnl: float = 0.3
+) -> tuple[bool, Optional[str]]:
+    """
+    Filtrer un setup basé sur la prédiction PNL% V2
+    
+    Args:
+        klines: Klines de l'opportunité
+        symbol: Symbole
+        min_expected_pnl: PNL minimum requis (%)
+        
+    Returns:
+        (should_reject, reason)
+    """
+    try:
+        # Calculer features
+        features = calculate_technical_indicators(klines, symbol)
+        if not features:
+            return (False, None)
+        
+        # Vérifier avec predictor V2
+        from optimization.predictor_v2 import get_predictor_v2
+        
+        predictor = get_predictor_v2()
+        should_reject, predicted_pnl, reason = predictor.should_reject_trade(
+            features=features,
+            min_expected_pnl=min_expected_pnl
+        )
+        
+        return (should_reject, reason)
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur should_filter_setup_with_ml_v2: {e}")
+        return (False, None)

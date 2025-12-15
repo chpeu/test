@@ -10,8 +10,16 @@ from collections import deque
 from api.reliability import WebSocketManager
 from api.mexc import get_mexc_client
 from config import WEBSOCKET_CONFIG, DEBUG_ENABLED
+from utils.pricing import get_price_with_source
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class HybridPriceProvider:
@@ -42,6 +50,11 @@ class HybridPriceProvider:
 
         # 🔥 FIX CRITIQUE: Stocker symboles pour réabonnement après reconnexion
         self.monitored_symbols: list = []
+        
+        # 🔥 FIX SL MISMATCH: Callback pour vérification SL en temps réel
+        # Appelé à chaque tick WebSocket pour détection immédiate du SL
+        self._sl_check_callback = None
+        self._sl_check_params = None  # {symbol, direction, sl_level, entry_price}
         
     def _handle_mexc_message(self, data: dict):
         """
@@ -76,18 +89,30 @@ class HybridPriceProvider:
                         ccxt_symbol = f"{base}/{quote}:{quote}"  # Format ccxt standard
                 
                 # Extraire prix
-                price = float(ticker_data.get("lastPrice", 0))
-                volume24 = float(ticker_data.get("volume24", 0))
+                last_price = _safe_float(ticker_data.get("lastPrice")) or 0.0
+                volume24 = _safe_float(ticker_data.get("volume24")) or 0.0
+                mark_price = _safe_float(ticker_data.get("markPrice"))
+                fair_price = _safe_float(ticker_data.get("fairPrice"))
+                index_price = _safe_float(ticker_data.get("indexPrice"))
                 
                 # Mettre en cache avec format ccxt
                 ticker_info = {
                     "symbol": ccxt_symbol,  # Format ccxt pour cohérence
-                    "lastPrice": price,
+                    "lastPrice": last_price,
+                    "markPrice": mark_price,
+                    "fairPrice": fair_price,
+                    "indexPrice": index_price,
                     "volume24": volume24,
-                    "high24": float(ticker_data.get("high24", 0)),
-                    "low24": float(ticker_data.get("low24", 0)),
+                    "high24": _safe_float(ticker_data.get("high24")) or 0.0,
+                    "low24": _safe_float(ticker_data.get("low24")) or 0.0,
                     "timestamp": time.time()
                 }
+
+                reference_price, ref_source = get_price_with_source(ticker_info)
+                if reference_price is not None:
+                    ticker_info["referencePrice"] = reference_price
+                if ref_source:
+                    ticker_info["referenceSource"] = ref_source
                 
                 # 🔥 FIX: Mise à jour thread-safe via asyncio task
                 # Utiliser _update_cache pour garantir la cohérence avec le lock
@@ -119,6 +144,21 @@ class HybridPriceProvider:
                     # WebSocket émet déjà en temps réel, la boucle de check à 0.5s servira de backup
                     pass
                 
+                # 🔥 FIX SL MISMATCH: Vérification SL en temps réel à chaque tick
+                # Cela garantit une détection immédiate du SL, pas toutes les 2 secondes
+                if self._sl_check_callback and self._sl_check_params:
+                    params = self._sl_check_params
+                    if params.get('symbol') == ccxt_symbol:
+                        try:
+                            loop = asyncio.get_running_loop()
+                            # Fire-and-forget: vérifier SL immédiatement
+                            asyncio.create_task(
+                                self._check_sl_realtime(last_price, params)
+                            )
+                        except RuntimeError:
+                            # Pas de boucle, ignorer (ne devrait pas arriver)
+                            pass
+                
                 if DEBUG_ENABLED:
                     logger.debug(f"📊 Prix MEXC WS: {mexc_symbol} -> {ccxt_symbol} = {price}")
     
@@ -127,6 +167,18 @@ class HybridPriceProvider:
         async with self.cache_lock:
             self.price_cache[symbol] = data
             self.message_buffer.append(data)
+
+    def _ensure_reference_price(self, price_data: dict) -> dict:
+        """Guarantee referencePrice/referenceSource fields are populated."""
+        if price_data is None:
+            return price_data
+        if "referencePrice" not in price_data or price_data.get("referencePrice") in (None, 0):
+            price, source = get_price_with_source(price_data)
+            if price is not None:
+                price_data["referencePrice"] = price
+            if source:
+                price_data["referenceSource"] = source
+        return price_data
 
     async def _get_cached_price(self, symbol: str) -> Optional[Dict]:
         """Récupérer le dernier prix connu dans le cache (même si WS est down)."""
@@ -291,7 +343,7 @@ class HybridPriceProvider:
                 if symbol in self.price_cache:
                     if metrics:
                         metrics.ws_price_count += 1
-                    return self.price_cache[symbol]
+                    return self._ensure_reference_price(self.price_cache[symbol])
             
             # Pas en cache mais WS connecté → attendre un peu
             await asyncio.sleep(0.05)
@@ -313,27 +365,41 @@ class HybridPriceProvider:
             
             # 🔥 FIX: Vérifier que ticker est un dict AVANT utilisation
             if not isinstance(ticker, dict) or ticker is None:
-                # Essayer le cache avant de logger l'erreur
+                # Essayer le cache avant de logger l'erreur (même périmé)
                 cached = await self._get_cached_price(symbol)
                 if cached:
                     if DEBUG_ENABLED:
                         logger.debug(
                             f"⚠️ Ticker invalide pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s)"
                         )
-                    return cached
-                # Si pas de cache, alors logger l'erreur
+                    return self._ensure_reference_price(cached)
+                
+                # Essayer le cache sans restriction de temps
+                if symbol in self.price_cache:
+                    expired_cache = self.price_cache[symbol]
+                    logger.warning(
+                        f"⚠️ Format ticker invalide pour {symbol}, utilisation cache périmé (age={time.time() - expired_cache.get('timestamp', 0):.1f}s)"
+                    )
+                    return self._ensure_reference_price(expired_cache)
+                
+                # Pas de cache disponible, retourner None
                 logger.warning(
                     f"⚠️ Format ticker invalide (attendu dict, reçu {type(ticker).__name__}) pour {symbol} - Pas de cache disponible"
                 )
                 return None
             
             if ticker:
-                return {
+                info = ticker.get("info", {}) if isinstance(ticker, dict) else {}
+                rest_result = {
                     "symbol": symbol,
                     "lastPrice": ticker.get("last", 0),
+                    "markPrice": info.get("markPrice") or info.get("fairPrice"),
+                    "fairPrice": info.get("fairPrice"),
+                    "indexPrice": info.get("indexPrice"),
                     "volume24": ticker.get("quoteVolume", 0),
                     "timestamp": time.time()
                 }
+                return self._ensure_reference_price(rest_result)
         except Exception as e:
             # Essayer le cache avant de logger l'erreur
             cached = await self._get_cached_price(symbol)
@@ -342,13 +408,24 @@ class HybridPriceProvider:
                     logger.debug(
                         f"⚠️ REST erreur pour {symbol}, utilisation du cache (age={time.time() - cached.get('timestamp', 0):.1f}s): {e}"
                     )
-                return cached
-            # Si pas de cache, alors logger l'erreur complète
+                return self._ensure_reference_price(cached)
+            
+            # Essayer le cache sans restriction de temps
+            if symbol in self.price_cache:
+                expired_cache = self.price_cache[symbol]
+                logger.warning(
+                    f"⚠️ REST erreur pour {symbol}, utilisation cache périmé (age={time.time() - expired_cache.get('timestamp', 0):.1f}s)"
+                )
+                return self._ensure_reference_price(expired_cache)
+            
+            # Si pas de cache, alors logger l'erreur complète et retourner None
             if DEBUG_ENABLED:
                 logger.error(f"❌ Erreur fallback REST {symbol}: {e}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
-        
+
+            return None
+
         return None
     
     def is_websocket_connected(self) -> bool:
@@ -374,6 +451,116 @@ class HybridPriceProvider:
                 await self.socketio_emit_callback(symbol, price)
             except Exception as e:
                 logger.error(f"❌ Erreur émission prix SocketIO: {e}")
+    
+    def set_sl_check_callback(
+        self, 
+        callback, 
+        symbol: Optional[str] = None,
+        direction: Optional[str] = None,
+        sl_level: Optional[float] = None,
+        entry_price: Optional[float] = None
+    ):
+        """
+        🔥 FIX SL MISMATCH: Configurer vérification SL en temps réel
+        
+        Cette méthode permet de vérifier le SL à chaque tick WebSocket,
+        éliminant le problème de gap entre les vérifications de 2 secondes.
+        
+        Args:
+            callback: Fonction async(price, reason) appelée quand SL touché
+            symbol: Symbole de la position active
+            direction: 'LONG' ou 'SHORT'
+            sl_level: Niveau de prix du Stop Loss
+            entry_price: Prix d'entrée pour calcul PnL
+        """
+        self._sl_check_callback = callback
+        if callback and symbol:
+            self._sl_check_params = {
+                'symbol': symbol,
+                'direction': direction,
+                'sl_level': sl_level,
+                'entry_price': entry_price
+            }
+            logger.info(
+                f"🛡️ SL Check temps réel activé: {symbol} {direction} | "
+                f"SL={sl_level:.8f} | Entry={entry_price:.8f}"
+            )
+        else:
+            self._sl_check_params = None
+            if callback is None:
+                logger.info("🛡️ SL Check temps réel désactivé")
+    
+    def update_sl_level(self, new_sl_level: float):
+        """
+        🔥 FIX: Mettre à jour le niveau SL (pour trailing stop)
+        
+        Args:
+            new_sl_level: Nouveau niveau de prix du Stop Loss
+        """
+        if self._sl_check_params:
+            old_sl = self._sl_check_params.get('sl_level', 0)
+            self._sl_check_params['sl_level'] = new_sl_level
+            logger.debug(
+                f"🔄 SL temps réel mis à jour: {old_sl:.8f} → {new_sl_level:.8f}"
+            )
+    
+    async def _check_sl_realtime(self, current_price: float, params: dict):
+        """
+        🔥 FIX SL MISMATCH: Vérifier SL en temps réel
+        
+        Cette méthode est appelée à chaque tick WebSocket pour détecter
+        immédiatement si le SL est touché.
+        
+        Args:
+            current_price: Prix actuel du tick
+            params: Paramètres de la position {symbol, direction, sl_level, entry_price}
+        """
+        if not self._sl_check_callback or not params:
+            return
+        
+        direction = params.get('direction')
+        sl_level = params.get('sl_level')
+        entry_price = params.get('entry_price')
+        
+        if not all([direction, sl_level, entry_price]):
+            return
+        
+        # Vérifier si SL touché
+        sl_triggered = False
+        if direction == 'LONG':
+            # LONG: SL touché si prix <= sl_level
+            sl_triggered = current_price <= sl_level
+        else:  # SHORT
+            # SHORT: SL touché si prix >= sl_level
+            sl_triggered = current_price >= sl_level
+        
+        if sl_triggered:
+            # Calculer PnL pour déterminer si c'est SL ou TS
+            if direction == 'LONG':
+                pnl = (current_price - entry_price) / entry_price * 100
+            else:
+                pnl = (entry_price - current_price) / entry_price * 100
+            
+            reason = 'TS' if pnl >= 0 else 'SL'
+            
+            logger.warning(
+                f"⚡ SL DÉTECTÉ TEMPS RÉEL: {params.get('symbol')} {direction} | "
+                f"Prix={current_price:.8f} | SL={sl_level:.8f} | "
+                f"PnL={pnl:+.2f}% | Raison={reason}"
+            )
+            
+            # Désactiver callback pour éviter appels multiples
+            callback = self._sl_check_callback
+            self._sl_check_callback = None
+            self._sl_check_params = None
+            
+            # Appeler le callback de fermeture
+            try:
+                await callback(current_price, reason)
+            except Exception as e:
+                logger.error(f"❌ Erreur callback SL temps réel: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
 
 
 # Instance globale

@@ -220,6 +220,19 @@ def calculate_atr_levels(
         sl = entry * (1 + atr_percent / 100 * sl_mult)
         tp = entry * (1 - atr_percent / 100 * tp_mult)
 
+    # 🔥 FIX: Validation de sécurité - détecter et corriger TP/SL inversés
+    # Pour LONG: tp > entry > sl | Pour SHORT: sl > entry > tp
+    if direction == 'LONG':
+        if tp <= entry or sl >= entry:
+            logger.error(f"⚠️ TP/SL INVERSÉS détectés pour LONG! tp={tp}, entry={entry}, sl={sl} - Recalcul...")
+            sl = entry * (1 - atr_percent / 100 * sl_mult)
+            tp = entry * (1 + atr_percent / 100 * tp_mult)
+    else:  # SHORT
+        if tp >= entry or sl <= entry:
+            logger.error(f"⚠️ TP/SL INVERSÉS détectés pour SHORT! tp={tp}, entry={entry}, sl={sl} - Recalcul...")
+            sl = entry * (1 + atr_percent / 100 * sl_mult)
+            tp = entry * (1 - atr_percent / 100 * tp_mult)
+
     # Arrondir selon précision
     if entry < 0.001:
         precision = 10

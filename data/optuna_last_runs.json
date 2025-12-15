@@ -1,0 +1,116 @@
+{
+  "metrics": {
+    "trading_composite": {
+      "metric": "trading_composite",
+      "last_run": {
+        "metric": "trading_composite",
+        "score": 0.7761741988983368,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 10,
+          "reg_alpha": 11.974334868366029,
+          "reg_lambda": 14.299525915161514,
+          "subsample": 0.6958920514657898,
+          "colsample_bytree": 0.7906935485309322,
+          "colsample_bylevel": 0.702610666589851,
+          "learning_rate": 0.015871366404422785,
+          "n_estimators": 200,
+          "gamma": 2.5106039146088905,
+          "scale_pos_weight": 1.1930706366802883
+        },
+        "trial_number": 6442,
+        "total_trials": 6450,
+        "datetime": "2025-11-30T10:13:06.782936",
+        "source": "latest"
+      }
+    },
+    "f1_score": {
+      "metric": "f1_score",
+      "last_run": {
+        "score": 0.85,
+        "timestamp": "2025-12-02T19:34:58.210302",
+        "metric": "f1_score",
+        "source": "latest"
+      }
+    },
+    "accuracy": {
+      "metric": "accuracy",
+      "last_run": {
+        "metric": "accuracy",
+        "score": 0.5279187817258884,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 9,
+          "reg_alpha": 9.76143724981311,
+          "reg_lambda": 3.460739058778201,
+          "subsample": 0.8936379182731425,
+          "colsample_bytree": 0.6920799982457168,
+          "colsample_bylevel": 0.7809349896211875,
+          "learning_rate": 0.016548487462207394,
+          "n_estimators": 300,
+          "gamma": 3.9361632612097948,
+          "scale_pos_weight": 1.3895692122580972
+        },
+        "trial_number": 6299,
+        "total_trials": 6300,
+        "datetime": "2025-11-24T20:13:47.400983",
+        "source": "latest"
+      }
+    },
+    "roc_auc": {
+      "metric": "roc_auc",
+      "last_run": {
+        "metric": "roc_auc",
+        "score": 0.5623151434486838,
+        "params": {
+          "max_depth": 2,
+          "min_child_weight": 11,
+          "reg_alpha": 8.433430583533577,
+          "reg_lambda": 10.753802294740378,
+          "subsample": 0.8910313582802034,
+          "colsample_bytree": 0.7766458349687091,
+          "colsample_bylevel": 0.6871272147996271,
+          "learning_rate": 0.012207090804542063,
+          "n_estimators": 300,
+          "gamma": 3.8997137970868954,
+          "scale_pos_weight": 1.3840241490870164
+        },
+        "trial_number": 4899,
+        "total_trials": 4900,
+        "datetime": "2025-11-23T16:57:11.007101",
+        "source": "latest"
+      }
+    },
+    "gb_composite": {
+      "metric": "gb_composite",
+      "last_run": {
+        "metric": "gb_composite",
+        "model_type": "GradientBoosting",
+        "score": 0.6193,
+        "params": {
+          "n_estimators": 50,
+          "max_depth": 3,
+          "learning_rate": 0.013553575188133472,
+          "min_samples_leaf": 50,
+          "l2_regularization": 0.30000000000000004
+        },
+        "metrics": {
+          "train_accuracy": 0.6959,
+          "test_accuracy": 0.6193,
+          "overfitting_gap": 0.0766,
+          "f1_score": 0.5654,
+          "precision": 0.6279,
+          "recall": 0.5143,
+          "roc_auc": 0.6466,
+          "n_train_samples": 868,
+          "n_test_samples": 218,
+          "n_features": 40
+        },
+        "trial_number": 100,
+        "total_trials": 100,
+        "datetime": "2025-12-01T01:25:00.916625",
+        "source": "latest"
+      }
+    }
+  }
+}

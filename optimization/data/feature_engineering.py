@@ -179,7 +179,73 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
         (df_eng['adx_1m'] < 20) & (df_eng['adx_5m'] < 20)
     ).astype(int)
     
-    logger.info(f"✅ Feature engineering complete - {len(df_eng.columns)} total features")
+    # ========== REJECT CATEGORY ONE-HOT ENCODING ==========
+    # 🔥 Encoder reject_reason_category en features booléennes
+    if 'reject_reason_category' in df_eng.columns:
+        # Catégories principales à encoder
+        reject_categories = [
+            'volume_filter', 'atr_filter', 'snr_filter', 'orderbook',
+            'wick_filter', 'spread', 'structure_swing', 'score_insufficient',
+            'ema_macd_coherence', 'volume_quality', 'micro_range',
+            'confluence', 'correlation', 'recovery_mode'
+        ]
+        
+        for category in reject_categories:
+            col_name = f'reject_{category}'
+            df_eng[col_name] = (df_eng['reject_reason_category'] == category).astype(int)
+        
+        # Feature 'accepted' (pas de rejet = opportunity)
+        df_eng['reject_none'] = df_eng['reject_reason_category'].isna().astype(int)
+        
+        logger.info(f"🏷️ One-hot encoding reject_reason_category: {len(reject_categories)+1} features créées")
+    
+    # ========== TEMPORAL FEATURES ==========
+    # 🔥 Features temporelles pour capturer les patterns horaires/sessions
+    if 'timestamp' in df_eng.columns:
+        try:
+            # Convertir timestamp en datetime si nécessaire
+            if not pd.api.types.is_datetime64_any_dtype(df_eng['timestamp']):
+                df_eng['timestamp'] = pd.to_datetime(df_eng['timestamp'])
+            
+            # Heure UTC (0-23)
+            df_eng['hour_utc'] = df_eng['timestamp'].dt.hour
+            
+            # Sessions de marché (binaire)
+            # Asie: 00:00-08:00 UTC
+            df_eng['session_asia'] = ((df_eng['hour_utc'] >= 0) & (df_eng['hour_utc'] < 8)).astype(int)
+            # Europe: 08:00-16:00 UTC
+            df_eng['session_europe'] = ((df_eng['hour_utc'] >= 8) & (df_eng['hour_utc'] < 16)).astype(int)
+            # USA: 13:00-21:00 UTC (overlap avec Europe)
+            df_eng['session_usa'] = ((df_eng['hour_utc'] >= 13) & (df_eng['hour_utc'] < 21)).astype(int)
+            
+            # Heures à forte activité (overlap sessions)
+            df_eng['high_activity_hours'] = ((df_eng['hour_utc'] >= 13) & (df_eng['hour_utc'] < 17)).astype(int)
+            
+            # Jour de la semaine (0=Lundi, 6=Dimanche)
+            df_eng['day_of_week'] = df_eng['timestamp'].dt.dayofweek
+            
+            # Weekend (samedi/dimanche - moins de volume)
+            df_eng['is_weekend'] = (df_eng['day_of_week'] >= 5).astype(int)
+            
+            # Début/fin de semaine (lundi/vendredi - plus volatile)
+            df_eng['week_edge'] = ((df_eng['day_of_week'] == 0) | (df_eng['day_of_week'] == 4)).astype(int)
+            
+            # Heures favorables identifiées précédemment (2h, 12h, 16h UTC)
+            df_eng['favorable_hour'] = df_eng['hour_utc'].isin([2, 12, 16]).astype(int)
+            
+            # Heures défavorables (nuit Europe, peu de volume)
+            df_eng['unfavorable_hour'] = df_eng['hour_utc'].isin([3, 4, 5, 22, 23]).astype(int)
+            
+            logger.info(f"🕐 Features temporelles ajoutées: 11 nouvelles features")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur features temporelles: {e}")
+    
+    logger.info(f"✅ Feature engineering de base terminé: {len(df_eng.columns)} features")
+    
+    # Ajouter features avancées
+    df_eng = add_advanced_features(df_eng)
+    
+    logger.info(f"✅ Feature engineering complet: {len(df_eng.columns)} features totales")
     
     return df_eng
 
@@ -255,8 +321,17 @@ def select_top_features(
     y = df[target_col]
     
     if method == 'correlation':
+        # Filtrer colonnes constantes (variance=0) pour éviter division par 0
+        X_var = X.var()
+        constant_cols = X_var[X_var == 0].index.tolist()
+        if constant_cols:
+            logger.debug(f"⚠️ {len(constant_cols)} colonnes constantes ignorées pour corrélation")
+            X = X.drop(columns=constant_cols)
+        
         # Corrélation avec target
         correlations = X.corrwith(y).abs()
+        # Filtrer NaN (colonnes avec trop de valeurs manquantes)
+        correlations = correlations.dropna()
         top_features = correlations.nlargest(n_features).index.tolist()
         
     elif method == 'mutual_info':
@@ -278,3 +353,114 @@ def select_top_features(
     logger.info(f"📊 Selected top {n_features} features using {method}")
     
     return top_features
+
+
+def add_advanced_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ajouter features avancées discriminantes
+    
+    Features temporelles, market regime, confluence, interactions
+    
+    Args:
+        df: DataFrame avec timestamp
+        
+    Returns:
+        DataFrame avec features avancées ajoutées
+    """
+    logger.info("🚀 Ajout features avancées")
+    
+    df_adv = df.copy()
+    
+    # ========== A. FEATURES TEMPORELLES ==========
+    if 'timestamp' in df_adv.columns:
+        # Convertir en datetime si nécessaire
+        if not pd.api.types.is_datetime64_any_dtype(df_adv['timestamp']):
+            df_adv['timestamp'] = pd.to_datetime(df_adv['timestamp'])
+        
+        df_adv['hour'] = df_adv['timestamp'].dt.hour
+        df_adv['day_of_week'] = df_adv['timestamp'].dt.dayofweek
+        df_adv['is_weekend'] = df_adv['day_of_week'].isin([5, 6]).astype(int)
+        df_adv['is_market_hours'] = df_adv['hour'].between(8, 22).astype(int)
+        
+        # Trading session (Asian/European/US)
+        df_adv['asian_session'] = df_adv['hour'].between(0, 8).astype(int)
+        df_adv['european_session'] = df_adv['hour'].between(8, 16).astype(int)
+        df_adv['us_session'] = df_adv['hour'].between(14, 22).astype(int)
+        
+        logger.info("  ✅ Features temporelles ajoutées")
+    
+    # ========== B. MARKET REGIME (VOLATILITY) ==========
+    if 'atr_1m' in df_adv.columns:
+        # Volatility regime (via rolling mean)
+        df_adv['atr_1m_ma20'] = df_adv['atr_1m'].rolling(20, min_periods=1).mean()
+        df_adv['high_volatility'] = (df_adv['atr_1m'] > df_adv['atr_1m_ma20']).astype(int)
+        df_adv['volatility_expansion_ratio'] = df_adv['atr_1m'] / (df_adv['atr_1m_ma20'] + 1e-8)
+        
+        logger.info("  ✅ Features volatility regime ajoutées")
+    
+    # ========== C. MARKET REGIME (TREND) ==========
+    if 'price' in df_adv.columns:
+        # EMA crossover (9/21)
+        df_adv['ema9'] = df_adv['price'].ewm(span=9, min_periods=1).mean()
+        df_adv['ema21'] = df_adv['price'].ewm(span=21, min_periods=1).mean()
+        df_adv['uptrend'] = (df_adv['ema9'] > df_adv['ema21']).astype(int)
+        df_adv['ema_gap'] = (df_adv['ema9'] - df_adv['ema21']) / (df_adv['ema21'] + 1e-8) * 100
+        
+        # Price position vs EMAs
+        df_adv['price_above_ema9'] = (df_adv['price'] > df_adv['ema9']).astype(int)
+        df_adv['price_above_ema21'] = (df_adv['price'] > df_adv['ema21']).astype(int)
+        
+        logger.info("  ✅ Features trend regime ajoutées")
+    
+    # ========== D. CONFLUENCE AVANCÉE ==========
+    if all(col in df_adv.columns for col in ['rsi_1m', 'macd_1m', 'macd_signal_1m', 'bb_position_1m']):
+        # Bullish setup (oversold + MACD cross + BB bottom)
+        df_adv['bullish_setup'] = (
+            (df_adv['rsi_1m'] < 30) & 
+            (df_adv['macd_1m'] > df_adv['macd_signal_1m']) &
+            (df_adv['bb_position_1m'] < 0.2)
+        ).astype(int)
+        
+        # Bearish setup (overbought + MACD cross + BB top)
+        df_adv['bearish_setup'] = (
+            (df_adv['rsi_1m'] > 70) & 
+            (df_adv['macd_1m'] < df_adv['macd_signal_1m']) &
+            (df_adv['bb_position_1m'] > 0.8)
+        ).astype(int)
+        
+        # Multi-timeframe confluence (1m et 5m alignés)
+        if all(col in df_adv.columns for col in ['rsi_5m', 'macd_5m', 'macd_signal_5m']):
+            df_adv['bullish_confluence_multi_tf'] = (
+                df_adv['bullish_setup'] &
+                (df_adv['rsi_5m'] < 40) &
+                (df_adv['macd_5m'] > df_adv['macd_signal_5m'])
+            ).astype(int)
+            
+            df_adv['bearish_confluence_multi_tf'] = (
+                df_adv['bearish_setup'] &
+                (df_adv['rsi_5m'] > 60) &
+                (df_adv['macd_5m'] < df_adv['macd_signal_5m'])
+            ).astype(int)
+        
+        logger.info("  ✅ Features confluence avancée ajoutées")
+    
+    # ========== E. INTERACTIONS ==========
+    if 'rsi_1m' in df_adv.columns and 'macd_1m' in df_adv.columns:
+        df_adv['rsi_macd_product'] = df_adv['rsi_1m'] * df_adv['macd_1m']
+    
+    if 'volume_1m' in df_adv.columns and 'price' in df_adv.columns:
+        df_adv['volume_price_ratio'] = df_adv['volume_1m'] / (df_adv['price'] + 1e-6)
+    
+    if 'atr_1m' in df_adv.columns and 'spread_pct' in df_adv.columns:
+        df_adv['atr_spread_ratio'] = df_adv['atr_1m'] / (df_adv['spread_pct'] + 1e-6)
+    
+    if 'volatility_ratio' in df_adv.columns and 'momentum_1m' in df_adv.columns:
+        df_adv['volatility_momentum_product'] = df_adv['volatility_ratio'] * df_adv['momentum_1m']
+    
+    logger.info("  ✅ Features interaction ajoutées")
+    
+    # Log résumé
+    new_features_count = len(df_adv.columns) - len(df.columns)
+    logger.info(f"✅ {new_features_count} features avancées créées")
+    
+    return df_adv

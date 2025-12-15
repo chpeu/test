@@ -7,6 +7,7 @@
 	import FeatureImportance from './FeatureImportance.svelte';
 	import ModelsOverview from './ModelsOverview.svelte';
 	import LivePredictions from './LivePredictions.svelte';
+	import CorrelationAnalytics from './CorrelationAnalytics.svelte';
 
 	let activeSubTab = 'dashboard';
 	let loading = true;
@@ -69,6 +70,8 @@
 				<FeatureImportance tradesCount={$mlStats.trades_count} />
 			{:else if activeSubTab === 'models'}
 				<ModelsOverview tradesCount={$mlStats.trades_count} />
+			{:else if activeSubTab === 'correlations'}
+				<CorrelationAnalytics />
 			{:else if activeSubTab === 'exploratory'}
 				<div class="coming-soon">
 					<h3>📊 Analyse Exploratoire</h3>

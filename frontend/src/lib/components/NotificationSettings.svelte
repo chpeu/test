@@ -288,9 +288,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_OPENED}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_OPENED"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.positionOpened.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_OPENED}>{telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_OPENED ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										🟢 Position Ouverte
 									</span>
 								</label>
@@ -300,9 +301,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_CLOSED}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_CLOSED"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.positionClosed.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_CLOSED}>{telegramNotifySettings.TELEGRAM_NOTIFY_POSITION_CLOSED ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										🔴 Position Fermée
 									</span>
 								</label>
@@ -312,9 +314,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_TP_ESCALIER}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_TP_ESCALIER"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.tpEscalier.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_TP_ESCALIER}>{telegramNotifySettings.TELEGRAM_NOTIFY_TP_ESCALIER ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										💰 TP Escalier
 									</span>
 								</label>
@@ -324,9 +327,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_EARLY_INVALIDATION}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_EARLY_INVALIDATION"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.earlyInvalidation.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_EARLY_INVALIDATION}>{telegramNotifySettings.TELEGRAM_NOTIFY_EARLY_INVALIDATION ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										⏱️ Invalidation Précoce
 									</span>
 								</label>
@@ -336,9 +340,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_ERROR}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_ERROR"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.error.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_ERROR}>{telegramNotifySettings.TELEGRAM_NOTIFY_ERROR ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										❌ Erreurs
 									</span>
 								</label>
@@ -348,9 +353,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_RECONNECTION}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_RECONNECTION"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.reconnection.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_RECONNECTION}>{telegramNotifySettings.TELEGRAM_NOTIFY_RECONNECTION ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										🔄 Reconnexion
 									</span>
 								</label>
@@ -360,9 +366,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_DAILY_SUMMARY}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_DAILY_SUMMARY"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.dailySummary.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_DAILY_SUMMARY}>{telegramNotifySettings.TELEGRAM_NOTIFY_DAILY_SUMMARY ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										📊 Résumé Quotidien
 									</span>
 								</label>
@@ -372,9 +379,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_RECOVERY_MODE}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_RECOVERY_MODE"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.recoveryMode.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_RECOVERY_MODE}>{telegramNotifySettings.TELEGRAM_NOTIFY_RECOVERY_MODE ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										🔄 Mode Recovery
 									</span>
 								</label>
@@ -384,9 +392,10 @@
 										type="checkbox"
 										bind:checked={telegramNotifySettings.TELEGRAM_NOTIFY_SETUP_REJECTED}
 										on:change={saveTelegramConfig}
-										data-debug-name="telegramNotifySettings.TELEGRAM_NOTIFY_SETUP_REJECTED"
+										class="hidden-checkbox"
 									/>
-									<span class="notify-type-label" data-debug-name="notifyType.setupRejected.label">
+									<span class="ios-checkbox" class:checked={telegramNotifySettings.TELEGRAM_NOTIFY_SETUP_REJECTED}>{telegramNotifySettings.TELEGRAM_NOTIFY_SETUP_REJECTED ? '✓' : ''}</span>
+									<span class="notify-type-label">
 										🚫 Setup Rejeté
 									</span>
 								</label>
@@ -798,6 +807,196 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		font-weight: bold;
 	}
 
+	/* 🔥 FIX iPhone: Styles pour checkboxes Telegram */
+	.telegram-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 10px;
+		margin-bottom: 15px;
+	}
+
+	.telegram-toggle {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.toggle-switch {
+		position: relative;
+		display: inline-block;
+		width: 50px;
+		height: 26px;
+	}
+
+	.toggle-switch input {
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.toggle-slider {
+		position: absolute;
+		cursor: pointer;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: #2a3a6b;
+		transition: 0.3s;
+		border-radius: 26px;
+	}
+
+	.toggle-slider:before {
+		position: absolute;
+		content: "";
+		height: 20px;
+		width: 20px;
+		left: 3px;
+		bottom: 3px;
+		background-color: #888;
+		transition: 0.3s;
+		border-radius: 50%;
+	}
+
+	.toggle-switch input:checked + .toggle-slider {
+		background-color: rgba(0, 255, 136, 0.3);
+	}
+
+	.toggle-switch input:checked + .toggle-slider:before {
+		transform: translateX(24px);
+		background-color: #00ff88;
+	}
+
+	.toggle-switch input:disabled + .toggle-slider {
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
+	.toggle-label {
+		font-size: 13px;
+		color: #aaa;
+		font-weight: bold;
+	}
+
+	.telegram-actions {
+		margin: 15px 0;
+	}
+
+	.test-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 20px;
+		background: linear-gradient(135deg, #00aaff 0%, #0088cc 100%);
+		color: #fff;
+		border: none;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.3s;
+	}
+
+	.test-btn:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(0, 170, 255, 0.3);
+	}
+
+	.test-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.telegram-notify-types {
+		margin-top: 20px;
+		padding: 15px;
+		background: rgba(0, 170, 255, 0.05);
+		border-radius: 8px;
+		border: 1px solid rgba(0, 170, 255, 0.2);
+	}
+
+	.notify-types-title {
+		font-size: 14px;
+		color: #00aaff;
+		font-weight: bold;
+		margin-bottom: 15px;
+	}
+
+	.notify-types-list {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+		gap: 12px;
+	}
+
+	/* 🔥 FIX iPhone: Style explicite pour les checkboxes */
+	.notify-type-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 15px;
+		background: #0a0e27;
+		border-radius: 8px;
+		border: 1px solid #2a3a6b;
+		cursor: pointer;
+		transition: all 0.2s;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.notify-type-item:hover {
+		border-color: #00aaff;
+		background: rgba(0, 170, 255, 0.1);
+	}
+
+	.notify-type-item:active {
+		transform: scale(0.98);
+	}
+
+	/* Cacher la checkbox native */
+	.hidden-checkbox {
+		position: absolute !important;
+		opacity: 0 !important;
+		width: 0 !important;
+		height: 0 !important;
+		pointer-events: none !important;
+	}
+
+	/* 🔥 FIX iPhone: Checkbox visuelle ultra-simple pour iOS Safari */
+	.ios-checkbox {
+		display: inline-flex !important;
+		align-items: center !important;
+		justify-content: center !important;
+		width: 28px !important;
+		height: 28px !important;
+		min-width: 28px !important;
+		min-height: 28px !important;
+		border: 3px solid #00aaff !important;
+		border-radius: 6px !important;
+		background-color: transparent !important;
+		flex-shrink: 0 !important;
+		font-size: 18px !important;
+		font-weight: bold !important;
+		color: #0a0e27 !important;
+		line-height: 1 !important;
+		-webkit-appearance: none !important;
+		-moz-appearance: none !important;
+		appearance: none !important;
+		box-sizing: border-box !important;
+	}
+
+	.ios-checkbox.checked {
+		background-color: #00ff88 !important;
+		border-color: #00ff88 !important;
+	}
+
+	.notify-type-label {
+		font-size: 14px;
+		color: #ddd;
+		user-select: none;
+		-webkit-user-select: none;
+	}
+
 	/* Mobile */
 	@media (max-width: 768px) {
 		.types-grid {
@@ -807,6 +1006,35 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		.settings-header {
 			flex-direction: column;
 			gap: 15px;
+		}
+
+		.telegram-header {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.notify-types-list {
+			grid-template-columns: 1fr;
+		}
+
+		.notify-type-item {
+			padding: 14px 16px;
+			gap: 14px;
+		}
+
+		.custom-checkbox {
+			width: 28px;
+			height: 28px;
+			min-width: 28px;
+			min-height: 28px;
+		}
+
+		.custom-checkbox.checked::after {
+			font-size: 18px;
+		}
+
+		.notify-type-label {
+			font-size: 15px;
 		}
 	}
 </style>

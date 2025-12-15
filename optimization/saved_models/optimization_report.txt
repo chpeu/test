@@ -1,0 +1,53 @@
+======================================================================
+RAPPORT D'OPTIMISATION ML
+Date: 2025-12-11 20:21:40
+======================================================================
+
+METRIQUES FINALES
+----------------------------------------
+Test Accuracy: 68.18%
+F1 Score: 0.7328
+ROC-AUC: 0.6243
+Precision: 0.6575
+Recall: 0.8276
+Overfitting: 3.96%
+
+CV Accuracy: 53.26% (+/- 4.66%)
+
+HYPERPARAMETRES
+----------------------------------------
+max_depth: 2
+learning_rate: 0.03
+max_iter: 100
+min_samples_leaf: 40
+l2_regularization: 1.0
+
+FEATURES (20)
+----------------------------------------
+  - trend_strength_1m: 0.0190
+  - volume_spike_5m: 0.0193
+  - bb_width_5m: 0.0201
+  - volatility_momentum_product: 0.0220
+  - rsi_change_1m: 0.0229
+  - bb_width_1m: 0.0237
+  - di_gap_1m: 0.0239
+  - bb_distance_to_lower_1m: 0.0240
+  - di_plus_5m: 0.0240
+  - delta_volume: 0.0252
+  - atr_pct_5m: 0.0252
+  - macd_hist_prev_1m: 0.0252
+  - di_minus_5m: 0.0263
+  - adx_1m: 0.0268
+  - rsi_divergence: 0.0279
+  - rsi_change_5m: 0.0281
+  - macd_momentum_1m: 0.0282
+  - bb_distance_to_lower_5m: 0.0284
+  - rsi_prev_1m: 0.0293
+  - trend_strength_5m: 0.0324
+
+SEUILS OPTIMAUX
+----------------------------------------
+best_accuracy: 0.50
+best_f1: 0.50
+best_precision: 0.50
+best_balanced: 0.50

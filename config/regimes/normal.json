@@ -1,0 +1,18 @@
+{
+  "name": "NORMAL",
+  "optimal_atr_min": 0.10,
+  "optimal_atr_max": 0.30,
+  "min_score_required": 8.0,
+  "atr_mult_sl": 1.2,
+  "atr_mult_tp": 2.2,
+  "break_even_atr_mult": 1.0,
+  "trailing_trigger_atr_mult": 1.2,
+  "max_position_time": 300,
+  "volume_multiplier": 0.8,
+  "sl_exchange_percent": 0.30,
+  "stagnation_timeout": 480,
+  "stagnation_min_pnl": 0.04,
+  "stagnation_max_loss": -0.10,
+  "optimal_atr_min_5m": 0.35,
+  "optimal_atr_max_5m": 0.80
+}

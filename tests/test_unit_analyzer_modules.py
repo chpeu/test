@@ -7,6 +7,7 @@ Target: 80%+ coverage for each analyzer module
 import pytest
 import sys
 import os
+from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.analyzer.filters import (
@@ -123,6 +124,7 @@ class TestFilters:
         # Price 300 away from EMA21 > 60
         assert result is None
 
+    @patch('core.analyzer.filters.TRADING_CONFIG', {'use_wick': True, 'wick_ratio_max': 2.5})
     def test_check_wick_filter_normal_wicks(self):
         """Test wick filter with normal wicks"""
         candle = [1000000, 50000.0, 50200.0, 49900.0, 50100.0, 1000.0]
@@ -138,6 +140,7 @@ class TestFilters:
         # Should reject due to high wicks
         assert result is not None
 
+    @patch('core.analyzer.filters.TRADING_CONFIG', {'use_wick': True, 'wick_ratio_max': 2.5})
     def test_check_wick_filter_low_wicks(self):
         """Test wick filter with low wicks"""
         candle = [1000000, 50000.0, 50120.0, 49980.0, 50100.0, 1000.0]
@@ -153,13 +156,20 @@ class TestFilters:
 
     def test_check_atr_filter_optimal_range(self):
         """Test ATR filter with optimal ATR"""
-        result = check_atr_filter(
-            atr_percent=0.5,  # Within 0.3-1.0% for 1m
-            timeframe='1m',
-            symbol='BTC/USDT',
-            return_reason=False
-        )
-        assert result is None
+        with patch('core.analyzer.filters.get_effective_value', return_value=None), \
+             patch('core.analyzer.filters.TRADING_CONFIG', {
+                 'optimal_atr_min_1m': 0.3,
+                 'optimal_atr_max_1m': 1.0,
+                 'optimal_atr_min_5m': 0.4,
+                 'optimal_atr_max_5m': 2.0
+             }):
+            result = check_atr_filter(
+                atr_percent=0.5,  # Within 0.3-1.0% for 1m
+                timeframe='1m',
+                symbol='BTC/USDT',
+                return_reason=False
+            )
+            assert result is None
 
     def test_check_atr_filter_too_low(self):
         """Test ATR filter with too low ATR"""
@@ -348,18 +358,46 @@ class TestScoring:
 
     def test_get_min_score_required_high_adx(self):
         """Test min score with high ADX (lower requirement)"""
-        min_score = get_min_score_required(adx_value=35.0, use_weighted=True)
+        with patch('core.analyzer.scoring.get_effective_value', return_value=None), \
+             patch('core.analyzer.scoring.TRADING_CONFIG', {
+                 'min_score_required': 7.5,
+                 'min_score_adx_low': 8.0,
+                 'min_score_adx_high': 7.0,
+                 'use_weighted_scoring': True,
+                 'pair_scorer_enabled': False
+             }):
+            result = get_min_score_required(adx_value=35.0, use_weighted=True)
+            
+            # Le résultat est un tuple (base, adj, effective)
+            if isinstance(result, tuple):
+                min_score = result[2]  # effective_min_score
+            else:
+                min_score = result
 
-        # High ADX should require less score
-        assert min_score > 0
-        assert min_score <= 8.0
+            # High ADX should require less score
+            assert min_score > 0
+            assert min_score <= 8.0
 
     def test_get_min_score_required_low_adx(self):
         """Test min score with low ADX (higher requirement)"""
-        min_score = get_min_score_required(adx_value=20.0, use_weighted=True)
+        with patch('core.analyzer.scoring.get_effective_value', return_value=None), \
+             patch('core.analyzer.scoring.TRADING_CONFIG', {
+                 'min_score_required': 7.5,
+                 'min_score_adx_low': 8.0,
+                 'min_score_adx_high': 7.0,
+                 'use_weighted_scoring': True,
+                 'pair_scorer_enabled': False
+             }):
+            result = get_min_score_required(adx_value=20.0, use_weighted=True)
+            
+            # Le résultat est un tuple (base, adj, effective)
+            if isinstance(result, tuple):
+                min_score = result[2]  # effective_min_score
+            else:
+                min_score = result
 
-        # Low ADX should require more score
-        assert min_score >= 7.5
+            # Low ADX should require more score
+            assert min_score >= 7.5
 
     def test_apply_trend_bonus_bullish_long(self):
         """Test trend bonus for aligned trend (LONG + BULLISH)"""

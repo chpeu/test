@@ -1,0 +1,25 @@
+{
+  "model_name": "high_precision",
+  "trained_at": "2025-11-30T10:20:17.606921",
+  "metrics": {
+    "accuracy": 0.5767441860465117,
+    "f1": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "roc_auc": 0.48746012052463666,
+    "threshold": 0.8500000000000003
+  },
+  "n_features": 40,
+  "features": [
+    "wick_passed_1m",
+    "favorable_hour",
+    "di_gap_5m",
+    "macd_momentum_1m",
+    "european_session",
+    "rsi_neutral_1m",
+    "volatility_ratio",
+    "macd_hist_prev_1m",
+    "macd_hist_prev_5m",
+    "volatility_momentum_product"
+  ]
+}

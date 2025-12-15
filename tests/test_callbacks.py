@@ -346,8 +346,8 @@ class TestScalabilityRefresh:
 
         await scalability_refresh.scalability_refresh_loop_callback()
 
-        # Vérifier que scanner a été appelé
-        mock_scanner.scan_top_pairs.assert_called_once_with(20)
+        # Vérifier que scanner a été appelé (top_pairs_limit = 40 dans config)
+        mock_scanner.scan_top_pairs.assert_called_once_with(40)
 
         # Vérifier que top_pairs a été mis à jour
         assert len(mock_state['top_pairs']) == 2

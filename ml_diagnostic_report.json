@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-11-29T08:23:44.956042",
+  "problems": [
+    "10 colonnes avec >20% NULL",
+    "22 colonnes constantes",
+    "Corr\u00e9lations faibles (max=0.114)",
+    "Aucune feature discriminante entre WIN/LOSS"
+  ],
+  "solutions": [
+    "Utiliser l'heure comme feature (one-hot ou cyclique)",
+    "Le probl\u00e8me est dans les donn\u00e9es, pas le mod\u00e8le"
+  ],
+  "tests": [
+    {
+      "name": "Simple Rules",
+      "best_rule": "Toujours LOSS",
+      "best_accuracy": 0.5603180089872105
+    },
+    {
+      "name": "Ensemble",
+      "accuracy": 0.614853195164076,
+      "f1": 0.33432835820895523
+    },
+    {
+      "name": "Enhanced Features",
+      "accuracy": 0.614853195164076
+    }
+  ]
+}

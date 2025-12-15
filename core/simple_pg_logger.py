@@ -53,13 +53,16 @@ class SimplePGLogger:
             
             cursor = self.conn.cursor()
             
-            # Insert MINIMAL pour test
+            # Insert MINIMAL pour test - 🔥 Enrichi avec colonnes essentielles
             query = """
                 INSERT INTO scan_logs (
                     timestamp, symbol, price,
-                    rsi_1m, score_total, is_opportunity
+                    rsi_1m, score_total, is_opportunity,
+                    score_1m, score_5m,
+                    reject_reason_category,
+                    config_min_score_required, config_snr_threshold, config_volume_multiplier
                 )
-                VALUES (NOW(), %s, %s, %s, %s, %s)
+                VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             indicators_1m = scan_data.get('indicators_1m', {}) or {}
@@ -194,15 +197,46 @@ class SimplePGLogger:
                            f"scores keys: {list(scores.keys()) if scores else 'None'}, "
                            f"scan_data keys: {list(scan_data.keys())[:15] if scan_data else 'None'}")
             
+            # 🔥 Extraire score_1m et score_5m depuis scores ou analysis
+            score_1m = scores.get('score_1m')
+            if score_1m is None:
+                analysis_1m = scan_data.get('analysis_1m', {})
+                if isinstance(analysis_1m, dict):
+                    score_1m = analysis_1m.get('totalScore') or analysis_1m.get('score_1m')
+            
+            score_5m = scores.get('score_5m')
+            if score_5m is None:
+                analysis_5m = scan_data.get('analysis_5m', {})
+                if isinstance(analysis_5m, dict):
+                    score_5m = analysis_5m.get('totalScore') or analysis_5m.get('score_5m')
+            
+            # 🔥 Extraire reject_reason_category
+            reject_reason_category = scan_data.get('reject_reason_category')
+            if reject_reason_category is None:
+                reject_reason_category = scan_data.get('reject_category')
+            
+            # 🔥 Extraire config_* depuis params_snapshot
+            params_snapshot = scan_data.get('params_snapshot', {}) or {}
+            config_min_score = params_snapshot.get('min_score_required')
+            config_snr = params_snapshot.get('snr_threshold')
+            config_vol_mult = params_snapshot.get('volume_multiplier')
+            
             params = (
                 symbol,
                 price,
                 rsi_1m,  # Peut être None, ce qui est acceptable pour la base de données
                 score_total,  # Peut être None, ce qui est acceptable pour la base de données
-                scan_data.get('is_opportunity', False)
+                scan_data.get('is_opportunity', False),
+                # 🔥 Nouvelles colonnes
+                score_1m,
+                score_5m,
+                reject_reason_category,
+                config_min_score,
+                config_snr,
+                config_vol_mult
             )
             
-            logger.debug(f"🔍 SimplePGLogger: Insert pour {symbol} avec params: (symbol={symbol}, price={price}, rsi_1m={rsi_1m}, score_total={score_total}, is_opportunity={scan_data.get('is_opportunity', False)})")
+            logger.debug(f"🔍 SimplePGLogger: Insert pour {symbol} avec params: (symbol={symbol}, price={price}, rsi_1m={rsi_1m}, score_total={score_total}, is_opportunity={scan_data.get('is_opportunity', False)}, score_1m={score_1m}, score_5m={score_5m}, reject_cat={reject_reason_category})")
             cursor.execute(query, params)
             
             self.conn.commit()

@@ -15,6 +15,86 @@ from sqlalchemy import create_engine
 logger = logging.getLogger(__name__)
 
 
+def build_config_filter_conditions(for_trades_table: bool = True, use_alias: bool = False) -> List[str]:
+    """
+    Construit les conditions de filtrage sur la configuration actuelle.
+    Utilisé par le compteur ML et par tous les modèles pour garantir la cohérence.
+    
+    Args:
+        for_trades_table: Si True, inclut le filtre exit_reason (table trades).
+                         Si False, l'exclut (vues ml_features qui excluent déjà les trades manuels).
+        use_alias: Si True, préfixe les colonnes avec 't.' pour jointures.
+    
+    Returns:
+        Liste de conditions SQL WHERE
+    """
+    try:
+        # Importer la config actuelle
+        from config import TRADING_CONFIG
+        
+        # Paramètres de base (validation setup)
+        min_score = float(TRADING_CONFIG.get('min_score_required', 6.5))
+        snr_threshold = float(TRADING_CONFIG.get('snr_threshold', 0.15))
+        volume_mult = float(TRADING_CONFIG.get('volume_multiplier', 0.95))
+        use_confluence = bool(TRADING_CONFIG.get('use_confluence', False))
+        
+        # ATR optimal
+        atr_min_1m = float(TRADING_CONFIG.get('optimal_atr_min_1m', 0.12))
+        atr_max_1m = float(TRADING_CONFIG.get('optimal_atr_max_1m', 0.75))
+        atr_min_5m = float(TRADING_CONFIG.get('optimal_atr_min_5m', 0.22))
+        atr_max_5m = float(TRADING_CONFIG.get('optimal_atr_max_5m', 1.4))
+        
+        # Filtres additionnels
+        use_anti_whipsaw = bool(TRADING_CONFIG.get('use_anti_whipsaw', False))
+        use_candle_close = bool(TRADING_CONFIG.get('use_candle_close', False))
+        use_cooldown = bool(TRADING_CONFIG.get('use_cooldown', False))
+        use_momentum_continuity = bool(TRADING_CONFIG.get('use_momentum_continuity', False))
+        use_retest_confirmation = bool(TRADING_CONFIG.get('use_retest_confirmation', False))
+        
+        # 🔥 TP/SL EXCLUS - n'affectent pas la prédiction ML (gestion post-entrée uniquement)
+        
+        # Patterns techniques (flags + seuils)
+        use_breakout = bool(TRADING_CONFIG.get('use_breakout', True))
+        breakout_threshold = float(TRADING_CONFIG.get('breakout_threshold', 0.25))
+        use_snr = bool(TRADING_CONFIG.get('use_snr', True))
+        snr_threshold_pat = float(TRADING_CONFIG.get('snr_threshold', 0.15))
+        use_wick = bool(TRADING_CONFIG.get('use_wick', False))
+        wick_ratio_max = float(TRADING_CONFIG.get('wick_ratio_max', 4.5))
+        use_divergence = bool(TRADING_CONFIG.get('use_divergence', True))
+        di_gap_min = float(TRADING_CONFIG.get('di_gap_min', 4.0))
+        di_gap_adx_threshold = float(TRADING_CONFIG.get('di_gap_adx_threshold', 25.0))
+        
+        # Construire les conditions
+        conditions = []
+        
+        # Préfixe pour les colonnes (pour jointures)
+        p = "t." if use_alias else ""
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # 🔥 FILTRES ML STRICTS (demande utilisateur 11/12/2025)
+        # Uniquement: LIVE + ATR + exits propres
+        # Config différentes: DÉSACTIVÉ (plus de données pour l'entraînement)
+        # ═══════════════════════════════════════════════════════════════════
+        if for_trades_table:
+            # 1. Uniquement trades LIVE (pas de dry-run)
+            conditions.append(f"{p}is_live_trade = true")
+            
+            # 2. Uniquement mode TP/SL ATR (cohérence avec config actuelle)
+            conditions.append(f"{p}tp_sl_mode = 'ATR'")
+            
+            # 3. Exclure MANUAL et STAGNATION classique (sorties non représentatives)
+            # 🔥 STAGNATION_POSITIVE et STAGNATION_MFE_PROTECT sont INCLUS (sorties contrôlées)
+            conditions.append(f"({p}exit_reason IS NULL OR {p}exit_reason NOT IN ('MANUAL', 'STAGNATION'))")
+        
+        logger.info(f"✅ {len(conditions)} conditions de filtrage construites")
+        return conditions
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur build_config_filter_conditions: {e}")
+        # Retourner un filtre minimal en cas d'erreur
+        return ["(exit_reason IS NULL OR exit_reason != 'MANUAL')"]
+
+
 def get_postgres_connection():
     """Connexion PostgreSQL depuis variables d'environnement"""
     try:
@@ -92,16 +172,21 @@ def load_features_from_postgres(
     min_trades: int = 50,
     timeframe_days: int = 30,
     max_trades: Optional[int] = None,
-    include_open_trades: bool = False
+    include_open_trades: bool = False,
+    use_clean_data: bool = True  # Ignoré - on utilise directement trades + scan_logs
 ) -> pd.DataFrame:
     """
-    Charge features depuis PostgreSQL via vue ml_features
+    Charge features depuis PostgreSQL directement depuis la table trades.
+    
+    🔥 IMPORTANT: Utilise le MÊME filtre complet que le compteur GradientBoosting
+    pour garantir la cohérence entre le compteur et l'entraînement des modèles.
     
     Args:
         min_trades: Nombre minimum de trades requis
         timeframe_days: Nombre de jours à charger
         max_trades: Limite maximum de trades (None = tous)
         include_open_trades: Inclure trades non fermés
+        use_clean_data: Ignoré (conservé pour compatibilité)
         
     Returns:
         DataFrame avec features + target
@@ -112,53 +197,100 @@ def load_features_from_postgres(
     try:
         engine = get_sqlalchemy_engine()
         
-        # Requête optimisée sur vue ml_features
-        query = """
+        # 🔥 Appliquer le MÊME filtre complet que le compteur GradientBoosting
+        # Cela garantit que XGBoost V1/V2 s'entraînent sur exactement les mêmes trades
+        filter_conditions = build_config_filter_conditions(for_trades_table=True, use_alias=True)
+        
+        logger.info(f"📊 Chargement depuis table trades avec filtre complet ({len(filter_conditions)} conditions)")
+        
+        # Requête directe sur trades + jointure scan_logs pour features d'entrée
+        query = f"""
         SELECT 
             -- Identifiants
-            scan_id,
-            timestamp,
-            symbol,
+            t.scan_log_id AS scan_id,
+            t.timestamp_entry AS timestamp,
+            t.symbol,
             
-            -- Features 1m
-            rsi_1m, rsi_prev_1m,
-            macd_hist_1m, macd_hist_prev_1m,
-            adx_1m, di_plus_1m, di_minus_1m, di_gap_1m,
-            atr_pct_1m,
-            ema_diff_pct_1m,
-            volume_ratio_1m, volume_spike_1m,
-            bb_width_1m, bb_distance_to_lower_1m, bb_distance_to_upper_1m,
+            -- Features 1m (depuis trades - indicateurs à l'entrée)
+            t.entry_rsi_1m AS rsi_1m,
+            t.entry_rsi_prev_1m AS rsi_prev_1m,
+            t.entry_macd_hist_1m AS macd_hist_1m,
+            t.entry_macd_hist_prev_1m AS macd_hist_prev_1m,
+            t.entry_adx_1m AS adx_1m,
+            t.entry_di_plus_1m AS di_plus_1m,
+            t.entry_di_minus_1m AS di_minus_1m,
+            t.entry_di_gap_1m AS di_gap_1m,
+            t.entry_atr_pct_1m AS atr_pct_1m,
+            t.entry_ema_diff_pct_1m AS ema_diff_pct_1m,
+            t.entry_volume_ratio_1m AS volume_ratio_1m,
+            t.entry_volume_spike_1m AS volume_spike_1m,
+            t.entry_bb_width_1m AS bb_width_1m,
+            t.entry_bb_distance_to_lower_1m AS bb_distance_to_lower_1m,
+            t.entry_bb_distance_to_upper_1m AS bb_distance_to_upper_1m,
             
-            -- Features 5m
-            rsi_5m, rsi_prev_5m,
-            macd_hist_5m, macd_hist_prev_5m,
-            adx_5m, di_plus_5m, di_minus_5m, di_gap_5m,
-            atr_pct_5m,
-            ema_diff_pct_5m,
-            volume_ratio_5m, volume_spike_5m,
-            bb_width_5m, bb_distance_to_lower_5m, bb_distance_to_upper_5m,
+            -- Features 5m (depuis trades - indicateurs à l'entrée)
+            t.entry_rsi_5m AS rsi_5m,
+            t.entry_rsi_prev_5m AS rsi_prev_5m,
+            t.entry_macd_hist_5m AS macd_hist_5m,
+            t.entry_macd_hist_prev_5m AS macd_hist_prev_5m,
+            t.entry_adx_5m AS adx_5m,
+            t.entry_di_plus_5m AS di_plus_5m,
+            t.entry_di_minus_5m AS di_minus_5m,
+            t.entry_di_gap_5m AS di_gap_5m,
+            t.entry_atr_pct_5m AS atr_pct_5m,
+            t.entry_ema_diff_pct_5m AS ema_diff_pct_5m,
+            t.entry_volume_ratio_5m AS volume_ratio_5m,
+            t.entry_volume_spike_5m AS volume_spike_5m,
+            t.entry_bb_width_5m AS bb_width_5m,
+            t.entry_bb_distance_to_lower_5m AS bb_distance_to_lower_5m,
+            t.entry_bb_distance_to_upper_5m AS bb_distance_to_upper_5m,
             
-            -- Filtres qualité
-            snr_passed_1m, snr_passed_5m,
-            breakout_passed_1m, breakout_passed_5m,
-            wick_passed_1m, wick_passed_5m,
-            atr_optimal_passed_1m, atr_optimal_passed_5m,
-            volume_filter_passed_1m, volume_filter_passed_5m,
+            -- Filtres qualité (depuis scan_logs)
+            s.snr_passed_1m,
+            s.snr_passed_5m,
+            s.breakout_passed_1m,
+            s.breakout_passed_5m,
+            s.wick_passed_1m,
+            s.wick_passed_5m,
+            s.atr_optimal_passed_1m,
+            s.atr_optimal_passed_5m,
+            s.volume_filter_passed_1m,
+            s.volume_filter_passed_5m,
+            
+            -- Config parameters (depuis trades)
+            t.config_min_score_required,
+            t.config_snr_threshold,
+            t.config_optimal_atr_min_1m AS config_atr_min_1m,
+            t.config_optimal_atr_max_1m AS config_atr_max_1m,
+            t.config_optimal_atr_min_5m AS config_atr_min_5m,
+            t.config_optimal_atr_max_5m AS config_atr_max_5m,
+            t.config_volume_multiplier,
+            t.config_use_confluence,
+            
+            -- Reject category (depuis scan_logs)
+            s.reject_reason_category,
+            
+            -- 🔥 Order Flow features (depuis trades)
+            t.delta_volume,
+            t.imbalance_normalized,
+            t.book_depth_ratio,
             
             -- Labels ML
-            is_opportunity,
-            target_win,
-            target_pnl
+            s.is_opportunity,
+            t.win AS target_win,
+            t.pnl_pct AS target_pnl
             
-        FROM ml_features
-        WHERE timestamp > NOW() - INTERVAL '%(days)s days'
+        FROM trades t
+        LEFT JOIN scan_logs s ON t.scan_log_id = s.id
+        WHERE t.timestamp_entry > NOW() - INTERVAL '%(days)s days'
+        AND {' AND '.join(filter_conditions)}
         """
         
         # Ajouter filtre trades fermés si nécessaire
         if not include_open_trades:
-            query += " AND target_win IS NOT NULL"
+            query += " AND t.win IS NOT NULL"
         
-        query += " ORDER BY timestamp DESC"
+        query += " ORDER BY t.timestamp_entry DESC"
         
         # Ajouter limite si spécifiée
         if max_trades:
@@ -183,6 +315,8 @@ def load_features_from_postgres(
             'wick_passed_1m', 'wick_passed_5m',
             'atr_optimal_passed_1m', 'atr_optimal_passed_5m',
             'volume_filter_passed_1m', 'volume_filter_passed_5m',
+            'config_use_confluence',  # 🔥 Boolean config
+            'reject_reason_category',  # 🔥 Catégorie texte
         ]
         
         numeric_cols = [col for col in df.columns if col not in exclude_from_numeric]
@@ -208,11 +342,12 @@ def load_features_from_postgres(
         
         logger.info(f"🔄 Conversion des types numériques effectuée")
         
-        # Validation minimum
+        # Validation minimum (warning au lieu de bloquer)
         if len(df) < min_trades:
-            raise ValueError(
-                f"❌ Pas assez de données: {len(df)}/{min_trades} trades requis"
+            logger.warning(
+                f"⚠️ Données limitées: {len(df)}/{min_trades} trades - résultats peuvent être sous-optimaux"
             )
+            # Ne PAS bloquer, continuer avec les données disponibles
         
         # Nettoyer NaN
         logger.info(f"🔍 Avant dropna: {len(df)} rows, target_win non-null: {df['target_win'].notna().sum() if 'target_win' in df.columns else 'N/A'}")

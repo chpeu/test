@@ -5,8 +5,11 @@ Target: 95% coverage for all position modules
 """
 
 import pytest
+import unittest
 import sys
 import os
+import math
+from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.position import (
@@ -620,23 +623,26 @@ class TestPartialTPManager:
             'direction': 'LONG'
         }
 
-        result = manager.execute_partial_tp(
-            position=position,
-            current_price=50150.0  # +0.3%
-        )
+        # 🔥 FIX: Mocker TRADING_CONFIG directement dans config.py
+        with patch('config.TRADING_CONFIG', {'partial_tp_percent': 65.0}):
+            result = manager.execute_partial_tp(
+                position=position,
+                current_price=50150.0  # +0.3%
+            )
 
         assert result is not None
         assert 'size_sold' in result
         assert 'profit_usdt' in result
         assert 'size_remaining' in result
 
-        # 50% of size should be sold
-        assert abs(result['size_sold'] - 500.0) < 0.1
-        assert abs(result['size_remaining'] - 500.0) < 0.1
+        # partial_tp_percent from config (currently 65%) of size should be sold
+        # 1000.0 * 0.65 = 650.0 sold, 350.0 remaining
+        assert abs(result['size_sold'] - 650.0) < 0.1
+        assert abs(result['size_remaining'] - 350.0) < 0.1
 
         # Position should be updated
         assert position['partial_tp_sold'] is True
-        assert abs(position['size_remaining'] - 500.0) < 0.1
+        assert abs(position['size_remaining'] - 350.0) < 0.1
 
     def test_update_sl_after_partial_tp(self):
         """Test SL moved to break-even after partial TP"""
