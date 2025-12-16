@@ -277,6 +277,7 @@ ENDPOINTS = {
     "CANCEL_ALL_ORDERS": "/private/order/cancel_all",
     "GET_ORDER": "/private/order/get",
     "ORDER_HISTORY": "/private/order/list/history_orders",
+    "OPEN_ORDERS": "/private/order/list/open_orders",  # 🔥 Endpoint ajouté
     "OPEN_POSITIONS": "/private/position/open_positions",
     "POSITION_HISTORY": "/private/position/list/history_positions",
     "ACCOUNT_ASSET": "/private/account/asset",
@@ -1107,6 +1108,37 @@ class MexcFuturesBypass:
             "category": category,
         }
         return await self._request("GET", ENDPOINTS["ORDER_HISTORY"], params=params)
+    
+    async def get_open_orders(
+        self,
+        symbol: str,
+        page_num: int = 1,
+        page_size: int = 20
+    ) -> List[Dict]:
+        """
+        Récupérer les ordres ouverts
+        
+        Args:
+            symbol: Symbole (ex: "BTC_USDT")
+            page_num: Numéro de page
+            page_size: Taille de page
+            
+        Returns:
+            Liste des ordres ouverts
+        """
+        params = {
+            "symbol": symbol,
+            "page_num": page_num,
+            "page_size": page_size
+        }
+        
+        response = await self._request("GET", ENDPOINTS["OPEN_ORDERS"], params=params)
+        
+        if response.get("success") and response.get("code") == 0:
+            return response.get("data", {}).get("resultList", [])
+        else:
+            logger.warning(f"⚠️ Failed to get open orders for {symbol}: {response}")
+            return []
     
     # ========================================================================
     # Position Methods

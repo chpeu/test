@@ -227,19 +227,27 @@ class ContextualThresholdOptimizer:
         """Retourne tous les seuils par contexte."""
         result = {}
         for context_key, stats in self._context_stats.items():
+            # 🔥 FIX 15/12: Le hour_group est toujours le DERNIER element apres split
+            # car session peut contenir des underscores (ex: EUROPE_OPEN)
             parts = context_key.split('_')
             if len(parts) >= 3:
-                regime, session, hour_group = parts[0], parts[1], int(parts[2])
-                result[context_key] = {
-                    'regime': regime,
-                    'session': session,
-                    'hour_group': hour_group,
-                    'threshold': self.get_threshold(regime, session, hour_group * 4, use_sampling=False),
-                    'trades': stats.total_trades,
-                    'wins': stats.total_wins,
-                    'winrate': stats.winrate,
-                    'pnl': stats.total_pnl
-                }
+                try:
+                    hour_group = int(parts[-1])  # Dernier element = hour_group
+                    regime = parts[0]
+                    session = '_'.join(parts[1:-1])  # Tout entre regime et hour_group
+                    result[context_key] = {
+                        'regime': regime,
+                        'session': session,
+                        'hour_group': hour_group,
+                        'threshold': self.get_threshold(regime, session, hour_group * 4, use_sampling=False),
+                        'trades': stats.total_trades,
+                        'wins': stats.total_wins,
+                        'winrate': stats.winrate,
+                        'pnl': stats.total_pnl
+                    }
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"Invalid context_key format: {context_key} - {e}")
+                    continue
         return result
     
     def get_recommendations(self, min_trades: int = 10) -> List[dict]:
@@ -258,11 +266,18 @@ class ContextualThresholdOptimizer:
             if stats.total_trades < min_trades:
                 continue
             
-            current_threshold = self.get_threshold(
-                *context_key.split('_')[:2], 
-                int(context_key.split('_')[2]) * 4,
-                use_sampling=False
-            )
+            # 🔥 FIX 15/12: Parser correctement le context_key
+            parts = context_key.split('_')
+            try:
+                hour_group = int(parts[-1])  # Dernier element = hour_group
+                regime = parts[0]
+                session = '_'.join(parts[1:-1])  # Tout entre regime et hour_group
+                current_threshold = self.get_threshold(
+                    regime, session, hour_group * 4, use_sampling=False
+                )
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Invalid context_key in recommendations: {context_key} - {e}")
+                continue
             
             # Recommander d'augmenter le seuil si WR < 40%
             if stats.winrate < 0.40:

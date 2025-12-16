@@ -606,11 +606,77 @@ class MLCalibrationManager:
                     )
                     count += 1
             
-            logger.info(f"📊 Calibration seedée avec {count} trades des {days} derniers jours")
+            logger.info(f"Calibration seedee avec {count} trades des {days} derniers jours")
             return count
             
         except Exception as e:
-            logger.error(f"❌ Erreur seed calibration: {e}")
+            logger.error(f"Erreur seed calibration: {e}")
+            return 0
+    
+    def seed_from_last_n_trades(self, n_trades: int = 200) -> int:
+        """
+        Initialise la calibration avec les N derniers trades.
+        
+        Args:
+            n_trades: Nombre de trades a considerer (defaut: 200)
+            
+        Returns:
+            Nombre de trades traites
+        """
+        pg_logger = self._get_db_pool()
+        if not pg_logger:
+            return 0
+        
+        try:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"""
+                        SELECT 
+                            direction,
+                            ml_confidence,
+                            win,
+                            net_pnl_pct,
+                            net_pnl_usdt,
+                            is_live_trade,
+                            is_dry_run,
+                            timestamp_entry
+                        FROM trades
+                        WHERE ml_confidence IS NOT NULL
+                          AND ml_confidence >= 30
+                          AND timestamp_exit IS NOT NULL
+                        ORDER BY timestamp_entry DESC
+                        LIMIT {n_trades}
+                    """)
+                    rows = cur.fetchall()
+            finally:
+                pg_logger.pool.putconn(conn)
+            
+            # Inverser pour traiter du plus ancien au plus recent
+            rows = list(reversed(rows))
+            
+            count = 0
+            for row in rows:
+                direction, ml_conf, win, pnl_pct, pnl_usdt, is_live, is_dry, ts = row
+                
+                if ml_conf and direction:
+                    self.update_calibration(
+                        direction=direction,
+                        ml_confidence=float(ml_conf),
+                        win=win or False,
+                        pnl_pct=float(pnl_pct) if pnl_pct else 0,
+                        pnl_usdt=float(pnl_usdt) if pnl_usdt else 0,
+                        is_live=is_live or False,
+                        is_dry_run=is_dry or False,
+                        trade_timestamp=ts
+                    )
+                    count += 1
+            
+            logger.info(f"Calibration seedee avec les {count} derniers trades")
+            return count
+            
+        except Exception as e:
+            logger.error(f"Erreur seed calibration (last N): {e}")
             return 0
 
 

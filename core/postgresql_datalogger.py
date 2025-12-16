@@ -773,6 +773,77 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur update ml_confidence pour {symbol}: {e}")
             return False
     
+    def update_ml_rejection(
+        self,
+        symbol: str,
+        reject_reason: str,
+        reject_category: str,
+        ml_confidence: Optional[float] = None,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        🔥 FIX 15/12: Mettre à jour reject_reason et reject_reason_category après un rejet ML
+        
+        Cette méthode est appelée quand un setup est rejeté par le filtre ML
+        (GradientBoosting, Threshold Optimizer, Calibration, etc.)
+        
+        Args:
+            symbol: Symbole de la paire
+            reject_reason: Raison du rejet (ex: "ML confidence 45.2% < seuil 57%")
+            reject_category: Catégorie du rejet (ex: "ml_gb_confidence", "ml_threshold", "ml_calibration")
+            ml_confidence: Confiance ML en pourcentage (optionnel)
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
+        
+        Returns:
+            True si mise à jour réussie, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            # Construire la requête selon si ml_confidence est fourni
+            if ml_confidence is not None:
+                query = """
+                    UPDATE scan_logs 
+                    SET reject_reason = %s,
+                        reject_reason_category = %s,
+                        ml_confidence = %s,
+                        is_opportunity = FALSE
+                    WHERE id = (
+                        SELECT id FROM scan_logs 
+                        WHERE symbol = %s 
+                        AND timestamp > NOW() - INTERVAL '%s minutes'
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    )
+                """
+                params = (reject_reason, reject_category, ml_confidence, symbol, minutes_ago)
+            else:
+                query = """
+                    UPDATE scan_logs 
+                    SET reject_reason = %s,
+                        reject_reason_category = %s,
+                        is_opportunity = FALSE
+                    WHERE id = (
+                        SELECT id FROM scan_logs 
+                        WHERE symbol = %s 
+                        AND timestamp > NOW() - INTERVAL '%s minutes'
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    )
+                """
+                params = (reject_reason, reject_category, symbol, minutes_ago)
+            
+            result = self._execute_query(query, params)
+            if result is not None:
+                logger.info(f"✅ ML rejection logged for {symbol}: {reject_category} ({reject_reason[:50]}...)")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update_ml_rejection pour {symbol}: {e}")
+            return False
+    
     def get_ml_confidence_for_symbol(
         self,
         symbol: str,

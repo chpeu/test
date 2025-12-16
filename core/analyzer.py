@@ -2004,6 +2004,15 @@ class TechnicalAnalyzer:
                     elif not reject_category:
                         reject_category = current_cat
             
+            # 🔥 Si toujours aucune catégorie, assigner une par défaut pour éviter les NULL en DB
+            if not reject_category:
+                if "None (pas de setup)" in reason:
+                    reject_category = "no_setup_found"
+                elif "Aucune raison spécifique" in reason:
+                    reject_category = "no_setup_found" 
+                else:
+                    reject_category = "uncategorized_rejection"
+
             result = {
                 'reason': reason,
                 'symbol': symbol,

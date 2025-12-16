@@ -1,5 +1,5 @@
 {
-  "total_updates": 84,
+  "total_updates": 128,
   "contexts": {
     "UNKNOWN_UNKNOWN_5": {
       "alpha": 10.0,
@@ -50,20 +50,20 @@
       "last_update": "2025-12-15T03:28:06.358629"
     },
     "NORMAL_EUROPE_2": {
-      "alpha": 3.0,
+      "alpha": 4.0,
       "beta": 2.0,
-      "total_trades": 3,
-      "total_wins": 2,
-      "total_pnl": 0.20131942053451485,
-      "last_update": "2025-12-15T11:31:50.456470"
+      "total_trades": 4,
+      "total_wins": 3,
+      "total_pnl": 0.2346141494012753,
+      "last_update": "2025-12-15T11:40:30.054322"
     },
     "CALME_NIGHT_5": {
-      "alpha": 2.0,
-      "beta": 3.0,
-      "total_trades": 3,
-      "total_wins": 1,
-      "total_pnl": -0.1549256759933925,
-      "last_update": "2025-12-14T00:33:22.325163"
+      "alpha": 13.0,
+      "beta": 9.0,
+      "total_trades": 20,
+      "total_wins": 12,
+      "total_pnl": 0.40423705827745093,
+      "last_update": "2025-12-16T00:21:05.461865"
     },
     "CALME_ASIA_0": {
       "alpha": 3.0,
@@ -74,12 +74,12 @@
       "last_update": "2025-12-14T01:12:07.188087"
     },
     "CALME_ASIA_1": {
-      "alpha": 4.0,
-      "beta": 3.0,
-      "total_trades": 5,
-      "total_wins": 3,
-      "total_pnl": 0.20428610363045313,
-      "last_update": "2025-12-14T05:41:24.937841"
+      "alpha": 5.0,
+      "beta": 4.0,
+      "total_trades": 7,
+      "total_wins": 4,
+      "total_pnl": 0.08892055435261564,
+      "last_update": "2025-12-16T06:50:09.118579"
     },
     "CHOPPY_ASIA_1": {
       "alpha": 1.0,
@@ -162,28 +162,28 @@
       "last_update": "2025-12-13T20:11:42.616380"
     },
     "NORMAL_US_SESSION_4": {
-      "alpha": 1.0,
-      "beta": 3.0,
-      "total_trades": 2,
-      "total_wins": 0,
-      "total_pnl": -0.7127260466783886,
-      "last_update": "2025-12-13T18:42:36.193710"
+      "alpha": 2.0,
+      "beta": 6.0,
+      "total_trades": 6,
+      "total_wins": 1,
+      "total_pnl": -0.8187060398324943,
+      "last_update": "2025-12-15T20:00:48.468302"
     },
     "CHOPPY_US_SESSION_4": {
-      "alpha": 1.0,
-      "beta": 1.0,
-      "total_trades": 0,
-      "total_wins": 0,
-      "total_pnl": 0.0,
-      "last_update": null
+      "alpha": 3.0,
+      "beta": 2.0,
+      "total_trades": 3,
+      "total_wins": 2,
+      "total_pnl": 0.06620996475022808,
+      "last_update": "2025-12-15T20:48:32.912278"
     },
     "NORMAL_US_CLOSE_5": {
-      "alpha": 1.0,
-      "beta": 1.0,
-      "total_trades": 0,
-      "total_wins": 0,
-      "total_pnl": 0.0,
-      "last_update": null
+      "alpha": 2.0,
+      "beta": 2.0,
+      "total_trades": 2,
+      "total_wins": 1,
+      "total_pnl": -0.186808780602837,
+      "last_update": "2025-12-15T22:19:00.444877"
     },
     "CALME_US_CLOSE_5": {
       "alpha": 1.0,
@@ -203,27 +203,27 @@
     },
     "VOLATILE_US_PREMARKET_3": {
       "alpha": 2.0,
-      "beta": 1.0,
-      "total_trades": 1,
+      "beta": 2.0,
+      "total_trades": 2,
       "total_wins": 1,
-      "total_pnl": 0.21946872416643703,
-      "last_update": "2025-12-14T14:30:48.212341"
+      "total_pnl": 0.09764942415525511,
+      "last_update": "2025-12-15T14:55:31.811573"
     },
     "VOLATILE_US_OPEN_3": {
       "alpha": 3.0,
-      "beta": 1.0,
-      "total_trades": 2,
+      "beta": 2.0,
+      "total_trades": 3,
       "total_wins": 2,
-      "total_pnl": 0.29376486719218864,
-      "last_update": "2025-12-14T15:15:00.751972"
+      "total_pnl": 0.22410109012413684,
+      "last_update": "2025-12-15T16:12:31.465503"
     },
     "VOLATILE_US_SESSION_4": {
-      "alpha": 2.0,
-      "beta": 1.0,
-      "total_trades": 1,
-      "total_wins": 1,
-      "total_pnl": 0.16620891256333636,
-      "last_update": "2025-12-14T18:04:49.146015"
+      "alpha": 3.0,
+      "beta": 4.0,
+      "total_trades": 5,
+      "total_wins": 2,
+      "total_pnl": -0.2456537681609219,
+      "last_update": "2025-12-15T18:09:15.056231"
     },
     "VOLATILE_US_CLOSE_5": {
       "alpha": 1.0,
@@ -234,12 +234,12 @@
       "last_update": null
     },
     "NORMAL_NIGHT_5": {
-      "alpha": 4.0,
-      "beta": 1.0,
-      "total_trades": 3,
-      "total_wins": 3,
-      "total_pnl": 0.2530009085237658,
-      "last_update": "2025-12-14T22:24:34.708361"
+      "alpha": 7.0,
+      "beta": 3.0,
+      "total_trades": 8,
+      "total_wins": 6,
+      "total_pnl": 0.43922549909761155,
+      "last_update": "2025-12-15T22:31:18.041172"
     },
     "VOLATILE_NIGHT_5": {
       "alpha": 3.0,
@@ -264,7 +264,15 @@
       "total_wins": 3,
       "total_pnl": 0.26238184325963354,
       "last_update": "2025-12-15T07:22:01.950686"
+    },
+    "UNKNOWN_US_SESSION_4": {
+      "alpha": 4.0,
+      "beta": 2.0,
+      "total_trades": 4,
+      "total_wins": 3,
+      "total_pnl": 3.88,
+      "last_update": "2025-12-15T17:34:59.332873"
     }
   },
-  "saved_at": "2025-12-15T11:31:50.456470"
+  "saved_at": "2025-12-16T06:50:09.118579"
 }

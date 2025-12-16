@@ -1420,7 +1420,7 @@
 						<input 
 							type="range" 
 							id="ml_calib_decay_days" 
-							min="7" max="60" step="1" 
+							min="3" max="60" step="1" 
 							bind:value={config.ml_calib_decay_days} 
 							on:change={() => triggerAutoSave('ml_calib_decay_days', config.ml_calib_decay_days)} 
 							disabled={!config.ml_calibration_enabled}

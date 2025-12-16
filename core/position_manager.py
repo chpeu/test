@@ -399,8 +399,27 @@ class PositionManager:
                             f"🚨 Position {symbol} fermée par SL EXCHANGE détectée! "
                             f"(Position bot active mais inexistante sur MEXC)"
                         )
-                        # Récupérer le prix SL comme prix de sortie estimé
+                        
+                        # 🔥 FIX: Tenter de récupérer le prix réel d'exécution depuis MEXC
                         exit_price = current_position.sl if current_position.sl else current_position.entry
+                        try:
+                            if hasattr(self.live_order_manager, 'bypass_client') and self.live_order_manager.bypass_client:
+                                # Récupérer les ordres récents pour trouver le SL exécuté
+                                bypass_symbol = symbol.replace('/', '_').replace(':USDT', '')
+                                # 🔥 FIX: get_open_orders est async, utiliser run_async_safely depuis le thread sync
+                                from trading.live_order_manager_futures import run_async_safely
+                                orders = run_async_safely(self.live_order_manager.bypass_client.get_open_orders(bypass_symbol))
+                                if orders:
+                                    for order in orders:
+                                        # Chercher un ordre SL exécuté (category=2 = SL, state=3 = filled)
+                                        if order.get('category') == 2 and order.get('state') == 3:
+                                            fill_price = order.get('dealAvgPrice') or order.get('price')
+                                            if fill_price and float(fill_price) > 0:
+                                                exit_price = float(fill_price)
+                                                logger.info(f"📊 Prix réel SL MEXC récupéré: {exit_price}")
+                                                break
+                        except Exception as fetch_err:
+                            logger.warning(f"⚠️ Impossible de récupérer le prix réel SL: {fetch_err}")
                         
                         # Appeler close_position avec SL_EXCHANGE (dans le thread principal)
                         import threading
@@ -706,11 +725,26 @@ class PositionManager:
             )
             
             if not should_take:
-                logger.warning(
-                    f"🚫 Trade rejeté par ML Calibration: {symbol} {direction} | "
-                    f"ML Conf={ml_confidence:.1f}% → WR Réel={calibrated_wr:.1f}% | "
+                reject_reason_calib = (
+                    f"ML Calibration: ML Conf={ml_confidence:.1f}% -> WR Reel={calibrated_wr:.1f}% | "
                     f"Raison: {calib_reason}"
                 )
+                logger.warning(f"🚫 Trade rejeté par {reject_reason_calib}")
+                
+                # 🔥 FIX 15/12: Logger le rejet ML Calibration dans reject_reason_category
+                try:
+                    from core.postgresql_datalogger import PostgreSQLDataLogger
+                    pg_logger = PostgreSQLDataLogger()
+                    if pg_logger.enabled:
+                        pg_logger.update_ml_rejection(
+                            symbol=symbol,
+                            reject_reason=reject_reason_calib,
+                            reject_category="ml_calibration_winrate",
+                            ml_confidence=ml_confidence
+                        )
+                except Exception as calib_rej_err:
+                    logger.debug(f"⚠️ Erreur log ML calibration rejection: {calib_rej_err}")
+                
                 return None  # Rejeter le trade
             
             if calibrated_wr is not None:
@@ -2255,7 +2289,7 @@ class PositionManager:
         timeout = effective_timeout if effective_timeout is not None else default_timeout
         
         # ═══════════════════════════════════════════════════════════════════
-        # 🔥 PHASE 1: STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+        # 🔥 PHASE 0: Configuration commune et détection stagnation
         # ═══════════════════════════════════════════════════════════════════
         stagnation_positive_enabled = TRADING_CONFIG.get('stagnation_positive_exit_enabled', True)
         stagnation_positive_threshold = TRADING_CONFIG.get('stagnation_positive_threshold', 0.03)
@@ -2271,37 +2305,51 @@ class PositionManager:
             self.active_position.stagnation_detected_at = time.time()
             self.active_position.stagnation_pnl_at_detection = pnl
         
-        if stagnation_positive_enabled and pnl >= stagnation_positive_threshold:
-            if elapsed >= stagnation_positive_timeout:
-                # Marquer comme sortie positive
-                self.active_position.stagnation_positive_triggered = True
-                self.active_position.stagnation_mfe_at_exit = self.active_position.max_pnl_reached if self.active_position.max_pnl_reached is not None else pnl
-                logger.info(
-                    f"✅ STAGNATION_POSITIVE {self.active_position.symbol}: "
-                    f"PnL={pnl:.2f}% >= seuil={stagnation_positive_threshold:.2f}% après {elapsed:.0f}s"
-                )
-                return 'STAGNATION_POSITIVE'
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # 🔥 PHASE 2: MFE PROTECTION (seulement si stagnation détectée)
-        # ═══════════════════════════════════════════════════════════════════
-        stagnation_use_mfe_tracking = TRADING_CONFIG.get('stagnation_use_mfe_tracking', True)
-        stagnation_mfe_pullback_pct = TRADING_CONFIG.get('stagnation_mfe_pullback_pct', 0.08)
-        
-        # MFE protection seulement si stagnation déjà détectée ET MFE tracking activé
-        if stagnation_use_mfe_tracking and self.active_position.stagnation_detected_at:
-            mfe = self.active_position.max_pnl_reached or 0
-            if mfe > stagnation_positive_threshold:
-                pullback = mfe - pnl
-                if pullback >= stagnation_mfe_pullback_pct:
-                    # Marquer les métriques
-                    self.active_position.stagnation_mfe_at_exit = mfe
-                    self.active_position.stagnation_pullback_at_exit = pullback
+        # 🔥 FIX 15/12: Si trailing activé, NI Stagnation Positive NI MFE Protect ne doivent se déclencher
+        # Le trailing gère la sortie via son SL dynamique
+        if self.active_position.trailing_activated:
+            logger.debug(
+                f"⏸️ Stagnation checks ignorées {self.active_position.symbol}: "
+                f"Trailing déjà activé, laisse le trailing gérer (PnL={pnl:.2f}%)"
+            )
+            # Ne pas retourner ici, continuer vers PHASE 3 (timeout normal) si nécessaire
+        else:
+            # ═══════════════════════════════════════════════════════════════════
+            # 🔥 PHASE 1: MFE PROTECTION (priorité sur Stagnation Positive)
+            # Protège un MFE élevé même si PnL actuel est encore au-dessus du seuil
+            # ═══════════════════════════════════════════════════════════════════
+            stagnation_use_mfe_tracking = TRADING_CONFIG.get('stagnation_use_mfe_tracking', True)
+            stagnation_mfe_pullback_pct = TRADING_CONFIG.get('stagnation_mfe_pullback_pct', 0.08)
+            
+            # MFE protection seulement si stagnation déjà détectée ET MFE tracking activé
+            if stagnation_use_mfe_tracking and self.active_position.stagnation_detected_at:
+                mfe = self.active_position.max_pnl_reached or 0
+                if mfe > stagnation_positive_threshold:
+                    pullback = mfe - pnl
+                    if pullback >= stagnation_mfe_pullback_pct:
+                        # Marquer les métriques
+                        self.active_position.stagnation_mfe_at_exit = mfe
+                        self.active_position.stagnation_pullback_at_exit = pullback
+                        logger.info(
+                            f"📈 STAGNATION_MFE_PROTECT {self.active_position.symbol}: "
+                            f"MFE={mfe:.2f}% → PnL={pnl:.2f}% (pullback={pullback:.2f}% >= {stagnation_mfe_pullback_pct:.2f}%)"
+                        )
+                        return 'STAGNATION_MFE_PROTECT'
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # 🔥 PHASE 2: STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+            # Se déclenche si PnL >= seuil ET timeout atteint ET trailing NON activé
+            # ═══════════════════════════════════════════════════════════════════
+            if stagnation_positive_enabled and pnl >= stagnation_positive_threshold:
+                if elapsed >= stagnation_positive_timeout:
+                    # Marquer comme sortie positive
+                    self.active_position.stagnation_positive_triggered = True
+                    self.active_position.stagnation_mfe_at_exit = self.active_position.max_pnl_reached if self.active_position.max_pnl_reached is not None else pnl
                     logger.info(
-                        f"📈 STAGNATION_MFE_PROTECT {self.active_position.symbol}: "
-                        f"MFE={mfe:.2f}% → PnL={pnl:.2f}% (pullback={pullback:.2f}% >= {stagnation_mfe_pullback_pct:.2f}%)"
+                        f"✅ STAGNATION_POSITIVE {self.active_position.symbol}: "
+                        f"PnL={pnl:.2f}% >= seuil={stagnation_positive_threshold:.2f}% après {elapsed:.0f}s (trailing non activé)"
                     )
-                    return 'STAGNATION_MFE_PROTECT'
+                    return 'STAGNATION_POSITIVE'
         
         # ═══════════════════════════════════════════════════════════════════
         # 🔥 PHASE 3: LOGIQUE EXISTANTE (timeout normal)
@@ -2376,16 +2424,9 @@ class PositionManager:
                 return None
 
         # Mode standard avec TP partiel
-        if self.config.use_partial_tp and self.active_position.partial_tp_sold:
-            # Après TP partiel, ignorer TP final en mode FIXE
-            if not self.config.use_atr:
-                if direction == 'LONG':
-                    if current_price <= sl:
-                        return 'TS'
-                else:
-                    if current_price >= sl:
-                        return 'TS'
-                return None
+        # 🔥 FIX BUG #6: Ne pas bloquer le TP final après TP partiel en mode FIXE
+        # Le bloc précédent empêchait le TP final d'être atteint.
+        # La vérification standard ci-dessous gère correctement tous les cas.
 
         # Vérification standard TP/SL
         if direction == 'LONG':
@@ -2440,6 +2481,10 @@ class PositionManager:
                 f"Skip ordre de fermeture (déjà exécuté par exchange)"
             )
             skip_order = True
+            # 🔥 FIX: Renseigner exit_fill_price pour SL_EXCHANGE (prix passé en paramètre)
+            self.active_position.exit_fill_price = exit_price
+            self.active_position.exit_order_type = 'sl_exchange'
+            self.active_position.exit_requested_price = self.active_position.sl
 
         # ✅ FIX: Validation exit_price avec fallback multi-niveaux
         exit_price_source = "api"  # Pour tracking
@@ -2606,11 +2651,14 @@ class PositionManager:
         # Utiliser le prix de sortie réel (paper ou live)
         exit_price = actual_exit_price
 
-        # 🔥 FIX: Calculer PnL réalisé avec fees à 0% (scan scalabilité uniquement sur paires 0% fee)
+        # 🔥 FIX: Calculer PnL réalisé avec les vrais frais configurés
+        # (Ne pas forcer à 0.0% sauf si explicitement configuré ainsi)
+        fees_pct = TRADING_CONFIG.get('fee_per_trade', 0.0004) * 100  # 0.04% par défaut
+        
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
             position=self.active_position.to_dict(),
             exit_price=exit_price,
-            fees_percent=0.0  # 🔥 FIX: 0% fees (paires scalabilité uniquement)
+            fees_percent=fees_pct
         )
 
         # Calculer slippage si applicable

@@ -4717,14 +4717,14 @@
 			<div class="variable-label-container">
 				<label for="threshold_min">
 					<span class="variable-name">Seuil Minimum</span>
-					<span class="variable-desc">Mode agressif (40-60%)</span>
+					<span class="variable-desc">Mode agressif (25-60%)</span>
 				</label>
 			</div>
 			<div class="slider-container">
 				<input
 					type="range"
 					id="threshold_min"
-					min="0.40"
+					min="0.25"
 					max="0.60"
 					step="0.05"
 					bind:value={config.threshold_min}
@@ -4740,14 +4740,14 @@
 			<div class="variable-label-container">
 				<label for="threshold_max">
 					<span class="variable-name">Seuil Maximum</span>
-					<span class="variable-desc">Mode conservateur (55-80%)</span>
+					<span class="variable-desc">Mode conservateur (40-80%)</span>
 				</label>
 			</div>
 			<div class="slider-container">
 				<input
 					type="range"
 					id="threshold_max"
-					min="0.55"
+					min="0.40"
 					max="0.80"
 					step="0.05"
 					bind:value={config.threshold_max}

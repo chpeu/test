@@ -617,41 +617,71 @@ def save_trade_history() -> None:
     # analytics_logger, donc on évite toute duplication.
 
 def load_trade_history() -> None:
-    """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
+    """Charger l'historique des trades depuis PostgreSQL (priorité) ou JSON (fallback)"""
     global TRADE_HISTORY_FILE, trade_db
     
     if TRADE_HISTORY_FILE is None:
         TRADE_HISTORY_FILE = get_trade_history_file()
     
-    # 🔥 PHASE 8: Charger depuis SQLite si disponible (priorité)
-    if trade_db:
-        try:
-            db_trades = trade_db.get_all_trades()
-            if db_trades:
-                app_state['trade_history'] = db_trades
-                logger.info(f"✅ Historique chargé depuis DB: {len(db_trades)} trades")
-                # Sauvegarder aussi en JSON (backup)
-                save_trade_history()
-                return
-        except Exception as e:
-            logger.error(f"❌ Erreur chargement DB: {e}")
+    # 🔥 FIX: Charger depuis PostgreSQL (source de vérité)
+    try:
+        from core.postgresql_datalogger import PostgreSQLDataLogger
+        pg_logger = PostgreSQLDataLogger()
+        if pg_logger.enabled:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    # Charger les trades des dernières 24h pour l'UI
+                    cur.execute("""
+                        SELECT id, symbol, direction, entry_price, exit_price,
+                               pnl_pct, pnl_usdt, net_pnl_pct, net_pnl_usdt,
+                               exit_reason, duration_seconds, created_at,
+                               size_usdt, session_id
+                        FROM trades 
+                        WHERE created_at > NOW() - INTERVAL '24 hours'
+                        ORDER BY created_at DESC
+                        LIMIT 100
+                    """)
+                    rows = cur.fetchall()
+                    if rows:
+                        trades = []
+                        for r in rows:
+                            trades.append({
+                                'id': str(r[0]),
+                                'symbol': r[1],
+                                'direction': r[2],
+                                'entry_price': float(r[3]) if r[3] else 0,
+                                'exit_price': float(r[4]) if r[4] else 0,
+                                'pnl_pct': float(r[5]) if r[5] else 0,
+                                'pnl_usdt': float(r[6]) if r[6] else 0,
+                                'net_pnl_pct': float(r[7]) if r[7] else 0,
+                                'net_pnl_usdt': float(r[8]) if r[8] else 0,
+                                'reason': r[9],
+                                'close_reason': r[9],
+                                'duration_seconds': float(r[10]) if r[10] else 0,
+                                'closed_at': r[11].isoformat() if r[11] else None,
+                                'size': float(r[12]) if r[12] else 0,
+                                'session_id': str(r[13]) if r[13] else None
+                            })
+                        app_state['trade_history'] = trades
+                        logger.info(f"Historique charge depuis PostgreSQL: {len(trades)} trades (24h)")
+                        return
+            finally:
+                pg_logger.pool.putconn(conn)
+    except Exception as e:
+        logger.warning(f"Impossible de charger depuis PostgreSQL: {e}")
     
     # Fallback: Charger depuis JSON
     try:
         if os.path.exists(TRADE_HISTORY_FILE):
             with open(TRADE_HISTORY_FILE, 'r', encoding='utf-8') as f:
                 app_state['trade_history'] = json.load(f)
-            logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
-            
-            # 🔥 PHASE 8: Migration JSON → SQLite désactivée
-            # Les trades JSON n'ont pas toutes les 114 colonnes requises par la nouvelle structure
-            # Les trades sont déjà loggés correctement via analytics_logger lors de leur fermeture
-            # La migration manuelle n'est plus nécessaire et causait des erreurs "107 values for 114 columns"
+            logger.info(f"Historique charge depuis JSON: {len(app_state['trade_history'])} trades")
         else:
             app_state['trade_history'] = []
-            logger.info(f"📝 Nouveau fichier historique créé: {TRADE_HISTORY_FILE}")
+            logger.info(f"Nouveau fichier historique cree: {TRADE_HISTORY_FILE}")
     except Exception as e:
-        logger.error(f"❌ Erreur chargement historique: {e}")
+        logger.error(f"Erreur chargement historique: {e}")
         app_state['trade_history'] = []
 
 # Global state
@@ -1642,7 +1672,24 @@ async def scanner_loop_callback() -> None:
                                                         logger.debug(f"⚠️ Impossible de mettre à jour ml_confidence: {pg_err}")
                                                     
                                                     if not should_trade:
-                                                        logger.warning(f"❌ GradientBoosting REJETTE {symbol}: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
+                                                        reject_reason = f"ML confidence {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}% [{threshold_source}]"
+                                                        logger.warning(f"❌ GradientBoosting REJETTE {symbol}: {reject_reason}")
+                                                        
+                                                        # 🔥 FIX 15/12: Logger le rejet ML dans reject_reason_category
+                                                        # Distinguer si le rejet vient d'un seuil statique ou dynamique (Optimizer)
+                                                        reject_cat = "ml_threshold_optimizer" if "optimizer" in threshold_source else "ml_gb_confidence"
+                                                        
+                                                        try:
+                                                            if pg_logger and pg_logger.enabled:
+                                                                pg_logger.update_ml_rejection(
+                                                                    symbol=symbol,
+                                                                    reject_reason=reject_reason,
+                                                                    reject_category=reject_cat,
+                                                                    ml_confidence=ml_conf_pct
+                                                                )
+                                                        except Exception as ml_rej_err:
+                                                            logger.debug(f"⚠️ Erreur log ML rejection: {ml_rej_err}")
+                                                        
                                                         continue  # Passer au setup suivant
                                                     else:
                                                         logger.info(f"✅ GradientBoosting APPROUVE {symbol} (confiance: {confidence*100:.1f}%)")
@@ -1668,11 +1715,25 @@ async def scanner_loop_callback() -> None:
                                                 adjusted_min = min_score + score_boost
                                                 
                                                 if setup_score < adjusted_min:
-                                                    logger.warning(
-                                                        f"⚠️ {symbol} - Setup rejeté par Circuit Breaker score boost: "
-                                                        f"Score {setup_score:.1f} < {adjusted_min:.1f} (min: {min_score:.1f} + boost: {score_boost:.1f}) | "
-                                                        f"Losses consécutives: {trading_cb.consecutive_losses}"
+                                                    reject_reason_cb = (
+                                                        f"Circuit Breaker score boost: Score {setup_score:.1f} < {adjusted_min:.1f} "
+                                                        f"(min: {min_score:.1f} + boost: {score_boost:.1f}) | Losses: {trading_cb.consecutive_losses}"
                                                     )
+                                                    logger.warning(f"⚠️ {symbol} - {reject_reason_cb}")
+                                                    
+                                                    # 🔥 FIX 15/12: Logger le rejet CB dans reject_reason_category
+                                                    try:
+                                                        from core.callbacks.scanner_loop import get_pg_datalogger
+                                                        pg_logger_cb = get_pg_datalogger()
+                                                        if pg_logger_cb and pg_logger_cb.enabled:
+                                                            pg_logger_cb.update_ml_rejection(
+                                                                symbol=symbol,
+                                                                reject_reason=reject_reason_cb,
+                                                                reject_category="circuit_breaker_score_boost"
+                                                            )
+                                                    except Exception as cb_rej_err:
+                                                        logger.debug(f"⚠️ Erreur log CB rejection: {cb_rej_err}")
+                                                    
                                                     continue  # Passer au setup suivant
                                                 else:
                                                     logger.info(
@@ -5574,17 +5635,32 @@ async def handle_client_command(command: str, params: dict):
         
         if 'threshold_min' in params:
             val = float(params['threshold_min'])
-            val = max(0.40, min(0.60, val))  # Clamp 40-60%
+            val = max(0.25, min(0.60, val))  # Clamp 25-60% (aligné avec frontend)
             TRADING_CONFIG['threshold_min'] = val
             updated['threshold_min'] = val
             logger.info(f"✅ threshold_min: {val*100:.0f}%")
+            
+            # 🔥 Propager à l'instance
+            try:
+                from core.ml import get_threshold_optimizer
+                # Appeler le getter met à jour l'instance avec la nouvelle config
+                get_threshold_optimizer()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation threshold_min: {e}")
         
         if 'threshold_max' in params:
             val = float(params['threshold_max'])
-            val = max(0.55, min(0.80, val))  # Clamp 55-80%
+            val = max(0.40, min(0.80, val))  # Clamp 40-80% (aligné avec frontend)
             TRADING_CONFIG['threshold_max'] = val
             updated['threshold_max'] = val
             logger.info(f"✅ threshold_max: {val*100:.0f}%")
+
+            # 🔥 Propager à l'instance
+            try:
+                from core.ml import get_threshold_optimizer
+                get_threshold_optimizer()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation threshold_max: {e}")
         
         if 'drift_detection_enabled' in params:
             TRADING_CONFIG['drift_detection_enabled'] = bool(params['drift_detection_enabled'])

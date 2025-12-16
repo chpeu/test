@@ -23,7 +23,7 @@ MEXC_FUTURES_URL = "https://contract.mexc.com"
 
 # Trading parameters
 TRADING_CONFIG = {
-    "fee_per_trade": 0.0004,  # 0.04% par trade
+    "fee_per_trade": 0.00,  # 0.00% par trade (configuré manuellement)
     "use_slippage_calculation": True,  # Calculer slippage estimé basé sur spread et profondeur
     "position_timeout": 300,  # 5 minutes
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
@@ -102,9 +102,9 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 3: Pondération des conditions (système de score)
     "use_weighted_scoring": True,  # Activer le système de score pondéré
-    "min_score_required": 6.5,  # 🔥 PHASE 1 : Score minimum (était 7.5, baissé pour plus d'opportunités)
-    "min_score_adx_high": 6.0,  # 🔥 PHASE 1 : Score si ADX > 30 (était 7.0)
-    "min_score_adx_low": 7.0,  # 🔥 PHASE 1 : Score si ADX < 25 (était 8.0)
+    "min_score_required": 6.5,  # 🔥 PHASE 1 : Score minimum (restauré à 6.5)
+    "min_score_adx_high": 6.0,  # 🔥 PHASE 1 : Score si ADX > 30 (restauré à 6.0)
+    "min_score_adx_low": 7.0,  # 🔥 PHASE 1 : Score si ADX < 25 (restauré à 7.0)
     
     # ✅ Patterns Techniques (activés par défaut)
     "use_breakout": True,  # Cassure de niveaux clés

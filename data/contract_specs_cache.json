@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765778797.3503582,
+  "timestamp": 1765840534.6265438,
   "specs": {
     "ASTER_USDT": {
       "symbol": "ASTER_USDT",
@@ -240,6 +240,66 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "JELLYJELLY_USDT": {
+      "symbol": "JELLYJELLY_USDT",
+      "min_vol": 1.0,
+      "max_vol": 12000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "XLM_USDT": {
+      "symbol": "XLM_USDT",
+      "min_vol": 1.0,
+      "max_vol": 310000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "AVAX_USDT": {
+      "symbol": "AVAX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "ICP_USDT": {
+      "symbol": "ICP_USDT",
+      "min_vol": 1.0,
+      "max_vol": 22700000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "OP_USDT": {
+      "symbol": "OP_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1200000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "ETHFI_USDT": {
+      "symbol": "ETHFI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 145000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
