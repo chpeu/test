@@ -90,16 +90,26 @@ class OptimizedPredictor:
             logger.error("❌ Aucun modèle trouvé!")
             return
         
+        # 🔥 FIX 20/12/2025: Priorité absolue aux features internes du modèle si disponibles
+        if hasattr(self.model, 'feature_names_in_'):
+            self.feature_cols = list(self.model.feature_names_in_)
+            logger.info(f"✅ Features extraites du modèle (source de vérité): {len(self.feature_cols)}")
+        
         # Charger preprocessor (scaler)
         for prep_name in ["gradient_boosting_optimized_preprocessor.pkl", "best_classifier_preprocessor.pkl"]:
             prep_path = models_dir / prep_name
             if prep_path.exists():
                 try:
                     self.preprocessor = joblib.load(prep_path)
-                    # Extraire feature_names du preprocessor
+                    # Extraire feature_names du preprocessor SI pas encore définis par le modèle
                     if isinstance(self.preprocessor, dict) and 'feature_names' in self.preprocessor:
-                        self.feature_cols = list(self.preprocessor['feature_names'])
-                    logger.info(f"✅ Preprocessor chargé: {len(self.feature_cols) if self.feature_cols else 'N/A'} features")
+                        if not self.feature_cols:
+                            self.feature_cols = list(self.preprocessor['feature_names'])
+                            logger.info(f"✅ Features extraites du Preprocessor: {len(self.feature_cols)}")
+                        else:
+                            logger.info(f"ℹ️ Features Preprocessor ignorées (priorité Modèle): {len(self.preprocessor['feature_names'])}")
+                    
+                    logger.info(f"✅ Preprocessor chargé: {prep_name}")
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur preprocessor: {e}")
@@ -114,7 +124,7 @@ class OptimizedPredictor:
                     # Si feature_cols pas encore défini, utiliser metadata
                     if not self.feature_cols:
                         self.feature_cols = self.metadata.get('feature_names', self.metadata.get('feature_cols', []))
-                    logger.info(f"✅ Metadata chargée: {len(self.feature_cols)} features")
+                        logger.info(f"✅ Features extraites Metadata: {len(self.feature_cols)}")
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur metadata: {e}")
@@ -150,12 +160,18 @@ class OptimizedPredictor:
             if self.preprocessor is not None and isinstance(self.preprocessor, dict):
                 scaler = self.preprocessor.get('scaler')
                 if scaler is not None:
-                    # 🔥 FIX: Utiliser df.values pour éviter sklearn warning sur feature names
-                    scaled = scaler.transform(df.values)
-                    try:
-                        input_data = pd.DataFrame(scaled, columns=df.columns)
-                    except Exception:
-                        input_data = scaled
+                    # Vérifier compatibilité des dimensions avant scaling
+                    if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ != df.shape[1]:
+                        logger.warning(f"⚠️ Scaler ignoré: mismatch features (Scaler={scaler.n_features_in_} vs DF={df.shape[1]})")
+                        input_data = df
+                    else:
+                        # 🔥 FIX: Utiliser df.values pour éviter sklearn warning sur feature names
+                        try:
+                            scaled = scaler.transform(df.values)
+                            input_data = pd.DataFrame(scaled, columns=df.columns)
+                        except Exception as e:
+                            logger.warning(f"⚠️ Erreur scaling (ignoré): {e}")
+                            input_data = df
                 else:
                     input_data = df
             else:

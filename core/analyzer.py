@@ -1243,7 +1243,6 @@ class TechnicalAnalyzer:
                     scalability_data['spread'] = spread_check['spread_pct']
 
                 # 🔥 OPT #20: Micro-confirmation AVANT orderbook (évite les faux breakouts)
-                from config import TRADING_CONFIG
                 if TRADING_CONFIG.get('use_micro_confirmation', False):
                     delay_ms = TRADING_CONFIG.get('micro_confirmation_delay_ms', 300)
                     entry_price = best_setup.get('entry') or best_setup.get('price')
@@ -2112,6 +2111,8 @@ class TechnicalAnalyzer:
             return result
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             if DEBUG_ENABLED:
                 logger.error(f"Erreur analyse pair {symbol}: {e}")
             return None

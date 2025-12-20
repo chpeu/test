@@ -9,6 +9,7 @@ import time
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
 from utils.effective_config import get_effective_value
+from config import ML_CONFIG
 
 # 🔥 OPT #15-19: Import des filtres avancés
 from core.analyzer.advanced_filters import (

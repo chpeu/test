@@ -148,6 +148,7 @@ class MLCalibrationManager:
                 'dryrun_weight': TRADING_CONFIG.get('ml_calib_dryrun_weight', 0.5),
                 'decay_days': TRADING_CONFIG.get('ml_calib_decay_days', 14),
                 'min_trades': TRADING_CONFIG.get('ml_calib_min_trades', 30),
+                'auto_reset_on_retrain': TRADING_CONFIG.get('ml_calib_auto_reset', True),
                 'min_winrate': TRADING_CONFIG.get('ml_calib_min_winrate', 40.0),
                 'bucket_size': TRADING_CONFIG.get('ml_calib_bucket_size', 5),
             }
@@ -462,13 +463,15 @@ class MLCalibrationManager:
         """
         Détermine si un trade doit être pris selon la calibration.
         
-        Args:
-            direction: 'LONG' ou 'SHORT'
-            ml_confidence: Confiance ML
-            
-        Returns:
-            Tuple (should_take, calibrated_winrate, reason)
+        Vérifie automatiquement les changements de modèle et reset si nécessaire.
         """
+        # 🔥 AUTO-RESET: Vérifier changement de modèle à chaque appel principal
+        try:
+            self.check_model_change_and_auto_reset()
+        except Exception as e:
+            logger.warning(f"[AUTO-RESET] Erreur vérification: {e}")
+        
+        # Continuer avec la logique de calibration normale
         config = self._get_config()
         
         if not config['enabled']:
@@ -688,6 +691,161 @@ class MLCalibrationManager:
         except Exception as e:
             logger.error(f"Erreur seed calibration: {e}")
             return 0
+    
+    def get_current_model_info(self) -> Dict:
+        """
+        Récupère les informations du modèle GB actuellement chargé.
+        
+        Returns:
+            Dict avec timestamp, version, feature_names, etc.
+        """
+        try:
+            from optimization.predictor_optimized import OptimizedPredictor
+            predictor = OptimizedPredictor()
+            
+            if predictor.metadata:
+                return {
+                    'timestamp': predictor.metadata.get('timestamp', 'unknown'),
+                    'model_type': predictor.metadata.get('model_type', 'unknown'),
+                    'n_features': predictor.metadata.get('n_features', 0),
+                    'feature_names': predictor.metadata.get('feature_names', []),
+                    'metrics': predictor.metadata.get('metrics', {})
+                }
+            return {'timestamp': 'unknown'}
+            
+        except Exception as e:
+            logger.warning(f"Erreur récupération model info: {e}")
+            return {'timestamp': 'unknown'}
+    
+    def get_last_calibration_model_version(self) -> Optional[str]:
+        """
+        Récupère la version du modèle utilisée lors de la dernière calibration.
+        
+        Returns:
+            String timestamp du dernier modèle calibré ou None
+        """
+        pg_logger = self._get_db_pool()
+        if not pg_logger:
+            return None
+            
+        try:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    # Chercher le model_version le plus récent dans les stats
+                    cur.execute("""
+                        SELECT model_version
+                        FROM ml_calibration
+                        WHERE model_version IS NOT NULL
+                        ORDER BY model_version DESC
+                        LIMIT 1
+                    """)
+                    row = cur.fetchone()
+                    return row[0] if row else None
+            finally:
+                pg_logger.pool.putconn(conn)
+                
+        except Exception as e:
+            logger.debug(f"Erreur récup model_version: {e}")
+            return None
+    
+    def check_model_change_and_auto_reset(self) -> bool:
+        """
+        Vérifie si le modèle GB a changé et reset automatiquement la calibration.
+        
+        Returns:
+            True si reset effectué, False sinon
+        """
+        config = self._get_config()
+        if not config.get('auto_reset_on_retrain', True):
+            logger.debug("Auto-reset calibration désactivé")
+            return False
+            
+        try:
+            # Récupérer info du modèle actuel
+            current_model = self.get_current_model_info()
+            current_timestamp = current_model.get('timestamp', 'unknown')
+            
+            if current_timestamp == 'unknown':
+                logger.debug("Impossible de déterminer le timestamp du modèle actuel")
+                return False
+                
+            # Récupérer la version du dernier modèle calibré
+            last_calibrated_version = self.get_last_calibration_model_version()
+            
+            # Si pas de version enregistrée, c'est la première fois
+            if last_calibrated_version is None:
+                logger.info(f"🔄 [AUTO-RESET] Premier modèle détecté: {current_timestamp}")
+                self._update_calibration_model_version(current_timestamp)
+                return False
+                
+            # Comparer les timestamps
+            if current_timestamp != last_calibrated_version:
+                logger.warning(
+                    f"🔄 [AUTO-RESET] Nouveau modèle détecté! "
+                    f"Ancien: {last_calibrated_version} → Nouveau: {current_timestamp}"
+                )
+                
+                # Reset automatique de la calibration
+                reset_success = self.reset_calibration(f"model_change_{current_timestamp}")
+                
+                if reset_success:
+                    # Mettre à jour la version du modèle
+                    self._update_calibration_model_version(current_timestamp)
+                    logger.info(
+                        f"✅ [AUTO-RESET] Calibration resetée pour nouveau modèle {current_timestamp}"
+                    )
+                    return True
+                else:
+                    logger.error(f"❌ [AUTO-RESET] Échec reset calibration pour {current_timestamp}")
+                    return False
+            else:
+                logger.debug(f"[AUTO-RESET] Modèle inchangé: {current_timestamp}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ [AUTO-RESET] Erreur vérification model change: {e}")
+            return False
+    
+    def _update_calibration_model_version(self, model_timestamp: str) -> bool:
+        """
+        Met à jour la version du modèle dans toutes les entrées de calibration.
+        
+        Args:
+            model_timestamp: Timestamp du nouveau modèle
+            
+        Returns:
+            True si succès
+        """
+        pg_logger = self._get_db_pool()
+        if not pg_logger:
+            return False
+            
+        try:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    # Mettre à jour toutes les entrées avec la nouvelle version
+                    cur.execute("""
+                        UPDATE ml_calibration 
+                        SET model_version = %s
+                        WHERE model_version IS NULL OR model_version != %s
+                    """, (model_timestamp, model_timestamp))
+                    
+                    updated_rows = cur.rowcount
+                    conn.commit()
+                    
+                    if updated_rows > 0:
+                        logger.info(f"✅ [AUTO-RESET] {updated_rows} entrées mises à jour avec model_version {model_timestamp}")
+                    
+                    return True
+                    
+            finally:
+                pg_logger.pool.putconn(conn)
+                
+        except Exception as e:
+            logger.error(f"❌ [AUTO-RESET] Erreur update model_version: {e}")
+            return False
     
     def seed_from_last_n_trades(self, n_trades: int = 200) -> int:
         """

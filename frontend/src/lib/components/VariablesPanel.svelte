@@ -5396,7 +5396,8 @@
 						<span class="table-tag">ml_calibration</span>
 					</div>
 					<p class="popup-hint" style="margin-top: 8px;">
-						🆕 <code>trade_events</code>: Film du trade (BE_TRIGGERED, TRAILING_ACTIVATED, PARTIAL_TP, EXIT...)
+						🆕 <code>trade_events</code>: Film du trade (BE_TRIGGERED, TRAILING_ACTIVATED, PARTIAL_TP, EXIT...)<br>
+						🔄 <code>ml_calibration</code>: Inclut maintenant <code>model_version</code> pour tracking auto-reset
 					</p>
 				</div>
 			</div>

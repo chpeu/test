@@ -73,11 +73,15 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
         mock_calculate_trend = AsyncMock(return_value={'trend': 'NEUTRAL', 'strength': 0, 'bonus': 0})
         mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
         
         patches = {
             'check_spread': mock_check_spread, 
             'calculate_trend_data': mock_calculate_trend,
-            'check_orderbook_imbalance': mock_orderbook
+            'check_orderbook_imbalance': mock_orderbook,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
         }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
@@ -101,11 +105,15 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
         mock_calculate_trend = AsyncMock(return_value={'trend': 'NEUTRAL', 'strength': 0, 'bonus': 0})
         mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
         
         patches = {
             'check_spread': mock_check_spread, 
             'calculate_trend_data': mock_calculate_trend,
-            'check_orderbook_imbalance': mock_orderbook
+            'check_orderbook_imbalance': mock_orderbook,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
         }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
@@ -126,9 +134,17 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         setup_5m = None
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
+        
+        patches = {
+            'check_spread': mock_check_spread,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
+        }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
-            with patch.dict(self.analyzer_globals, {'check_spread': mock_check_spread}):
+            with patch.dict(self.analyzer_globals, patches):
                 result = await self.analyzer.analyze_pair('BTC/USDT')
         
         self.assertIsNone(result)
@@ -150,9 +166,17 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         setup_5m = None 
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
+        
+        patches = {
+            'check_spread': mock_check_spread,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
+        }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
-             with patch.dict(self.analyzer_globals, {'check_spread': mock_check_spread}):
+             with patch.dict(self.analyzer_globals, patches):
                 result = await self.analyzer.analyze_pair('BTC/USDT')
         
         self.assertIsNone(result)
@@ -175,10 +199,14 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
         mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
         
         patches = {
             'check_spread': mock_check_spread,
-            'check_orderbook_imbalance': mock_orderbook
+            'check_orderbook_imbalance': mock_orderbook,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
         }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
@@ -200,9 +228,17 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         setup_1m = {'direction': 'LONG', 'rsi': 70, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10}
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
+        
+        patches = {
+            'check_spread': mock_check_spread,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
+        }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, None]):
-             with patch.dict(self.analyzer_globals, {'check_spread': mock_check_spread}):
+             with patch.dict(self.analyzer_globals, patches):
                 result = await self.analyzer.analyze_pair('BTC/USDT')
         
         self.assertIsNone(result)

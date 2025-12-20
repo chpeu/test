@@ -502,12 +502,16 @@ class TestScannerLoop:
 
         scanner_loop._analyzer = mock_analyzer
 
-        # Mock config
-        with patch('config.TRADING_CONFIG', {
-            'use_confluence': False,
-            'volume_multiplier': 1.0,
-            'trend_timeframe': '15m'
-        }):
+        # Mock advanced filters to return None (no rejection)
+        with patch('core.callbacks.scanner_loop.check_whipsaw_filter', return_value=None), \
+             patch('core.callbacks.scanner_loop.check_candle_close_filter', return_value=None), \
+             patch('core.callbacks.scanner_loop.check_momentum_continuity', return_value=None), \
+             patch('config.ML_CONFIG', {'enabled': False}), \
+             patch('config.TRADING_CONFIG', {
+                 'use_confluence': False,
+                 'volume_multiplier': 1.0,
+                 'trend_timeframe': '15m'
+             }):
             result = await scan_pair_for_setup("BTC/USDT:USDT")
 
         assert result is not None
@@ -646,14 +650,19 @@ class TestCallbacksIntegration:
         scanner_loop._scanner_lock = mock_lock
         scanner_loop._ws_manager = mock_ws
 
-        # Mock TRADING_CONFIG et scan_pair_for_setup
+        # Mock TRADING_CONFIG, ML_CONFIG, advanced filters et scan_pair_for_setup
         with patch('config.TRADING_CONFIG', {
             'top_pairs_limit': 20,
             'use_confluence': False,
             'volume_multiplier': 1.0,
             'trend_timeframe': '15m',
-            'account_size': 1000.0
-        }):
+            'account_size': 1000.0,
+            'gb_filter_enabled': False
+        }), \
+        patch('config.ML_CONFIG', {'enabled': False}), \
+        patch('core.callbacks.scanner_loop.check_whipsaw_filter', return_value=None), \
+        patch('core.callbacks.scanner_loop.check_candle_close_filter', return_value=None), \
+        patch('core.callbacks.scanner_loop.check_momentum_continuity', return_value=None):
             with patch('core.callbacks.scanner_loop.scan_pair_for_setup', side_effect=mock_scan_pair_for_setup):
                 await scanner_loop.scanner_loop_callback()
 
