@@ -471,7 +471,7 @@ class TestScannerAsync:
         scanner = ScalabilityScanner()
 
         pair = {
-            'spread': 0.05,  # > 0.02%
+            'spread': 0.10,  # > 0.06% (scalability_spread_max)
             'vol5': 1.5,
             'recentVolume': 500000,
             'bookDepth': 10000,
@@ -489,7 +489,7 @@ class TestScannerAsync:
         pair = {
             'spread': 0.015,
             'vol5': 1.5,
-            'recentVolume': 50000,  # < 100000
+            'recentVolume': 20000,  # < 30000 (scalability_volume_min)
             'bookDepth': 10000,
             'balanceScore': 0.8
         }

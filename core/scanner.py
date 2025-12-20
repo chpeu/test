@@ -442,6 +442,27 @@ class ScalabilityScanner:
             atr = self.calculate_atr(highs, lows, closes)
             current_price = closes[-1] if closes else 1
             atr_percent = (atr / current_price) * 100 if current_price > 0 else 0.25
+
+            # 🔥 PHASE 1B: Calculer ATR 5m (approximation depuis klines 1m)
+            highs_5m = []
+            lows_5m = []
+            closes_5m = []
+            if len(closes) >= 5:
+                for i in range(0, len(closes), 5):
+                    chunk_highs = highs[i:i + 5]
+                    chunk_lows = lows[i:i + 5]
+                    chunk_closes = closes[i:i + 5]
+                    if len(chunk_closes) < 5:
+                        continue
+                    highs_5m.append(max(chunk_highs))
+                    lows_5m.append(min(chunk_lows))
+                    closes_5m.append(chunk_closes[-1])
+
+            atr_5m = None
+            atr_percent_5m = None
+            if closes_5m and len(closes_5m) >= 5:
+                atr_5m = self.calculate_atr(highs_5m, lows_5m, closes_5m)
+                atr_percent_5m = (atr_5m / current_price) * 100 if current_price > 0 else None
             
             # Récupérer spread & depth (avec cache)
             spread_data = await self.fetch_spread_data(symbol)
@@ -473,6 +494,8 @@ class ScalabilityScanner:
                 'adx': adx,  # 🔥 OPT #4: ADX pour trend strength
                 'atr': atr,  # 🔥 FIX: ATR valeur absolue pour Market Regime
                 'atr_percent': atr_percent,  # 🔥 FIX: ATR en % pour Market Regime
+                'atr_5m': atr_5m,
+                'atr_percent_5m': atr_percent_5m,
                 # 🔥 ORDER FLOW: 6 nouvelles métriques pour ML
                 'delta_volume': orderflow_metrics['delta_volume'],
                 'imbalance_normalized': orderflow_metrics['imbalance_normalized'],

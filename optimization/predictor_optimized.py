@@ -18,6 +18,7 @@ Usage:
 """
 import logging
 import json
+import os
 import numpy as np
 import pandas as pd
 import joblib
@@ -26,6 +27,9 @@ from typing import Dict, Tuple, Optional, List
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+if os.name == 'nt':
+    os.environ.setdefault('LOKY_MAX_CPU_COUNT', str(os.cpu_count() or 4))
 
 
 class OptimizedPredictor:
@@ -66,8 +70,18 @@ class OptimizedPredictor:
         for path in possible_paths:
             if path and Path(path).exists():
                 try:
-                    self.model = joblib.load(path)
-                    logger.info(f"✅ Modèle chargé: {path}")
+                    loaded_data = joblib.load(path)
+                    # Si c'est un dictionnaire avec le modèle sous la clé 'model'
+                    if isinstance(loaded_data, dict) and 'model' in loaded_data:
+                        self.model = loaded_data['model']
+                        logger.info(f"✅ Modèle chargé depuis dict: {path}")
+                        # Extraire les feature_names si disponibles
+                        if 'feature_names' in loaded_data and not self.feature_cols:
+                            self.feature_cols = loaded_data['feature_names']
+                    else:
+                        # Modèle direct (pas en dict)
+                        self.model = loaded_data
+                        logger.info(f"✅ Modèle chargé direct: {path}")
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur chargement {path}: {e}")
@@ -76,16 +90,26 @@ class OptimizedPredictor:
             logger.error("❌ Aucun modèle trouvé!")
             return
         
+        # 🔥 FIX 20/12/2025: Priorité absolue aux features internes du modèle si disponibles
+        if hasattr(self.model, 'feature_names_in_'):
+            self.feature_cols = list(self.model.feature_names_in_)
+            logger.info(f"✅ Features extraites du modèle (source de vérité): {len(self.feature_cols)}")
+        
         # Charger preprocessor (scaler)
         for prep_name in ["gradient_boosting_optimized_preprocessor.pkl", "best_classifier_preprocessor.pkl"]:
             prep_path = models_dir / prep_name
             if prep_path.exists():
                 try:
                     self.preprocessor = joblib.load(prep_path)
-                    # Extraire feature_names du preprocessor
+                    # Extraire feature_names du preprocessor SI pas encore définis par le modèle
                     if isinstance(self.preprocessor, dict) and 'feature_names' in self.preprocessor:
-                        self.feature_cols = list(self.preprocessor['feature_names'])
-                    logger.info(f"✅ Preprocessor chargé: {len(self.feature_cols) if self.feature_cols else 'N/A'} features")
+                        if not self.feature_cols:
+                            self.feature_cols = list(self.preprocessor['feature_names'])
+                            logger.info(f"✅ Features extraites du Preprocessor: {len(self.feature_cols)}")
+                        else:
+                            logger.info(f"ℹ️ Features Preprocessor ignorées (priorité Modèle): {len(self.preprocessor['feature_names'])}")
+                    
+                    logger.info(f"✅ Preprocessor chargé: {prep_name}")
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur preprocessor: {e}")
@@ -100,7 +124,7 @@ class OptimizedPredictor:
                     # Si feature_cols pas encore défini, utiliser metadata
                     if not self.feature_cols:
                         self.feature_cols = self.metadata.get('feature_names', self.metadata.get('feature_cols', []))
-                    logger.info(f"✅ Metadata chargée: {len(self.feature_cols)} features")
+                        logger.info(f"✅ Features extraites Metadata: {len(self.feature_cols)}")
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur metadata: {e}")
@@ -136,11 +160,22 @@ class OptimizedPredictor:
             if self.preprocessor is not None and isinstance(self.preprocessor, dict):
                 scaler = self.preprocessor.get('scaler')
                 if scaler is not None:
-                    input_data = scaler.transform(df)
+                    # Vérifier compatibilité des dimensions avant scaling
+                    if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ != df.shape[1]:
+                        logger.warning(f"⚠️ Scaler ignoré: mismatch features (Scaler={scaler.n_features_in_} vs DF={df.shape[1]})")
+                        input_data = df
+                    else:
+                        # 🔥 FIX: Utiliser df.values pour éviter sklearn warning sur feature names
+                        try:
+                            scaled = scaler.transform(df.values)
+                            input_data = pd.DataFrame(scaled, columns=df.columns)
+                        except Exception as e:
+                            logger.warning(f"⚠️ Erreur scaling (ignoré): {e}")
+                            input_data = df
                 else:
-                    input_data = df.values
+                    input_data = df
             else:
-                input_data = df.values if isinstance(df, pd.DataFrame) else df
+                input_data = df if isinstance(df, pd.DataFrame) else df
 
             # Prédire
             proba = self.model.predict_proba(input_data)[0, 1]  # Probabilité de WIN
@@ -223,25 +258,80 @@ class OptimizedPredictor:
         
         if 'volume_ratio_1m' in df.columns:
             df['volume_spike'] = (df['volume_ratio_1m'] > 1.5).astype(int)
+
+        if 'di_gap_1m' not in df.columns and 'di_plus_1m' in df.columns and 'di_minus_1m' in df.columns:
+            df['di_gap_1m'] = df['di_plus_1m'] - df['di_minus_1m']
+
+        if 'di_gap_5m' not in df.columns and 'di_plus_5m' in df.columns and 'di_minus_5m' in df.columns:
+            df['di_gap_5m'] = df['di_plus_5m'] - df['di_minus_5m']
+
+        if 'momentum_1m' not in df.columns and 'rsi_1m' in df.columns and 'macd_hist_1m' in df.columns:
+            df['momentum_1m'] = (df['rsi_1m'] / 100) * np.tanh(df['macd_hist_1m'])
+
+        if 'momentum_5m' not in df.columns and 'rsi_5m' in df.columns and 'macd_hist_5m' in df.columns:
+            df['momentum_5m'] = (df['rsi_5m'] / 100) * np.tanh(df['macd_hist_5m'])
+
+        if 'momentum_divergence' not in df.columns and 'momentum_1m' in df.columns and 'momentum_5m' in df.columns:
+            df['momentum_divergence'] = df['momentum_1m'] - df['momentum_5m']
+
+        if 'macd_momentum_1m' not in df.columns and 'macd_hist_1m' in df.columns and 'macd_hist_prev_1m' in df.columns:
+            df['macd_momentum_1m'] = df['macd_hist_1m'] - df['macd_hist_prev_1m']
+
+        if 'macd_momentum_5m' not in df.columns and 'macd_hist_5m' in df.columns and 'macd_hist_prev_5m' in df.columns:
+            df['macd_momentum_5m'] = df['macd_hist_5m'] - df['macd_hist_prev_5m']
+
+        if 'rsi_change_1m' not in df.columns and 'rsi_1m' in df.columns and 'rsi_prev_1m' in df.columns:
+            df['rsi_change_1m'] = df['rsi_1m'] - df['rsi_prev_1m']
+
+        if 'rsi_change_5m' not in df.columns and 'rsi_5m' in df.columns and 'rsi_prev_5m' in df.columns:
+            df['rsi_change_5m'] = df['rsi_5m'] - df['rsi_prev_5m']
+
+        if 'rsi_divergence' not in df.columns and 'rsi_1m' in df.columns and 'rsi_5m' in df.columns:
+            df['rsi_divergence'] = (df['rsi_1m'] - df['rsi_5m']).abs()
+
+        if 'trend_strength_1m' not in df.columns and 'adx_1m' in df.columns and 'di_gap_1m' in df.columns:
+            df['trend_strength_1m'] = df['adx_1m'] * df['di_gap_1m'].abs() / 100
+
+        if 'trend_strength_5m' not in df.columns and 'adx_5m' in df.columns and 'di_gap_5m' in df.columns:
+            df['trend_strength_5m'] = df['adx_5m'] * df['di_gap_5m'].abs() / 100
+
+        if 'volume_divergence' not in df.columns and 'volume_ratio_1m' in df.columns and 'volume_ratio_5m' in df.columns:
+            df['volume_divergence'] = (df['volume_ratio_1m'] - df['volume_ratio_5m']).abs()
+
+        if 'volatility_ratio' not in df.columns and 'atr_pct_1m' in df.columns and 'atr_pct_5m' in df.columns:
+            df['volatility_ratio'] = df['atr_pct_1m'] / (df['atr_pct_5m'] + 1e-8)
+
+        if 'volatility_momentum_product' not in df.columns and 'volatility_ratio' in df.columns and 'momentum_1m' in df.columns:
+            df['volatility_momentum_product'] = df['volatility_ratio'] * df['momentum_1m']
         
-        # S'assurer que toutes les colonnes requises sont présentes
+        # 🔥 FIX CRITIQUE FINAL 20/12/2025: Filtrage exact aux 20 features du modèle
         if self.feature_cols:
+            # LOG DEBUG avant filtrage
+            logger.debug(f"🔍 Features avant filtrage ({len(df.columns)}): {list(df.columns)}")
+            logger.debug(f"🎯 Features attendues par modèle ({len(self.feature_cols)}): {self.feature_cols}")
+            
             present_cols = set(df.columns)
             expected_cols = set(self.feature_cols)
             missing_cols = expected_cols - present_cols
             
-            # 🔥 DIAGNOSTIC: Logger les features manquantes si significatif
-            if len(missing_cols) > len(self.feature_cols) * 0.5:
-                logger.warning(f"⚠️ >50% features manquantes ({len(missing_cols)}/{len(self.feature_cols)}) - prédiction peu fiable")
-            elif missing_cols:
-                logger.debug(f"📊 Features manquantes: {len(missing_cols)}/{len(self.feature_cols)}")
-            
-            # Remplir les features manquantes avec 0
+            # Remplir les features manquantes avec 0 AVANT filtrage
             for col in missing_cols:
-                df[col] = 0
+                df[col] = 0.0
+                logger.debug(f"➕ Feature manquante ajoutée: {col} = 0.0")
             
-            # Garder seulement les colonnes du modèle
-            df = df[self.feature_cols]
+            # 🔥 FILTRER STRICTEMENT aux features exactes du modèle (ordre important!)
+            try:
+                df = df[self.feature_cols]
+                logger.debug(f"✅ Filtrage réussi: {len(df.columns)} features exactes gardées")
+            except KeyError as e:
+                logger.error(f"❌ Erreur filtrage features: {e}")
+                return pd.DataFrame()  # Retourner DataFrame vide en cas d'erreur
+            
+            # 🔥 DIAGNOSTIC final
+            if len(missing_cols) > 0:
+                logger.warning(f"⚠️ {len(missing_cols)}/{len(self.feature_cols)} features manquantes remplies par 0: {list(missing_cols)}")
+        else:
+            logger.warning("⚠️ Aucune feature_cols définie - modèle probablement non chargé")
         
         return df.fillna(0)
     

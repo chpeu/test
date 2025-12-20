@@ -4090,6 +4090,18 @@ async def _train_gradientboosting_background(task_id: str):
         
         logger.info(f"[OK] {model_name} entraîné: Accuracy={test_acc:.1%}, F1={test_f1:.3f}, Gap={gap:.1%}")
         
+        # 🔥 FIX: Reset automatique de la ML Calibration après réentraînement
+        # Les anciennes stats ne reflètent plus la performance du nouveau modèle
+        try:
+            from ml.calibration import get_calibration_manager
+            calib_manager = get_calibration_manager()
+            calib_manager.reset_calibration(reason=f"model_retrain_{task_id}")
+            # Re-seeder avec les 200 derniers trades (ceux potentiellement faits avec le nouveau modèle)
+            count = calib_manager.seed_from_historical_trades(days=7)
+            logger.info(f"[CALIB] Calibration resetée et re-seedée avec {count} trades après réentraînement GB")
+        except Exception as calib_err:
+            logger.warning(f"[CALIB] Erreur reset calibration après réentraînement: {calib_err}")
+        
     except Exception as e:
         logger.error(f"[FAIL] Erreur _train_gradientboosting_background: {e}", exc_info=True)
         ml_tasks[task_id]['status'] = 'error'

@@ -244,11 +244,34 @@ async def get_ml_trades_count():
         total_trades = int(pd.read_sql("SELECT COUNT(*) as cnt FROM trades", engine).iloc[0]['cnt'])
         
         # ═══════════════════════════════════════════════════════════════════
-        # 3. COMPTER TRADES NON-MANUELS
+        # 3. NOUVEAUX FILTRES ML STRICTS (11/12/2025)
         # ═══════════════════════════════════════════════════════════════════
-        non_manual = int(pd.read_sql("""
+        
+        # 3a. Exclure DRY-RUN (uniquement LIVE)
+        dryrun_excluded = int(pd.read_sql("""
             SELECT COUNT(*) as cnt FROM trades 
-            WHERE exit_reason IS NULL OR exit_reason != 'MANUAL'
+            WHERE is_live_trade = false OR is_live_trade IS NULL
+        """, engine).iloc[0]['cnt'])
+        
+        # 3b. Exclure non-ATR (uniquement mode ATR)
+        non_atr_excluded = int(pd.read_sql("""
+            SELECT COUNT(*) as cnt FROM trades 
+            WHERE is_live_trade = true AND (tp_sl_mode != 'ATR' OR tp_sl_mode IS NULL)
+        """, engine).iloc[0]['cnt'])
+        
+        # 3c. Exclure MANUAL + STAGNATION
+        bad_exits_excluded = int(pd.read_sql("""
+            SELECT COUNT(*) as cnt FROM trades 
+            WHERE is_live_trade = true AND tp_sl_mode = 'ATR' 
+              AND exit_reason IN ('MANUAL', 'STAGNATION')
+        """, engine).iloc[0]['cnt'])
+        
+        # Compteur après filtres de base (LIVE + ATR + exits propres)
+        base_filtered = int(pd.read_sql("""
+            SELECT COUNT(*) as cnt FROM trades 
+            WHERE is_live_trade = true 
+              AND tp_sl_mode = 'ATR'
+              AND (exit_reason IS NULL OR exit_reason NOT IN ('MANUAL', 'STAGNATION'))
         """, engine).iloc[0]['cnt'])
         
         # ═══════════════════════════════════════════════════════════════════
@@ -307,23 +330,20 @@ async def get_ml_trades_count():
         engine.dispose()
         
         # ═══════════════════════════════════════════════════════════════════
-        # 6. RETOURNER LE RÉSULTAT
+        # 6. RETOURNER LE RÉSULTAT (simplifié - sans filtre config)
         # ═══════════════════════════════════════════════════════════════════
         return {
             'total_trades': total_trades,
-            'manual_excluded': total_trades - non_manual,
-            'non_manual_trades': non_manual,
-            'config_filtered_trades': clean_count,
-            'different_config_excluded': non_manual - clean_count,
+            # 🔥 Compteurs stricts (11/12/2025)
+            'dryrun_excluded': dryrun_excluded,
+            'non_atr_excluded': non_atr_excluded,
+            'bad_exits_excluded': bad_exits_excluded,
+            'config_filtered_trades': base_filtered,  # = clean_count sans filtre config
             'current_config': current_config,
-            'config_breakdown': config_breakdown,
             'filters_applied': {
-                'setup_validation': ['min_score', 'snr_threshold', 'volume_mult', 'confluence', 'atr_1m', 'atr_5m'],
-                'additional_filters': ['anti_whipsaw', 'candle_close', 'cooldown', 'momentum', 'retest'],
-                # 🔥 TP/SL exclus du filtre ML (gestion post-entrée, n'affecte pas la qualité du signal)
-                'patterns_techniques': ['use_breakout', 'breakout_threshold', 'use_snr', 'snr_threshold', 'use_wick', 'wick_ratio_max', 'use_divergence', 'di_gap_min', 'di_gap_adx_threshold']
+                'strict_filters': ['LIVE only', 'ATR mode only', 'No MANUAL/STAGNATION'],
             },
-            'message': f"✅ {clean_count} trades avec config actuelle (sur {total_trades} total)"
+            'message': f"✅ {base_filtered} trades ML utilisables (LIVE + ATR + exits propres)"
         }
         
     except Exception as e:
@@ -390,4 +410,69 @@ async def get_performance_analysis(
 # ========== MODELS ==========
 
 
-logger.info("✅ ML dashboard router initialized (4 routes)")
+# ========== PHASE 2A: CORRELATION ANALYTICS ==========
+
+
+@router.get("/analytics/correlations")
+async def get_correlation_analytics(
+    days: int = Query(7, ge=1, le=90, description="Nombre de jours à analyser")
+):
+    """
+    🔥 PHASE 2A: Analyse des corrélations Session/Régime/Performance.
+    
+    Retourne:
+    - Performance par session (ASIA, EUROPE, US, NIGHT)
+    - Performance par régime local (LOW, MEDIUM, HIGH)
+    - Performance par heure UTC
+    - Performance par exit_reason
+    - Distribution des régimes optimaux (What-If)
+    - Suggestions d'optimisation
+    """
+    try:
+        from core.analysis.correlation_engine import get_correlation_engine
+        
+        engine = get_correlation_engine()
+        report = engine.get_full_analysis_report(days)
+        
+        return {
+            'status': 'success',
+            'period_days': days,
+            'generated_at': report.get('generated_at'),
+            'by_session': report.get('by_session', []),
+            'by_local_regime': report.get('by_local_regime', []),
+            'by_hour': report.get('by_hour', []),
+            'by_exit_reason': report.get('by_exit_reason', []),
+            'optimal_regime_distribution': report.get('optimal_regime_distribution', {}),
+            'suggestions': report.get('suggestions', [])
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_correlation_analytics: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.get("/analytics/suggestions")
+async def get_optimization_suggestions(
+    days: int = Query(7, ge=1, le=90, description="Nombre de jours à analyser")
+):
+    """
+    Retourne uniquement les suggestions d'optimisation prioritaires.
+    """
+    try:
+        from core.analysis.correlation_engine import get_correlation_engine
+        
+        engine = get_correlation_engine()
+        suggestions = engine.generate_suggestions(days)
+        
+        return {
+            'status': 'success',
+            'period_days': days,
+            'suggestions': [s.__dict__ for s in suggestions]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur get_optimization_suggestions: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+logger.info("✅ ML dashboard router initialized (6 routes)")

@@ -45,6 +45,7 @@ REGIME_ADJUSTABLE_KEYS = [
     'stagnation_exit_timeout_seconds',
     'stagnation_exit_min_pnl_to_stay',
     'stagnation_exit_max_loss_to_exit',
+    'stagnation_positive_timeout_seconds',
     # 🔥 Filtre RSI Final (configurable)
     'rsi_final_filter_enabled',
     'rsi_final_long_max',
@@ -230,10 +231,19 @@ def get_config_summary() -> Dict[str, Any]:
     from config import TRADING_CONFIG
     
     effective = get_effective_config()
+    regime_enabled = TRADING_CONFIG.get('market_regime_enabled', True)
+    
+    # 🔥 14/12/2025: ATR MAX désactivé si régime actif (données prouvent ATR haut = rentable)
+    # Ne pas inclure ATR MAX dans les différences si régime actif
+    atr_max_keys = ['optimal_atr_max_1m', 'optimal_atr_max_5m']
     
     # Calculer les différences pour affichage
     differences = {}
     for key in REGIME_ADJUSTABLE_KEYS:
+        # 🔥 Skip ATR MAX si régime actif (ces valeurs ne sont plus utilisées)
+        if regime_enabled and key in atr_max_keys:
+            continue
+            
         base_val = TRADING_CONFIG.get(key)
         eff_val = effective.get(key)
         if base_val != eff_val and eff_val is not None:
@@ -243,14 +253,18 @@ def get_config_summary() -> Dict[str, Any]:
                 'delta': eff_val - base_val if isinstance(base_val, (int, float)) and isinstance(eff_val, (int, float)) else None
             }
     
+    # 🔥 Ajouter info ATR MAX désactivé pour le frontend
+    atr_max_disabled = regime_enabled
+    
     return {
         'base_config': {k: TRADING_CONFIG.get(k) for k in REGIME_ADJUSTABLE_KEYS},
         'effective_config': {k: effective.get(k) for k in REGIME_ADJUSTABLE_KEYS},
         'adjustments': get_active_adjustments(),
         'differences': differences,
-        'regime_enabled': TRADING_CONFIG.get('market_regime_enabled', True),
+        'regime_enabled': regime_enabled,
         'cb_enabled': TRADING_CONFIG.get('trading_circuit_breaker_enabled', True),
         'pair_scorer_enabled': TRADING_CONFIG.get('pair_scorer_enabled', True),
+        'atr_max_disabled': atr_max_disabled,  # 🔥 NOUVEAU: Info pour frontend
     }
 
 

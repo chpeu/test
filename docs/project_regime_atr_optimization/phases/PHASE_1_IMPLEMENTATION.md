@@ -632,197 +632,65 @@ def calculate_combined_atr(
     return combined
 ```
 
-### Méthode: `get_session_adjusted_thresholds()`
+### Saisonnalité (optionnel) dans `determine_regime()`
+
+La saisonnalité est appliquée directement lors de la détermination du régime (si `market_regime_use_seasonality=true`).
 
 ```python
-def get_session_adjusted_thresholds(self) -> Dict[str, float]:
-    """
-    Retourne les seuils ajustés selon la session actuelle.
-    
-    Returns:
-        Dict avec calme_max, normal_max, session, multiplier
-    """
-    use_seasonality = get_effective_value('market_regime_use_seasonality') or False
-    
-    # Seuils de base
-    base_calme = get_effective_value('market_regime_threshold_calme_max') or 0.20
-    base_normal = get_effective_value('market_regime_threshold_normal_max') or 0.40
-    
-    if not use_seasonality:
-        return {
-            "calme_max": base_calme,
-            "normal_max": base_normal,
-            "session": None,
-            "multiplier": 1.0
-        }
-    
-    # Récupérer multiplicateur session
-    session = get_current_session()
-    multiplier = session.get('atr_multiplier', 1.0)
-    
-    adjusted = {
-        "calme_max": base_calme * multiplier,
-        "normal_max": base_normal * multiplier,
-        "session": session['name'],
-        "multiplier": multiplier
-    }
-    
-    logger.debug(
-        f"🕐 Session {session['name']}: seuils ×{multiplier:.2f} | "
-        f"CALME<{adjusted['calme_max']:.3f}% | NORMAL<{adjusted['normal_max']:.3f}%"
-    )
-    
-    return adjusted
+if get_config_value('market_regime_use_seasonality', False):
+    hour = datetime.now().hour
+    if 0 <= hour < 7:
+        multiplier = 0.90
+    elif 7 <= hour < 15:
+        multiplier = 1.00
+    else:
+        multiplier = 1.10
+    atr_calme_max = atr_calme_max * multiplier
+    atr_normal_max = atr_normal_max * multiplier
 ```
 
-### Méthode: `check_regime_v2()` - Assemblage Final
+### Méthode: `check_regime()` (V2 activé via toggles)
+
+`check_regime()` est la méthode runtime unique.
+
+Si `market_regime_v2_enabled=true`:
+- ATR% calculé via `calculate_combined_atr(atr_values, atr_5m_values)`
+- lissage via `apply_smoothing()`
+- hystérésis via `should_change_regime()`
+- durée minimum via `market_regime_min_duration_minutes`
+
+La méthode déclenche aussi périodiquement les actions Phase 1E:
+- auto-calibration (cache 6h, tentative max toutes les 30 min)
+- refresh BTC status (cache)
 
 ```python
-async def check_regime_v2(
+async def check_regime(
     self,
-    atr_1m_values: List[float],
+    atr_values: List[float],
     atr_5m_values: Optional[List[float]] = None,
     adx_values: Optional[List[float]] = None,
     force: bool = False,
     trigger: str = "auto"
 ) -> Tuple[MarketRegime, bool]:
-    """
-    Version V2 complète du check_regime.
-    
-    Intègre:
-    - Médiane (anti-outliers)
-    - Hystérésis (anti-flip-flop)
-    - Lissage EMA (stabilité temporelle)
-    - ATR 5m combiné
-    - Seuils ajustés par session
-    
-    Returns:
-        Tuple (régime_actuel, changement_effectué)
-    """
-    v2_enabled = get_effective_value('market_regime_v2_enabled') or False
-    
-    # Fallback V1 si désactivé
-    if not v2_enabled:
-        return await self.check_regime(atr_1m_values, adx_values, force, trigger)
-    
-    now = datetime.now()
-    
-    # Stocker métriques
-    self.atr_values = atr_1m_values
-    self.atr_sample_count = len(atr_1m_values)
-    
-    # === ÉTAPE 1: Calcul ATR combiné ===
-    combined_atr = self.calculate_combined_atr(atr_1m_values, atr_5m_values or [])
-    
-    # === ÉTAPE 2: Lissage temporel ===
-    smoothed_atr = self.apply_smoothing(combined_atr)
-    
-    # === ÉTAPE 3: Seuils ajustés session ===
-    thresholds = self.get_session_adjusted_thresholds()
-    
-    # === ÉTAPE 4: Calculer ADX ===
-    avg_adx = sum(adx_values) / len(adx_values) if adx_values else 25.0
-    self.avg_adx = avg_adx
-    self.avg_atr = smoothed_atr
-    
-    # === ÉTAPE 5: Déterminer régime proposé ===
-    proposed_regime = self._determine_regime_v2(smoothed_atr, avg_adx, thresholds)
-    
-    # === ÉTAPE 6: Appliquer hystérésis ===
-    should_change = self.should_change_regime(
-        self.current_regime, proposed_regime, smoothed_atr
-    )
-    
-    # === ÉTAPE 7: Vérifier durée minimum ===
-    min_duration = get_effective_value('market_regime_min_duration_minutes') or 30
-    if should_change and self.regime_since and not force:
-        duration = (now - self.regime_since).total_seconds() / 60
-        if duration < min_duration:
-            should_change = False
-            logger.debug(f"⏱️ Durée min: {duration:.1f}/{min_duration} min - changement bloqué")
-    
-    # === ÉTAPE 8: Appliquer changement ===
-    old_regime = self.current_regime
-    changed = False
-    
-    if should_change:
-        self.current_regime = proposed_regime
-        self.current_config = self.regime_configs.get(proposed_regime.value)
-        self.regime_since = now
-        changed = True
-        
-        logger.info(
-            f"🌡️ RÉGIME V2: {old_regime.value} → {proposed_regime.value} | "
-            f"ATR={smoothed_atr:.3f}% | Session={thresholds.get('session', 'N/A')}"
-        )
-        
-        self._log_regime_change_to_db(old_regime, proposed_regime, trigger)
-        self._notify_regime_change(old_regime, proposed_regime)
-    else:
-        logger.debug(
-            f"🌡️ Régime stable: {self.current_regime.value} | "
-            f"ATR={smoothed_atr:.3f}%"
-        )
-    
-    # MAJ timestamps
-    self.last_check = now
-    self.next_check = now + self.check_interval
-    
-    return self.current_regime, changed
-
-
-def _determine_regime_v2(
-    self,
-    atr: float,
-    adx: float,
-    thresholds: Dict[str, float]
-) -> MarketRegime:
-    """Détermine le régime avec seuils potentiellement ajustés"""
-    adx_choppy = get_effective_value('market_regime_threshold_adx_choppy') or 20
-    
-    if adx < adx_choppy:
-        return MarketRegime.CHOPPY
-    
-    if atr < thresholds['calme_max']:
-        return MarketRegime.CALME
-    elif atr < thresholds['normal_max']:
-        return MarketRegime.NORMAL
-    else:
-        return MarketRegime.VOLATILE
+    ...
 ```
 
 ---
 
 ## 1B.2 Intégration dans `main.py`
 
-### Modifier `scan_top_pairs_task()` pour utiliser V2
+### Passer `atr_5m_values` (ATR 5m%) au regime selector
+
+Le scanner calcule `atr_percent_5m` et `main.py` le passe à `check_regime()`.
 
 ```python
-# Dans scan_top_pairs_task(), remplacer l'appel à check_regime
-
-# AVANT (V1):
-# await regime_selector.check_regime(atr_values, adx_values, force=True)
-
-# APRÈS (V2):
-from utils.effective_config import get_effective_value
-
-v2_enabled = get_effective_value('market_regime_v2_enabled') or False
-
-if v2_enabled:
-    # Collecter ATR 5m aussi
-    atr_5m_values = []
-    for pair_data in scanned_pairs:
-        if 'atr_5m_pct' in pair_data:
-            atr_5m_values.append(pair_data['atr_5m_pct'])
-    
-    await regime_selector.check_regime_v2(
-        atr_values, 
-        atr_5m_values,
-        adx_values, 
-        force=True
-    )
-else:
-    await regime_selector.check_regime(atr_values, adx_values, force=True)
+new_regime, changed = await regime_selector.check_regime(
+    atr_values=atr_values,
+    atr_5m_values=atr_5m_values,
+    adx_values=adx_values,
+    force=force_check,
+    trigger="auto"
+)
 ```
 
 ---
@@ -830,19 +698,15 @@ else:
 ## 1B.3 Checklist Phase 1B
 
 ```
-[ ] 1. Ajouter imports dans market_regime_selector.py
-[ ] 2. Implémenter calculate_atr_metric()
-[ ] 3. Implémenter apply_smoothing()
-[ ] 4. Implémenter should_change_regime()
-[ ] 5. Implémenter calculate_combined_atr()
-[ ] 6. Implémenter get_session_adjusted_thresholds()
-[ ] 7. Implémenter check_regime_v2()
-[ ] 8. Modifier main.py pour appeler check_regime_v2
-[ ] 9. Modifier _log_regime_change_to_db() pour detection_method='RULE_BASED_V2'
-[ ] 10. Ajouter toggles frontend (VariablesPanel.svelte)
-[ ] 11. Tester avec v2_enabled=false (comportement V1)
-[ ] 12. Activer toggles un par un et vérifier
-[ ] 13. Script vérification Phase 1B
+[x] 1. Implémenter calculate_atr_metric()
+[x] 2. Implémenter apply_smoothing()
+[x] 3. Implémenter should_change_regime()
+[x] 4. Implémenter calculate_combined_atr()
+[x] 5. Scanner: calcul `atr_percent_5m`
+[x] 6. Runtime: passer `atr_5m_values` à `check_regime()`
+[x] 7. Modifier _log_regime_change_to_db() pour detection_method='RULE_BASED_V2'
+[x] 8. Ajouter toggles frontend (VariablesPanel.svelte)
+[x] 9. Script vérification Phase 1B
 ```
 
 ---
@@ -955,9 +819,9 @@ except Exception as e:
 
 ```bash
 # Exécuter tous les tests de vérification
-python verification/verify_phase_1a_logging.py
-python verification/verify_phase_1b_regime_v2.py
-python verification/verify_phase_1c_whatif_regime.py
+python verification\verify_phase1a_logging.py
+python verification\verify_phase1b_v2_methods.py
+python verification\verify_phase1_complete.py
 
 # Vérifier les vues SQL
 psql -c "SELECT * FROM v_performance_by_session;"

@@ -2,8 +2,6 @@
 	import { onMount } from 'svelte';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import OptimizationPanel from '$lib/components/ml/OptimizationPanel.svelte';
-	import MLCONTENT_V2_Variables from '$lib/components/ml/MLCONTENT_V2_Variables.svelte';
-	import MLCONTENT_GB_Variables from '$lib/components/ml/MLCONTENT_GB_Variables.svelte';
 
 	const DEFAULTS = {
 		// Patterns Techniques
@@ -70,6 +68,15 @@
 		stagnation_exit_timeout_seconds: 120,
 		stagnation_exit_min_pnl_to_stay: 0.10,
 		stagnation_exit_max_loss_to_exit: -0.05,
+		// 🔥 STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+		stagnation_positive_exit_enabled: true,
+		stagnation_positive_threshold: 0.03,
+		stagnation_positive_timeout_seconds: 60,
+		stagnation_use_mfe_tracking: true,
+		stagnation_mfe_pullback_pct: 0.08,
+		// 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil)
+		trailing_mfe_enabled: false,
+		trailing_mfe_trigger_pct: 0.10,
 		// Mode ESCALIER (TP_MULTI) - 4 niveaux
 		escalier_level1_pnl: 0.20,
 		escalier_level1_size: 25,
@@ -138,6 +145,11 @@
 		ml_calib_min_trades: 30,
 		ml_calib_min_winrate: 40.0,
 		ml_calib_bucket_size: 5,
+		// 🔥 Phase 2D: Threshold Optimizer & Drift Detection
+		threshold_optimizer_enabled: false,
+		threshold_min: 0.45,
+		threshold_max: 0.70,
+		drift_detection_enabled: true,
 		// 🔥 OPT #14: Scan Interval
 		scan_interval: 30,
 		// 🔥 OPT #15: Anti-Whipsaw Filter
@@ -159,6 +171,9 @@
 		// 🔥 OPT #19: Momentum Continuity
 		use_momentum_continuity: true,
 		momentum_lookback: 3,
+		// 🔥 OPT #20: Micro-confirmation
+		use_micro_confirmation: false,
+		micro_confirmation_delay_ms: 300,
 		// 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
 		adaptive_sizing_enabled: true,
 		adaptive_sizing_min_trades: 3,
@@ -180,6 +195,25 @@
 		market_regime_atr_calme_max: 0.20,
 		market_regime_atr_normal_max: 0.40,
 		market_regime_adx_choppy: 20,
+		// 🔥 PHASE 1D: Market Regime V2 (toggles OFF par défaut)
+		market_regime_v2_enabled: false,
+		market_regime_use_median: false,
+		market_regime_outlier_filter: true,
+		market_regime_use_hysteresis: false,
+		market_regime_hysteresis_buffer: 0.10,
+		market_regime_use_smoothing: false,
+		market_regime_smoothing_alpha: 0.3,
+		market_regime_use_atr_5m: false,
+		market_regime_use_seasonality: false,
+		market_regime_min_duration_minutes: 30,
+		// 🔥 PHASE 1E: Auto-Calibration + BTC Indicator
+		market_regime_auto_calibration_enabled: false,
+		market_regime_calibration_lookback_days: 7,
+		market_regime_calibration_percentile_calme: 33,
+		market_regime_calibration_percentile_volatile: 66,
+		market_regime_btc_indicator_enabled: false,
+		market_regime_btc_volatile_threshold_1h: 2.0,
+		market_regime_btc_force_volatile_enabled: true,
 		// 🔥 SPRINT 1: Trading Circuit Breaker
 		trading_circuit_breaker_enabled: true,
 		trading_cb_max_consecutive_losses: 5,
@@ -200,7 +234,6 @@
 	let loading = false;
 	let saveMessage = '';
 	let activeSubTab = 'setups';
-	let mlVersion = 'v1'; // 'v1' ou 'v2' pour les sous-onglets ML
 	let viewMode = 'FIXE'; // Mode affiché dans TP/SL (ne modifie PAS config.tp_sl_mode)
 	
 	// 🔥 NOUVEAU: Système de sauvegarde automatique avec debounce
@@ -477,6 +510,32 @@
 				}
 			});
 		}
+		// 🔥 PHASE 1D: Synchroniser aussi effective_config pour affichage temps réel
+		if (completeConfig.effective_config) {
+			Object.keys(config).forEach(key => {
+				if (config[key] !== completeConfig.effective_config[key]) {
+					completeConfig.effective_config[key] = config[key];
+				}
+			});
+		}
+	}
+	
+	// 🔥 PHASE 1D: Synchroniser immédiatement quand config change (pour toutes les variables V2)
+	$: if (completeConfig && config) {
+		// Mettre à jour effective_config en temps réel pour que "Variables en cours" soit à jour
+		if (completeConfig.effective_config) {
+			const v2Keys = [
+				'market_regime_v2_enabled', 'market_regime_use_median', 'market_regime_outlier_filter',
+				'market_regime_use_hysteresis', 'market_regime_hysteresis_buffer',
+				'market_regime_use_smoothing', 'market_regime_smoothing_alpha',
+				'market_regime_use_atr_5m', 'market_regime_use_seasonality', 'market_regime_min_duration_minutes'
+			];
+			v2Keys.forEach(key => {
+				if (config[key] !== undefined && config[key] !== completeConfig.effective_config[key]) {
+					completeConfig.effective_config[key] = config[key];
+				}
+			});
+		}
 	}
 	
 	// Fonction pour formater une valeur selon son type
@@ -600,6 +659,15 @@
 				stagnation_exit_timeout_seconds: tradingConfig.stagnation_exit_timeout_seconds,
 				stagnation_exit_min_pnl_to_stay: tradingConfig.stagnation_exit_min_pnl_to_stay,
 				stagnation_exit_max_loss_to_exit: tradingConfig.stagnation_exit_max_loss_to_exit,
+				// 🔥 STAGNATION POSITIVE EXIT
+				stagnation_positive_exit_enabled: tradingConfig.stagnation_positive_exit_enabled,
+				stagnation_positive_threshold: tradingConfig.stagnation_positive_threshold,
+				stagnation_positive_timeout_seconds: tradingConfig.stagnation_positive_timeout_seconds,
+				stagnation_use_mfe_tracking: tradingConfig.stagnation_use_mfe_tracking,
+				stagnation_mfe_pullback_pct: tradingConfig.stagnation_mfe_pullback_pct,
+				// 🎯 TRAILING MFE
+				trailing_mfe_enabled: tradingConfig.trailing_mfe_enabled,
+				trailing_mfe_trigger_pct: tradingConfig.trailing_mfe_trigger_pct,
 			},
 			'🪜 TP Escalier': {
 				partial_tp_percent: tradingConfig.partial_tp_percent,
@@ -695,6 +763,12 @@
 				ml_calib_min_winrate: tradingConfig.ml_calib_min_winrate,
 				ml_calib_bucket_size: tradingConfig.ml_calib_bucket_size,
 			},
+			'📊 Phase 2D: Seuils Dynamiques': {
+				threshold_optimizer_enabled: tradingConfig.threshold_optimizer_enabled,
+				threshold_min: tradingConfig.threshold_min,
+				threshold_max: tradingConfig.threshold_max,
+				drift_detection_enabled: tradingConfig.drift_detection_enabled,
+			},
 			'💎 Live Trading': {
 				default_leverage: tradingConfig.default_leverage,
 				max_latency_ms: tradingConfig.max_latency_ms,
@@ -719,6 +793,9 @@
 				// OPT #19: Momentum Continuity
 				use_momentum_continuity: tradingConfig.use_momentum_continuity,
 				momentum_lookback: tradingConfig.momentum_lookback,
+				// OPT #20: Micro-confirmation
+				use_micro_confirmation: tradingConfig.use_micro_confirmation,
+				micro_confirmation_delay_ms: tradingConfig.micro_confirmation_delay_ms,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -763,6 +840,25 @@
 				pair_scorer_max_adjustment: tradingConfig.pair_scorer_max_adjustment,
 				pair_scorer_lookback_days: tradingConfig.pair_scorer_lookback_days,
 				pair_scorer_refresh_minutes: tradingConfig.pair_scorer_refresh_minutes,
+			},
+			// 🔥 PHASE 1D: Market Regime V2
+			'🌡️ Régime V2': {
+				market_regime_v2_enabled: tradingConfig.market_regime_v2_enabled,
+				market_regime_use_median: tradingConfig.market_regime_use_median,
+				market_regime_outlier_filter: tradingConfig.market_regime_outlier_filter,
+				market_regime_use_hysteresis: tradingConfig.market_regime_use_hysteresis,
+				market_regime_hysteresis_buffer: tradingConfig.market_regime_hysteresis_buffer,
+				market_regime_use_smoothing: tradingConfig.market_regime_use_smoothing,
+				market_regime_smoothing_alpha: tradingConfig.market_regime_smoothing_alpha,
+				market_regime_use_atr_5m: tradingConfig.market_regime_use_atr_5m,
+				market_regime_use_seasonality: tradingConfig.market_regime_use_seasonality,
+				market_regime_min_duration_minutes: tradingConfig.market_regime_min_duration_minutes,
+				// Phase 1E
+				market_regime_auto_calibration_enabled: tradingConfig.market_regime_auto_calibration_enabled,
+				market_regime_calibration_lookback_days: tradingConfig.market_regime_calibration_lookback_days,
+				market_regime_btc_indicator_enabled: tradingConfig.market_regime_btc_indicator_enabled,
+				market_regime_btc_volatile_threshold_1h: tradingConfig.market_regime_btc_volatile_threshold_1h,
+				market_regime_btc_force_volatile_enabled: tradingConfig.market_regime_btc_force_volatile_enabled,
 			},
 		};
 	}
@@ -893,6 +989,25 @@
 					ml_calib_min_trades: config.ml_calib_min_trades,
 					ml_calib_min_winrate: config.ml_calib_min_winrate,
 					ml_calib_bucket_size: config.ml_calib_bucket_size
+				});
+				console.log('✅ Phase 2D params:', {
+					threshold_optimizer_enabled: config.threshold_optimizer_enabled,
+					threshold_min: config.threshold_min,
+					threshold_max: config.threshold_max,
+					drift_detection_enabled: config.drift_detection_enabled
+				});
+				console.log('✅ Phase 1E params (Auto-Calibration + BTC):', {
+					market_regime_auto_calibration_enabled: config.market_regime_auto_calibration_enabled,
+					market_regime_calibration_lookback_days: config.market_regime_calibration_lookback_days,
+					market_regime_calibration_percentile_calme: config.market_regime_calibration_percentile_calme,
+					market_regime_calibration_percentile_volatile: config.market_regime_calibration_percentile_volatile,
+					market_regime_btc_indicator_enabled: config.market_regime_btc_indicator_enabled,
+					market_regime_btc_volatile_threshold_1h: config.market_regime_btc_volatile_threshold_1h,
+					market_regime_btc_force_volatile_enabled: config.market_regime_btc_force_volatile_enabled
+				});
+				console.log('🎯 Trailing MFE params:', {
+					trailing_mfe_enabled: config.trailing_mfe_enabled,
+					trailing_mfe_trigger_pct: config.trailing_mfe_trigger_pct
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -1373,6 +1488,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'protection'} on:click={() => activeSubTab = 'protection'} data-debug-name="activeSubTab">
 			🛡️ Protection & Régime
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'regimev2'} on:click={() => activeSubTab = 'regimev2'} data-debug-name="activeSubTab">
+			🌡️ Régime V2
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'adaptations'} on:click={() => activeSubTab = 'adaptations'} data-debug-name="activeSubTab">
 			🎯 Adaptations ML
@@ -2201,6 +2319,46 @@
 										on:change={() => triggerAutoSave('candle_close_threshold_seconds', `${config.candle_close_threshold_seconds}s`)}
 									/>
 									<span class="slider-value">{config.candle_close_threshold_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Micro-confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-micro-confirmation">
+							<input
+								id="use-micro-confirmation"
+								type="checkbox"
+								bind:checked={config.use_micro_confirmation}
+								on:change={() => triggerAutoSave('use_micro_confirmation', config.use_micro_confirmation ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⚡ Micro-confirmation</span>
+							<span class="var-desc">Attendre X ms après signal pour éviter faux breakouts</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_micro_confirmation')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_micro_confirmation}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="micro-confirmation-delay">
+										<span class="var-name">Délai (ms)</span>
+										<span class="var-desc">Millisecondes d'attente après signal (100-1000)</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="micro-confirmation-delay"
+										type="range"
+										step="50"
+										min="100"
+										max="1000"
+										bind:value={config.micro_confirmation_delay_ms}
+										on:change={() => triggerAutoSave('micro_confirmation_delay_ms', `${config.micro_confirmation_delay_ms}ms`)}
+									/>
+									<span class="slider-value">{config.micro_confirmation_delay_ms}ms</span>
 								</div>
 							</div>
 						</div>
@@ -3121,6 +3279,160 @@
 										</div>
 									</div>
 								{/if}
+
+								<!-- 🔥 STAGNATION POSITIVE EXIT -->
+								<div class="sub-section">
+									<h5 class="sub-title">✅ Sortie Positive Anticipée</h5>
+									
+									<div class="variable-item checkbox-item">
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												bind:checked={config.stagnation_positive_exit_enabled}
+												on:change={() => triggerAutoSave('stagnation_positive_exit_enabled', config.stagnation_positive_exit_enabled ? 'Activé' : 'Désactivé')}
+											/>
+											<span class="checkmark"></span>
+											<span class="checkbox-text">
+												<span class="var-name">Sortie Positive</span>
+												<span class="var-desc">Sortir en profit si le trade stagne</span>
+											</span>
+										</label>
+									</div>
+
+									{#if config.stagnation_positive_exit_enabled}
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="stagnation-positive-threshold">
+													<span class="var-name">Seuil Profit (%)</span>
+													<span class="var-desc">Profit minimum pour sortie positive</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('stagnation_positive_threshold')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="stagnation-positive-threshold"
+													type="range"
+													step="0.01"
+													min="0.01"
+													max="0.15"
+													bind:value={config.stagnation_positive_threshold}
+													on:change={() => triggerAutoSave('stagnation_positive_threshold', `${config.stagnation_positive_threshold.toFixed(2)}%`)}
+												/>
+												<span class="slider-value">{Number(config.stagnation_positive_threshold).toFixed(2)}%</span>
+											</div>
+										</div>
+
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="stagnation-positive-timeout">
+													<span class="var-name">Timeout Positif (s)</span>
+													<span class="var-desc">Durée réduite avant sortie si en profit</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('stagnation_positive_timeout_seconds')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="stagnation-positive-timeout"
+													type="range"
+													step="15"
+													min="30"
+													max="120"
+													bind:value={config.stagnation_positive_timeout_seconds}
+													on:change={() => triggerAutoSave('stagnation_positive_timeout_seconds', `${config.stagnation_positive_timeout_seconds}s`)}
+												/>
+												<span class="slider-value">{Number(config.stagnation_positive_timeout_seconds).toFixed(0)}s</span>
+											</div>
+										</div>
+									{/if}
+								</div>
+
+								<!-- 🔥 MFE PROTECTION -->
+								<div class="sub-section">
+									<h5 class="sub-title">📈 Protection MFE</h5>
+									
+									<div class="variable-item checkbox-item">
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												bind:checked={config.stagnation_use_mfe_tracking}
+												on:change={() => triggerAutoSave('stagnation_use_mfe_tracking', config.stagnation_use_mfe_tracking ? 'Activé' : 'Désactivé')}
+											/>
+											<span class="checkmark"></span>
+											<span class="checkbox-text">
+												<span class="var-name">Tracking MFE</span>
+												<span class="var-desc">Protéger le profit max atteint</span>
+											</span>
+										</label>
+									</div>
+
+									{#if config.stagnation_use_mfe_tracking}
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="stagnation-mfe-pullback">
+													<span class="var-name">Pullback Max (%)</span>
+													<span class="var-desc">Sortir si le prix chute de X% depuis le MFE</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('stagnation_mfe_pullback_pct')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="stagnation-mfe-pullback"
+													type="range"
+													step="0.01"
+													min="0.03"
+													max="0.20"
+													bind:value={config.stagnation_mfe_pullback_pct}
+													on:change={() => triggerAutoSave('stagnation_mfe_pullback_pct', `${config.stagnation_mfe_pullback_pct.toFixed(2)}%`)}
+												/>
+												<span class="slider-value">{Number(config.stagnation_mfe_pullback_pct).toFixed(2)}%</span>
+											</div>
+										</div>
+									{/if}
+								</div>
+
+								<!-- 🎯 TRAILING MFE (SL→BE) -->
+								<div class="sub-section">
+									<h5 class="sub-title">🎯 Trailing MFE (SL→BE)</h5>
+									
+									<div class="variable-item checkbox-item">
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												bind:checked={config.trailing_mfe_enabled}
+												on:change={() => triggerAutoSave('trailing_mfe_enabled', config.trailing_mfe_enabled ? 'Activé' : 'Désactivé')}
+											/>
+											<span class="checkmark"></span>
+											<span class="checkbox-text">
+												<span class="var-name">Activer Trailing MFE</span>
+												<span class="var-desc">Déplacer SL à break-even quand MFE atteint le seuil</span>
+											</span>
+										</label>
+									</div>
+
+									{#if config.trailing_mfe_enabled}
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="trailing-mfe-trigger">
+													<span class="var-name">Trigger MFE (%)</span>
+													<span class="var-desc">Seuil MFE pour déplacer SL à break-even</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('trailing_mfe_trigger_pct')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="trailing-mfe-trigger"
+													type="range"
+													step="0.01"
+													min="0.05"
+													max="0.50"
+													bind:value={config.trailing_mfe_trigger_pct}
+													on:change={() => triggerAutoSave('trailing_mfe_trigger_pct', `${config.trailing_mfe_trigger_pct.toFixed(2)}%`)}
+												/>
+												<span class="slider-value">{Number(config.trailing_mfe_trigger_pct).toFixed(2)}%</span>
+											</div>
+										</div>
+									{/if}
+								</div>
 							</div>
 
 							<!-- 🔥 HYBRID: TP Partiel -->
@@ -3811,6 +4123,370 @@
 		</section>
 	{/if}
 
+	<!-- 🌡️ ONGLET RÉGIME V2 (Phase 1D) -->
+	{#if activeSubTab === 'regimev2'}
+		<section class="variable-section regimev2-section">
+			<h3>🌡️ Market Regime V2 - Détection Améliorée</h3>
+			<p class="section-info">
+				Améliorations de la détection du régime de marché : médiane anti-outliers, hystérésis anti-flip-flop, 
+				lissage EMA, et combinaison ATR 1m+5m. <strong>Tous les toggles OFF par défaut</strong> pour préserver le comportement V1.
+			</p>
+
+			<!-- Toggle Principal V2 -->
+			<div class="subsection">
+				<h4>⚡ Activation V2</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_v2_enabled">
+						<span class="label-text">Activer Régime V2</span>
+						<span class="label-hint">Active toutes les améliorations V2 (sinon comportement V1)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_v2_enabled"
+								bind:checked={config.market_regime_v2_enabled}
+								on:change={() => triggerAutoSave('market_regime_v2_enabled', config.market_regime_v2_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_v2_enabled ? 'V2 ACTIF' : 'V1 (défaut)'}</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Calcul ATR Amélioré -->
+			<div class="subsection">
+				<h4>📊 Calcul ATR Amélioré</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_median">
+						<span class="label-text">Utiliser Médiane</span>
+						<span class="label-hint">Médiane au lieu de moyenne (plus robuste aux outliers)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_median"
+								bind:checked={config.market_regime_use_median}
+								on:change={() => triggerAutoSave('market_regime_use_median', config.market_regime_use_median ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_median ? 'Médiane' : 'Moyenne'}</span>
+					</div>
+				</div>
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_outlier_filter">
+						<span class="label-text">Filtrer Outliers</span>
+						<span class="label-hint">Exclure les valeurs ATR extrêmes (>2.5σ)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_outlier_filter"
+								bind:checked={config.market_regime_outlier_filter}
+								on:change={() => triggerAutoSave('market_regime_outlier_filter', config.market_regime_outlier_filter ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_outlier_filter ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_atr_5m">
+						<span class="label-text">Combiner ATR 5m</span>
+						<span class="label-hint">Pondérer ATR 1m (40%) + ATR 5m (60%)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_atr_5m"
+								bind:checked={config.market_regime_use_atr_5m}
+								on:change={() => triggerAutoSave('market_regime_use_atr_5m', config.market_regime_use_atr_5m ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_atr_5m ? 'Combiné' : '1m seul'}</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Stabilité du Régime -->
+			<div class="subsection">
+				<h4>🔒 Stabilité du Régime</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_hysteresis">
+						<span class="label-text">Hystérésis Anti-Flip</span>
+						<span class="label-hint">Buffer ±10% pour éviter les changements rapides</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_hysteresis"
+								bind:checked={config.market_regime_use_hysteresis}
+								on:change={() => triggerAutoSave('market_regime_use_hysteresis', config.market_regime_use_hysteresis ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_hysteresis ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_use_hysteresis}
+				<div class="form-row">
+					<label for="market_regime_hysteresis_buffer">
+						<span class="label-text">Buffer Hystérésis</span>
+						<span class="label-hint">Marge avant changement de régime (0.10 = 10%)</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_hysteresis_buffer"
+							bind:value={config.market_regime_hysteresis_buffer}
+							min="0.05"
+							max="0.25"
+							step="0.01"
+							on:change={() => triggerAutoSave('market_regime_hysteresis_buffer', config.market_regime_hysteresis_buffer)}
+						/>
+						<span class="value">{(config.market_regime_hysteresis_buffer * 100).toFixed(0)}%</span>
+					</div>
+				</div>
+				{/if}
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_smoothing">
+						<span class="label-text">Lissage EMA</span>
+						<span class="label-hint">Moyenne mobile exponentielle pour stabilité temporelle</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_smoothing"
+								bind:checked={config.market_regime_use_smoothing}
+								on:change={() => triggerAutoSave('market_regime_use_smoothing', config.market_regime_use_smoothing ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_smoothing ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_use_smoothing}
+				<div class="form-row">
+					<label for="market_regime_smoothing_alpha">
+						<span class="label-text">Alpha EMA</span>
+						<span class="label-hint">Réactivité du lissage (0.1=lent, 0.5=rapide)</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_smoothing_alpha"
+							bind:value={config.market_regime_smoothing_alpha}
+							min="0.1"
+							max="0.5"
+							step="0.05"
+							on:change={() => triggerAutoSave('market_regime_smoothing_alpha', config.market_regime_smoothing_alpha)}
+						/>
+						<span class="value">{config.market_regime_smoothing_alpha}</span>
+					</div>
+				</div>
+				{/if}
+
+				<div class="form-row">
+					<label for="market_regime_min_duration_minutes">
+						<span class="label-text">Durée Min Régime</span>
+						<span class="label-hint">Minutes minimum avant changement</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_min_duration_minutes"
+							bind:value={config.market_regime_min_duration_minutes}
+							min="5"
+							max="120"
+							step="5"
+							on:change={() => triggerAutoSave('market_regime_min_duration_minutes', config.market_regime_min_duration_minutes)}
+						/>
+						<span class="value">{config.market_regime_min_duration_minutes} min</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Saisonnalité -->
+			<div class="subsection">
+				<h4>🕐 Saisonnalité</h4>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_use_seasonality">
+						<span class="label-text">Ajuster par Session</span>
+						<span class="label-hint">Seuils adaptés selon session marché (ASIA, EUROPE, US...)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_use_seasonality"
+								bind:checked={config.market_regime_use_seasonality}
+								on:change={() => triggerAutoSave('market_regime_use_seasonality', config.market_regime_use_seasonality ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_use_seasonality ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Info Performance Session -->
+			<div class="subsection info-box">
+				<h4>📈 Insights Performance (données historiques)</h4>
+				<div class="performance-grid">
+					<div class="perf-item good">
+						<span class="session">EUROPE_OPEN</span>
+						<span class="pnl">+0.31%</span>
+						<span class="winrate">71% win</span>
+					</div>
+					<div class="perf-item good">
+						<span class="session">NIGHT</span>
+						<span class="pnl">+0.21%</span>
+						<span class="winrate">64% win</span>
+					</div>
+					<div class="perf-item neutral">
+						<span class="session">ASIA</span>
+						<span class="pnl">+0.05%</span>
+						<span class="winrate">45% win</span>
+					</div>
+					<div class="perf-item bad">
+						<span class="session">US_OPEN</span>
+						<span class="pnl">-0.17%</span>
+						<span class="winrate">0% win</span>
+					</div>
+				</div>
+				<p class="info-note">75% des trades auraient mieux performé avec params CALME</p>
+			</div>
+
+			<!-- 🔥 PHASE 1E: Auto-Calibration + BTC Indicator -->
+			<div class="subsection">
+				<h4>🎯 Auto-Calibration Seuils (Phase 1E)</h4>
+				<p class="subsection-hint">Calibre automatiquement les seuils ATR basé sur les percentiles des 7 derniers jours</p>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_auto_calibration_enabled">
+						<span class="label-text">Auto-Calibration</span>
+						<span class="label-hint">P33 = CALME, P66 = VOLATILE (basé sur historique)</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_auto_calibration_enabled"
+								bind:checked={config.market_regime_auto_calibration_enabled}
+								on:change={() => triggerAutoSave('market_regime_auto_calibration_enabled', config.market_regime_auto_calibration_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_auto_calibration_enabled ? 'Calibré' : 'Seuils fixes'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_auto_calibration_enabled}
+				<div class="form-row">
+					<label for="market_regime_calibration_lookback_days">
+						<span class="label-text">Fenêtre historique</span>
+						<span class="label-hint">Jours de données pour calibration</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_calibration_lookback_days"
+							bind:value={config.market_regime_calibration_lookback_days}
+							min="3"
+							max="14"
+							step="1"
+							on:change={() => triggerAutoSave('market_regime_calibration_lookback_days', config.market_regime_calibration_lookback_days)}
+						/>
+						<span class="value">{config.market_regime_calibration_lookback_days} jours</span>
+					</div>
+				</div>
+				{/if}
+			</div>
+
+			<!-- BTC Indicator -->
+			<div class="subsection">
+				<h4>₿ BTC Indicator (Phase 1E)</h4>
+				<p class="subsection-hint">Utilise la volatilité BTC comme confirmation du régime de marché</p>
+				
+				<div class="form-row toggle-row">
+					<label for="market_regime_btc_indicator_enabled">
+						<span class="label-text">Indicateur BTC</span>
+						<span class="label-hint">BTC volatile → confirme ou force VOLATILE</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_btc_indicator_enabled"
+								bind:checked={config.market_regime_btc_indicator_enabled}
+								on:change={() => triggerAutoSave('market_regime_btc_indicator_enabled', config.market_regime_btc_indicator_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_btc_indicator_enabled ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+
+				{#if config.market_regime_btc_indicator_enabled}
+				<div class="form-row">
+					<label for="market_regime_btc_volatile_threshold_1h">
+						<span class="label-text">Seuil BTC Volatile</span>
+						<span class="label-hint">% variation 1h pour considérer BTC volatile</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="market_regime_btc_volatile_threshold_1h"
+							bind:value={config.market_regime_btc_volatile_threshold_1h}
+							min="1"
+							max="5"
+							step="0.5"
+							on:change={() => triggerAutoSave('market_regime_btc_volatile_threshold_1h', config.market_regime_btc_volatile_threshold_1h)}
+						/>
+						<span class="value">{config.market_regime_btc_volatile_threshold_1h}%</span>
+					</div>
+				</div>
+
+				<div class="form-row toggle-row">
+					<label for="market_regime_btc_force_volatile_enabled">
+						<span class="label-text">Forcer VOLATILE</span>
+						<span class="label-hint">Si BTC volatile, forcer le régime VOLATILE</span>
+					</label>
+					<div class="toggle-wrapper">
+						<label class="toggle">
+							<input
+								type="checkbox"
+								id="market_regime_btc_force_volatile_enabled"
+								bind:checked={config.market_regime_btc_force_volatile_enabled}
+								on:change={() => triggerAutoSave('market_regime_btc_force_volatile_enabled', config.market_regime_btc_force_volatile_enabled ? 'ON' : 'OFF')}
+							/>
+							<span class="slider"></span>
+						</label>
+						<span class="toggle-label">{config.market_regime_btc_force_volatile_enabled ? 'ON' : 'OFF'}</span>
+					</div>
+				</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
+
 	<!-- 🎯 ONGLET ADAPTATIONS ML (SPRINT 2) -->
 	{#if activeSubTab === 'adaptations'}
 		<section class="variable-section adaptations-section">
@@ -3957,46 +4633,19 @@
 	{/if}
 
 	{#if activeSubTab === 'ml'}
-	<!-- Titre et sélecteurs Version ML -->
+	<!-- Titre ML -->
 	<div class="ml-header">
-		<h3 class="ml-title">🤖 Machine Learning</h3>
-		<div class="ml-version-selector-compact">
-			<button
-				class="version-btn-compact"
-				class:active={mlVersion === 'v1'}
-				on:click={() => (mlVersion = 'v1')}
-			>
-				<span class="version-icon-compact">📊</span>
-				<span class="version-label-compact">XGBoost V1</span>
-			</button>
-
-			<button
-				class="version-btn-compact"
-				class:active={mlVersion === 'v2'}
-				on:click={() => (mlVersion = 'v2')}
-			>
-				<span class="version-icon-compact">🚀</span>
-				<span class="version-label-compact">XGBoost V2</span>
-			</button>
-
-			<button
-				class="version-btn-compact recommended"
-				class:active={mlVersion === 'gb'}
-				on:click={() => (mlVersion = 'gb')}
-			>
-				<span class="version-icon-compact">🎯</span>
-				<span class="version-label-compact">GradientBoosting</span>
-				<span class="badge-recommended">64%</span>
-			</button>
-		</div>
+		<h3 class="ml-title">🤖 Machine Learning - XGBoost V1</h3>
+		<p class="ml-redirect-hint">
+			🎯 <strong>GradientBoosting (64% accuracy)</strong> → Onglet <em>ML → Optimisation GB</em>
+		</p>
 	</div>
 
-	<!-- 🔥 SECTION FILTRAGE ML - UNIQUEMENT POUR XGBOOST V1 -->
-	{#if mlVersion === 'v1'}
+	<!-- SECTION FILTRAGE ML XGBOOST V1 -->
 	<section class="variable-section ml-common-section">
 		<h3>🎯 Filtrage ML XGBoost V1</h3>
 		<p class="section-desc">
-			Ces paramètres s'appliquent uniquement à XGBoost V1. Pour GradientBoosting, utilisez l'onglet dédié.
+			Paramètres du modèle XGBoost V1.
 		</p>
 
 		<div class="variable-item">
@@ -4083,10 +4732,100 @@
 			</div>
 		</div>
 	</section>
-	{/if}
 
-	{#if mlVersion === 'v1'}
-	<!-- 2. Métriques du Modèle Actuel (déplacée ici) -->
+	<!-- 🔥 SECTION PHASE 2D: Threshold Optimizer & Drift Detection -->
+	<section class="variable-section ml-common-section">
+		<h3>📊 Phase 2D: Seuils Dynamiques</h3>
+		<p class="section-desc">
+			Ajustement automatique des seuils ML selon le contexte et détection de drift.
+		</p>
+
+		<!-- Threshold Optimizer -->
+		<div class="variable-item">
+			<div class="variable-label-container">
+				<label for="threshold_optimizer_enabled">
+					<span class="variable-name">Activer Threshold Optimizer</span>
+					<span class="variable-desc">Seuil dynamique par contexte (régime, session)</span>
+				</label>
+			</div>
+			<label class="toggle">
+				<input
+					type="checkbox"
+					id="threshold_optimizer_enabled"
+					bind:checked={config.threshold_optimizer_enabled}
+					on:change={() => triggerAutoSave('threshold_optimizer_enabled', config.threshold_optimizer_enabled ? 'Activé' : 'Désactivé')}
+				/>
+				<span class="toggle-slider"></span>
+			</label>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.threshold_optimizer_enabled}>
+			<div class="variable-label-container">
+				<label for="threshold_min">
+					<span class="variable-name">Seuil Minimum</span>
+					<span class="variable-desc">Mode agressif (25-60%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="threshold_min"
+					min="0.25"
+					max="0.60"
+					step="0.05"
+					bind:value={config.threshold_min}
+					on:change={() => triggerAutoSave('threshold_min', Math.round(config.threshold_min * 100) + '%')}
+					disabled={!config.threshold_optimizer_enabled}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.threshold_min * 100)}%</span>
+			</div>
+		</div>
+
+		<div class="variable-item" class:disabled={!config.threshold_optimizer_enabled}>
+			<div class="variable-label-container">
+				<label for="threshold_max">
+					<span class="variable-name">Seuil Maximum</span>
+					<span class="variable-desc">Mode conservateur (40-80%)</span>
+				</label>
+			</div>
+			<div class="slider-container">
+				<input
+					type="range"
+					id="threshold_max"
+					min="0.40"
+					max="0.80"
+					step="0.05"
+					bind:value={config.threshold_max}
+					on:change={() => triggerAutoSave('threshold_max', Math.round(config.threshold_max * 100) + '%')}
+					disabled={!config.threshold_optimizer_enabled}
+					class="slider"
+				/>
+				<span class="slider-value">{Math.round(config.threshold_max * 100)}%</span>
+			</div>
+		</div>
+
+		<!-- Drift Detection -->
+		<div class="variable-item" style="margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+			<div class="variable-label-container">
+				<label for="drift_detection_enabled">
+					<span class="variable-name">Activer Drift Detection</span>
+					<span class="variable-desc">Détecte les changements de comportement marché (ADWIN)</span>
+				</label>
+			</div>
+			<label class="toggle">
+				<input
+					type="checkbox"
+					id="drift_detection_enabled"
+					bind:checked={config.drift_detection_enabled}
+					on:change={() => triggerAutoSave('drift_detection_enabled', config.drift_detection_enabled ? 'Activé' : 'Désactivé')}
+				/>
+				<span class="toggle-slider"></span>
+			</label>
+		</div>
+	</section>
+
+	<!-- 2. Métriques du Modèle Actuel -->
 	<section class="variable-section">
 		<h3>📊 Métriques du Modèle Actuel</h3>
 		{#if loadingMLMetrics}
@@ -4420,13 +5159,6 @@
 			</p>
 		</div>
 	</section>
-	{:else if mlVersion === 'v2'}
-	<!-- Contenu XGBoost V2 -->
-	<MLCONTENT_V2_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
-	{:else if mlVersion === 'gb'}
-	<!-- Contenu GradientBoosting (Modèle Optimisé) -->
-	<MLCONTENT_GB_Variables {config} {triggerAutoSave} on:paramsApplied={handleParamsApplied} />
-	{/if}
 	{/if}
 
 	{#if activeSubTab === 'current'}
@@ -4653,16 +5385,19 @@
 					<span class="popup-tables-title">📋 Tables incluses :</span>
 					<div class="popup-tables-list">
 						<span class="table-tag">trades</span>
+						<span class="table-tag">trade_atr_metrics</span>
+						<span class="table-tag new">trade_events</span>
 						<span class="table-tag">scan_logs</span>
 						<span class="table-tag">opportunities</span>
 						<span class="table-tag">trading_sessions</span>
 						<span class="table-tag">market_context</span>
-						<span class="table-tag new">circuit_breaker_events</span>
-						<span class="table-tag new">market_regime_history</span>
+						<span class="table-tag">circuit_breaker_events</span>
+						<span class="table-tag">market_regime_history</span>
 						<span class="table-tag">ml_calibration</span>
 					</div>
 					<p class="popup-hint" style="margin-top: 8px;">
-						🆕 Nouvelles colonnes: <code>entry_market_regime</code>, <code>entry_cb_state</code>, <code>entry_consecutive_losses</code>
+						🆕 <code>trade_events</code>: Film du trade (BE_TRIGGERED, TRAILING_ACTIVATED, PARTIAL_TP, EXIT...)<br>
+						🔄 <code>ml_calibration</code>: Inclut maintenant <code>model_version</code> pour tracking auto-reset
 					</p>
 				</div>
 			</div>
@@ -4760,11 +5495,11 @@
 		}
 	}
 
-	/* ML Header avec sélecteur compact */
+	/* ML Header */
 	.ml-header {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
+		flex-direction: column;
+		gap: 0.5rem;
 		margin-bottom: 1.5rem;
 		padding: 1rem 1.5rem;
 		background: rgba(42, 58, 107, 0.2);
@@ -4779,13 +5514,23 @@
 		font-weight: 700;
 	}
 
-	.ml-version-selector-compact {
-		display: flex;
-		gap: 0.5rem;
-		background: rgba(0, 0, 0, 0.2);
-		padding: 0.25rem;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+	.ml-redirect-hint {
+		margin: 0;
+		font-size: 0.85rem;
+		color: #888;
+		padding: 0.5rem 0.75rem;
+		background: rgba(74, 158, 255, 0.1);
+		border-radius: 6px;
+		border-left: 3px solid #4a9eff;
+	}
+
+	.ml-redirect-hint strong {
+		color: #4a9eff;
+	}
+
+	.ml-redirect-hint em {
+		color: #aaa;
+		font-style: normal;
 	}
 
 	.version-btn-compact {
@@ -6182,6 +6927,84 @@
 	/* 🛡️ SPRINT 1: Protection & Régime Styles */
 	.protection-section {
 		background: linear-gradient(135deg, rgba(30, 39, 73, 0.95), rgba(20, 30, 60, 0.95));
+	}
+
+	/* 🌡️ PHASE 1D: Régime V2 Styles */
+	.regimev2-section {
+		background: linear-gradient(135deg, rgba(40, 30, 60, 0.95), rgba(25, 20, 50, 0.95));
+	}
+
+	.regimev2-section .info-box {
+		background: rgba(0, 100, 200, 0.1);
+		border: 1px solid rgba(0, 150, 255, 0.3);
+		border-radius: 10px;
+		padding: 15px;
+		margin-top: 20px;
+	}
+
+	.regimev2-section .performance-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 10px;
+		margin: 15px 0;
+	}
+
+	.regimev2-section .perf-item {
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		padding: 10px;
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.regimev2-section .perf-item.good {
+		border: 1px solid rgba(0, 255, 136, 0.4);
+	}
+
+	.regimev2-section .perf-item.neutral {
+		border: 1px solid rgba(255, 200, 0, 0.4);
+	}
+
+	.regimev2-section .perf-item.bad {
+		border: 1px solid rgba(255, 80, 80, 0.4);
+	}
+
+	.regimev2-section .perf-item .session {
+		font-size: 11px;
+		color: #aaa;
+		font-weight: 600;
+	}
+
+	.regimev2-section .perf-item .pnl {
+		font-size: 14px;
+		font-weight: 700;
+	}
+
+	.regimev2-section .perf-item.good .pnl {
+		color: #00ff88;
+	}
+
+	.regimev2-section .perf-item.neutral .pnl {
+		color: #ffc800;
+	}
+
+	.regimev2-section .perf-item.bad .pnl {
+		color: #ff5050;
+	}
+
+	.regimev2-section .perf-item .winrate {
+		font-size: 10px;
+		color: #888;
+	}
+
+	.regimev2-section .info-note {
+		color: #ffc800;
+		font-size: 12px;
+		text-align: center;
+		margin-top: 10px;
+		font-style: italic;
 	}
 
 	.protection-subsection {

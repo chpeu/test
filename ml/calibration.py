@@ -10,6 +10,9 @@ Fonctionnalités:
 - Recalibration par bucket (direction + confidence range)  
 - Seuil minimum de trades avant activation
 - Decay exponentiel basé sur l'ancienneté
+- Filtrage par exit_reason (exclut MANUAL, ERROR, LIQUIDATION)
+- Calibration EV-based (mean_pnl, var_pnl, ev_estimate)
+- Model version tracking pour reset post-retrain
 """
 
 import logging
@@ -20,10 +23,43 @@ from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# EXIT REASON FILTERING - Brainstorming Integration
+# ============================================================================
+# Trades valides pour calibration/training (exits propres, non-biaisées)
+VALID_EXIT_REASONS_CALIBRATION = {
+    'TP', 'SL', 'TRAILING_STOP', 'ROI_TARGET',
+    'STAGNATION', 'STAGNATION_POSITIVE', 'STAGNATION_MFE_PROTECT',
+    'BE_TRIGGERED', 'TIME_LIMIT'
+}
+
+# Exit reasons à exclure (intervention manuelle ou erreurs système)
+EXCLUDED_EXIT_REASONS = {
+    'MANUAL', 'MANUAL_CLOSE', 'ERROR', 'LIQUIDATION', 
+    'FORCE_CLOSE', 'UNKNOWN', 'SL_EXCHANGE'
+}
+
+# Exit reasons pour metrics seulement (comptabilisées mais pas pour ML)
+METRICS_ONLY_EXIT_REASONS = {
+    'MANUAL', 'MANUAL_CLOSE', 'LIQUIDATION', 'SL_EXCHANGE'
+}
+
+def is_valid_exit_for_calibration(exit_reason: str) -> bool:
+    """Vérifie si un exit_reason est valide pour la calibration ML."""
+    if not exit_reason:
+        return False
+    return exit_reason.upper() in VALID_EXIT_REASONS_CALIBRATION
+
+def is_excluded_exit(exit_reason: str) -> bool:
+    """Vérifie si un exit_reason doit être exclu de la calibration."""
+    if not exit_reason:
+        return True
+    return exit_reason.upper() in EXCLUDED_EXIT_REASONS
+
 
 @dataclass
 class CalibrationStats:
-    """Statistiques de calibration pour un bucket"""
+    """Statistiques de calibration pour un bucket (EV-based)"""
     direction: str
     confidence_bucket: str
     weighted_wins: float
@@ -32,6 +68,38 @@ class CalibrationStats:
     actual_winrate: Optional[float]
     avg_pnl_pct: float
     total_pnl_usdt: float
+    # EV-based metrics (Brainstorming)
+    sum_pnl_pct: float = 0.0
+    sum_pnl_pct_sq: float = 0.0  # Pour variance
+    model_version: Optional[str] = None
+    
+    @property
+    def var_pnl_pct(self) -> float:
+        """Variance du PnL (pour risk-adjusted EV)"""
+        if self.total_trades < 2:
+            return 0.0
+        mean = self.sum_pnl_pct / self.total_trades
+        return (self.sum_pnl_pct_sq / self.total_trades) - (mean ** 2)
+    
+    @property
+    def std_pnl_pct(self) -> float:
+        """Écart-type du PnL"""
+        import math
+        return math.sqrt(max(0, self.var_pnl_pct))
+    
+    @property
+    def ev_estimate(self) -> float:
+        """Expectancy estimée = mean(pnl) = winrate * avg_win - (1-winrate) * avg_loss"""
+        return self.avg_pnl_pct
+    
+    @property
+    def ev_lower_bound(self) -> float:
+        """Borne inférieure de l'EV (conservatrice) = EV - 1*std / sqrt(n)"""
+        import math
+        if self.total_trades < 5:
+            return -999.0  # Pas assez de données
+        stderr = self.std_pnl_pct / math.sqrt(self.total_trades)
+        return self.ev_estimate - stderr
 
 
 class MLCalibrationManager:
@@ -80,6 +148,7 @@ class MLCalibrationManager:
                 'dryrun_weight': TRADING_CONFIG.get('ml_calib_dryrun_weight', 0.5),
                 'decay_days': TRADING_CONFIG.get('ml_calib_decay_days', 14),
                 'min_trades': TRADING_CONFIG.get('ml_calib_min_trades', 30),
+                'auto_reset_on_retrain': TRADING_CONFIG.get('ml_calib_auto_reset', True),
                 'min_winrate': TRADING_CONFIG.get('ml_calib_min_winrate', 40.0),
                 'bucket_size': TRADING_CONFIG.get('ml_calib_bucket_size', 5),
             }
@@ -164,7 +233,8 @@ class MLCalibrationManager:
         pnl_usdt: float,
         is_live: bool,
         is_dry_run: bool,
-        trade_timestamp: datetime
+        trade_timestamp: datetime,
+        exit_reason: Optional[str] = None
     ) -> bool:
         """
         Met à jour les statistiques de calibration après un trade.
@@ -178,6 +248,7 @@ class MLCalibrationManager:
             is_live: True si trade live
             is_dry_run: True si dry-run
             trade_timestamp: Date/heure du trade
+            exit_reason: Raison de sortie (TP, SL, MANUAL, etc.)
             
         Returns:
             True si mise à jour réussie
@@ -190,6 +261,12 @@ class MLCalibrationManager:
         # Ne prendre que les trades avec ML confidence valide
         if ml_confidence is None or ml_confidence < 30:
             logger.debug(f"Trade ignoré pour calibration: ml_confidence={ml_confidence}")
+            return False
+        
+        # 🔥 FILTRAGE EXIT_REASON (Brainstorming Integration)
+        # Exclure les trades avec exit non-propres (MANUAL, ERROR, LIQUIDATION, etc.)
+        if exit_reason and is_excluded_exit(exit_reason):
+            logger.info(f"🚫 Trade exclu calibration: exit_reason={exit_reason} (non-propre)")
             return False
         
         # Calculer le bucket et le poids
@@ -386,13 +463,15 @@ class MLCalibrationManager:
         """
         Détermine si un trade doit être pris selon la calibration.
         
-        Args:
-            direction: 'LONG' ou 'SHORT'
-            ml_confidence: Confiance ML
-            
-        Returns:
-            Tuple (should_take, calibrated_winrate, reason)
+        Vérifie automatiquement les changements de modèle et reset si nécessaire.
         """
+        # 🔥 AUTO-RESET: Vérifier changement de modèle à chaque appel principal
+        try:
+            self.check_model_change_and_auto_reset()
+        except Exception as e:
+            logger.warning(f"[AUTO-RESET] Erreur vérification: {e}")
+        
+        # Continuer avec la logique de calibration normale
         config = self._get_config()
         
         if not config['enabled']:
@@ -606,11 +685,232 @@ class MLCalibrationManager:
                     )
                     count += 1
             
-            logger.info(f"📊 Calibration seedée avec {count} trades des {days} derniers jours")
+            logger.info(f"Calibration seedee avec {count} trades des {days} derniers jours")
             return count
             
         except Exception as e:
-            logger.error(f"❌ Erreur seed calibration: {e}")
+            logger.error(f"Erreur seed calibration: {e}")
+            return 0
+    
+    def get_current_model_info(self) -> Dict:
+        """
+        Récupère les informations du modèle GB actuellement chargé.
+        
+        Returns:
+            Dict avec timestamp, version, feature_names, etc.
+        """
+        try:
+            from optimization.predictor_optimized import OptimizedPredictor
+            predictor = OptimizedPredictor()
+            
+            if predictor.metadata:
+                return {
+                    'timestamp': predictor.metadata.get('timestamp', 'unknown'),
+                    'model_type': predictor.metadata.get('model_type', 'unknown'),
+                    'n_features': predictor.metadata.get('n_features', 0),
+                    'feature_names': predictor.metadata.get('feature_names', []),
+                    'metrics': predictor.metadata.get('metrics', {})
+                }
+            return {'timestamp': 'unknown'}
+            
+        except Exception as e:
+            logger.warning(f"Erreur récupération model info: {e}")
+            return {'timestamp': 'unknown'}
+    
+    def get_last_calibration_model_version(self) -> Optional[str]:
+        """
+        Récupère la version du modèle utilisée lors de la dernière calibration.
+        
+        Returns:
+            String timestamp du dernier modèle calibré ou None
+        """
+        pg_logger = self._get_db_pool()
+        if not pg_logger:
+            return None
+            
+        try:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    # Chercher le model_version le plus récent dans les stats
+                    cur.execute("""
+                        SELECT model_version
+                        FROM ml_calibration
+                        WHERE model_version IS NOT NULL
+                        ORDER BY model_version DESC
+                        LIMIT 1
+                    """)
+                    row = cur.fetchone()
+                    return row[0] if row else None
+            finally:
+                pg_logger.pool.putconn(conn)
+                
+        except Exception as e:
+            logger.debug(f"Erreur récup model_version: {e}")
+            return None
+    
+    def check_model_change_and_auto_reset(self) -> bool:
+        """
+        Vérifie si le modèle GB a changé et reset automatiquement la calibration.
+        
+        Returns:
+            True si reset effectué, False sinon
+        """
+        config = self._get_config()
+        if not config.get('auto_reset_on_retrain', True):
+            logger.debug("Auto-reset calibration désactivé")
+            return False
+            
+        try:
+            # Récupérer info du modèle actuel
+            current_model = self.get_current_model_info()
+            current_timestamp = current_model.get('timestamp', 'unknown')
+            
+            if current_timestamp == 'unknown':
+                logger.debug("Impossible de déterminer le timestamp du modèle actuel")
+                return False
+                
+            # Récupérer la version du dernier modèle calibré
+            last_calibrated_version = self.get_last_calibration_model_version()
+            
+            # Si pas de version enregistrée, c'est la première fois
+            if last_calibrated_version is None:
+                logger.info(f"🔄 [AUTO-RESET] Premier modèle détecté: {current_timestamp}")
+                self._update_calibration_model_version(current_timestamp)
+                return False
+                
+            # Comparer les timestamps
+            if current_timestamp != last_calibrated_version:
+                logger.warning(
+                    f"🔄 [AUTO-RESET] Nouveau modèle détecté! "
+                    f"Ancien: {last_calibrated_version} → Nouveau: {current_timestamp}"
+                )
+                
+                # Reset automatique de la calibration
+                reset_success = self.reset_calibration(f"model_change_{current_timestamp}")
+                
+                if reset_success:
+                    # Mettre à jour la version du modèle
+                    self._update_calibration_model_version(current_timestamp)
+                    logger.info(
+                        f"✅ [AUTO-RESET] Calibration resetée pour nouveau modèle {current_timestamp}"
+                    )
+                    return True
+                else:
+                    logger.error(f"❌ [AUTO-RESET] Échec reset calibration pour {current_timestamp}")
+                    return False
+            else:
+                logger.debug(f"[AUTO-RESET] Modèle inchangé: {current_timestamp}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ [AUTO-RESET] Erreur vérification model change: {e}")
+            return False
+    
+    def _update_calibration_model_version(self, model_timestamp: str) -> bool:
+        """
+        Met à jour la version du modèle dans toutes les entrées de calibration.
+        
+        Args:
+            model_timestamp: Timestamp du nouveau modèle
+            
+        Returns:
+            True si succès
+        """
+        pg_logger = self._get_db_pool()
+        if not pg_logger:
+            return False
+            
+        try:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    # Mettre à jour toutes les entrées avec la nouvelle version
+                    cur.execute("""
+                        UPDATE ml_calibration 
+                        SET model_version = %s
+                        WHERE model_version IS NULL OR model_version != %s
+                    """, (model_timestamp, model_timestamp))
+                    
+                    updated_rows = cur.rowcount
+                    conn.commit()
+                    
+                    if updated_rows > 0:
+                        logger.info(f"✅ [AUTO-RESET] {updated_rows} entrées mises à jour avec model_version {model_timestamp}")
+                    
+                    return True
+                    
+            finally:
+                pg_logger.pool.putconn(conn)
+                
+        except Exception as e:
+            logger.error(f"❌ [AUTO-RESET] Erreur update model_version: {e}")
+            return False
+    
+    def seed_from_last_n_trades(self, n_trades: int = 200) -> int:
+        """
+        Initialise la calibration avec les N derniers trades.
+        
+        Args:
+            n_trades: Nombre de trades a considerer (defaut: 200)
+            
+        Returns:
+            Nombre de trades traites
+        """
+        pg_logger = self._get_db_pool()
+        if not pg_logger:
+            return 0
+        
+        try:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"""
+                        SELECT 
+                            direction,
+                            ml_confidence,
+                            win,
+                            net_pnl_pct,
+                            net_pnl_usdt,
+                            is_live_trade,
+                            is_dry_run,
+                            timestamp_entry
+                        FROM trades
+                        WHERE ml_confidence IS NOT NULL
+                          AND ml_confidence >= 30
+                          AND timestamp_exit IS NOT NULL
+                        ORDER BY timestamp_entry DESC
+                        LIMIT {n_trades}
+                    """)
+                    rows = cur.fetchall()
+            finally:
+                pg_logger.pool.putconn(conn)
+            
+            # Inverser pour traiter du plus ancien au plus recent
+            rows = list(reversed(rows))
+            
+            count = 0
+            for row in rows:
+                direction, ml_conf, win, pnl_pct, pnl_usdt, is_live, is_dry, ts = row
+                
+                if ml_conf and direction:
+                    self.update_calibration(
+                        direction=direction,
+                        ml_confidence=float(ml_conf),
+                        win=win or False,
+                        pnl_pct=float(pnl_pct) if pnl_pct else 0,
+                        pnl_usdt=float(pnl_usdt) if pnl_usdt else 0,
+                        is_live=is_live or False,
+                        is_dry_run=is_dry or False,
+                        trade_timestamp=ts
+                    )
+                    count += 1
+            
+            logger.info(f"Calibration seedee avec les {count} derniers trades")
+            return count
+            
+        except Exception as e:
+            logger.error(f"Erreur seed calibration (last N): {e}")
             return 0
 
 

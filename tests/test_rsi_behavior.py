@@ -66,18 +66,22 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         
         # Setup LONG avec RSI extrême (75)
         indicators_1m = {'rsi': 75, 'adx': 25, 'atr': 1.0}
-        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m}
+        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST']}
         setup_5m = None
         
         # Mock check_spread et check_orderbook_imbalance (AsyncMock car await)
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
         mock_calculate_trend = AsyncMock(return_value={'trend': 'NEUTRAL', 'strength': 0, 'bonus': 0})
         mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
         
         patches = {
             'check_spread': mock_check_spread, 
             'calculate_trend_data': mock_calculate_trend,
-            'check_orderbook_imbalance': mock_orderbook
+            'check_orderbook_imbalance': mock_orderbook,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
         }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
@@ -95,17 +99,21 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         indicators_1m = {'rsi': 75, 'adx': 25, 'atr': 1.0}
         indicators_5m = {'rsi': 70, 'adx': 25, 'atr': 1.0}
         
-        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m}
-        setup_5m = {'direction': 'LONG', 'rsi': 70, 'signals': ['mock'], 'timeframe': '5m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_5m}
+        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST']}
+        setup_5m = {'direction': 'LONG', 'rsi': 70, 'signals': ['mock'], 'timeframe': '5m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_5m, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST']}
         
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
         mock_calculate_trend = AsyncMock(return_value={'trend': 'NEUTRAL', 'strength': 0, 'bonus': 0})
         mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
         
         patches = {
             'check_spread': mock_check_spread, 
             'calculate_trend_data': mock_calculate_trend,
-            'check_orderbook_imbalance': mock_orderbook
+            'check_orderbook_imbalance': mock_orderbook,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
         }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
@@ -122,13 +130,21 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         TRADING_CONFIG['use_confluence'] = False
         
         # Setup SHORT avec RSI trop bas (25) - Doit être bloqué
-        setup_1m = {'direction': 'SHORT', 'rsi': 25, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 110, 'tp': 90, 'atr': 1.0, 'score': 10}
+        setup_1m = {'direction': 'SHORT', 'rsi': 25, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 110, 'tp': 90, 'atr': 1.0, 'score': 10, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 'indicators': {'rsi': 25, 'adx': 25, 'atr': 1.0}}
         setup_5m = None
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
+        
+        patches = {
+            'check_spread': mock_check_spread,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
+        }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
-            with patch.dict(self.analyzer_globals, {'check_spread': mock_check_spread}):
+            with patch.dict(self.analyzer_globals, patches):
                 result = await self.analyzer.analyze_pair('BTC/USDT')
         
         self.assertIsNone(result)
@@ -139,14 +155,28 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         TRADING_CONFIG['rsi_final_long_max'] = 65
         TRADING_CONFIG['use_confluence'] = False
         
-        # Setup LONG avec RSI extrême (75) - Doit être bloqué
-        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10}
+        # Setup LONG avec RSI extrême (75) - Doit être bloqué - Structure complète
+        setup_1m = {
+            'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 
+            'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10,
+            'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 
+            'indicators': {'rsi': 75, 'adx': 25, 'atr': 1.0},
+            'price': 100, 'conditions': 1, 'totalScore': 10
+        }
         setup_5m = None 
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
+        
+        patches = {
+            'check_spread': mock_check_spread,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
+        }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
-             with patch.dict(self.analyzer_globals, {'check_spread': mock_check_spread}):
+             with patch.dict(self.analyzer_globals, patches):
                 result = await self.analyzer.analyze_pair('BTC/USDT')
         
         self.assertIsNone(result)
@@ -157,16 +187,26 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         TRADING_CONFIG['rsi_final_long_max'] = 65
         TRADING_CONFIG['use_confluence'] = False
         
-        # Setup LONG avec RSI valide (55)
-        setup_1m = {'direction': 'LONG', 'rsi': 55, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10}
+        # Setup LONG avec RSI valide (55) - Structure complète
+        setup_1m = {
+            'direction': 'LONG', 'rsi': 55, 'signals': ['mock'], 'timeframe': '1m', 
+            'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10,
+            'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 
+            'indicators': {'rsi': 55, 'adx': 25, 'atr': 1.0},
+            'price': 100, 'conditions': 1, 'totalScore': 10
+        }
         setup_5m = None
         
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
         mock_orderbook = AsyncMock(return_value={'valid': True, 'ratio': 1.2, 'quality': 'GOOD', 'bid_value': 1000, 'ask_value': 800})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
         
         patches = {
             'check_spread': mock_check_spread,
-            'check_orderbook_imbalance': mock_orderbook
+            'check_orderbook_imbalance': mock_orderbook,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
         }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, setup_5m]):
@@ -188,9 +228,17 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         setup_1m = {'direction': 'LONG', 'rsi': 70, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10}
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
+        mock_detect_manipulation = MagicMock(return_value={'suspicious': False, 'reason': None})
+        mock_correlation = AsyncMock(return_value={'valid': True, 'reason': None})
+        
+        patches = {
+            'check_spread': mock_check_spread,
+            'detect_manipulation': mock_detect_manipulation,
+            'check_static_correlation': mock_correlation
+        }
         
         with patch.object(self.analyzer, 'analyze_timeframe', side_effect=[setup_1m, None]):
-             with patch.dict(self.analyzer_globals, {'check_spread': mock_check_spread}):
+             with patch.dict(self.analyzer_globals, patches):
                 result = await self.analyzer.analyze_pair('BTC/USDT')
         
         self.assertIsNone(result)

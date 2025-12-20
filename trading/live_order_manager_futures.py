@@ -586,7 +586,8 @@ class LiveOrderManagerFutures:
         direction: str,
         entry_price: float,
         size_usdt: float,
-        leverage: int = None
+        leverage: int = None,
+        bot_sl_price: float = None  # 🔥 FIX: SL calculé par le bot pour SL MEXC
     ) -> FuturesOrderResult:
         """
         Ouvrir une position futures (LONG ou SHORT)
@@ -597,6 +598,7 @@ class LiveOrderManagerFutures:
             entry_price: Prix d'entrée théorique
             size_usdt: Taille en USDT (marge × levier)
             leverage: Levier pour ce trade (défaut: self.default_leverage)
+            bot_sl_price: SL calculé par le bot (pour SL MEXC = SL bot × 1.1)
 
         Returns:
             FuturesOrderResult avec détails
@@ -981,53 +983,147 @@ class LiveOrderManagerFutures:
                     logger.warning(f"⚠️ Impossible de configurer le levier: {e} (peut déjà être configuré)")
                 
                 # Appeler le client bypass (async) via helper thread-safe
-                # 🔥 SL MEXC DYNAMIQUE: Basé sur SL ATR × 1.1 (10% marge de sécurité)
-                from utils.effective_config import get_effective_value
-                from config import TRADING_CONFIG
+                # 🔥 SL MEXC DYNAMIQUE: Basé sur SL bot × 1.3 (30% marge de sécurité)
+                # FIX 16/12/2025: Augmenté de 1.1 à 1.3 pour éviter que MEXC SL trigger avant le bot
+                # FIX 16/12/2025 #2: Ajout SL minimum 0.5% pour éviter triggers immédiats (spread/slippage)
+                SL_MEXC_MARGIN = 1.3  # 30% plus large que le SL bot
+                SL_MEXC_MIN_PCT = 0.005  # 🔥 SL minimum 0.5% pour éviter trigger immédiat
                 
-                # Calculer le SL ATR (même logique que position_manager)
-                atr_mult_sl = get_effective_value('atr_mult_sl') or TRADING_CONFIG.get('atr_mult_sl', 1.2)
-                atr_min = TRADING_CONFIG.get('atr_min', 0.15)
-                atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+                # 🔥 FIX 19/12: Utiliser original_entry_price (non-arrondi) pour calculer SL
+                # Sinon le SL peut être au-dessus du prix d'exécution réel (ex: JELLYJELLY)
+                sl_reference_price = original_entry_price if 'original_entry_price' in dir() else entry_price
                 
-                # Estimation ATR% (utiliser la moyenne de la plage configurée)
-                # En production, on pourrait récupérer l'ATR réel depuis le cache
-                estimated_atr_pct = (atr_min + atr_max) / 2  # ~0.825%
-                
-                # SL ATR calculé (ce que le bot utiliserait)
-                sl_atr_distance_pct = estimated_atr_pct * atr_mult_sl  # ex: 0.825 * 1.2 = 0.99%
-                
-                # SL MEXC = SL ATR × 1.1 (10% de marge de sécurité)
-                SL_MEXC_MARGIN = 1.1
-                sl_exchange_percent = sl_atr_distance_pct * SL_MEXC_MARGIN / 100
-                
-                if direction == 'LONG':
-                    sl_price = entry_price * (1 - sl_exchange_percent)
-                else:  # SHORT
-                    sl_price = entry_price * (1 + sl_exchange_percent)
-                
-                # Log pour traçabilité
-                logger.info(
-                    f"📐 SL MEXC Dynamique: ATR_mult={atr_mult_sl}x | ATR_range=[{atr_min}-{atr_max}%] | "
-                    f"SL_ATR={sl_atr_distance_pct:.3f}% | SL_MEXC={sl_exchange_percent*100:.3f}% (×{SL_MEXC_MARGIN})"
-                )
+                if bot_sl_price and bot_sl_price > 0:
+                    # 🔥 FIX: Utiliser le SL calculé par le bot + marge
+                    if direction == 'LONG':
+                        # SL bot est en dessous de entry, SL MEXC encore plus bas
+                        sl_distance_pct = abs(sl_reference_price - bot_sl_price) / sl_reference_price
+                        sl_distance_pct_final = max(sl_distance_pct * SL_MEXC_MARGIN, SL_MEXC_MIN_PCT)
+                        sl_price = sl_reference_price * (1 - sl_distance_pct_final)
+                    else:  # SHORT
+                        # SL bot est au dessus de entry, SL MEXC encore plus haut
+                        sl_distance_pct = abs(bot_sl_price - sl_reference_price) / sl_reference_price
+                        sl_distance_pct_final = max(sl_distance_pct * SL_MEXC_MARGIN, SL_MEXC_MIN_PCT)
+                        sl_price = sl_reference_price * (1 + sl_distance_pct_final)
+                    
+                    sl_exchange_percent = sl_distance_pct_final
+                    
+                    # 🔥 Log si minimum appliqué
+                    min_applied = sl_distance_pct * SL_MEXC_MARGIN < SL_MEXC_MIN_PCT
+                    logger.warning(
+                        f"📐 SL MEXC MARGE: Bot_SL={bot_sl_price:.6f} ({sl_distance_pct*100:.4f}%) | "
+                        f"MEXC_SL={sl_price:.6f} ({sl_exchange_percent*100:.4f}%) | "
+                        f"{'⚠️ MIN APPLIQUÉ' if min_applied else f'Marge×{SL_MEXC_MARGIN}'}"
+                    )
+                else:
+                    # Fallback: Estimation si pas de SL bot fourni
+                    from utils.effective_config import get_effective_value
+                    from config import TRADING_CONFIG
+                    
+                    atr_mult_sl = get_effective_value('atr_mult_sl') or TRADING_CONFIG.get('atr_mult_sl', 1.2)
+                    atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                    atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+                    estimated_atr_pct = (atr_min + atr_max) / 2
+                    sl_atr_distance_pct = estimated_atr_pct * atr_mult_sl
+                    sl_exchange_percent = max(sl_atr_distance_pct * SL_MEXC_MARGIN / 100, SL_MEXC_MIN_PCT)
+                    
+                    if direction == 'LONG':
+                        sl_price = sl_reference_price * (1 - sl_exchange_percent)
+                    else:  # SHORT
+                        sl_price = sl_reference_price * (1 + sl_exchange_percent)
+                    
+                    logger.warning(
+                        f"📐 SL MEXC (FALLBACK): ATR_range=[{atr_min}-{atr_max}%] | "
+                        f"SL_MEXC={sl_exchange_percent*100:.3f}% (min={SL_MEXC_MIN_PCT*100:.1f}%) ⚠️ Pas de SL bot"
+                    )
                 
                 # Arrondir selon les specs du contrat
                 sl_price_before_round = sl_price  # 🔥 DEBUG
                 if contract_spec:
                     sl_price = contract_spec.round_price(sl_price)
+                    
+                    # 🔥 FIX: Empêcher l'arrondi du SL au prix d'entrée (ou pire)
+                    # Si SL arrondi >= Entry (LONG) ou <= Entry (SHORT), le trade ferme immédiatement!
+                    price_step = contract_spec.price_unit or (10 ** -contract_spec.price_precision)
+                    
+                    # 🔥 FIX 19/12: Comparer avec sl_reference_price (non-arrondi), pas entry_price arrondi
+                    if direction == 'LONG':
+                        # Pour un LONG, SL doit être < Entry (prix non-arrondi)
+                        if sl_price >= sl_reference_price:
+                            logger.warning(
+                                f"⚠️ SL arrondi trop haut pour LONG ({sl_price} >= {sl_reference_price}). "
+                                f"Correction forcée vers le bas..."
+                            )
+                            # Forcer SL en dessous de l'entry (au moins 1 tick)
+                            # 🔥 FIX: Utiliser floor pour garantir arrondi vers le bas
+                            import math
+                            precision = contract_spec.price_precision or 8
+                            multiplier = 10 ** precision
+                            sl_price = math.floor((sl_reference_price - price_step) * multiplier) / multiplier
+                            logger.warning(f"🔧 SL corrigé (floor): {sl_price}")
+                    else: # SHORT
+                        # Pour un SHORT, SL doit être > Entry (prix non-arrondi)
+                        if sl_price <= sl_reference_price:
+                            logger.warning(
+                                f"⚠️ SL arrondi trop bas pour SHORT ({sl_price} <= {sl_reference_price}). "
+                                f"Original: {sl_price_before_round:.6f} → Correction intelligente..."
+                            )
+                            # 🚨 FIX CRITIQUE 20/12/2025: Préserver l'intention du SL original
+                            # Au lieu de +1 tick, essayer de retrouver le SL original arrondi correctement
+                            import math
+                            precision = contract_spec.price_precision or 8
+                            multiplier = 10 ** precision
+                            
+                            # Essayer d'abord d'arrondir le SL original vers le haut
+                            if sl_price_before_round > sl_reference_price:
+                                sl_price = math.ceil(sl_price_before_round * multiplier) / multiplier
+                                logger.warning(f"🔧 SL restauré (ceil original): {sl_price}")
+                            else:
+                                # Fallback: entry + minimum 3 ticks pour éviter SL ultra-serrés
+                                min_distance = price_step * 3  # 3 ticks minimum
+                                sl_price = math.ceil((sl_reference_price + min_distance) * multiplier) / multiplier
+                                logger.warning(f"🔧 SL sécurisé (+3 ticks): {sl_price}")
                 
-                # 🔥 FIX CRITIQUE: Si SL arrondi à 0, utiliser le SL non-arrondi ou entry - 0.1%
+                # 🚨 VALIDATION CRITIQUE 20/12/2025: SL minimum 0.05% de distance
+                if sl_reference_price > 0:
+                    if direction == 'LONG':
+                        min_sl_distance_pct = 0.0005  # 0.05% minimum
+                        min_sl_price = sl_reference_price * (1 - min_sl_distance_pct)
+                        if sl_price > min_sl_price:
+                            logger.error(
+                                f"🚨 SL ULTRA-SERRÉ détecté: LONG SL={sl_price:.6f} trop proche entry={sl_reference_price:.6f} "
+                                f"(distance={((sl_reference_price - sl_price) / sl_reference_price * 100):.3f}% < 0.05%). "
+                                f"Force SL minimum: {min_sl_price:.6f}"
+                            )
+                            sl_price = min_sl_price
+                    else:  # SHORT
+                        min_sl_distance_pct = 0.0005  # 0.05% minimum
+                        min_sl_price = sl_reference_price * (1 + min_sl_distance_pct)
+                        if sl_price < min_sl_price:
+                            logger.error(
+                                f"🚨 SL ULTRA-SERRÉ détecté: SHORT SL={sl_price:.6f} trop proche entry={sl_reference_price:.6f} "
+                                f"(distance={((sl_price - sl_reference_price) / sl_reference_price * 100):.3f}% < 0.05%). "
+                                f"Force SL minimum: {min_sl_price:.6f}"
+                            )
+                            sl_price = min_sl_price
+                
+                # 🔥 FIX CRITIQUE: Si SL arrondi à 0, arrondir avec précision dynamique
                 if sl_price <= 0:
-                    logger.warning(
-                        f"⚠️ SL arrondi à 0! Avant arrondi: {sl_price_before_round:.8f} | "
-                        f"Fallback à SL non-arrondi"
-                    )
-                    sl_price = sl_price_before_round
-                    # Si toujours 0, utiliser un fallback minimal
-                    if sl_price <= 0:
-                        sl_price = entry_price * 0.99  # 1% de marge de sécurité
-                        logger.warning(f"⚠️ SL fallback ultime: {sl_price:.8f}")
+                    # Calculer précision nécessaire basée sur le prix (ex: 7.9e-06 → 9 décimales)
+                    import math
+                    if sl_price_before_round > 0:
+                        # Nombre de décimales = -log10(prix) + 2 (marge)
+                        decimals_needed = max(0, int(-math.log10(sl_price_before_round)) + 2)
+                        decimals_needed = min(decimals_needed, 10)  # Max 10 décimales
+                        sl_price = round(sl_price_before_round, decimals_needed)
+                        logger.warning(
+                            f"⚠️ SL arrondi à 0! Avant: {sl_price_before_round:.10f} | "
+                            f"Fallback précision dynamique: {decimals_needed} décimales → {sl_price:.10f}"
+                        )
+                    else:
+                        # Fallback ultime
+                        sl_price = entry_price * (1.01 if direction == 'SHORT' else 0.99)
+                        logger.warning(f"⚠️ SL fallback ultime: {sl_price:.10f}")
                 
                 logger.warning(
                     f"🛡️ [SL MEXC] {direction} {bypass_symbol} | "

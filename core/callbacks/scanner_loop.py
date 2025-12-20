@@ -8,6 +8,8 @@ import logging
 import time
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
+from utils.effective_config import get_effective_value
+from config import ML_CONFIG
 
 # 🔥 OPT #15-19: Import des filtres avancés
 from core.analyzer.advanced_filters import (
@@ -472,11 +474,14 @@ async def _scan_top_pairs():
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 
                 # 🔥 NOUVEAU: Filtre ML avant ouverture de position
-                from config import ML_CONFIG, TRADING_CONFIG
+                logger.warning(f"🚨 DÉBUT SECTION GB FILTER pour {symbol} - CE LOG DOIT APPARAITRE!")
                 
                 # 🌳 FILTRE GRADIENTBOOSTING (modèle optimisé 64-69% accuracy)
-                if TRADING_CONFIG.get('gb_filter_enabled', False):
-                    logger.info(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
+                gb_enabled = TRADING_CONFIG.get('gb_filter_enabled', False)
+                logger.warning(f"🔍 DEBUG GB CONFIG: gb_filter_enabled={gb_enabled} pour {symbol}")
+                
+                if gb_enabled:
+                    logger.warning(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
                     
                     try:
                         from optimization.predictor_optimized import get_predictor
@@ -1092,6 +1097,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'rsi': rsi_1m
                     }
             
+            # 🔥 OPT #20: Micro-confirmation déplacé dans analyzer.py (AVANT orderbook check)
+            # Le code micro-confirmation est maintenant exécuté plus tôt dans le flux
+            
             # 🔥 OPT #17: Vérifier cooldown spécifique au symbole
             cooldown_mgr = get_cooldown_manager()
             can_trade, cooldown_reason = cooldown_mgr.can_trade(symbol)
@@ -1352,20 +1360,20 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'reject_reason': analysis.get('reason') if analysis and 'reason' in analysis else None,
                     'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'params_snapshot': {
-                        'volume_multiplier': volume_multiplier,
+                        'volume_multiplier': get_effective_value('volume_multiplier', symbol=symbol) or volume_multiplier,
                         'use_confluence': use_confluence,
                         'trend_timeframe': trend_timeframe,
                         # Ajouter toutes les variables de TRADING_CONFIG pertinentes pour le scan
-                        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                        'min_score_required': get_effective_value('min_score_required', symbol=symbol) or TRADING_CONFIG.get('min_score_required', 7.5),
                         'min_conditions': TRADING_CONFIG.get('min_conditions', 6),
                         'use_weighted_scoring': TRADING_CONFIG.get('use_weighted_scoring', True),
                         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-                        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-                        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-                        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                        'optimal_atr_min_1m': get_effective_value('optimal_atr_min_1m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+                        'optimal_atr_max_1m': get_effective_value('optimal_atr_max_1m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+                        'optimal_atr_min_5m': get_effective_value('optimal_atr_min_5m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+                        'optimal_atr_max_5m': get_effective_value('optimal_atr_max_5m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
                         'use_breakout': TRADING_CONFIG.get('use_breakout', True),
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),
@@ -1385,6 +1393,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'candle_close_threshold_seconds': TRADING_CONFIG.get('candle_close_threshold_seconds'),
                         'use_momentum_continuity': TRADING_CONFIG.get('use_momentum_continuity'),
                         'momentum_lookback': TRADING_CONFIG.get('momentum_lookback'),
+                        'use_micro_confirmation': TRADING_CONFIG.get('use_micro_confirmation'),
+                        'micro_confirmation_delay_ms': TRADING_CONFIG.get('micro_confirmation_delay_ms'),
                     }
                 }
                 

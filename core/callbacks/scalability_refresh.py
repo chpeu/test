@@ -206,8 +206,11 @@ async def _refresh_top_pairs() -> list:
     try:
         logger.info("🔄 Rafraîchissement des top pairs (scalability)...")
 
+        # 🔥 OPT #10: Utiliser la limite configurable
+        limit = TRADING_CONFIG.get('top_pairs_limit', 20)
+        
         # Scanner les nouvelles top pairs
-        top_pairs = await _scanner.scan_top_pairs(20)
+        top_pairs = await _scanner.scan_top_pairs(limit)
 
         if not top_pairs:
             logger.warning("⚠️ Aucune paire retournée par scanner")

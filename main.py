@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 # 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
 from core.websocket_manager import get_websocket_manager, WebSocketManager
 import time
+from utils.effective_config import get_effective_value
 # 🔥 FIX: Import colorama pour les couleurs dans les logs
 try:
     import colorama
@@ -342,7 +343,9 @@ def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> Order
         use_candle_close=trading_config.get('use_candle_close'),
         candle_close_threshold_seconds=trading_config.get('candle_close_threshold_seconds'),
         use_momentum_continuity=trading_config.get('use_momentum_continuity'),
-        momentum_lookback=trading_config.get('momentum_lookback')
+        momentum_lookback=trading_config.get('momentum_lookback'),
+        use_micro_confirmation=trading_config.get('use_micro_confirmation'),
+        micro_confirmation_delay_ms=trading_config.get('micro_confirmation_delay_ms')
     )
     categories['⚙️ Configurations Avancées'] = OrderedDict(
         early_invalidation=trading_config.get('early_invalidation'),
@@ -616,41 +619,71 @@ def save_trade_history() -> None:
     # analytics_logger, donc on évite toute duplication.
 
 def load_trade_history() -> None:
-    """Charger l'historique des trades depuis un fichier JSON et/ou SQLite"""
+    """Charger l'historique des trades depuis PostgreSQL (priorité) ou JSON (fallback)"""
     global TRADE_HISTORY_FILE, trade_db
     
     if TRADE_HISTORY_FILE is None:
         TRADE_HISTORY_FILE = get_trade_history_file()
     
-    # 🔥 PHASE 8: Charger depuis SQLite si disponible (priorité)
-    if trade_db:
-        try:
-            db_trades = trade_db.get_all_trades()
-            if db_trades:
-                app_state['trade_history'] = db_trades
-                logger.info(f"✅ Historique chargé depuis DB: {len(db_trades)} trades")
-                # Sauvegarder aussi en JSON (backup)
-                save_trade_history()
-                return
-        except Exception as e:
-            logger.error(f"❌ Erreur chargement DB: {e}")
+    # 🔥 FIX: Charger depuis PostgreSQL (source de vérité)
+    try:
+        from core.postgresql_datalogger import PostgreSQLDataLogger
+        pg_logger = PostgreSQLDataLogger()
+        if pg_logger.enabled:
+            conn = pg_logger.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    # Charger les trades des dernières 24h pour l'UI
+                    cur.execute("""
+                        SELECT id, symbol, direction, entry_price, exit_price,
+                               pnl_pct, pnl_usdt, net_pnl_pct, net_pnl_usdt,
+                               exit_reason, duration_seconds, created_at,
+                               size_usdt, session_id
+                        FROM trades 
+                        WHERE created_at > NOW() - INTERVAL '24 hours'
+                        ORDER BY created_at DESC
+                        LIMIT 100
+                    """)
+                    rows = cur.fetchall()
+                    if rows:
+                        trades = []
+                        for r in rows:
+                            trades.append({
+                                'id': str(r[0]),
+                                'symbol': r[1],
+                                'direction': r[2],
+                                'entry_price': float(r[3]) if r[3] else 0,
+                                'exit_price': float(r[4]) if r[4] else 0,
+                                'pnl_pct': float(r[5]) if r[5] else 0,
+                                'pnl_usdt': float(r[6]) if r[6] else 0,
+                                'net_pnl_pct': float(r[7]) if r[7] else 0,
+                                'net_pnl_usdt': float(r[8]) if r[8] else 0,
+                                'reason': r[9],
+                                'close_reason': r[9],
+                                'duration_seconds': float(r[10]) if r[10] else 0,
+                                'closed_at': r[11].isoformat() if r[11] else None,
+                                'size': float(r[12]) if r[12] else 0,
+                                'session_id': str(r[13]) if r[13] else None
+                            })
+                        app_state['trade_history'] = trades
+                        logger.info(f"Historique charge depuis PostgreSQL: {len(trades)} trades (24h)")
+                        return
+            finally:
+                pg_logger.pool.putconn(conn)
+    except Exception as e:
+        logger.warning(f"Impossible de charger depuis PostgreSQL: {e}")
     
     # Fallback: Charger depuis JSON
     try:
         if os.path.exists(TRADE_HISTORY_FILE):
             with open(TRADE_HISTORY_FILE, 'r', encoding='utf-8') as f:
                 app_state['trade_history'] = json.load(f)
-            logger.info(f"✅ Historique chargé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
-            
-            # 🔥 PHASE 8: Migration JSON → SQLite désactivée
-            # Les trades JSON n'ont pas toutes les 114 colonnes requises par la nouvelle structure
-            # Les trades sont déjà loggés correctement via analytics_logger lors de leur fermeture
-            # La migration manuelle n'est plus nécessaire et causait des erreurs "107 values for 114 columns"
+            logger.info(f"Historique charge depuis JSON: {len(app_state['trade_history'])} trades")
         else:
             app_state['trade_history'] = []
-            logger.info(f"📝 Nouveau fichier historique créé: {TRADE_HISTORY_FILE}")
+            logger.info(f"Nouveau fichier historique cree: {TRADE_HISTORY_FILE}")
     except Exception as e:
-        logger.error(f"❌ Erreur chargement historique: {e}")
+        logger.error(f"Erreur chargement historique: {e}")
         app_state['trade_history'] = []
 
 # Global state
@@ -1109,13 +1142,17 @@ async def scanner_loop_callback() -> None:
                 
                 # Extraire ATR et ADX des top pairs
                 atr_values = []
+                atr_5m_values = []
                 adx_values = []
                 for pair in app_state['top_pairs'][:10]:
                     atr = pair.get('atr_percent') or pair.get('atr', 0)
+                    atr_5m = pair.get('atr_percent_5m')
                     adx = pair.get('adx', 25)
                     if atr and float(atr) > 0:
                         atr_values.append(float(atr))
                         adx_values.append(float(adx))
+                        if atr_5m is not None and float(atr_5m) > 0:
+                            atr_5m_values.append(float(atr_5m))
                 
                 if atr_values:
                     # 🔥 FIX: Stocker les échantillons pour l'affichage dans le widget
@@ -1133,6 +1170,7 @@ async def scanner_loop_callback() -> None:
 
                     new_regime, changed = await regime_selector.check_regime(
                         atr_values=atr_values,
+                        atr_5m_values=atr_5m_values,
                         adx_values=adx_values,
                         force=force_check,
                         trigger="auto"
@@ -1556,7 +1594,12 @@ async def scanner_loop_callback() -> None:
                                             indicators_1m = setup.get('indicators_1m', {})
                                             indicators_5m = setup.get('indicators_5m', {})
                                             
-                                            # 🔥 Indicateurs techniques 1m et 5m
+                                            # 🔍 DEBUG: Vérifier contenu du setup
+                                            logger.warning(f"🔍 DEBUG setup keys pour {symbol}: {list(setup.keys())}")
+                                            logger.warning(f"🔍 DEBUG indicators_1m: {len(indicators_1m)} items: {list(indicators_1m.keys()) if indicators_1m else 'VIDE'}")
+                                            logger.warning(f"🔍 DEBUG indicators_5m: {len(indicators_5m)} items: {list(indicators_5m.keys()) if indicators_5m else 'VIDE'}")
+                                            
+                                            # 🔥 Indicateurs techniques 1m et 5m (TOUS les indicateurs disponibles)
                                             import math
                                             for key, value in indicators_1m.items():
                                                 if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
@@ -1565,7 +1608,13 @@ async def scanner_loop_callback() -> None:
                                                 if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
                                                     gb_features[f"{key}_5m" if not key.endswith('_5m') else key] = value
                                             
-                                            # 🔥 Scores et setup data (si disponibles)
+                                            # 🔥 Features depuis la racine du setup (prix, volume, etc.)
+                                            setup_direct_features = ['price', 'volume', 'atr', 'spread', 'orderbook_imbalance']
+                                            for feat in setup_direct_features:
+                                                if feat in setup and isinstance(setup[feat], (int, float)) and not math.isnan(setup[feat]):
+                                                    gb_features[feat] = setup[feat]
+                                            
+                                            # 🔥 Scores et filtres qualité (si disponibles)
                                             scores = setup.get('scores', {})
                                             if scores:
                                                 for key, value in scores.items():
@@ -1575,19 +1624,156 @@ async def scanner_loop_callback() -> None:
                                             # 🔥 Direction (LONG=1, SHORT=0)
                                             gb_features['direction'] = 1 if direction.upper() == 'LONG' else 0
                                             
-                                            # 🔥 Total score et conditions
+                                            # 🔥 Setup metrics
                                             gb_features['totalScore'] = setup.get('totalScore', 0)
                                             gb_features['conditions'] = setup.get('conditions', 0)
                                             
-                                            logger.debug(f"🔍 GB Features extraites: {len(gb_features)} features")
+                                            # 🔥 Features dérivées calculées à la volée (Bollinger, EMA, etc.)
+                                            if indicators_1m and indicators_5m:
+                                                # BB Position (feature TOP importance)
+                                                bb_lower_1m = indicators_1m.get('bb_lower', 0)
+                                                bb_upper_1m = indicators_1m.get('bb_upper', 0)
+                                                if bb_upper_1m != bb_lower_1m:
+                                                    bb_width_1m = bb_upper_1m - bb_lower_1m
+                                                    if bb_width_1m > 0 and 'price' in setup:
+                                                        price = setup['price']
+                                                        gb_features['bb_position_1m'] = (price - bb_lower_1m) / bb_width_1m
+                                                        gb_features['bb_width_1m'] = bb_width_1m / price * 100  # En %
+                                                
+                                                # EMA divergence 1m/5m
+                                                ema_diff_1m = indicators_1m.get('ema_diff_pct', 0)
+                                                ema_diff_5m = indicators_5m.get('ema_diff_pct', 0)
+                                                if ema_diff_1m != 0 and ema_diff_5m != 0:
+                                                    gb_features['ema_divergence'] = abs(ema_diff_1m - ema_diff_5m)
+                                                    gb_features['ema_aligned'] = 1 if (ema_diff_1m > 0) == (ema_diff_5m > 0) else 0
+                                                
+                                                # RSI momentum
+                                                rsi_1m = indicators_1m.get('rsi', 50)
+                                                rsi_5m = indicators_5m.get('rsi', 50)
+                                                gb_features['rsi_divergence'] = abs(rsi_1m - rsi_5m)
+                                                gb_features['rsi_distance_50_1m'] = abs(rsi_1m - 50)
+                                                
+                                                # Volatility ratio
+                                                atr_1m = indicators_1m.get('atr_pct', 0)
+                                                atr_5m = indicators_5m.get('atr_pct', 0)
+                                                if atr_5m > 0:
+                                                    gb_features['volatility_ratio'] = atr_1m / atr_5m
+                                                
+                                                # Volume momentum
+                                                vol_ratio_1m = indicators_1m.get('volume_ratio', 1)
+                                                vol_ratio_5m = indicators_5m.get('volume_ratio', 1)
+                                                gb_features['volume_divergence'] = abs(vol_ratio_1m - vol_ratio_5m)
+                                                
+                                                # 🔥 NOUVELLES FEATURES MANQUANTES (8/8) pour 100% disponibilité
+                                                
+                                                # 1-2. RSI précédents (approximation si pas disponible)
+                                                gb_features['rsi_prev_1m'] = indicators_1m.get('rsi_prev', rsi_1m - 1.0)  # Approximation
+                                                gb_features['rsi_prev_5m'] = indicators_5m.get('rsi_prev', rsi_5m - 1.0)  # Approximation
+                                                
+                                                # 3. MACD histogram précédent
+                                                macd_hist_1m = indicators_1m.get('macd_hist', 0)
+                                                gb_features['macd_hist_prev_1m'] = indicators_1m.get('macd_hist_prev', macd_hist_1m - 0.001)  # Approximation
+                                                
+                                                # 4-7. BB Distances absolues (critiques pour le modèle)
+                                                if 'price' in setup and bb_upper_1m and bb_lower_1m:
+                                                    price = setup['price']
+                                                    gb_features['bb_distance_to_upper_1m'] = max(0, bb_upper_1m - price)
+                                                    gb_features['bb_distance_to_lower_1m'] = max(0, price - bb_lower_1m)
+                                                
+                                                bb_lower_5m = indicators_5m.get('bb_lower', 0)
+                                                bb_upper_5m = indicators_5m.get('bb_upper', 0)
+                                                if 'price' in setup and bb_upper_5m and bb_lower_5m:
+                                                    price = setup['price']
+                                                    gb_features['bb_distance_to_upper_5m'] = max(0, bb_upper_5m - price)
+                                                    gb_features['bb_distance_to_lower_5m'] = max(0, price - bb_lower_5m)
+                                                
+                                                # 8. DI minus 5m si pas déjà présent
+                                                if 'di_minus' not in gb_features and 'di_minus' in indicators_5m:
+                                                    gb_features['di_minus_5m'] = indicators_5m['di_minus']
+                                                
+                                                # Calculer BB width 5m si pas encore fait
+                                                if bb_upper_5m and bb_lower_5m and bb_upper_5m != bb_lower_5m:
+                                                    gb_features['bb_width_5m'] = bb_upper_5m - bb_lower_5m
+                                            
+                                            # 🔥 FEATURES SPÉCIFIQUES MODÈLE OPTIMISÉ (5 manquantes critiques)
+                                            
+                                            # 1. EMA trend strength (force de tendance EMA)
+                                            ema9_1m = indicators_1m.get('ema9', 0)
+                                            ema21_1m = indicators_1m.get('ema21', 0)
+                                            if ema21_1m > 0:
+                                                gb_features['ema_trend_strength_1m'] = abs(ema9_1m - ema21_1m) / ema21_1m
+                                            
+                                            ema9_5m = indicators_5m.get('ema9', 0)
+                                            ema21_5m = indicators_5m.get('ema21', 0)
+                                            if ema21_5m > 0:
+                                                gb_features['ema_trend_strength_5m'] = abs(ema9_5m - ema21_5m) / ema21_5m
+                                            
+                                            # 2. RSI change (variation RSI)
+                                            rsi_1m = indicators_1m.get('rsi', 50)
+                                            rsi_prev_1m = indicators_1m.get('rsi_prev', rsi_1m)
+                                            gb_features['rsi_change_1m'] = rsi_1m - rsi_prev_1m
+                                            
+                                            # 3. Delta volume (différentiel volume 1m vs 5m)
+                                            vol_ratio_1m = indicators_1m.get('volume_ratio', 1.0)
+                                            vol_ratio_5m = indicators_5m.get('volume_ratio', 1.0)
+                                            gb_features['delta_volume'] = vol_ratio_1m - vol_ratio_5m
+                                            
+                                            # 4. Momentum divergence (approximation MACD/RSI)
+                                            macd_1m = indicators_1m.get('macd', 0)
+                                            macd_5m = indicators_5m.get('macd', 0)
+                                            rsi_div = abs(rsi_1m - indicators_5m.get('rsi', 50))
+                                            gb_features['momentum_divergence'] = (abs(macd_1m - macd_5m) * 100) + (rsi_div / 100)
+                                            
+                                            # 5. Renommer hour_utc → hour (attendu par modèle)
+                                            from datetime import datetime, timezone
+                                            now = datetime.now(timezone.utc)
+                                            gb_features['hour'] = now.hour  # ← Feature exacte attendue
+                                            gb_features['session_europe'] = 1 if 8 <= now.hour < 16 else 0
+                                            gb_features['session_usa'] = 1 if 13 <= now.hour < 21 else 0
+                                            gb_features['high_activity_hours'] = 1 if 13 <= now.hour < 17 else 0
+                                            
+                                            logger.warning(f"🌳 Features extraites pour {symbol}: {list(gb_features.keys())}")
+                                            logger.debug(f"🔍 GB Features total: {len(gb_features)} features")
                                             
                                             if gb_features:
                                                 predictor = get_predictor()
                                                 if predictor.is_loaded:
+                                                    # 🔥 PHASE 2D: Seuil dynamique via Threshold Optimizer
                                                     gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.55)
+                                                    threshold_source = "config"
+                                                    
+                                                    if TRADING_CONFIG.get('threshold_optimizer_enabled', False):
+                                                        try:
+                                                            from core.ml import get_threshold_optimizer
+                                                            from core.market_regime_selector import get_regime_selector
+                                                            from utils.session_detector import get_current_session
+                                                            
+                                                            # Récupérer le contexte
+                                                            regime_selector = get_regime_selector()
+                                                            current_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
+                                                            session_info = get_current_session()
+                                                            current_session = session_info.get('name', 'UNKNOWN') if isinstance(session_info, dict) else 'UNKNOWN'
+                                                            current_hour = int(session_info.get('hour_utc', datetime.now(timezone.utc).hour)) if isinstance(session_info, dict) else datetime.now(timezone.utc).hour
+                                                            
+                                                            # Obtenir le seuil dynamique
+                                                            optimizer = get_threshold_optimizer()
+                                                            gb_min_confidence = optimizer.get_threshold(
+                                                                regime=current_regime,
+                                                                session=current_session,
+                                                                hour=current_hour
+                                                            )
+                                                            threshold_source = f"optimizer({current_regime}/{current_session})"
+                                                            
+                                                            # Stocker le contexte dans le setup pour le feedback loop
+                                                            setup['_market_regime'] = current_regime
+                                                            setup['_trading_session'] = current_session
+                                                            setup['_trade_hour'] = current_hour
+                                                        except Exception as opt_err:
+                                                            logger.debug(f"⚠️ Threshold optimizer error, using default: {opt_err}")
+                                                    
                                                     should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
                                                     
-                                                    logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
+                                                    logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}% [{threshold_source}])")
                                                     
                                                     # 🔥 FIX: Stocker la confiance ML pour le logging (arrondi au dixième)
                                                     ml_conf_pct = round(confidence * 100, 1)  # En pourcentage, arrondi 0.1
@@ -1604,7 +1790,24 @@ async def scanner_loop_callback() -> None:
                                                         logger.debug(f"⚠️ Impossible de mettre à jour ml_confidence: {pg_err}")
                                                     
                                                     if not should_trade:
-                                                        logger.warning(f"❌ GradientBoosting REJETTE {symbol}: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
+                                                        reject_reason = f"ML confidence {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}% [{threshold_source}]"
+                                                        logger.warning(f"❌ GradientBoosting REJETTE {symbol}: {reject_reason}")
+                                                        
+                                                        # 🔥 FIX 15/12: Logger le rejet ML dans reject_reason_category
+                                                        # Distinguer si le rejet vient d'un seuil statique ou dynamique (Optimizer)
+                                                        reject_cat = "ml_threshold_optimizer" if "optimizer" in threshold_source else "ml_gb_confidence"
+                                                        
+                                                        try:
+                                                            if pg_logger and pg_logger.enabled:
+                                                                pg_logger.update_ml_rejection(
+                                                                    symbol=symbol,
+                                                                    reject_reason=reject_reason,
+                                                                    reject_category=reject_cat,
+                                                                    ml_confidence=ml_conf_pct
+                                                                )
+                                                        except Exception as ml_rej_err:
+                                                            logger.debug(f"⚠️ Erreur log ML rejection: {ml_rej_err}")
+                                                        
                                                         continue  # Passer au setup suivant
                                                     else:
                                                         logger.info(f"✅ GradientBoosting APPROUVE {symbol} (confiance: {confidence*100:.1f}%)")
@@ -1630,11 +1833,25 @@ async def scanner_loop_callback() -> None:
                                                 adjusted_min = min_score + score_boost
                                                 
                                                 if setup_score < adjusted_min:
-                                                    logger.warning(
-                                                        f"⚠️ {symbol} - Setup rejeté par Circuit Breaker score boost: "
-                                                        f"Score {setup_score:.1f} < {adjusted_min:.1f} (min: {min_score:.1f} + boost: {score_boost:.1f}) | "
-                                                        f"Losses consécutives: {trading_cb.consecutive_losses}"
+                                                    reject_reason_cb = (
+                                                        f"Circuit Breaker score boost: Score {setup_score:.1f} < {adjusted_min:.1f} "
+                                                        f"(min: {min_score:.1f} + boost: {score_boost:.1f}) | Losses: {trading_cb.consecutive_losses}"
                                                     )
+                                                    logger.warning(f"⚠️ {symbol} - {reject_reason_cb}")
+                                                    
+                                                    # 🔥 FIX 15/12: Logger le rejet CB dans reject_reason_category
+                                                    try:
+                                                        from core.callbacks.scanner_loop import get_pg_datalogger
+                                                        pg_logger_cb = get_pg_datalogger()
+                                                        if pg_logger_cb and pg_logger_cb.enabled:
+                                                            pg_logger_cb.update_ml_rejection(
+                                                                symbol=symbol,
+                                                                reject_reason=reject_reason_cb,
+                                                                reject_category="circuit_breaker_score_boost"
+                                                            )
+                                                    except Exception as cb_rej_err:
+                                                        logger.debug(f"⚠️ Erreur log CB rejection: {cb_rej_err}")
+                                                    
                                                     continue  # Passer au setup suivant
                                                 else:
                                                     logger.info(
@@ -1645,6 +1862,10 @@ async def scanner_loop_callback() -> None:
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
+                                    
+                                    # 🌳 ANCIENNE SECTION GB SUPPRIMÉE 
+                                    # Le filtre GradientBoosting optimisé (28+ features) est déjà actif plus haut dans le code
+                                    # Cette section basique (7 features) était redondante et causait des conflits
                                     
                                     position = position_manager.open_position(
                                         symbol=symbol,
@@ -1657,7 +1878,8 @@ async def scanner_loop_callback() -> None:
                                         scalability_data=scalability_data,
                                         condition_types=condition_types,  # 🔥 PHASE 5: Types de conditions
                                         ml_confidence=setup.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
-                                        adaptive_sizing_multiplier=adaptive_sizing_mult  # 🔥 Multiplicateur adaptatif
+                                        adaptive_sizing_multiplier=adaptive_sizing_mult,  # 🔥 Multiplicateur adaptatif
+                                        setup_data=setup  # 🔥 CRITICAL: Passer le setup complet pour accès indicators_1m/5m
                                     )
                                     
                                     # 🔥 FIX: Vérifier si position rejetée par calibration
@@ -2126,6 +2348,24 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             if pg_datalogger and pg_datalogger.enabled:
                 # Calculer durée du scan
                 scan_duration_ms = int((time.time() - scan_start_time) * 1000)
+                eff_volume_multiplier = get_effective_value('volume_multiplier', symbol=symbol)
+                if eff_volume_multiplier is None:
+                    eff_volume_multiplier = volume_multiplier
+                eff_min_score_required = get_effective_value('min_score_required', symbol=symbol)
+                if eff_min_score_required is None:
+                    eff_min_score_required = TRADING_CONFIG.get('min_score_required', 7.5)
+                eff_optimal_atr_min_1m = get_effective_value('optimal_atr_min_1m', symbol=symbol)
+                if eff_optimal_atr_min_1m is None:
+                    eff_optimal_atr_min_1m = TRADING_CONFIG.get('optimal_atr_min_1m', 0.12)
+                eff_optimal_atr_max_1m = get_effective_value('optimal_atr_max_1m', symbol=symbol)
+                if eff_optimal_atr_max_1m is None:
+                    eff_optimal_atr_max_1m = TRADING_CONFIG.get('optimal_atr_max_1m', 0.75)
+                eff_optimal_atr_min_5m = get_effective_value('optimal_atr_min_5m', symbol=symbol)
+                if eff_optimal_atr_min_5m is None:
+                    eff_optimal_atr_min_5m = TRADING_CONFIG.get('optimal_atr_min_5m', 0.22)
+                eff_optimal_atr_max_5m = get_effective_value('optimal_atr_max_5m', symbol=symbol)
+                if eff_optimal_atr_max_5m is None:
+                    eff_optimal_atr_max_5m = TRADING_CONFIG.get('optimal_atr_max_5m', 1.4)
                 
                 # Récupérer les données du scan de scalabilité depuis top_pairs
                 scalability_data = {}
@@ -2297,19 +2537,19 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     # 🔥 ML Confidence: confiance réelle du modèle (si disponible)
                     'ml_confidence': last_ml_confidence,
                     'params_snapshot': {
-                        'volume_multiplier': volume_multiplier,
+                        'volume_multiplier': eff_volume_multiplier,
                         'use_confluence': use_confluence,
                         'trend_timeframe': trend_timeframe,
-                        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                        'min_score_required': eff_min_score_required,
                         'min_conditions': TRADING_CONFIG.get('min_conditions', 6),
                         'use_weighted_scoring': TRADING_CONFIG.get('use_weighted_scoring', True),
                         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-                        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-                        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-                        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                        'optimal_atr_min_1m': eff_optimal_atr_min_1m,
+                        'optimal_atr_max_1m': eff_optimal_atr_max_1m,
+                        'optimal_atr_min_5m': eff_optimal_atr_min_5m,
+                        'optimal_atr_max_5m': eff_optimal_atr_max_5m,
                         'use_breakout': TRADING_CONFIG.get('use_breakout', True),
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),
@@ -2329,6 +2569,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'candle_close_threshold_seconds': TRADING_CONFIG.get('candle_close_threshold_seconds'),
                         'use_momentum_continuity': TRADING_CONFIG.get('use_momentum_continuity'),
                         'momentum_lookback': TRADING_CONFIG.get('momentum_lookback'),
+                        'use_micro_confirmation': TRADING_CONFIG.get('use_micro_confirmation'),
+                        'micro_confirmation_delay_ms': TRADING_CONFIG.get('micro_confirmation_delay_ms'),
                     }
                 }
                 
@@ -2516,6 +2758,42 @@ async def position_check_loop_callback() -> None:
         
         # Check position (renvoie None ou raison de fermeture)
         close_reason = await position_manager.check_position(current_price)
+
+        # 🔥 FIX SL_EXCHANGE: Si le bot détecte un SL interne, vérifier si c'est en fait un SL Exchange
+        if close_reason == 'SL' and live_order_manager and hasattr(live_order_manager, 'bypass_client') and live_order_manager.bypass_client:
+            try:
+                # Vérifier si un ordre SL a été exécuté récemment sur l'exchange
+                from trading.live_order_manager_futures import run_async_safely
+                bypass_symbol = position_manager.active_position.symbol.replace('/', '_').replace(':USDT', '')
+                
+                # Récupérer l'historique récent (dernier ordre)
+                order_history = run_async_safely(
+                    live_order_manager.bypass_client.get_order_history(
+                        symbol=bypass_symbol,
+                        page_size=3  # Juste les derniers ordres
+                    )
+                )
+                
+                if order_history and 'data' in order_history:
+                    orders = order_history.get('data', [])
+                    for order in orders:
+                        # Catégorie 2 = SL/TP trigger sur MEXC
+                        # Vérifier si c'est un ordre de réduction (close) exécuté récemment (< 30s)
+                        is_sl_trigger = order.get('category') == 2 or order.get('type') == 3  # STOP_MARKET
+                        state_filled = order.get('state') == 3  # FILLED
+                        
+                        if is_sl_trigger and state_filled:
+                            # Vérifier le timestamp (si dispo) ou assumer que c'est le dernier
+                            logger.warning(f"🛑 SL détecté par le bot, mais un ordre SL Exchange a été trouvé ! Correction -> SL_EXCHANGE")
+                            close_reason = "SL_EXCHANGE"
+                            
+                            # Tenter de récupérer le prix de fill réel
+                            fill_price = order.get('dealAvgPrice') or order.get('price')
+                            if fill_price and float(fill_price) > 0:
+                                current_price = float(fill_price) # Utiliser le vrai prix d'exécution
+                            break
+            except Exception as e:
+                logger.debug(f"⚠️ Erreur vérification SL Exchange lors du SL interne: {e}")
         
         # 🔥 NOUVEAU: Vérifier si la position a été fermée par MEXC (SL Exchange)
         # On vérifie toutes les 5 secondes pour réactivité accrue
@@ -2531,13 +2809,62 @@ async def position_check_loop_callback() -> None:
                         live_order_manager.bypass_client.get_open_positions(symbol=bypass_symbol)
                     )
                     
-                    # Si aucune position MEXC mais le bot pense en avoir une → SL Exchange touché
+                    # Si aucune position MEXC mais le bot pense en avoir une → Position fermée
                     if mexc_positions is not None and len(mexc_positions) == 0:
-                        logger.warning(
-                            f"🛑 SL MEXC TOUCHÉ: Position {position_manager.active_position.symbol} fermée par exchange | "
-                            f"Dernier prix: {current_price}"
-                        )
-                        close_reason = "SL_EXCHANGE"
+                        # 🔥 FIX: Vérifier si c'est vraiment le SL MEXC qui a été touché
+                        # en comparant le prix actuel avec le SL MEXC calculé
+                        sl_bot = position_manager.active_position.sl
+                        entry = position_manager.active_position.entry
+                        direction = position_manager.active_position.direction
+                        
+                        # Calculer le SL MEXC (SL bot × 1.1 marge)
+                        SL_MEXC_MARGIN = 1.1
+                        if direction == 'LONG':
+                            sl_distance_pct = abs(entry - sl_bot) / entry if entry > 0 else 0
+                            sl_mexc = entry * (1 - sl_distance_pct * SL_MEXC_MARGIN)
+                            # SL MEXC touché si prix <= sl_mexc
+                            is_sl_mexc_touched = current_price <= sl_mexc
+                        else:  # SHORT
+                            sl_distance_pct = abs(sl_bot - entry) / entry if entry > 0 else 0
+                            sl_mexc = entry * (1 + sl_distance_pct * SL_MEXC_MARGIN)
+                            # SL MEXC touché si prix >= sl_mexc
+                            is_sl_mexc_touched = current_price >= sl_mexc
+                        
+                        if is_sl_mexc_touched:
+                            # 🔥 FIX: Récupérer le vrai prix de fill depuis l'historique MEXC
+                            try:
+                                order_history = run_async_safely(
+                                    live_order_manager.bypass_client.get_order_history(
+                                        symbol=bypass_symbol,
+                                        page_size=5
+                                    )
+                                )
+                                if order_history and 'data' in order_history:
+                                    orders = order_history.get('data', [])
+                                    for order in orders:
+                                        # Chercher un ordre SL récent (dans les 60 dernières secondes)
+                                        if order.get('category') == 2:  # SL order
+                                            fill_price = order.get('dealAvgPrice') or order.get('price')
+                                            if fill_price and float(fill_price) > 0:
+                                                current_price = float(fill_price)
+                                                logger.info(f"📊 Prix de fill SL MEXC récupéré: {current_price}")
+                                                break
+                            except Exception as hist_err:
+                                logger.debug(f"⚠️ Impossible de récupérer historique ordres: {hist_err}")
+                            
+                            logger.warning(
+                                f"🛑 SL MEXC TOUCHÉ: Position {position_manager.active_position.symbol} fermée par exchange | "
+                                f"Prix fill: {current_price} | SL MEXC: {sl_mexc:.6f}"
+                            )
+                            close_reason = "SL_EXCHANGE"
+                        else:
+                            # Position fermée mais pas par SL MEXC → probablement race condition
+                            # Le bot a fermé la position mais la vérification arrive après
+                            logger.info(
+                                f"📋 Position {position_manager.active_position.symbol} fermée (sync MEXC) | "
+                                f"Prix: {current_price} | SL MEXC: {sl_mexc:.6f} (non touché)"
+                            )
+                            # Ne pas marquer comme SL_EXCHANGE, laisser le bot gérer normalement
                 except Exception as e:
                     logger.debug(f"⚠️ Impossible de vérifier sync MEXC: {e}")
         
@@ -4189,12 +4516,14 @@ async def scan_top_pairs_task(n):
             
             # Extraire ATR et ADX des paires
             atr_values = [p.get('atr_percent', 0) for p in top_pairs if p.get('atr_percent') is not None]
+            atr_5m_values = [p.get('atr_percent_5m', 0) for p in top_pairs if p.get('atr_percent_5m') is not None]
             adx_values = [p.get('adx', 0) for p in top_pairs if p.get('adx') is not None]
             
             if atr_values:
                 # Forcer la mise à jour pour avoir les métriques fraîches
                 regime, changed = await regime_selector.check_regime(
                     atr_values=atr_values,
+                    atr_5m_values=atr_5m_values,
                     adx_values=adx_values,
                     force=True,  # On force pour mettre à jour l'affichage
                     trigger="scan"
@@ -5267,6 +5596,19 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['momentum_lookback'] = val
             updated['momentum_lookback'] = val
         
+        # --- OPT #20: Micro-confirmation ---
+        if 'use_micro_confirmation' in params:
+            TRADING_CONFIG['use_micro_confirmation'] = bool(params['use_micro_confirmation'])
+            updated['use_micro_confirmation'] = TRADING_CONFIG['use_micro_confirmation']
+            logger.info(f"✅ use_micro_confirmation: {TRADING_CONFIG['use_micro_confirmation']}")
+        
+        if 'micro_confirmation_delay_ms' in params:
+            val = int(params['micro_confirmation_delay_ms'])
+            val = max(100, min(1000, val))  # Clamp 100-1000ms
+            TRADING_CONFIG['micro_confirmation_delay_ms'] = val
+            updated['micro_confirmation_delay_ms'] = val
+            logger.info(f"✅ micro_confirmation_delay_ms: {val}ms")
+        
         # 🔥 Filtre RSI Final (bloque trades contre-logiques)
         if 'rsi_final_filter_enabled' in params:
             TRADING_CONFIG['rsi_final_filter_enabled'] = bool(params['rsi_final_filter_enabled'])
@@ -5366,6 +5708,102 @@ async def handle_client_command(command: str, params: dict):
                 TRADING_CONFIG['gb_model_type'] = val
                 updated['gb_model_type'] = val
                 logger.info(f"✅ GB model_type: {val} ({'HistGradientBoosting' if val == 'histgb' else 'GradientBoosting'})")
+
+        # 🔥 HistGB Hyperparameters (max_iter, l2_regularization)
+        if 'gb_max_iter' in params:
+            val = int(params['gb_max_iter'])
+            val = max(50, min(500, val))  # Clamp 50-500
+            TRADING_CONFIG['gb_max_iter'] = val
+            updated['gb_max_iter'] = val
+            logger.info(f"✅ GB max_iter: {val}")
+        
+        if 'gb_l2_regularization' in params:
+            val = float(params['gb_l2_regularization'])
+            val = max(0.1, min(2.0, val))  # Clamp 0.1-2.0
+            TRADING_CONFIG['gb_l2_regularization'] = val
+            updated['gb_l2_regularization'] = val
+            logger.info(f"✅ GB l2_regularization: {val}")
+
+        # 🔥 ML Calibration
+        if 'ml_calibration_enabled' in params:
+            TRADING_CONFIG['ml_calibration_enabled'] = bool(params['ml_calibration_enabled'])
+            updated['ml_calibration_enabled'] = TRADING_CONFIG['ml_calibration_enabled']
+            logger.info(f"✅ ml_calibration_enabled: {TRADING_CONFIG['ml_calibration_enabled']}")
+        
+        if 'ml_calib_min_winrate' in params:
+            val = int(params['ml_calib_min_winrate'])
+            val = max(30, min(60, val))  # Clamp 30-60
+            TRADING_CONFIG['ml_calib_min_winrate'] = val
+            updated['ml_calib_min_winrate'] = val
+            logger.info(f"✅ ml_calib_min_winrate: {val}%")
+        
+        if 'ml_calib_live_weight' in params:
+            val = float(params['ml_calib_live_weight'])
+            val = max(0.5, min(1.0, val))  # Clamp 0.5-1.0
+            TRADING_CONFIG['ml_calib_live_weight'] = val
+            updated['ml_calib_live_weight'] = val
+            logger.info(f"✅ ml_calib_live_weight: {val}")
+        
+        if 'ml_calib_dryrun_weight' in params:
+            val = float(params['ml_calib_dryrun_weight'])
+            val = max(0.0, min(1.0, val))  # Clamp 0.0-1.0
+            TRADING_CONFIG['ml_calib_dryrun_weight'] = val
+            updated['ml_calib_dryrun_weight'] = val
+            logger.info(f"✅ ml_calib_dryrun_weight: {val}")
+        
+        if 'ml_calib_decay_days' in params:
+            val = int(params['ml_calib_decay_days'])
+            val = max(7, min(60, val))  # Clamp 7-60
+            TRADING_CONFIG['ml_calib_decay_days'] = val
+            updated['ml_calib_decay_days'] = val
+            logger.info(f"✅ ml_calib_decay_days: {val}j")
+        
+        if 'ml_calib_min_trades' in params:
+            val = int(params['ml_calib_min_trades'])
+            val = max(10, min(100, val))  # Clamp 10-100
+            TRADING_CONFIG['ml_calib_min_trades'] = val
+            updated['ml_calib_min_trades'] = val
+            logger.info(f"✅ ml_calib_min_trades: {val}")
+
+        # 🔥 Phase 2D: Threshold Optimizer & Drift Detection
+        if 'threshold_optimizer_enabled' in params:
+            TRADING_CONFIG['threshold_optimizer_enabled'] = bool(params['threshold_optimizer_enabled'])
+            updated['threshold_optimizer_enabled'] = TRADING_CONFIG['threshold_optimizer_enabled']
+            logger.info(f"✅ threshold_optimizer_enabled: {TRADING_CONFIG['threshold_optimizer_enabled']}")
+        
+        if 'threshold_min' in params:
+            val = float(params['threshold_min'])
+            val = max(0.25, min(0.60, val))  # Clamp 25-60% (aligné avec frontend)
+            TRADING_CONFIG['threshold_min'] = val
+            updated['threshold_min'] = val
+            logger.info(f"✅ threshold_min: {val*100:.0f}%")
+            
+            # 🔥 Propager à l'instance
+            try:
+                from core.ml import get_threshold_optimizer
+                # Appeler le getter met à jour l'instance avec la nouvelle config
+                get_threshold_optimizer()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation threshold_min: {e}")
+        
+        if 'threshold_max' in params:
+            val = float(params['threshold_max'])
+            val = max(0.40, min(0.80, val))  # Clamp 40-80% (aligné avec frontend)
+            TRADING_CONFIG['threshold_max'] = val
+            updated['threshold_max'] = val
+            logger.info(f"✅ threshold_max: {val*100:.0f}%")
+
+            # 🔥 Propager à l'instance
+            try:
+                from core.ml import get_threshold_optimizer
+                get_threshold_optimizer()
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur propagation threshold_max: {e}")
+        
+        if 'drift_detection_enabled' in params:
+            TRADING_CONFIG['drift_detection_enabled'] = bool(params['drift_detection_enabled'])
+            updated['drift_detection_enabled'] = TRADING_CONFIG['drift_detection_enabled']
+            logger.info(f"✅ drift_detection_enabled: {TRADING_CONFIG['drift_detection_enabled']}")
 
         # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
         if 'adaptive_sizing_enabled' in params:
@@ -5489,6 +5927,51 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['stagnation_exit_max_loss_to_exit'] = val
             updated['stagnation_exit_max_loss_to_exit'] = val
             logger.info(f"✅ stagnation_exit_max_loss_to_exit: {val}")
+
+        # 🔥 STAGNATION POSITIVE EXIT (sortie anticipée en profit)
+        if 'stagnation_positive_exit_enabled' in params:
+            TRADING_CONFIG['stagnation_positive_exit_enabled'] = bool(params['stagnation_positive_exit_enabled'])
+            updated['stagnation_positive_exit_enabled'] = TRADING_CONFIG['stagnation_positive_exit_enabled']
+            logger.info(f"✅ stagnation_positive_exit_enabled: {TRADING_CONFIG['stagnation_positive_exit_enabled']}")
+        
+        if 'stagnation_positive_threshold' in params:
+            val = float(params['stagnation_positive_threshold'])
+            val = max(0.01, min(0.20, val))  # Clamp 0.01-0.20%
+            TRADING_CONFIG['stagnation_positive_threshold'] = val
+            updated['stagnation_positive_threshold'] = val
+            logger.info(f"✅ stagnation_positive_threshold: {val}%")
+        
+        if 'stagnation_positive_timeout_seconds' in params:
+            val = int(params['stagnation_positive_timeout_seconds'])
+            val = max(30, min(120, val))  # Clamp 30s-120s (doit être < timeout normal)
+            TRADING_CONFIG['stagnation_positive_timeout_seconds'] = val
+            updated['stagnation_positive_timeout_seconds'] = val
+            logger.info(f"✅ stagnation_positive_timeout_seconds: {val}s")
+        
+        if 'stagnation_use_mfe_tracking' in params:
+            TRADING_CONFIG['stagnation_use_mfe_tracking'] = bool(params['stagnation_use_mfe_tracking'])
+            updated['stagnation_use_mfe_tracking'] = TRADING_CONFIG['stagnation_use_mfe_tracking']
+            logger.info(f"✅ stagnation_use_mfe_tracking: {TRADING_CONFIG['stagnation_use_mfe_tracking']}")
+        
+        if 'stagnation_mfe_pullback_pct' in params:
+            val = float(params['stagnation_mfe_pullback_pct'])
+            val = max(0.03, min(0.25, val))  # Clamp 0.03-0.25%
+            TRADING_CONFIG['stagnation_mfe_pullback_pct'] = val
+            updated['stagnation_mfe_pullback_pct'] = val
+            logger.info(f"✅ stagnation_mfe_pullback_pct: {val}%")
+
+        # 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil)
+        if 'trailing_mfe_enabled' in params:
+            TRADING_CONFIG['trailing_mfe_enabled'] = bool(params['trailing_mfe_enabled'])
+            updated['trailing_mfe_enabled'] = TRADING_CONFIG['trailing_mfe_enabled']
+            logger.info(f"✅ trailing_mfe_enabled: {TRADING_CONFIG['trailing_mfe_enabled']}")
+
+        if 'trailing_mfe_trigger_pct' in params:
+            val = float(params['trailing_mfe_trigger_pct'])
+            val = max(0.05, min(0.50, val))  # Clamp 0.05-0.50%
+            TRADING_CONFIG['trailing_mfe_trigger_pct'] = val
+            updated['trailing_mfe_trigger_pct'] = val
+            logger.info(f"✅ trailing_mfe_trigger_pct: {val}%")
 
         # 🔬 ML Calibration Parameters
         if 'ml_calibration_enabled' in params:
@@ -5791,6 +6274,122 @@ async def handle_client_command(command: str, params: dict):
             except Exception as e:
                 logger.warning(f"⚠️ Erreur propagation pair_scorer: {e}")
 
+        # 🔥 PHASE 1D: Market Regime V2 - Détection Améliorée
+        if 'market_regime_v2_enabled' in params:
+            TRADING_CONFIG['market_regime_v2_enabled'] = bool(params['market_regime_v2_enabled'])
+            updated['market_regime_v2_enabled'] = TRADING_CONFIG['market_regime_v2_enabled']
+            logger.info(f"✅ market_regime_v2_enabled: {TRADING_CONFIG['market_regime_v2_enabled']}")
+        
+        if 'market_regime_use_median' in params:
+            TRADING_CONFIG['market_regime_use_median'] = bool(params['market_regime_use_median'])
+            updated['market_regime_use_median'] = TRADING_CONFIG['market_regime_use_median']
+            logger.info(f"✅ market_regime_use_median: {TRADING_CONFIG['market_regime_use_median']}")
+        
+        if 'market_regime_outlier_filter' in params:
+            TRADING_CONFIG['market_regime_outlier_filter'] = bool(params['market_regime_outlier_filter'])
+            updated['market_regime_outlier_filter'] = TRADING_CONFIG['market_regime_outlier_filter']
+            logger.info(f"✅ market_regime_outlier_filter: {TRADING_CONFIG['market_regime_outlier_filter']}")
+        
+        if 'market_regime_use_hysteresis' in params:
+            TRADING_CONFIG['market_regime_use_hysteresis'] = bool(params['market_regime_use_hysteresis'])
+            updated['market_regime_use_hysteresis'] = TRADING_CONFIG['market_regime_use_hysteresis']
+            logger.info(f"✅ market_regime_use_hysteresis: {TRADING_CONFIG['market_regime_use_hysteresis']}")
+        
+        if 'market_regime_hysteresis_buffer' in params:
+            val = float(params['market_regime_hysteresis_buffer'])
+            val = max(0.05, min(0.25, val))  # Clamp 5%-25%
+            TRADING_CONFIG['market_regime_hysteresis_buffer'] = val
+            updated['market_regime_hysteresis_buffer'] = val
+            logger.info(f"✅ market_regime_hysteresis_buffer: {val*100:.0f}%")
+        
+        if 'market_regime_use_smoothing' in params:
+            TRADING_CONFIG['market_regime_use_smoothing'] = bool(params['market_regime_use_smoothing'])
+            updated['market_regime_use_smoothing'] = TRADING_CONFIG['market_regime_use_smoothing']
+            logger.info(f"✅ market_regime_use_smoothing: {TRADING_CONFIG['market_regime_use_smoothing']}")
+        
+        if 'market_regime_smoothing_alpha' in params:
+            val = float(params['market_regime_smoothing_alpha'])
+            val = max(0.1, min(0.5, val))  # Clamp 0.1-0.5
+            TRADING_CONFIG['market_regime_smoothing_alpha'] = val
+            updated['market_regime_smoothing_alpha'] = val
+            logger.info(f"✅ market_regime_smoothing_alpha: {val}")
+        
+        if 'market_regime_use_atr_5m' in params:
+            TRADING_CONFIG['market_regime_use_atr_5m'] = bool(params['market_regime_use_atr_5m'])
+            updated['market_regime_use_atr_5m'] = TRADING_CONFIG['market_regime_use_atr_5m']
+            logger.info(f"✅ market_regime_use_atr_5m: {TRADING_CONFIG['market_regime_use_atr_5m']}")
+        
+        if 'market_regime_use_seasonality' in params:
+            TRADING_CONFIG['market_regime_use_seasonality'] = bool(params['market_regime_use_seasonality'])
+            updated['market_regime_use_seasonality'] = TRADING_CONFIG['market_regime_use_seasonality']
+            logger.info(f"✅ market_regime_use_seasonality: {TRADING_CONFIG['market_regime_use_seasonality']}")
+        
+        if 'market_regime_min_duration_minutes' in params:
+            val = int(params['market_regime_min_duration_minutes'])
+            val = max(5, min(120, val))  # Clamp 5-120 min
+            TRADING_CONFIG['market_regime_min_duration_minutes'] = val
+            updated['market_regime_min_duration_minutes'] = val
+            logger.info(f"✅ market_regime_min_duration_minutes: {val} min")
+
+        # 🔥 PHASE 1E: Auto-Calibration Seuils ATR
+        if 'market_regime_auto_calibration_enabled' in params:
+            TRADING_CONFIG['market_regime_auto_calibration_enabled'] = bool(params['market_regime_auto_calibration_enabled'])
+            updated['market_regime_auto_calibration_enabled'] = TRADING_CONFIG['market_regime_auto_calibration_enabled']
+            logger.info(f"✅ market_regime_auto_calibration_enabled: {TRADING_CONFIG['market_regime_auto_calibration_enabled']}")
+        
+        if 'market_regime_calibration_lookback_days' in params:
+            val = int(params['market_regime_calibration_lookback_days'])
+            val = max(3, min(14, val))  # Clamp 3-14
+            TRADING_CONFIG['market_regime_calibration_lookback_days'] = val
+            updated['market_regime_calibration_lookback_days'] = val
+            logger.info(f"✅ market_regime_calibration_lookback_days: {val} jours")
+        
+        if 'market_regime_calibration_percentile_calme' in params:
+            val = int(params['market_regime_calibration_percentile_calme'])
+            val = max(10, min(50, val))  # Clamp 10-50
+            TRADING_CONFIG['market_regime_calibration_percentile_calme'] = val
+            updated['market_regime_calibration_percentile_calme'] = val
+            logger.info(f"✅ market_regime_calibration_percentile_calme: P{val}")
+        
+        if 'market_regime_calibration_percentile_volatile' in params:
+            val = int(params['market_regime_calibration_percentile_volatile'])
+            val = max(50, min(90, val))  # Clamp 50-90
+            TRADING_CONFIG['market_regime_calibration_percentile_volatile'] = val
+            updated['market_regime_calibration_percentile_volatile'] = val
+            logger.info(f"✅ market_regime_calibration_percentile_volatile: P{val}")
+        
+        if 'market_regime_calibration_min_samples' in params:
+            val = int(params['market_regime_calibration_min_samples'])
+            val = max(10, min(200, val))  # Clamp 10-200
+            TRADING_CONFIG['market_regime_calibration_min_samples'] = val
+            updated['market_regime_calibration_min_samples'] = val
+            logger.info(f"✅ market_regime_calibration_min_samples: {val}")
+        
+        # 🔥 PHASE 1E: BTC Indicator
+        if 'market_regime_btc_indicator_enabled' in params:
+            TRADING_CONFIG['market_regime_btc_indicator_enabled'] = bool(params['market_regime_btc_indicator_enabled'])
+            updated['market_regime_btc_indicator_enabled'] = TRADING_CONFIG['market_regime_btc_indicator_enabled']
+            logger.info(f"✅ market_regime_btc_indicator_enabled: {TRADING_CONFIG['market_regime_btc_indicator_enabled']}")
+        
+        if 'market_regime_btc_volatile_threshold_1h' in params:
+            val = float(params['market_regime_btc_volatile_threshold_1h'])
+            val = max(0.5, min(10.0, val))  # Clamp 0.5-10.0
+            TRADING_CONFIG['market_regime_btc_volatile_threshold_1h'] = val
+            updated['market_regime_btc_volatile_threshold_1h'] = val
+            logger.info(f"✅ market_regime_btc_volatile_threshold_1h: {val}%")
+        
+        if 'market_regime_btc_trend_threshold_24h' in params:
+            val = float(params['market_regime_btc_trend_threshold_24h'])
+            val = max(1.0, min(20.0, val))  # Clamp 1.0-20.0
+            TRADING_CONFIG['market_regime_btc_trend_threshold_24h'] = val
+            updated['market_regime_btc_trend_threshold_24h'] = val
+            logger.info(f"✅ market_regime_btc_trend_threshold_24h: {val}%")
+        
+        if 'market_regime_btc_force_volatile_enabled' in params:
+            TRADING_CONFIG['market_regime_btc_force_volatile_enabled'] = bool(params['market_regime_btc_force_volatile_enabled'])
+            updated['market_regime_btc_force_volatile_enabled'] = TRADING_CONFIG['market_regime_btc_force_volatile_enabled']
+            logger.info(f"✅ market_regime_btc_force_volatile_enabled: {TRADING_CONFIG['market_regime_btc_force_volatile_enabled']}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -6076,27 +6675,47 @@ async def api_get_config():
     """Récupérer la configuration actuelle (tous les paramètres)"""
     from config import TRADING_CONFIG
     return JSONResponse({
-        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),  # 🔥 Valeur mise à jour
-        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),  # 🔥 PHASE 6: Score minimum
+        'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
+        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
         'use_confluence': TRADING_CONFIG.get('use_confluence', False),
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-        # 🔥 4 seuils configurables - Valeurs mises à jour
+        # 4 seuils configurables
         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
         'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
         'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-        # 🔥 Seuils ATR optimal - Valeurs mises à jour
+        # Seuils ATR optimal
         'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
         'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
         'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
         'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-        # 🔥 Trend timeframe
+        # Trend timeframe
         'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
         'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-        'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0)
+        'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+        # 🔥 ML Config - Filtrage GradientBoosting
+        'gb_filter_enabled': TRADING_CONFIG.get('gb_filter_enabled', True),
+        'gb_min_confidence': TRADING_CONFIG.get('gb_min_confidence', 0.55),
+        # 🔥 ML Config - Calibration
+        'ml_calibration_enabled': TRADING_CONFIG.get('ml_calibration_enabled', False),
+        'ml_calib_min_winrate': TRADING_CONFIG.get('ml_calib_min_winrate', 45),
+        'ml_calib_live_weight': TRADING_CONFIG.get('ml_calib_live_weight', 1.0),
+        'ml_calib_dryrun_weight': TRADING_CONFIG.get('ml_calib_dryrun_weight', 0.5),
+        'ml_calib_decay_days': TRADING_CONFIG.get('ml_calib_decay_days', 30),
+        'ml_calib_min_trades': TRADING_CONFIG.get('ml_calib_min_trades', 50),
+        # 🔥 ML Config - Threshold Optimizer & Drift Detection
+        'threshold_optimizer_enabled': TRADING_CONFIG.get('threshold_optimizer_enabled', False),
+        'threshold_min': TRADING_CONFIG.get('threshold_min', 0.45),
+        'threshold_max': TRADING_CONFIG.get('threshold_max', 0.70),
+        'drift_detection_enabled': TRADING_CONFIG.get('drift_detection_enabled', True),
+        # 🔥 ML Config - GradientBoosting Hyperparameters
+        'gb_max_iter': TRADING_CONFIG.get('gb_max_iter', 200),
+        'gb_max_depth': TRADING_CONFIG.get('gb_max_depth', 5),
+        'gb_learning_rate': TRADING_CONFIG.get('gb_learning_rate', 0.1),
+        'gb_l2_regularization': TRADING_CONFIG.get('gb_l2_regularization', 0.5)
     })
 
 
@@ -7048,6 +7667,43 @@ async def export_datalogger_excel(
                     # 🔥 NOUVEAU: Ajouter colonne "data_complete" pour identifier trades complets
                     if 'data_complete' not in headers:
                         headers.append('data_complete')
+
+                # 🔥 PHASE 0: Pour trade_atr_metrics, s'assurer que les colonnes V2 sont présentes
+                if table_name == 'trade_atr_metrics':
+                    v2_columns = [
+                        # Saisonnalité
+                        'session_market', 'hour_utc', 'day_of_week', 'is_weekend',
+                        # Régime V2 Metadata
+                        'regime_detection_method', 'regime_atr_median', 'regime_atr_smoothed',
+                        'regime_confidence', 'regime_stability_minutes',
+                        # ML Régime
+                        'regime_ml_predicted', 'regime_ml_confidence', 'regime_ml_vs_rule_match',
+                        # What-If Régime
+                        'pnl_if_calme_params', 'pnl_if_normal_params', 'pnl_if_volatile_params',
+                        'optimal_regime_retrospective',
+                        # Session multiplier
+                        'session_atr_multiplier'
+                    ]
+                    for col in v2_columns:
+                        if col not in headers:
+                            headers.append(col)
+
+                # 🔥 PHASE 0: Pour scan_logs, ajouter colonnes session/régime
+                if table_name == 'scan_logs':
+                    scan_v2_columns = ['session_market', 'hour_utc', 'regime_at_scan', 'regime_confidence_at_scan']
+                    for col in scan_v2_columns:
+                        if col not in headers:
+                            headers.append(col)
+
+                # 🔥 PHASE 0: Pour market_regime_history, ajouter colonnes V2
+                if table_name == 'market_regime_history':
+                    mrh_v2_columns = [
+                        'detection_method', 'atr_median', 'atr_smoothed', 
+                        'session_market', 'hysteresis_applied', 'outliers_filtered_count', 'ml_confidence'
+                    ]
+                    for col in mrh_v2_columns:
+                        if col not in headers:
+                            headers.append(col)
 
                 if headers:
                     ws.append(headers)

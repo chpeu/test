@@ -16,6 +16,9 @@ import threading
 
 from utils.pricing import get_preferred_price
 
+# 🔥 PHASE 1A: Import session detector pour contexte
+from utils.session_detector import get_current_session, get_day_info
+
 try:
     import psycopg2
     from psycopg2.extras import execute_values, RealDictCursor
@@ -249,7 +252,7 @@ class PostgreSQLDataLogger:
             except Exception as e:
                 logger.error(f"❌ Erreur retour connexion: {e}")
     
-    def _execute_query(self, query: str, params: tuple = None, fetch: bool = False):
+    def _execute_query(self, query: str, params: tuple = None, fetch: bool = False, cursor_factory=None):
         """
         Exécuter une requête SQL
         
@@ -257,6 +260,7 @@ class PostgreSQLDataLogger:
             query: Requête SQL
             params: Paramètres (tuple)
             fetch: Si True, retourner les résultats
+            cursor_factory: Factory de curseur (ex: RealDictCursor)
         
         Returns:
             Résultats si fetch=True, sinon None
@@ -269,7 +273,7 @@ class PostgreSQLDataLogger:
             return None
         
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=cursor_factory)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "SQL exec: %s | params=%s",
@@ -506,7 +510,8 @@ class PostgreSQLDataLogger:
                     config_retest_timeout_seconds, config_use_cooldown,
                     config_cooldown_seconds, config_cooldown_same_symbol,
                     config_use_candle_close, config_candle_close_threshold_seconds,
-                    config_use_momentum_continuity, config_momentum_lookback
+                    config_use_momentum_continuity, config_momentum_lookback,
+                    config_use_micro_confirmation, config_micro_confirmation_delay_ms
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
@@ -524,7 +529,8 @@ class PostgreSQLDataLogger:
                     %s,
                     %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s
                 )
                 RETURNING id
             """
@@ -696,7 +702,9 @@ class PostgreSQLDataLogger:
                 params_snap.get('use_candle_close'),
                 params_snap.get('candle_close_threshold_seconds'),
                 params_snap.get('use_momentum_continuity'),
-                params_snap.get('momentum_lookback')
+                params_snap.get('momentum_lookback'),
+                params_snap.get('use_micro_confirmation'),
+                params_snap.get('micro_confirmation_delay_ms')
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -767,6 +775,77 @@ class PostgreSQLDataLogger:
             
         except Exception as e:
             logger.error(f"❌ Erreur update ml_confidence pour {symbol}: {e}")
+            return False
+    
+    def update_ml_rejection(
+        self,
+        symbol: str,
+        reject_reason: str,
+        reject_category: str,
+        ml_confidence: Optional[float] = None,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        🔥 FIX 15/12: Mettre à jour reject_reason et reject_reason_category après un rejet ML
+        
+        Cette méthode est appelée quand un setup est rejeté par le filtre ML
+        (GradientBoosting, Threshold Optimizer, Calibration, etc.)
+        
+        Args:
+            symbol: Symbole de la paire
+            reject_reason: Raison du rejet (ex: "ML confidence 45.2% < seuil 57%")
+            reject_category: Catégorie du rejet (ex: "ml_gb_confidence", "ml_threshold", "ml_calibration")
+            ml_confidence: Confiance ML en pourcentage (optionnel)
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
+        
+        Returns:
+            True si mise à jour réussie, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            # Construire la requête selon si ml_confidence est fourni
+            if ml_confidence is not None:
+                query = """
+                    UPDATE scan_logs 
+                    SET reject_reason = %s,
+                        reject_reason_category = %s,
+                        ml_confidence = %s,
+                        is_opportunity = FALSE
+                    WHERE id = (
+                        SELECT id FROM scan_logs 
+                        WHERE symbol = %s 
+                        AND timestamp > NOW() - INTERVAL '%s minutes'
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    )
+                """
+                params = (reject_reason, reject_category, ml_confidence, symbol, minutes_ago)
+            else:
+                query = """
+                    UPDATE scan_logs 
+                    SET reject_reason = %s,
+                        reject_reason_category = %s,
+                        is_opportunity = FALSE
+                    WHERE id = (
+                        SELECT id FROM scan_logs 
+                        WHERE symbol = %s 
+                        AND timestamp > NOW() - INTERVAL '%s minutes'
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    )
+                """
+                params = (reject_reason, reject_category, symbol, minutes_ago)
+            
+            result = self._execute_query(query, params)
+            if result is not None:
+                logger.info(f"✅ ML rejection logged for {symbol}: {reject_category} ({reject_reason[:50]}...)")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update_ml_rejection pour {symbol}: {e}")
             return False
     
     def get_ml_confidence_for_symbol(
@@ -997,8 +1076,9 @@ class PostgreSQLDataLogger:
         trade_data: Dict[str, Any],
         opportunity_id: Optional[int] = None,
         scan_log_id: Optional[int] = None,
-        session_id: Optional[str] = None
-    ) -> Optional[int]:
+        session_id: Optional[str] = None,
+        trade_id: Optional[str] = None
+    ) -> Optional[str]:
         """
         Logger un trade dans trades
         
@@ -1032,6 +1112,8 @@ class PostgreSQLDataLogger:
             session_id = self.get_or_create_session()
         
         try:
+            provided_trade_id = trade_id
+
             # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
             now = datetime.now(timezone.utc)
             timestamp_iso = now.isoformat()
@@ -1272,6 +1354,8 @@ class PostgreSQLDataLogger:
             config_candle_close_threshold_seconds = _extract_numeric_value(config_snapshot_dict.get('candle_close_threshold_seconds'))
             config_use_momentum_continuity = config_snapshot_dict.get('use_momentum_continuity')
             config_momentum_lookback = _extract_numeric_value(config_snapshot_dict.get('momentum_lookback'))
+            config_use_micro_confirmation = config_snapshot_dict.get('use_micro_confirmation')
+            config_micro_confirmation_delay_ms = _extract_numeric_value(config_snapshot_dict.get('micro_confirmation_delay_ms'))
             
             # 🔥 RSI Final Filter columns
             config_rsi_filter_enabled = config_snapshot_dict.get('rsi_final_filter_enabled', False)
@@ -1289,6 +1373,7 @@ class PostgreSQLDataLogger:
             config_use_cooldown = _normalize_bool(config_use_cooldown)
             config_use_candle_close = _normalize_bool(config_use_candle_close)
             config_use_momentum_continuity = _normalize_bool(config_use_momentum_continuity)
+            config_use_micro_confirmation = _normalize_bool(config_use_micro_confirmation)
             config_rsi_filter_enabled = _normalize_bool(config_rsi_filter_enabled)
             if isinstance(config_use_confluence, str):
                 config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
@@ -1386,6 +1471,8 @@ class PostgreSQLDataLogger:
             adaptive_sizing_multiplier = _extract_numeric_value(trade_data.get('adaptive_sizing_multiplier'))
             
             fields = []
+            if provided_trade_id:
+                fields.append(('id', provided_trade_id))
             fields.extend([
                 ('timestamp_entry', entry_timestamp),
                 ('timestamp_exit', exit_timestamp),
@@ -1569,10 +1656,22 @@ class PostgreSQLDataLogger:
                 ('config_candle_close_threshold_seconds', config_candle_close_threshold_seconds),
                 ('config_use_momentum_continuity', config_use_momentum_continuity),
                 ('config_momentum_lookback', config_momentum_lookback),
+                ('config_use_micro_confirmation', config_use_micro_confirmation),
+                ('config_micro_confirmation_delay_ms', config_micro_confirmation_delay_ms),
                 # 🔥 RSI Final Filter config
                 ('config_rsi_filter_enabled', config_rsi_filter_enabled),
                 ('config_rsi_long_max', config_rsi_long_max),
                 ('config_rsi_short_min', config_rsi_short_min),
+                # 🔥 STAGNATION POSITIVE EXIT config
+                ('config_stagnation_positive_exit_enabled', config_snapshot_dict.get('stagnation_positive_exit_enabled')),
+                ('config_stagnation_positive_threshold', _extract_numeric_value(config_snapshot_dict.get('stagnation_positive_threshold'))),
+                ('config_stagnation_positive_timeout_seconds', config_snapshot_dict.get('stagnation_positive_timeout_seconds')),
+                ('config_stagnation_use_mfe_tracking', config_snapshot_dict.get('stagnation_use_mfe_tracking')),
+                ('config_stagnation_mfe_pullback_pct', _extract_numeric_value(config_snapshot_dict.get('stagnation_mfe_pullback_pct'))),
+                # 🔥 STAGNATION POSITIVE EXIT tracking
+                ('stagnation_mfe_at_exit', _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))),
+                ('stagnation_positive_triggered', trade_data.get('stagnation_positive_triggered', False)),
+                ('stagnation_pullback_at_exit', _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))),
                 ('config_snapshot', config_snapshot),
                 # 🔥 SPRINT 1: Market Regime & Circuit Breaker context
                 ('entry_market_regime', trade_data.get('entry_market_regime')),
@@ -1662,14 +1761,33 @@ class PostgreSQLDataLogger:
 
             columns_sql = ',\n                    '.join(name for name, _ in fields)
             placeholders_sql = ', '.join(['%s'] * len(fields))
-            query = f"""
-                INSERT INTO trades (
-                    {columns_sql}
-                ) VALUES (
-                    {placeholders_sql}
+
+            if provided_trade_id:
+                update_assignments_sql = ',\n                        '.join(
+                    f"{name} = COALESCE(EXCLUDED.{name}, trades.{name})"
+                    for name, _ in fields
+                    if name != 'id'
                 )
-                RETURNING id
-            """
+                update_assignments_sql += ',\n                        updated_at = NOW()'
+                query = f"""
+                    INSERT INTO trades (
+                        {columns_sql}
+                    ) VALUES (
+                        {placeholders_sql}
+                    )
+                    ON CONFLICT (id) DO UPDATE SET
+                        {update_assignments_sql}
+                    RETURNING id
+                """
+            else:
+                query = f"""
+                    INSERT INTO trades (
+                        {columns_sql}
+                    ) VALUES (
+                        {placeholders_sql}
+                    )
+                    RETURNING id
+                """
 
             params = [value for _, value in fields]
 
@@ -1697,16 +1815,17 @@ class PostgreSQLDataLogger:
             
             result = self._execute_query(query, params, fetch=True)
             if result:
-                trade_id = result[0][0]
-                logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {trade_id})")
+                logged_trade_id = result[0][0]
+                logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {logged_trade_id})")
                 
                 # 🔥 ATR OPTIMIZATION: Logger les métriques ATR pour ce trade
-                try:
-                    self.log_trade_atr_metrics(trade_id, trade_data, entry_indicators, config_snapshot_dict)
-                except Exception as atr_err:
-                    logger.warning(f"⚠️ Erreur logging ATR metrics: {atr_err}")
+                if exit_price is not None:
+                    try:
+                        self.log_trade_atr_metrics(logged_trade_id, trade_data, entry_indicators, config_snapshot_dict)
+                    except Exception as atr_err:
+                        logger.warning(f"⚠️ Erreur logging ATR metrics: {atr_err}")
                 
-                return trade_id
+                return logged_trade_id
             return None
             
         except Exception as e:
@@ -1748,6 +1867,19 @@ class PostgreSQLDataLogger:
             param_stagnation_timeout = config_snapshot.get('stagnation_exit_timeout_seconds')
             param_stagnation_min_pnl = _extract_numeric_value(config_snapshot.get('stagnation_exit_min_pnl_to_stay'))
             
+            # 🎯 Stagnation Positive config
+            param_stagnation_positive_enabled = config_snapshot.get('stagnation_positive_exit_enabled', False)
+            param_stagnation_positive_threshold = _extract_numeric_value(config_snapshot.get('stagnation_positive_threshold'))
+            param_stagnation_positive_timeout = config_snapshot.get('stagnation_positive_timeout_seconds')
+            
+            # 🎯 Trailing MFE config
+            param_trailing_mfe_enabled = config_snapshot.get('trailing_mfe_enabled', False)
+            param_trailing_mfe_trigger_pct = _extract_numeric_value(config_snapshot.get('trailing_mfe_trigger_pct'))
+            
+            # 🎯 Stagnation MFE Protection config
+            param_stagnation_mfe_tracking = config_snapshot.get('stagnation_use_mfe_tracking', False)
+            param_stagnation_mfe_pullback_pct = _extract_numeric_value(config_snapshot.get('stagnation_mfe_pullback_pct'))
+            
             # Extraire le contexte ATR à l'entrée
             entry_atr_1m = _extract_numeric_value(entry_indicators.get('atr_1m'))
             entry_atr_5m = _extract_numeric_value(entry_indicators.get('atr_5m'))
@@ -1784,8 +1916,15 @@ class PostgreSQLDataLogger:
             calculated_tp_pct = None
             if entry_price and sl_price:
                 calculated_sl_pct = abs(entry_price - sl_price) / entry_price * 100
+                # 🔥 FIX: Si calculated_sl_pct = 0 (sl_price == entry_price), c'est un bug de données
+                # Dans ce cas, on laisse NULL pour ne pas fausser les analyses
+                if calculated_sl_pct < 0.001:  # Moins de 0.001% = essentiellement 0
+                    calculated_sl_pct = None
             if entry_price and tp_price:
                 calculated_tp_pct = abs(tp_price - entry_price) / entry_price * 100
+                # 🔥 FIX: Même logique pour TP
+                if calculated_tp_pct < 0.001:
+                    calculated_tp_pct = None
             
             calculated_be_trigger_pnl_pct = None
             if param_be_atr_mult and entry_atr_pct_1m:
@@ -1819,6 +1958,17 @@ class PostgreSQLDataLogger:
             stagnation_duration_seconds = trade_data.get('stagnation_duration_seconds')
             stagnation_pnl_at_exit = _extract_numeric_value(trade_data.get('stagnation_pnl_at_exit'))
             
+            # 🎯 Trailing MFE data
+            trailing_mfe_triggered = trade_data.get('trailing_mfe_triggered', False)
+            trailing_mfe_triggered_at = trade_data.get('trailing_mfe_triggered_at')
+            trailing_mfe_trigger_pnl_pct = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_pnl_pct'))
+            trailing_mfe_trigger_price = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_price'))
+            
+            # 🎯 Stagnation Positive/MFE Protect metrics
+            stagnation_positive_triggered = trade_data.get('stagnation_positive_triggered', False)
+            stagnation_mfe_at_exit = _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))
+            stagnation_pullback_at_exit = _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))
+            
             # Calculer SL MEXC dynamique (SL ATR × 1.1)
             sl_mexc_margin = 1.1
             sl_mexc_pct = None
@@ -1834,8 +1984,41 @@ class PostgreSQLDataLogger:
                 else:
                     sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
             
+            # 🔥 FIX: Déterminer si le SL MEXC a été touché (basé sur exit_reason)
+            exit_reason = trade_data.get('reason') or trade_data.get('exit_reason')
+            sl_mexc_touched = exit_reason == 'SL_EXCHANGE'
+            sl_mexc_touched_at = datetime.now() if sl_mexc_touched else None
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # 🔥 PHASE 1A: Contexte Session/Heure
+            # ═══════════════════════════════════════════════════════════════════
+            
+            session_info = get_current_session()
+            day_info = get_day_info()
+            
+            session_market = session_info['name']
+            hour_utc = day_info['hour_utc']
+            day_of_week = day_info['day_of_week']
+            is_weekend = day_info['is_weekend']
+            session_atr_multiplier = session_info['atr_multiplier']
+            
+            # Méthode de détection (V1 par défaut)
+            regime_detection_method = 'RULE_BASED_V1'
+            
+            # Calculer stabilité régime
+            regime_stability_minutes = None
+            regime_confidence = None
+            try:
+                from core.market_regime_selector import get_regime_selector
+                rs = get_regime_selector()
+                if rs and hasattr(rs, 'regime_since') and rs.regime_since:
+                    delta = datetime.now() - rs.regime_since
+                    regime_stability_minutes = int(delta.total_seconds() / 60)
+            except Exception:
+                pass
+            
             # Construire la requête
-            # 🔥 PHASE 0.5 Extended: Ajout BE, trailing, stagnation details
+            # 🔥 PHASE 0.5 Extended + PHASE 1A: Ajout BE, trailing, stagnation, session/heure
             query = """
                 INSERT INTO trade_atr_metrics (
                     trade_id,
@@ -1853,9 +2036,29 @@ class PostgreSQLDataLogger:
                     max_price_reached, min_price_reached,
                     time_to_max_pnl_seconds, time_to_min_pnl_seconds,
                     stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
-                    sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used
+                    -- Trailing MFE
+                    trailing_mfe_triggered, trailing_mfe_triggered_at, trailing_mfe_trigger_pnl_pct, trailing_mfe_trigger_price,
+                    -- Exit config params (Stagnation Positive, Trailing MFE, MFE Protection)
+                    param_stagnation_positive_enabled, param_stagnation_positive_threshold, param_stagnation_positive_timeout,
+                    param_trailing_mfe_enabled, param_trailing_mfe_trigger_pct,
+                    param_stagnation_mfe_tracking, param_stagnation_mfe_pullback_pct,
+                    stagnation_positive_triggered, stagnation_mfe_at_exit, stagnation_pullback_at_exit,
+                    sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used,
+                    sl_mexc_touched, sl_mexc_touched_at,
+                    -- PHASE 1A: Session/Heure context
+                    session_market, hour_utc, day_of_week, is_weekend,
+                    regime_detection_method, regime_stability_minutes, regime_confidence,
+                    session_atr_multiplier
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    -- Trailing MFE values
+                    %s, %s, %s, %s,
+                    -- Exit config params values
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    -- SL MEXC values
+                    %s, %s, %s, %s, %s,
+                    -- PHASE 1A values
+                    %s, %s, %s, %s, %s, %s, %s, %s
                 ) RETURNING id
             """
             
@@ -1875,7 +2078,20 @@ class PostgreSQLDataLogger:
                 max_price_reached, min_price_reached,
                 time_to_max_pnl, time_to_min_pnl,
                 stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
-                sl_mexc_price, sl_mexc_pct, sl_mexc_margin
+                # Trailing MFE values
+                trailing_mfe_triggered, trailing_mfe_triggered_at, trailing_mfe_trigger_pnl_pct, trailing_mfe_trigger_price,
+                # Exit config params values
+                param_stagnation_positive_enabled, param_stagnation_positive_threshold, param_stagnation_positive_timeout,
+                param_trailing_mfe_enabled, param_trailing_mfe_trigger_pct,
+                param_stagnation_mfe_tracking, param_stagnation_mfe_pullback_pct,
+                stagnation_positive_triggered, stagnation_mfe_at_exit, stagnation_pullback_at_exit,
+                # SL MEXC values
+                sl_mexc_price, sl_mexc_pct, sl_mexc_margin,
+                sl_mexc_touched, sl_mexc_touched_at,
+                # PHASE 1A values
+                session_market, hour_utc, day_of_week, is_weekend,
+                regime_detection_method, regime_stability_minutes, regime_confidence,
+                session_atr_multiplier
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -1903,6 +2119,21 @@ class PostgreSQLDataLogger:
 
             if not symbol or not isinstance(scan_data, dict):
                 continue
+
+            # 🔥 PHASE 1A: Enrichir scan_data avec session/régime si manquant
+            if 'session_market' not in scan_data or scan_data.get('session_market') is None:
+                session_info = get_current_session()
+                scan_data['session_market'] = session_info['name']
+                scan_data['hour_utc'] = session_info['hour_utc']
+            
+            if 'regime_at_scan' not in scan_data or scan_data.get('regime_at_scan') is None:
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    rs = get_regime_selector()
+                    if rs and hasattr(rs, 'current_regime') and rs.current_regime:
+                        scan_data['regime_at_scan'] = rs.current_regime.value
+                except Exception:
+                    pass
 
             market_data = scan_data.get('market_data') or {}
             indicators_1m = scan_data.get('indicators_1m') or {}
@@ -2069,10 +2300,18 @@ class PostgreSQLDataLogger:
                 params_snap.get('candle_close_threshold_seconds'),
                 params_snap.get('use_momentum_continuity'),
                 params_snap.get('momentum_lookback'),
+                # 🔥 OPT #20: Micro-confirmation
+                params_snap.get('use_micro_confirmation'),
+                params_snap.get('micro_confirmation_delay_ms'),
                 # 🔥 SPRINT 1: Market Regime context
                 scan_data.get('market_regime'),
                 scan_data.get('market_regime_avg_atr'),
-                scan_data.get('market_regime_avg_adx')
+                scan_data.get('market_regime_avg_adx'),
+                # 🔥 PHASE 1A: Session/Heure context
+                scan_data.get('session_market'),
+                scan_data.get('hour_utc'),
+                scan_data.get('regime_at_scan'),
+                scan_data.get('regime_confidence_at_scan')
             )
 
             values.append(value_tuple)
@@ -2134,8 +2373,11 @@ class PostgreSQLDataLogger:
             'config_cooldown_seconds', 'config_cooldown_same_symbol',
             'config_use_candle_close', 'config_candle_close_threshold_seconds',
             'config_use_momentum_continuity', 'config_momentum_lookback',
+            'config_use_micro_confirmation', 'config_micro_confirmation_delay_ms',
             # 🔥 SPRINT 1: Market Regime context
-            'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx'
+            'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx',
+            # 🔥 PHASE 1A: Session/Heure context
+            'session_market', 'hour_utc', 'regime_at_scan', 'regime_confidence_at_scan'
         )
 
         execute_values(
@@ -2201,6 +2443,91 @@ class PostgreSQLDataLogger:
             if conn:
                 conn.rollback()
                 self._return_connection(conn)
+
+    def log_trade_event(
+        self,
+        trade_id: str,
+        event_type: str,
+        price_at_event: float = None,
+        pnl_pct_at_event: float = None,
+        pnl_usdt_at_event: float = None,
+        details: Dict[str, Any] = None
+    ) -> Optional[int]:
+        """
+        Logger un événement pendant un trade (Phase 2H.6)
+        
+        Args:
+            trade_id: UUID du trade
+            event_type: Type d'événement (ENTRY, BE_TRIGGERED, TRAILING_ACTIVATED, etc.)
+            price_at_event: Prix au moment de l'événement
+            pnl_pct_at_event: PnL% au moment de l'événement
+            pnl_usdt_at_event: PnL USDT au moment de l'événement
+            details: Détails supplémentaires en JSON
+            
+        Returns:
+            ID de l'événement ou None si erreur
+        """
+        if not self.enabled:
+            return None
+        
+        # Valider event_type
+        valid_types = [
+            'ENTRY', 'BE_TRIGGERED', 'TRAILING_ACTIVATED', 'TRAILING_SL_MOVED',
+            'MAX_PNL_REACHED', 'MIN_PNL_REACHED', 'PARTIAL_TP', 'TP_ESCALIER_LEVEL',
+            'STAGNATION_DETECTED', 'STAGNATION_MFE_PROTECT', 'TRAILING_MFE_TRIGGERED',
+            'SL_EXCHANGE_SET', 'EXIT'
+        ]
+        if event_type not in valid_types:
+            logger.warning(f"⚠️ Event type invalide: {event_type}")
+            return None
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            if not conn:
+                return None
+            
+            cursor = conn.cursor()
+            
+            # Sérialiser details en JSON
+            details_json = json.dumps(details) if details else None
+            
+            query = """
+                INSERT INTO trade_events (
+                    trade_id, event_type, event_timestamp,
+                    price_at_event, pnl_pct_at_event, pnl_usdt_at_event, details
+                ) VALUES (%s, %s, NOW(), %s, %s, %s, %s)
+                RETURNING id
+            """
+            
+            cursor.execute(query, (
+                trade_id,
+                event_type,
+                price_at_event,
+                pnl_pct_at_event,
+                pnl_usdt_at_event,
+                details_json
+            ))
+            
+            result = cursor.fetchone()
+            event_id = result[0] if result else None
+            
+            conn.commit()
+            cursor.close()
+            self._return_connection(conn)
+            
+            logger.debug(f"📋 Trade event logged: {event_type} for trade {str(trade_id)[:8]}...")
+            return event_id
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur log_trade_event ({event_type}): {e}")
+            if conn:
+                try:
+                    conn.rollback()
+                    self._return_connection(conn)
+                except:
+                    pass
+            return None
 
     def close(self):
         """

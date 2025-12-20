@@ -143,6 +143,10 @@ pylint trade_cursor_py/
 ## 📝 DOCUMENTATION
 
 - `README.md` - Ce fichier
+- `docs/MASTER_IMPLEMENTATION_PLAN.md` - Plan global (Régime V2 / ATR Opt / ML)
+- `docs/PHASE_1_IMPLEMENTATION.md` - Détails implémentation Phase 1 (logging + Régime V2)
+- `docs/GUIDE_VERIFICATION_VARIABLES.md` - Méthodes de vérification des variables (API/WebSocket/config)
+- `verification/verify_regime_v2_params.py` - Script de vérification du comportement Régime V2 (lissage/hystérésis/min-duration)
 - `FINAL_RESUME_MIGRATION.md` - Résumé migration
 - `STATUS_FINAL_MIGRATION.md` - Statut détaillé
 - `RESUME_JOUR_X.md` - Résumés par jour
@@ -152,10 +156,10 @@ pylint trade_cursor_py/
 ## 🔄 MIGRATION
 
 **Du HTML/JS vers Python/Flask**:
-- ✅ Architecture modulaire
-- ✅ Code propre (0 erreurs)
-- ✅ Tests unitaires
-- ✅ Interface identique
+- Architecture modulaire
+- Code propre (0 erreurs)
+- Tests unitaires
+- Interface identique
 
 **Avantages Python**:
 - Pas de CORS/proxies
@@ -197,7 +201,7 @@ Pour questions ou problèmes, voir:
 
 ## 🎉 CONCLUSION
 
-**Migration réussie!** ✅
+**Migration réussie!** 
 
 Vous avez maintenant:
 1. Version HTML v5.1 (fonctionnelle)
@@ -205,8 +209,8 @@ Vous avez maintenant:
 3. **Interface identique dans les deux**
 4. Architecture évolutive
 
-**Bravo pour cette migration! 🚀**
+**Bravo pour cette migration! **
 
 ---
 
-**Dernière mise à jour**: 2 novembre 2025
+**Dernière mise à jour**: 12 décembre 2025
