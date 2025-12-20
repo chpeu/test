@@ -26,7 +26,11 @@ async def test_fetch_with_retry_converts_exchange_error_510():
 
 @pytest.mark.asyncio
 async def test_circuit_breaker_handles_exchange_error_510():
-    """Test que le Circuit Breaker gère ExchangeError 510 comme WARNING"""
+    """Test que le Circuit Breaker gère ExchangeError 510 comme WARNING
+    
+    Flow: ExchangeError 510 -> fetch_with_retry converts to RateLimitError -> 
+          circuit breaker catches RateLimitError and logs warning
+    """
     
     cb = AdaptiveCircuitBreaker()
     
@@ -42,14 +46,16 @@ async def test_circuit_breaker_handles_exchange_error_510():
     with patch('api.reliability.logger') as mock_logger, \
          patch('api.reliability.DEBUG_ENABLED', True):
         
-        # Should raise RateLimitError (converted from ExchangeError)
-        with pytest.raises(RateLimitError):
-            await cb.call_async(mock_func)
+        # In production: circuit_breaker wraps fetch_with_retry which converts ExchangeError to RateLimitError
+        # So circuit breaker sees RateLimitError, not ExchangeError
+        with pytest.raises(RetryError):  # fetch_with_retry raises RetryError after exhausting retries
+            await cb.call_async(fetch_with_retry, mock_func)
             
         # Vérifier qu'on a un WARNING et pas un ERROR
         assert mock_logger.warning.called
         assert not mock_logger.error.called
         
-        args, _ = mock_logger.warning.call_args
-        # Circuit breaker should log "Rate limit atteint" for RateLimitError
-        assert "Rate limit atteint" in args[0]
+        # Should have both warnings: from fetch_with_retry conversion AND from circuit breaker
+        warning_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
+        # Circuit breaker should log "Rate limit atteint" when catching RateLimitError
+        assert any("Rate limit atteint" in msg for msg in warning_calls)
