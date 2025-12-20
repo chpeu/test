@@ -19,6 +19,17 @@ from api.mexc import get_mexc_client
 from config import TRADING_CONFIG, DEBUG_ENABLED
 from utils.logger import get_logger
 
+# 🔥 SPRINT 1.2: Exception Handling System
+try:
+    from core.exceptions import (
+        NetworkError, APIError, RateLimitError, MarketDataError,
+        PriceDataError, InsufficientDataError,
+        TradeCursorError
+    )
+except ImportError:
+    # Fallback si exceptions custom non disponibles
+    NetworkError = APIError = RateLimitError = MarketDataError = Exception
+    PriceDataError = InsufficientDataError = TradeCursorError = Exception
 
 logger = get_logger()
 
@@ -178,9 +189,54 @@ class ScalabilityScanner:
 
             return result
 
-        except Exception as e:
+        # 🔥 SPRINT 1.2: Spread calculation - Distinguer erreurs réseau, API, données
+        except NetworkError as e:
+            # Erreur réseau - fallback sur cache si disponible
             if DEBUG_ENABLED:
-                logger.error(f"Erreur spread pour {symbol}: {e}")
+                logger.warning(f"⚠️ Erreur réseau spread {symbol}: {e}")
+            if cache_entry and cache_age < cache_ttl:
+                return cache_entry
+            return {
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'note': 'Erreur réseau'
+            }
+        except APIError as e:
+            # Erreur API (symbole invalide, rate limit)
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur API spread {symbol}: {e}")
+            # Pas de fallback cache pour erreurs API
+            return {
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'note': 'Erreur API'
+            }
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ Données marché invalides spread {symbol}: {e}")
+            # 🔥 OPT #7: fallback sur cache si disponible
+            if cache_entry and cache_age < cache_ttl:
+                return cache_entry
+            return {
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'note': 'Données invalides'
+            }
+        except Exception as e:
+            # Erreur inattendue
+            logger.error(f"❌ Erreur inattendue spread {symbol}: {type(e).__name__}: {e}")
             # 🔥 OPT #7: fallback sur cache si disponible
             if cache_entry and cache_age < cache_ttl:
                 return cache_entry
@@ -321,10 +377,19 @@ class ScalabilityScanner:
             
             # DX et ADX
             dx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100 if (plus_di + minus_di) > 0 else 0
-            
+
             return round(dx, 2)
-            
-        except Exception:
+
+        # 🔥 SPRINT 1.2: DX calculation - Failsafe, return 0.0 sur toute erreur
+        except (ValueError, ZeroDivisionError, IndexError) as e:
+            # Erreur calcul (données insuffisantes, division par zéro)
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur calcul DX: {type(e).__name__}: {e}")
+            return 0.0
+        except Exception as e:
+            # Erreur inattendue
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ Erreur inattendue calcul DX: {type(e).__name__}: {e}")
             return 0.0
 
     def calculate_orderflow_metrics(
@@ -506,10 +571,35 @@ class ScalabilityScanner:
             }
             
             return pair
-            
-        except Exception as e:
+
+        # 🔥 SPRINT 1.2: Scan pair - Distinguer erreurs données, réseau, calcul
+        except NetworkError as e:
+            # Erreur réseau (timeout fetch ticker/ohlcv)
             if DEBUG_ENABLED:
-                logger.error(f"Erreur scan pair {symbol}: {e}")
+                logger.warning(f"⚠️ Erreur réseau scan pair {symbol}: {e}")
+            return None
+        except APIError as e:
+            # Erreur API (symbole invalide, rate limit)
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur API scan pair {symbol}: {e}")
+            return None
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ Données marché invalides scan pair {symbol}: {e}")
+            return None
+        except InsufficientDataError as e:
+            # Données insuffisantes (pas assez de bougies)
+            if DEBUG_ENABLED:
+                logger.debug(f"Données insuffisantes scan pair {symbol}: {e}")
+            return None
+        except (ValueError, ZeroDivisionError, KeyError) as e:
+            # Erreur calcul métriques
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur calcul scan pair {symbol}: {type(e).__name__}: {e}")
+            return None
+        except Exception as e:
+            # Erreur inattendue
+            logger.error(f"❌ Erreur inattendue scan pair {symbol}: {type(e).__name__}: {e}", exc_info=True)
             return None
     
     async def fetch_funding_rate(self, symbol: str) -> float:
@@ -529,7 +619,21 @@ class ScalabilityScanner:
                 # Convertir en pourcentage
                 return float(funding['fundingRate']) * 100
             return 0.0
-        except Exception:
+        # 🔥 SPRINT 1.2: Funding rate - Failsafe, return 0.0 sur toute erreur
+        except NetworkError as e:
+            # Erreur réseau - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur réseau funding rate: {e}")
+            return 0.0
+        except APIError as e:
+            # Erreur API - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur API funding rate: {e}")
+            return 0.0
+        except Exception as e:
+            # Erreur inattendue - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur inattendue funding rate: {type(e).__name__}: {e}")
             return 0.0
 
     async def fetch_ticker_volume_24h(self, symbol: str) -> float:
@@ -547,7 +651,21 @@ class ScalabilityScanner:
             if ticker and 'quoteVolume' in ticker:
                 return float(ticker['quoteVolume'] or 0)
             return 0.0
-        except Exception:
+        # 🔥 SPRINT 1.2: Volume 24h - Failsafe, return 0.0 sur toute erreur
+        except NetworkError as e:
+            # Erreur réseau - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur réseau volume 24h: {e}")
+            return 0.0
+        except APIError as e:
+            # Erreur API - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur API volume 24h: {e}")
+            return 0.0
+        except Exception as e:
+            # Erreur inattendue - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur inattendue volume 24h: {type(e).__name__}: {e}")
             return 0.0
 
     async def scan_top_pairs(self, n: int = 20) -> List[Dict]:
@@ -729,10 +847,30 @@ class ScalabilityScanner:
                 logger.debug(f"🏆 Top 5: {top5_info}")
             
             return top_pairs
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur scanner scalabilite: {e}")
+
+        # 🔥 SPRINT 1.2: Scan scalability top-level - Distinguer toutes erreurs
+        except NetworkError as e:
+            # Erreur réseau (timeout fetch tickers/ohlcv)
+            logger.error(f"❌ Erreur réseau scanner scalabilite: {e}")
+            return []
+        except APIError as e:
+            # Erreur API MEXC (rate limit, endpoint error)
+            logger.error(f"❌ Erreur API scanner scalabilite: {e}")
+            return []
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ Données marché invalides scanner scalabilite: {e}")
+            return []
+        except (ValueError, ZeroDivisionError, KeyError) as e:
+            # Erreur calcul métriques
             import traceback
+            logger.error(f"❌ Erreur calcul scanner scalabilite: {type(e).__name__}: {e}")
+            logger.error(traceback.format_exc())
+            return []
+        except Exception as e:
+            # Erreur totalement inattendue
+            import traceback
+            logger.error(f"❌ Erreur inattendue scanner scalabilite: {type(e).__name__}: {e}", exc_info=True)
             logger.error(traceback.format_exc())
             return []
         finally:
