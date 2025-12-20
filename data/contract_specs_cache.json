@@ -1,5 +1,5 @@
 {
-  "timestamp": 1766254169.4099736,
+  "timestamp": 1766255068.0155766,
   "specs": {
     "JELLYJELLY_USDT": {
       "symbol": "JELLYJELLY_USDT",
@@ -330,6 +330,16 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "PROMPT_USDT": {
+      "symbol": "PROMPT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 32000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }

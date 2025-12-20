@@ -195,7 +195,8 @@ _adaptive_circuit_breaker = AdaptiveCircuitBreaker(
         min=RETRY_CONFIG['wait_min'],
         max=RETRY_CONFIG['wait_max']
     ),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError, asyncio.TimeoutError, NetworkError, RateLimitError))
+    retry=retry_if_exception_type((ConnectionError, TimeoutError, asyncio.TimeoutError, NetworkError, RateLimitError)),
+    reraise=True
 )
 async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
     """

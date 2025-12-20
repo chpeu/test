@@ -3,8 +3,7 @@ import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch
 from tenacity import RetryError
-from api.reliability import fetch_with_retry, AdaptiveCircuitBreaker, RateLimitError
-from ccxt.base.errors import ExchangeError
+from api.reliability import fetch_with_retry, AdaptiveCircuitBreaker, RateLimitError, ExchangeError
 
 @pytest.mark.asyncio
 async def test_fetch_with_retry_converts_exchange_error_510():
@@ -15,14 +14,12 @@ async def test_fetch_with_retry_converts_exchange_error_510():
     
     # Patcher DEBUG_ENABLED pour s'assurer que les logs passent
     with patch('api.reliability.DEBUG_ENABLED', True):
-        # Doit lever RetryError (tenacity) contenant RateLimitError
-        with pytest.raises(RetryError) as excinfo:
+        # Doit lever RateLimitError (reraise=True)
+        with pytest.raises(RateLimitError) as excinfo:
             await fetch_with_retry(mock_func)
         
-        # Vérifier que la cause finale est bien notre RateLimitError convertie
-        last_exception = excinfo.value.last_attempt.exception()
-        assert isinstance(last_exception, RateLimitError)
-        assert "Exchange Rate Limit" in str(last_exception)
+        # Vérifier que l'exception est bien celle convertie
+        assert "Exchange Rate Limit" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_circuit_breaker_handles_exchange_error_510():
@@ -47,8 +44,8 @@ async def test_circuit_breaker_handles_exchange_error_510():
          patch('api.reliability.DEBUG_ENABLED', True):
         
         # In production: circuit_breaker wraps fetch_with_retry which converts ExchangeError to RateLimitError
-        # So circuit breaker sees RateLimitError, not ExchangeError
-        with pytest.raises(RetryError):  # fetch_with_retry raises RetryError after exhausting retries
+        # With reraise=True, fetch_with_retry raises RateLimitError
+        with pytest.raises(RateLimitError):
             await cb.call_async(fetch_with_retry, mock_func)
             
         # Vérifier qu'on a un WARNING et pas un ERROR
