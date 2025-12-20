@@ -71,6 +71,35 @@ except ImportError as e:
     api_router = None
     set_analytics_db = None
 
+# 🔥 REFACTORING SPRINT 1.1: Exception Handling System
+try:
+    from core.exceptions import (
+        TradeCursorError,
+        ConfigurationError,
+        ValidationError,
+        MarketDataError,
+        PriceDataError,
+        PositionError,
+        OrderExecutionError,
+        APIError,
+        NetworkError,
+        WebSocketError,
+        DatabaseError,
+        NotificationError,
+    )
+    from core.error_handling import (
+        handle_errors,
+        log_errors,
+        suppress_errors,
+        ErrorContext,
+    )
+except ImportError as e:
+    logging.warning(f"Exception handling system (Sprint 1.1): {e}")
+    # Fallback to standard exceptions
+    TradeCursorError = Exception
+    ConfigurationError = Exception
+    handle_errors = lambda **kwargs: lambda f: f
+
 # Configuration logging
 logging.basicConfig(
     level=logging.INFO,
@@ -134,17 +163,36 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         import time
         start_time = time.time()
         path = request.url.path
-        
+
         logger.info(f"📥 Requête entrante: {request.method} {path}")
-        
+
         try:
             response = await call_next(request)
             process_time = time.time() - start_time
             logger.info(f"📤 Réponse: {request.method} {path} - {response.status_code} ({process_time:.3f}s)")
             return response
-        except Exception as e:
+        except WebSocketDisconnect:
+            # WebSocket disconnect is normal, not an error
             process_time = time.time() - start_time
-            logger.error(f"❌ Exception dans middleware pour {path}: {e} ({process_time:.3f}s)", exc_info=True)
+            logger.debug(f"🔌 WebSocket déconnecté: {path} ({process_time:.3f}s)")
+            raise
+        except TradeCursorError as e:
+            # Application-specific errors with context
+            process_time = time.time() - start_time
+            logger.error(
+                f"❌ Erreur application dans middleware pour {path}: {type(e).__name__}: {e} ({process_time:.3f}s)",
+                exc_info=True,
+                extra={'path': path, 'method': request.method, 'context': getattr(e, 'context', {})}
+            )
+            raise
+        except Exception as e:
+            # Unexpected errors (framework, system, etc.)
+            process_time = time.time() - start_time
+            logger.critical(
+                f"❌ ERREUR INATTENDUE dans middleware pour {path}: {type(e).__name__}: {e} ({process_time:.3f}s)",
+                exc_info=True,
+                extra={'path': path, 'method': request.method}
+            )
             raise
 
 # Middleware sera attaché APRES la création de app (ligne ~280)
@@ -383,9 +431,22 @@ try:
     register_websocket_commands(ws_manager)
     logger.info("✅ Commandes WebSocket live trading enregistrées")
 except (ImportError, AttributeError, TypeError) as e:
+    # Dépendances manquantes ou configuration incorrecte (non-critique)
     logger.warning(f"⚠️ Impossible d'enregistrer commandes WebSocket live trading: {e}")
+except ConfigurationError as e:
+    # Configuration WebSocket invalide
+    logger.error(f"❌ Configuration WebSocket invalide: {e}", exc_info=True)
+    raise
+except WebSocketError as e:
+    # Erreur WebSocket (connection, manager init, etc.)
+    logger.error(f"❌ Erreur WebSocket lors de l'enregistrement: {e}", exc_info=True)
+    raise
 except Exception as e:
-    logger.error(f"❌ Erreur inattendue lors de l'enregistrement WebSocket: {e}", exc_info=True)
+    # Erreur système inattendue
+    logger.critical(
+        f"❌ ERREUR CRITIQUE lors de l'enregistrement WebSocket: {type(e).__name__}: {e}",
+        exc_info=True
+    )
     raise
 
 from contextlib import asynccontextmanager
@@ -487,11 +548,23 @@ async def lifespan(app: FastAPI):
                     pg_datalogger.close()
                     logger.info("✅ PostgreSQL DataLogger fermé proprement")
             except ImportError as e:
+                # Module optionnel non disponible (normal)
                 logger.debug(f"Module PostgreSQL DataLogger non disponible: {e}")
-            except (OSError, IOError, ConnectionError) as e:
+            except DatabaseConnectionError as e:
+                # Erreur de connexion DB (non-bloquant au shutdown)
+                logger.warning(f"⚠️ Erreur connexion DB lors fermeture PostgreSQL DataLogger: {e}")
+            except DatabaseError as e:
+                # Autres erreurs DB (non-bloquant au shutdown)
+                logger.warning(f"⚠️ Erreur DB lors fermeture PostgreSQL DataLogger: {e}")
+            except (OSError, IOError) as e:
+                # Erreurs I/O (fichier, permissions)
                 logger.warning(f"⚠️ Erreur I/O fermeture PostgreSQL DataLogger: {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur inattendue fermeture PostgreSQL DataLogger: {e}", exc_info=True)
+                # Erreur inattendue (non-bloquant au shutdown)
+                logger.warning(
+                    f"⚠️ Erreur inattendue fermeture PostgreSQL DataLogger: {type(e).__name__}: {e}",
+                    exc_info=True
+                )
 
             try:
                 from api.mexc import get_mexc_client
@@ -500,14 +573,30 @@ async def lifespan(app: FastAPI):
                     await mexc_client.close()
                     logger.info("✅ MEXC client fermé proprement")
             except ImportError as e:
+                # Module optionnel non disponible (normal)
                 logger.debug(f"Module MEXC non disponible: {e}")
-            except (ConnectionError, TimeoutError) as e:
+            except NetworkError as e:
+                # Erreur réseau (non-bloquant au shutdown)
                 logger.warning(f"⚠️ Erreur réseau fermeture MEXC client: {e}")
+            except APIError as e:
+                # Erreur API MEXC (non-bloquant au shutdown)
+                logger.warning(f"⚠️ Erreur API fermeture MEXC client: {e}")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur inattendue fermeture MEXC client: {e}", exc_info=True)
+                # Erreur inattendue (non-bloquant au shutdown)
+                logger.warning(
+                    f"⚠️ Erreur inattendue fermeture MEXC client: {type(e).__name__}: {e}",
+                    exc_info=True
+                )
 
+        except TradeCursorError as e:
+            # Erreur applicative durant shutdown (non-bloquant)
+            logger.warning(f"⚠️ Erreur application lors du shutdown: {e}", exc_info=True)
         except Exception as e:
-            logger.warning(f"⚠️ Erreur lors du shutdown: {e}")
+            # Erreur système inattendue durant shutdown (non-bloquant)
+            logger.warning(
+                f"⚠️ Erreur système inattendue lors du shutdown: {type(e).__name__}: {e}",
+                exc_info=True
+            )
 
         logger.info("🏁 LIFESPAN EXIT: Contexte fermé")
 
