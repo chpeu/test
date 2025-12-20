@@ -1695,10 +1695,39 @@ async def scanner_loop_callback() -> None:
                                                 if bb_upper_5m and bb_lower_5m and bb_upper_5m != bb_lower_5m:
                                                     gb_features['bb_width_5m'] = bb_upper_5m - bb_lower_5m
                                             
-                                            # 🔥 Timestamp features (session, hour)
+                                            # 🔥 FEATURES SPÉCIFIQUES MODÈLE OPTIMISÉ (5 manquantes critiques)
+                                            
+                                            # 1. EMA trend strength (force de tendance EMA)
+                                            ema9_1m = indicators_1m.get('ema9', 0)
+                                            ema21_1m = indicators_1m.get('ema21', 0)
+                                            if ema21_1m > 0:
+                                                gb_features['ema_trend_strength_1m'] = abs(ema9_1m - ema21_1m) / ema21_1m
+                                            
+                                            ema9_5m = indicators_5m.get('ema9', 0)
+                                            ema21_5m = indicators_5m.get('ema21', 0)
+                                            if ema21_5m > 0:
+                                                gb_features['ema_trend_strength_5m'] = abs(ema9_5m - ema21_5m) / ema21_5m
+                                            
+                                            # 2. RSI change (variation RSI)
+                                            rsi_1m = indicators_1m.get('rsi', 50)
+                                            rsi_prev_1m = indicators_1m.get('rsi_prev', rsi_1m)
+                                            gb_features['rsi_change_1m'] = rsi_1m - rsi_prev_1m
+                                            
+                                            # 3. Delta volume (différentiel volume 1m vs 5m)
+                                            vol_ratio_1m = indicators_1m.get('volume_ratio', 1.0)
+                                            vol_ratio_5m = indicators_5m.get('volume_ratio', 1.0)
+                                            gb_features['delta_volume'] = vol_ratio_1m - vol_ratio_5m
+                                            
+                                            # 4. Momentum divergence (approximation MACD/RSI)
+                                            macd_1m = indicators_1m.get('macd', 0)
+                                            macd_5m = indicators_5m.get('macd', 0)
+                                            rsi_div = abs(rsi_1m - indicators_5m.get('rsi', 50))
+                                            gb_features['momentum_divergence'] = (abs(macd_1m - macd_5m) * 100) + (rsi_div / 100)
+                                            
+                                            # 5. Renommer hour_utc → hour (attendu par modèle)
                                             from datetime import datetime, timezone
                                             now = datetime.now(timezone.utc)
-                                            gb_features['hour_utc'] = now.hour
+                                            gb_features['hour'] = now.hour  # ← Feature exacte attendue
                                             gb_features['session_europe'] = 1 if 8 <= now.hour < 16 else 0
                                             gb_features['session_usa'] = 1 if 13 <= now.hour < 21 else 0
                                             gb_features['high_activity_hours'] = 1 if 13 <= now.hour < 17 else 0

@@ -491,26 +491,26 @@ class PositionManager:
                         
                         logger.warning(f"📊 Exit price pour SL_EXCHANGE: {exit_price}")
                         
-                        # 🔥 FIX 19/12/2025: Récupération directe du prix SL (dans thread worker)
-                        # Plus besoin de ThreadPoolExecutor car _worker est déjà un thread indépendant
+                        # 🔥 FIX 20/12/2025: Récupération prix SL avec timeout strict pour éviter blocage
                         try:
                             if hasattr(self.live_order_manager, 'bypass_client') and self.live_order_manager.bypass_client:
-                                logger.debug(f"🔍 Tentative récupération prix réel SL depuis MEXC...")
+                                logger.debug(f"🔍 Tentative récupération prix réel SL depuis MEXC (timeout 3s)...")
                                 bypass_symbol = symbol.replace('/', '_').replace(':USDT', '')
                                 from trading.live_order_manager_futures import run_async_safely
                                 
                                 try:
+                                    # 🚨 FIX CRITIQUE: Timeout réduit à 3s pour éviter blocage
                                     history_response = run_async_safely(
                                         self.live_order_manager.bypass_client.get_order_history(
                                             bypass_symbol, 
                                             page_num=1, 
-                                            page_size=10,
+                                            page_size=5,  # Réduire pour plus de rapidité
                                             category=2  # SL orders only
                                         ),
-                                        timeout=5.0
+                                        timeout=3.0  # 🔥 TIMEOUT STRICT
                                     )
                                 except Exception as timeout_err:
-                                    logger.warning(f"⏱️ Timeout/Erreur récupération prix SL: {timeout_err}")
+                                    logger.warning(f"⏱️ Timeout/Erreur récupération prix SL (3s): {timeout_err}")
                                     history_response = None
                                 
                                 # Extraire la liste des ordres de la réponse
@@ -538,7 +538,12 @@ class PositionManager:
                         except Exception as fetch_err:
                             logger.warning(f"⚠️ Impossible de récupérer le prix réel SL: {fetch_err}")
                         
-                        # 🔥 FIX: Exécuter close_position directement
+                        # 🚨 SÉCURITÉ: Garantir que exit_price est défini même en cas d'erreur
+                        if 'exit_price' not in locals() or not exit_price:
+                            exit_price = bot_sl if bot_sl and bot_sl > 0 else entry
+                            logger.warning(f"🛡️ Fallback exit_price utilisé: {exit_price}")
+                        
+                        # 🔥 FIX: Exécuter close_position directement - TOUJOURS
                         position_cleaned = False
                         try:
                             logger.info(f"🔒 Fermeture SL_EXCHANGE en cours pour {symbol}...")
@@ -1030,13 +1035,56 @@ class PositionManager:
                     features['totalScore'] = analysis.get('totalScore', 0)
                     features['conditions'] = analysis.get('conditions', 0)
                 
-                # Features temporelles
-                from datetime import datetime
-                now = datetime.utcnow()
-                features['hour_utc'] = now.hour
+                # 🔥 FIX CRITIQUE 20/12/2025: Features temporelles + 5 features manquantes pour GB
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                features['hour'] = now.hour  # ← Synchronisé avec main.py (était hour_utc)
                 features['session_europe'] = 1 if 8 <= now.hour < 16 else 0
                 features['session_usa'] = 1 if 13 <= now.hour < 21 else 0
                 features['high_activity_hours'] = 1 if 13 <= now.hour < 17 else 0
+                
+                # 🔥 FEATURES CRITIQUES MANQUANTES (comme dans main.py)
+                if setup_data and 'indicators_1m' in setup_data and 'indicators_5m' in setup_data:
+                    ind_1m = setup_data['indicators_1m']
+                    ind_5m = setup_data['indicators_5m']
+                    
+                    # 1. EMA trend strength (force de tendance EMA)
+                    ema9_1m = ind_1m.get('ema9', 0)
+                    ema21_1m = ind_1m.get('ema21', 0)
+                    if ema21_1m > 0:
+                        features['ema_trend_strength_1m'] = abs(ema9_1m - ema21_1m) / ema21_1m
+                    else:
+                        features['ema_trend_strength_1m'] = 0.0
+                    
+                    ema9_5m = ind_5m.get('ema9', 0)
+                    ema21_5m = ind_5m.get('ema21', 0)
+                    if ema21_5m > 0:
+                        features['ema_trend_strength_5m'] = abs(ema9_5m - ema21_5m) / ema21_5m
+                    else:
+                        features['ema_trend_strength_5m'] = 0.0
+                    
+                    # 2. RSI change (variation RSI)
+                    rsi_1m = ind_1m.get('rsi', 50)
+                    rsi_prev_1m = features.get('rsi_prev_1m', rsi_1m - 1.0)
+                    features['rsi_change_1m'] = rsi_1m - rsi_prev_1m
+                    
+                    # 3. Delta volume (différentiel volume 1m vs 5m)
+                    vol_ratio_1m = ind_1m.get('volume_ratio', 1.0)
+                    vol_ratio_5m = ind_5m.get('volume_ratio', 1.0)
+                    features['delta_volume'] = vol_ratio_1m - vol_ratio_5m
+                    
+                    # 4. Momentum divergence (approximation MACD/RSI)
+                    macd_1m = ind_1m.get('macd', 0)
+                    macd_5m = ind_5m.get('macd', 0)
+                    rsi_div = abs(rsi_1m - ind_5m.get('rsi', 50))
+                    features['momentum_divergence'] = (abs(macd_1m - macd_5m) * 100) + (rsi_div / 100)
+                else:
+                    # Fallback si pas de setup_data
+                    features['ema_trend_strength_1m'] = 0.0
+                    features['ema_trend_strength_5m'] = 0.0
+                    features['rsi_change_1m'] = 0.0
+                    features['delta_volume'] = 0.0
+                    features['momentum_divergence'] = 0.0
                 
                 logger.warning(f"🌳 Features GB complètes pour {symbol}: {list(features.keys())}")
                 logger.warning(f"🔍 Total features position_manager: {len(features)} features")

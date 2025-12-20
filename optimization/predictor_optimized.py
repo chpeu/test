@@ -70,8 +70,18 @@ class OptimizedPredictor:
         for path in possible_paths:
             if path and Path(path).exists():
                 try:
-                    self.model = joblib.load(path)
-                    logger.info(f"✅ Modèle chargé: {path}")
+                    loaded_data = joblib.load(path)
+                    # Si c'est un dictionnaire avec le modèle sous la clé 'model'
+                    if isinstance(loaded_data, dict) and 'model' in loaded_data:
+                        self.model = loaded_data['model']
+                        logger.info(f"✅ Modèle chargé depuis dict: {path}")
+                        # Extraire les feature_names si disponibles
+                        if 'feature_names' in loaded_data and not self.feature_cols:
+                            self.feature_cols = loaded_data['feature_names']
+                    else:
+                        # Modèle direct (pas en dict)
+                        self.model = loaded_data
+                        logger.info(f"✅ Modèle chargé direct: {path}")
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur chargement {path}: {e}")

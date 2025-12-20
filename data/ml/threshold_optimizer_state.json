@@ -1,5 +1,16 @@
 {
-  "total_updates": 0,
-  "contexts": {},
-  "saved_at": "2025-12-19T07:09:53.391132"
+  "total_updates": 3,
+  "contexts": {
+    "CALME_ASIA_0": {
+      "alpha": 1.0,
+      "beta": 4.0,
+      "total_trades": 3,
+      "total_wins": 0,
+      "total_pnl": -0.26109644824249056,
+      "last_update": "2025-12-20T01:44:20.756322",
+      "exploration_trades": 0,
+      "exploration_wins": 0
+    }
+  },
+  "saved_at": "2025-12-20T01:44:20.756322"
 }

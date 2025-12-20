@@ -1066,15 +1066,46 @@ class LiveOrderManagerFutures:
                         if sl_price <= sl_reference_price:
                             logger.warning(
                                 f"⚠️ SL arrondi trop bas pour SHORT ({sl_price} <= {sl_reference_price}). "
-                                f"Correction forcée vers le haut..."
+                                f"Original: {sl_price_before_round:.6f} → Correction intelligente..."
                             )
-                            # Forcer SL au dessus de l'entry (au moins 1 tick)
-                            # 🔥 FIX: Utiliser ceil pour garantir arrondi vers le haut
+                            # 🚨 FIX CRITIQUE 20/12/2025: Préserver l'intention du SL original
+                            # Au lieu de +1 tick, essayer de retrouver le SL original arrondi correctement
                             import math
                             precision = contract_spec.price_precision or 8
                             multiplier = 10 ** precision
-                            sl_price = math.ceil((sl_reference_price + price_step) * multiplier) / multiplier
-                            logger.warning(f"🔧 SL corrigé (ceil): {sl_price}")
+                            
+                            # Essayer d'abord d'arrondir le SL original vers le haut
+                            if sl_price_before_round > sl_reference_price:
+                                sl_price = math.ceil(sl_price_before_round * multiplier) / multiplier
+                                logger.warning(f"🔧 SL restauré (ceil original): {sl_price}")
+                            else:
+                                # Fallback: entry + minimum 3 ticks pour éviter SL ultra-serrés
+                                min_distance = price_step * 3  # 3 ticks minimum
+                                sl_price = math.ceil((sl_reference_price + min_distance) * multiplier) / multiplier
+                                logger.warning(f"🔧 SL sécurisé (+3 ticks): {sl_price}")
+                
+                # 🚨 VALIDATION CRITIQUE 20/12/2025: SL minimum 0.05% de distance
+                if sl_reference_price > 0:
+                    if direction == 'LONG':
+                        min_sl_distance_pct = 0.0005  # 0.05% minimum
+                        min_sl_price = sl_reference_price * (1 - min_sl_distance_pct)
+                        if sl_price > min_sl_price:
+                            logger.error(
+                                f"🚨 SL ULTRA-SERRÉ détecté: LONG SL={sl_price:.6f} trop proche entry={sl_reference_price:.6f} "
+                                f"(distance={((sl_reference_price - sl_price) / sl_reference_price * 100):.3f}% < 0.05%). "
+                                f"Force SL minimum: {min_sl_price:.6f}"
+                            )
+                            sl_price = min_sl_price
+                    else:  # SHORT
+                        min_sl_distance_pct = 0.0005  # 0.05% minimum
+                        min_sl_price = sl_reference_price * (1 + min_sl_distance_pct)
+                        if sl_price < min_sl_price:
+                            logger.error(
+                                f"🚨 SL ULTRA-SERRÉ détecté: SHORT SL={sl_price:.6f} trop proche entry={sl_reference_price:.6f} "
+                                f"(distance={((sl_price - sl_reference_price) / sl_reference_price * 100):.3f}% < 0.05%). "
+                                f"Force SL minimum: {min_sl_price:.6f}"
+                            )
+                            sl_price = min_sl_price
                 
                 # 🔥 FIX CRITIQUE: Si SL arrondi à 0, arrondir avec précision dynamique
                 if sl_price <= 0:
