@@ -2010,8 +2010,15 @@ async def scanner_loop_callback() -> None:
                                                             setup['_market_regime'] = current_regime
                                                             setup['_trading_session'] = current_session
                                                             setup['_trade_hour'] = current_hour
+                                                        except ImportError as opt_err:
+                                                            # Module threshold optimizer non disponible
+                                                            logger.debug(f"Module threshold optimizer non disponible: {opt_err}")
+                                                        except ConfigurationError as opt_err:
+                                                            # Configuration optimizer invalide
+                                                            logger.warning(f"⚠️ Configuration threshold optimizer invalide: {opt_err}")
                                                         except Exception as opt_err:
-                                                            logger.debug(f"⚠️ Threshold optimizer error, using default: {opt_err}")
+                                                            # Erreur non-critique, utiliser seuil par défaut
+                                                            logger.debug(f"⚠️ Threshold optimizer error, using default: {type(opt_err).__name__}: {opt_err}")
                                                     
                                                     should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
                                                     
@@ -2028,8 +2035,15 @@ async def scanner_loop_callback() -> None:
                                                         pg_logger = get_pg_datalogger()
                                                         if pg_logger and pg_logger.enabled:
                                                             pg_logger.update_ml_confidence(symbol, ml_conf_pct)
+                                                    except ImportError as pg_err:
+                                                        # Module PostgreSQL non disponible
+                                                        logger.debug(f"Module PostgreSQL non disponible: {pg_err}")
+                                                    except DatabaseError as pg_err:
+                                                        # Erreur database lors de la mise à jour
+                                                        logger.debug(f"⚠️ Erreur DB mise à jour ml_confidence: {pg_err}")
                                                     except Exception as pg_err:
-                                                        logger.debug(f"⚠️ Impossible de mettre à jour ml_confidence: {pg_err}")
+                                                        # Erreur inattendue (non-bloquante)
+                                                        logger.debug(f"⚠️ Impossible de mettre à jour ml_confidence: {type(pg_err).__name__}: {pg_err}")
                                                     
                                                     if not should_trade:
                                                         reject_reason = f"ML confidence {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}% [{threshold_source}]"
@@ -2047,8 +2061,15 @@ async def scanner_loop_callback() -> None:
                                                                     reject_category=reject_cat,
                                                                     ml_confidence=ml_conf_pct
                                                                 )
+                                                        except ImportError as ml_rej_err:
+                                                            # Module PostgreSQL non disponible
+                                                            logger.debug(f"Module PostgreSQL non disponible: {ml_rej_err}")
+                                                        except DatabaseError as ml_rej_err:
+                                                            # Erreur database lors du logging du rejet
+                                                            logger.debug(f"⚠️ Erreur DB log ML rejection: {ml_rej_err}")
                                                         except Exception as ml_rej_err:
-                                                            logger.debug(f"⚠️ Erreur log ML rejection: {ml_rej_err}")
+                                                            # Erreur inattendue (non-bloquante)
+                                                            logger.debug(f"⚠️ Erreur log ML rejection: {type(ml_rej_err).__name__}: {ml_rej_err}")
                                                         
                                                         continue  # Passer au setup suivant
                                                     else:
@@ -2057,9 +2078,18 @@ async def scanner_loop_callback() -> None:
                                                     logger.warning(f"⚠️ Modèle GradientBoosting non chargé, trade autorisé par défaut")
                                             else:
                                                 logger.warning(f"⚠️ Pas de features GB pour {symbol}, trade autorisé par défaut")
-                                                
+
+                                        except ImportError as gb_error:
+                                            # Module ML/GradientBoosting non disponible
+                                            logger.debug(f"Module GradientBoosting non disponible: {gb_error}")
+                                            logger.warning(f"⚠️ Trade autorisé sans filtre GB")
+                                        except MarketDataError as gb_error:
+                                            # Erreur données marché (features invalides)
+                                            logger.error(f"❌ Erreur données marché filtre GB: {gb_error}")
+                                            logger.warning(f"⚠️ Trade autorisé malgré erreur données (failsafe)")
                                         except Exception as gb_error:
-                                            logger.error(f"❌ Erreur filtre GradientBoosting: {gb_error}")
+                                            # Erreur inattendue dans le filtre ML
+                                            logger.error(f"❌ Erreur inattendue filtre GradientBoosting: {type(gb_error).__name__}: {gb_error}", exc_info=True)
                                             logger.warning(f"⚠️ Trade autorisé malgré erreur GB (failsafe)")
                                     
                                     # 🔥 SPRINT 1: Appliquer score_boost du Circuit Breaker
@@ -2091,16 +2121,30 @@ async def scanner_loop_callback() -> None:
                                                                 reject_reason=reject_reason_cb,
                                                                 reject_category="circuit_breaker_score_boost"
                                                             )
+                                                    except ImportError as cb_rej_err:
+                                                        # Module PostgreSQL non disponible
+                                                        logger.debug(f"Module PostgreSQL non disponible: {cb_rej_err}")
+                                                    except DatabaseError as cb_rej_err:
+                                                        # Erreur database lors du logging du rejet
+                                                        logger.debug(f"⚠️ Erreur DB log CB rejection: {cb_rej_err}")
                                                     except Exception as cb_rej_err:
-                                                        logger.debug(f"⚠️ Erreur log CB rejection: {cb_rej_err}")
+                                                        # Erreur inattendue (non-bloquante)
+                                                        logger.debug(f"⚠️ Erreur log CB rejection: {type(cb_rej_err).__name__}: {cb_rej_err}")
                                                     
                                                     continue  # Passer au setup suivant
                                                 else:
                                                     logger.info(
                                                         f"✅ {symbol} - Score boost appliqué: {setup_score:.1f} >= {adjusted_min:.1f}"
                                                     )
+                                        except ImportError as cb_err:
+                                            # Module circuit breaker non disponible
+                                            logger.debug(f"Module circuit breaker non disponible: {cb_err}")
+                                        except ConfigurationError as cb_err:
+                                            # Configuration circuit breaker invalide
+                                            logger.warning(f"⚠️ Configuration circuit breaker invalide: {cb_err}")
                                         except Exception as cb_err:
-                                            logger.debug(f"Erreur score_boost CB: {cb_err}")
+                                            # Erreur non-critique lors du score boost
+                                            logger.debug(f"⚠️ Erreur score_boost CB: {type(cb_err).__name__}: {cb_err}")
                                     
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
