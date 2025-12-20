@@ -463,7 +463,12 @@ class WebSocketManager:
             except Exception as e:
                 # Erreur inattendue - reconnexion si running
                 if self._running:
-                    logger.error(f"❌ Erreur inattendue réception WebSocket: {type(e).__name__}: {e}", exc_info=True)
+                    # Déconnexions WebSocket normales (code 1005) en WARNING
+                    if "ConnectionClosedOK" in str(type(e).__name__) and "1005" in str(e):
+                        logger.warning(f"⚠️ WebSocket déconnecté (code 1005) - reconnexion auto")
+                    else:
+                        # Autres erreurs en ERROR avec détails
+                        logger.error(f"❌ Erreur inattendue réception WebSocket: {type(e).__name__}: {e}", exc_info=True)
                     await self._reconnect()
                 break
     

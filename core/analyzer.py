@@ -1340,7 +1340,14 @@ class TechnicalAnalyzer:
                         # Récupérer le prix actuel après le délai
                         try:
                             ticker = await self.client.fetch_ticker(symbol)
-                            current_price = ticker.get('last') or ticker.get('close')
+                            current_price = None
+                            
+                            # 🔥 FIX: Valider que ticker n'est pas None avant d'utiliser .get()
+                            if ticker is None:
+                                logger.warning(f"⚠️ {symbol} Micro-confirmation: ticker None - impossible de valider prix")
+                                # Continuer sans micro-confirmation (ne pas rejeter le trade)
+                            else:
+                                current_price = ticker.get('last') or ticker.get('close')
                             
                             if current_price:
                                 price_change_pct = ((current_price - entry_price) / entry_price) * 100

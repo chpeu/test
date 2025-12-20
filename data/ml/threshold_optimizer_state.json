@@ -1,5 +1,5 @@
 {
-  "total_updates": 10,
+  "total_updates": 13,
   "contexts": {
     "CALME_ASIA_0": {
       "alpha": 1.0,
@@ -30,7 +30,37 @@
       "last_update": "2025-12-20T13:25:50.381689",
       "exploration_trades": 0,
       "exploration_wins": 0
+    },
+    "CALME_US_PREMARKET_3": {
+      "alpha": 2.0,
+      "beta": 1.0,
+      "total_trades": 1,
+      "total_wins": 1,
+      "total_pnl": 0.17520243700522586,
+      "last_update": "2025-12-20T14:13:44.637898",
+      "exploration_trades": 0,
+      "exploration_wins": 0
+    },
+    "NORMAL_US_PREMARKET_3": {
+      "alpha": 1.0,
+      "beta": 1.0,
+      "total_trades": 0,
+      "total_wins": 0,
+      "total_pnl": 0.0,
+      "last_update": null,
+      "exploration_trades": 0,
+      "exploration_wins": 0
+    },
+    "CALME_US_OPEN_3": {
+      "alpha": 2.0,
+      "beta": 2.0,
+      "total_trades": 2,
+      "total_wins": 1,
+      "total_pnl": -0.27749599314323153,
+      "last_update": "2025-12-20T15:46:00.503785",
+      "exploration_trades": 0,
+      "exploration_wins": 0
     }
   },
-  "saved_at": "2025-12-20T13:25:50.381689"
+  "saved_at": "2025-12-20T15:46:00.503785"
 }

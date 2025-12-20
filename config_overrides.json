@@ -175,7 +175,7 @@
   "market_regime_atr_1m_weight": 0.55,
   "market_regime_atr_5m_weight": 0.45,
   "market_regime_min_duration_minutes": 20,
-  "threshold_optimizer_enabled": true,
+  "threshold_optimizer_enabled": false,
   "threshold_min": 0.3,
   "threshold_max": 0.65,
   "drift_detection_enabled": true,

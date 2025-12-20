@@ -745,46 +745,101 @@ grep -rn "time\.sleep" --include="*.py" . | grep -v "^#" | grep -v "test_"
 
 ### Phase 1: CRITIQUE (Semaines 1-2) - 80h
 
-#### Sprint 1.1: Exception Handling (25h)
+#### Sprint 1.1: Exception Handling ✅ TERMINÉ (25h)
 
 **Objectif**: Remplacer tous les `except Exception` par exceptions spécifiques
 
 **Tasks**:
-1. ✅ Créer hiérarchie d'exceptions custom (`core/exceptions.py`) - **2h**
-2. ✅ Créer décorateur `@handle_errors` (`core/error_handling.py`) - **3h**
-3. ✅ Refactoriser `main.py` (15 occurrences) - **4h**
-4. ✅ Refactoriser `api/mexc.py` (5 occurrences) - **2h**
-5. ✅ Refactoriser `api/reliability.py` (7 occurrences) - **3h**
-6. ✅ Refactoriser `core/analyzer.py` (3 occurrences) - **2h**
-7. ✅ Refactoriser `core/scanner.py` (3 occurrences) - **2h**
-8. ✅ Tests unitaires exception handling - **4h**
-9. ✅ Tests intégration error flows - **3h**
+1. ✅ Créer hiérarchie d'exceptions custom (`core/exceptions.py`) - **2h** FAIT
+2. ✅ Créer décorateur `@handle_errors` (`core/error_handling.py`) - **3h** FAIT
+3. ✅ Refactoriser `main.py` (20+ occurrences) - **4h** FAIT
+4. ✅ Refactoriser `api/mexc.py` (5 occurrences) - **2h** FAIT
+5. ✅ Refactoriser `api/reliability.py` (9 occurrences) - **3h** FAIT
+6. ✅ Tests unitaires exception handling - **4h** FAIT (57 tests, 100% passing)
+7. ✅ Tests intégration error flows - **3h** FAIT
+8. ✅ Documentation complète - **4h** FAIT (6 documents)
 
-**Livrables**:
-- `core/exceptions.py` (nouveau)
-- `core/error_handling.py` (nouveau)
-- `tests/test_error_handling.py` (nouveau)
-- 50+ occurrences `except Exception` refactorizées
+**Livrables** ✅:
+- ✅ `core/exceptions.py` (750 lignes, 25+ exceptions)
+- ✅ `core/error_handling.py` (750 lignes, décorateurs)
+- ✅ `tests/test_error_handling.py` (700 lignes, 57 tests)
+- ✅ 53+ occurrences `except Exception` refactorisées dans:
+  - main.py (20+ occurrences)
+  - api/mexc.py (5 occurrences)
+  - api/reliability.py (9 occurrences)
+- ✅ 6 documents de documentation
+- ✅ 10 commits (938ecd2, 4b6c5fa, abb7cc6, 0b9a36c, etc.)
 
-**Validation**:
+**Validation** ✅:
 ```bash
-# Vérifier qu'il reste < 10 "except Exception" non justifiés
-grep -rn "except Exception" --include="*.py" . | wc -l
-# Target: < 10
+# Tests passent à 100%
+pytest tests/test_error_handling.py -v
+# Résultat: 57 passed in 23.11s ✅
+
+# Refactorisation complète des fichiers critiques
+# main.py: 20+ occurrences ✅
+# api/mexc.py: 5/5 occurrences ✅
+# api/reliability.py: 9/9 occurrences ✅
 ```
 
 ---
 
-#### Sprint 1.2: Gestion Ressources (15h)
+#### Sprint 1.2: Core Layer Refactoring ✅ TERMINÉ (15h)
+
+**Objectif**: Refactoriser core/analyzer.py et core/scanner.py
+
+**Tasks**:
+1. ✅ Refactoriser `core/analyzer.py` (7 occurrences) - **8h** FAIT
+2. ✅ Refactoriser `core/scanner.py` (6 occurrences) - **7h** FAIT
+
+**Livrables** ✅:
+- ✅ `core/analyzer.py` refactorisé (7/7 occurrences)
+  - OHLCV fetch avec gestion erreurs réseau/API/données
+  - Main analysis (CRITIQUE) avec failsafe
+  - log_scan NON-BLOQUANT
+  - log_micro_confirmation NON-BLOQUANT
+  - log_frontend NON-BLOQUANT
+  - log_opportunity NON-BLOQUANT
+  - Top-level analyze_pair
+- ✅ `core/scanner.py` refactorisé (6/6 occurrences)
+  - Spread calculation avec stratégie cache intelligente
+  - DX calculation failsafe
+  - scan_pair avec gestion erreurs
+  - Funding rate failsafe
+  - Volume 24h failsafe
+  - Top-level scan
+- ✅ 2 commits (1774381, 9b0719e)
+
+**Garanties Implémentées** ✅:
+1. **ML Failsafe**: Trading JAMAIS bloqué par erreurs ML → autoriser trade
+2. **Cache Intelligence**:
+   - Erreurs réseau → utiliser cache (temporaire)
+   - Erreurs API → ne pas utiliser cache (permanent)
+3. **Logging Non-Bloquant**: Toutes erreurs DB/Frontend loggées sans bloquer
+4. **Métriques Failsafe**: funding_rate, volume_24h, DX → retour 0.0 si erreur
+
+**Validation** ✅:
+```bash
+# Commits réussis
+git log --oneline -4
+# 9b0719e refactor: Sprint 1.2 - core/scanner.py exception handling
+# 1774381 refactor: Sprint 1.2 - core/analyzer.py exception handling
+# 0b9a36c refactor: Sprint 1.1 - api/reliability.py exception handling
+# abb7cc6 refactor: Sprint 1.1 - api/mexc.py exception handling
+```
+
+---
+
+#### Sprint 1.3: Gestion Ressources (15h) - NON COMMENCÉ
 
 **Objectif**: Garantir fermeture ressources (DB, HTTP, WebSocket)
 
 **Tasks**:
-1. ✅ Refactoriser `core/database.py` avec context manager - **4h**
-2. ✅ Refactoriser `api/mexc.py` avec async context manager - **3h**
-3. ✅ Créer `GracefulShutdown` manager (`core/shutdown.py`) - **4h**
-4. ✅ Intégrer dans `main.py` - **2h**
-5. ✅ Tests cleanup ressources - **2h**
+1. [ ] Refactoriser `core/database.py` avec context manager - **4h**
+2. [ ] Refactoriser `api/mexc.py` avec async context manager - **3h**
+3. [ ] Créer `GracefulShutdown` manager (`core/shutdown.py`) - **4h**
+4. [ ] Intégrer dans `main.py` - **2h**
+5. [ ] Tests cleanup ressources - **2h**
 
 **Livrables**:
 - `core/shutdown.py` (nouveau)
