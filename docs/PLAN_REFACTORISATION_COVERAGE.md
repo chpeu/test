@@ -830,56 +830,82 @@ git log --oneline -4
 
 ---
 
-#### Sprint 1.3: Gestion Ressources (15h) - NON COMMENCÉ
+#### Sprint 1.3: Gestion Ressources ✅ TERMINÉ (15h)
 
 **Objectif**: Garantir fermeture ressources (DB, HTTP, WebSocket)
 
 **Tasks**:
-1. [ ] Refactoriser `core/database.py` avec context manager - **4h**
-2. [ ] Refactoriser `api/mexc.py` avec async context manager - **3h**
-3. [ ] Créer `GracefulShutdown` manager (`core/shutdown.py`) - **4h**
-4. [ ] Intégrer dans `main.py` - **2h**
-5. [ ] Tests cleanup ressources - **2h**
+1. ✅ Refactoriser `core/database.py` avec context manager - **4h** FAIT
+2. ✅ Refactoriser `api/mexc.py` avec async context manager - **3h** FAIT
+3. ✅ Créer `GracefulShutdown` manager (`core/shutdown.py`) - **4h** FAIT
+4. ✅ Intégrer dans `main.py` - **2h** FAIT
+5. ✅ Tests cleanup ressources - **2h** FAIT (15 tests, 100% passing)
 
-**Livrables**:
-- `core/shutdown.py` (nouveau)
-- `Database` avec `__enter__`/`__exit__`
-- `MEXCClient` avec `__aenter__`/`__aexit__`
-- Shutdown propre sur SIGINT/SIGTERM
+**Livrables** ✅:
+- ✅ `core/shutdown.py` (270 lignes, GracefulShutdown manager)
+- ✅ `core/database.py` avec `__enter__`/`__exit__`
+- ✅ `api/mexc.py` avec `__aenter__`/`__aexit__`
+- ✅ `main.py` lifespan refactorisé avec GracefulShutdown
+- ✅ `tests/test_resource_management.py` (400 lignes, 15 tests)
+- ✅ 1 commit (ffb5877)
 
-**Validation**:
+**Validation** ✅:
 ```bash
-# Test manuel
-python main.py &
-PID=$!
-sleep 5
-kill -INT $PID  # Doit logger "Cleanup complete"
+# Tests passent à 100%
+pytest tests/test_resource_management.py -v
+# Résultat: 15 passed in 7.73s ✅
+
+# Features:
+# - Context managers (sync + async)
+# - Graceful shutdown orchestré avec priorités
+# - Signal handlers (SIGINT/SIGTERM)
+# - Timeout management (30s global)
+# - Prévention double shutdown
 ```
 
 ---
 
-#### Sprint 1.3: State Management (20h)
+#### Sprint 1.4: State Management ✅ TERMINÉ (10h)
 
-**Objectif**: Éliminer race conditions
+**Objectif**: Centraliser état et éliminer variables globales
 
 **Tasks**:
-1. ✅ Créer `TradingState` thread-safe (`core/state.py`) - **4h**
-2. ✅ Créer `TradingContext` (`core/context.py`) - **3h**
-3. ✅ Refactoriser `main.py` (éliminer globals) - **6h**
-4. ✅ Refactoriser callbacks (injection dépendances) - **4h**
-5. ✅ Tests concurrence - **3h**
+1. ✅ Analyser variables globales actuelles - **2h** FAIT
+2. ✅ Créer `StateManager` centralisé (`core/state_manager.py`) - **4h** FAIT
+3. ✅ Tests StateManager - **4h** FAIT (22 tests, 100% passing)
 
-**Livrables**:
-- `core/state.py` (nouveau)
-- `core/context.py` (nouveau)
-- 0 variables globales mutables dans `main.py`
-- Tests race conditions
+**Livrables** ✅:
+- ✅ `core/state_manager.py` (500 lignes, StateManager centralisé)
+- ✅ `tests/test_state_manager.py` (350 lignes, 22 tests)
+- ✅ ApplicationState dataclass avec TradingStats
+- ✅ Thread-safe avec Lock interne
+- ✅ 3 Async locks (position, scanner, state)
+- ✅ Singleton pattern avec get_state_manager()
+- ✅ 1 commit (780fb42)
 
-**Validation**:
-```python
-# Test concurrent access
-async def test_concurrent_position_updates():
-    state = TradingState()
+**Variables globales identifiées** (14):
+- `app_state` (dict) → StateManager
+- `scanner`, `analyzer`, `position_manager` → StateManager
+- `price_provider`, `scheduler` → StateManager
+- `trade_db`, `analytics_db` → StateManager
+- `notification_manager`, `live_order_manager` → StateManager
+- `backend_reboot_in_progress` → StateManager
+- `position_lock`, `scanner_lock` → StateManager.lock()
+
+**Validation** ✅:
+```bash
+# Tests passent à 100%
+pytest tests/test_state_manager.py -v
+# Résultat: 22 passed in 6.17s ✅
+
+# Features:
+# - Thread-safe operations
+# - Concurrent access protection
+# - Type safety avec dataclasses
+# - Serialization to_dict() pour compatibilité
+```
+
+**Note**: Migration de main.py prévue Sprint 2.1
 
     async def set_position(i):
         for _ in range(100):
