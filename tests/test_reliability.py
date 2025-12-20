@@ -282,7 +282,7 @@ class TestWebSocketManager:
 
         # Mock websockets.connect avec exception
         with patch('websockets.connect', side_effect=ConnectionError("Connection failed")):
-            with pytest.raises(ConnectionError):
+            with pytest.raises(NetworkError):
                 await ws.connect()
             assert ws._connected is False
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Exemple d'intégration MEXC Token Extractor avec le bot de trading
+Exemple d'integration MEXC Token Extractor avec le bot de trading
 """
 
 import json
@@ -12,7 +13,7 @@ class MEXCTokenProvider:
         self.token_file = token_file
     
     def get_current_token(self):
-        """Récupère le token MEXC actuel"""
+        """RÃ©cupÃ¨re le token MEXC actuel"""
         if not os.path.exists(self.token_file):
             print("ATTENTION: Fichier token non trouve. Lancez l'extracteur d'abord.")
             return None
@@ -21,7 +22,7 @@ class MEXCTokenProvider:
             with open(self.token_file, 'r') as f:
                 token_data = json.load(f)
             
-            # Vérifier l'expiration
+            # VÃ©rifier l'expiration
             expires_at = datetime.fromisoformat(token_data['expires_at'])
             if datetime.now() > expires_at:
                 print("ATTENTION: Token expire")
@@ -34,7 +35,7 @@ class MEXCTokenProvider:
             return None
     
     def is_token_valid(self):
-        """Vérifie si le token est valide"""
+        """VÃ©rifie si le token est valide"""
         return self.get_current_token() is not None
 
 # Exemple d'utilisation dans votre bot
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     if token:
         print(f"OK Token disponible: {token[:20]}...")
         
-        # Intégrer dans votre client MEXC
+        # IntÃ©grer dans votre client MEXC
         # mexc_client.set_token(token)
         
     else:

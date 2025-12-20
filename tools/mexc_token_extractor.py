@@ -60,23 +60,73 @@ class MEXCTokenExtractor:
     def extract_cookies_method(self):
         """Méthode 1: Extraction via cookies du navigateur"""
         try:
-            # Essayer Firefox d'abord
-            cookies = browser_cookie3.firefox(domain_name='mexc.com')
-            mexc_cookies = {cookie.name: cookie.value for cookie in cookies}
+            import threading
+            import time
             
-            if not mexc_cookies:
-                # Essayer Chrome
-                cookies = browser_cookie3.chrome(domain_name='mexc.com')
-                mexc_cookies = {cookie.name: cookie.value for cookie in cookies}
+            result = [None]  # Liste pour stocker le résultat
             
-            # Chercher les cookies d'authentification
-            auth_cookies = {}
-            for name, value in mexc_cookies.items():
-                if any(keyword in name.lower() for keyword in ['auth', 'token', 'session', 'jwt']):
-                    auth_cookies[name] = value
+            def extract_with_timeout():
+                try:
+                    print("   Recherche cookies Firefox...")
+                    try:
+                        # Essayer Firefox d'abord
+                        cookies = browser_cookie3.firefox(domain_name='mexc.com')
+                        mexc_cookies = {cookie.name: cookie.value for cookie in cookies}
+                        print(f"   Firefox: {len(mexc_cookies)} cookies trouvés")
+                    except Exception as e:
+                        print(f"   Firefox échoué: {e}")
+                        mexc_cookies = {}
+                    
+                    if not mexc_cookies:
+                        print("   Recherche cookies Chrome...")
+                        try:
+                            # Essayer Chrome
+                            cookies = browser_cookie3.chrome(domain_name='mexc.com')
+                            mexc_cookies = {cookie.name: cookie.value for cookie in cookies}
+                            print(f"   Chrome: {len(mexc_cookies)} cookies trouvés")
+                        except Exception as e:
+                            print(f"   Chrome échoué: {e}")
+                            mexc_cookies = {}
+                    
+                    # Chercher les cookies d'authentification
+                    auth_cookies = {}
+                    for name, value in mexc_cookies.items():
+                        if any(keyword in name.lower() for keyword in ['auth', 'token', 'session', 'jwt']):
+                            auth_cookies[name] = value
+                    
+                    print(f"   Cookies d'auth trouvés: {len(auth_cookies)}")
+                    result[0] = auth_cookies
+                    
+                except Exception as e:
+                    print(f"   Erreur dans thread: {e}")
+                    result[0] = {}
             
+            # Lancer l'extraction dans un thread avec timeout
+            thread = threading.Thread(target=extract_with_timeout)
+            thread.daemon = True
+            thread.start()
+            thread.join(timeout=15)  # 15 secondes max
+            
+            if thread.is_alive():
+                print("   Timeout extraction cookies - passage à Selenium")
+                return None
+            
+            auth_cookies = result[0]
             if auth_cookies:
-                return self.validate_token_from_cookies(auth_cookies)
+                # Essayer validation API d'abord
+                validated_token = self.validate_token_from_cookies(auth_cookies)
+                if validated_token:
+                    return validated_token
+                
+                # Si validation échoue, créer token composite direct
+                print("   Création token composite direct (bypass validation)")
+                token_data = {
+                    'cookies': auth_cookies,
+                    'type': 'cookie_composite_direct',
+                    'extracted_at': datetime.now().isoformat(),
+                    'bypass_validation': True
+                }
+                return json.dumps(token_data)
             
         except Exception as e:
             print(f"Erreur extraction cookies: {e}")
@@ -216,6 +266,8 @@ class MEXCTokenExtractor:
     def validate_token_from_cookies(self, cookies):
         """Valide et convertit les cookies en token utilisable"""
         try:
+            print("   Validation des cookies...")
+            
             # Essayer de faire une requête d'authentification avec les cookies
             session = requests.Session()
             
@@ -223,25 +275,37 @@ class MEXCTokenExtractor:
             for name, value in cookies.items():
                 session.cookies.set(name, value, domain='mexc.com')
             
-            # Test API call
-            response = session.get('https://futures.mexc.com/api/v1/private/account/info')
+            # Test API call avec timeout
+            print("   Test API MEXC...")
+            response = session.get(
+                'https://futures.mexc.com/api/v1/private/account/info',
+                timeout=10  # 10 secondes timeout
+            )
+            
+            print(f"   Réponse API: {response.status_code}")
             
             if response.status_code == 200:
                 # Extraire le token des headers de réponse si disponible
                 auth_header = response.headers.get('Authorization') or response.headers.get('X-MEXC-APIKEY')
                 if auth_header:
+                    print("   Token trouvé dans headers")
                     return auth_header
                 
                 # Sinon, créer un token composite des cookies
+                print("   Création token composite")
                 token_data = {
                     'cookies': cookies,
                     'type': 'cookie_composite',
                     'extracted_at': datetime.now().isoformat()
                 }
                 return json.dumps(token_data)
+            else:
+                print(f"   API échec: {response.status_code}")
             
+        except requests.exceptions.Timeout:
+            print("   Timeout validation API - passage à Selenium")
         except Exception as e:
-            print(f"Erreur validation cookies: {e}")
+            print(f"   Erreur validation cookies: {e}")
         
         return None
     

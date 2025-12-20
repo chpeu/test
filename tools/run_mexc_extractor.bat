@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 echo MEXC Token Extractor - Solution Permanente
 echo ==========================================
 echo.
@@ -11,12 +12,14 @@ set /p choice=Choisissez une option (1-4):
 
 if "%choice%"=="1" (
     python mexc_token_extractor.py once
+    call :sync_token_to_env
     pause
     goto :start
 )
 if "%choice%"=="2" (
     echo Demarrage du mode daemon...
     python mexc_token_extractor.py daemon
+    call :sync_token_to_env
     pause
     goto :start
 )
@@ -32,3 +35,18 @@ if "%choice%"=="4" (
 :start
 cls
 goto :EOF
+
+:sync_token_to_env
+echo.
+echo === Synchronisation token vers .env ===
+python sync_mexc_token.py
+if %ERRORLEVEL% EQU 0 (
+    echo.
+    echo ✅ Token synchronise avec succes dans .env
+    echo ⚠️  IMPORTANT: Redemarrez le bot pour appliquer le nouveau token
+) else (
+    echo.
+    echo ❌ Erreur lors de la synchronisation
+)
+echo.
+goto :eof

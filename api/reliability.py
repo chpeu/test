@@ -222,8 +222,12 @@ async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
         logger.error(f"❌ Erreur application non-recoverable: {e}", exc_info=True)
         raise
     except Exception as e:
-        # Autres erreurs inattendues - NON retryable
-        logger.error(f"❌ Erreur inattendue non-recoverable: {type(e).__name__}: {e}", exc_info=True)
+        # Rate limiting MEXC (code 510) en WARNING
+        if "ExchangeError" in str(type(e).__name__) and "510" in str(e):
+            logger.warning(f"⚠️ MEXC rate limit (code 510) - circuit breaker actif")
+        else:
+            # Autres erreurs inattendues - NON retryable
+            logger.error(f"❌ Erreur inattendue non-recoverable: {type(e).__name__}: {e}", exc_info=True)
         raise
 
 
@@ -466,6 +470,9 @@ class WebSocketManager:
                     # Déconnexions WebSocket normales (code 1005) en WARNING
                     if "ConnectionClosedOK" in str(type(e).__name__) and "1005" in str(e):
                         logger.warning(f"⚠️ WebSocket déconnecté (code 1005) - reconnexion auto")
+                    # Rate limiting MEXC (code 510) en WARNING
+                    elif "ExchangeError" in str(type(e).__name__) and "510" in str(e):
+                        logger.warning(f"⚠️ MEXC rate limit (code 510) - attente avant retry")
                     else:
                         # Autres erreurs en ERROR avec détails
                         logger.error(f"❌ Erreur inattendue réception WebSocket: {type(e).__name__}: {e}", exc_info=True)
