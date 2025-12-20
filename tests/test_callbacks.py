@@ -473,24 +473,32 @@ class TestScannerLoop:
         from core.callbacks.scanner_loop import scan_pair_for_setup
         from core.callbacks import scanner_loop
 
-        # Mock analyzer
+        # Mock analyzer avec structure complète pour éviter KeyError
         mock_analyzer = AsyncMock()
         mock_analyzer.calculate_trend_data = AsyncMock(return_value={
             "trend": "UP",
             "ema_diff": 0.5
         })
-        mock_analyzer.analyze_pair = AsyncMock(return_value={
+        
+        # Structure complète attendue par scan_pair_for_setup
+        complete_analysis = {
             "symbol": "BTC/USDT:USDT",
             "direction": "LONG",
             "entry": 50000.0,
+            "price": 50000.0,
             "score": 85,
-            "price": 50000.0,  # Ajout clé price pour compatibilité
-            "tp": 52000.0,      # Ajout TP/SL pour éviter erreurs
+            "tp": 52000.0,
             "sl": 49000.0,
             "tp_sl_mode": "FIXE",
-            "indicators_1m": {"rsi": 60, "adx": 25},
-            "indicators_5m": {"rsi": 58, "adx": 24}
-        })
+            "atr": 500.0,
+            "condition_types": ["MOCK_SIGNAL"],
+            "conditions": 1,
+            "totalScore": 85,
+            "timeframe": "1m",
+            "indicators_1m": {"rsi": 60, "adx": 25, "ema9": 49900, "ema21": 50100},
+            "indicators_5m": {"rsi": 58, "adx": 24, "ema9": 49950, "ema21": 50050}
+        }
+        mock_analyzer.analyze_pair = AsyncMock(return_value=complete_analysis)
 
         scanner_loop._analyzer = mock_analyzer
 
@@ -594,11 +602,33 @@ class TestCallbacksIntegration:
         mock_pm.calculate_position_size = Mock(return_value=100.0)
         mock_pm.open_position = Mock(return_value=mock_position)
 
-        # Mock scanner
+        # Mock scanner avec scan_pair_for_setup qui retourne le setup
         mock_scanner = AsyncMock()
         mock_scanner.scan_top_pairs = AsyncMock(return_value=[
             {"symbol": "BTC/USDT:USDT", "score": 90}
         ])
+        
+        # Mock scan_pair_for_setup pour retourner le setup complet
+        async def mock_scan_pair_for_setup(symbol):
+            if symbol == "BTC/USDT:USDT":
+                return {
+                    "symbol": "BTC/USDT:USDT",
+                    "direction": "LONG",
+                    "entry": 50000.0,
+                    "price": 50000.0,
+                    "tp": 52000.0,
+                    "sl": 48000.0,
+                    "tp_sl_mode": "ATR",
+                    "score": 85,
+                    "atr": 500.0,
+                    "indicators_1m": {"rsi": 60, "adx": 25, "ema9": 50100, "ema21": 49900},
+                    "indicators_5m": {"rsi": 58, "adx": 24, "ema9": 50050, "ema21": 49950},
+                    "condition_types": ["EMA_CROSS"],
+                    "conditions": 1,
+                    "totalScore": 85,
+                    "timeframe": "1m"
+                }
+            return None
 
         # Mock ws_manager
         mock_ws = AsyncMock()
@@ -616,7 +646,7 @@ class TestCallbacksIntegration:
         scanner_loop._scanner_lock = mock_lock
         scanner_loop._ws_manager = mock_ws
 
-        # Mock TRADING_CONFIG
+        # Mock TRADING_CONFIG et scan_pair_for_setup
         with patch('config.TRADING_CONFIG', {
             'top_pairs_limit': 20,
             'use_confluence': False,
@@ -624,7 +654,8 @@ class TestCallbacksIntegration:
             'trend_timeframe': '15m',
             'account_size': 1000.0
         }):
-            await scanner_loop.scanner_loop_callback()
+            with patch('core.callbacks.scanner_loop.scan_pair_for_setup', side_effect=mock_scan_pair_for_setup):
+                await scanner_loop.scanner_loop_callback()
 
         # Vérifier qu'une position a été ouverte
         mock_pm.open_position.assert_called_once()

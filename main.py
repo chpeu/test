@@ -1753,7 +1753,7 @@ async def scanner_loop_callback() -> None:
                                                             current_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
                                                             session_info = get_current_session()
                                                             current_session = session_info.get('name', 'UNKNOWN') if isinstance(session_info, dict) else 'UNKNOWN'
-                                                            current_hour = int(session_info.get('hour_utc', datetime.utcnow().hour)) if isinstance(session_info, dict) else datetime.utcnow().hour
+                                                            current_hour = int(session_info.get('hour_utc', datetime.now(timezone.utc).hour)) if isinstance(session_info, dict) else datetime.now(timezone.utc).hour
                                                             
                                                             # Obtenir le seuil dynamique
                                                             optimizer = get_threshold_optimizer()

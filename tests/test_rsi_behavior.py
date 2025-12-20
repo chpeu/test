@@ -139,8 +139,14 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         TRADING_CONFIG['rsi_final_long_max'] = 65
         TRADING_CONFIG['use_confluence'] = False
         
-        # Setup LONG avec RSI extrême (75) - Doit être bloqué
-        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 'indicators': {'rsi': 75, 'adx': 25, 'atr': 1.0}}
+        # Setup LONG avec RSI extrême (75) - Doit être bloqué - Structure complète
+        setup_1m = {
+            'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 
+            'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10,
+            'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 
+            'indicators': {'rsi': 75, 'adx': 25, 'atr': 1.0},
+            'price': 100, 'conditions': 1, 'totalScore': 10
+        }
         setup_5m = None 
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
@@ -157,8 +163,14 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         TRADING_CONFIG['rsi_final_long_max'] = 65
         TRADING_CONFIG['use_confluence'] = False
         
-        # Setup LONG avec RSI valide (55)
-        setup_1m = {'direction': 'LONG', 'rsi': 55, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10}
+        # Setup LONG avec RSI valide (55) - Structure complète
+        setup_1m = {
+            'direction': 'LONG', 'rsi': 55, 'signals': ['mock'], 'timeframe': '1m', 
+            'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10,
+            'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 
+            'indicators': {'rsi': 55, 'adx': 25, 'atr': 1.0},
+            'price': 100, 'conditions': 1, 'totalScore': 10
+        }
         setup_5m = None
         
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})

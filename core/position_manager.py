@@ -1043,6 +1043,10 @@ class PositionManager:
                 features['session_usa'] = 1 if 13 <= now.hour < 21 else 0
                 features['high_activity_hours'] = 1 if 13 <= now.hour < 17 else 0
                 
+                # 🔥 NETTOYER: Supprimer hour_utc dupliqué (utiliser hour maintenant)
+                if 'hour_utc' in features:
+                    del features['hour_utc']
+                
                 # 🔥 FEATURES CRITIQUES MANQUANTES (comme dans main.py)
                 if setup_data and 'indicators_1m' in setup_data and 'indicators_5m' in setup_data:
                     ind_1m = setup_data['indicators_1m']

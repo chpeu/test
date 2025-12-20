@@ -288,24 +288,34 @@ class OptimizedPredictor:
         if 'volatility_momentum_product' not in df.columns and 'volatility_ratio' in df.columns and 'momentum_1m' in df.columns:
             df['volatility_momentum_product'] = df['volatility_ratio'] * df['momentum_1m']
         
-        # S'assurer que toutes les colonnes requises sont présentes
+        # 🔥 FIX CRITIQUE FINAL 20/12/2025: Filtrage exact aux 20 features du modèle
         if self.feature_cols:
+            # LOG DEBUG avant filtrage
+            logger.debug(f"🔍 Features avant filtrage ({len(df.columns)}): {list(df.columns)}")
+            logger.debug(f"🎯 Features attendues par modèle ({len(self.feature_cols)}): {self.feature_cols}")
+            
             present_cols = set(df.columns)
             expected_cols = set(self.feature_cols)
             missing_cols = expected_cols - present_cols
             
-            # 🔥 DIAGNOSTIC: Logger les features manquantes si significatif
-            if len(missing_cols) > len(self.feature_cols) * 0.5:
-                logger.warning(f"⚠️ >50% features manquantes ({len(missing_cols)}/{len(self.feature_cols)}) - prédiction peu fiable")
-            elif missing_cols:
-                logger.debug(f"📊 Features manquantes: {len(missing_cols)}/{len(self.feature_cols)}")
-            
-            # Remplir les features manquantes avec 0
+            # Remplir les features manquantes avec 0 AVANT filtrage
             for col in missing_cols:
-                df[col] = 0
+                df[col] = 0.0
+                logger.debug(f"➕ Feature manquante ajoutée: {col} = 0.0")
             
-            # Garder seulement les colonnes du modèle
-            df = df[self.feature_cols]
+            # 🔥 FILTRER STRICTEMENT aux features exactes du modèle (ordre important!)
+            try:
+                df = df[self.feature_cols]
+                logger.debug(f"✅ Filtrage réussi: {len(df.columns)} features exactes gardées")
+            except KeyError as e:
+                logger.error(f"❌ Erreur filtrage features: {e}")
+                return pd.DataFrame()  # Retourner DataFrame vide en cas d'erreur
+            
+            # 🔥 DIAGNOSTIC final
+            if len(missing_cols) > 0:
+                logger.warning(f"⚠️ {len(missing_cols)}/{len(self.feature_cols)} features manquantes remplies par 0: {list(missing_cols)}")
+        else:
+            logger.warning("⚠️ Aucune feature_cols définie - modèle probablement non chargé")
         
         return df.fillna(0)
     
