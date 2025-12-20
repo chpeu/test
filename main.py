@@ -2206,10 +2206,15 @@ async def scanner_loop_callback() -> None:
                                             if hasattr(price_provider, 'set_socketio_callback'):
                                                 price_provider.set_socketio_callback(None, symbol)
                                                 logger.debug(f"📡 WebSocket configuré pour suivre {symbol} (prix en temps réel dans cache)")
+                                        except WebSocketError as e:
+                                            # Erreur WebSocket lors du redémarrage
+                                            logger.error(f"❌ Erreur WebSocket redémarrage pour position {symbol}: {e}", exc_info=True)
+                                        except NetworkError as e:
+                                            # Erreur réseau lors de la connexion WebSocket
+                                            logger.error(f"❌ Erreur réseau WebSocket pour position {symbol}: {e}", exc_info=True)
                                         except Exception as e:
-                                            logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
-                                            import traceback
-                                            logger.debug(traceback.format_exc())
+                                            # Erreur inattendue lors du redémarrage WebSocket
+                                            logger.error(f"❌ Erreur inattendue redémarrage WebSocket pour position {symbol}: {type(e).__name__}: {e}", exc_info=True)
                                     
                                     # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
                                     if price_provider and position:
@@ -2231,8 +2236,12 @@ async def scanner_loop_callback() -> None:
                                     # 🔥 FIX: Émettre l'événement UNE SEULE FOIS avec gestion d'erreur pour éviter les déconnexions
                                     try:
                                         await ws_manager.emit('position_opened', position.to_dict())
+                                    except WebSocketError as e:
+                                        # Erreur WebSocket lors de l'émission (non-bloquant)
+                                        logger.warning(f"⚠️ Erreur WebSocket émission position_opened: {e}")
                                     except Exception as e:
-                                        logger.warning(f"⚠️ Erreur émission position_opened: {e}")
+                                        # Erreur inattendue lors de l'émission (non-bloquant)
+                                        logger.warning(f"⚠️ Erreur inattendue émission position_opened: {type(e).__name__}: {e}")
                                     
                                     # 🔥 FIX: Émettre immédiatement le prix actuel pour l'affichage frontend avec gestion d'erreur
                                     try:
@@ -2278,10 +2287,21 @@ async def scanner_loop_callback() -> None:
                                                     'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
                                                 })
                                                 logger.debug(f"📡 Prix actuel émis immédiatement: {current_price:.6f} pour {symbol}")
+                                            except WebSocketError as e:
+                                                # Erreur WebSocket lors de l'émission (non-bloquant)
+                                                logger.warning(f"⚠️ Erreur WebSocket émission position_update: {e}")
                                             except Exception as e:
-                                                logger.warning(f"⚠️ Erreur émission position_update: {e}")
+                                                # Erreur inattendue lors de l'émission (non-bloquant)
+                                                logger.warning(f"⚠️ Erreur inattendue émission position_update: {type(e).__name__}: {e}")
+                                    except MarketDataError as e:
+                                        # Erreur récupération prix (API, données invalides)
+                                        logger.warning(f"⚠️ Erreur données marché récupération prix initial: {e}")
+                                    except NetworkError as e:
+                                        # Erreur réseau lors de la récupération du prix
+                                        logger.warning(f"⚠️ Erreur réseau récupération prix initial: {e}")
                                     except Exception as e:
-                                        logger.warning(f"⚠️ Erreur récupération prix initial: {e}")
+                                        # Erreur inattendue lors de la récupération du prix
+                                        logger.warning(f"⚠️ Erreur inattendue récupération prix initial: {type(e).__name__}: {e}")
                                     
                                     logger.info(
                                         f"🟢 POSITION OUVERTE (Auto): {direction} {symbol} | "
@@ -2292,11 +2312,22 @@ async def scanner_loop_callback() -> None:
                                     
                                     # Ne prendre que le premier setup valide - sortir immédiatement
                                     break
-                                    
+
+                                except PositionError as e:
+                                    # Erreur position spécifique (position déjà active, sizing invalide, etc.)
+                                    logger.error(f"❌ Erreur position lors ouverture auto pour {symbol}: {e}", exc_info=True)
+                                except OrderExecutionError as e:
+                                    # Erreur lors de l'exécution de l'ordre d'ouverture
+                                    logger.error(f"❌ Erreur exécution ordre ouverture pour {symbol}: {e}", exc_info=True)
+                                except ValidationError as e:
+                                    # Erreur validation des paramètres (setup invalide)
+                                    logger.error(f"❌ Erreur validation setup pour {symbol}: {e}", exc_info=True)
+                                except MarketDataError as e:
+                                    # Erreur données marché (prix invalide, ATR manquant, etc.)
+                                    logger.error(f"❌ Erreur données marché pour {symbol}: {e}", exc_info=True)
                                 except Exception as e:
-                                    logger.error(f"❌ Erreur ouverture position auto pour {symbol}: {e}")
-                                    import traceback
-                                    logger.error(f"Traceback: {traceback.format_exc()}")
+                                    # Erreur inattendue lors de l'ouverture de position
+                                    logger.error(f"❌ Erreur inattendue ouverture position auto pour {symbol}: {type(e).__name__}: {e}", exc_info=True)
                                     await add_log('ERROR', 'Erreur ouverture position', f"{symbol}: {str(e)}")
                                     continue
                 else:
@@ -2430,8 +2461,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         price_result = await price_provider.get_price(symbol)
                         # Extraire la valeur numérique si c'est un dict
                         scan_price = get_preferred_price(price_result, setup.get('price'))
+                    except MarketDataError as price_error:
+                        # Erreur données marché (prix invalide, API)
+                        logger.debug(f"⚠️ Erreur données marché pour {symbol}: {price_error}")
+                    except NetworkError as price_error:
+                        # Erreur réseau lors de la récupération du prix
+                        logger.debug(f"⚠️ Erreur réseau récupération prix pour {symbol}: {price_error}")
                     except Exception as price_error:
-                        logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {price_error}")
+                        # Erreur inattendue lors de la récupération du prix
+                        logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {type(price_error).__name__}: {price_error}")
                 
                 # Extraire la valeur numérique si scan_price est un dict
                 if isinstance(scan_price, dict):
@@ -2582,10 +2620,18 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
                 else:
                     logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
+            except ImportError as e:
+                # Module Simple Logger non disponible
+                logger.debug(f"Module Simple Logger non disponible: {e}")
+            except DatabaseError as e:
+                # Erreur database lors du logging
+                logger.error(f"❌ Erreur DB Simple Logger pour {symbol}: {e}", exc_info=True)
+            except ValidationError as e:
+                # Erreur validation des données de scan
+                logger.warning(f"⚠️ Erreur validation Simple Logger pour {symbol}: {e}")
             except Exception as e:
-                logger.error(f"❌ Erreur Simple Logger pour {symbol}: {e}")
-                import traceback
-                logger.debug(f"Traceback: {traceback.format_exc()}")
+                # Erreur inattendue lors du logging
+                logger.error(f"❌ Erreur inattendue Simple Logger pour {symbol}: {type(e).__name__}: {e}", exc_info=True)
         
         # Helper function to extract filter metrics
         def _extract_filter_metrics_main(analysis):
@@ -2743,8 +2789,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         price_result = await price_provider.get_price(symbol)
                         # FIX: Utiliser analysis au lieu de setup (setup n'est pas toujours défini)
                         scan_price = get_preferred_price(price_result, analysis.get('price') if analysis else None)
+                    except MarketDataError as price_error:
+                        # Erreur données marché (prix invalide, API)
+                        logger.debug(f"⚠️ Erreur données marché pour {symbol}: {price_error}")
+                    except NetworkError as price_error:
+                        # Erreur réseau lors de la récupération du prix
+                        logger.debug(f"⚠️ Erreur réseau récupération prix pour {symbol}: {price_error}")
                     except Exception as price_error:
-                        logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {price_error}")
+                        # Erreur inattendue lors de la récupération du prix
+                        logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {type(price_error).__name__}: {price_error}")
                 
                 # Extraire la valeur numérique si scan_price est un dict
                 if isinstance(scan_price, dict):
@@ -2868,8 +2921,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     scan_data['market_regime'] = regime_status.get('current_regime')
                     scan_data['market_regime_avg_atr'] = regime_status.get('avg_atr')
                     scan_data['market_regime_avg_adx'] = regime_status.get('avg_adx')
+                except ImportError as e:
+                    # Module regime selector non disponible
+                    logger.debug(f"Module regime selector non disponible: {e}")
+                except MarketDataError as e:
+                    # Erreur données marché (ATR/ADX invalides)
+                    logger.debug(f"⚠️ Erreur données marché régime pour scan: {e}")
                 except Exception as e:
-                    logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {e}")
+                    # Erreur inattendue lors de la récupération du régime
+                    logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {type(e).__name__}: {e}")
                 
                 # Logger le scan (mode batch par défaut)
                 logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
@@ -2937,10 +2997,18 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         use_batch=True
                     )
                     logger.info(f"✅ log_opportunity() terminé pour {symbol}")
+        except ImportError as e:
+            # Module PostgreSQL non disponible
+            logger.debug(f"Module PostgreSQL non disponible: {e}")
+        except DatabaseError as e:
+            # Erreur database lors du logging
+            logger.error(f"❌ Erreur DB logging PostgreSQL pour {symbol}: {e}", exc_info=True)
+        except ValidationError as e:
+            # Erreur validation des données de scan/opportunity
+            logger.warning(f"⚠️ Erreur validation données PostgreSQL pour {symbol}: {e}")
         except Exception as e:
-            logger.error(f"❌ Erreur logging PostgreSQL pour {symbol} (main.py): {e}")
-            import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+            # Erreur inattendue lors du logging PostgreSQL
+            logger.error(f"❌ Erreur inattendue logging PostgreSQL pour {symbol}: {type(e).__name__}: {e}", exc_info=True)
         
         # 🔥 FIX: Envoyer événement SocketIO pour mettre à jour le compteur de validation
         # Un setup valide = validé (true), pas de setup = non validé (false)
@@ -2960,10 +3028,14 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             # 🔥 FIX: Envoyer le warning au frontend via add_log (logger.warning est capturé par WebSocketLogHandler, donc on évite le doublon)
             # 🔥 FIX: Corriger le message dupliqué (le symbole était répété deux fois)
             try:
-                await add_log('WARNING', 'Analyse retournée None', 
+                await add_log('WARNING', 'Analyse retournée None',
                     f"{symbol}: Analyse retournée None - Vérifier les erreurs dans analyze_timeframe. Vérifier que le prix est disponible et que les indicateurs peuvent être calculés.")
+            except WebSocketError as log_err:
+                # Erreur WebSocket lors de l'envoi du log
+                logger.debug(f"⚠️ Erreur WebSocket envoi log frontend: {log_err}")
             except Exception as log_err:
-                logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
+                # Erreur inattendue lors de l'envoi du log
+                logger.debug(f"⚠️ Impossible d'envoyer log au frontend: {type(log_err).__name__}: {log_err}")
             is_valid = False
         
         # Envoyer événement pour mettre à jour le compteur
@@ -2975,11 +3047,19 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         if analysis and not (isinstance(analysis, dict) and 'reason' in analysis):
             return analysis
         return None
-        
+
+    except MarketDataError as e:
+        # Erreur données marché (prix invalide, indicateurs manquants, etc.)
+        logger.error(f"❌ Erreur données marché scan {symbol}: {e}", exc_info=True)
+    except NetworkError as e:
+        # Erreur réseau lors du scan
+        logger.error(f"❌ Erreur réseau scan {symbol}: {e}", exc_info=True)
+    except ValidationError as e:
+        # Erreur validation des paramètres de scan
+        logger.error(f"❌ Erreur validation scan {symbol}: {e}", exc_info=True)
     except Exception as e:
-        logger.error(f"❌ Erreur scan {symbol}: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Erreur inattendue lors du scan
+        logger.error(f"❌ Erreur inattendue scan {symbol}: {type(e).__name__}: {e}", exc_info=True)
         # Envoyer événement pour erreur (non validé)
         await ws_manager.emit('volume_validation_update', {
             'symbol': symbol,
