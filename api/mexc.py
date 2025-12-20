@@ -11,6 +11,16 @@ import aiohttp
 from config import MEXC_FUTURES_URL, DEBUG_ENABLED
 from api.reliability import fetch_with_all_protections, WebSocketManager
 
+# 🔥 REFACTORING SPRINT 1.1: Exception Handling System
+try:
+    from core.exceptions import (
+        NetworkError, APIError, RateLimitError, MarketDataError,
+        TradeCursorError
+    )
+except ImportError:
+    # Fallback si exceptions custom non disponibles
+    NetworkError = APIError = RateLimitError = MarketDataError = TradeCursorError = Exception
+
 
 class MEXCClient:
     """Client API MEXC avec gestion des erreurs et retry"""
@@ -51,9 +61,30 @@ class MEXCClient:
                     print(f"⚠️ fetch_ticker {symbol}: Returned None or invalid type")
                 return None
             return result
-        except Exception as e:
+        except RateLimitError as e:
+            # Rate limit atteint (retry géré par fetch_with_all_protections)
             if DEBUG_ENABLED:
-                print(f"❌ Erreur fetch_ticker {symbol}: {e}")
+                print(f"⚠️ Rate limit fetch_ticker {symbol}: {e}")
+            return None
+        except NetworkError as e:
+            # Erreur réseau (timeout, connexion, etc.)
+            if DEBUG_ENABLED:
+                print(f"⚠️ Erreur réseau fetch_ticker {symbol}: {e}")
+            return None
+        except APIError as e:
+            # Erreur API MEXC (symbole invalide, etc.)
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur API fetch_ticker {symbol}: {e}")
+            return None
+        except MarketDataError as e:
+            # Données marché invalides
+            if DEBUG_ENABLED:
+                print(f"❌ Données invalides fetch_ticker {symbol}: {e}")
+            return None
+        except Exception as e:
+            # Erreur inattendue
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur inattendue fetch_ticker {symbol}: {type(e).__name__}: {e}")
             return None
     
     async def fetch_tickers(self) -> Dict[str, Any]:
@@ -63,9 +94,25 @@ class MEXCClient:
         
         try:
             return await fetch_with_all_protections(_fetch)
-        except Exception as e:
+        except RateLimitError as e:
+            # Rate limit atteint
             if DEBUG_ENABLED:
-                print(f"❌ Erreur fetch_tickers: {e}")
+                print(f"⚠️ Rate limit fetch_tickers: {e}")
+            return {}
+        except NetworkError as e:
+            # Erreur réseau
+            if DEBUG_ENABLED:
+                print(f"⚠️ Erreur réseau fetch_tickers: {e}")
+            return {}
+        except APIError as e:
+            # Erreur API MEXC
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur API fetch_tickers: {e}")
+            return {}
+        except Exception as e:
+            # Erreur inattendue
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur inattendue fetch_tickers: {type(e).__name__}: {e}")
             return {}
     
     async def fetch_ohlcv(self, symbol: str, timeframe: str = '1m', limit: int = 100) -> List[List]:
@@ -85,9 +132,30 @@ class MEXCClient:
         
         try:
             return await fetch_with_all_protections(_fetch)
-        except Exception as e:
+        except RateLimitError as e:
+            # Rate limit atteint
             if DEBUG_ENABLED:
-                print(f"❌ Erreur fetch_ohlcv {symbol} {timeframe}: {e}")
+                print(f"⚠️ Rate limit fetch_ohlcv {symbol} {timeframe}: {e}")
+            return []
+        except NetworkError as e:
+            # Erreur réseau
+            if DEBUG_ENABLED:
+                print(f"⚠️ Erreur réseau fetch_ohlcv {symbol} {timeframe}: {e}")
+            return []
+        except APIError as e:
+            # Erreur API MEXC (symbole invalide, timeframe non supporté, etc.)
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur API fetch_ohlcv {symbol} {timeframe}: {e}")
+            return []
+        except MarketDataError as e:
+            # Données OHLCV invalides
+            if DEBUG_ENABLED:
+                print(f"❌ Données OHLCV invalides {symbol} {timeframe}: {e}")
+            return []
+        except Exception as e:
+            # Erreur inattendue
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur inattendue fetch_ohlcv {symbol} {timeframe}: {type(e).__name__}: {e}")
             return []
     
     async def fetch_order_book(self, symbol: str, limit: int = 20) -> Optional[Dict]:
@@ -97,9 +165,30 @@ class MEXCClient:
         
         try:
             return await fetch_with_all_protections(_fetch)
-        except Exception as e:
+        except RateLimitError as e:
+            # Rate limit atteint
             if DEBUG_ENABLED:
-                print(f"❌ Erreur fetch_order_book {symbol}: {e}")
+                print(f"⚠️ Rate limit fetch_order_book {symbol}: {e}")
+            return None
+        except NetworkError as e:
+            # Erreur réseau
+            if DEBUG_ENABLED:
+                print(f"⚠️ Erreur réseau fetch_order_book {symbol}: {e}")
+            return None
+        except APIError as e:
+            # Erreur API MEXC (symbole invalide, etc.)
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur API fetch_order_book {symbol}: {e}")
+            return None
+        except MarketDataError as e:
+            # Carnet d'ordres invalide
+            if DEBUG_ENABLED:
+                print(f"❌ Order book invalide {symbol}: {e}")
+            return None
+        except Exception as e:
+            # Erreur inattendue
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur inattendue fetch_order_book {symbol}: {type(e).__name__}: {e}")
             return None
     
     async def fetch_funding_rate(self, symbol: str) -> Optional[float]:
@@ -109,9 +198,30 @@ class MEXCClient:
             if ticker:
                 return ticker.get('info', {}).get('fundingRate', 0)
             return None
-        except Exception as e:
+        except RateLimitError as e:
+            # Rate limit atteint
             if DEBUG_ENABLED:
-                print(f"❌ Erreur fetch_funding_rate {symbol}: {e}")
+                print(f"⚠️ Rate limit fetch_funding_rate {symbol}: {e}")
+            return None
+        except NetworkError as e:
+            # Erreur réseau
+            if DEBUG_ENABLED:
+                print(f"⚠️ Erreur réseau fetch_funding_rate {symbol}: {e}")
+            return None
+        except APIError as e:
+            # Erreur API MEXC
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur API fetch_funding_rate {symbol}: {e}")
+            return None
+        except MarketDataError as e:
+            # Funding rate invalide
+            if DEBUG_ENABLED:
+                print(f"❌ Funding rate invalide {symbol}: {e}")
+            return None
+        except Exception as e:
+            # Erreur inattendue
+            if DEBUG_ENABLED:
+                print(f"❌ Erreur inattendue fetch_funding_rate {symbol}: {type(e).__name__}: {e}")
             return None
     
     async def close(self):
