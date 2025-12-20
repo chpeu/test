@@ -140,7 +140,8 @@ class OptimizedPredictor:
             if self.preprocessor is not None and isinstance(self.preprocessor, dict):
                 scaler = self.preprocessor.get('scaler')
                 if scaler is not None:
-                    scaled = scaler.transform(df)
+                    # 🔥 FIX: Utiliser df.values pour éviter sklearn warning sur feature names
+                    scaled = scaler.transform(df.values)
                     try:
                         input_data = pd.DataFrame(scaled, columns=df.columns)
                     except Exception:
@@ -231,6 +232,51 @@ class OptimizedPredictor:
         
         if 'volume_ratio_1m' in df.columns:
             df['volume_spike'] = (df['volume_ratio_1m'] > 1.5).astype(int)
+
+        if 'di_gap_1m' not in df.columns and 'di_plus_1m' in df.columns and 'di_minus_1m' in df.columns:
+            df['di_gap_1m'] = df['di_plus_1m'] - df['di_minus_1m']
+
+        if 'di_gap_5m' not in df.columns and 'di_plus_5m' in df.columns and 'di_minus_5m' in df.columns:
+            df['di_gap_5m'] = df['di_plus_5m'] - df['di_minus_5m']
+
+        if 'momentum_1m' not in df.columns and 'rsi_1m' in df.columns and 'macd_hist_1m' in df.columns:
+            df['momentum_1m'] = (df['rsi_1m'] / 100) * np.tanh(df['macd_hist_1m'])
+
+        if 'momentum_5m' not in df.columns and 'rsi_5m' in df.columns and 'macd_hist_5m' in df.columns:
+            df['momentum_5m'] = (df['rsi_5m'] / 100) * np.tanh(df['macd_hist_5m'])
+
+        if 'momentum_divergence' not in df.columns and 'momentum_1m' in df.columns and 'momentum_5m' in df.columns:
+            df['momentum_divergence'] = df['momentum_1m'] - df['momentum_5m']
+
+        if 'macd_momentum_1m' not in df.columns and 'macd_hist_1m' in df.columns and 'macd_hist_prev_1m' in df.columns:
+            df['macd_momentum_1m'] = df['macd_hist_1m'] - df['macd_hist_prev_1m']
+
+        if 'macd_momentum_5m' not in df.columns and 'macd_hist_5m' in df.columns and 'macd_hist_prev_5m' in df.columns:
+            df['macd_momentum_5m'] = df['macd_hist_5m'] - df['macd_hist_prev_5m']
+
+        if 'rsi_change_1m' not in df.columns and 'rsi_1m' in df.columns and 'rsi_prev_1m' in df.columns:
+            df['rsi_change_1m'] = df['rsi_1m'] - df['rsi_prev_1m']
+
+        if 'rsi_change_5m' not in df.columns and 'rsi_5m' in df.columns and 'rsi_prev_5m' in df.columns:
+            df['rsi_change_5m'] = df['rsi_5m'] - df['rsi_prev_5m']
+
+        if 'rsi_divergence' not in df.columns and 'rsi_1m' in df.columns and 'rsi_5m' in df.columns:
+            df['rsi_divergence'] = (df['rsi_1m'] - df['rsi_5m']).abs()
+
+        if 'trend_strength_1m' not in df.columns and 'adx_1m' in df.columns and 'di_gap_1m' in df.columns:
+            df['trend_strength_1m'] = df['adx_1m'] * df['di_gap_1m'].abs() / 100
+
+        if 'trend_strength_5m' not in df.columns and 'adx_5m' in df.columns and 'di_gap_5m' in df.columns:
+            df['trend_strength_5m'] = df['adx_5m'] * df['di_gap_5m'].abs() / 100
+
+        if 'volume_divergence' not in df.columns and 'volume_ratio_1m' in df.columns and 'volume_ratio_5m' in df.columns:
+            df['volume_divergence'] = (df['volume_ratio_1m'] - df['volume_ratio_5m']).abs()
+
+        if 'volatility_ratio' not in df.columns and 'atr_pct_1m' in df.columns and 'atr_pct_5m' in df.columns:
+            df['volatility_ratio'] = df['atr_pct_1m'] / (df['atr_pct_5m'] + 1e-8)
+
+        if 'volatility_momentum_product' not in df.columns and 'volatility_ratio' in df.columns and 'momentum_1m' in df.columns:
+            df['volatility_momentum_product'] = df['volatility_ratio'] * df['momentum_1m']
         
         # S'assurer que toutes les colonnes requises sont présentes
         if self.feature_cols:

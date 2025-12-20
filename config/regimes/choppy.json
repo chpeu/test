@@ -2,7 +2,7 @@
   "name": "CHOPPY",
   "optimal_atr_min": 0.10,
   "optimal_atr_max": 0.25,
-  "min_score_required": 9.0,
+  "min_score_required": 10.0,
   "atr_mult_sl": 0.7,
   "atr_mult_tp": 1.5,
   "break_even_atr_mult": 0.5,

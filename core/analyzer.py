@@ -1242,6 +1242,48 @@ class TechnicalAnalyzer:
                 if 'scalability_data' in locals():
                     scalability_data['spread'] = spread_check['spread_pct']
 
+                # 🔥 OPT #20: Micro-confirmation AVANT orderbook (évite les faux breakouts)
+                from config import TRADING_CONFIG
+                if TRADING_CONFIG.get('use_micro_confirmation', False):
+                    delay_ms = TRADING_CONFIG.get('micro_confirmation_delay_ms', 300)
+                    entry_price = best_setup.get('entry') or best_setup.get('price')
+                    direction = best_setup.get('direction')
+                    
+                    if entry_price and direction:
+                        import time as time_module
+                        logger.info(f"⚡ {symbol} Micro-confirmation: attente {delay_ms}ms...")
+                        time_module.sleep(delay_ms / 1000.0)  # Convertir ms en secondes
+                        
+                        # Récupérer le prix actuel après le délai
+                        try:
+                            ticker = await self.client.fetch_ticker(symbol)
+                            current_price = ticker.get('last') or ticker.get('close')
+                            
+                            if current_price:
+                                price_change_pct = ((current_price - entry_price) / entry_price) * 100
+                                
+                                # Vérifier si le prix va toujours dans la bonne direction
+                                if direction == 'LONG' and price_change_pct < -0.05:
+                                    logger.info(f"⚡ {symbol} LONG rejeté par micro-confirmation: prix retombé de {price_change_pct:.3f}%")
+                                    return {
+                                        'symbol': symbol,
+                                        'reason': f"Micro-confirmation échouée: prix retombé de {price_change_pct:.3f}%",
+                                        'reject_category': 'micro_confirmation_filter',
+                                        'price_change_pct': price_change_pct
+                                    }
+                                elif direction == 'SHORT' and price_change_pct > 0.05:
+                                    logger.info(f"⚡ {symbol} SHORT rejeté par micro-confirmation: prix remonté de {price_change_pct:.3f}%")
+                                    return {
+                                        'symbol': symbol,
+                                        'reason': f"Micro-confirmation échouée: prix remonté de {price_change_pct:.3f}%",
+                                        'reject_category': 'micro_confirmation_filter',
+                                        'price_change_pct': price_change_pct
+                                    }
+                                else:
+                                    logger.info(f"✅ {symbol} Micro-confirmation OK: {price_change_pct:+.3f}%")
+                        except Exception as e:
+                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur fetch prix: {e}")
+
                 # 2. Vérifier orderbook imbalance
                 orderbook_check = await check_orderbook_imbalance(
                     client=self.client,

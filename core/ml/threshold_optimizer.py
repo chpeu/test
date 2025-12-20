@@ -43,6 +43,9 @@ class ContextStats:
     total_wins: int = 0
     total_pnl: float = 0.0
     last_update: Optional[str] = None
+    # Exploration tracking (Brainstorming Integration)
+    exploration_trades: int = 0  # Trades passés en mode exploration
+    exploration_wins: int = 0    # Wins parmi les trades exploration
     
     @property
     def winrate(self) -> float:
@@ -84,6 +87,7 @@ class ContextualThresholdOptimizer:
         max_threshold: float = 0.70,
         default_threshold: float = 0.55,
         exploration_bonus: float = 0.05,
+        exploration_rate: float = 0.02,
         persistence_path: Optional[str] = None
     ):
         """
@@ -94,12 +98,14 @@ class ContextualThresholdOptimizer:
             max_threshold: Seuil maximum (mode conservateur)
             default_threshold: Seuil par défaut quand pas de données
             exploration_bonus: Bonus d'exploration pour nouveaux contextes
+            exploration_rate: Taux d'exploration (% de trades rejetés qui passent quand même)
             persistence_path: Chemin pour sauvegarder/charger l'état
         """
         self.min_threshold = min_threshold
         self.max_threshold = max_threshold
         self.default_threshold = default_threshold
         self.exploration_bonus = exploration_bonus
+        self.exploration_rate = exploration_rate  # 🔥 Brainstorming: exploration contrôlée
         
         # Stats par contexte
         self._context_stats: Dict[str, ContextStats] = defaultdict(ContextStats)
@@ -179,13 +185,54 @@ class ContextualThresholdOptimizer:
         
         return threshold
     
+    def should_explore(
+        self,
+        regime: str,
+        session: str,
+        hour: int,
+        ml_confidence: float,
+        threshold: float
+    ) -> Tuple[bool, str]:
+        """
+        🔥 Brainstorming Integration: Exploration contrôlée.
+        
+        Détermine si un trade rejeté devrait quand même passer en mode exploration.
+        Cela permet de collecter des données non-biaisées sur les zones rejetées.
+        
+        Args:
+            regime: Régime de marché
+            session: Session de trading
+            hour: Heure UTC
+            ml_confidence: Confiance ML du candidat
+            threshold: Seuil actuel (trade normalement rejeté si confidence < threshold)
+            
+        Returns:
+            Tuple (should_explore, reason)
+        """
+        if self.exploration_rate <= 0:
+            return False, "exploration_disabled"
+        
+        # Trade déjà au-dessus du seuil = pas besoin d'exploration
+        if ml_confidence >= threshold:
+            return False, "above_threshold"
+        
+        # Tirage aléatoire pour décider si on explore
+        if np.random.random() < self.exploration_rate:
+            context_key = self._get_context_key(regime, session, hour)
+            logger.info(f"🔬 EXPLORATION: Trade {ml_confidence:.1f}% < threshold {threshold:.1f}% "
+                       f"passé en exploration ({context_key})")
+            return True, "exploration_selected"
+        
+        return False, "exploration_not_selected"
+    
     def update(
         self,
         regime: str,
         session: str,
         hour: int,
         win: bool,
-        pnl: float = 0.0
+        pnl: float = 0.0,
+        is_exploration: bool = False
     ) -> None:
         """
         Mettre à jour les stats après un trade.
@@ -196,6 +243,7 @@ class ContextualThresholdOptimizer:
             hour: Heure UTC
             win: True si trade gagnant
             pnl: PnL du trade (optionnel, pour stats avancées)
+            is_exploration: True si trade passé en mode exploration
         """
         context_key = self._get_context_key(regime, session, hour)
         stats = self._context_stats[context_key]
@@ -207,6 +255,12 @@ class ContextualThresholdOptimizer:
             stats.alpha += 1  # Succès
         else:
             stats.beta += 1   # Échec
+        
+        # 🔥 Brainstorming: Tracker les trades exploration séparément
+        if is_exploration:
+            stats.exploration_trades += 1
+            if win:
+                stats.exploration_wins += 1
         
         stats.total_pnl += pnl
         stats.last_update = datetime.now().isoformat()
@@ -352,14 +406,21 @@ class ContextualThresholdOptimizer:
     
     def get_status(self) -> dict:
         """Retourne le statut de l'optimiseur."""
+        total_exploration = sum(s.exploration_trades for s in self._context_stats.values())
+        total_exploration_wins = sum(s.exploration_wins for s in self._context_stats.values())
         return {
             'enabled': self.enabled,
             'min_threshold': self.min_threshold,
             'max_threshold': self.max_threshold,
             'default_threshold': self.default_threshold,
+            'exploration_rate': self.exploration_rate,
             'total_contexts': len(self._context_stats),
             'total_updates': self.total_updates,
-            'contexts_with_data': sum(1 for s in self._context_stats.values() if s.total_trades > 0)
+            'contexts_with_data': sum(1 for s in self._context_stats.values() if s.total_trades > 0),
+            # Brainstorming: Exploration stats
+            'exploration_trades': total_exploration,
+            'exploration_wins': total_exploration_wins,
+            'exploration_winrate': total_exploration_wins / total_exploration if total_exploration > 0 else 0
         }
 
 
@@ -380,6 +441,7 @@ def get_threshold_optimizer() -> ContextualThresholdOptimizer:
         max_threshold = float(get_config_value('threshold_max', 0.70))
         default_threshold = float(get_config_value('gb_min_confidence', 0.55))
         exploration_bonus = float(get_config_value('threshold_exploration_bonus', 0.05))
+        exploration_rate = float(get_config_value('threshold_exploration_rate', 0.02))  # 🔥 Brainstorming
         enabled = bool(get_config_value('threshold_optimizer_enabled', False))
 
         if min_threshold > max_threshold:
@@ -390,6 +452,7 @@ def get_threshold_optimizer() -> ContextualThresholdOptimizer:
         max_threshold = 0.70
         default_threshold = 0.55
         exploration_bonus = 0.05
+        exploration_rate = 0.02
         enabled = True
 
     if _optimizer_instance is None:
@@ -397,13 +460,15 @@ def get_threshold_optimizer() -> ContextualThresholdOptimizer:
             min_threshold=min_threshold,
             max_threshold=max_threshold,
             default_threshold=default_threshold,
-            exploration_bonus=exploration_bonus
+            exploration_bonus=exploration_bonus,
+            exploration_rate=exploration_rate
         )
     else:
         _optimizer_instance.min_threshold = min_threshold
         _optimizer_instance.max_threshold = max_threshold
         _optimizer_instance.default_threshold = default_threshold
         _optimizer_instance.exploration_bonus = exploration_bonus
+        _optimizer_instance.exploration_rate = exploration_rate
 
     _optimizer_instance.enabled = enabled
 

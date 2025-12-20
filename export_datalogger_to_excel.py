@@ -11,6 +11,13 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import argparse
 
+# Charger les variables d'environnement depuis .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv optionnel
+
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -60,7 +67,8 @@ class DataLoggerExporter:
         'circuit_breaker_events',  # 🔥 SPRINT 1: Événements du circuit breaker trading
         'market_regime_history',  # 🔥 SPRINT 1: Historique des changements de régime
         'pair_performance_stats',  # 🔥 SPRINT 2: Stats de performance par paire
-        'trade_atr_metrics'  # 🔥 ATR Optimization: Métriques ATR par trade
+        'trade_atr_metrics',  # 🔥 ATR Optimization: Métriques ATR par trade
+        'trade_events'  # 🔥 Phase 2H.6: Événements du cycle de vie des trades
     ]
 
     def __init__(
@@ -125,6 +133,7 @@ class DataLoggerExporter:
         'circuit_breaker_events': 'created_at DESC',
         'market_regime_history': 'created_at DESC',
         'opportunities': 'created_at DESC',
+        'trade_events': 'event_timestamp DESC',
     }
 
     def get_table_data(self, table_name: str, limit: Optional[int] = None) -> Optional[pd.DataFrame]:

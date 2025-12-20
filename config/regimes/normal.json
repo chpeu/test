@@ -2,7 +2,7 @@
   "name": "NORMAL",
   "optimal_atr_min": 0.10,
   "optimal_atr_max": 0.30,
-  "min_score_required": 7.0,
+  "min_score_required": 8.0,
   "atr_mult_sl": 1.2,
   "atr_mult_tp": 2.2,
   "break_even_atr_mult": 1.0,

@@ -10,6 +10,9 @@ Fonctionnalités:
 - Recalibration par bucket (direction + confidence range)  
 - Seuil minimum de trades avant activation
 - Decay exponentiel basé sur l'ancienneté
+- Filtrage par exit_reason (exclut MANUAL, ERROR, LIQUIDATION)
+- Calibration EV-based (mean_pnl, var_pnl, ev_estimate)
+- Model version tracking pour reset post-retrain
 """
 
 import logging
@@ -20,10 +23,43 @@ from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# EXIT REASON FILTERING - Brainstorming Integration
+# ============================================================================
+# Trades valides pour calibration/training (exits propres, non-biaisées)
+VALID_EXIT_REASONS_CALIBRATION = {
+    'TP', 'SL', 'TRAILING_STOP', 'ROI_TARGET',
+    'STAGNATION', 'STAGNATION_POSITIVE', 'STAGNATION_MFE_PROTECT',
+    'BE_TRIGGERED', 'TIME_LIMIT'
+}
+
+# Exit reasons à exclure (intervention manuelle ou erreurs système)
+EXCLUDED_EXIT_REASONS = {
+    'MANUAL', 'MANUAL_CLOSE', 'ERROR', 'LIQUIDATION', 
+    'FORCE_CLOSE', 'UNKNOWN', 'SL_EXCHANGE'
+}
+
+# Exit reasons pour metrics seulement (comptabilisées mais pas pour ML)
+METRICS_ONLY_EXIT_REASONS = {
+    'MANUAL', 'MANUAL_CLOSE', 'LIQUIDATION', 'SL_EXCHANGE'
+}
+
+def is_valid_exit_for_calibration(exit_reason: str) -> bool:
+    """Vérifie si un exit_reason est valide pour la calibration ML."""
+    if not exit_reason:
+        return False
+    return exit_reason.upper() in VALID_EXIT_REASONS_CALIBRATION
+
+def is_excluded_exit(exit_reason: str) -> bool:
+    """Vérifie si un exit_reason doit être exclu de la calibration."""
+    if not exit_reason:
+        return True
+    return exit_reason.upper() in EXCLUDED_EXIT_REASONS
+
 
 @dataclass
 class CalibrationStats:
-    """Statistiques de calibration pour un bucket"""
+    """Statistiques de calibration pour un bucket (EV-based)"""
     direction: str
     confidence_bucket: str
     weighted_wins: float
@@ -32,6 +68,38 @@ class CalibrationStats:
     actual_winrate: Optional[float]
     avg_pnl_pct: float
     total_pnl_usdt: float
+    # EV-based metrics (Brainstorming)
+    sum_pnl_pct: float = 0.0
+    sum_pnl_pct_sq: float = 0.0  # Pour variance
+    model_version: Optional[str] = None
+    
+    @property
+    def var_pnl_pct(self) -> float:
+        """Variance du PnL (pour risk-adjusted EV)"""
+        if self.total_trades < 2:
+            return 0.0
+        mean = self.sum_pnl_pct / self.total_trades
+        return (self.sum_pnl_pct_sq / self.total_trades) - (mean ** 2)
+    
+    @property
+    def std_pnl_pct(self) -> float:
+        """Écart-type du PnL"""
+        import math
+        return math.sqrt(max(0, self.var_pnl_pct))
+    
+    @property
+    def ev_estimate(self) -> float:
+        """Expectancy estimée = mean(pnl) = winrate * avg_win - (1-winrate) * avg_loss"""
+        return self.avg_pnl_pct
+    
+    @property
+    def ev_lower_bound(self) -> float:
+        """Borne inférieure de l'EV (conservatrice) = EV - 1*std / sqrt(n)"""
+        import math
+        if self.total_trades < 5:
+            return -999.0  # Pas assez de données
+        stderr = self.std_pnl_pct / math.sqrt(self.total_trades)
+        return self.ev_estimate - stderr
 
 
 class MLCalibrationManager:
@@ -164,7 +232,8 @@ class MLCalibrationManager:
         pnl_usdt: float,
         is_live: bool,
         is_dry_run: bool,
-        trade_timestamp: datetime
+        trade_timestamp: datetime,
+        exit_reason: Optional[str] = None
     ) -> bool:
         """
         Met à jour les statistiques de calibration après un trade.
@@ -178,6 +247,7 @@ class MLCalibrationManager:
             is_live: True si trade live
             is_dry_run: True si dry-run
             trade_timestamp: Date/heure du trade
+            exit_reason: Raison de sortie (TP, SL, MANUAL, etc.)
             
         Returns:
             True si mise à jour réussie
@@ -190,6 +260,12 @@ class MLCalibrationManager:
         # Ne prendre que les trades avec ML confidence valide
         if ml_confidence is None or ml_confidence < 30:
             logger.debug(f"Trade ignoré pour calibration: ml_confidence={ml_confidence}")
+            return False
+        
+        # 🔥 FILTRAGE EXIT_REASON (Brainstorming Integration)
+        # Exclure les trades avec exit non-propres (MANUAL, ERROR, LIQUIDATION, etc.)
+        if exit_reason and is_excluded_exit(exit_reason):
+            logger.info(f"🚫 Trade exclu calibration: exit_reason={exit_reason} (non-propre)")
             return False
         
         # Calculer le bucket et le poids

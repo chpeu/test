@@ -343,7 +343,9 @@ def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> Order
         use_candle_close=trading_config.get('use_candle_close'),
         candle_close_threshold_seconds=trading_config.get('candle_close_threshold_seconds'),
         use_momentum_continuity=trading_config.get('use_momentum_continuity'),
-        momentum_lookback=trading_config.get('momentum_lookback')
+        momentum_lookback=trading_config.get('momentum_lookback'),
+        use_micro_confirmation=trading_config.get('use_micro_confirmation'),
+        micro_confirmation_delay_ms=trading_config.get('micro_confirmation_delay_ms')
     )
     categories['⚙️ Configurations Avancées'] = OrderedDict(
         early_invalidation=trading_config.get('early_invalidation'),
@@ -1592,7 +1594,12 @@ async def scanner_loop_callback() -> None:
                                             indicators_1m = setup.get('indicators_1m', {})
                                             indicators_5m = setup.get('indicators_5m', {})
                                             
-                                            # 🔥 Indicateurs techniques 1m et 5m
+                                            # 🔍 DEBUG: Vérifier contenu du setup
+                                            logger.warning(f"🔍 DEBUG setup keys pour {symbol}: {list(setup.keys())}")
+                                            logger.warning(f"🔍 DEBUG indicators_1m: {len(indicators_1m)} items: {list(indicators_1m.keys()) if indicators_1m else 'VIDE'}")
+                                            logger.warning(f"🔍 DEBUG indicators_5m: {len(indicators_5m)} items: {list(indicators_5m.keys()) if indicators_5m else 'VIDE'}")
+                                            
+                                            # 🔥 Indicateurs techniques 1m et 5m (TOUS les indicateurs disponibles)
                                             import math
                                             for key, value in indicators_1m.items():
                                                 if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
@@ -1601,7 +1608,13 @@ async def scanner_loop_callback() -> None:
                                                 if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
                                                     gb_features[f"{key}_5m" if not key.endswith('_5m') else key] = value
                                             
-                                            # 🔥 Scores et setup data (si disponibles)
+                                            # 🔥 Features depuis la racine du setup (prix, volume, etc.)
+                                            setup_direct_features = ['price', 'volume', 'atr', 'spread', 'orderbook_imbalance']
+                                            for feat in setup_direct_features:
+                                                if feat in setup and isinstance(setup[feat], (int, float)) and not math.isnan(setup[feat]):
+                                                    gb_features[feat] = setup[feat]
+                                            
+                                            # 🔥 Scores et filtres qualité (si disponibles)
                                             scores = setup.get('scores', {})
                                             if scores:
                                                 for key, value in scores.items():
@@ -1611,11 +1624,87 @@ async def scanner_loop_callback() -> None:
                                             # 🔥 Direction (LONG=1, SHORT=0)
                                             gb_features['direction'] = 1 if direction.upper() == 'LONG' else 0
                                             
-                                            # 🔥 Total score et conditions
+                                            # 🔥 Setup metrics
                                             gb_features['totalScore'] = setup.get('totalScore', 0)
                                             gb_features['conditions'] = setup.get('conditions', 0)
                                             
-                                            logger.debug(f"🔍 GB Features extraites: {len(gb_features)} features")
+                                            # 🔥 Features dérivées calculées à la volée (Bollinger, EMA, etc.)
+                                            if indicators_1m and indicators_5m:
+                                                # BB Position (feature TOP importance)
+                                                bb_lower_1m = indicators_1m.get('bb_lower', 0)
+                                                bb_upper_1m = indicators_1m.get('bb_upper', 0)
+                                                if bb_upper_1m != bb_lower_1m:
+                                                    bb_width_1m = bb_upper_1m - bb_lower_1m
+                                                    if bb_width_1m > 0 and 'price' in setup:
+                                                        price = setup['price']
+                                                        gb_features['bb_position_1m'] = (price - bb_lower_1m) / bb_width_1m
+                                                        gb_features['bb_width_1m'] = bb_width_1m / price * 100  # En %
+                                                
+                                                # EMA divergence 1m/5m
+                                                ema_diff_1m = indicators_1m.get('ema_diff_pct', 0)
+                                                ema_diff_5m = indicators_5m.get('ema_diff_pct', 0)
+                                                if ema_diff_1m != 0 and ema_diff_5m != 0:
+                                                    gb_features['ema_divergence'] = abs(ema_diff_1m - ema_diff_5m)
+                                                    gb_features['ema_aligned'] = 1 if (ema_diff_1m > 0) == (ema_diff_5m > 0) else 0
+                                                
+                                                # RSI momentum
+                                                rsi_1m = indicators_1m.get('rsi', 50)
+                                                rsi_5m = indicators_5m.get('rsi', 50)
+                                                gb_features['rsi_divergence'] = abs(rsi_1m - rsi_5m)
+                                                gb_features['rsi_distance_50_1m'] = abs(rsi_1m - 50)
+                                                
+                                                # Volatility ratio
+                                                atr_1m = indicators_1m.get('atr_pct', 0)
+                                                atr_5m = indicators_5m.get('atr_pct', 0)
+                                                if atr_5m > 0:
+                                                    gb_features['volatility_ratio'] = atr_1m / atr_5m
+                                                
+                                                # Volume momentum
+                                                vol_ratio_1m = indicators_1m.get('volume_ratio', 1)
+                                                vol_ratio_5m = indicators_5m.get('volume_ratio', 1)
+                                                gb_features['volume_divergence'] = abs(vol_ratio_1m - vol_ratio_5m)
+                                                
+                                                # 🔥 NOUVELLES FEATURES MANQUANTES (8/8) pour 100% disponibilité
+                                                
+                                                # 1-2. RSI précédents (approximation si pas disponible)
+                                                gb_features['rsi_prev_1m'] = indicators_1m.get('rsi_prev', rsi_1m - 1.0)  # Approximation
+                                                gb_features['rsi_prev_5m'] = indicators_5m.get('rsi_prev', rsi_5m - 1.0)  # Approximation
+                                                
+                                                # 3. MACD histogram précédent
+                                                macd_hist_1m = indicators_1m.get('macd_hist', 0)
+                                                gb_features['macd_hist_prev_1m'] = indicators_1m.get('macd_hist_prev', macd_hist_1m - 0.001)  # Approximation
+                                                
+                                                # 4-7. BB Distances absolues (critiques pour le modèle)
+                                                if 'price' in setup and bb_upper_1m and bb_lower_1m:
+                                                    price = setup['price']
+                                                    gb_features['bb_distance_to_upper_1m'] = max(0, bb_upper_1m - price)
+                                                    gb_features['bb_distance_to_lower_1m'] = max(0, price - bb_lower_1m)
+                                                
+                                                bb_lower_5m = indicators_5m.get('bb_lower', 0)
+                                                bb_upper_5m = indicators_5m.get('bb_upper', 0)
+                                                if 'price' in setup and bb_upper_5m and bb_lower_5m:
+                                                    price = setup['price']
+                                                    gb_features['bb_distance_to_upper_5m'] = max(0, bb_upper_5m - price)
+                                                    gb_features['bb_distance_to_lower_5m'] = max(0, price - bb_lower_5m)
+                                                
+                                                # 8. DI minus 5m si pas déjà présent
+                                                if 'di_minus' not in gb_features and 'di_minus' in indicators_5m:
+                                                    gb_features['di_minus_5m'] = indicators_5m['di_minus']
+                                                
+                                                # Calculer BB width 5m si pas encore fait
+                                                if bb_upper_5m and bb_lower_5m and bb_upper_5m != bb_lower_5m:
+                                                    gb_features['bb_width_5m'] = bb_upper_5m - bb_lower_5m
+                                            
+                                            # 🔥 Timestamp features (session, hour)
+                                            from datetime import datetime, timezone
+                                            now = datetime.now(timezone.utc)
+                                            gb_features['hour_utc'] = now.hour
+                                            gb_features['session_europe'] = 1 if 8 <= now.hour < 16 else 0
+                                            gb_features['session_usa'] = 1 if 13 <= now.hour < 21 else 0
+                                            gb_features['high_activity_hours'] = 1 if 13 <= now.hour < 17 else 0
+                                            
+                                            logger.warning(f"🌳 Features extraites pour {symbol}: {list(gb_features.keys())}")
+                                            logger.debug(f"🔍 GB Features total: {len(gb_features)} features")
                                             
                                             if gb_features:
                                                 predictor = get_predictor()
@@ -1745,6 +1834,10 @@ async def scanner_loop_callback() -> None:
                                     # Ouvrir la position
                                     condition_types = setup.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
                                     
+                                    # 🌳 ANCIENNE SECTION GB SUPPRIMÉE 
+                                    # Le filtre GradientBoosting optimisé (28+ features) est déjà actif plus haut dans le code
+                                    # Cette section basique (7 features) était redondante et causait des conflits
+                                    
                                     position = position_manager.open_position(
                                         symbol=symbol,
                                         direction=direction,
@@ -1756,7 +1849,8 @@ async def scanner_loop_callback() -> None:
                                         scalability_data=scalability_data,
                                         condition_types=condition_types,  # 🔥 PHASE 5: Types de conditions
                                         ml_confidence=setup.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
-                                        adaptive_sizing_multiplier=adaptive_sizing_mult  # 🔥 Multiplicateur adaptatif
+                                        adaptive_sizing_multiplier=adaptive_sizing_mult,  # 🔥 Multiplicateur adaptatif
+                                        setup_data=setup  # 🔥 CRITICAL: Passer le setup complet pour accès indicators_1m/5m
                                     )
                                     
                                     # 🔥 FIX: Vérifier si position rejetée par calibration
@@ -2446,6 +2540,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'candle_close_threshold_seconds': TRADING_CONFIG.get('candle_close_threshold_seconds'),
                         'use_momentum_continuity': TRADING_CONFIG.get('use_momentum_continuity'),
                         'momentum_lookback': TRADING_CONFIG.get('momentum_lookback'),
+                        'use_micro_confirmation': TRADING_CONFIG.get('use_micro_confirmation'),
+                        'micro_confirmation_delay_ms': TRADING_CONFIG.get('micro_confirmation_delay_ms'),
                     }
                 }
                 
@@ -5470,6 +5566,19 @@ async def handle_client_command(command: str, params: dict):
             val = max(2, min(10, val))  # Clamp 2-10
             TRADING_CONFIG['momentum_lookback'] = val
             updated['momentum_lookback'] = val
+        
+        # --- OPT #20: Micro-confirmation ---
+        if 'use_micro_confirmation' in params:
+            TRADING_CONFIG['use_micro_confirmation'] = bool(params['use_micro_confirmation'])
+            updated['use_micro_confirmation'] = TRADING_CONFIG['use_micro_confirmation']
+            logger.info(f"✅ use_micro_confirmation: {TRADING_CONFIG['use_micro_confirmation']}")
+        
+        if 'micro_confirmation_delay_ms' in params:
+            val = int(params['micro_confirmation_delay_ms'])
+            val = max(100, min(1000, val))  # Clamp 100-1000ms
+            TRADING_CONFIG['micro_confirmation_delay_ms'] = val
+            updated['micro_confirmation_delay_ms'] = val
+            logger.info(f"✅ micro_confirmation_delay_ms: {val}ms")
         
         # 🔥 Filtre RSI Final (bloque trades contre-logiques)
         if 'rsi_final_filter_enabled' in params:

@@ -2,7 +2,7 @@
   "name": "VOLATILE",
   "optimal_atr_min": 0.20,
   "optimal_atr_max": 0.80,
-  "min_score_required": 6.5,
+  "min_score_required": 7.5,
   "atr_mult_sl": 1.5,
   "atr_mult_tp": 2.5,
   "break_even_atr_mult": 1.5,

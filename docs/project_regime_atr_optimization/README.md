@@ -125,3 +125,19 @@ Scripts:
 1. `python verification\verify_runtime_loop.py --loops 1 --interval 1`
 2. `python verification\verify_phase1b_v2_methods.py`
 3. `python verification\verify_phase2d_integration.py`
+
+---
+
+## 🧪 ANALYSE ML (EV net / seuil `gb_min_confidence`)
+
+ Objectif: analyser la **rentabilité réelle (EV net)** par `ml_confidence` et identifier un seuil robuste (split temporel train/test).
+
+ Commandes:
+
+ 1. `python scripts\analyze_ml_thresholds.py --days 180 --test-ratio 0.30 --step 5`
+ 2. (option) `python scripts\analyze_ml_thresholds.py --days 365 --test-ratio 0.30 --step 5 --no-training-filter`
+
+ Sorties principales:
+ - **Meilleurs seuils** (optimisés sur TRAIN, reportés sur TEST)
+ - **Table TEST** par seuil (EV%, PF, PnL net)
+ - **Buckets 5%** (EV net par tranche de `ml_confidence`)
