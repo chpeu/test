@@ -483,7 +483,13 @@ class TestScannerLoop:
             "symbol": "BTC/USDT:USDT",
             "direction": "LONG",
             "entry": 50000.0,
-            "score": 85
+            "score": 85,
+            "price": 50000.0,  # Ajout clé price pour compatibilité
+            "tp": 52000.0,      # Ajout TP/SL pour éviter erreurs
+            "sl": 49000.0,
+            "tp_sl_mode": "FIXE",
+            "indicators_1m": {"rsi": 60, "adx": 25},
+            "indicators_5m": {"rsi": 58, "adx": 24}
         })
 
         scanner_loop._analyzer = mock_analyzer
@@ -560,7 +566,13 @@ class TestCallbacksIntegration:
             "price": 50000.0,
             "atr": 500.0,
             "atr5m": 250.0,
-            "condition_types": ["EMA_CROSS"]
+            "condition_types": ["EMA_CROSS"],
+            "tp": 52000.0,
+            "sl": 48000.0,
+            "tp_sl_mode": "ATR",
+            "score": 85,
+            "indicators_1m": {"rsi": 60, "adx": 25, "ema9": 50100, "ema21": 49900},
+            "indicators_5m": {"rsi": 58, "adx": 24, "ema9": 50050, "ema21": 49950}
         })
 
         # Mock position_manager

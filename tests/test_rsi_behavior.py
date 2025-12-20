@@ -66,7 +66,7 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         
         # Setup LONG avec RSI extrême (75)
         indicators_1m = {'rsi': 75, 'adx': 25, 'atr': 1.0}
-        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m}
+        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST']}
         setup_5m = None
         
         # Mock check_spread et check_orderbook_imbalance (AsyncMock car await)
@@ -95,8 +95,8 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         indicators_1m = {'rsi': 75, 'adx': 25, 'atr': 1.0}
         indicators_5m = {'rsi': 70, 'adx': 25, 'atr': 1.0}
         
-        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m}
-        setup_5m = {'direction': 'LONG', 'rsi': 70, 'signals': ['mock'], 'timeframe': '5m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_5m}
+        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_1m, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST']}
+        setup_5m = {'direction': 'LONG', 'rsi': 70, 'signals': ['mock'], 'timeframe': '5m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'indicators': indicators_5m, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST']}
         
         mock_check_spread = AsyncMock(return_value={'valid': True, 'spread_pct': 0.01, 'max_allowed': 0.05, 'quality': 'GOOD'})
         mock_calculate_trend = AsyncMock(return_value={'trend': 'NEUTRAL', 'strength': 0, 'bonus': 0})
@@ -122,7 +122,7 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         TRADING_CONFIG['use_confluence'] = False
         
         # Setup SHORT avec RSI trop bas (25) - Doit être bloqué
-        setup_1m = {'direction': 'SHORT', 'rsi': 25, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 110, 'tp': 90, 'atr': 1.0, 'score': 10}
+        setup_1m = {'direction': 'SHORT', 'rsi': 25, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 110, 'tp': 90, 'atr': 1.0, 'score': 10, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 'indicators': {'rsi': 25, 'adx': 25, 'atr': 1.0}}
         setup_5m = None
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
@@ -140,7 +140,7 @@ class TestRSIBehavior(unittest.IsolatedAsyncioTestCase):
         TRADING_CONFIG['use_confluence'] = False
         
         # Setup LONG avec RSI extrême (75) - Doit être bloqué
-        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10}
+        setup_1m = {'direction': 'LONG', 'rsi': 75, 'signals': ['mock'], 'timeframe': '1m', 'entry': 100, 'sl': 90, 'tp': 110, 'atr': 1.0, 'score': 10, 'symbol': 'BTC/USDT', 'condition_types': ['RSI_TEST'], 'indicators': {'rsi': 75, 'adx': 25, 'atr': 1.0}}
         setup_5m = None 
         
         mock_check_spread = AsyncMock(return_value={'valid': True})
