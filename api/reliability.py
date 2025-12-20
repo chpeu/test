@@ -30,9 +30,22 @@ try:
         TradeCursorError
     )
 except ImportError:
-    # Fallback si exceptions custom non disponibles
-    NetworkError = APIError = RateLimitError = MarketDataError = Exception
-    WebSocketError = WebSocketDisconnectedError = TradeCursorError = Exception
+    # Fallback si exceptions custom non disponibles - créer des classes spécifiques
+    # IMPORTANT: Ne PAS utiliser Exception directement car cela rendrait toutes les erreurs retryables
+    class NetworkError(Exception):
+        pass
+    class APIError(Exception):
+        pass
+    class RateLimitError(Exception):
+        pass
+    class MarketDataError(Exception):
+        pass
+    class WebSocketError(Exception):
+        pass
+    class WebSocketDisconnectedError(Exception):
+        pass
+    class TradeCursorError(Exception):
+        pass
 
 logger = logging.getLogger(__name__)
 
