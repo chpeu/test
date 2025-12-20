@@ -14,6 +14,11 @@ from tenacity import (
     retry_if_exception_type
 )
 from pybreaker import CircuitBreaker
+try:
+    from ccxt.base.errors import ExchangeError
+except ImportError:
+    # Fallback si ccxt non installé (test mock)
+    class ExchangeError(Exception): pass
 
 from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG, DEBUG_ENABLED
 
@@ -146,6 +151,24 @@ class AdaptiveCircuitBreaker:
             if DEBUG_ENABLED:
                 logger.error(f"❌ Circuit Breaker: Erreur API: {e}")
             raise
+        except ExchangeError as e:
+            # Erreur Exchange (CCXT)
+            is_rate_limit = False
+            # Vérifier code dans message ou attribut
+            if "510" in str(e) or "429" in str(e):
+                is_rate_limit = True
+            
+            if is_rate_limit:
+                # Rate limit (MEXC 510 ou Standard 429)
+                self.record_failure()
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ Circuit Breaker: Rate Limit Exchange: {e}")
+                raise
+            else:
+                # Autre erreur exchange (probablement critique)
+                self.record_failure()
+                logger.error(f"❌ Circuit Breaker: Erreur Exchange: {e}")
+                raise
         except TradeCursorError as e:
             # Erreur application (position, validation, etc.)
             self.record_failure()
@@ -172,7 +195,7 @@ _adaptive_circuit_breaker = AdaptiveCircuitBreaker(
         min=RETRY_CONFIG['wait_min'],
         max=RETRY_CONFIG['wait_max']
     ),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError, asyncio.TimeoutError))
+    retry=retry_if_exception_type((ConnectionError, TimeoutError, asyncio.TimeoutError, NetworkError, RateLimitError))
 )
 async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
     """
@@ -192,6 +215,22 @@ async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
     try:
         return await func(*args, **kwargs)
     # 🔥 SPRINT 1.1: Retry logic - Distinguer erreurs retryables et non-retryables
+    except ExchangeError as e:
+        # Exchange errors - Check if it's a rate limit error FIRST (before NetworkError)
+        is_rate_limit = False
+        if "510" in str(e) or "429" in str(e):
+            is_rate_limit = True
+        
+        if is_rate_limit:
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ MEXC rate limit (code 510/429) - conversion en RateLimitError")
+            # Lever RateLimitError pour que le circuit breaker et le retry le traitent correctement
+            raise RateLimitError(f"Exchange Rate Limit: {e}") from e
+        else:
+            # Autres erreurs Exchange - NON retryable
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur Exchange non-recoverable: {e}")
+            raise
     except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
         # Erreurs réseau standard - retryables (géré par @retry decorator)
         if DEBUG_ENABLED:
@@ -222,12 +261,8 @@ async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
         logger.error(f"❌ Erreur application non-recoverable: {e}", exc_info=True)
         raise
     except Exception as e:
-        # Rate limiting MEXC (code 510) en WARNING
-        if "ExchangeError" in str(type(e).__name__) and "510" in str(e):
-            logger.warning(f"⚠️ MEXC rate limit (code 510) - circuit breaker actif")
-        else:
-            # Autres erreurs inattendues - NON retryable
-            logger.error(f"❌ Erreur inattendue non-recoverable: {type(e).__name__}: {e}", exc_info=True)
+        # Autres erreurs inattendues - NON retryable
+        logger.error(f"❌ Erreur inattendue non-recoverable: {type(e).__name__}: {e}", exc_info=True)
         raise
 
 
