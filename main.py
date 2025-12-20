@@ -491,10 +491,15 @@ async def lifespan(app: FastAPI):
                     logger.warning(f"⚠️ HISTGB Config: {len(config_result.errors)} erreur(s)")
                 if not model_result.passed:
                     logger.warning(f"⚠️ HISTGB Model: {len(model_result.errors)} erreur(s)")
-        except ImportError:
-            logger.debug("Module verification non disponible, skip vérification ML")
+        except ImportError as e:
+            # Module verification non disponible (optionnel)
+            logger.debug(f"Module verification non disponible, skip vérification ML: {e}")
+        except ConfigurationError as e:
+            # Configuration ML invalide
+            logger.warning(f"⚠️ Configuration ML invalide: {e}")
         except Exception as e:
-            logger.warning(f"⚠️ Vérification ML non critique échouée: {e}")
+            # Erreur non-critique durant vérification ML
+            logger.warning(f"⚠️ Vérification ML non critique échouée: {type(e).__name__}: {e}")
 
         # 🔥 AUTO-SEED CALIBRATION: Initialiser la calibration ML avec l'historique des trades
         try:
@@ -511,8 +516,18 @@ async def lifespan(app: FastAPI):
                     logger.info(f"✅ CALIBRATION: Auto-seed avec {seeded_count} trades ({decay_days} jours)")
                 else:
                     logger.info("ℹ️ CALIBRATION: Aucun trade historique trouvé pour le seed")
+        except ImportError as e:
+            # Module calibration non disponible
+            logger.debug(f"Module calibration non disponible: {e}")
+        except ConfigurationError as e:
+            # Configuration calibration invalide
+            logger.warning(f"⚠️ Configuration calibration invalide: {e}")
+        except DatabaseError as e:
+            # Erreur lors de la lecture des trades historiques
+            logger.warning(f"⚠️ Impossible de charger trades pour calibration: {e}")
         except Exception as e:
-            logger.warning(f"⚠️ Auto-seed calibration échoué (non-bloquant): {e}")
+            # Erreur non-bloquante durant calibration
+            logger.warning(f"⚠️ Auto-seed calibration échoué (non-bloquant): {type(e).__name__}: {e}")
 
         try:
             await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
@@ -537,9 +552,14 @@ async def lifespan(app: FastAPI):
                     await app.state.data_logger.shutdown()
                     logger.info("✅ DataLogger arrêté proprement")
                 except (OSError, IOError, ConnectionError) as e:
+                    # Erreur I/O lors du shutdown (non-bloquant)
                     logger.error(f"❌ Erreur I/O lors de l'arrêt DataLogger: {e}")
+                except DatabaseError as e:
+                    # Erreur database lors du shutdown (non-bloquant)
+                    logger.error(f"❌ Erreur DB lors de l'arrêt DataLogger: {e}")
                 except Exception as e:
-                    logger.error(f"❌ Erreur inattendue arrêt DataLogger: {e}", exc_info=True)
+                    # Erreur inattendue (non-bloquant au shutdown)
+                    logger.error(f"❌ Erreur inattendue arrêt DataLogger: {type(e).__name__}: {e}", exc_info=True)
 
             try:
                 from core.callbacks.scanner_loop import get_pg_datalogger
@@ -623,15 +643,31 @@ if api_router:
 try:
     app.include_router(live_router)
     logger.info("✅ Live trading routes incluses: /api/live/*")
+except ImportError as e:
+    # Module live trading non disponible (optionnel)
+    logger.debug(f"Module live trading non disponible: {e}")
+except ConfigurationError as e:
+    # Configuration invalide pour live trading
+    logger.error(f"❌ Configuration live trading invalide: {e}", exc_info=True)
+    raise
 except Exception as e:
-    logger.warning(f"⚠️ Impossible d'inclure live trading routes: {e}")
+    # Erreur inattendue lors de l'inclusion du router
+    logger.warning(f"⚠️ Impossible d'inclure live trading routes: {type(e).__name__}: {e}", exc_info=True)
 
 # 🔥 SPRINT 1: Inclure les routes Market Regime et Circuit Breaker Trading
 try:
     app.include_router(regime_router)
     logger.info("✅ Regime & CB Trading routes incluses: /api/regime/*, /api/circuit-breaker/trading/*")
+except ImportError as e:
+    # Module regime trading non disponible (optionnel)
+    logger.debug(f"Module regime trading non disponible: {e}")
+except ConfigurationError as e:
+    # Configuration invalide pour regime trading
+    logger.error(f"❌ Configuration regime trading invalide: {e}", exc_info=True)
+    raise
 except Exception as e:
-    logger.warning(f"⚠️ Impossible d'inclure regime routes: {e}")
+    # Erreur inattendue lors de l'inclusion du router
+    logger.warning(f"⚠️ Impossible d'inclure regime routes: {type(e).__name__}: {e}", exc_info=True)
 
 # 🔥 PHASE 4: Fichier de persistance pour trade history
 # 🔥 FIX: Fichier historique par instance pour éviter conflits multi-instances
@@ -670,8 +706,13 @@ def init_trade_database() -> None:
         except (OSError, IOError) as e:
             logger.error(f"❌ Erreur I/O lors de l'initialisation DB: {e}")
             trade_db = None
+        except DatabaseError as e:
+            # Erreur database spécifique (corruption, schema, etc.)
+            logger.error(f"❌ Erreur database lors de l'initialisation: {e}", exc_info=True)
+            trade_db = None
         except Exception as e:
-            logger.critical(f"❌ Erreur critique initialisation DB: {e}", exc_info=True)
+            # Erreur système inattendue
+            logger.critical(f"❌ Erreur critique initialisation DB: {type(e).__name__}: {e}", exc_info=True)
             trade_db = None
 
 def save_trade_history() -> None:
@@ -692,15 +733,29 @@ def save_trade_history() -> None:
         else:
             os.rename(temp_file, TRADE_HISTORY_FILE)
         logger.debug(f"✅ Historique sauvegardé: {len(app_state['trade_history'])} trades (fichier: {TRADE_HISTORY_FILE})")
-    except Exception as e:
-        logger.error(f"❌ Erreur sauvegarde historique JSON: {e}")
+    except (FileNotFoundError, PermissionError) as e:
+        # Erreur d'accès fichier (permissions, fichier manquant)
+        logger.error(f"❌ Erreur d'accès fichier lors sauvegarde JSON: {e}")
+    except (OSError, IOError) as e:
+        # Erreur I/O système
+        logger.error(f"❌ Erreur I/O lors sauvegarde historique JSON: {e}")
         # Nettoyer fichier temporaire en cas d'erreur
         temp_file = TRADE_HISTORY_FILE + ".tmp"
         if os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
-            except:
-                pass
+            except (OSError, PermissionError):
+                logger.debug(f"⚠️ Impossible de supprimer fichier temporaire: {temp_file}")
+    except Exception as e:
+        # Erreur inattendue (JSON serialization, etc.)
+        logger.error(f"❌ Erreur inattendue sauvegarde historique JSON: {type(e).__name__}: {e}", exc_info=True)
+        # Nettoyer fichier temporaire en cas d'erreur
+        temp_file = TRADE_HISTORY_FILE + ".tmp"
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except (OSError, PermissionError):
+                logger.debug(f"⚠️ Impossible de supprimer fichier temporaire: {temp_file}")
     
     # 🔥 PHASE 8: Sauvegarde SQLite via AnalyticsLogger uniquement
     # Les insertions directes ici provoquaient des erreurs car trade_history ne contient
@@ -759,8 +814,18 @@ def load_trade_history() -> None:
                         return
             finally:
                 pg_logger.pool.putconn(conn)
+    except ImportError as e:
+        # PostgreSQL module non disponible
+        logger.debug(f"Module PostgreSQL non disponible: {e}")
+    except DatabaseConnectionError as e:
+        # Erreur de connexion à la base de données
+        logger.warning(f"⚠️ Impossible de se connecter à PostgreSQL: {e}")
+    except DatabaseError as e:
+        # Erreur database (query, schema, etc.)
+        logger.warning(f"⚠️ Erreur database PostgreSQL lors chargement: {e}")
     except Exception as e:
-        logger.warning(f"Impossible de charger depuis PostgreSQL: {e}")
+        # Erreur inattendue
+        logger.warning(f"⚠️ Impossible de charger depuis PostgreSQL: {type(e).__name__}: {e}", exc_info=True)
     
     # Fallback: Charger depuis JSON
     try:
@@ -771,8 +836,21 @@ def load_trade_history() -> None:
         else:
             app_state['trade_history'] = []
             logger.info(f"Nouveau fichier historique cree: {TRADE_HISTORY_FILE}")
+    except (FileNotFoundError, PermissionError) as e:
+        # Erreur d'accès fichier
+        logger.warning(f"⚠️ Erreur d'accès fichier JSON: {e}")
+        app_state['trade_history'] = []
+    except json.JSONDecodeError as e:
+        # Fichier JSON corrompu
+        logger.error(f"❌ Fichier historique JSON corrompu: {e}")
+        app_state['trade_history'] = []
+    except (OSError, IOError) as e:
+        # Erreur I/O
+        logger.error(f"❌ Erreur I/O chargement historique JSON: {e}")
+        app_state['trade_history'] = []
     except Exception as e:
-        logger.error(f"Erreur chargement historique: {e}")
+        # Erreur inattendue
+        logger.error(f"❌ Erreur inattendue chargement historique: {type(e).__name__}: {e}", exc_info=True)
         app_state['trade_history'] = []
 
 # Global state
@@ -839,11 +917,25 @@ async def _run_initial_top_pairs_scan() -> None:
                 try:
                     await price_provider.start_websocket(symbols)
                     await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                except WebSocketError as e:
+                    # Erreur WebSocket lors du démarrage
+                    logger.warning(f"⚠️ Erreur WebSocket lors du démarrage: {e}")
+                except NetworkError as e:
+                    # Erreur réseau lors de la connexion WebSocket
+                    logger.warning(f"⚠️ Erreur réseau WebSocket: {e}")
                 except Exception as e:
-                    logger.warning(f"Erreur démarrage WebSocket: {e}")
+                    # Erreur inattendue lors du démarrage WebSocket
+                    logger.warning(f"⚠️ Erreur inattendue démarrage WebSocket: {type(e).__name__}: {e}", exc_info=True)
 
+    except MarketDataError as e:
+        # Erreur lors du scan des paires (pas de données, etc.)
+        logger.error(f"❌ Erreur données marché lors scan initial: {e}", exc_info=True)
+    except NetworkError as e:
+        # Erreur réseau lors du scan
+        logger.error(f"❌ Erreur réseau lors scan initial: {e}", exc_info=True)
     except Exception as e:
-        logger.error(f"❌ Erreur scan initial en arrière-plan: {e}", exc_info=True)
+        # Erreur inattendue durant le scan
+        logger.error(f"❌ Erreur inattendue scan initial en arrière-plan: {type(e).__name__}: {e}", exc_info=True)
 
 # 🔥 FIX: Injecter app_state dans le router APRÈS définition
 if api_router and set_app_state:
@@ -899,8 +991,15 @@ async def notify_error_telegram(error_type: str, details: str):
                     'error_type': error_type,
                     'details': details
                 }, priority='high')
+    except NotificationError as e:
+        # Erreur spécifique notification (Telegram, etc.)
+        logger.debug(f"⚠️ Erreur notification Telegram: {e}")
+    except NetworkError as e:
+        # Erreur réseau lors de l'envoi de la notification
+        logger.debug(f"⚠️ Erreur réseau notification Telegram: {e}")
     except Exception as e:
-        logger.debug(f"⚠️ Impossible de notifier l'erreur via Telegram: {e}")
+        # Erreur inattendue lors de la notification
+        logger.debug(f"⚠️ Impossible de notifier l'erreur via Telegram: {type(e).__name__}: {e}")
 
 
 def notify_error_sync(error_type: str, details: str) -> None:
@@ -913,8 +1012,15 @@ def notify_error_sync(error_type: str, details: str) -> None:
         if notification_manager and notification_manager.telegram_notifier:
             if notification_manager.telegram_notify_settings.get('error', True):
                 notification_manager.telegram_notifier.send_error_sync(error_type, details)
+    except NotificationError as e:
+        # Erreur spécifique notification (Telegram, etc.)
+        logger.debug(f"⚠️ Erreur notification Telegram (sync): {e}")
+    except NetworkError as e:
+        # Erreur réseau lors de l'envoi de la notification
+        logger.debug(f"⚠️ Erreur réseau notification Telegram (sync): {e}")
     except Exception as e:
-        logger.debug(f"⚠️ Impossible de notifier l'erreur (sync): {e}")
+        # Erreur inattendue lors de la notification
+        logger.debug(f"⚠️ Impossible de notifier l'erreur (sync): {type(e).__name__}: {e}")
 
 
 # 🔥 FIX SL MISMATCH: Fonction pour configurer vérification SL temps réel
@@ -991,10 +1097,21 @@ async def setup_realtime_sl_check(position: Any, price_provider_instance: Any) -
                     f"Raison: {reason}"
                 )
                 
+            except PositionError as e:
+                # Erreur position spécifique (position inexistante, déjà fermée, etc.)
+                logger.error(f"❌ Erreur position lors fermeture SL temps réel: {e}", exc_info=True)
+            except OrderExecutionError as e:
+                # Erreur lors de l'exécution de l'ordre de fermeture
+                logger.error(f"❌ Erreur exécution ordre fermeture SL: {e}", exc_info=True)
+            except DatabaseError as e:
+                # Erreur lors de la sauvegarde du trade fermé
+                logger.error(f"❌ Erreur DB lors fermeture SL (trade fermé mais non sauvegardé): {e}", exc_info=True)
+            except WebSocketError as e:
+                # Erreur lors de l'émission WebSocket (position fermée mais frontend pas notifié)
+                logger.warning(f"⚠️ Erreur WS lors émission fermeture SL: {e}")
             except Exception as e:
-                logger.error(f"❌ Erreur fermeture position SL temps réel: {e}")
-                import traceback
-                logger.debug(traceback.format_exc())
+                # Erreur inattendue lors de la fermeture
+                logger.error(f"❌ Erreur inattendue fermeture position SL temps réel: {type(e).__name__}: {e}", exc_info=True)
     
     # Configurer le callback dans le price_provider
     price_provider_instance.set_sl_check_callback(
@@ -1101,11 +1218,23 @@ async def schedule_sl_order_placement(position: Any, delay_seconds: float = 3.0)
                 logger.debug(f"ℹ️ Méthode place_stop_loss_order non disponible")
             
         except asyncio.CancelledError:
+            # Tâche SL annulée (position fermée avant le placement)
             logger.info(f"🛑 Tâche SL annulée pour {symbol}")
+        except PositionError as e:
+            # Erreur position (position inexistante, etc.)
+            logger.error(f"❌ Erreur position lors placement SL exchange: {e}", exc_info=True)
+        except OrderExecutionError as e:
+            # Erreur lors du placement de l'ordre SL
+            logger.error(f"❌ Erreur exécution ordre SL exchange: {e}", exc_info=True)
+        except NetworkError as e:
+            # Erreur réseau lors de la communication avec l'exchange
+            logger.warning(f"⚠️ Erreur réseau placement SL exchange: {e}")
+        except APIError as e:
+            # Erreur API exchange
+            logger.error(f"❌ Erreur API placement SL exchange: {e}", exc_info=True)
         except Exception as e:
-            logger.error(f"❌ Erreur placement SL exchange: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
+            # Erreur inattendue
+            logger.error(f"❌ Erreur inattendue placement SL exchange: {type(e).__name__}: {e}", exc_info=True)
         finally:
             # Nettoyer la tâche
             if symbol in _pending_sl_tasks:
@@ -1197,8 +1326,15 @@ async def scanner_loop_callback() -> None:
                     # Émettre l'état au frontend
                     await ws_manager.emit('circuit_breaker_trading_update', cb_status)
                     return
+        except ImportError as e:
+            # Module circuit breaker non disponible
+            logger.debug(f"Module circuit breaker non disponible: {e}")
+        except ConfigurationError as e:
+            # Configuration circuit breaker invalide
+            logger.warning(f"⚠️ Configuration circuit breaker invalide: {e}")
         except Exception as e:
-            logger.debug(f"Erreur vérification Circuit Breaker: {e}")
+            # Erreur non-critique lors de la vérification circuit breaker
+            logger.debug(f"⚠️ Erreur vérification Circuit Breaker: {type(e).__name__}: {e}")
         
         # 🔥 JOUR 3: Si on n'a pas de top_pairs, on les scanne d'abord
         if not app_state['top_pairs']:
@@ -1220,8 +1356,15 @@ async def scanner_loop_callback() -> None:
                         try:
                             await price_provider.start_websocket(symbols)
                             await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                        except WebSocketError as e:
+                            # Erreur WebSocket lors du démarrage
+                            logger.warning(f"⚠️ Erreur WebSocket lors du démarrage: {e}")
+                        except NetworkError as e:
+                            # Erreur réseau lors de la connexion WebSocket
+                            logger.warning(f"⚠️ Erreur réseau WebSocket: {e}")
                         except Exception as e:
-                            logger.warning(f"Erreur démarrage WebSocket: {e}")
+                            # Erreur inattendue lors du démarrage WebSocket
+                            logger.warning(f"⚠️ Erreur inattendue démarrage WebSocket: {type(e).__name__}: {e}")
         
         # 🔥 SPRINT 1: Vérifier et mettre à jour le régime de marché
         if app_state['top_pairs'] and TRADING_CONFIG.get('market_regime_enabled', True):
@@ -1282,8 +1425,18 @@ async def scanner_loop_callback() -> None:
                         )
                         # Émettre au frontend
                         await ws_manager.emit('regime_changed', regime_status)
+            except ImportError as e:
+                # Module regime selector non disponible
+                logger.debug(f"Module regime selector non disponible: {e}")
+            except MarketDataError as e:
+                # Erreur données marché (ATR, ADX invalides)
+                logger.warning(f"⚠️ Erreur données marché pour régime: {e}")
+            except ConfigurationError as e:
+                # Configuration régime invalide
+                logger.warning(f"⚠️ Configuration régime invalide: {e}")
             except Exception as e:
-                logger.debug(f"Erreur vérification régime: {e}")
+                # Erreur non-critique lors de la vérification du régime
+                logger.debug(f"⚠️ Erreur vérification régime: {type(e).__name__}: {e}")
         
         # 🔥 JOUR 3: Scanner plusieurs paires en parallèle (top 20)
         if app_state['top_pairs']:
