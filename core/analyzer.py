@@ -15,6 +15,19 @@ from config import TRADING_CONFIG, DEBUG_ENABLED, CONDITION_WEIGHTS, TREND_BONUS
 from utils.logger import get_logger
 from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
 
+# 🔥 SPRINT 1.2: Exception Handling System
+try:
+    from core.exceptions import (
+        NetworkError, APIError, RateLimitError, MarketDataError,
+        PriceDataError, InsufficientDataError,
+        DatabaseError, WebSocketError,
+        TradeCursorError
+    )
+except ImportError:
+    # Fallback si exceptions custom non disponibles
+    NetworkError = APIError = RateLimitError = MarketDataError = Exception
+    PriceDataError = InsufficientDataError = DatabaseError = WebSocketError = TradeCursorError = Exception
+
 # Imports des modules refactorisés
 from core.analyzer.filters import (
     check_volume_filter,
@@ -286,14 +299,45 @@ class TechnicalAnalyzer:
                 return None
 
             # Récupérer OHLCV pour indicateurs
+            # 🔥 SPRINT 1.2: OHLCV fetch - Distinguer erreurs réseau, API, données invalides
             try:
                 ohlcv = await self.client.fetch_ohlcv(symbol, timeframe, limit=100)
-            except Exception as e:
-                reason = f"Erreur fetch OHLCV: {str(e)} (symbole: {symbol})"
+            except RateLimitError as e:
+                # Rate limit - retryable par fetch_ohlcv
+                reason = f"Rate limit fetch OHLCV: {e} (symbole: {symbol})"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
                 if DEBUG_ENABLED:
-                    logger.error(f"{symbol} {timeframe}: {reason}")
+                    logger.warning(f"⚠️ {symbol} {timeframe}: {reason}")
+                return None
+            except NetworkError as e:
+                # Erreur réseau (timeout, connexion)
+                reason = f"Erreur réseau fetch OHLCV: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ {symbol} {timeframe}: {reason}")
+                return None
+            except APIError as e:
+                # Erreur API (symbole invalide, timeframe non supporté)
+                reason = f"Erreur API fetch OHLCV: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                logger.error(f"❌ {symbol} {timeframe}: {reason}")
+                return None
+            except MarketDataError as e:
+                # Données OHLCV invalides
+                reason = f"Données OHLCV invalides: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                logger.error(f"❌ {symbol} {timeframe}: {reason}")
+                return None
+            except Exception as e:
+                # Erreur inattendue
+                reason = f"Erreur inattendue fetch OHLCV: {type(e).__name__}: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                logger.error(f"❌ {symbol} {timeframe}: {reason}", exc_info=True)
                 return None
 
             if not ohlcv or len(ohlcv) < 20:
@@ -856,10 +900,43 @@ class TechnicalAnalyzer:
                 'volume_filter_passed': filter_metrics['volume_filter_passed']
             }
 
-        except Exception as e:
+        # 🔥 SPRINT 1.2: Main analysis - Distinguer erreurs données, calcul, réseau
+        except InsufficientDataError as e:
+            # Données insuffisantes pour calculer indicateurs
+            error_msg = f"Données insuffisantes pour l'analyse {timeframe}: {e}"
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ {symbol} {timeframe}: {error_msg}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except PriceDataError as e:
+            # Données de prix invalides
+            error_msg = f"Données de prix invalides pour l'analyse {timeframe}: {e}"
+            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except MarketDataError as e:
+            # Données marché invalides (volume, spread, etc.)
+            error_msg = f"Données marché invalides pour l'analyse {timeframe}: {e}"
+            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except (ValueError, ZeroDivisionError, KeyError) as e:
+            # Erreur calcul indicateurs (division par zéro, clé manquante, etc.)
             import traceback
-            error_msg = f"Exception lors de l'analyse {timeframe}: {str(e)}"
-            logger.error(f"❌ Erreur analyse {symbol} {timeframe}: {e}")
+            error_msg = f"Erreur calcul indicateurs {timeframe}: {type(e).__name__}: {e}"
+            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except Exception as e:
+            # Erreur inattendue - log complet avec traceback
+            import traceback
+            error_msg = f"Exception inattendue lors de l'analyse {timeframe}: {type(e).__name__}: {e}"
+            logger.error(f"❌ Erreur inattendue analyse {symbol} {timeframe}: {type(e).__name__}: {e}", exc_info=True)
             logger.error(f"Traceback: {traceback.format_exc()}")
             if return_reason:
                 return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
@@ -1074,8 +1151,15 @@ class TechnicalAnalyzer:
                         reject_reason_category=None,
                         scan_duration_ms=scan_duration_ms
                     )
+            # 🔥 SPRINT 1.2: log_scan - NON-BLOQUANT, distinguer erreurs DB
+            except DatabaseError as e:
+                # Erreur base de données - NON-BLOQUANT
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ Erreur DB log_scan (non-bloquant): {e}")
+                scan_uuid = None
             except Exception as e:
-                logger.debug(f"Erreur log_scan (non-bloquant): {e}")
+                # Erreur inattendue - NON-BLOQUANT
+                logger.debug(f"Erreur inattendue log_scan (non-bloquant): {type(e).__name__}: {e}")
                 scan_uuid = None
             # ========================================
             # FIN POINT A
@@ -1280,8 +1364,16 @@ class TechnicalAnalyzer:
                                     }
                                 else:
                                     logger.info(f"✅ {symbol} Micro-confirmation OK: {price_change_pct:+.3f}%")
+                        # 🔥 SPRINT 1.2: Micro-confirmation - Distinguer erreurs fetch prix
+                        except NetworkError as e:
+                            # Erreur réseau lors fetch prix micro-confirmation
+                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur réseau fetch prix: {e}")
+                        except PriceDataError as e:
+                            # Données prix invalides
+                            logger.warning(f"⚠️ {symbol} Micro-confirmation: données prix invalides: {e}")
                         except Exception as e:
-                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur fetch prix: {e}")
+                            # Erreur inattendue fetch prix
+                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur inattendue fetch prix: {type(e).__name__}: {e}")
 
                 # 2. Vérifier orderbook imbalance
                 orderbook_check = await check_orderbook_imbalance(
@@ -1324,8 +1416,14 @@ class TechnicalAnalyzer:
                             except RuntimeError:
                                 # Pas de loop en cours, ignorer (le log est déjà dans logger.info)
                                 pass
+                    # 🔥 SPRINT 1.2: Frontend log - NON-BLOQUANT, distinguer erreurs
+                    except WebSocketError as log_err:
+                        # Erreur WebSocket (emit fail) - NON-BLOQUANT
+                        if DEBUG_ENABLED:
+                            logger.debug(f"Erreur WebSocket envoi log frontend (non-bloquant): {log_err}")
                     except Exception as log_err:
-                        logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
+                        # Erreur inattendue - NON-BLOQUANT
+                        logger.debug(f"Erreur inattendue envoi log frontend (non-bloquant): {type(log_err).__name__}: {log_err}")
                     # 🔥 FIX: Retourner un dict avec les indicateurs et un reason au lieu de None
                     # pour permettre le logging des indicateurs même si le setup est rejeté
                     # Construire indicators_1m et indicators_5m depuis analysis_1m et analysis_5m
@@ -1743,8 +1841,14 @@ class TechnicalAnalyzer:
                         
                         # Stocker opp_id pour Point C
                         best_setup['_opportunity_id'] = opp_id
+                # 🔥 SPRINT 1.2: log_opportunity - NON-BLOQUANT, distinguer erreurs DB
+                except DatabaseError as e:
+                    # Erreur base de données - NON-BLOQUANT
+                    if DEBUG_ENABLED:
+                        logger.warning(f"⚠️ Erreur DB log_opportunity (non-bloquant): {e}")
                 except Exception as e:
-                    logger.debug(f"Erreur log_opportunity (non-bloquant): {e}")
+                    # Erreur inattendue - NON-BLOQUANT
+                    logger.debug(f"Erreur inattendue log_opportunity (non-bloquant): {type(e).__name__}: {e}")
                 # ========================================
                 # FIN POINT B
                 # ========================================
@@ -2110,11 +2214,46 @@ class TechnicalAnalyzer:
             
             return result
 
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
+        # 🔥 SPRINT 1.2: Top-level analyze_pair - Distinguer toutes erreurs possibles
+        except InsufficientDataError as e:
+            # Données insuffisantes - déjà loggé dans analyze_timeframe
             if DEBUG_ENABLED:
-                logger.error(f"Erreur analyse pair {symbol}: {e}")
+                logger.debug(f"{symbol}: Données insuffisantes: {e}")
+            return None
+        except PriceDataError as e:
+            # Données prix invalides
+            logger.error(f"❌ {symbol}: Données prix invalides: {e}")
+            return None
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ {symbol}: Données marché invalides: {e}")
+            return None
+        except NetworkError as e:
+            # Erreur réseau (timeout, connexion)
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ {symbol}: Erreur réseau: {e}")
+            return None
+        except APIError as e:
+            # Erreur API MEXC
+            logger.error(f"❌ {symbol}: Erreur API: {e}")
+            return None
+        except DatabaseError as e:
+            # Erreur database (logging) - NON-BLOQUANT pour analyse
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ {symbol}: Erreur DB (non-bloquant): {e}")
+            # Continuer et retourner result si disponible
+            return None
+        except (ValueError, ZeroDivisionError, KeyError, AttributeError) as e:
+            # Erreur calcul/accès données
+            import traceback
+            logger.error(f"❌ {symbol}: Erreur calcul: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            return None
+        except Exception as e:
+            # Erreur totalement inattendue - log complet
+            import traceback
+            logger.error(f"❌ Erreur inattendue analyse pair {symbol}: {type(e).__name__}: {e}", exc_info=True)
+            traceback.print_exc()
             return None
 
     async def close(self):
