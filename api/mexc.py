@@ -23,8 +23,27 @@ except ImportError:
 
 
 class MEXCClient:
-    """Client API MEXC avec gestion des erreurs et retry"""
-    
+    """
+    Client API MEXC avec gestion des erreurs et retry
+
+    Utilisation recommandée avec async context manager:
+    ```python
+    async with MEXCClient() as client:
+        ticker = await client.fetch_ticker("BTC/USDT")
+        ohlcv = await client.fetch_ohlcv("BTC/USDT", "1m")
+    # Connexions automatiquement fermées (HTTP session, WebSocket, exchange)
+    ```
+
+    Alternativement (non recommandé):
+    ```python
+    client = MEXCClient()
+    try:
+        ticker = await client.fetch_ticker("BTC/USDT")
+    finally:
+        await client.close()  # Cleanup manuel
+    ```
+    """
+
     def __init__(self):
         # 🔥 v6.6: Connection pooling avec aiohttp
         self.session = aiohttp.ClientSession(
@@ -224,13 +243,32 @@ class MEXCClient:
                 print(f"❌ Erreur inattendue fetch_funding_rate {symbol}: {type(e).__name__}: {e}")
             return None
     
+    async def __aenter__(self):
+        """Async context manager entry"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """
+        Async context manager exit avec cleanup automatique
+
+        Args:
+            exc_type: Type d'exception si erreur
+            exc_val: Valeur exception
+            exc_tb: Traceback exception
+
+        Returns:
+            False pour propager l'exception (si présente)
+        """
+        await self.close()
+        return False
+
     async def close(self):
         """Ferme les connexions"""
         if self.ws_manager:
             await self.ws_manager.disconnect()
         await self.session.close()
         await self.exchange.close()
-    
+
     def __del__(self):
         """Destructeur: ferme les connexions"""
         # 🔥 FIX: Ne pas utiliser asyncio.create_task() dans __del__

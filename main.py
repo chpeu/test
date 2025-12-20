@@ -42,6 +42,7 @@ try:
     from core.scheduler import Scheduler
     from core.metrics import get_metrics_collector
     from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
+    from core.shutdown import GracefulShutdown  # 🔥 SPRINT 1.3: Graceful shutdown
     # 🔥 LIVE TRADING: Imports pour live trading
     from api.live_trading_endpoints import router as live_router, register_websocket_commands
     from api.regime_endpoints import router as regime_router
@@ -52,6 +53,7 @@ except ImportError as e:
     # Fallback pour les dépendances manquantes
     get_price_provider = None
     TradeDatabase = None
+    GracefulShutdown = None
     ScalabilityScanner = None
     TechnicalAnalyzer = None
     PositionManager = None
@@ -457,6 +459,9 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager pour initialiser et fermer proprement les ressources"""
     logger.info("🚀 LIFESPAN ENTER: Début du context manager (avant initialisation)")
     logger.info("🚀 LIFESPAN STARTUP: Initialisation...")
+
+    # 🔥 SPRINT 1.3: Graceful shutdown manager
+    shutdown_manager = GracefulShutdown(timeout=30.0) if GracefulShutdown else None
     data_logger = None
     try:
         try:
@@ -465,6 +470,15 @@ async def lifespan(app: FastAPI):
             await data_logger.initialize()
             app.state.data_logger = data_logger
             logger.info("✅ DataLogger initialisé")
+
+            # Register cleanup
+            if shutdown_manager and data_logger:
+                shutdown_manager.register(
+                    "DataLogger",
+                    data_logger.shutdown,
+                    async_cleanup=True,
+                    priority=80
+                )
         except ImportError as e:
             logger.warning(f"⚠️ Module DataLogger non disponible: {e}")
             app.state.data_logger = None
@@ -546,77 +560,84 @@ async def lifespan(app: FastAPI):
         logger.info("🟢 LIFESPAN YIELD: Execution principale terminée, début du shutdown")
 
     finally:
-        try:
-            if hasattr(app.state, 'data_logger') and app.state.data_logger:
-                try:
-                    await app.state.data_logger.shutdown()
-                    logger.info("✅ DataLogger arrêté proprement")
-                except (OSError, IOError, ConnectionError) as e:
-                    # Erreur I/O lors du shutdown (non-bloquant)
-                    logger.error(f"❌ Erreur I/O lors de l'arrêt DataLogger: {e}")
-                except DatabaseError as e:
-                    # Erreur database lors du shutdown (non-bloquant)
-                    logger.error(f"❌ Erreur DB lors de l'arrêt DataLogger: {e}")
-                except Exception as e:
-                    # Erreur inattendue (non-bloquant au shutdown)
-                    logger.error(f"❌ Erreur inattendue arrêt DataLogger: {type(e).__name__}: {e}", exc_info=True)
-
+        # 🔥 SPRINT 1.3: Graceful shutdown orchestré
+        if shutdown_manager:
+            # Register remaining resources that weren't registered at startup
             try:
                 from core.callbacks.scanner_loop import get_pg_datalogger
                 pg_datalogger = get_pg_datalogger()
                 if pg_datalogger:
-                    pg_datalogger.close()
-                    logger.info("✅ PostgreSQL DataLogger fermé proprement")
-            except ImportError as e:
-                # Module optionnel non disponible (normal)
-                logger.debug(f"Module PostgreSQL DataLogger non disponible: {e}")
-            except DatabaseConnectionError as e:
-                # Erreur de connexion DB (non-bloquant au shutdown)
-                logger.warning(f"⚠️ Erreur connexion DB lors fermeture PostgreSQL DataLogger: {e}")
-            except DatabaseError as e:
-                # Autres erreurs DB (non-bloquant au shutdown)
-                logger.warning(f"⚠️ Erreur DB lors fermeture PostgreSQL DataLogger: {e}")
-            except (OSError, IOError) as e:
-                # Erreurs I/O (fichier, permissions)
-                logger.warning(f"⚠️ Erreur I/O fermeture PostgreSQL DataLogger: {e}")
+                    shutdown_manager.register(
+                        "PostgreSQL_DataLogger",
+                        pg_datalogger.close,
+                        async_cleanup=False,
+                        priority=70
+                    )
+            except ImportError:
+                pass
             except Exception as e:
-                # Erreur inattendue (non-bloquant au shutdown)
-                logger.warning(
-                    f"⚠️ Erreur inattendue fermeture PostgreSQL DataLogger: {type(e).__name__}: {e}",
-                    exc_info=True
-                )
+                logger.debug(f"PostgreSQL DataLogger non enregistré: {e}")
 
             try:
                 from api.mexc import get_mexc_client
                 mexc_client = get_mexc_client()
                 if mexc_client:
-                    await mexc_client.close()
-                    logger.info("✅ MEXC client fermé proprement")
-            except ImportError as e:
-                # Module optionnel non disponible (normal)
-                logger.debug(f"Module MEXC non disponible: {e}")
-            except NetworkError as e:
-                # Erreur réseau (non-bloquant au shutdown)
-                logger.warning(f"⚠️ Erreur réseau fermeture MEXC client: {e}")
-            except APIError as e:
-                # Erreur API MEXC (non-bloquant au shutdown)
-                logger.warning(f"⚠️ Erreur API fermeture MEXC client: {e}")
+                    shutdown_manager.register(
+                        "MEXC_Client",
+                        mexc_client.close,
+                        async_cleanup=True,
+                        priority=60
+                    )
+            except ImportError:
+                pass
             except Exception as e:
-                # Erreur inattendue (non-bloquant au shutdown)
-                logger.warning(
-                    f"⚠️ Erreur inattendue fermeture MEXC client: {type(e).__name__}: {e}",
-                    exc_info=True
+                logger.debug(f"MEXC client non enregistré: {e}")
+
+            # TradeDatabase cleanup
+            global trade_db
+            if trade_db:
+                shutdown_manager.register(
+                    "TradeDatabase",
+                    trade_db.close,
+                    async_cleanup=False,
+                    priority=50
                 )
 
-        except TradeCursorError as e:
-            # Erreur applicative durant shutdown (non-bloquant)
-            logger.warning(f"⚠️ Erreur application lors du shutdown: {e}", exc_info=True)
-        except Exception as e:
-            # Erreur système inattendue durant shutdown (non-bloquant)
-            logger.warning(
-                f"⚠️ Erreur système inattendue lors du shutdown: {type(e).__name__}: {e}",
-                exc_info=True
-            )
+            # Execute graceful shutdown
+            await shutdown_manager.shutdown()
+
+        else:
+            # Fallback: Old shutdown logic if GracefulShutdown not available
+            logger.warning("⚠️ GracefulShutdown non disponible, utilisation legacy cleanup")
+
+            try:
+                if hasattr(app.state, 'data_logger') and app.state.data_logger:
+                    try:
+                        await app.state.data_logger.shutdown()
+                        logger.info("✅ DataLogger arrêté proprement")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur arrêt DataLogger: {e}", exc_info=True)
+
+                try:
+                    from core.callbacks.scanner_loop import get_pg_datalogger
+                    pg_datalogger = get_pg_datalogger()
+                    if pg_datalogger:
+                        pg_datalogger.close()
+                        logger.info("✅ PostgreSQL DataLogger fermé proprement")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur fermeture PostgreSQL DataLogger: {e}")
+
+                try:
+                    from api.mexc import get_mexc_client
+                    mexc_client = get_mexc_client()
+                    if mexc_client:
+                        await mexc_client.close()
+                        logger.info("✅ MEXC client fermé proprement")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
+
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur shutdown legacy: {e}", exc_info=True)
 
         logger.info("🏁 LIFESPAN EXIT: Contexte fermé")
 
