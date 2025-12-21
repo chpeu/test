@@ -1436,9 +1436,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 is_opportunity = scan_data.get('is_opportunity', False)
                 use_batch_mode = not is_opportunity  # False si opportunity, True sinon
                 
-                logger.info(f"📝 Appel log_scan() pour {symbol} (batch={use_batch_mode})")
-                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=use_batch_mode)
-                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
+                logger.info(f"📝 Appel log_scan_async() pour {symbol} (batch={use_batch_mode})")
+                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                scan_id = await pg_datalogger.log_scan_async(symbol, scan_data, use_batch=use_batch_mode)
+                logger.info(f"✅ log_scan_async() terminé pour {symbol} (scan_id={scan_id})")
                 
                 # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
                 if analysis and isinstance(analysis, dict) and scan_id:
@@ -1481,7 +1482,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'reward_risk_ratio': None,
                     }
                     # 🔥 FIX: Mode direct (pas de batch) pour obtenir opportunity_id immédiatement
-                    opportunity_id = pg_datalogger.log_opportunity(
+                    # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                    opportunity_id = await pg_datalogger.log_opportunity_async(
                         scan_id,  # scan_id déjà disponible (mode direct utilisé ci-dessus)
                         symbol, 
                         opportunity_data,
@@ -1506,25 +1508,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
         await _notify_error('scan_pair_for_setup', f"{symbol}: {e}")
         
-        # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
-        # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire
-        pg_datalogger = get_pg_datalogger()
-        
-        if pg_datalogger and pg_datalogger.enabled:
-            try:
-                import traceback
-                error_details = {
-                    'error_type': type(e).__name__,
-                    'error_message': str(e),
-                    'stack': traceback.format_exc()
-                }
-                pg_datalogger.log_scan_error(
-                    symbol=symbol,
-                    error_type='SCAN_ERROR',
-                    error_message=str(e),
-                    error_details=error_details
-                )
-            except Exception as log_error:
-                logger.warning(f"⚠️ Erreur logging erreur scan: {log_error}")
+        # 🔥 PHASE 3: Logger l'erreur (désactivé - méthode log_scan_error n'existe pas)
+        # Le logging d'erreurs se fait déjà via logger.error ci-dessus
+        pass
         
         return None

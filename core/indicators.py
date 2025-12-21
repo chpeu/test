@@ -222,14 +222,24 @@ class Indicators:
         avg_minus_dm = sum(recent_minus_dm) / period
         avg_tr = sum(recent_tr) / period
         
+        # Eviter division par zéro pour DI
         if avg_tr == 0:
             return {'adx': 0.0, 'diPlus': 0.0, 'diMinus': 0.0}
         
         di_plus = 100 * (avg_plus_dm / avg_tr)
         di_minus = 100 * (avg_minus_dm / avg_tr)
-        dx = 100 * abs(di_plus - di_minus) / (di_plus + di_minus)
         
-        return {'adx': dx, 'diPlus': di_plus, 'diMinus': di_minus}
+        # Calculate DX
+        sum_di = di_plus + di_minus
+        
+        if sum_di == 0:
+            dx = 0.0
+        else:
+            dx = 100 * abs(di_plus - di_minus) / sum_di
+        
+        # Pour l'instant, on retourne DX comme ADX (car on calcule sur une fenêtre glissante)
+        # Idéalement il faudrait lisser DX, mais cela nécessite l'historique DX
+        return {'adx': float(dx), 'diPlus': float(di_plus), 'diMinus': float(di_minus)}
     
     @staticmethod
     def detect_pattern(candle) -> str:

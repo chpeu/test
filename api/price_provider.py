@@ -34,7 +34,15 @@ class HybridPriceProvider:
     
     def __init__(self):
         self.ws_manager: Optional[WebSocketManager] = None
+        
+        # 🔥 FIX: Gestion d'exception pour get_mexc_client()
         self.rest_client = get_mexc_client()
+        if self.rest_client is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error("❌ HybridPriceProvider: impossible d'obtenir MEXCClient")
+            raise RuntimeError("MEXCClient indisponible")
+        
         self.use_websocket = True
 
         # Cache des derniers prix reçus
@@ -567,11 +575,21 @@ class HybridPriceProvider:
 _price_provider: Optional[HybridPriceProvider] = None
 
 
-def get_price_provider() -> HybridPriceProvider:
+def get_price_provider() -> Optional[HybridPriceProvider]:
     """Singleton pattern pour l'instance price provider"""
     global _price_provider
     if _price_provider is None:
-        _price_provider = HybridPriceProvider()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("🔄 Création nouvelle instance HybridPriceProvider (singleton était None)")
+        try:
+            _price_provider = HybridPriceProvider()
+            logger.info("✅ HybridPriceProvider créé avec succès")
+        except Exception as e:
+            logger.error(f"❌ ERREUR création HybridPriceProvider: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return None
     return _price_provider
 
 

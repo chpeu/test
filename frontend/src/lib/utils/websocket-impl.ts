@@ -43,25 +43,29 @@ export class BidirectionalWebSocket {
     public connected: boolean = false;
 
     constructor(url: string = '') {
-        // Détecter l'URL depuis window.location si non fournie
+        // 🔥 FIX URGENT: Forcer la connexion directe au backend Python (port 5000)
+        // Le serveur Vite (port 3000) interfère avec notre WebSocket
         if (!url) {
-            // 🔥 FIX: En développement, utiliser directement le backend (port 5000)
-            // En production, utiliser le proxy Vite (window.location.host)
-            const isDev = window.location.hostname === 'localhost' && window.location.port === '3000';
+            // 🔥 TOUJOURS utiliser le backend directement en développement
+            const isDev = window.location.hostname === 'localhost';
             if (isDev) {
-                // Développement: connexion directe au backend
+                // Développement: connexion directe FORCÉE au backend Python
                 url = 'ws://localhost:5000';
+                console.log('🔧 Mode DEV: Connexion WebSocket forcée vers backend Python:', url);
             } else {
                 // Production: utiliser le proxy ou l'URL de production
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const host = window.location.host;
                 url = `${protocol}//${host}`;
+                console.log('🔧 Mode PROD: Connexion WebSocket via proxy:', url);
             }
         }
         
         // Convertir http:// en ws:// ou https:// en wss:// si nécessaire
         this.baseUrl = url.replace(/^http/, 'ws');
         this.url = this.baseUrl + '/ws';
+        
+        console.log('🎯 WebSocket URL finale construite:', this.url);
     }
 
     connect(): void {

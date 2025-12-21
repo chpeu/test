@@ -392,10 +392,17 @@ class PostgreSQLDataLogger:
             session_id = self.get_or_create_session()
         
         # 🔥 FIX: Vérifier le prix AVANT d'ajouter au buffer (pour éviter les scans invalides)
+        price = None
+        
+        # 1. Essayer market_data
         market_data = scan_data.get('market_data', {})
         price = get_preferred_price(market_data, None)
+        
+        # 2. Essayer price direct
         if price is None:
             price = get_preferred_price(scan_data.get('price'), None)
+            
+        # 3. Essayer analysis_1m et analysis_5m
         if price is None:
             analysis_1m = scan_data.get('analysis_1m', {})
             if isinstance(analysis_1m, dict):
@@ -404,6 +411,50 @@ class PostgreSQLDataLogger:
             analysis_5m = scan_data.get('analysis_5m', {})
             if isinstance(analysis_5m, dict):
                 price = get_preferred_price(analysis_5m, None)
+        
+        # 4. Essayer les données de scalabilité
+        if price is None:
+            scalability_data = scan_data.get('scalability_data', {})
+            if isinstance(scalability_data, dict):
+                price = get_preferred_price(scalability_data, None)
+        
+        # 5. Essayer current_price si disponible
+        if price is None:
+            current_price = scan_data.get('current_price')
+            if current_price is not None:
+                price = get_preferred_price(current_price, None)
+        
+        # 6. En dernier recours, essayer price_provider si symbol fourni
+        if price is None:
+            try:
+                from core.state_manager import StateManager
+                from api.price_provider import get_price_provider
+                import asyncio
+                
+                state = StateManager()
+                price_prov = state.get_price_provider()
+                if not price_prov:
+                    price_prov = get_price_provider()
+                
+                if price_prov:
+                    # Créer une nouvelle boucle ou utiliser l'existante
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Si dans une boucle existante, utiliser run_in_executor
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, price_prov.get_price(symbol))
+                            price_data = future.result(timeout=2.0)
+                            if price_data:
+                                price = get_preferred_price(price_data, None)
+                    except RuntimeError:
+                        # Pas de boucle en cours, utiliser asyncio.run directement
+                        price_data = asyncio.run(price_prov.get_price(symbol))
+                        if price_data:
+                            price = get_preferred_price(price_data, None)
+            except Exception:
+                # Ignorer les erreurs du price_provider
+                pass
 
         # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
         if price is None or price == 0:
@@ -2529,6 +2580,161 @@ class PostgreSQLDataLogger:
                     pass
             return None
 
+    # =========================================================================
+    # 🔥 ASYNC WRAPPERS - Non-blocking methods for asyncio event loop
+    # =========================================================================
+    # Ces méthodes utilisent asyncio.to_thread() pour exécuter les opérations
+    # PostgreSQL synchrones dans un thread séparé, évitant de bloquer l'event loop.
+    
+    async def log_scan_async(
+        self,
+        symbol: str,
+        scan_data: Dict[str, Any],
+        session_id: Optional[str] = None,
+        use_batch: bool = True
+    ) -> Optional[int]:
+        """
+        Version async non-bloquante de log_scan.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_scan, symbol, scan_data, session_id, use_batch
+        )
+    
+    async def log_opportunity_async(
+        self,
+        scan_id: int,
+        symbol: str,
+        opportunity_data: Dict[str, Any],
+        session_id: Optional[str] = None,
+        use_batch: bool = True
+    ) -> Optional[int]:
+        """
+        Version async non-bloquante de log_opportunity.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_opportunity, scan_id, symbol, opportunity_data, session_id, use_batch
+        )
+    
+    async def log_trade_async(
+        self,
+        trade_data: Dict[str, Any],
+        opportunity_id: Optional[int] = None,
+        scan_log_id: Optional[int] = None,
+        session_id: Optional[str] = None,
+        trade_id: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Version async non-bloquante de log_trade.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_trade, trade_data, opportunity_id, scan_log_id, session_id, trade_id
+        )
+    
+    async def log_trade_event_async(
+        self,
+        trade_id: str,
+        event_type: str,
+        price_at_event: float = None,
+        pnl_pct_at_event: float = None,
+        pnl_usdt_at_event: float = None,
+        details: Dict[str, Any] = None
+    ) -> Optional[int]:
+        """
+        Version async non-bloquante de log_trade_event.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_trade_event, trade_id, event_type, price_at_event,
+            pnl_pct_at_event, pnl_usdt_at_event, details
+        )
+    
+    async def update_ml_confidence_async(
+        self,
+        symbol: str,
+        ml_confidence: float,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        Version async non-bloquante de update_ml_confidence.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.update_ml_confidence, symbol, ml_confidence, minutes_ago
+        )
+    
+    async def update_ml_rejection_async(
+        self,
+        symbol: str,
+        reject_reason: str,
+        reject_category: str,
+        ml_confidence: Optional[float] = None,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        Version async non-bloquante de update_ml_rejection.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.update_ml_rejection, symbol, reject_reason, reject_category,
+            ml_confidence, minutes_ago
+        )
+    
+    async def get_ml_confidence_for_symbol_async(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        Version async non-bloquante de get_ml_confidence_for_symbol.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.get_ml_confidence_for_symbol, symbol, minutes_ago
+        )
+    
+    async def get_adaptive_sizing_for_symbol_async(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        Version async non-bloquante de get_adaptive_sizing_for_symbol.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.get_adaptive_sizing_for_symbol, symbol, minutes_ago
+        )
+    
+    async def flush_buffers_async(self, force: bool = False):
+        """
+        Version async non-bloquante de _flush_buffers.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(self._flush_buffers, force)
+    
+    async def get_or_create_session_async(
+        self,
+        session_id: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Version async non-bloquante de get_or_create_session.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(self.get_or_create_session, session_id)
+
     def close(self):
         """
         Fermer le pool de connexions PostgreSQL
@@ -2596,8 +2802,8 @@ def get_pg_datalogger():
             database=os.getenv('POSTGRES_DB', 'tradebot'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', ''),
-            min_conn=int(os.getenv('POSTGRES_MIN_CONN', '2')),
-            max_conn=int(os.getenv('POSTGRES_MAX_CONN', '10'))
+            min_conn=int(os.getenv('POSTGRES_MIN_CONN', '5')),
+            max_conn=int(os.getenv('POSTGRES_MAX_CONN', '20'))
         )
         
         if _pg_datalogger_instance and _pg_datalogger_instance.enabled:

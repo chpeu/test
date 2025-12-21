@@ -167,7 +167,8 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
             )
             
             # 🎯 Niveau WARNING+ uniquement (optimisé pour production)
-            file_handler.setLevel(logging.WARNING)
+            # 🔥 DEBUG TEMPORAIRE: Passer à DEBUG pour diagnostiquer WebSocket
+            file_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else logging.INFO)
             
             # Format sans couleurs ANSI pour fichier
             file_formatter = logging.Formatter(

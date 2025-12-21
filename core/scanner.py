@@ -776,6 +776,9 @@ class ScalabilityScanner:
             total_batches = math.ceil(len(filtered_pairs) / BATCH_SIZE)
             
             for i in range(0, len(filtered_pairs), BATCH_SIZE):
+                # 🔥 FIX: Yield control to event loop to prevent WebSocket blocking
+                await asyncio.sleep(0)
+                
                 batch = filtered_pairs[i:i + BATCH_SIZE]
                 batch_num = (i // BATCH_SIZE) + 1
                 progress = f"{i + 1}-{min(i + BATCH_SIZE, len(filtered_pairs))}"
@@ -803,14 +806,17 @@ class ScalabilityScanner:
                             'askVol': 0,
                             'price': 0,
                             'adx': 0,
-                            'atr': 0,  # 🔥 FIX: ATR par défaut
-                            'atr_percent': 0,  # 🔥 FIX: ATR% par défaut
+                            'atr': 0,
+                            'atr_percent': 0,
                             'directionBias': 'NEUTRAL'
                         })
                 
-                # Petite pause entre batches
+                # Pause plus longue entre batches pour laisser le WS respirer
                 if i + BATCH_SIZE < len(filtered_pairs):
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.1)
+            
+            # 🔥 FIX: Yield avant calculs lourds finaux
+            await asyncio.sleep(0)
             
             # Calculer normalisations
             valid_pairs = [p for p in filtered_pairs if p.get('recentVolume', 0) > 0]

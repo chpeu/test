@@ -1667,7 +1667,14 @@ async def scanner_loop_callback() -> None:
                                     # Récupérer prix d'entrée
                                     price_prov = state.get_price_provider()
                                     if not price_prov:
+                                        logger.warning(f"⚠️ DEBUG: state.get_price_provider() retourne None pour {symbol}")
                                         price_prov = get_price_provider()
+                                        logger.info(f"✅ DEBUG: get_price_provider() singleton créé: {type(price_prov)}")
+                                    
+                                    if not price_prov:
+                                        logger.error(f"❌ DEBUG: get_price_provider() singleton AUSSI None pour {symbol}")
+                                        await add_log('ERROR', 'PriceProvider indisponible', symbol)
+                                        continue
                                     
                                     price_data = await price_prov.get_price(symbol)
                                     if not price_data:
@@ -2101,11 +2108,12 @@ async def scanner_loop_callback() -> None:
                                                     last_ml_confidence = ml_conf_pct  # Variable pour le logging
                                                     
                                                     # 🔥 FIX: Mettre à jour ml_confidence dans PostgreSQL (scan déjà loggé)
+                                                    # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
                                                     try:
                                                         from core.callbacks.scanner_loop import get_pg_datalogger
                                                         pg_logger = get_pg_datalogger()
                                                         if pg_logger and pg_logger.enabled:
-                                                            pg_logger.update_ml_confidence(symbol, ml_conf_pct)
+                                                            await pg_logger.update_ml_confidence_async(symbol, ml_conf_pct)
                                                     except ImportError as pg_err:
                                                         # Module PostgreSQL non disponible
                                                         logger.debug(f"Module PostgreSQL non disponible: {pg_err}")
@@ -2124,9 +2132,10 @@ async def scanner_loop_callback() -> None:
                                                         # Distinguer si le rejet vient d'un seuil statique ou dynamique (Optimizer)
                                                         reject_cat = "ml_threshold_optimizer" if "optimizer" in threshold_source else "ml_gb_confidence"
                                                         
+                                                        # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
                                                         try:
                                                             if pg_logger and pg_logger.enabled:
-                                                                pg_logger.update_ml_rejection(
+                                                                await pg_logger.update_ml_rejection_async(
                                                                     symbol=symbol,
                                                                     reject_reason=reject_reason,
                                                                     reject_category=reject_cat,
@@ -2824,7 +2833,16 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 
                 # Fallback: utiliser les infos présentes dans l'analyse/best_setup
                 if not scalability_data:
-                    logger.warning(f"⚠️ DEBUG main.py: scalability_data vide pour {symbol}, utilisation fallback depuis analysis")
+                    # DEBUG: Vérifier pourquoi scalability_data est vide
+                    debug_info = ""
+                    if not app_state:
+                        debug_info = "app_state is None"
+                    elif not app_state.get('top_pairs'):
+                        debug_info = "top_pairs vide"
+                    else:
+                        debug_info = f"symbole non trouvé dans {len(app_state.get('top_pairs', []))} top_pairs"
+                    
+                    logger.debug(f"⚠️ DEBUG main.py: scalability_data vide pour {symbol} ({debug_info}), utilisation fallback depuis analysis")
                     analysis_obj = analysis or {}
                     orderbook_check = analysis_obj.get('orderbook_check') or {}
                     bid_value = orderbook_check.get('bid_value') or analysis_obj.get('bid_vol')
@@ -3016,9 +3034,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {type(e).__name__}: {e}")
                 
                 # Logger le scan (mode batch par défaut)
-                logger.info(f"📝 Appel log_scan() pour {symbol} (main.py)")
-                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=True)
-                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
+                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                logger.info(f"📝 Appel log_scan_async() pour {symbol} (main.py)")
+                scan_id = await pg_datalogger.log_scan_async(symbol, scan_data, use_batch=True)
+                logger.info(f"✅ log_scan_async() terminé pour {symbol} (scan_id={scan_id})")
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 if scan_data['is_opportunity'] and analysis:
@@ -3073,14 +3092,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
                     }
-                    logger.info(f"📝 Appel log_opportunity() pour {symbol} (main.py)")
-                    pg_datalogger.log_opportunity(
+                    # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                    logger.info(f"📝 Appel log_opportunity_async() pour {symbol} (main.py)")
+                    await pg_datalogger.log_opportunity_async(
                         scan_id or 0,  # 0 = temporaire, sera mis à jour lors du flush
                         symbol, 
                         opportunity_data,
                         use_batch=True
                     )
-                    logger.info(f"✅ log_opportunity() terminé pour {symbol}")
+                    logger.info(f"✅ log_opportunity_async() terminé pour {symbol}")
         except ImportError as e:
             # Module PostgreSQL non disponible
             logger.debug(f"Module PostgreSQL non disponible: {e}")
@@ -3384,13 +3404,14 @@ async def position_check_loop_callback() -> None:
                 )
                 
                 # 🔥 FIX: Récupérer ml_confidence depuis PostgreSQL si null sur la position
+                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
                 ml_conf = getattr(position, 'ml_confidence', None)
                 if ml_conf is None:
                     try:
                         from core.callbacks.scanner_loop import get_pg_datalogger
                         pg_logger = get_pg_datalogger()
                         if pg_logger and pg_logger.enabled:
-                            ml_conf = pg_logger.get_ml_confidence_for_symbol(position.symbol)
+                            ml_conf = await pg_logger.get_ml_confidence_for_symbol_async(position.symbol)
                             if ml_conf is not None:
                                 position.ml_confidence = round(ml_conf, 1)  # Arrondir et stocker
                                 ml_conf = position.ml_confidence
@@ -3398,13 +3419,14 @@ async def position_check_loop_callback() -> None:
                         logger.debug(f"⚠️ Impossible de charger ml_confidence depuis PostgreSQL: {e}")
                 
                 # 🔥 FIX: Récupérer adaptive_sizing_multiplier depuis PostgreSQL si null sur la position
+                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
                 sizing_mult = getattr(position, 'adaptive_sizing_multiplier', None)
                 if sizing_mult is None:
                     try:
                         from core.callbacks.scanner_loop import get_pg_datalogger
                         pg_logger = get_pg_datalogger()
                         if pg_logger and pg_logger.enabled:
-                            sizing_mult = pg_logger.get_adaptive_sizing_for_symbol(position.symbol)
+                            sizing_mult = await pg_logger.get_adaptive_sizing_for_symbol_async(position.symbol)
                             if sizing_mult is not None:
                                 position.adaptive_sizing_multiplier = sizing_mult
                     except Exception as e:
@@ -3827,8 +3849,8 @@ def init_instances() -> None:
                         await asyncio.sleep(30)  # Toutes les 30 secondes
                         if pg_datalogger and pg_datalogger.enabled:
                             try:
-                                # Forcer le flush même si buffer pas plein
-                                pg_datalogger._flush_buffers(force=True)
+                                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                                await pg_datalogger.flush_buffers_async(force=True)
                             except Exception as e:
                                 logger.debug(f"Erreur flush périodique: {e}")
                     except asyncio.CancelledError:
@@ -5107,15 +5129,23 @@ async def scan_top_pairs_task(n):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Endpoint WebSocket bidirectionnel natif"""
-    ws_mgr = state.get_ws_manager()
-    if not ws_mgr:
-        await websocket.close(code=1011)
-        return
     try:
+        # 🔥 DEBUG: Trace connexion log
+        logger.info(f"🔌 [WS-DEBUG] Nouvelle connexion WebSocket entrante: {websocket.client}")
+        
+        ws_mgr = state.get_ws_manager()
+        if not ws_mgr:
+            logger.error("❌ WebSocketManager non trouvé dans le state, fermeture 1011")
+            await websocket.close(code=1011)
+            return
+            
+        logger.info("🔌 [WS-DEBUG] Tentative de connexion au manager...")
         await ws_mgr.connect(websocket)
+        logger.info("✅ [WS-DEBUG] Connexion au manager réussie")
         
         # 🔥 FIX: Envoyer état initial au client avec gestion d'erreur
         try:
+            logger.debug("📦 Préparation données état initial...")
             status_data = app_state.copy()
             if status_data.get('active_position') and hasattr(status_data['active_position'], 'to_dict'):
                 try:
@@ -5124,17 +5154,21 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.warning(f"⚠️ Erreur conversion position en dict: {e}")
                     status_data['active_position'] = None
             
+            logger.debug("📤 Envoi état initial...")
             await ws_mgr.send_personal_message({
                 'type': 'event',
                 'event': 'status',
                 'data': status_data
             }, websocket)
+            logger.debug("✅ État initial envoyé")
         except Exception as e:
             logger.error(f"❌ Erreur envoi état initial: {e}")
         
         # 🔥 FIX: Envoyer les derniers logs avec gestion d'erreur
         try:
-            for log_entry in app_state.get('logs', [])[-50:]:
+            logs = app_state.get('logs', [])[-50:]
+            logger.debug(f"📤 Envoi de {len(logs)} logs historiques...")
+            for log_entry in logs:
                 try:
                     await ws_mgr.send_personal_message({
                         'type': 'event',
@@ -5144,13 +5178,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception as e:
                     logger.debug(f"⚠️ Erreur envoi log: {e}")
                     break  # Arrêter si erreur
+            logger.debug("✅ Logs envoyés")
         except Exception as e:
             logger.error(f"❌ Erreur envoi logs: {e}")
         
         # 🔥 FIX: Émettre reset_session à chaque nouvelle connexion pour réinitialiser le frontend
-        # (en plus de l'événement startup, pour les clients qui se connectent après le démarrage)
-        # Toujours émettre pour s'assurer que le frontend est réinitialisé même si connecté après le démarrage
         try:
+            logger.debug("📤 Envoi reset_session...")
             await ws_mgr.send_personal_message({
                 'type': 'event',
                 'event': 'reset_session',
@@ -5159,15 +5193,35 @@ async def websocket_endpoint(websocket: WebSocket):
                     'reason': 'new_connection'
                 }
             }, websocket)
-            logger.debug("✅ Événement reset_session envoyé à la nouvelle connexion")
+            logger.debug("✅ Événement reset_session envoyé")
         except Exception as e:
             logger.debug(f"⚠️ Erreur envoi reset_session: {e}")
         
         # Boucle bidirectionnelle : recevoir et traiter messages
+        logger.info("🔄 Démarrage boucle de réception messages...")
         try:
             while True:
-                data = await websocket.receive_text()
-                message = json.loads(data)
+                # 🔥 FIX: Timeout pour éviter les blocages et permettre heartbeat
+                try:
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    # Timeout normal - envoyer ping de maintenance
+                    try:
+                        await ws_mgr.send_personal_message({
+                            'type': 'ping',
+                            'timestamp': time.time()
+                        }, websocket)
+                        continue
+                    except Exception as e:
+                        logger.warning(f"❌ Connexion fermée pendant le ping: {e}")
+                        break
+                
+                # Parser JSON séparément avec gestion d'erreur
+                try:
+                    message = json.loads(data)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"⚠️ Message JSON invalide reçu: {data[:100] if data else 'N/A'}... - {e}")
+                    continue
                 
                 msg_type = message.get('type')
                 
@@ -5245,246 +5299,151 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     elif request_type == 'position':
                         pos_mgr = state.get_position_manager()
+                        pos = pos_mgr.get_active_position() if pos_mgr else None
                         ws_mgr = state.get_ws_manager()
                         if ws_mgr:
-                            if pos_mgr and pos_mgr.active_position:
-                                await ws_mgr.send_personal_message({
-                                    'type': 'request_response',
-                                    'id': request_id,
-                                    'request_type': request_type,
-                                    'data': pos_mgr.active_position.to_dict()
-                                }, websocket)
-                            else:
-                                await ws_mgr.send_personal_message({
-                                    'type': 'request_response',
-                                    'id': request_id,
-                                    'request_type': request_type,
-                                    'data': None
-                                }, websocket)
-                    
-                    elif request_type == 'state':
-                        # 🔥 MIGRATION COMPLÈTE: Récupérer état complet via WebSocket (remplace fetch('/api/state'))
-                        try:
-                            # Utiliser la même logique que api_get_complete_state
-                            from config import TRADING_CONFIG
-                            # time est déjà importé au niveau du module
-                            
-                            # Récupérer position active
-                            active_position_dict = None
-                            pos_mgr = state.get_position_manager()
-                            if pos_mgr and pos_mgr.active_position:
-                                try:
-                                    active_position = pos_mgr.active_position
-                                    active_position_dict = active_position.to_dict()
-                                    active_position_dict['timestamp'] = time.time()
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur récupération position: {e}")
-                                    active_position_dict = None
-                            
-                            # Récupérer stats
-                            stats_dict = {
-                                'total_trades': 0,
-                                'wins': 0,
-                                'losses': 0,
-                                'winrate': 0.0
-                            }
-                            
-                            # 🔥 FIX: Utiliser state.trade_history comme source principale
-                            # L'historique persiste tant que le backend tourne (pas de limite)
-                            current_session_trades = state.trade_history or []
-                            
-                            # Si analytics_db disponible, essayer de récupérer les trades de la session
-                            analytics_db = state.get_analytics_db()
-                            sess_id = state.session_id
-                            if analytics_db and sess_id:
-                                try:
-                                    # Récupérer seulement les trades de la session actuelle
-                                    all_trades = analytics_db.get_trades(limit=10000)
-                                    db_trades = [t for t in all_trades if t.get('session_id') == sess_id]
-                                    # Utiliser les trades DB si plus complets, sinon garder state
-                                    if len(db_trades) > len(current_session_trades):
-                                        current_session_trades = db_trades
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur récupération trades depuis DB: {e}")
-                            
-                            # Recalculer stats depuis l'historique
-                            if current_session_trades:
-                                total = len(current_session_trades)
-                                wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
-                                losses = total - wins
-                                winrate = (wins / total * 100) if total > 0 else 0.0
-                                stats_dict = {
-                                    'total_trades': total,
-                                    'wins': wins,
-                                    'losses': losses,
-                                    'winrate': winrate
-                                }
-                            
-                            # 🔥 MIGRATION COMPLÈTE: Ajouter telegram_enabled dans state
-                            from config import (
-                                TELEGRAM_ENABLED,
-                                TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
-                                TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
-                                TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
-                                TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
-                                TELEGRAM_NOTIFY_SETUP_REJECTED
-                            )
-                            
-                            state_data = {
-                                'success': True,
-                                'session_id': state.session_id or f"live_{int(time.time())}",
-                                'config': {
-                                    # Patterns Techniques
-                                    'use_breakout': TRADING_CONFIG.get('use_breakout', True),
-                                    'use_snr': TRADING_CONFIG.get('use_snr', True),
-                                    'use_wick': TRADING_CONFIG.get('use_wick', True),
-                                    'use_divergence': TRADING_CONFIG.get('use_divergence', True),
-                                    # Patterns de Bougies
-                                    'use_engulfing': TRADING_CONFIG.get('use_engulfing', True),
-                                    'use_hammer': TRADING_CONFIG.get('use_hammer', True),
-                                    'use_shooting_star': TRADING_CONFIG.get('use_shooting_star', True),
-                                    'use_doji': TRADING_CONFIG.get('use_doji', True),
-                                    'use_marubozu': TRADING_CONFIG.get('use_marubozu', True),
-                                    'use_morning_star': TRADING_CONFIG.get('use_morning_star', True),
-                                    'use_evening_star': TRADING_CONFIG.get('use_evening_star', True),
-                                    # Validation Setups
-                                    'use_confluence': TRADING_CONFIG.get('use_confluence', False),
-                                    'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-                                    'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
-                                    'max_slippage_pct': TRADING_CONFIG.get('max_slippage_pct', 0.03),
-                                    # TP/SL Configuration
-                                    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-                                    'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
-                                    'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-                                    'break_even_trigger': TRADING_CONFIG.get('break_even_trigger', 0.3),
-                                    'trailing_distance': TRADING_CONFIG.get('trailing_distance', 0.15),
-                                    # Seuils & Filtres
-                                    'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
-                                    'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
-                                    'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                                    'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
-                                    'di_gap_adx_threshold': TRADING_CONFIG.get('di_gap_adx_threshold', 25),
-                                    'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-                                    'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-                                    'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-                                    'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
-                                    'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
-                                    # Money Management
-                                    'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-                                    'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
-                                    # Mode ATR
-                                    'atr_mult_tp': TRADING_CONFIG.get('atr_mult_tp', 1.5),
-                                    'atr_mult_sl': TRADING_CONFIG.get('atr_mult_sl', 1.0),
-                                    'atr_min': TRADING_CONFIG.get('atr_min', 0.15),
-                                    'atr_max': TRADING_CONFIG.get('atr_max', 1.5),
-                                    # Mode ESCALIER
-                                    'partial_tp_percent': TRADING_CONFIG.get('partial_tp_percent', 50),
-                                    'escalier_level1_pnl': TRADING_CONFIG.get('escalier_level1_pnl', 0.20),
-                                    'escalier_level1_size': TRADING_CONFIG.get('escalier_level1_size', 25),
-                                    'escalier_level2_pnl': TRADING_CONFIG.get('escalier_level2_pnl', 0.35),
-                                    'escalier_level2_size': TRADING_CONFIG.get('escalier_level2_size', 25),
-                                    'escalier_level3_pnl': TRADING_CONFIG.get('escalier_level3_pnl', 0.50),
-                                    'escalier_level3_size': TRADING_CONFIG.get('escalier_level3_size', 25),
-                                    'escalier_level4_pnl': TRADING_CONFIG.get('escalier_level4_pnl', 0.80),
-                                    'escalier_level4_size': TRADING_CONFIG.get('escalier_level4_size', 25),
-                                    # Trailing Stop
-                                    'trailing_enabled': TRADING_CONFIG.get('trailing_enabled', True),
-                                    'trailing_trigger_pnl': TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
-                                    'trailing_atr_multiplier': TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
-                                    'trailing_min_distance': TRADING_CONFIG.get('trailing_min_distance', 0.08),
-                                    'trailing_max_distance': TRADING_CONFIG.get('trailing_max_distance', 0.25),
-                                    # Scanner
-                                    'top_pairs_limit': TRADING_CONFIG.get('top_pairs_limit', 20),
-                                    'balance_score_min': TRADING_CONFIG.get('balance_score_min', 0.0),
-                                    # Général
-                                    'use_slippage_calculation': TRADING_CONFIG.get('use_slippage_calculation', True),
-                                    'position_timeout': TRADING_CONFIG.get('position_timeout', 300),
-                                    'check_interval': TRADING_CONFIG.get('check_interval', 0.1),
-                                    'scan_interval': TRADING_CONFIG.get('scan_interval', 45),
-                                    'scalability_interval': TRADING_CONFIG.get('scalability_interval', 90),
-                                    # Machine Learning
-                                    'ml_filter_enabled': TRADING_CONFIG.get('ml_filter_enabled', False),
-                                    'ml_filter_mode': TRADING_CONFIG.get('ml_filter_mode', 'NEGATIVE'),
-                                    'ml_loss_threshold': TRADING_CONFIG.get('ml_loss_threshold', 0.45),
-                                    'ml_min_confidence': TRADING_CONFIG.get('ml_min_confidence', 0.60),
-                                    'ml_max_depth': TRADING_CONFIG.get('ml_max_depth', 6),
-                                    'ml_min_child_weight': TRADING_CONFIG.get('ml_min_child_weight', 3),
-                                    'ml_reg_alpha': TRADING_CONFIG.get('ml_reg_alpha', 0.5),
-                                    'ml_reg_lambda': TRADING_CONFIG.get('ml_reg_lambda', 2.0),
-                                    'ml_subsample': TRADING_CONFIG.get('ml_subsample', 0.8),
-                                    'ml_colsample_bytree': TRADING_CONFIG.get('ml_colsample_bytree', 0.8),
-                                    'ml_colsample_bylevel': TRADING_CONFIG.get('ml_colsample_bylevel', 0.8),
-                                    'ml_gamma': TRADING_CONFIG.get('ml_gamma', 0.0),
-                                    'ml_scale_pos_weight': TRADING_CONFIG.get('ml_scale_pos_weight', 1.0),
-                                    'ml_n_estimators': TRADING_CONFIG.get('ml_n_estimators', 300),
-                                    'ml_learning_rate': TRADING_CONFIG.get('ml_learning_rate', 0.03),
-                                    # Autres
-                                    'telegram_enabled': TELEGRAM_ENABLED,  # 🔥 MIGRATION COMPLÈTE: Exposer statut Telegram
-                                    # 🔥 NOUVEAU: Exposer les types de notifications Telegram
-                                    'telegram_notify_position_opened': TELEGRAM_NOTIFY_POSITION_OPENED,
-                                    'telegram_notify_position_closed': TELEGRAM_NOTIFY_POSITION_CLOSED,
-                                    'telegram_notify_tp_escalier': TELEGRAM_NOTIFY_TP_ESCALIER,
-                                    'telegram_notify_early_invalidation': TELEGRAM_NOTIFY_EARLY_INVALIDATION,
-                                    'telegram_notify_error': TELEGRAM_NOTIFY_ERROR,
-                                    'telegram_notify_reconnection': TELEGRAM_NOTIFY_RECONNECTION,
-                                    'telegram_notify_daily_summary': TELEGRAM_NOTIFY_DAILY_SUMMARY,
-                                    'telegram_notify_recovery_mode': TELEGRAM_NOTIFY_RECOVERY_MODE,
-                                    'telegram_notify_setup_rejected': TELEGRAM_NOTIFY_SETUP_REJECTED,
-                                },
-                                'scanner': {
-                                    'is_scanning': state.is_scanning,
-                                    'top_pairs': state.top_pairs or []
-                                },
-                                'position': {
-                                    'active': active_position_dict is not None,
-                                    'data': active_position_dict
-                                },
-                                'stats': stats_dict,
-                                'trade_history': current_session_trades,  # 🔥 SESSION-BASED: Seulement les trades de la session actuelle
-                                'timestamp': time.time()
-                            }
-                            
-                            ws_mgr = state.get_ws_manager()
-                            if ws_mgr:
-                                await ws_mgr.send_personal_message({
-                                    'type': 'request_response',
-                                    'id': request_id,
-                                    'request_type': request_type,
-                                    'data': state_data
-                                }, websocket)
-                        except Exception as e:
-                            logger.error(f"❌ Erreur récupération state via WebSocket: {e}", exc_info=True)
-                            ws_mgr = state.get_ws_manager()
-                            if ws_mgr:
-                                await ws_mgr.send_personal_message({
-                                    'type': 'request_response',
-                                    'id': request_id,
-                                    'request_type': request_type,
-                                    'data': {
-                                        'success': False,
-                                        'error': str(e)
-                                    }
-                                }, websocket)
-        
+                            await ws_mgr.send_personal_message({
+                                'type': 'request_response',
+                                'id': request_id,
+                                'request_type': request_type,
+                                'data': pos
+                            }, websocket)
+
         except WebSocketDisconnect:
-            ws_mgr = state.get_ws_manager()
+            logger.info(f"👋 WebSocket déconnecté proprement: {websocket.client}")
             if ws_mgr:
                 await ws_mgr.disconnect(websocket)
         except Exception as e:
-            logger.error(f"Erreur WebSocket: {e}")
-            ws_mgr = state.get_ws_manager()
+            logger.error(f"❌ Erreur inattendue boucle WebSocket: {e}", exc_info=True)
             if ws_mgr:
                 await ws_mgr.disconnect(websocket)
     
-    except WebSocketDisconnect:
-        ws_mgr = state.get_ws_manager()
-        if ws_mgr:
-            await ws_mgr.disconnect(websocket)
     except Exception as e:
-        logger.error(f"Erreur WebSocket globale: {e}")
-        ws_mgr = state.get_ws_manager()
-        if ws_mgr:
-            await ws_mgr.disconnect(websocket)
+        logger.critical(f"❌ CRITICAL: Erreur fatale dans websocket_endpoint: {e}", exc_info=True)
+        try:
+            await websocket.close(code=1011)
+        except:
+            pass
+
+
+# 🔥 === ENDPOINT /api/state (WEBSOCKET MIGRATION COMPLÈTE) ===
+@app.get("/api/state")
+async def api_get_complete_state():
+    """
+    🔥 MIGRATION COMPLÈTE: Endpoint REST maintenu pour compatibilité
+    Le frontend utilise désormais WebSocket pour récupérer l'état complet
+    """
+    try:
+        from config import TRADING_CONFIG
+        # time est déjà importé au niveau du module
+        
+        # Récupérer position active
+        active_position_dict = None
+        pos_mgr = state.get_position_manager()
+        if pos_mgr and pos_mgr.active_position:
+            try:
+                active_position = pos_mgr.active_position
+                active_position_dict = active_position.to_dict()
+                active_position_dict['timestamp'] = time.time()
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération position: {e}")
+                active_position_dict = None
+        
+        # Récupérer stats
+        stats_dict = {
+            'total_trades': 0,
+            'wins': 0,
+            'losses': 0,
+            'winrate': 0.0
+        }
+        
+        # Utiliser state.trade_history comme source principale
+        current_session_trades = state.trade_history or []
+        
+        # Si analytics_db disponible, essayer de récupérer les trades de la session
+        analytics_db = state.get_analytics_db()
+        sess_id = state.session_id
+        if analytics_db and sess_id:
+            try:
+                # Récupérer seulement les trades de la session actuelle
+                all_trades = analytics_db.get_trades(limit=10000)
+                db_trades = [t for t in all_trades if t.get('session_id') == sess_id]
+                # Utiliser les trades DB si plus complets, sinon garder state
+                if len(db_trades) > len(current_session_trades):
+                    current_session_trades = db_trades
+            except Exception as e:
+                logger.error(f"❌ Erreur récupération trades depuis DB: {e}")
+        
+        # Recalculer stats depuis l'historique
+        if current_session_trades:
+            total = len(current_session_trades)
+            wins = sum(1 for t in current_session_trades if t.get('net_pnl_usdt', 0) > 0 or t.get('netPnlUSDT', 0) > 0)
+            losses = total - wins
+            winrate = (wins / total * 100) if total > 0 else 0.0
+            stats_dict = {
+                'total_trades': total,
+                'wins': wins,
+                'losses': losses,
+                'winrate': winrate
+            }
+        
+        # Configuration complète
+        from config import (
+            TELEGRAM_ENABLED,
+            TELEGRAM_NOTIFY_POSITION_OPENED, TELEGRAM_NOTIFY_POSITION_CLOSED,
+            TELEGRAM_NOTIFY_TP_ESCALIER, TELEGRAM_NOTIFY_EARLY_INVALIDATION,
+            TELEGRAM_NOTIFY_ERROR, TELEGRAM_NOTIFY_RECONNECTION,
+            TELEGRAM_NOTIFY_DAILY_SUMMARY, TELEGRAM_NOTIFY_RECOVERY_MODE,
+            TELEGRAM_NOTIFY_SETUP_REJECTED
+        )
+        
+        state_data = {
+            'success': True,
+            'session_id': state.session_id or f"live_{int(time.time())}",
+            'config': {
+                # Patterns Techniques
+                'use_breakout': TRADING_CONFIG.get('use_breakout', True),
+                'use_snr': TRADING_CONFIG.get('use_snr', True),
+                'use_wick': TRADING_CONFIG.get('use_wick', True),
+                'use_divergence': TRADING_CONFIG.get('use_divergence', True),
+                # Patterns de Bougies
+                'use_engulfing': TRADING_CONFIG.get('use_engulfing', True),
+                'use_hammer': TRADING_CONFIG.get('use_hammer', True),
+                'use_shooting_star': TRADING_CONFIG.get('use_shooting_star', True),
+                'use_doji': TRADING_CONFIG.get('use_doji', True),
+                'use_marubozu': TRADING_CONFIG.get('use_marubozu', True),
+                'use_morning_star': TRADING_CONFIG.get('use_morning_star', True),
+                'use_evening_star': TRADING_CONFIG.get('use_evening_star', True),
+                # Configuration complète (TP/SL, Money Management, etc.)
+                'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
+                'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+                'account_size': TRADING_CONFIG.get('account_size', 1000.0),
+                'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+                'telegram_enabled': TELEGRAM_ENABLED,
+            },
+            'scanner': {
+                'is_scanning': state.is_scanning,
+                'top_pairs': state.top_pairs or []
+            },
+            'position': {
+                'active': active_position_dict is not None,
+                'data': active_position_dict
+            },
+            'stats': stats_dict,
+            'trade_history': current_session_trades,
+            'timestamp': time.time()
+        }
+        
+        return state_data
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur récupération state: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e),
+            'timestamp': time.time()
+        }
 
 
 # 🔥 Fonction : Traiter commandes du client

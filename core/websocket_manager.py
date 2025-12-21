@@ -114,7 +114,8 @@ class WebSocketManager:
         """Envoyer un message à un WebSocket spécifique"""
         try:
             if websocket in self.active_connections:
-                await websocket.send_text(json.dumps(message))
+                # 🔥 FIX: Utiliser un encodeur JSON personnalisé pour gérer datetime et autres types
+                await websocket.send_text(json.dumps(message, default=str))
         except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
             # 🔥 FIX: Déconnexions normales - nettoyer silencieusement
             await self.disconnect(websocket)
@@ -127,8 +128,12 @@ class WebSocketManager:
         if not self.active_connections:
             return
         
-        # 🔥 OPTIMISATION: Créer le message JSON une seule fois
-        message_json = json.dumps(message)
+        # 🔥 OPTIMISATION: Créer le message JSON une seule fois avec encodeur robuste
+        try:
+            message_json = json.dumps(message, default=str)
+        except Exception as e:
+            logger.error(f"❌ Erreur sérialisation JSON broadcast: {e}")
+            return
         
         # 🔥 FIX: Créer une copie de la liste pour éviter les modifications pendant l'itération
         connections_to_send = list(self.active_connections)

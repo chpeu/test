@@ -162,10 +162,20 @@ class MEXCClient:
 _mexc_client: Optional[MEXCClient] = None
 
 
-def get_mexc_client() -> MEXCClient:
+def get_mexc_client() -> Optional[MEXCClient]:
     """Singleton pattern pour l'instance API"""
     global _mexc_client
     if _mexc_client is None:
-        _mexc_client = MEXCClient()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("🔄 Création nouvelle instance MEXCClient (singleton était None)")
+        try:
+            _mexc_client = MEXCClient()
+            logger.info("✅ MEXCClient créé avec succès")
+        except Exception as e:
+            logger.error(f"❌ ERREUR création MEXCClient: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return None
     return _mexc_client
 

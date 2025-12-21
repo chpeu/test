@@ -1143,16 +1143,39 @@ class PositionManager:
                 logger.warning(f"🚫 Trade rejeté par {reject_reason_calib}")
                 
                 # 🔥 FIX 15/12: Logger le rejet ML Calibration dans reject_reason_category
+                # 🔥 FIX: Utiliser version async non-bloquante avec fire-and-forget
                 try:
                     from core.postgresql_datalogger import PostgreSQLDataLogger
                     pg_logger = PostgreSQLDataLogger()
                     if pg_logger.enabled:
-                        pg_logger.update_ml_rejection(
-                            symbol=symbol,
-                            reject_reason=reject_reason_calib,
-                            reject_category="ml_calibration_winrate",
-                            ml_confidence=ml_confidence
-                        )
+                        import asyncio
+                        try:
+                            loop = asyncio.get_running_loop()
+                            async def _log_rejection_async():
+                                try:
+                                    await pg_logger.update_ml_rejection_async(
+                                        symbol=symbol,
+                                        reject_reason=reject_reason_calib,
+                                        reject_category="ml_calibration_winrate",
+                                        ml_confidence=ml_confidence
+                                    )
+                                except Exception:
+                                    pass
+                            loop.create_task(_log_rejection_async())
+                        except RuntimeError:
+                            # Pas de boucle événements, utiliser thread
+                            import threading
+                            def _log_sync():
+                                try:
+                                    pg_logger.update_ml_rejection(
+                                        symbol=symbol,
+                                        reject_reason=reject_reason_calib,
+                                        reject_category="ml_calibration_winrate",
+                                        ml_confidence=ml_confidence
+                                    )
+                                except Exception:
+                                    pass
+                            threading.Thread(target=_log_sync, daemon=True).start()
                 except Exception as calib_rej_err:
                     logger.debug(f"⚠️ Erreur log ML calibration rejection: {calib_rej_err}")
                 
@@ -1835,28 +1858,66 @@ class PositionManager:
                     'adaptive_sizing_multiplier': getattr(self.active_position, 'adaptive_sizing_multiplier', None)
                 }
 
-                logged_trade_id = pg_datalogger.log_trade(
-                    trade_data=entry_trade_data,
-                    opportunity_id=opportunity_id,
-                    scan_log_id=scan_uuid,
-                    session_id=getattr(self, 'session_id', None),
-                    trade_id=candidate_trade_id
-                )
-
-                if logged_trade_id:
-                    # trade_id déjà assigné avant log_trade(), juste logger l'événement ENTRY
-                    self._log_trade_event(
-                        'ENTRY',
-                        self.active_position.entry,
-                        0.0,
-                        pnl_usdt=0.0,
-                        details={
-                            'tp_price': self.active_position.tp,
-                            'sl_price': self.active_position.sl,
-                            'size_usdt': self.active_position.size,
-                            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                        }
-                    )
+                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                # Fire-and-forget pattern: scheduler la tâche async sans bloquer
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    
+                    async def _log_trade_async():
+                        try:
+                            logged_id = await pg_datalogger.log_trade_async(
+                                trade_data=entry_trade_data,
+                                opportunity_id=opportunity_id,
+                                scan_log_id=scan_uuid,
+                                session_id=getattr(self, 'session_id', None),
+                                trade_id=candidate_trade_id
+                            )
+                            if logged_id:
+                                self._log_trade_event(
+                                    'ENTRY',
+                                    self.active_position.entry,
+                                    0.0,
+                                    pnl_usdt=0.0,
+                                    details={
+                                        'tp_price': self.active_position.tp,
+                                        'sl_price': self.active_position.sl,
+                                        'size_usdt': self.active_position.size,
+                                        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                                    }
+                                )
+                        except Exception as e:
+                            logger.debug(f"Erreur log_trade_async (non-bloquant): {e}")
+                    
+                    loop.create_task(_log_trade_async())
+                except RuntimeError:
+                    # Pas de boucle événements, utiliser version synchrone en thread
+                    import threading
+                    def _log_sync():
+                        try:
+                            logged_trade_id = pg_datalogger.log_trade(
+                                trade_data=entry_trade_data,
+                                opportunity_id=opportunity_id,
+                                scan_log_id=scan_uuid,
+                                session_id=getattr(self, 'session_id', None),
+                                trade_id=candidate_trade_id
+                            )
+                            if logged_trade_id:
+                                self._log_trade_event(
+                                    'ENTRY',
+                                    self.active_position.entry,
+                                    0.0,
+                                    pnl_usdt=0.0,
+                                    details={
+                                        'tp_price': self.active_position.tp,
+                                        'sl_price': self.active_position.sl,
+                                        'size_usdt': self.active_position.size,
+                                        'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                                    }
+                                )
+                        except Exception:
+                            pass
+                    threading.Thread(target=_log_sync, daemon=True).start()
         except Exception as e:
             logger.debug(f"Erreur log_trade_entry (non-bloquant): {e}")
         # ========================================
@@ -3663,19 +3724,49 @@ class PositionManager:
                     scan_log_id = getattr(self.active_position, '_scan_log_id', None)
                     existing_trade_id = getattr(self.active_position, '_trade_id', None)
                     
-                    # Logger le trade
-                    trade_id = pg_datalogger.log_trade(
-                        trade_data=trade_data,
-                        opportunity_id=opportunity_id,
-                        scan_log_id=scan_log_id,
-                        session_id=getattr(self, 'session_id', None),
-                        trade_id=existing_trade_id
-                    )
+                    # 🔥 FIX: Utiliser version async non-bloquante avec fire-and-forget
+                    import asyncio
+                    _active_pos_ref = self.active_position  # Capturer référence
+                    try:
+                        loop = asyncio.get_running_loop()
+                        async def _log_close_trade_async():
+                            try:
+                                trade_id = await pg_datalogger.log_trade_async(
+                                    trade_data=trade_data,
+                                    opportunity_id=opportunity_id,
+                                    scan_log_id=scan_log_id,
+                                    session_id=getattr(self, 'session_id', None),
+                                    trade_id=existing_trade_id
+                                )
+                                if trade_id and _active_pos_ref:
+                                    logger.debug(f"📊 Trade loggé dans PostgreSQL: {_active_pos_ref.symbol} (ID: {trade_id})")
+                                    _active_pos_ref._trade_id = trade_id
+                            except Exception as e:
+                                logger.debug(f"Erreur log_trade_async close (non-bloquant): {e}")
+                        loop.create_task(_log_close_trade_async())
+                        # Pour la suite du code, utiliser existing_trade_id comme fallback
+                        trade_id = existing_trade_id
+                    except RuntimeError:
+                        # Pas de boucle événements, utiliser version synchrone en thread
+                        import threading
+                        def _log_close_sync():
+                            try:
+                                tid = pg_datalogger.log_trade(
+                                    trade_data=trade_data,
+                                    opportunity_id=opportunity_id,
+                                    scan_log_id=scan_log_id,
+                                    session_id=getattr(self, 'session_id', None),
+                                    trade_id=existing_trade_id
+                                )
+                                if tid and _active_pos_ref:
+                                    _active_pos_ref._trade_id = tid
+                            except Exception:
+                                pass
+                        threading.Thread(target=_log_close_sync, daemon=True).start()
+                        trade_id = existing_trade_id
                     
                     if trade_id:
-                        logger.debug(f"📊 Trade loggé dans PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
-                        # 🔥 FIX 10/12/2025: Stocker le trade_id correct pour What-If
-                        self.active_position._trade_id = trade_id
+                        logger.debug(f"📊 Trade scheduled pour PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
                         
                         # 🔥 ML AUTO-CALIBRATION: Mettre à jour les stats après chaque trade
                         try:
@@ -4135,24 +4226,54 @@ class PositionManager:
             logger.debug(f"Erreur What-If (non-bloquant): {e}")
 
         # 🔥 Phase 2H.6: Log EXIT event
+        # 🔥 FIX: Utiliser fire-and-forget async pour ne pas bloquer l'event loop
         try:
             from core.postgresql_datalogger import get_pg_datalogger
             pg_logger = get_pg_datalogger()
             trade_id = getattr(position, '_trade_id', None)
             if pg_logger and trade_id:
-                pg_logger.log_trade_event(
-                    trade_id=trade_id,
-                    event_type='EXIT',
-                    price_at_event=exit_price,
-                    pnl_pct_at_event=net_pnl_pct,
-                    pnl_usdt_at_event=net_pnl_usdt,
-                    details={
-                        'reason': reason,
-                        'duration_seconds': duration,
-                        'gross_pnl_pct': result['gross_pnl_pct'],
-                        'fees_usdt': result['fees']
-                    }
-                )
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    async def _log_exit_event():
+                        try:
+                            await pg_logger.log_trade_event_async(
+                                trade_id=trade_id,
+                                event_type='EXIT',
+                                price_at_event=exit_price,
+                                pnl_pct_at_event=net_pnl_pct,
+                                pnl_usdt_at_event=net_pnl_usdt,
+                                details={
+                                    'reason': reason,
+                                    'duration_seconds': duration,
+                                    'gross_pnl_pct': result['gross_pnl_pct'],
+                                    'fees_usdt': result['fees']
+                                }
+                            )
+                        except Exception:
+                            pass
+                    loop.create_task(_log_exit_event())
+                except RuntimeError:
+                    # Pas de boucle événements, utiliser thread
+                    import threading
+                    def _log_sync():
+                        try:
+                            pg_logger.log_trade_event(
+                                trade_id=trade_id,
+                                event_type='EXIT',
+                                price_at_event=exit_price,
+                                pnl_pct_at_event=net_pnl_pct,
+                                pnl_usdt_at_event=net_pnl_usdt,
+                                details={
+                                    'reason': reason,
+                                    'duration_seconds': duration,
+                                    'gross_pnl_pct': result['gross_pnl_pct'],
+                                    'fees_usdt': result['fees']
+                                }
+                            )
+                        except Exception:
+                            pass
+                    threading.Thread(target=_log_sync, daemon=True).start()
         except Exception:
             pass
 
