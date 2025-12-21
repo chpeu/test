@@ -69,6 +69,10 @@ class Scheduler:
     
     async def _scalability_refresh_loop(self):
         """Boucle scalability refresh - toutes les 90 secondes"""
+        # 🔥 FIX: Attendre avant le premier refresh pour éviter conflit avec scanner_loop
+        # scanner_loop démarre immédiatement, donc on attend 60s avant le premier refresh
+        await asyncio.sleep(60)
+        
         while self.is_running:
             try:
                 if self.scalability_refresh_callback:

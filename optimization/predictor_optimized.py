@@ -162,7 +162,10 @@ class OptimizedPredictor:
                 if scaler is not None:
                     # Vérifier compatibilité des dimensions avant scaling
                     if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ != df.shape[1]:
-                        logger.warning(f"⚠️ Scaler ignoré: mismatch features (Scaler={scaler.n_features_in_} vs DF={df.shape[1]})")
+                        # 🔥 FIX: Log seulement la première fois, puis auto-disable le scaler
+                        if not getattr(self, '_scaler_disabled', False):
+                            logger.warning(f"⚠️ Scaler désactivé: mismatch features (Scaler={scaler.n_features_in_} vs DF={df.shape[1]}). Ce warning ne sera plus affiché.")
+                            self._scaler_disabled = True
                         input_data = df
                     else:
                         # 🔥 FIX: Utiliser df.values pour éviter sklearn warning sur feature names
@@ -177,6 +180,14 @@ class OptimizedPredictor:
             else:
                 input_data = df if isinstance(df, pd.DataFrame) else df
 
+            # 🔥 FIX: S'assurer que le DataFrame a les bons noms de colonnes pour éviter sklearn warning
+            if isinstance(input_data, pd.DataFrame) and self.feature_cols:
+                # Vérifier que les colonnes correspondent exactement aux feature_names du modèle
+                if list(input_data.columns) != self.feature_cols:
+                    logger.debug(f"🔧 Réordonnancement colonnes: {list(input_data.columns)} → {self.feature_cols}")
+                    # Réordonner selon l'ordre exact du modèle
+                    input_data = input_data.reindex(columns=self.feature_cols, fill_value=0.0)
+            
             # Prédire
             proba = self.model.predict_proba(input_data)[0, 1]  # Probabilité de WIN
             should_trade = proba >= threshold

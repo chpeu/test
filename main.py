@@ -46,11 +46,11 @@ except ImportError:
     colorama = None
 
 # 🔥 SPRINT 2.1: StateManager for centralized state management
-from core.state_manager import get_state_manager
+from core.state_manager import get_state_manager, LegacyAppStateProxy
 
 # 🔥 v7.0: Imports complets
 try:
-    from api.price_provider import get_price_provider
+    from api.price_provider import get_price_provider as create_price_provider
     from core.scanner import ScalabilityScanner
     from core.analyzer import TechnicalAnalyzer
     from core.position_manager import PositionManager, PositionConfig
@@ -66,7 +66,7 @@ try:
 except ImportError as e:
     logging.error(f"Import error: {e}")
     # Fallback pour les dépendances manquantes
-    get_price_provider = None
+    create_price_provider = None
     TradeDatabase = None
     GracefulShutdown = None
     ScalabilityScanner = None
@@ -726,6 +726,8 @@ def get_trade_history_file() -> str:
 
 # 🔥 SPRINT 2.1: TRADE_HISTORY_FILE et trade_db migrés vers StateManager
 # Utiliser: state.trade_history_file et state.get_trade_db()
+TRADE_HISTORY_FILE: Optional[str] = None
+trade_db: Optional['TradeDatabase'] = None
 
 def init_trade_database() -> None:
     """
@@ -897,7 +899,7 @@ def load_trade_history() -> None:
 # 🔥 SPRINT 2.1: app_state migré vers StateManager
 # Utiliser: state.is_scanning, state.active_position, state.stats, etc.
 # Pour compatibilité avec routes qui attendent app_state dict:
-app_state = state.to_dict()  # Wrapper pour accès legacy
+app_state = LegacyAppStateProxy(state)  # Wrapper pour accès legacy
 
 
 async def _run_initial_top_pairs_scan() -> None:
@@ -928,6 +930,11 @@ async def _run_initial_top_pairs_scan() -> None:
         scanner_inst = state.get_scanner()
         if not scanner_inst:
             logger.warning("⚠️ Scanner non disponible")
+            return
+        
+        # 🔥 FIX: Vérifier si le scanner est déjà en cours
+        if scanner_inst.is_scanning:
+            logger.debug("⏸️ Scan initial ignoré - Scanner déjà actif")
             return
         
         top_pairs = await scanner_inst.scan_top_pairs(20)
@@ -1750,7 +1757,10 @@ async def scanner_loop_callback() -> None:
                                         logger.info(f"💹 DEBUG: top_pairs contient {len(top_pairs)} paires")
                                         found_pair = False
                                         for pair in top_pairs:
-                                            if pair.get('symbol') == symbol:
+                                            # 🔥 FIX: Normaliser symboles avant comparaison (BTC/USDT vs BTC/USDT:USDT)
+                                            pair_symbol = (pair.get('symbol') or '').split(':')[0]
+                                            lookup_symbol = (symbol or '').split(':')[0]
+                                            if pair_symbol == lookup_symbol:
                                                 found_pair = True
                                                 # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
                                                 spread_value = pair.get('spread', 0)
@@ -2796,7 +2806,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 # app_state est défini globalement dans main.py
                 if app_state and app_state.get('top_pairs'):
                     for pair in app_state.get('top_pairs', []):
-                        if pair.get('symbol') == symbol:
+                        # 🔥 FIX: Normaliser symboles avant comparaison (BTC/USDT vs BTC/USDT:USDT)
+                        pair_symbol = (pair.get('symbol') or '').split(':')[0]
+                        lookup_symbol = (symbol or '').split(':')[0]
+                        if pair_symbol == lookup_symbol:
                             spread_value = pair.get('spread') or pair.get('spread_pct')
                             book_depth = pair.get('bookDepth')
                             balance_score = pair.get('balanceScore')
@@ -3485,8 +3498,7 @@ async def position_check_loop_callback() -> None:
                 result = pos_mgr.close_position(exit_price=current_price, reason=close_reason)
                 state.set_active_position(None)
                 # 🔥 FIX: Reset compteur d'échecs après fermeture réussie
-                state.set_close_failure_count(0)
-                state.set_close_failure_symbol(None)
+                state.reset_close_failure()
                 
                 # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
                 if result:
@@ -3548,10 +3560,10 @@ async def position_check_loop_callback() -> None:
         if pos_mgr and pos_mgr.active_position:
             current_symbol = pos_mgr.active_position.symbol
             if state.close_failure_symbol == current_symbol:
-                state.set_close_failure_count(state.close_failure_count + 1)
+                state.increment_close_failure()
             else:
-                state.set_close_failure_symbol(current_symbol)
-                state.set_close_failure_count(1)
+                state.reset_close_failure()
+                state.increment_close_failure(current_symbol)
             
             # Après 5 échecs consécutifs, forcer fermeture locale (paper close)
             if state.close_failure_count >= 5:
@@ -3572,8 +3584,7 @@ async def position_check_loop_callback() -> None:
                             skip_order=True  # Ne pas envoyer d'ordre à MEXC
                         )
                         state.set_active_position(None)
-                        state.set_close_failure_count(0)
-                        state.set_close_failure_symbol(None)
+                        state.reset_close_failure()
                         if result:
                             result['timestamp'] = datetime.now().isoformat()
                             trade_history = state.trade_history or []
@@ -3590,8 +3601,7 @@ async def position_check_loop_callback() -> None:
                     if pos_mgr:
                         pos_mgr.active_position = None
                     state.set_active_position(None)
-                    state.set_close_failure_count(0)
-                    state.set_close_failure_symbol(None)
+                    state.reset_close_failure()
 
 
 async def scalability_refresh_loop_callback():
@@ -3610,6 +3620,11 @@ async def scalability_refresh_loop_callback():
     
     scanner_inst = state.get_scanner()
     if not scanner_inst:
+        return
+    
+    # 🔥 FIX: Vérifier si le scanner est déjà en cours pour éviter "Scanner déjà en cours"
+    if scanner_inst.is_scanning:
+        logger.debug("⏸️ Scalability refresh ignoré - Scanner déjà actif")
         return
     
     try:
@@ -4058,8 +4073,8 @@ def init_instances() -> None:
         if state.get_live_order_manager():
             logger.info(f"✅ LiveOrderManager déjà initialisé (dry_run={getattr(state.get_live_order_manager(), 'dry_run', '?')})")
 
-    if not state.get_price_provider() and get_price_provider:
-        state.set_price_provider(get_price_provider())
+    if not state.get_price_provider() and create_price_provider:
+        state.set_price_provider(create_price_provider())
     # 🔥 JOUR 3: Initialiser scheduler et configurer les callbacks
     if not state.get_scheduler() and Scheduler:
         sched = Scheduler()
@@ -4111,7 +4126,7 @@ async def favicon():
 @app.get("/api/status")
 async def api_status():
     """État global de l'application"""
-    return JSONResponse(app_state)
+    return JSONResponse(app_state.to_dict())
 
 
 # 🔥 FIX: Endpoints sessions pour compatibilité frontend Svelte
@@ -4493,25 +4508,24 @@ async def api_start():
     state.set_is_scanning(True)
     
     # 🔥 JOUR 3: Si pas de top_pairs, faire un scan initial
-    if not state.top_pairs:
+    scnr = state.get_scanner()
+    if not state.top_pairs and scnr and not scnr.is_scanning:
         await add_log('INFO', 'Scanner démarré', 'Scan initial des top pairs...')
-        scnr = state.get_scanner()
-        if scnr:
-            top_pairs = await scnr.scan_top_pairs(20)
-            state.set_top_pairs(top_pairs)
-            if ws_mgr:
-                await ws_mgr.emit('top_pairs_update', {'pairs': top_pairs})
-            
-            # Démarrer WebSocket pour les top pairs
-            price_prov = state.get_price_provider()
-            if price_prov and top_pairs:
-                symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
-                if symbols:
-                    try:
-                        await price_prov.start_websocket(symbols)
-                        await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
-                    except Exception as e:
-                        logger.warning(f"Erreur démarrage WebSocket: {e}")
+        top_pairs = await scnr.scan_top_pairs(20)
+        state.set_top_pairs(top_pairs)
+        if ws_mgr:
+            await ws_mgr.emit('top_pairs_update', {'pairs': top_pairs})
+        
+        # Démarrer WebSocket pour les top pairs
+        price_prov = state.get_price_provider()
+        if price_prov and top_pairs:
+            symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+            if symbols:
+                try:
+                    await price_prov.start_websocket(symbols)
+                    await add_log('INFO', 'WebSocket démarré', f'{len(symbols)} symboles monitorés')
+                except Exception as e:
+                    logger.warning(f"Erreur démarrage WebSocket: {e}")
     
     # 🔥 JOUR 3: Démarrer le scheduler
     sched = state.get_scheduler()
@@ -5050,6 +5064,11 @@ async def scan_top_pairs_task(n):
     """Tâche asynchrone pour scanner top pairs"""
     scnr = state.get_scanner()
     if not scnr:
+        return
+    
+    # 🔥 FIX: Vérifier si le scanner est déjà en cours
+    if scnr.is_scanning:
+        logger.debug("⏸️ scan_top_pairs_task ignoré - Scanner déjà actif")
         return
     
     try:

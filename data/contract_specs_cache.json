@@ -1,5 +1,5 @@
 {
-  "timestamp": 1766266756.8419697,
+  "timestamp": 1766337039.5641038,
   "specs": {
     "JELLYJELLY_USDT": {
       "symbol": "JELLYJELLY_USDT",
@@ -350,6 +350,16 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "SHIB_USDT": {
+      "symbol": "SHIB_USDT",
+      "min_vol": 1.0,
+      "max_vol": 150000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-09,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1000.0
     }
   }
 }

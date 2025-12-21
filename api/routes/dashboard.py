@@ -75,6 +75,8 @@ async def get_status():
         return JSONResponse({'error': 'App state not available'}, status_code=503)
 
     try:
+        if hasattr(_app_state, 'to_dict'):
+            return JSONResponse(_app_state.to_dict())
         return JSONResponse(_app_state)
     except Exception as e:
         logger.error(f"Erreur récupération statut: {e}")
