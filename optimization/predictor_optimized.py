@@ -180,6 +180,14 @@ class OptimizedPredictor:
             else:
                 input_data = df if isinstance(df, pd.DataFrame) else df
 
+            # 🔥 FIX: S'assurer que le DataFrame a les bons noms de colonnes pour éviter sklearn warning
+            if isinstance(input_data, pd.DataFrame) and self.feature_cols:
+                # Vérifier que les colonnes correspondent exactement aux feature_names du modèle
+                if list(input_data.columns) != self.feature_cols:
+                    logger.debug(f"🔧 Réordonnancement colonnes: {list(input_data.columns)} → {self.feature_cols}")
+                    # Réordonner selon l'ordre exact du modèle
+                    input_data = input_data.reindex(columns=self.feature_cols, fill_value=0.0)
+            
             # Prédire
             proba = self.model.predict_proba(input_data)[0, 1]  # Probabilité de WIN
             should_trade = proba >= threshold

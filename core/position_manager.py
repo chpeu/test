@@ -1094,20 +1094,36 @@ class PositionManager:
                     features['delta_volume'] = 0.0
                     features['momentum_divergence'] = 0.0
                 
-                logger.warning(f"🌳 Features GB complètes pour {symbol}: {list(features.keys())}")
-                logger.warning(f"🔍 Total features position_manager: {len(features)} features")
+                # 🔥 FIX CRITIQUE: Filtrer les features selon le modèle GB actuel (20 features)
+                # Features attendues par best_classifier_latest.pkl (HistGradientBoostingClassifier)
+                gb_expected_features = [
+                    'di_minus_1m', 'di_gap_1m', 'bb_distance_to_lower_5m', 'bb_distance_to_upper_5m', 
+                    'ema_trend_strength_1m', 'macd_hist_prev_5m', 'ema_trend_strength_5m', 'rsi_change_1m', 
+                    'rsi_prev_1m', 'rsi_5m', 'hour', 'volume_spike_5m', 'ema_diff_pct_1m', 
+                    'momentum_divergence', 'bb_width_1m', 'delta_volume', 'macd_hist_5m', 
+                    'atr_pct_5m', 'di_gap_5m', 'bb_distance_to_lower_1m'
+                ]
                 
-                # 🔥 DEBUG: Comparer avec les features attendues
-                if len(features) >= 60:
-                    logger.warning(f"✅ SUCCÈS: {len(features)} features extraites (≥60) - Position Manager optimisé!")
+                # Créer dict avec seulement les features attendues par le modèle
+                gb_features = {}
+                for feature_name in gb_expected_features:
+                    gb_features[feature_name] = features.get(feature_name, 0.0)
+                
+                logger.warning(f"🌳 Features GB filtrées pour {symbol}: {list(gb_features.keys())}")
+                logger.warning(f"🔍 Total features GB adaptées: {len(gb_features)} features (attendu: 20)")
+                
+                # Vérifier que toutes les features sont présentes
+                missing_features = [f for f in gb_expected_features if f not in features]
+                if missing_features:
+                    logger.warning(f"⚠️ Features GB manquantes: {missing_features}")
                 else:
-                    logger.warning(f"⚠️ Seulement {len(features)} features - vérifier setup_data")
+                    logger.warning(f"✅ SUCCÈS: Toutes les 20 features GB sont disponibles!")
                 
                 # Obtenir le prédicteur et faire la prédiction
                 predictor = get_predictor()
                 if predictor:
                     gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.65)
-                    should_trade, confidence = predictor.predict(features, threshold=gb_min_confidence)
+                    should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
                     
                     logger.warning(f"🌳 Prédiction GB: should_trade={should_trade}, confidence={confidence:.3f}, seuil={gb_min_confidence}")
                     
