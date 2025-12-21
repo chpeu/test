@@ -10,7 +10,7 @@ def run_as_service():
     extractor_path = script_dir / "mexc_token_extractor.py"
     
     if not extractor_path.exists():
-        print(f"Erreur: {extractor_path} non trouvé")
+        print(f"Erreur: {extractor_path} non trouvÃ©")
         return
     
     print("Demarrage service MEXC Token Extractor...")

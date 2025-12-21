@@ -162,7 +162,10 @@ class OptimizedPredictor:
                 if scaler is not None:
                     # Vérifier compatibilité des dimensions avant scaling
                     if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ != df.shape[1]:
-                        logger.warning(f"⚠️ Scaler ignoré: mismatch features (Scaler={scaler.n_features_in_} vs DF={df.shape[1]})")
+                        # 🔥 FIX: Log seulement la première fois, puis auto-disable le scaler
+                        if not getattr(self, '_scaler_disabled', False):
+                            logger.warning(f"⚠️ Scaler désactivé: mismatch features (Scaler={scaler.n_features_in_} vs DF={df.shape[1]}). Ce warning ne sera plus affiché.")
+                            self._scaler_disabled = True
                         input_data = df
                     else:
                         # 🔥 FIX: Utiliser df.values pour éviter sklearn warning sur feature names

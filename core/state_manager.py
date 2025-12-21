@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from threading import Lock
 from datetime import datetime
 import uuid
+from collections.abc import MutableMapping, MutableSequence
 
 logger = logging.getLogger(__name__)
 
@@ -168,18 +169,36 @@ class StateManager:
             self._app_state.is_scanning = value
             logger.debug(f"Scanning status: {value}")
 
+    def set_is_scanning(self, value: bool) -> None:
+        with self._thread_lock:
+            self._app_state.is_scanning = value
+            logger.debug(f"Scanning status: {value}")
+
     @property
-    def active_position(self) -> Optional[Dict[str, Any]]:
+    def active_position(self) -> Optional[Any]:
         """Get active position (thread-safe)"""
         with self._thread_lock:
             return self._app_state.active_position
 
-    def set_active_position(self, position: Optional[Dict[str, Any]]) -> None:
+    def set_active_position(self, position: Optional[Any]) -> None:
         """Set active position (thread-safe)"""
         with self._thread_lock:
             self._app_state.active_position = position
             if position:
-                logger.debug(f"Active position set: {position.get('symbol')}")
+                symbol = None
+                if isinstance(position, dict):
+                    symbol = position.get("symbol")
+                elif hasattr(position, "symbol"):
+                    try:
+                        symbol = getattr(position, "symbol")
+                    except Exception:
+                        symbol = None
+                elif hasattr(position, "get"):
+                    try:
+                        symbol = position.get("symbol")
+                    except Exception:
+                        symbol = None
+                logger.debug(f"Active position set: {symbol}")
             else:
                 logger.debug("Active position cleared")
 
@@ -232,6 +251,10 @@ class StateManager:
         with self._thread_lock:
             self._app_state.logs.clear()
 
+    def set_logs(self, logs: List[Dict[str, Any]]) -> None:
+        with self._thread_lock:
+            self._app_state.logs = logs.copy()
+
     @property
     def trade_history(self) -> List[Dict[str, Any]]:
         """Get trade history (thread-safe)"""
@@ -254,6 +277,19 @@ class StateManager:
         """Get close failure count"""
         with self._thread_lock:
             return self._app_state.close_failure_count
+
+    @property
+    def close_failure_symbol(self) -> Optional[str]:
+        with self._thread_lock:
+            return self._app_state.close_failure_symbol
+
+    def set_close_failure_count(self, value: int) -> None:
+        with self._thread_lock:
+            self._app_state.close_failure_count = int(value)
+
+    def set_close_failure_symbol(self, symbol: Optional[str]) -> None:
+        with self._thread_lock:
+            self._app_state.close_failure_symbol = symbol
 
     def increment_close_failure(self, symbol: Optional[str] = None) -> None:
         """Increment close failure count (thread-safe)"""
@@ -451,9 +487,15 @@ class StateManager:
             Dict compatible avec ancien app_state
         """
         with self._thread_lock:
+            active_position: Any = self._app_state.active_position
+            if active_position is not None and hasattr(active_position, "to_dict"):
+                try:
+                    active_position = active_position.to_dict()
+                except Exception:
+                    pass
             return {
                 "is_scanning": self._app_state.is_scanning,
-                "active_position": self._app_state.active_position,
+                "active_position": active_position,
                 "stats": {
                     "total_trades": self._app_state.stats.total_trades,
                     "wins": self._app_state.stats.wins,
@@ -474,6 +516,277 @@ class StateManager:
         with self._thread_lock:
             self._app_state = ApplicationState()
             logger.info("🧹 StateManager cleaned up")
+
+
+class _LegacyStatsProxy(dict):
+    def __init__(self, state: "StateManager"):
+        self._state = state
+        super().__init__()
+        self._refresh()
+
+    def _refresh(self) -> None:
+        stats = self._state.stats
+        super().clear()
+        super().update({
+            "total_trades": stats.total_trades,
+            "wins": stats.wins,
+            "losses": stats.losses,
+            "winrate": stats.winrate,
+        })
+
+    def __getitem__(self, key):
+        self._refresh()
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        self._refresh()
+        return super().get(key, default)
+
+    def items(self):
+        self._refresh()
+        return super().items()
+
+    def keys(self):
+        self._refresh()
+        return super().keys()
+
+    def values(self):
+        self._refresh()
+        return super().values()
+
+    def __iter__(self):
+        self._refresh()
+        return super().__iter__()
+
+    def __len__(self):
+        self._refresh()
+        return super().__len__()
+
+    def __setitem__(self, key, value):
+        if key == "total_trades":
+            self._state.update_stats(total_trades=int(value))
+        elif key == "wins":
+            self._state.update_stats(wins=int(value))
+        elif key == "losses":
+            self._state.update_stats(losses=int(value))
+        elif key == "winrate":
+            return
+        else:
+            raise KeyError(key)
+        self._refresh()
+
+    def update(self, *args, **kwargs):
+        data = dict(*args, **kwargs)
+        for k, v in data.items():
+            self.__setitem__(k, v)
+
+    def to_dict(self) -> Dict[str, Any]:
+        self._refresh()
+        return dict(self)
+
+
+class _LegacyListProxy(list):
+    def __init__(self, getter, setter, append_item=None):
+        self._getter = getter
+        self._setter = setter
+        self._append_item = append_item
+        super().__init__()
+        self._refresh()
+
+    def _refresh(self) -> None:
+        data = self._getter() or []
+        super().clear()
+        super().extend(list(data))
+
+    def _commit(self) -> None:
+        self._setter(list(self))
+
+    def __len__(self):
+        self._refresh()
+        return super().__len__()
+
+    def __getitem__(self, index):
+        self._refresh()
+        return super().__getitem__(index)
+
+    def __iter__(self):
+        self._refresh()
+        return super().__iter__()
+
+    def __setitem__(self, index, value):
+        self._refresh()
+        super().__setitem__(index, value)
+        self._commit()
+
+    def __delitem__(self, index):
+        self._refresh()
+        super().__delitem__(index)
+        self._commit()
+
+    def insert(self, index, value):
+        self._refresh()
+        super().insert(index, value)
+        self._commit()
+
+    def append(self, value):
+        if self._append_item is not None:
+            self._append_item(value)
+            self._refresh()
+            return
+        self._refresh()
+        super().append(value)
+        self._commit()
+
+    def extend(self, iterable):
+        self._refresh()
+        super().extend(iterable)
+        self._commit()
+
+    def clear(self):
+        self._refresh()
+        super().clear()
+        self._commit()
+
+    def pop(self, index: int = -1):
+        self._refresh()
+        value = super().pop(index)
+        self._commit()
+        return value
+
+    def remove(self, value):
+        self._refresh()
+        super().remove(value)
+        self._commit()
+
+    def to_list(self) -> List[Any]:
+        self._refresh()
+        return list(self)
+
+
+class LegacyAppStateProxy(MutableMapping):
+    def __init__(self, state: "StateManager"):
+        self._state = state
+        self._extras: Dict[str, Any] = {}
+        self._stats = _LegacyStatsProxy(state)
+        self._top_pairs = _LegacyListProxy(lambda: state.top_pairs, state.set_top_pairs)
+        self._logs = _LegacyListProxy(lambda: state.logs, state.set_logs, append_item=state.add_log)
+        self._trade_history = _LegacyListProxy(lambda: state.trade_history, state.set_trade_history, append_item=state.add_trade)
+
+    def __getitem__(self, key):
+        if key == "is_scanning":
+            return self._state.is_scanning
+        if key == "active_position":
+            return self._state.active_position
+        if key == "stats":
+            return self._stats
+        if key == "top_pairs":
+            return self._top_pairs
+        if key == "logs":
+            return self._logs
+        if key == "trade_history":
+            return self._trade_history
+        if key == "close_failure_count":
+            return self._state.close_failure_count
+        if key == "close_failure_symbol":
+            return self._state.close_failure_symbol
+        if key == "backend_reboot_in_progress":
+            return self._state.backend_reboot_in_progress
+        if key == "session_id":
+            return self._state.session_id
+        return self._extras[key]
+
+    def __setitem__(self, key, value):
+        if key == "is_scanning":
+            self._state.set_scanning(bool(value))
+            return
+        if key == "active_position":
+            self._state.set_active_position(value)
+            return
+        if key == "stats":
+            if isinstance(value, dict):
+                if "total_trades" in value:
+                    self._state.update_stats(total_trades=int(value["total_trades"]))
+                if "wins" in value:
+                    self._state.update_stats(wins=int(value["wins"]))
+                if "losses" in value:
+                    self._state.update_stats(losses=int(value["losses"]))
+            return
+        if key == "top_pairs":
+            self._state.set_top_pairs(list(value) if value else [])
+            return
+        if key == "logs":
+            self._state.set_logs(list(value) if value else [])
+            return
+        if key == "trade_history":
+            self._state.set_trade_history(list(value) if value else [])
+            return
+        if key == "close_failure_count":
+            self._state.set_close_failure_count(int(value))
+            return
+        if key == "close_failure_symbol":
+            self._state.set_close_failure_symbol(value)
+            return
+        if key == "backend_reboot_in_progress":
+            self._state.set_backend_reboot(bool(value))
+            return
+        if key == "session_id":
+            self._extras[key] = value
+            return
+        self._extras[key] = value
+
+    def __delitem__(self, key):
+        del self._extras[key]
+
+    def __iter__(self):
+        keys = [
+            "is_scanning",
+            "active_position",
+            "stats",
+            "top_pairs",
+            "logs",
+            "trade_history",
+            "close_failure_count",
+            "close_failure_symbol",
+            "backend_reboot_in_progress",
+            "session_id",
+        ]
+        seen = set(keys)
+        for k in keys:
+            yield k
+        for k in self._extras.keys():
+            if k not in seen:
+                yield k
+
+    def __len__(self):
+        return len(list(iter(self)))
+
+    def copy(self) -> Dict[str, Any]:
+        return self.to_dict()
+
+    def to_dict(self) -> Dict[str, Any]:
+        active_position = self._state.active_position
+        if active_position is not None and hasattr(active_position, "to_dict"):
+            try:
+                active_position = active_position.to_dict()
+            except Exception:
+                pass
+
+        data: Dict[str, Any] = {
+            "is_scanning": self._state.is_scanning,
+            "active_position": active_position,
+            "stats": self._stats.to_dict(),
+            "top_pairs": self._top_pairs.to_list(),
+            "logs": self._logs.to_list(),
+            "trade_history": self._trade_history.to_list(),
+            "close_failure_count": self._state.close_failure_count,
+            "close_failure_symbol": self._state.close_failure_symbol,
+            "backend_reboot_in_progress": self._state.backend_reboot_in_progress,
+            "session_id": self._state.session_id,
+        }
+        for k, v in self._extras.items():
+            if k not in data:
+                data[k] = v
+        return data
 
 
 # Singleton instance

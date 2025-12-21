@@ -362,7 +362,10 @@ async def _scan_top_pairs():
                     logger.info(f"💹 DEBUG: top_pairs contient {len(_app_state['top_pairs'])} paires")
                     found_pair = False
                     for pair in _app_state['top_pairs']:
-                        if pair.get('symbol') == symbol:
+                        # 🔥 FIX: Normaliser symboles avant comparaison (BTC/USDT vs BTC/USDT:USDT)
+                        pair_symbol = (pair.get('symbol') or '').split(':')[0]
+                        lookup_symbol = (symbol or '').split(':')[0]
+                        if pair_symbol == lookup_symbol:
                             found_pair = True
                             # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
                             spread_value = pair.get('spread', 0)
@@ -1137,7 +1140,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 if _app_state and _app_state.get('top_pairs'):
                     logger.info(f"💹 DEBUG log_scan: top_pairs contient {len(_app_state['top_pairs'])} paires")
                     for pair in _app_state['top_pairs']:
-                        if pair.get('symbol') == symbol:
+                        # 🔥 FIX: Normaliser symboles avant comparaison (BTC/USDT vs BTC/USDT:USDT)
+                        pair_symbol = (pair.get('symbol') or '').split(':')[0]
+                        lookup_symbol = (symbol or '').split(':')[0]
+                        if pair_symbol == lookup_symbol:
                             spread_value = pair.get('spread') or pair.get('spread_pct')
                             book_depth = pair.get('bookDepth')
                             balance_score = pair.get('balanceScore')
