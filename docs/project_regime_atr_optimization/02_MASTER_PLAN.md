@@ -98,6 +98,16 @@ PHASE 2D: Auto-Adaptation ML (10h)  ← Threshold Optimizer + Drift Detector
 PHASE 2F: Quick Wins Gestion (4h)   ← 🆕 Stagnation Positive + Trailing MFE
     │                                  ⚠️ Sans réduction trades
     ▼
+PHASE 2G: ML Monitor + Rollback (8h) ← Observabilité + Sécurité (14/12)
+    │   Monitor, Rollback Dual, Data Quality, Backfill
+    ▼
+PHASE 2H: ML Calibration EV (15h)    ← 🆕 Brainstorming 16/12
+    │   2H.1: Migration SQL EV (2h)
+    │   2H.2: Model version tracking (3h)
+    │   2H.3: Simulated seeding (5h)
+    │   2H.4: Gating EV-based (4h)
+    │   2H.5: exit_reason filter (1h) ← ✅ PARTIELLEMENT FAIT
+    ▼
 ══════════════════════════════════════════════════════════════
     ⏸️ PAUSE: Accumulation 200+ trades (2-3 semaines)
 ══════════════════════════════════════════════════════════════

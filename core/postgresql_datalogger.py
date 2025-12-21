@@ -510,7 +510,8 @@ class PostgreSQLDataLogger:
                     config_retest_timeout_seconds, config_use_cooldown,
                     config_cooldown_seconds, config_cooldown_same_symbol,
                     config_use_candle_close, config_candle_close_threshold_seconds,
-                    config_use_momentum_continuity, config_momentum_lookback
+                    config_use_momentum_continuity, config_momentum_lookback,
+                    config_use_micro_confirmation, config_micro_confirmation_delay_ms
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
@@ -528,7 +529,8 @@ class PostgreSQLDataLogger:
                     %s,
                     %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s
                 )
                 RETURNING id
             """
@@ -700,7 +702,9 @@ class PostgreSQLDataLogger:
                 params_snap.get('use_candle_close'),
                 params_snap.get('candle_close_threshold_seconds'),
                 params_snap.get('use_momentum_continuity'),
-                params_snap.get('momentum_lookback')
+                params_snap.get('momentum_lookback'),
+                params_snap.get('use_micro_confirmation'),
+                params_snap.get('micro_confirmation_delay_ms')
             )
             
             result = self._execute_query(query, params, fetch=True)
@@ -771,6 +775,77 @@ class PostgreSQLDataLogger:
             
         except Exception as e:
             logger.error(f"❌ Erreur update ml_confidence pour {symbol}: {e}")
+            return False
+    
+    def update_ml_rejection(
+        self,
+        symbol: str,
+        reject_reason: str,
+        reject_category: str,
+        ml_confidence: Optional[float] = None,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        🔥 FIX 15/12: Mettre à jour reject_reason et reject_reason_category après un rejet ML
+        
+        Cette méthode est appelée quand un setup est rejeté par le filtre ML
+        (GradientBoosting, Threshold Optimizer, Calibration, etc.)
+        
+        Args:
+            symbol: Symbole de la paire
+            reject_reason: Raison du rejet (ex: "ML confidence 45.2% < seuil 57%")
+            reject_category: Catégorie du rejet (ex: "ml_gb_confidence", "ml_threshold", "ml_calibration")
+            ml_confidence: Confiance ML en pourcentage (optionnel)
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
+        
+        Returns:
+            True si mise à jour réussie, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            # Construire la requête selon si ml_confidence est fourni
+            if ml_confidence is not None:
+                query = """
+                    UPDATE scan_logs 
+                    SET reject_reason = %s,
+                        reject_reason_category = %s,
+                        ml_confidence = %s,
+                        is_opportunity = FALSE
+                    WHERE id = (
+                        SELECT id FROM scan_logs 
+                        WHERE symbol = %s 
+                        AND timestamp > NOW() - INTERVAL '%s minutes'
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    )
+                """
+                params = (reject_reason, reject_category, ml_confidence, symbol, minutes_ago)
+            else:
+                query = """
+                    UPDATE scan_logs 
+                    SET reject_reason = %s,
+                        reject_reason_category = %s,
+                        is_opportunity = FALSE
+                    WHERE id = (
+                        SELECT id FROM scan_logs 
+                        WHERE symbol = %s 
+                        AND timestamp > NOW() - INTERVAL '%s minutes'
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    )
+                """
+                params = (reject_reason, reject_category, symbol, minutes_ago)
+            
+            result = self._execute_query(query, params)
+            if result is not None:
+                logger.info(f"✅ ML rejection logged for {symbol}: {reject_category} ({reject_reason[:50]}...)")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update_ml_rejection pour {symbol}: {e}")
             return False
     
     def get_ml_confidence_for_symbol(
@@ -1001,8 +1076,9 @@ class PostgreSQLDataLogger:
         trade_data: Dict[str, Any],
         opportunity_id: Optional[int] = None,
         scan_log_id: Optional[int] = None,
-        session_id: Optional[str] = None
-    ) -> Optional[int]:
+        session_id: Optional[str] = None,
+        trade_id: Optional[str] = None
+    ) -> Optional[str]:
         """
         Logger un trade dans trades
         
@@ -1036,6 +1112,8 @@ class PostgreSQLDataLogger:
             session_id = self.get_or_create_session()
         
         try:
+            provided_trade_id = trade_id
+
             # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
             now = datetime.now(timezone.utc)
             timestamp_iso = now.isoformat()
@@ -1276,6 +1354,8 @@ class PostgreSQLDataLogger:
             config_candle_close_threshold_seconds = _extract_numeric_value(config_snapshot_dict.get('candle_close_threshold_seconds'))
             config_use_momentum_continuity = config_snapshot_dict.get('use_momentum_continuity')
             config_momentum_lookback = _extract_numeric_value(config_snapshot_dict.get('momentum_lookback'))
+            config_use_micro_confirmation = config_snapshot_dict.get('use_micro_confirmation')
+            config_micro_confirmation_delay_ms = _extract_numeric_value(config_snapshot_dict.get('micro_confirmation_delay_ms'))
             
             # 🔥 RSI Final Filter columns
             config_rsi_filter_enabled = config_snapshot_dict.get('rsi_final_filter_enabled', False)
@@ -1293,6 +1373,7 @@ class PostgreSQLDataLogger:
             config_use_cooldown = _normalize_bool(config_use_cooldown)
             config_use_candle_close = _normalize_bool(config_use_candle_close)
             config_use_momentum_continuity = _normalize_bool(config_use_momentum_continuity)
+            config_use_micro_confirmation = _normalize_bool(config_use_micro_confirmation)
             config_rsi_filter_enabled = _normalize_bool(config_rsi_filter_enabled)
             if isinstance(config_use_confluence, str):
                 config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
@@ -1390,6 +1471,8 @@ class PostgreSQLDataLogger:
             adaptive_sizing_multiplier = _extract_numeric_value(trade_data.get('adaptive_sizing_multiplier'))
             
             fields = []
+            if provided_trade_id:
+                fields.append(('id', provided_trade_id))
             fields.extend([
                 ('timestamp_entry', entry_timestamp),
                 ('timestamp_exit', exit_timestamp),
@@ -1573,6 +1656,8 @@ class PostgreSQLDataLogger:
                 ('config_candle_close_threshold_seconds', config_candle_close_threshold_seconds),
                 ('config_use_momentum_continuity', config_use_momentum_continuity),
                 ('config_momentum_lookback', config_momentum_lookback),
+                ('config_use_micro_confirmation', config_use_micro_confirmation),
+                ('config_micro_confirmation_delay_ms', config_micro_confirmation_delay_ms),
                 # 🔥 RSI Final Filter config
                 ('config_rsi_filter_enabled', config_rsi_filter_enabled),
                 ('config_rsi_long_max', config_rsi_long_max),
@@ -1676,14 +1761,33 @@ class PostgreSQLDataLogger:
 
             columns_sql = ',\n                    '.join(name for name, _ in fields)
             placeholders_sql = ', '.join(['%s'] * len(fields))
-            query = f"""
-                INSERT INTO trades (
-                    {columns_sql}
-                ) VALUES (
-                    {placeholders_sql}
+
+            if provided_trade_id:
+                update_assignments_sql = ',\n                        '.join(
+                    f"{name} = COALESCE(EXCLUDED.{name}, trades.{name})"
+                    for name, _ in fields
+                    if name != 'id'
                 )
-                RETURNING id
-            """
+                update_assignments_sql += ',\n                        updated_at = NOW()'
+                query = f"""
+                    INSERT INTO trades (
+                        {columns_sql}
+                    ) VALUES (
+                        {placeholders_sql}
+                    )
+                    ON CONFLICT (id) DO UPDATE SET
+                        {update_assignments_sql}
+                    RETURNING id
+                """
+            else:
+                query = f"""
+                    INSERT INTO trades (
+                        {columns_sql}
+                    ) VALUES (
+                        {placeholders_sql}
+                    )
+                    RETURNING id
+                """
 
             params = [value for _, value in fields]
 
@@ -1711,16 +1815,17 @@ class PostgreSQLDataLogger:
             
             result = self._execute_query(query, params, fetch=True)
             if result:
-                trade_id = result[0][0]
-                logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {trade_id})")
+                logged_trade_id = result[0][0]
+                logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {logged_trade_id})")
                 
                 # 🔥 ATR OPTIMIZATION: Logger les métriques ATR pour ce trade
-                try:
-                    self.log_trade_atr_metrics(trade_id, trade_data, entry_indicators, config_snapshot_dict)
-                except Exception as atr_err:
-                    logger.warning(f"⚠️ Erreur logging ATR metrics: {atr_err}")
+                if exit_price is not None:
+                    try:
+                        self.log_trade_atr_metrics(logged_trade_id, trade_data, entry_indicators, config_snapshot_dict)
+                    except Exception as atr_err:
+                        logger.warning(f"⚠️ Erreur logging ATR metrics: {atr_err}")
                 
-                return trade_id
+                return logged_trade_id
             return None
             
         except Exception as e:
@@ -2195,6 +2300,9 @@ class PostgreSQLDataLogger:
                 params_snap.get('candle_close_threshold_seconds'),
                 params_snap.get('use_momentum_continuity'),
                 params_snap.get('momentum_lookback'),
+                # 🔥 OPT #20: Micro-confirmation
+                params_snap.get('use_micro_confirmation'),
+                params_snap.get('micro_confirmation_delay_ms'),
                 # 🔥 SPRINT 1: Market Regime context
                 scan_data.get('market_regime'),
                 scan_data.get('market_regime_avg_atr'),
@@ -2265,6 +2373,7 @@ class PostgreSQLDataLogger:
             'config_cooldown_seconds', 'config_cooldown_same_symbol',
             'config_use_candle_close', 'config_candle_close_threshold_seconds',
             'config_use_momentum_continuity', 'config_momentum_lookback',
+            'config_use_micro_confirmation', 'config_micro_confirmation_delay_ms',
             # 🔥 SPRINT 1: Market Regime context
             'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx',
             # 🔥 PHASE 1A: Session/Heure context
@@ -2334,6 +2443,91 @@ class PostgreSQLDataLogger:
             if conn:
                 conn.rollback()
                 self._return_connection(conn)
+
+    def log_trade_event(
+        self,
+        trade_id: str,
+        event_type: str,
+        price_at_event: float = None,
+        pnl_pct_at_event: float = None,
+        pnl_usdt_at_event: float = None,
+        details: Dict[str, Any] = None
+    ) -> Optional[int]:
+        """
+        Logger un événement pendant un trade (Phase 2H.6)
+        
+        Args:
+            trade_id: UUID du trade
+            event_type: Type d'événement (ENTRY, BE_TRIGGERED, TRAILING_ACTIVATED, etc.)
+            price_at_event: Prix au moment de l'événement
+            pnl_pct_at_event: PnL% au moment de l'événement
+            pnl_usdt_at_event: PnL USDT au moment de l'événement
+            details: Détails supplémentaires en JSON
+            
+        Returns:
+            ID de l'événement ou None si erreur
+        """
+        if not self.enabled:
+            return None
+        
+        # Valider event_type
+        valid_types = [
+            'ENTRY', 'BE_TRIGGERED', 'TRAILING_ACTIVATED', 'TRAILING_SL_MOVED',
+            'MAX_PNL_REACHED', 'MIN_PNL_REACHED', 'PARTIAL_TP', 'TP_ESCALIER_LEVEL',
+            'STAGNATION_DETECTED', 'STAGNATION_MFE_PROTECT', 'TRAILING_MFE_TRIGGERED',
+            'SL_EXCHANGE_SET', 'EXIT'
+        ]
+        if event_type not in valid_types:
+            logger.warning(f"⚠️ Event type invalide: {event_type}")
+            return None
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            if not conn:
+                return None
+            
+            cursor = conn.cursor()
+            
+            # Sérialiser details en JSON
+            details_json = json.dumps(details) if details else None
+            
+            query = """
+                INSERT INTO trade_events (
+                    trade_id, event_type, event_timestamp,
+                    price_at_event, pnl_pct_at_event, pnl_usdt_at_event, details
+                ) VALUES (%s, %s, NOW(), %s, %s, %s, %s)
+                RETURNING id
+            """
+            
+            cursor.execute(query, (
+                trade_id,
+                event_type,
+                price_at_event,
+                pnl_pct_at_event,
+                pnl_usdt_at_event,
+                details_json
+            ))
+            
+            result = cursor.fetchone()
+            event_id = result[0] if result else None
+            
+            conn.commit()
+            cursor.close()
+            self._return_connection(conn)
+            
+            logger.debug(f"📋 Trade event logged: {event_type} for trade {str(trade_id)[:8]}...")
+            return event_id
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur log_trade_event ({event_type}): {e}")
+            if conn:
+                try:
+                    conn.rollback()
+                    self._return_connection(conn)
+                except:
+                    pass
+            return None
 
     def close(self):
         """

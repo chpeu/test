@@ -59,12 +59,20 @@ def calculate_fixed_levels(
             f"fixed_tp_pct={config.fixed_tp_pct}%"
         )
 
+    # 🔥 FIX 18/12: Appliquer sl_max_pct aussi en mode FIXE
+    from config import TRADING_CONFIG
+    sl_max_pct = TRADING_CONFIG.get('sl_max_pct', 0.50)
+    sl_pct = config.fixed_sl_pct
+    if sl_pct > sl_max_pct:
+        logger.warning(f"⚠️ Mode FIXE: SL capped: {sl_pct:.2f}% → {sl_max_pct}% (max)")
+        sl_pct = sl_max_pct
+
     # Calcul initial
     if direction == 'LONG':
-        sl = entry * (1 - config.fixed_sl_pct / 100)
+        sl = entry * (1 - sl_pct / 100)
         tp = entry * (1 + config.fixed_tp_pct / 100)
     else:
-        sl = entry * (1 + config.fixed_sl_pct / 100)
+        sl = entry * (1 + sl_pct / 100)
         tp = entry * (1 - config.fixed_tp_pct / 100)
 
     # Déterminer précision selon taille du prix
@@ -212,25 +220,39 @@ def calculate_atr_levels(
             f"TPx={tp_mult}, SLx={sl_mult}"
         )
 
+    # 🔥 FIX 18/12: Appliquer SL maximum pour limiter les pertes
+    from config import TRADING_CONFIG
+    sl_max_pct = TRADING_CONFIG.get('sl_max_pct', 0.50)  # Default 0.5%
+    sl_pct = atr_percent * sl_mult
+    if sl_pct > sl_max_pct:
+        logger.warning(f"⚠️ SL capped: {sl_pct:.2f}% → {sl_max_pct}% (max)")
+        sl_pct = sl_max_pct
+    
     # Calculer TP/SL
     if direction == 'LONG':
-        sl = entry * (1 - atr_percent / 100 * sl_mult)
+        sl = entry * (1 - sl_pct / 100)
         tp = entry * (1 + atr_percent / 100 * tp_mult)
     else:
-        sl = entry * (1 + atr_percent / 100 * sl_mult)
+        sl = entry * (1 + sl_pct / 100)
         tp = entry * (1 - atr_percent / 100 * tp_mult)
+    
+    # 🔥 DEBUG: Log immédiat après calcul pour tracer le bug SL
+    logger.warning(
+        f"🔍 TPSL CALC: {direction} | entry={entry:.8f} | sl_pct={sl_pct:.4f}% | "
+        f"sl={sl:.8f} | sl {'>' if sl > entry else '<'} entry"
+    )
 
     # 🔥 FIX: Validation de sécurité - détecter et corriger TP/SL inversés
     # Pour LONG: tp > entry > sl | Pour SHORT: sl > entry > tp
     if direction == 'LONG':
         if tp <= entry or sl >= entry:
             logger.error(f"⚠️ TP/SL INVERSÉS détectés pour LONG! tp={tp}, entry={entry}, sl={sl} - Recalcul...")
-            sl = entry * (1 - atr_percent / 100 * sl_mult)
+            sl = entry * (1 - sl_pct / 100)
             tp = entry * (1 + atr_percent / 100 * tp_mult)
     else:  # SHORT
         if tp >= entry or sl <= entry:
             logger.error(f"⚠️ TP/SL INVERSÉS détectés pour SHORT! tp={tp}, entry={entry}, sl={sl} - Recalcul...")
-            sl = entry * (1 + atr_percent / 100 * sl_mult)
+            sl = entry * (1 + sl_pct / 100)
             tp = entry * (1 - atr_percent / 100 * tp_mult)
 
     # Arrondir selon précision

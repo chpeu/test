@@ -133,6 +133,7 @@ docs/project_regime_atr_optimization/
 ├── 06_ML_MONITOR_MVP.md           ← 🆕 Spec nouvel onglet "ML Monitor"
 ├── 07_ROLLBACK_DUAL_SYSTEM.md     ← 🆕 Spec rollback Hard-Stop + Progressive
 ├── 08_DATA_BACKFILL_STRATEGY.md   ← 🆕 Stratégie backfill cohérent
+├── 09_BRAINSTORMING_ML_CALIBRATION.md ← 🆕 Brainstorming EV-based + exploration
 │
 ├── phases/
 │   ├── PHASE_0_INFRASTRUCTURE.md  ← SQL + Config + Helpers
@@ -590,10 +591,17 @@ au lieu de BLOQUER les trades.
 
 ## 📝 NOTES DE DÉVELOPPEMENT
 
-### 11/12/2025 21:15 - Phase 3 démarrée puis PAUSÉE
-**Accumulation trades en cours - Phase 3 en attente**
+### 19/12/2025 - ML Profitability: feature parity GB + analyse EV (Option B)
+ 
+ - ✅ Fix feature parity (live): `optimization/predictor_optimized.py` calcule les features dérivées manquantes si les inputs bruts sont présents (évite remplissage à zéro).
+ - ✅ Script EV/thresholds: `scripts/analyze_ml_thresholds.py` calcule WinRate + EV (avg `net_pnl_pct`) + PnL net (`net_pnl_usdt`) par seuil et buckets de `ml_confidence`, avec split temporel train/test.
+ - ⚠️ Contrainte trades: si on utilise ces résultats pour ajuster `gb_min_confidence`, privilégier un seuil sous contrainte de conservation (ex: >=90% trades) ou usage en monitoring/sizing.
+ - ⚠️ ThresholdOptimizer: la distribution de `ml_confidence` peut changer après le fix → surveiller `data/ml/threshold_optimizer_state.json` et reset si nécessaire.
 
-**Travail effectué:**
+### 11/12/2025 21:15 - Phase 3 démarrée puis PAUSÉE
+ **Accumulation trades en cours - Phase 3 en attente**
+
+ **Travail effectué:**
 - ✅ Créé `optimization/models/lightgbm_trainer.py` - LightGBM aligné avec XGBoost V2.1
   - Split temporel, filtrage qualité, calibration probabilités
   - Intégration Optuna, logging PostgreSQL

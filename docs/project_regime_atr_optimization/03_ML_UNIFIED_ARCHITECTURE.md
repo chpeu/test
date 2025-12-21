@@ -69,9 +69,14 @@ Système ML unifié qui:
 | Correlation Engine | `core/analysis/correlation_engine.py` | Analyse sessions/régimes | ✅ ACTIF |
 | What-If Simulator | `core/analysis/what_if_simulator.py` | Simule scénarios SL/TP | ✅ ACTIF |
 
+### Notes de fiabilité (profitabilité réelle)
+
+- **Feature parity (live)**: `optimization/predictor_optimized.py` calcule les features dérivées manquantes (si inputs bruts présents) pour éviter le remplissage à zéro et réduire l'écart training vs runtime.
+- **Analyse EV net par `ml_confidence`**: `scripts/analyze_ml_thresholds.py` permet d'évaluer WinRate + EV (`net_pnl_pct`) + PnL net (`net_pnl_usdt`) par seuil/buckets, avec split temporel train/test (objectif = rentabilité out-of-sample, pas seulement accuracy).
+
 ---
 
-## 🆕 PHASE 2D: AUTO-ADAPTATION (Layer 2)
+## PHASE 2D: AUTO-ADAPTATION (Layer 2)
 
 ### 2D.1 Contextual Threshold Optimizer
 

@@ -30,6 +30,7 @@ from .ml_tasks import router as tasks_router
 from .ml_dashboard import router as dashboard_router
 from .ml_predictions import router as predictions_router
 from .ml_models import router as models_router
+from .ml_ev_analysis import router as ev_analysis_router
 
 # Import legacy routes (to be migrated)
 from .ml_legacy import router as legacy_router
@@ -69,6 +70,7 @@ router.include_router(tasks_router, tags=["ML Tasks & Alerts"])
 router.include_router(dashboard_router, tags=["ML Dashboard & Analytics"])
 router.include_router(predictions_router, tags=["ML Predictions"])
 router.include_router(models_router, tags=["ML Models & Features"])
+router.include_router(ev_analysis_router, tags=["ML EV Analysis"])
 
 # Include legacy router (to be progressively removed)
 # Note: This includes all 22 remaining routes that haven't been migrated yet

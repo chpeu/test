@@ -261,9 +261,22 @@ class ContractSpec:
     
     def round_price(self, price: float) -> float:
         """Arrondir le prix selon les specs du contrat"""
+        import math
+        original_price = price
+        
         if self.price_unit > 0:
             price = round(price / self.price_unit) * self.price_unit
-        return round(price, self.price_precision)
+        
+        rounded = round(price, self.price_precision)
+        
+        # 🔥 FIX: Si arrondi à 0 pour les petits prix, utiliser précision dynamique
+        if rounded <= 0 and original_price > 0:
+            # Nombre de décimales = -log10(prix) + 2 (marge de sécurité)
+            decimals_needed = max(0, int(-math.log10(original_price)) + 2)
+            decimals_needed = min(decimals_needed, 10)  # Max 10 décimales
+            return round(original_price, decimals_needed)
+        
+        return rounded
 
 
 # ============================================================================
@@ -277,6 +290,7 @@ ENDPOINTS = {
     "CANCEL_ALL_ORDERS": "/private/order/cancel_all",
     "GET_ORDER": "/private/order/get",
     "ORDER_HISTORY": "/private/order/list/history_orders",
+    "OPEN_ORDERS": "/private/order/list/open_orders",  # 🔥 Endpoint ajouté
     "OPEN_POSITIONS": "/private/position/open_positions",
     "POSITION_HISTORY": "/private/position/list/history_positions",
     "ACCOUNT_ASSET": "/private/account/asset",
@@ -976,6 +990,9 @@ class MexcFuturesBypass:
         if position_id is not None:
             body["positionId"] = position_id
         if stop_loss_price is not None:
+            # 🔥 FIX: Ne pas ré-arrondir ici, le caller (LiveOrderManager) a déjà appliqué 
+            # le rounding correct selon les specs du contrat.
+            # L'ancien rounding dynamique (log10 + 4) était dangereux pour les prix > 0.1 avec haute précision.
             body["stopLossPrice"] = stop_loss_price
         if take_profit_price is not None:
             body["takeProfitPrice"] = take_profit_price
@@ -1107,6 +1124,37 @@ class MexcFuturesBypass:
             "category": category,
         }
         return await self._request("GET", ENDPOINTS["ORDER_HISTORY"], params=params)
+    
+    async def get_open_orders(
+        self,
+        symbol: str,
+        page_num: int = 1,
+        page_size: int = 20
+    ) -> List[Dict]:
+        """
+        Récupérer les ordres ouverts
+        
+        Args:
+            symbol: Symbole (ex: "BTC_USDT")
+            page_num: Numéro de page
+            page_size: Taille de page
+            
+        Returns:
+            Liste des ordres ouverts
+        """
+        params = {
+            "symbol": symbol,
+            "page_num": page_num,
+            "page_size": page_size
+        }
+        
+        response = await self._request("GET", ENDPOINTS["OPEN_ORDERS"], params=params)
+        
+        if response.get("success") and response.get("code") == 0:
+            return response.get("data", {}).get("resultList", [])
+        else:
+            logger.warning(f"⚠️ Failed to get open orders for {symbol}: {response}")
+            return []
     
     # ========================================================================
     # Position Methods
@@ -1275,9 +1323,20 @@ class MexcFuturesBypass:
             vol_unit = float(data.get("volUnit", 1))
             price_unit = float(data.get("priceUnit", 0.01))
             
-            # Calculer le nombre de décimales
-            vol_precision = len(str(vol_unit).split('.')[-1]) if '.' in str(vol_unit) else 0
-            price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
+            # 🔥 FIX: Calculer le nombre de décimales avec Decimal pour supporter notation scientifique (ex: 1e-06)
+            try:
+                d_vol = Decimal(str(vol_unit))
+                vol_exponent = d_vol.as_tuple().exponent
+                vol_precision = abs(vol_exponent) if vol_exponent < 0 else 0
+            except Exception:
+                vol_precision = len(str(vol_unit).split('.')[-1]) if '.' in str(vol_unit) else 0
+
+            try:
+                d_price = Decimal(str(price_unit))
+                price_exponent = d_price.as_tuple().exponent
+                price_precision = abs(price_exponent) if price_exponent < 0 else 0
+            except Exception:
+                price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
             
             # 🔥 Récupérer contractSize (taille du contrat en tokens)
             raw_contract_size = data.get("contractSize")

@@ -18,6 +18,7 @@
 		// Calibration ML
 		ml_calibration_enabled: false,
 		ml_calib_min_winrate: 45,
+		ml_calib_decay_days: 14,
 		// Threshold Optimizer
 		threshold_optimizer_enabled: false,
 		threshold_min: 0.45,
@@ -243,6 +244,30 @@
 								on:change={() => triggerAutoSave('ml_calib_min_winrate', config.ml_calib_min_winrate)}
 							/>
 						</label>
+						<label>
+							<span>Demi-vie (Decay): {config.ml_calib_decay_days} jours</span>
+							<span class="param-hint">Impact historique divisé par 2 après X jours (7-60)</span>
+							<input 
+								type="range" 
+								min="7" 
+								max="60" 
+								step="1"
+								bind:value={config.ml_calib_decay_days}
+								on:change={() => triggerAutoSave('ml_calib_decay_days', config.ml_calib_decay_days)}
+							/>
+						</label>
+						<label>
+							<span>Demi-vie (Decay): {config.ml_calib_decay_days} jours</span>
+							<span class="param-hint">Impact historique divisé par 2 après X jours (7-60)</span>
+							<input 
+								type="range" 
+								min="7" 
+								max="60" 
+								step="1"
+								bind:value={config.ml_calib_decay_days}
+								on:change={() => triggerAutoSave('ml_calib_decay_days', config.ml_calib_decay_days)}
+							/>
+						</label>
 					</div>
 				{/if}
 			</div>
@@ -271,7 +296,7 @@
 							<span>Min Threshold: {(config.threshold_min * 100).toFixed(0)}%</span>
 							<input 
 								type="range" 
-								min="0.40" 
+								min="0.25" 
 								max="0.60" 
 								step="0.05"
 								bind:value={config.threshold_min}
@@ -282,7 +307,7 @@
 							<span>Max Threshold: {(config.threshold_max * 100).toFixed(0)}%</span>
 							<input 
 								type="range" 
-								min="0.55" 
+								min="0.40" 
 								max="0.80" 
 								step="0.05"
 								bind:value={config.threshold_max}

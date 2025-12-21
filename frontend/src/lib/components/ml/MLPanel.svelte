@@ -4,6 +4,7 @@
 	import CorrelationAnalytics from './CorrelationAnalytics.svelte';
 	import MLCONTENT_GB_Variables from './MLCONTENT_GB_Variables.svelte';
 	import MLConfigPanel from './MLConfigPanel.svelte';
+	import EVAnalysisModal from './EVAnalysisModal.svelte';
 	
 	// Configuration GB avec valeurs par défaut (identique à VariablesPanel)
 	let config = {
@@ -39,6 +40,7 @@
 	let hasUnsavedChanges = false;
 	let debounceTimer = null;
 	const AUTO_SAVE_DELAY = 2500; // 2.5 secondes comme VariablesPanel
+	let showEVAnalysis = false;
 	
 	onMount(async () => {
 		await loadConfig();
@@ -120,6 +122,9 @@
 	<div class="ml-header">
 		<h1>🤖 Machine Learning</h1>
 		<p class="subtitle">Analyse des corrélations & Optimisation GradientBoosting</p>
+		<button class="ev-analysis-btn" on:click={() => showEVAnalysis = true}>
+			📊 Analyse EV
+		</button>
 		{#if saveMessage}
 			<div class="save-status" class:success={saveMessage.includes('✅')} class:error={saveMessage.includes('❌')}>
 				{saveMessage}
@@ -172,6 +177,9 @@
 	</div>
 </div>
 
+<!-- EV Analysis Modal -->
+<EVAnalysisModal bind:show={showEVAnalysis} />
+
 <style>
 	.ml-panel {
 		height: 100%;
@@ -199,6 +207,24 @@
 		margin: 0;
 		color: var(--text-secondary, #888);
 		font-size: 0.9rem;
+	}
+	
+	.ev-analysis-btn {
+		margin-top: 1rem;
+		padding: 0.6rem 1.2rem;
+		background: linear-gradient(135deg, #667eea, #764ba2);
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-weight: 600;
+		font-size: 0.9rem;
+		cursor: pointer;
+		transition: transform 0.2s, box-shadow 0.2s;
+	}
+	
+	.ev-analysis-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 	}
 	
 	.ml-tabs {

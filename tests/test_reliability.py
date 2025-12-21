@@ -4,6 +4,7 @@ Tests pour api/reliability.py
 import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from core.exceptions import NetworkError
 from api.reliability import (
     AdaptiveCircuitBreaker,
     fetch_with_retry,
@@ -282,7 +283,7 @@ class TestWebSocketManager:
 
         # Mock websockets.connect avec exception
         with patch('websockets.connect', side_effect=ConnectionError("Connection failed")):
-            with pytest.raises(ConnectionError):
+            with pytest.raises(NetworkError):
                 await ws.connect()
             assert ws._connected is False
 

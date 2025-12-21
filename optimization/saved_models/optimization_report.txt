@@ -1,53 +1,53 @@
 ======================================================================
 RAPPORT D'OPTIMISATION ML
-Date: 2025-12-11 20:21:40
+Date: 2025-12-20 00:41:39
 ======================================================================
 
 METRIQUES FINALES
 ----------------------------------------
-Test Accuracy: 68.18%
-F1 Score: 0.7328
-ROC-AUC: 0.6243
-Precision: 0.6575
-Recall: 0.8276
-Overfitting: 3.96%
+Test Accuracy: 61.70%
+F1 Score: 0.6170
+ROC-AUC: 0.6414
+Precision: 0.6042
+Recall: 0.6304
+Overfitting: 1.41%
 
-CV Accuracy: 53.26% (+/- 4.66%)
+CV Accuracy: 54.74% (+/- 3.90%)
 
 HYPERPARAMETRES
 ----------------------------------------
 max_depth: 2
 learning_rate: 0.03
-max_iter: 100
-min_samples_leaf: 40
-l2_regularization: 1.0
+max_iter: 50
+min_samples_leaf: 50
+l2_regularization: 0.2
 
 FEATURES (20)
 ----------------------------------------
-  - trend_strength_1m: 0.0190
-  - volume_spike_5m: 0.0193
-  - bb_width_5m: 0.0201
-  - volatility_momentum_product: 0.0220
-  - rsi_change_1m: 0.0229
-  - bb_width_1m: 0.0237
-  - di_gap_1m: 0.0239
-  - bb_distance_to_lower_1m: 0.0240
-  - di_plus_5m: 0.0240
-  - delta_volume: 0.0252
-  - atr_pct_5m: 0.0252
-  - macd_hist_prev_1m: 0.0252
-  - di_minus_5m: 0.0263
-  - adx_1m: 0.0268
-  - rsi_divergence: 0.0279
-  - rsi_change_5m: 0.0281
-  - macd_momentum_1m: 0.0282
-  - bb_distance_to_lower_5m: 0.0284
-  - rsi_prev_1m: 0.0293
-  - trend_strength_5m: 0.0324
+  - di_minus_1m: 0.0199
+  - di_gap_1m: 0.0207
+  - bb_distance_to_lower_5m: 0.0212
+  - bb_distance_to_upper_5m: 0.0212
+  - ema_trend_strength_1m: 0.0213
+  - macd_hist_prev_5m: 0.0213
+  - ema_trend_strength_5m: 0.0214
+  - rsi_change_1m: 0.0224
+  - rsi_prev_1m: 0.0228
+  - rsi_5m: 0.0228
+  - hour: 0.0232
+  - volume_spike_5m: 0.0238
+  - ema_diff_pct_1m: 0.0252
+  - momentum_divergence: 0.0257
+  - bb_width_1m: 0.0259
+  - delta_volume: 0.0269
+  - macd_hist_5m: 0.0295
+  - atr_pct_5m: 0.0303
+  - di_gap_5m: 0.0329
+  - bb_distance_to_lower_1m: 0.0329
 
 SEUILS OPTIMAUX
 ----------------------------------------
 best_accuracy: 0.50
-best_f1: 0.50
-best_precision: 0.50
-best_balanced: 0.50
+best_f1: 0.45
+best_precision: 0.60
+best_balanced: 0.45

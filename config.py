@@ -23,7 +23,7 @@ MEXC_FUTURES_URL = "https://contract.mexc.com"
 
 # Trading parameters
 TRADING_CONFIG = {
-    "fee_per_trade": 0.0004,  # 0.04% par trade
+    "fee_per_trade": 0.00,  # 0.00% par trade (configuré manuellement)
     "use_slippage_calculation": True,  # Calculer slippage estimé basé sur spread et profondeur
     "position_timeout": 300,  # 5 minutes
     "check_interval": 0.1,  # 🔥 FIX: 0.1 secondes pour scalping ultra-rapide (optimisé)
@@ -61,6 +61,7 @@ TRADING_CONFIG = {
     # 🔥 ATR mode - HYBRID INTELLIGENT
     "atr_mult_tp": 2.2,   # 🔥 TP = 2.2 × ATR (plus atteignable, était 3.0)
     "atr_mult_sl": 1.2,   # 🔥 SL = 1.2 × ATR (laisse respirer le trade)
+    "sl_max_pct": 0.50,   # 🔥 FIX 18/12: SL MAXIMUM 0.5% (limite les pertes)
     "atr_min": 0.10,      # ATR minimum 0.10% (micro-volatilité)
     "atr_max": 1.0,       # ATR maximum 1.0% (macro-volatilité)
     
@@ -102,9 +103,9 @@ TRADING_CONFIG = {
     
     # 🔥 PHASE 3: Pondération des conditions (système de score)
     "use_weighted_scoring": True,  # Activer le système de score pondéré
-    "min_score_required": 6.5,  # 🔥 PHASE 1 : Score minimum (était 7.5, baissé pour plus d'opportunités)
-    "min_score_adx_high": 6.0,  # 🔥 PHASE 1 : Score si ADX > 30 (était 7.0)
-    "min_score_adx_low": 7.0,  # 🔥 PHASE 1 : Score si ADX < 25 (était 8.0)
+    "min_score_required": 6.5,  # 🔥 PHASE 1 : Score minimum (restauré à 6.5)
+    "min_score_adx_high": 6.0,  # 🔥 PHASE 1 : Score si ADX > 30 (restauré à 6.0)
+    "min_score_adx_low": 7.0,  # 🔥 PHASE 1 : Score si ADX < 25 (restauré à 7.0)
     
     # ✅ Patterns Techniques (activés par défaut)
     "use_breakout": True,  # Cassure de niveaux clés
@@ -184,6 +185,10 @@ TRADING_CONFIG = {
     # 🔥 OPT #19: Momentum Continuity Filter
     "use_momentum_continuity": True,  # Vérifier que le momentum est croissant
     "momentum_lookback": 3,  # Nombre de bougies pour vérifier continuité
+    
+    # 🔥 OPT #20: Micro-confirmation (évite les faux breakouts)
+    "use_micro_confirmation": False,  # Attendre X ms après signal pour confirmer
+    "micro_confirmation_delay_ms": 300,  # Délai en millisecondes (200-500 recommandé)
     
     # Position sizing (pour ouverture automatique)
     "account_size": 1000.0,  # Capital total en USDT
@@ -445,6 +450,7 @@ TRADING_CONFIG = {
     "threshold_min": 0.45,                   # Seuil minimum (mode agressif)
     "threshold_max": 0.70,                   # Seuil maximum (mode conservateur)
     "threshold_exploration_bonus": 0.05,     # Bonus d'exploration pour nouveaux contextes
+    "threshold_exploration_rate": 0.02,      # 🔥 Taux d'exploration (% trades rejetés qui passent)
     
     # Drift Detection (ADWIN)
     "drift_detection_enabled": True,         # Activer la détection de drift

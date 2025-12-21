@@ -171,6 +171,9 @@
 		// 🔥 OPT #19: Momentum Continuity
 		use_momentum_continuity: true,
 		momentum_lookback: 3,
+		// 🔥 OPT #20: Micro-confirmation
+		use_micro_confirmation: false,
+		micro_confirmation_delay_ms: 300,
 		// 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
 		adaptive_sizing_enabled: true,
 		adaptive_sizing_min_trades: 3,
@@ -790,6 +793,9 @@
 				// OPT #19: Momentum Continuity
 				use_momentum_continuity: tradingConfig.use_momentum_continuity,
 				momentum_lookback: tradingConfig.momentum_lookback,
+				// OPT #20: Micro-confirmation
+				use_micro_confirmation: tradingConfig.use_micro_confirmation,
+				micro_confirmation_delay_ms: tradingConfig.micro_confirmation_delay_ms,
 			},
 			'⚙️ Configurations Avancées': {
 				early_invalidation: tradingConfig.early_invalidation,
@@ -2313,6 +2319,46 @@
 										on:change={() => triggerAutoSave('candle_close_threshold_seconds', `${config.candle_close_threshold_seconds}s`)}
 									/>
 									<span class="slider-value">{config.candle_close_threshold_seconds}s</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Micro-confirmation -->
+					<div class="variable-item checkbox">
+						<label for="use-micro-confirmation">
+							<input
+								id="use-micro-confirmation"
+								type="checkbox"
+								bind:checked={config.use_micro_confirmation}
+								on:change={() => triggerAutoSave('use_micro_confirmation', config.use_micro_confirmation ? 'Activé' : 'Désactivé')}
+							/>
+							<span class="var-name">⚡ Micro-confirmation</span>
+							<span class="var-desc">Attendre X ms après signal pour éviter faux breakouts</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('use_micro_confirmation')} title="Réinitialiser">⟲</button>
+					</div>
+
+					{#if config.use_micro_confirmation}
+						<div class="pattern-indicators">
+							<div class="variable-item">
+								<div class="var-header">
+									<label for="micro-confirmation-delay">
+										<span class="var-name">Délai (ms)</span>
+										<span class="var-desc">Millisecondes d'attente après signal (100-1000)</span>
+									</label>
+								</div>
+								<div class="slider-container">
+									<input
+										id="micro-confirmation-delay"
+										type="range"
+										step="50"
+										min="100"
+										max="1000"
+										bind:value={config.micro_confirmation_delay_ms}
+										on:change={() => triggerAutoSave('micro_confirmation_delay_ms', `${config.micro_confirmation_delay_ms}ms`)}
+									/>
+									<span class="slider-value">{config.micro_confirmation_delay_ms}ms</span>
 								</div>
 							</div>
 						</div>
@@ -4717,14 +4763,14 @@
 			<div class="variable-label-container">
 				<label for="threshold_min">
 					<span class="variable-name">Seuil Minimum</span>
-					<span class="variable-desc">Mode agressif (40-60%)</span>
+					<span class="variable-desc">Mode agressif (25-60%)</span>
 				</label>
 			</div>
 			<div class="slider-container">
 				<input
 					type="range"
 					id="threshold_min"
-					min="0.40"
+					min="0.25"
 					max="0.60"
 					step="0.05"
 					bind:value={config.threshold_min}
@@ -4740,14 +4786,14 @@
 			<div class="variable-label-container">
 				<label for="threshold_max">
 					<span class="variable-name">Seuil Maximum</span>
-					<span class="variable-desc">Mode conservateur (55-80%)</span>
+					<span class="variable-desc">Mode conservateur (40-80%)</span>
 				</label>
 			</div>
 			<div class="slider-container">
 				<input
 					type="range"
 					id="threshold_max"
-					min="0.55"
+					min="0.40"
 					max="0.80"
 					step="0.05"
 					bind:value={config.threshold_max}
@@ -5339,16 +5385,19 @@
 					<span class="popup-tables-title">📋 Tables incluses :</span>
 					<div class="popup-tables-list">
 						<span class="table-tag">trades</span>
+						<span class="table-tag">trade_atr_metrics</span>
+						<span class="table-tag new">trade_events</span>
 						<span class="table-tag">scan_logs</span>
 						<span class="table-tag">opportunities</span>
 						<span class="table-tag">trading_sessions</span>
 						<span class="table-tag">market_context</span>
-						<span class="table-tag new">circuit_breaker_events</span>
-						<span class="table-tag new">market_regime_history</span>
+						<span class="table-tag">circuit_breaker_events</span>
+						<span class="table-tag">market_regime_history</span>
 						<span class="table-tag">ml_calibration</span>
 					</div>
 					<p class="popup-hint" style="margin-top: 8px;">
-						🆕 Nouvelles colonnes: <code>entry_market_regime</code>, <code>entry_cb_state</code>, <code>entry_consecutive_losses</code>
+						🆕 <code>trade_events</code>: Film du trade (BE_TRIGGERED, TRAILING_ACTIVATED, PARTIAL_TP, EXIT...)<br>
+						🔄 <code>ml_calibration</code>: Inclut maintenant <code>model_version</code> pour tracking auto-reset
 					</p>
 				</div>
 			</div>
