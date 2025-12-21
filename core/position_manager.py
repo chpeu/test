@@ -37,6 +37,7 @@ from core.position.recovery_mode import (
 from core.position.partial_tp_manager import PartialTPManager
 from core.position.tp_escalier_manager import TPEscalierManager
 from core.position.analytics_logger import AnalyticsLogger
+from utils.helpers import ConfigHelper
 
 logger = logging.getLogger(__name__)
 
@@ -741,10 +742,13 @@ class PositionManager:
             )
         )
 
-        # Trailing Stop - ✅ Lire depuis TRADING_CONFIG directement
+        # Trailing Stop - ✅ Utiliser ConfigHelper
+        from utils.helpers import ConfigHelper
+        position_params = ConfigHelper.get_position_params()
+        
         self.trailing_stop = TrailingStopManager(
             TrailingStopConfig(
-                enabled=TRADING_CONFIG.get('trailing_enabled', True),
+                enabled=position_params.get('enable_trailing_stop', True),
                 trigger_pnl=TRADING_CONFIG.get('trailing_trigger_pnl', 0.25),
                 atr_multiplier=TRADING_CONFIG.get('trailing_atr_multiplier', 0.4),
                 min_distance=TRADING_CONFIG.get('trailing_min_distance', 0.08),
@@ -756,7 +760,7 @@ class PositionManager:
         self.pnl_calculator = PnLCalculator()
 
         # Recovery Mode
-        recovery_config_dict = TRADING_CONFIG.get('recovery_mode', {})
+        recovery_config_dict = ConfigHelper.get_param('recovery_mode', {}, TRADING_CONFIG)
         self.recovery_mode = RecoveryModeManager(
             RecoveryModeConfig(
                 enabled=recovery_config_dict.get('enabled', True),
@@ -1172,9 +1176,10 @@ class PositionManager:
         # Mettre à jour config TP/SL avec valeurs depuis TRADING_CONFIG (dynamique)
         self.tpsl_config.win_streak = self.config.win_streak
         self.tpsl_config.loss_streak = self.config.loss_streak
-        # FIX: Mettre à jour paramètres FIXE depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
-        self.tpsl_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
-        self.tpsl_config.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
+        # FIX: Mettre à jour paramètres FIXE depuis ConfigHelper
+        trading_params = ConfigHelper.get_trading_params(TRADING_CONFIG)
+        self.tpsl_config.fixed_tp_pct = trading_params['tp_percent']
+        self.tpsl_config.fixed_sl_pct = trading_params['sl_percent']
         # 🔥 FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
         from utils.effective_config import get_effective_value
         
@@ -1198,12 +1203,12 @@ class PositionManager:
         # Valeurs de base (depuis config manuelle/globale)
         base_mult_tp = get_effective_value('atr_mult_tp') or 1.5
         base_mult_sl = get_effective_value('atr_mult_sl') or 1.0
-        base_be_mult = TRADING_CONFIG.get('break_even_atr_mult', 1.0)
-        base_trailing_trigger = TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5)
-        base_trailing_dist = TRADING_CONFIG.get('trailing_distance_mult', 1.0)
-        base_stagnation_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', 120)
-        base_stagnation_min_pnl = TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', 0.05)
-        base_stagnation_positive_timeout = TRADING_CONFIG.get('stagnation_positive_timeout_seconds', 60)
+        base_be_mult = ConfigHelper.get_param('break_even_atr_mult', 1.0, TRADING_CONFIG)
+        base_trailing_trigger = ConfigHelper.get_param('trailing_trigger_atr_mult', 1.5, TRADING_CONFIG)
+        base_trailing_dist = ConfigHelper.get_param('trailing_distance_mult', 1.0, TRADING_CONFIG)
+        base_stagnation_timeout = ConfigHelper.get_param('stagnation_exit_timeout_seconds', 120, TRADING_CONFIG)
+        base_stagnation_min_pnl = ConfigHelper.get_param('stagnation_exit_min_pnl_to_stay', 0.05, TRADING_CONFIG)
+        base_stagnation_positive_timeout = ConfigHelper.get_param('stagnation_positive_timeout_seconds', 60, TRADING_CONFIG)
         
         # Ajustements selon régime local (Optimisation 10/12/2025)
         # Basé sur analyse trade_atr_metrics et doc BRAINSTORM_ATR_OPTIMIZATION
@@ -1253,15 +1258,15 @@ class PositionManager:
         # Appliquer à la config TPSL
         self.tpsl_config.atr_mult_tp = effective_params['atr_mult_tp']
         self.tpsl_config.atr_mult_sl = effective_params['atr_mult_sl']
-        self.tpsl_config.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
-        self.tpsl_config.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+        self.tpsl_config.atr_min = trading_params['atr_min']
+        self.tpsl_config.atr_max = trading_params['atr_max']
         
         # 🔥 SPRINT 3: Propager les ajustements au système global pour affichage "Variables en cours"
         from utils.effective_config import set_local_trade_adjustments
         set_local_trade_adjustments(effective_params)
         
-        # 🔥 FIX: Mettre à jour use_atr depuis TRADING_CONFIG (au lieu de self.config qui n'est pas mis à jour dynamiquement)
-        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        # 🔥 FIX: Mettre à jour use_atr depuis ConfigHelper
+        tp_sl_mode = trading_params['tp_sl_mode']
         # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide (identique à TP_MULTI)
         use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
 
@@ -1398,18 +1403,18 @@ class PositionManager:
         self.active_position.adaptive_sizing_multiplier = adaptive_sizing_multiplier
         
         # 🔥 FIX: Initialiser leverage_used dès la création (sera mis à jour après l'ordre)
-        configured_leverage = TRADING_CONFIG.get('default_leverage', 10)
+        api_params = ConfigHelper.get_api_params(TRADING_CONFIG)
+        configured_leverage = api_params.get('default_leverage', 10)
         self.active_position.leverage_used = configured_leverage
 
         # ✅ Initialiser TP Escalier si mode TP_MULTI
-        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
         levels_config = None
         if tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER':
-            # Construire config niveaux depuis TRADING_CONFIG
+            # Construire config niveaux depuis ConfigHelper
             levels_config = []
             for level in [1, 2, 3, 4]:
-                pnl = TRADING_CONFIG.get(f'escalier_level{level}_pnl', 0.2)
-                size_pct = TRADING_CONFIG.get(f'escalier_level{level}_size', 25.0) / 100.0
+                pnl = ConfigHelper.get_param(f'escalier_level{level}_pnl', 0.2, TRADING_CONFIG)
+                size_pct = ConfigHelper.get_param(f'escalier_level{level}_size', 25.0, TRADING_CONFIG) / 100.0
                 levels_config.append({
                     'pnl': pnl,
                     'size_pct': size_pct
@@ -1432,8 +1437,8 @@ class PositionManager:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
                 size_amount = size / entry
 
-                # 🔥 FIX: Récupérer le levier depuis TRADING_CONFIG (pas celui de l'init)
-                configured_leverage = TRADING_CONFIG.get('default_leverage', 10)
+                # 🔥 FIX: Récupérer le levier depuis ConfigHelper
+                configured_leverage = api_params.get('default_leverage', 10)
                 
                 # 🔍 VÉRIFICATION LEVIER: Logger pour debug
                 logger.info(
@@ -4169,7 +4174,7 @@ class PositionManager:
         cache = self.price_cache[symbol]
         age = datetime.now().timestamp() * 1000 - cache['timestamp']
 
-        if age <= max_age_ms:
+        if max_age_ms > 0 and age < max_age_ms:
             return cache['price']
 
         return None

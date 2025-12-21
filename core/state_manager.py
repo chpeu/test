@@ -137,6 +137,10 @@ class StateManager:
         self._notification_manager = None
         self._live_order_manager = None
         self._simple_logger = None
+        self._ws_manager = None  # Sprint 2.1
+        
+        # Files & Paths
+        self._trade_history_file = None  # Sprint 2.1
 
         # Locks for synchronization
         self._locks: Dict[str, asyncio.Lock] = {
@@ -392,6 +396,27 @@ class StateManager:
         """Set simple logger instance"""
         with self._thread_lock:
             self._simple_logger = logger
+    
+    def get_ws_manager(self):
+        """Get WebSocket manager instance (Sprint 2.1)"""
+        with self._thread_lock:
+            return self._ws_manager
+    
+    def set_ws_manager(self, manager) -> None:
+        """Set WebSocket manager instance (Sprint 2.1)"""
+        with self._thread_lock:
+            self._ws_manager = manager
+    
+    @property
+    def trade_history_file(self) -> Optional[str]:
+        """Get trade history file path (Sprint 2.1)"""
+        with self._thread_lock:
+            return self._trade_history_file
+    
+    def set_trade_history_file(self, path: str) -> None:
+        """Set trade history file path (Sprint 2.1)"""
+        with self._thread_lock:
+            self._trade_history_file = path
 
     # ==================== Locks ====================
 

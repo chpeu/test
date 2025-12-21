@@ -292,8 +292,8 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_calculate_trend_data(self, mock_client):
         """Test trend data calculation"""
-        with patch('api.mexc.get_mexc_client', return_value=mock_client), \
-             patch('api.price_provider.get_price_provider'):
+        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
             analyzer.client = mock_client
 
@@ -306,8 +306,8 @@ class TestTechnicalAnalyzer:
 
     def test_check_volume_quality_good(self):
         """Test volume quality check with good volume"""
-        with patch('api.mexc.get_mexc_client'), \
-             patch('api.price_provider.get_price_provider'):
+        with patch.object(analyzer_mod, 'get_mexc_client'), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
 
             result = analyzer.check_volume_quality(
@@ -322,8 +322,8 @@ class TestTechnicalAnalyzer:
 
     def test_check_volume_quality_low(self):
         """Test volume quality check with low volume"""
-        with patch('api.mexc.get_mexc_client'), \
-             patch('api.price_provider.get_price_provider'):
+        with patch.object(analyzer_mod, 'get_mexc_client'), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
 
             result = analyzer.check_volume_quality(
@@ -338,8 +338,8 @@ class TestTechnicalAnalyzer:
 
     def test_calculate_position_size(self):
         """Test position size calculation"""
-        with patch('api.mexc.get_mexc_client'), \
-             patch('api.price_provider.get_price_provider'):
+        with patch.object(analyzer_mod, 'get_mexc_client'), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
 
             setup = {
@@ -362,8 +362,8 @@ class TestTechnicalAnalyzer:
         mock_client_no_data = AsyncMock()
         mock_client_no_data.fetch_ohlcv = AsyncMock(return_value=[])
 
-        with patch('api.mexc.get_mexc_client', return_value=mock_client_no_data), \
-             patch('api.price_provider.get_price_provider') as mock_provider:
+        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client_no_data), \
+             patch.object(analyzer_mod, 'get_price_provider') as mock_provider:
             mock_provider_instance = Mock()
             mock_provider_instance.get_price = AsyncMock(return_value=None)
             mock_provider.return_value = mock_provider_instance
@@ -378,8 +378,8 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_analyze_pair_no_positions(self):
         """Test analyze_pair with no active positions"""
-        with patch('api.mexc.get_mexc_client') as mock_get_client, \
-             patch('api.price_provider.get_price_provider') as mock_get_provider:
+        with patch.object(analyzer_mod, 'get_mexc_client') as mock_get_client, \
+             patch.object(analyzer_mod, 'get_price_provider') as mock_get_provider:
 
             # Setup mocks
             mock_client = AsyncMock()
@@ -409,8 +409,8 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_close_analyzer(self, mock_client):
         """Test closing analyzer"""
-        with patch('api.mexc.get_mexc_client', return_value=mock_client), \
-             patch('api.price_provider.get_price_provider'):
+        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
             analyzer.client = mock_client
 

@@ -995,10 +995,9 @@ class TechnicalAnalyzer:
             scan_uuid = None
             
             try:
-                from backend.ml.data_logger import DataLogger
-                data_logger = DataLogger()
+                from utils.helpers import DataLoggerHelper
                 
-                if data_logger and data_logger.is_running:
+                if DataLoggerHelper.is_available():
                     # Récupérer prix actuel
                     ticker_data = await self.price_provider.get_price(symbol)
                     current_price = float(ticker_data.get('lastPrice', 0)) if ticker_data else 0
@@ -1130,7 +1129,7 @@ class TechnicalAnalyzer:
                     }
                     
                     # Logger le scan
-                    scan_uuid = await data_logger.log_scan(
+                    scan_uuid = await DataLoggerHelper.safe_log_scan(
                         symbol=symbol,
                         price=current_price,
                         indicators_1m=indicators_1m,
@@ -1783,10 +1782,9 @@ class TechnicalAnalyzer:
                 # ✅ POINT B : LOG OPPORTUNITY
                 # ========================================
                 try:
-                    from backend.ml.data_logger import DataLogger
-                    data_logger = DataLogger()
+                    from utils.helpers import DataLoggerHelper
                     
-                    if data_logger and data_logger.is_running and best_setup.get('_scan_uuid'):
+                    if DataLoggerHelper.is_available() and best_setup.get('_scan_uuid'):
                         # Récupérer scan_uuid
                         scan_uuid_opp = best_setup.get('_scan_uuid')
                         
@@ -1828,11 +1826,11 @@ class TechnicalAnalyzer:
                             setup_reason_text += f" - {best_setup.get('confirmedBy')}"
                         
                         # Logger l'opportunité
-                        opp_id = await data_logger.log_opportunity(
+                        opp_id = await DataLoggerHelper.safe_log_opportunity(
                             scan_log_id=scan_uuid_opp,
                             symbol=symbol,
                             direction=best_setup.get('direction'),
-                            entry_suggested=best_setup.get('entry', best_setup.get('price', 0)),
+                            entry_price=best_setup.get('entry', best_setup.get('price', 0)),
                             tp_suggested=best_setup.get('tp', 0),
                             sl_suggested=best_setup.get('sl', 0),
                             tp_sl_mode=TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
