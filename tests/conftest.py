@@ -19,6 +19,8 @@ def client():
 def _close_global_singletons():
     yield
 
+    # ⚠️ Seulement fermer les ressources async, PAS remettre les singletons à None
+    # car l'app backend peut encore tourner après les tests
     try:
         from api import price_provider as price_provider_mod
 
@@ -29,7 +31,8 @@ def _close_global_singletons():
             except RuntimeError:
                 pass
 
-        price_provider_mod._price_provider = None
+        # ❌ NE PAS faire: price_provider_mod._price_provider = None
+        # L'app backend utilise encore ce singleton après les tests
     except Exception:
         pass
 
@@ -43,6 +46,7 @@ def _close_global_singletons():
             except RuntimeError:
                 pass
 
-        mexc_mod._mexc_client = None
+        # ❌ NE PAS faire: mexc_mod._mexc_client = None
+        # L'app backend utilise encore ce singleton après les tests
     except Exception:
         pass
