@@ -38,6 +38,7 @@ from core.position.partial_tp_manager import PartialTPManager
 from core.position.tp_escalier_manager import TPEscalierManager
 from core.position.analytics_logger import AnalyticsLogger
 from utils.helpers import ConfigHelper
+from core.state_manager import get_state_manager
 
 logger = logging.getLogger(__name__)
 
@@ -560,6 +561,25 @@ class PositionManager:
                             if not position_cleaned and self.active_position:
                                 logger.warning(f"🔧 Position {symbol} forcée à None après SL_EXCHANGE (finally)")
                                 self.active_position = None
+
+                            try:
+                                state = get_state_manager()
+                                state_pos = state.active_position
+
+                                if state_pos is current_position:
+                                    state.set_active_position(None)
+                                    state.reset_close_failure()
+                                else:
+                                    state_symbol = None
+                                    if hasattr(state_pos, 'symbol'):
+                                        state_symbol = getattr(state_pos, 'symbol', None)
+                                    elif isinstance(state_pos, dict):
+                                        state_symbol = state_pos.get('symbol')
+                                    if state_symbol == symbol:
+                                        state.set_active_position(None)
+                                        state.reset_close_failure()
+                            except Exception:
+                                pass
                     else:
                         logger.warning(f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée")
                     return

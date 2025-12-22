@@ -1,5 +1,5 @@
 {
-  "timestamp": 1766380548.7101295,
+  "timestamp": 1766403508.7651997,
   "specs": {
     "JELLYJELLY_USDT": {
       "symbol": "JELLYJELLY_USDT",
@@ -410,6 +410,36 @@
       "price_precision": 3,
       "vol_precision": 1,
       "contract_size": 0.1
+    },
+    "STABLE_USDT": {
+      "symbol": "STABLE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 105000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-06,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "GRT_USDT": {
+      "symbol": "GRT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1300000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "PENGU_USDT": {
+      "symbol": "PENGU_USDT",
+      "min_vol": 1.0,
+      "max_vol": 16700000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-06,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
     }
   }
 }
