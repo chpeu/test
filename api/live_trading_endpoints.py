@@ -31,7 +31,7 @@ def load_live_config() -> Dict[str, Any]:
         'max_slippage_pct': 0.15,
         'max_latency_ms': 1000,
         'max_pnl_discrepancy_pct': 20,
-        'default_leverage': 10  # 🔥 FUTURES: Levier par défaut (1-125x)
+        'default_leverage': 1   # 🔥 FUTURES: Levier par défaut (1-125x)
     }
 
     if not LIVE_CONFIG_FILE.exists():
@@ -253,7 +253,7 @@ async def update_live_config(data: Dict[str, Any]):
             if config.get('api_key_mexc') and config.get('api_secret_mexc'):
                 import main
                 from config import TRADING_CONFIG
-                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 1))
                 browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
                 use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
 

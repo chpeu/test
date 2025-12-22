@@ -827,6 +827,7 @@ def load_trade_history() -> None:
                                size_usdt, session_id
                         FROM trades 
                         WHERE created_at > NOW() - INTERVAL '24 hours'
+                        AND exit_reason IS NOT NULL
                         ORDER BY created_at DESC
                         LIMIT 100
                     """)
@@ -1129,13 +1130,8 @@ async def setup_realtime_sl_check(position: Any, price_provider_instance: Any) -
                 # Archiver dans l'historique
                 if result:
                     result['timestamp'] = datetime.now().isoformat()
-                    trade_history = state.trade_history or []
-                    trade_history.append(result)
-                    
-                    # Limiter l'historique
-                    if len(trade_history) > 1000:
-                        trade_history = trade_history[-1000:]
-                    state.set_trade_history(trade_history)
+                    # 🔥 FIX: Utiliser add_trade pour upsert sécurisé
+                    state.add_trade(result)
                 
                 # Désactiver le callback SL (déjà fait dans price_provider)
                 if price_provider_instance:
@@ -2112,10 +2108,10 @@ async def scanner_loop_callback() -> None:
                                                     
                                                     logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}% [{threshold_source}])")
                                                     
-                                                    # 🔥 FIX: Stocker la confiance ML pour le logging (arrondi au dixième)
-                                                    ml_conf_pct = round(confidence * 100, 1)  # En pourcentage, arrondi 0.1
-                                                    setup['ml_confidence'] = ml_conf_pct
-                                                    last_ml_confidence = ml_conf_pct  # Variable pour le logging
+                                                    # 🔥 FIX CRITIQUE: Stocker ml_confidence comme décimal (0.0-1.0), pas pourcentage
+                                                    ml_conf_decimal = round(confidence, 4)  # Décimal arrondi à 4 décimales
+                                                    setup['ml_confidence'] = ml_conf_decimal  
+                                                    last_ml_confidence = ml_conf_decimal  # Variable pour le logging
                                                     
                                                     # 🔥 FIX: Mettre à jour ml_confidence dans PostgreSQL (scan déjà loggé)
                                                     # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
@@ -2123,7 +2119,7 @@ async def scanner_loop_callback() -> None:
                                                         from core.callbacks.scanner_loop import get_pg_datalogger
                                                         pg_logger = get_pg_datalogger()
                                                         if pg_logger and pg_logger.enabled:
-                                                            await pg_logger.update_ml_confidence_async(symbol, ml_conf_pct)
+                                                            await pg_logger.update_ml_confidence_async(symbol, ml_conf_decimal)
                                                     except ImportError as pg_err:
                                                         # Module PostgreSQL non disponible
                                                         logger.debug(f"Module PostgreSQL non disponible: {pg_err}")
@@ -3503,10 +3499,8 @@ async def position_check_loop_callback() -> None:
                 # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
                 if result:
                     result['timestamp'] = datetime.now().isoformat()
-                    trade_history = state.trade_history or []
-                    trade_history.append(result)
-                    state.set_trade_history(trade_history)
-                    # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
+                    # 🔥 FIX: Utiliser add_trade pour upsert sécurisé
+                    state.add_trade(result)
                     save_trade_history()
                 
                 # 🔥 FIX: Désactiver callback WebSocket si position fermée
@@ -3587,9 +3581,8 @@ async def position_check_loop_callback() -> None:
                         state.reset_close_failure()
                         if result:
                             result['timestamp'] = datetime.now().isoformat()
-                            trade_history = state.trade_history or []
-                            trade_history.append(result)
-                            state.set_trade_history(trade_history)
+                            # 🔥 FIX: Utiliser add_trade pour upsert sécurisé
+                            state.add_trade(result)
                             save_trade_history()
                         logger.info(f"✅ FORCE CLOSE réussi: {current_symbol}")
                         ws_mgr = state.get_ws_manager()
@@ -4021,7 +4014,7 @@ def init_instances() -> None:
                 if api_key and api_secret:
                     # 🔥 FUTURES: Récupérer levier + token depuis config
                     from config import TRADING_CONFIG
-                    default_leverage = live_config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                    default_leverage = live_config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 1))
                     browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
                     use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
 
@@ -5011,10 +5004,8 @@ async def api_close_position():
             # 🔥 PHASE 4: Ajouter à l'historique et sauvegarder
             if result:
                 result['timestamp'] = datetime.now().isoformat()
-                trade_history = state.trade_history or []
-                trade_history.append(result)
-                state.set_trade_history(trade_history)
-                # 🔥 FIX: Pas de limite - l'historique persiste tant que le backend tourne
+                # 🔥 FIX: Utiliser add_trade pour upsert sécurisé
+                state.add_trade(result)
                 save_trade_history()
             
             # 🔥 FIX: Désactiver callback WebSocket si position fermée
@@ -5327,6 +5318,30 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'request_type': request_type,
                                 'data': pos
                             }, websocket)
+                    
+                    elif request_type == 'state':
+                        # 🔥 NOUVEAU: Handler pour chargement état initial complet via WebSocket
+                        try:
+                            # Récupérer l'état complet (même logique que /api/state)
+                            state_response = await api_get_complete_state()
+                            ws_mgr = state.get_ws_manager()
+                            if ws_mgr:
+                                await ws_mgr.send_personal_message({
+                                    'type': 'request_response',
+                                    'id': request_id,
+                                    'request_type': request_type,
+                                    'data': state_response
+                                }, websocket)
+                        except Exception as state_err:
+                            logger.error(f"❌ Erreur récupération state via WebSocket: {state_err}")
+                            ws_mgr = state.get_ws_manager()
+                            if ws_mgr:
+                                await ws_mgr.send_personal_message({
+                                    'type': 'request_response',
+                                    'id': request_id,
+                                    'request_type': request_type,
+                                    'error': str(state_err)
+                                }, websocket)
 
         except WebSocketDisconnect:
             logger.info(f"👋 WebSocket déconnecté proprement: {websocket.client}")

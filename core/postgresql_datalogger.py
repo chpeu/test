@@ -1121,6 +1121,104 @@ class PostgreSQLDataLogger:
         except Exception as e:
             logger.error(f"❌ Erreur logging opportunité {symbol}: {e}")
             return None
+
+    def _resolve_trade_id_for_update(
+        self,
+        trade_data: Dict[str, Any],
+        session_id: Optional[str],
+        provided_trade_id: Optional[str]
+    ) -> Optional[str]:
+        symbol = trade_data.get('symbol')
+        direction = trade_data.get('direction')
+        entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+
+        is_closing = bool(
+            trade_data.get('exit_price') is not None
+            or trade_data.get('timestamp_exit')
+            or trade_data.get('reason')
+            or trade_data.get('exit_reason')
+        )
+
+        if not is_closing:
+            return provided_trade_id
+
+        if provided_trade_id:
+            try:
+                exists = self._execute_query(
+                    "SELECT id FROM trades WHERE id = %s",
+                    (provided_trade_id,),
+                    fetch=True
+                )
+                if exists:
+                    return provided_trade_id
+            except Exception:
+                pass
+
+        if not symbol or entry_price is None:
+            return provided_trade_id
+
+        symbol_candidates = list({
+            symbol,
+            symbol.replace('_', '/'),
+            symbol.replace('/', '_'),
+            symbol.replace(':USDT', ''),
+            symbol.replace(':USDT', '').replace('_', '/'),
+            symbol.replace(':USDT', '').replace('/', '_')
+        })
+
+        tolerance = max(1e-8, abs(entry_price) * 1e-8)
+
+        base_where = (
+            "symbol = ANY(%s) "
+            "AND (%s IS NULL OR direction = %s) "
+            "AND exit_reason IS NULL "
+            "AND entry_price IS NOT NULL "
+            "AND ABS(entry_price - %s) <= %s "
+            "AND timestamp_entry > NOW() - INTERVAL '2 days'"
+        )
+
+        params_common = (
+            symbol_candidates,
+            direction,
+            direction,
+            entry_price,
+            tolerance
+        )
+
+        if session_id:
+            try:
+                query = (
+                    "SELECT id FROM trades WHERE session_id = %s AND "
+                    + base_where +
+                    " ORDER BY timestamp_entry DESC LIMIT 1"
+                )
+                result = self._execute_query(query, (session_id,) + params_common, fetch=True)
+                if result:
+                    resolved_id = result[0][0]
+                    logger.debug(
+                        "Resolved trade_id for update (session match): %s -> %s",
+                        provided_trade_id,
+                        resolved_id
+                    )
+                    return resolved_id
+            except Exception:
+                pass
+
+        try:
+            query = "SELECT id FROM trades WHERE " + base_where + " ORDER BY timestamp_entry DESC LIMIT 1"
+            result = self._execute_query(query, params_common, fetch=True)
+            if result:
+                resolved_id = result[0][0]
+                logger.debug(
+                    "Resolved trade_id for update: %s -> %s",
+                    provided_trade_id,
+                    resolved_id
+                )
+                return resolved_id
+        except Exception:
+            pass
+
+        return provided_trade_id
     
     def log_trade(
         self,
@@ -1163,7 +1261,7 @@ class PostgreSQLDataLogger:
             session_id = self.get_or_create_session()
         
         try:
-            provided_trade_id = trade_id
+            provided_trade_id = self._resolve_trade_id_for_update(trade_data, session_id, trade_id)
 
             # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
             now = datetime.now(timezone.utc)

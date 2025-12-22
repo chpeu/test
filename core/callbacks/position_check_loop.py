@@ -195,13 +195,10 @@ async def position_check_loop_callback():
                 # Archiver dans l'historique
                 if result:
                     result['timestamp'] = datetime.now().isoformat()
-                    if 'trade_history' not in _app_state:
-                        _app_state['trade_history'] = []
-                    _app_state['trade_history'].append(result)
-
-                    # Limiter l'historique à 1000 trades
-                    if len(_app_state['trade_history']) > 1000:
-                        _app_state['trade_history'] = _app_state['trade_history'][-1000:]
+                    # 🔥 FIX: Utiliser add_trade pour upsert sécurisé et éviter doublons
+                    from core.state_manager import get_state_manager
+                    state = get_state_manager()
+                    state.add_trade(result)
 
                     # FIX: Mettre à jour les stats de session
                     _update_session_stats(result)

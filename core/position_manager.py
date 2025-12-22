@@ -1443,7 +1443,7 @@ class PositionManager:
         
         # 🔥 FIX: Initialiser leverage_used dès la création (sera mis à jour après l'ordre)
         api_params = ConfigHelper.get_api_params(TRADING_CONFIG)
-        configured_leverage = api_params.get('default_leverage', 10)
+        configured_leverage = api_params.get('default_leverage', 1)  # 🔥 FIX: 1x par défaut
         self.active_position.leverage_used = configured_leverage
 
         # ✅ Initialiser TP Escalier si mode TP_MULTI
@@ -1477,7 +1477,7 @@ class PositionManager:
                 size_amount = size / entry
 
                 # 🔥 FIX: Récupérer le levier depuis ConfigHelper
-                configured_leverage = api_params.get('default_leverage', 10)
+                configured_leverage = api_params.get('default_leverage', 1)  # 🔥 FIX: 1x par défaut
                 
                 # 🔍 VÉRIFICATION LEVIER: Logger pour debug
                 logger.info(
@@ -2557,6 +2557,12 @@ class PositionManager:
                                     f"🚨 Position {self.active_position.symbol} fermée sur MEXC (SL Exchange?) | "
                                     f"Déclenchement fermeture locale..."
                                 )
+                                # 🔥 FIX: Vérifier que la position est toujours active (éviter double fermeture)
+                                # _schedule_position_sync() peut avoir déjà fermé la position
+                                if not self.active_position:
+                                    logger.info(f"✅ Position déjà fermée par _schedule_position_sync(), skip double fermeture")
+                                    return 'SL'
+                                
                                 # Utiliser SL comme prix de sortie estimé
                                 exit_price = self.active_position.sl or current_price
                                 try:
@@ -3114,7 +3120,8 @@ class PositionManager:
         # Calculer durée
         duration = int(time.time() - self.active_position.start_time)
 
-        if duration < MIN_LIVE_TRADE_DURATION_SEC and reason != 'SL':
+        # 🔥 FIX SL_EXCHANGE: Ne jamais attendre pour SL_EXCHANGE (position déjà fermée sur MEXC)
+        if duration < MIN_LIVE_TRADE_DURATION_SEC and reason not in ['SL', 'SL_EXCHANGE']:
             wait_time = MIN_LIVE_TRADE_DURATION_SEC - duration
             if wait_time > 0:
                 logger.info(
@@ -3355,7 +3362,10 @@ class PositionManager:
         opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
         closed_at = datetime.now(timezone.utc).isoformat()
         
+        stable_trade_id = getattr(self.active_position, '_trade_id', None)
+
         result = {
+            'id': stable_trade_id,
             'symbol': self.active_position.symbol,
             'direction': self.active_position.direction,
             'entry': self.active_position.entry,
@@ -3798,10 +3808,14 @@ class PositionManager:
                                 tz=timezone.utc
                             ) if self.active_position.start_time else datetime.now(timezone.utc)
                             
-                            if ml_conf and ml_conf >= 30:
+                            # 🔥 FIX: ml_confidence est stockée en décimal (0.51) mais calibration attend % (51)
+                            # Convertir en pourcentage si la valeur est < 1 (décimal)
+                            ml_conf_pct = ml_conf * 100 if ml_conf and ml_conf < 1 else ml_conf
+                            
+                            if ml_conf_pct and ml_conf_pct >= 30:
                                 calib_manager.update_calibration(
                                     direction=self.active_position.direction,
-                                    ml_confidence=float(ml_conf),
+                                    ml_confidence=float(ml_conf_pct),  # Passer en pourcentage
                                     win=net_pnl_pct > 0,
                                     pnl_pct=net_pnl_pct,
                                     pnl_usdt=net_pnl_usdt,
@@ -3809,7 +3823,7 @@ class PositionManager:
                                     is_dry_run=is_dry,
                                     trade_timestamp=trade_ts
                                 )
-                                logger.debug(f"📊 Calibration ML mise à jour: {self.active_position.symbol}")
+                                logger.debug(f"📊 Calibration ML mise à jour: {self.active_position.symbol} (conf={ml_conf_pct:.1f}%)")
                         except Exception as calib_err:
                             logger.debug(f"Calibration update ignoré (non-bloquant): {calib_err}")
                         

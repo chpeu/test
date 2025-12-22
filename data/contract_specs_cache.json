@@ -1,5 +1,5 @@
 {
-  "timestamp": 1766337039.5641038,
+  "timestamp": 1766380548.7101295,
   "specs": {
     "JELLYJELLY_USDT": {
       "symbol": "JELLYJELLY_USDT",
@@ -360,6 +360,56 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 1000.0
+    },
+    "TAO_USDT": {
+      "symbol": "TAO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 260000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.1,
+      "price_precision": 1,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "ATOM_USDT": {
+      "symbol": "ATOM_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2380000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "SPX_USDT": {
+      "symbol": "SPX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 160000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "PIPPIN_USDT": {
+      "symbol": "PIPPIN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 6000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "TRUMPOFFICIAL_USDT": {
+      "symbol": "TRUMPOFFICIAL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }

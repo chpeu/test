@@ -435,7 +435,9 @@ TRADING_CONFIG = {
     "ml_calib_dryrun_weight": 0.5,           # Poids des trades DRY-RUN (slider: 0.0-1.0)
     "ml_calib_decay_days": 14,               # Demi-vie en jours (slider: 7-60)
     "ml_calib_min_trades": 30,               # Minimum de trades pondérés pour activer (slider: 10-100)
-    "ml_calib_min_winrate": 40.0,            # Seuil WR minimum pour accepter un trade (slider: 30-60%)
+    "ml_calib_min_winrate": 38.0,            # Seuil WR minimum pour accepter un trade (slider: 30-60%)
+    "ml_calibration_min_winrate_long": 0.40,  # Seuil LONG cohérent avec performance observée
+    "ml_calibration_min_winrate_short": 0.35, # Seuil SHORT plus bas (performance historique 38.2%)
     "ml_calib_bucket_size": 5,               # Taille des buckets de confiance (ex: 30-35, 35-40)
     
     # ============================================================
