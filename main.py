@@ -1364,6 +1364,21 @@ async def scanner_loop_callback() -> None:
         # Ne pas scanner si on a déjà une position active (vérification atomique dans le lock)
         # Cette vérification est faite AVANT de commencer le scan pour éviter de gaspiller des ressources
         pos_mgr = state.get_position_manager()
+        
+        # 🔧 SELF-HEALING: Si state.active_position est None mais pos_mgr.active_position est encore set,
+        # c'est probablement une race condition avec _schedule_position_sync (thread séparé).
+        # state.active_position est la source de vérité → on nettoie pos_mgr.active_position stale.
+        if not state.active_position and pos_mgr and pos_mgr.active_position:
+            try:
+                stale_symbol = getattr(pos_mgr.active_position, 'symbol', 'UNKNOWN')
+            except Exception:
+                stale_symbol = 'UNKNOWN'
+            logger.warning(
+                f"🔧 Self-healing: pos_mgr.active_position stale détectée ({stale_symbol}) "
+                f"→ nettoyage (state.active_position déjà None)"
+            )
+            pos_mgr.active_position = None
+        
         if state.active_position or (pos_mgr and pos_mgr.active_position):
             logger.debug("⏸️ Scanner ignoré : position active")
             return
@@ -2110,16 +2125,18 @@ async def scanner_loop_callback() -> None:
                                                     
                                                     # 🔥 FIX CRITIQUE: Stocker ml_confidence comme décimal (0.0-1.0), pas pourcentage
                                                     ml_conf_decimal = round(confidence, 4)  # Décimal arrondi à 4 décimales
+                                                    ml_conf_pct = round(confidence * 100, 1)
                                                     setup['ml_confidence'] = ml_conf_decimal  
                                                     last_ml_confidence = ml_conf_decimal  # Variable pour le logging
                                                     
                                                     # 🔥 FIX: Mettre à jour ml_confidence dans PostgreSQL (scan déjà loggé)
                                                     # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                                                    pg_logger = None
                                                     try:
                                                         from core.callbacks.scanner_loop import get_pg_datalogger
                                                         pg_logger = get_pg_datalogger()
                                                         if pg_logger and pg_logger.enabled:
-                                                            await pg_logger.update_ml_confidence_async(symbol, ml_conf_decimal)
+                                                            await pg_logger.update_ml_confidence_async(symbol, ml_conf_pct)
                                                     except ImportError as pg_err:
                                                         # Module PostgreSQL non disponible
                                                         logger.debug(f"Module PostgreSQL non disponible: {pg_err}")
@@ -2127,7 +2144,7 @@ async def scanner_loop_callback() -> None:
                                                         # Erreur database lors de la mise à jour
                                                         logger.debug(f"⚠️ Erreur DB mise à jour ml_confidence: {pg_err}")
                                                     except Exception as pg_err:
-                                                        # Erreur inattendue (non-bloquante)
+                                                        # Erreur inattendue lors de la mise à jour
                                                         logger.debug(f"⚠️ Impossible de mettre à jour ml_confidence: {type(pg_err).__name__}: {pg_err}")
                                                     
                                                     if not should_trade:
@@ -2541,196 +2558,6 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             analysis['indicators_1m'] = indicators_1m
             analysis['indicators_5m'] = indicators_5m
         
-        # 🔥 DÉSACTIVÉ: SimplePGLogger pour éviter doublons (PostgreSQLDataLogger fait déjà le travail)
-        if False:  # Désactivé - évite les doublons avec PostgreSQLDataLogger
-            try:
-                simple_logger = state.get_simple_logger()
-                if simple_logger and hasattr(simple_logger, 'enabled') and simple_logger.enabled:
-                    logger.info(f"🔍 DEBUG Simple Logger pour {symbol}: enabled={simple_logger.enabled}")
-                if analysis and isinstance(analysis, dict):
-                    scan_price = analysis.get('price')
-                
-                # Si le prix n'est pas dans analysis, essayer de le récupérer depuis price_provider
-                price_prov = state.get_price_provider()
-                if scan_price is None and price_prov:
-                    try:
-                        price_result = await price_prov.get_price(symbol)
-                        # Extraire la valeur numérique si c'est un dict
-                        scan_price = get_preferred_price(price_result, setup.get('price'))
-                    except MarketDataError as price_error:
-                        # Erreur données marché (prix invalide, API)
-                        logger.debug(f"⚠️ Erreur données marché pour {symbol}: {price_error}")
-                    except NetworkError as price_error:
-                        # Erreur réseau lors de la récupération du prix
-                        logger.debug(f"⚠️ Erreur réseau récupération prix pour {symbol}: {price_error}")
-                    except Exception as price_error:
-                        # Erreur inattendue lors de la récupération du prix
-                        logger.debug(f"⚠️ Impossible de récupérer le prix pour {symbol}: {type(price_error).__name__}: {price_error}")
-                
-                # Extraire la valeur numérique si scan_price est un dict
-                if isinstance(scan_price, dict):
-                    scan_price = get_preferred_price(scan_price)
-                
-                # Vérifier que scan_price est un nombre
-                if scan_price is not None and not isinstance(scan_price, (int, float)):
-                    try:
-                        scan_price = float(scan_price)
-                    except (ValueError, TypeError):
-                        logger.warning(f"⚠️ Prix invalide pour {symbol}: {scan_price} (type: {type(scan_price)})")
-                        scan_price = None
-                
-                # Construire indicators_1m avec fallbacks
-                indicators_1m = {}
-                score_total = None
-                
-                if analysis:
-                    # Priorité 1: indicators_1m depuis analysis
-                    indicators_1m = analysis.get('indicators_1m', {}) or {}
-                    
-                    # Récupérer score_total avec fallbacks
-                    # Priorité 1: score_total directement
-                    score_total = analysis.get('score_total')
-                    # Priorité 2: totalScore (nom utilisé dans analyzer.py)
-                    if score_total is None:
-                        score_total = analysis.get('totalScore')
-                    # Priorité 3: score (nom alternatif)
-                    if score_total is None:
-                        score_total = analysis.get('score')
-                    
-                    # 🔥 AMÉLIORATION: Récupérer analysis_1m et analysis_5m une seule fois
-                    analysis_1m = analysis.get('analysis_1m', {})
-                    analysis_5m = analysis.get('analysis_5m', {})
-                    
-                    # Fallback 1: Essayer depuis analysis_1m pour score_total
-                    if score_total is None and isinstance(analysis_1m, dict) and analysis_1m:
-                        score_total = analysis_1m.get('score_total') or analysis_1m.get('totalScore') or analysis_1m.get('score')
-                    
-                    # Construire indicators_1m avec fallbacks
-                    indicators_1m = {}
-                    score_total = None
-                    
-                    if analysis:
-                        # Priorité 1: indicators_1m depuis analysis
-                        indicators_1m = analysis.get('indicators_1m', {}) or {}
-                        
-                        # Récupérer score_total avec fallbacks
-                        # Priorité 1: score_total directement
-                        score_total = analysis.get('score_total')
-                        # Priorité 2: totalScore (nom utilisé dans analyzer.py)
-                        if score_total is None:
-                            score_total = analysis.get('totalScore')
-                        # Priorité 3: score (nom alternatif)
-                        if score_total is None:
-                            score_total = analysis.get('score')
-                        
-                        # 🔥 AMÉLIORATION: Récupérer analysis_1m et analysis_5m une seule fois
-                        analysis_1m = analysis.get('analysis_1m', {})
-                        analysis_5m = analysis.get('analysis_5m', {})
-                        
-                        # Fallback 1: Essayer depuis analysis_1m pour score_total
-                        if score_total is None and isinstance(analysis_1m, dict) and analysis_1m:
-                            score_total = analysis_1m.get('score_total') or analysis_1m.get('totalScore') or analysis_1m.get('score')
-                            # Si toujours None, essayer long_score ou short_score (utilisés dans analyzer.py pour les analyses rejetées)
-                            if score_total is None:
-                                # Prendre le maximum entre long_score et short_score, ou le premier non-None
-                                long_score = analysis_1m.get('long_score')
-                                short_score = analysis_1m.get('short_score')
-                                if long_score is not None or short_score is not None:
-                                    score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
-                        # Fallback 2: Essayer depuis analysis_5m pour score_total
-                        if score_total is None and isinstance(analysis_5m, dict) and analysis_5m:
-                            score_total = analysis_5m.get('score_total') or analysis_5m.get('totalScore') or analysis_5m.get('score')
-                            # Si toujours None, essayer long_score ou short_score
-                            if score_total is None:
-                                long_score = analysis_5m.get('long_score')
-                                short_score = analysis_5m.get('short_score')
-                                if long_score is not None or short_score is not None:
-                                    score_total = max(long_score or 0, short_score or 0) if (long_score is not None and short_score is not None) else (long_score or short_score)
-                        
-                        # 🔥 AMÉLIORATION: Compléter indicators_1m avec les valeurs de analysis_1m si elles sont None
-                        if isinstance(analysis_1m, dict) and analysis_1m:
-                            # Log de debug pour voir ce qui est dans analysis_1m
-                            rsi_in_analysis_1m = analysis_1m.get('rsi')
-                            logger.debug(f"🔍 DEBUG {symbol}: analysis_1m contient rsi={rsi_in_analysis_1m}, keys: {list(analysis_1m.keys())[:15]}")
-                            
-                            # Liste des indicateurs clés à vérifier
-                            indicator_keys = ['rsi', 'rsi_prev', 'macd', 'macd_signal', 'macd_hist', 'macd_hist_prev',
-                                            'adx', 'di_plus', 'di_minus', 'di_gap', 'ema9', 'ema21', 'ema_diff_pct',
-                                            'atr', 'atr_pct', 'bb_upper', 'bb_middle', 'bb_lower', 'bb_width',
-                                            'bb_distance_to_lower', 'bb_distance_to_upper', 'volume', 'volume_avg',
-                                            'volume_ratio', 'volume_spike']
-                            
-                            rsi_found_count = 0
-                            for key in indicator_keys:
-                                # Si l'indicateur n'existe pas dans indicators_1m ou est None, essayer de le récupérer depuis analysis_1m
-                                if key not in indicators_1m or indicators_1m.get(key) is None:
-                                    value = analysis_1m.get(key)
-                                    if value is not None:
-                                        indicators_1m[key] = value
-                                        if key == 'rsi':
-                                            rsi_found_count += 1
-                                            logger.info(f"✅ DEBUG {symbol}: RSI récupéré depuis analysis_1m: {value}")
-                            
-                            if rsi_found_count == 0 and rsi_in_analysis_1m is None:
-                                logger.debug(f"⚠️ DEBUG {symbol}: RSI est None dans analysis_1m. analysis_1m contient 'reason': {analysis_1m.get('reason', 'N/A')[:50] if analysis_1m.get('reason') else 'N/A'}")
-                        
-                        # Priorité 3: Essayer depuis analysis directement (champs de haut niveau) si RSI toujours manquant
-                        if not indicators_1m.get('rsi'):
-                            if 'rsi' in analysis and analysis.get('rsi') is not None:
-                                indicators_1m['rsi'] = analysis.get('rsi')
-                                logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi): {indicators_1m.get('rsi')}")
-                            elif 'rsi_1m' in analysis and analysis.get('rsi_1m') is not None:
-                                indicators_1m['rsi'] = analysis.get('rsi_1m')
-                                logger.debug(f"🔍 DEBUG {symbol}: RSI récupéré depuis analysis (rsi_1m): {indicators_1m.get('rsi')}")
-                        
-                        # Log de debug si RSI toujours manquant
-                        if not indicators_1m.get('rsi'):
-                            logger.debug(f"⚠️ DEBUG {symbol}: RSI non trouvé. analysis keys: {list(analysis.keys())[:10] if analysis else 'None'}, "
-                                       f"indicators_1m keys: {list(indicators_1m.keys()) if indicators_1m else 'None'}, "
-                                       f"analysis_1m type: {type(analysis.get('analysis_1m'))}, "
-                                       f"analysis_1m rsi: {analysis_1m.get('rsi') if isinstance(analysis_1m, dict) else 'N/A'}")
-                    
-                    logger.info(f"📝 Tentative log_scan_simple pour {symbol} (prix: {scan_price}, RSI: {indicators_1m.get('rsi', 'N/A')}, Score: {score_total or 'N/A'})")
-                    # Construire scan_data avec tous les fallbacks possibles
-                    scan_data_dict = {
-                        'market_data': {'price': scan_price},
-                        'indicators_1m': indicators_1m,
-                        'scores': {'score_total': score_total},
-                        'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)) if analysis else False
-                    }
-                    # Ajouter analysis_1m et analysis_5m si disponibles (pour les fallbacks dans SimplePGLogger)
-                    if analysis and isinstance(analysis, dict):
-                        if 'analysis_1m' in analysis:
-                            scan_data_dict['analysis_1m'] = analysis.get('analysis_1m')
-                        if 'analysis_5m' in analysis:
-                            scan_data_dict['analysis_5m'] = analysis.get('analysis_5m')
-                        # Ajouter aussi totalScore directement si disponible
-                        if 'totalScore' in analysis:
-                            scan_data_dict['totalScore'] = analysis.get('totalScore')
-                        # Ajouter long_score et short_score si disponibles (pour les fallbacks dans SimplePGLogger)
-                        if 'long_score' in analysis:
-                            scan_data_dict['long_score'] = analysis.get('long_score')
-                        if 'short_score' in analysis:
-                            scan_data_dict['short_score'] = analysis.get('short_score')
-                    simple_logger = state.get_simple_logger()
-                    if simple_logger:
-                        result = simple_logger.log_scan_simple(symbol, scan_data_dict)
-                        logger.info(f"📝 Résultat log_scan_simple pour {symbol}: {result}")
-                else:
-                    logger.warning(f"⚠️ Simple Logger désactivé pour {symbol}")
-            except ImportError as e:
-                # Module Simple Logger non disponible
-                logger.debug(f"Module Simple Logger non disponible: {e}")
-            except DatabaseError as e:
-                # Erreur database lors du logging
-                logger.error(f"❌ Erreur DB Simple Logger pour {symbol}: {e}", exc_info=True)
-            except ValidationError as e:
-                # Erreur validation des données de scan
-                logger.warning(f"⚠️ Erreur validation Simple Logger pour {symbol}: {e}")
-            except Exception as e:
-                # Erreur inattendue lors du logging
-                logger.error(f"❌ Erreur inattendue Simple Logger pour {symbol}: {type(e).__name__}: {e}", exc_info=True)
-        
         # Helper function to extract filter metrics
         def _extract_filter_metrics_main(analysis):
             """Extract filter metrics from analysis_1m and analysis_5m with correct suffixes"""
@@ -2831,7 +2658,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                                 'askVol': ask_vol,
                                 'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
-                                'recentVolume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),  # Alias
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
@@ -2921,6 +2748,16 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     except (ValueError, TypeError):
                         logger.warning(f"⚠️ Prix invalide pour {symbol}: {scan_price} (type: {type(scan_price)})")
                         scan_price = None
+
+                ml_confidence_for_scan = last_ml_confidence
+                if ml_confidence_for_scan is not None:
+                    try:
+                        ml_confidence_for_scan = float(ml_confidence_for_scan)
+                        if ml_confidence_for_scan <= 1:
+                            ml_confidence_for_scan = ml_confidence_for_scan * 100
+                        ml_confidence_for_scan = round(ml_confidence_for_scan, 1)
+                    except Exception:
+                        ml_confidence_for_scan = None
                 
                 scan_data = {
                     'scan_duration_ms': scan_duration_ms,
@@ -2940,9 +2777,11 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         ),
                         # Paramètres du scan de scalabilité
                         'recent_volume': scalability_data.get('recent_volume'),
+                        'recentVolume': scalability_data.get('recent_volume'),  # Alias
                         'vol5': scalability_data.get('vol5'),
                         'vol15': scalability_data.get('vol15'),
                         'scalability_score': scalability_data.get('scalability_score'),
+                        'score': scalability_data.get('scalability_score'),  # Alias
                     },
                     # Ajouter aussi au niveau racine pour les fallbacks
                     'price': scan_price,  # 🔥 FIX: Ajouter le prix au niveau racine pour les fallbacks
@@ -2985,7 +2824,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'is_opportunity': bool(analysis and 'direction' in analysis and ('entry' in analysis or 'price' in analysis)),
                     'opportunity_direction': analysis.get('direction') if analysis and 'direction' in analysis else None,
                     # 🔥 ML Confidence: confiance réelle du modèle (si disponible)
-                    'ml_confidence': last_ml_confidence,
+                    'ml_confidence': ml_confidence_for_scan,
                     'params_snapshot': {
                         'volume_multiplier': eff_volume_multiplier,
                         'use_confluence': use_confluence,
@@ -3792,89 +3631,6 @@ def init_instances() -> None:
         except Exception as e:
             logger.warning(f"⚠️ Erreur initialisation PostgreSQL DataLogger: {e}")
             pg_datalogger = None
-        
-        # 🔥 PHASE 3: Créer tâche périodique pour logging contexte marché
-        if pg_datalogger and pg_datalogger.enabled:
-            async def log_market_context_periodic():
-                """Tâche périodique pour logger le contexte marché"""
-                while True:
-                    try:
-                        await asyncio.sleep(300)  # Toutes les 5 minutes
-                        if pg_datalogger and pg_datalogger.enabled:
-                            try:
-                                # Récupérer prix BTC/ETH
-                                context_data = {
-                                    'btc_price': None,
-                                    'eth_price': None,
-                                    'global_metrics': {},
-                                    'session_stats': {},
-                                    'market_trend': None,
-                                    'market_volatility': None,
-                                    'fear_greed_index': None
-                                }
-                                
-                                price_prov = state.get_price_provider()
-                                if price_prov:
-                                    try:
-                                        btc_price = await price_prov.get_price('BTCUSDT')
-                                        eth_price = await price_prov.get_price('ETHUSDT')
-                                        context_data['btc_price'] = btc_price
-                                        context_data['eth_price'] = eth_price
-                                    except Exception:
-                                        pass
-                                
-                                # Récupérer stats session si disponibles
-                                if hasattr(app_state, 'get'):
-                                    context_data['session_stats'] = {
-                                        'total_trades': app_state.get('total_trades', 0),
-                                        'win_rate': app_state.get('win_rate', 0),
-                                        'total_pnl': app_state.get('total_pnl', 0)
-                                    }
-                                
-                                pg_datalogger.log_market_context(context_data)
-                            except Exception as e:
-                                logger.debug(f"Erreur logging contexte marché périodique: {e}")
-                    except asyncio.CancelledError:
-                        break
-                    except Exception as e:
-                        logger.warning(f"Erreur tâche contexte marché: {e}")
-                        await asyncio.sleep(60)  # Attendre avant de réessayer
-            
-            # Démarrer la tâche périodique (seulement si boucle événements disponible)
-            try:
-                loop = asyncio.get_running_loop()
-                asyncio.create_task(log_market_context_periodic())
-                logger.info("✅ Tâche périodique contexte marché démarrée")
-            except RuntimeError:
-                # Pas de boucle d'événements, la tâche sera créée plus tard
-                logger.debug("📝 Tâche contexte marché reportée (pas de boucle événements)")
-            
-            # 🔥 PHASE 3: Tâche périodique pour flush forcé des buffers
-            async def flush_buffers_periodic():
-                """Tâche périodique pour forcer le flush des buffers toutes les 30 secondes"""
-                while True:
-                    try:
-                        await asyncio.sleep(30)  # Toutes les 30 secondes
-                        if pg_datalogger and pg_datalogger.enabled:
-                            try:
-                                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
-                                await pg_datalogger.flush_buffers_async(force=True)
-                            except Exception as e:
-                                logger.debug(f"Erreur flush périodique: {e}")
-                    except asyncio.CancelledError:
-                        break
-                    except Exception as e:
-                        logger.warning(f"Erreur tâche flush périodique: {e}")
-                        await asyncio.sleep(30)  # Attendre avant de réessayer
-            
-            # Démarrer la tâche de flush périodique (seulement si boucle événements disponible)
-            try:
-                loop = asyncio.get_running_loop()
-                asyncio.create_task(flush_buffers_periodic())
-                logger.info("✅ Tâche périodique flush buffers démarrée (toutes les 30s)")
-            except RuntimeError:
-                # Pas de boucle d'événements, la tâche sera créée plus tard
-                logger.debug("📝 Tâche flush buffers reportée (pas de boucle événements)")
         
         # 🔥 Simple Logger: Initialiser SimplePGLogger pour debugging
         try:
@@ -4846,8 +4602,12 @@ async def api_open_position(request: Request):
                 scalability_data=data.get('scalability_data'),
                 condition_types=condition_types,  # 🔥 PHASE 5: Types de conditions
                 ml_confidence=data.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
-                adaptive_sizing_multiplier=adaptive_mult  # 🔥 Multiplicateur adaptatif
+                adaptive_sizing_multiplier=adaptive_mult,  # 🔥 Multiplicateur adaptatif
+                setup_data=data
             )
+            
+            if position is None:
+                return JSONResponse({'error': 'Trade rejeté (calibration ML)'}, status_code=400)
             
             # 🔥 FIX: Stocker capital si fourni dans data
             if 'capital' in data:

@@ -1160,20 +1160,29 @@ class PositionManager:
         else:
             logger.warning(f"💤 Filtre GradientBoosting désactivé pour {symbol}")
 
+        ml_confidence_pct = None
+        if ml_confidence is not None:
+            try:
+                ml_confidence_pct = float(ml_confidence)
+                if ml_confidence_pct <= 1:
+                    ml_confidence_pct = ml_confidence_pct * 100
+            except Exception:
+                ml_confidence_pct = None
+
         # 🔥 ML AUTO-CALIBRATION: Vérifier si le trade doit être pris
         calibrated_wr = None
-        logger.info(f"🔍 Calibration check: {symbol} {direction} | ml_confidence={ml_confidence}")
+        logger.info(f"🔍 Calibration check: {symbol} {direction} | ml_confidence={ml_confidence_pct}")
         try:
             from ml.calibration import get_calibration_manager
             calib_manager = get_calibration_manager()
             should_take, calibrated_wr, calib_reason = calib_manager.should_take_trade(
                 direction=direction,
-                ml_confidence=ml_confidence
+                ml_confidence=ml_confidence_pct
             )
             
             if not should_take:
                 reject_reason_calib = (
-                    f"ML Calibration: ML Conf={ml_confidence:.1f}% -> WR Reel={calibrated_wr:.1f}% | "
+                    f"ML Calibration: ML Conf={ml_confidence_pct:.1f}% -> WR Reel={calibrated_wr:.1f}% | "
                     f"Raison: {calib_reason}"
                 )
                 logger.warning(f"🚫 Trade rejeté par {reject_reason_calib}")
@@ -1193,7 +1202,7 @@ class PositionManager:
                                         symbol=symbol,
                                         reject_reason=reject_reason_calib,
                                         reject_category="ml_calibration_winrate",
-                                        ml_confidence=ml_confidence
+                                        ml_confidence=ml_confidence_pct
                                     )
                                 except Exception:
                                     pass
@@ -1207,7 +1216,7 @@ class PositionManager:
                                         symbol=symbol,
                                         reject_reason=reject_reason_calib,
                                         reject_category="ml_calibration_winrate",
-                                        ml_confidence=ml_confidence
+                                        ml_confidence=ml_confidence_pct
                                     )
                                 except Exception:
                                     pass
@@ -1220,7 +1229,7 @@ class PositionManager:
             if calibrated_wr is not None:
                 logger.info(
                     f"✅ Trade accepté (calibration): {symbol} {direction} | "
-                    f"ML Conf={ml_confidence:.1f}% → WR Réel={calibrated_wr:.1f}%"
+                    f"ML Conf={ml_confidence_pct:.1f}% → WR Réel={calibrated_wr:.1f}%"
                 )
             else:
                 logger.info(f"⏭️ Calibration: {symbol} {direction} | Phase apprentissage (calibrated_wr=None)")
@@ -1455,7 +1464,7 @@ class PositionManager:
         self.active_position.size_executed_usdt = size  # Par défaut = demandée, mise à jour après ordre
         
         # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
-        self.active_position.ml_confidence = ml_confidence
+        self.active_position.ml_confidence = ml_confidence_pct
         self.active_position.ml_calibrated_winrate = calibrated_wr
         
         # 🔥 Stocker le multiplicateur sizing adaptatif

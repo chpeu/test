@@ -640,6 +640,9 @@ class PostgreSQLDataLogger:
                 book_depth_ratio = float(bid_vol) / float(ask_vol)
             
             # Préparer les paramètres
+            ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
             params = (
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
@@ -726,7 +729,7 @@ class PostgreSQLDataLogger:
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 
                 # 🔥 ML Confidence (confiance réelle du modèle, si disponible)
-                scan_data.get('ml_confidence'),
+                ml_confidence_value,
                 
                 # Params
                 json.dumps(params_snap),
@@ -793,6 +796,10 @@ class PostgreSQLDataLogger:
             return False
         
         try:
+            ml_confidence_value = _extract_numeric_value(ml_confidence)
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
+
             # Mettre à jour le scan le plus récent pour ce symbole
             query = """
                 UPDATE scan_logs 
@@ -818,9 +825,9 @@ class PostgreSQLDataLogger:
                 )
             """
             
-            result = self._execute_query(query, (ml_confidence, symbol, minutes_ago))
+            result = self._execute_query(query, (ml_confidence_value, symbol, minutes_ago))
             if result is not None:
-                logger.info(f"✅ ml_confidence mis à jour pour {symbol}: {ml_confidence:.1f}%")
+                logger.info(f"✅ ml_confidence mis à jour pour {symbol}: {ml_confidence_value:.1f}%")
                 return True
             return False
             
@@ -858,6 +865,9 @@ class PostgreSQLDataLogger:
         try:
             # Construire la requête selon si ml_confidence est fourni
             if ml_confidence is not None:
+                ml_confidence_value = _extract_numeric_value(ml_confidence)
+                if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                    ml_confidence_value = ml_confidence_value * 100.0
                 query = """
                     UPDATE scan_logs 
                     SET reject_reason = %s,
@@ -872,7 +882,7 @@ class PostgreSQLDataLogger:
                         LIMIT 1
                     )
                 """
-                params = (reject_reason, reject_category, ml_confidence, symbol, minutes_ago)
+                params = (reject_reason, reject_category, ml_confidence_value, symbol, minutes_ago)
             else:
                 query = """
                     UPDATE scan_logs 
@@ -1618,6 +1628,10 @@ class PostgreSQLDataLogger:
 
             # 🔥 FIX: Extraire adaptive_sizing_multiplier
             adaptive_sizing_multiplier = _extract_numeric_value(trade_data.get('adaptive_sizing_multiplier'))
+
+            ml_confidence_value = _extract_numeric_value(trade_data.get('ml_confidence'))
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
             
             fields = []
             if provided_trade_id:
@@ -1844,7 +1858,7 @@ class PostgreSQLDataLogger:
                 ('entry_effective_min_score', _extract_numeric_value(trade_data.get('entry_effective_min_score'))),
                 ('win', win),
                 # 🔥 FIX: ml_confidence toujours loggé (pas seulement pour live trades)
-                ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence')))
+                ('ml_confidence', ml_confidence_value)
             ])
             
             # 🔥 LIVE TRADING COLUMNS (ajoutées conditionnellement si présentes)

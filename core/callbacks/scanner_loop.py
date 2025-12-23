@@ -521,6 +521,22 @@ async def _scan_top_pairs():
                                 # 🔥 FIX CRITIQUE: Stocker ml_confidence comme décimal (0.0-1.0), pas pourcentage
                                 best_setup['ml_confidence'] = round(confidence, 4)  # Décimal arrondi
                                 
+                                try:
+                                    pg_logger = get_pg_datalogger()
+                                    if pg_logger and pg_logger.enabled:
+                                        ml_conf_pct = round(confidence * 100, 1)
+                                        await pg_logger.update_ml_confidence_async(symbol, ml_conf_pct)
+                                        if not should_trade:
+                                            reject_reason = f"ML confidence {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%"
+                                            await pg_logger.update_ml_rejection_async(
+                                                symbol=symbol,
+                                                reject_reason=reject_reason,
+                                                reject_category="ml_gb_confidence",
+                                                ml_confidence=ml_conf_pct
+                                            )
+                                except Exception as pg_err:
+                                    logger.debug(f"⚠️ Erreur update PostgreSQL ml_confidence: {type(pg_err).__name__}: {pg_err}")
+                                
                                 if not should_trade:
                                     logger.warning(f"❌ GradientBoosting REJETTE le trade: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
                                     return  # Bloquer l'ouverture
@@ -674,49 +690,53 @@ async def _scan_top_pairs():
                     scalability_data=scalability_data,  # BUG #5: Données récupérées
                     condition_types=best_setup.get('condition_types', []),
                     ml_confidence=best_setup.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
-                    adaptive_sizing_multiplier=adaptive_sizing_mult  # 🔥 Multiplicateur adaptatif
+                    adaptive_sizing_multiplier=adaptive_sizing_mult,  # 🔥 Multiplicateur adaptatif
+                    setup_data=best_setup
                 )
 
-                logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
+                if position_result is None:
+                    logger.info(f"⏭️ Trade {symbol} {best_setup.get('direction')} ignoré (rejeté par calibration)")
+                else:
+                    logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
 
-                # BUG #3 et #9 FIX: Utiliser to_dict() au lieu de créer manuellement
-                if _app_state is not None:
-                    _app_state['active_position'] = position_result.to_dict()
+                    # BUG #3 et #9 FIX: Utiliser to_dict() au lieu de créer manuellement
+                    if _app_state is not None:
+                        _app_state['active_position'] = position_result.to_dict()
 
-                # 🔥 FIX: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
-                # Ceci garantit que current_price sera mis à jour correctement pendant la position
-                if _price_provider:
-                    try:
-                        # Arrêter WebSocket actuel
-                        if hasattr(_price_provider, 'stop_websocket'):
-                            await _price_provider.stop_websocket()
-                            logger.debug("🔌 WebSocket arrêté pour position")
-                            # Attendre que le WebSocket soit complètement arrêté
-                            await asyncio.sleep(0.5)
+                    # 🔥 FIX: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
+                    # Ceci garantit que current_price sera mis à jour correctement pendant la position
+                    if _price_provider:
+                        try:
+                            # Arrêter WebSocket actuel
+                            if hasattr(_price_provider, 'stop_websocket'):
+                                await _price_provider.stop_websocket()
+                                logger.debug("🔌 WebSocket arrêté pour position")
+                                # Attendre que le WebSocket soit complètement arrêté
+                                await asyncio.sleep(0.5)
 
-                        # Redémarrer WebSocket uniquement sur le symbole de la position
-                        if hasattr(_price_provider, 'start_websocket'):
-                            await _price_provider.start_websocket([symbol])
-                            logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
-                        
-                        # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
-                        if hasattr(_price_provider, 'set_sl_check_callback') and position_result:
-                            try:
-                                from main import setup_realtime_sl_check
-                                await setup_realtime_sl_check(position_result, _price_provider)
-                            except ImportError:
-                                logger.warning("⚠️ Impossible d'importer setup_realtime_sl_check")
-                            except Exception as sl_err:
-                                logger.error(f"❌ Erreur configuration SL temps réel: {sl_err}")
-                    except Exception as e:
-                        logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
-                        import traceback
-                        logger.debug(traceback.format_exc())
-                        await _notify_error('restart_websocket_position', f"{symbol}: {e}")
+                            # Redémarrer WebSocket uniquement sur le symbole de la position
+                            if hasattr(_price_provider, 'start_websocket'):
+                                await _price_provider.start_websocket([symbol])
+                                logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
+                            
+                            # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
+                            if hasattr(_price_provider, 'set_sl_check_callback') and position_result:
+                                try:
+                                    from main import setup_realtime_sl_check
+                                    await setup_realtime_sl_check(position_result, _price_provider)
+                                except ImportError:
+                                    logger.warning("⚠️ Impossible d'importer setup_realtime_sl_check")
+                                except Exception as sl_err:
+                                    logger.error(f"❌ Erreur configuration SL temps réel: {sl_err}")
+                        except Exception as e:
+                            logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
+                            import traceback
+                            logger.debug(traceback.format_exc())
+                            await _notify_error('restart_websocket_position', f"{symbol}: {e}")
 
-                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-                if _ws_manager:
-                    await _ws_manager.emit('position_opened', position_result.to_dict())
+                    # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+                    if _ws_manager:
+                        await _ws_manager.emit('position_opened', position_result.to_dict())
 
             except ValueError as e:
                 logger.error(f"❌ Erreur validation position: {e}")
@@ -1246,8 +1266,6 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'price_momentum_5': None,  # Nécessite historique
                     }
                     logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}, delta_vol={delta_volume}")
-
-                scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
                 scan_price = None
                 if analysis and isinstance(analysis, dict):
