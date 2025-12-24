@@ -547,11 +547,29 @@ class PositionManager:
                         
                         # 🔥 FIX: Exécuter close_position directement - TOUJOURS
                         position_cleaned = False
+                        close_result = None
                         try:
                             logger.info(f"🔒 Fermeture SL_EXCHANGE en cours pour {symbol}...")
-                            self.close_position(exit_price, reason='SL_EXCHANGE')
+                            close_result = self.close_position(exit_price, reason='SL_EXCHANGE')
                             logger.info(f"✅ Position {symbol} fermée suite à SL EXCHANGE")
                             position_cleaned = True
+                            
+                            # 🔥 FIX 24/12/2025: Ajouter le trade à l'historique UI
+                            if close_result:
+                                try:
+                                    state = get_state_manager()
+                                    from datetime import datetime
+                                    close_result['timestamp'] = datetime.now().isoformat()
+                                    state.add_trade(close_result)
+                                    # Sauvegarder l'historique
+                                    try:
+                                        from main import save_trade_history
+                                        save_trade_history()
+                                    except ImportError:
+                                        pass
+                                    logger.info(f"📊 Trade SL_EXCHANGE ajouté à l'historique: {symbol}")
+                                except Exception as hist_err:
+                                    logger.warning(f"⚠️ Erreur ajout historique SL_EXCHANGE: {hist_err}")
                         except Exception as close_err:
                             logger.error(f"❌ Erreur fermeture SL_EXCHANGE pour {symbol}: {close_err}")
                             import traceback
@@ -2595,7 +2613,22 @@ class PositionManager:
                                 # Utiliser SL comme prix de sortie estimé
                                 exit_price = self.active_position.sl or current_price
                                 try:
-                                    self.close_position(exit_price, reason='SL_EXCHANGE')
+                                    close_result = self.close_position(exit_price, reason='SL_EXCHANGE')
+                                    # 🔥 FIX 24/12/2025: Ajouter le trade à l'historique UI
+                                    if close_result:
+                                        try:
+                                            state = get_state_manager()
+                                            from datetime import datetime
+                                            close_result['timestamp'] = datetime.now().isoformat()
+                                            state.add_trade(close_result)
+                                            try:
+                                                from main import save_trade_history
+                                                save_trade_history()
+                                            except ImportError:
+                                                pass
+                                            logger.info(f"📊 Trade SL_EXCHANGE (TP partiel) ajouté à l'historique")
+                                        except Exception as hist_err:
+                                            logger.warning(f"⚠️ Erreur ajout historique: {hist_err}")
                                     return 'SL'  # Indiquer que le trade est fermé
                                 except Exception as close_err:
                                     logger.error(f"❌ Erreur fermeture après détection SL_EXCHANGE: {close_err}")
