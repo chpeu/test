@@ -2182,7 +2182,7 @@ class PostgreSQLDataLogger:
             
             # Construire la requête
             # 🔥 PHASE 0.5 Extended + PHASE 1A: Ajout BE, trailing, stagnation, session/heure
-            query = """
+            insert_sql = """
                 INSERT INTO trade_atr_metrics (
                     trade_id,
                     entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
@@ -2222,8 +2222,81 @@ class PostgreSQLDataLogger:
                     %s, %s, %s, %s, %s,
                     -- PHASE 1A values
                     %s, %s, %s, %s, %s, %s, %s, %s
-                ) RETURNING id
+                )
             """
+
+            upsert_query = insert_sql.rstrip() + """
+                ON CONFLICT (trade_id) DO UPDATE SET
+                    entry_atr_1m = EXCLUDED.entry_atr_1m,
+                    entry_atr_5m = EXCLUDED.entry_atr_5m,
+                    entry_atr_pct_1m = EXCLUDED.entry_atr_pct_1m,
+                    entry_atr_pct_5m = EXCLUDED.entry_atr_pct_5m,
+                    param_atr_mult_sl = EXCLUDED.param_atr_mult_sl,
+                    param_atr_mult_tp = EXCLUDED.param_atr_mult_tp,
+                    param_trailing_trigger_mult = EXCLUDED.param_trailing_trigger_mult,
+                    param_trailing_distance_mult = EXCLUDED.param_trailing_distance_mult,
+                    param_be_atr_mult = EXCLUDED.param_be_atr_mult,
+                    param_stagnation_timeout = EXCLUDED.param_stagnation_timeout,
+                    param_stagnation_min_pnl = EXCLUDED.param_stagnation_min_pnl,
+                    market_volatility_state = EXCLUDED.market_volatility_state,
+                    market_trend_state = EXCLUDED.market_trend_state,
+                    entry_adx = EXCLUDED.entry_adx,
+                    calculated_sl_price = EXCLUDED.calculated_sl_price,
+                    calculated_tp_price = EXCLUDED.calculated_tp_price,
+                    calculated_sl_pct = EXCLUDED.calculated_sl_pct,
+                    calculated_tp_pct = EXCLUDED.calculated_tp_pct,
+                    calculated_be_trigger_pnl_pct = EXCLUDED.calculated_be_trigger_pnl_pct,
+                    calculated_trailing_trigger_pnl_pct = EXCLUDED.calculated_trailing_trigger_pnl_pct,
+                    be_triggered = EXCLUDED.be_triggered,
+                    be_triggered_at = EXCLUDED.be_triggered_at,
+                    be_triggered_pnl_pct = EXCLUDED.be_triggered_pnl_pct,
+                    be_price_at_trigger = EXCLUDED.be_price_at_trigger,
+                    trailing_activated = EXCLUDED.trailing_activated,
+                    trailing_activated_at = EXCLUDED.trailing_activated_at,
+                    trailing_final_distance_pct = EXCLUDED.trailing_final_distance_pct,
+                    trailing_final_sl_price = EXCLUDED.trailing_final_sl_price,
+                    max_pnl_reached = EXCLUDED.max_pnl_reached,
+                    min_pnl_reached = EXCLUDED.min_pnl_reached,
+                    max_price_reached = EXCLUDED.max_price_reached,
+                    min_price_reached = EXCLUDED.min_price_reached,
+                    time_to_max_pnl_seconds = EXCLUDED.time_to_max_pnl_seconds,
+                    time_to_min_pnl_seconds = EXCLUDED.time_to_min_pnl_seconds,
+                    stagnation_detected = EXCLUDED.stagnation_detected,
+                    stagnation_detected_at = EXCLUDED.stagnation_detected_at,
+                    stagnation_duration_seconds = EXCLUDED.stagnation_duration_seconds,
+                    stagnation_pnl_at_exit = EXCLUDED.stagnation_pnl_at_exit,
+                    trailing_mfe_triggered = EXCLUDED.trailing_mfe_triggered,
+                    trailing_mfe_triggered_at = EXCLUDED.trailing_mfe_triggered_at,
+                    trailing_mfe_trigger_pnl_pct = EXCLUDED.trailing_mfe_trigger_pnl_pct,
+                    trailing_mfe_trigger_price = EXCLUDED.trailing_mfe_trigger_price,
+                    param_stagnation_positive_enabled = EXCLUDED.param_stagnation_positive_enabled,
+                    param_stagnation_positive_threshold = EXCLUDED.param_stagnation_positive_threshold,
+                    param_stagnation_positive_timeout = EXCLUDED.param_stagnation_positive_timeout,
+                    param_trailing_mfe_enabled = EXCLUDED.param_trailing_mfe_enabled,
+                    param_trailing_mfe_trigger_pct = EXCLUDED.param_trailing_mfe_trigger_pct,
+                    param_stagnation_mfe_tracking = EXCLUDED.param_stagnation_mfe_tracking,
+                    param_stagnation_mfe_pullback_pct = EXCLUDED.param_stagnation_mfe_pullback_pct,
+                    stagnation_positive_triggered = EXCLUDED.stagnation_positive_triggered,
+                    stagnation_mfe_at_exit = EXCLUDED.stagnation_mfe_at_exit,
+                    stagnation_pullback_at_exit = EXCLUDED.stagnation_pullback_at_exit,
+                    sl_mexc_price = EXCLUDED.sl_mexc_price,
+                    sl_mexc_pct = EXCLUDED.sl_mexc_pct,
+                    sl_mexc_margin_used = EXCLUDED.sl_mexc_margin_used,
+                    sl_mexc_touched = EXCLUDED.sl_mexc_touched,
+                    sl_mexc_touched_at = EXCLUDED.sl_mexc_touched_at,
+                    session_market = EXCLUDED.session_market,
+                    hour_utc = EXCLUDED.hour_utc,
+                    day_of_week = EXCLUDED.day_of_week,
+                    is_weekend = EXCLUDED.is_weekend,
+                    regime_detection_method = EXCLUDED.regime_detection_method,
+                    regime_stability_minutes = EXCLUDED.regime_stability_minutes,
+                    regime_confidence = EXCLUDED.regime_confidence,
+                    session_atr_multiplier = EXCLUDED.session_atr_multiplier,
+                    updated_at = NOW()
+                RETURNING id
+            """
+
+            insert_query = insert_sql.rstrip() + "\n                RETURNING id\n            "
             
             params = (
                 trade_id,
@@ -2257,7 +2330,9 @@ class PostgreSQLDataLogger:
                 session_atr_multiplier
             )
             
-            result = self._execute_query(query, params, fetch=True)
+            result = self._execute_query(upsert_query, params, fetch=True)
+            if not result:
+                result = self._execute_query(insert_query, params, fetch=True)
             if result:
                 metric_id = result[0][0]
                 logger.debug(f"📊 ATR metrics loggées pour trade {trade_id[:8]}... (metric_id: {metric_id})")

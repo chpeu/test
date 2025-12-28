@@ -80,6 +80,8 @@ def backfill_trade_atr_metrics(limit: int = None, dry_run: bool = False):
         FROM trades t
         LEFT JOIN trade_atr_metrics m ON t.id = m.trade_id
         WHERE m.id IS NULL
+          AND t.tp_sl_mode = 'ATR'
+          AND t.timestamp_exit IS NOT NULL
         ORDER BY t.created_at DESC
     """
     

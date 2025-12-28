@@ -59,8 +59,9 @@ TRADING_CONFIG = {
     "trailing_distance": 0.15,  # Trailing fallback
     
     # 🔥 ATR mode - HYBRID INTELLIGENT
-    "atr_mult_tp": 2.2,   # 🔥 TP = 2.2 × ATR (plus atteignable, était 3.0)
-    "atr_mult_sl": 1.2,   # 🔥 SL = 1.2 × ATR (laisse respirer le trade)
+    # 🔥 28/12: Optimisé selon analyse 2041 trades ATR
+    "atr_mult_tp": 2.0,   # 🔥 28/12: 2.2 → 2.0 (prendre profits plus tôt)
+    "atr_mult_sl": 1.6,   # 🔥 28/12: 1.2 → 1.6 (SL trop serré causait -0.49$/trade)
     "sl_max_pct": 0.50,   # 🔥 FIX 18/12: SL MAXIMUM 0.5% (limite les pertes)
     "atr_min": 0.10,      # ATR minimum 0.10% (micro-volatilité)
     "atr_max": 1.0,       # ATR maximum 1.0% (macro-volatilité)

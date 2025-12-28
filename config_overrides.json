@@ -197,8 +197,8 @@
   "micro_confirmation_delay_ms": 700,
   "sl_max_pct": 0.5,
   "ml_metric": "accuracy",
-  "atr_mult_tp": 2.2,
-  "atr_mult_sl": 1.2,
+  "atr_mult_tp": 2.0,
+  "atr_mult_sl": 1.6,
   "max_spread_pct": 0.01,
   "max_spread_pct_fixe": 0.03,
   "max_spread_pct_atr": 0.04
