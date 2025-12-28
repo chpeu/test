@@ -397,6 +397,11 @@ def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> Order
         default_leverage=trading_config.get('default_leverage'),
         max_latency_ms=trading_config.get('max_latency_ms')
     )
+    categories['💱 Spread Thresholds'] = OrderedDict(
+        max_spread_pct=trading_config.get('max_spread_pct'),
+        max_spread_pct_fixe=trading_config.get('max_spread_pct_fixe'),
+        max_spread_pct_atr=trading_config.get('max_spread_pct_atr')
+    )
     categories['🛡️ Filtres Avancés (OPT #15-19)'] = OrderedDict(
         use_anti_whipsaw=trading_config.get('use_anti_whipsaw'),
         whipsaw_lookback=trading_config.get('whipsaw_lookback'),
@@ -6720,6 +6725,33 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['market_regime_btc_force_volatile_enabled'] = bool(params['market_regime_btc_force_volatile_enabled'])
             updated['market_regime_btc_force_volatile_enabled'] = TRADING_CONFIG['market_regime_btc_force_volatile_enabled']
             logger.info(f"✅ market_regime_btc_force_volatile_enabled: {TRADING_CONFIG['market_regime_btc_force_volatile_enabled']}")
+        
+        # 🔥 Spread Thresholds (onglet Paires)
+        if 'max_spread_pct' in params:
+            val = params['max_spread_pct']
+            if val is None or val == '' or val == 'null':
+                TRADING_CONFIG['max_spread_pct'] = None
+                updated['max_spread_pct'] = None
+            else:
+                val = float(val)
+                val = max(0.01, min(1.0, val))  # Clamp 0.01-1.0%
+                TRADING_CONFIG['max_spread_pct'] = val
+                updated['max_spread_pct'] = val
+            logger.info(f"✅ max_spread_pct: {TRADING_CONFIG['max_spread_pct']}")
+        
+        if 'max_spread_pct_fixe' in params:
+            val = float(params['max_spread_pct_fixe'])
+            val = max(0.01, min(0.5, val))  # Clamp 0.01-0.5%
+            TRADING_CONFIG['max_spread_pct_fixe'] = val
+            updated['max_spread_pct_fixe'] = val
+            logger.info(f"✅ max_spread_pct_fixe: {val}%")
+        
+        if 'max_spread_pct_atr' in params:
+            val = float(params['max_spread_pct_atr'])
+            val = max(0.01, min(0.5, val))  # Clamp 0.01-0.5%
+            TRADING_CONFIG['max_spread_pct_atr'] = val
+            updated['max_spread_pct_atr'] = val
+            logger.info(f"✅ max_spread_pct_atr: {val}%")
 
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
@@ -7063,7 +7095,11 @@ async def api_get_config():
         'gb_max_iter': TRADING_CONFIG.get('gb_max_iter', 200),
         'gb_max_depth': TRADING_CONFIG.get('gb_max_depth', 5),
         'gb_learning_rate': TRADING_CONFIG.get('gb_learning_rate', 0.1),
-        'gb_l2_regularization': TRADING_CONFIG.get('gb_l2_regularization', 0.5)
+        'gb_l2_regularization': TRADING_CONFIG.get('gb_l2_regularization', 0.5),
+        # 🔥 Spread Thresholds (onglet Paires)
+        'max_spread_pct': TRADING_CONFIG.get('max_spread_pct'),
+        'max_spread_pct_fixe': TRADING_CONFIG.get('max_spread_pct_fixe', 0.03),
+        'max_spread_pct_atr': TRADING_CONFIG.get('max_spread_pct_atr', 0.06)
     })
 
 
@@ -7964,7 +8000,12 @@ async def export_datalogger_excel(
                 if table_name == 'ml_calibration':
                     base_query += f" ORDER BY updated_at DESC LIMIT {limit}"
                 elif table_name == 'ml_calibration_history':
-                    base_query += f" ORDER BY created_at DESC LIMIT {limit}"
+                    if 'snapshot_at' in column_names:
+                        base_query += f" ORDER BY snapshot_at DESC LIMIT {limit}"
+                    elif 'created_at' in column_names:
+                        base_query += f" ORDER BY created_at DESC LIMIT {limit}"
+                    else:
+                        base_query += f" ORDER BY id DESC LIMIT {limit}"
                 elif table_name == 'circuit_breaker_events':
                     # 🔥 SPRINT 1: Événements circuit breaker triés par timestamp
                     base_query += f" ORDER BY timestamp DESC LIMIT {limit}"

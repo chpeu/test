@@ -276,7 +276,57 @@ class ScalabilityScanner:
         
         # 🔥 OPT #1: Paramètres configurables (plus hardcodés)
         spread_min = TRADING_CONFIG.get('scalability_spread_min', 0.001)
+        try:
+            spread_min = float(spread_min)
+        except (TypeError, ValueError):
+            spread_min = 0.001
+
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+
+        max_spread_override = TRADING_CONFIG.get('max_spread_pct')
+        max_spread_fixe = TRADING_CONFIG.get('max_spread_pct_fixe')
+        max_spread_atr = TRADING_CONFIG.get('max_spread_pct_atr')
+
+        try:
+            max_spread_override = float(max_spread_override) if max_spread_override is not None else None
+        except (TypeError, ValueError):
+            max_spread_override = None
+
+        try:
+            max_spread_fixe = float(max_spread_fixe) if max_spread_fixe is not None else None
+        except (TypeError, ValueError):
+            max_spread_fixe = None
+
+        try:
+            max_spread_atr = float(max_spread_atr) if max_spread_atr is not None else None
+        except (TypeError, ValueError):
+            max_spread_atr = None
+
+        if tp_sl_mode == 'FIXE':
+            if max_spread_fixe is not None:
+                max_spread_trading = max_spread_fixe
+            elif max_spread_override is not None:
+                max_spread_trading = max_spread_override
+            else:
+                max_spread_trading = 0.03
+        else:
+            if max_spread_atr is not None:
+                max_spread_trading = max_spread_atr
+            elif max_spread_override is not None:
+                max_spread_trading = max_spread_override
+            else:
+                max_spread_trading = 0.06
+
         spread_max = TRADING_CONFIG.get('scalability_spread_max', 0.02)
+        try:
+            spread_max = float(spread_max) if spread_max is not None else None
+        except (TypeError, ValueError):
+            spread_max = None
+
+        if spread_max is None:
+            spread_max = max_spread_trading
+        else:
+            spread_max = min(spread_max, max_spread_trading)
         volume_min = TRADING_CONFIG.get('scalability_volume_min', 100000)
         funding_max = TRADING_CONFIG.get('scalability_funding_rate_max', 0.05)
         balance_min = TRADING_CONFIG.get('balance_score_min', 0.7)

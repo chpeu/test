@@ -120,7 +120,8 @@ class MLCalibrationManager:
         self._cache: Dict[Tuple[str, str], CalibrationStats] = {}
         self._cache_timestamp: Optional[datetime] = None
         self._cache_ttl_seconds = 60  # Refresh cache toutes les 60 secondes
-        
+        self._history_schema: Optional[str] = None
+
     def _get_db_pool(self):
         """Récupère le pool de connexions DB"""
         if self._db_pool:
@@ -149,7 +150,7 @@ class MLCalibrationManager:
                 'decay_days': TRADING_CONFIG.get('ml_calib_decay_days', 14),
                 'min_trades': TRADING_CONFIG.get('ml_calib_min_trades', 30),
                 'auto_reset_on_retrain': TRADING_CONFIG.get('ml_calib_auto_reset', True),
-                'min_winrate': TRADING_CONFIG.get('ml_calib_min_winrate', 40.0),
+                'min_winrate': self._normalize_confidence_pct(TRADING_CONFIG.get('ml_calib_min_winrate', 40.0)),
                 'bucket_size': TRADING_CONFIG.get('ml_calib_bucket_size', 5),
             }
         except Exception as e:
@@ -163,6 +164,15 @@ class MLCalibrationManager:
                 'min_winrate': 40.0,
                 'bucket_size': 5,
             }
+
+    def _normalize_confidence_pct(self, value: Optional[float]) -> Optional[float]:
+        try:
+            if value is None:
+                return None
+            value = float(value)
+            return value * 100.0 if value <= 1.0 else value
+        except Exception:
+            return None
     
     def get_confidence_bucket(self, ml_confidence: float, bucket_size: int = 5) -> str:
         """
@@ -259,7 +269,8 @@ class MLCalibrationManager:
             return False
         
         # Ne prendre que les trades avec ML confidence valide
-        if ml_confidence is None or ml_confidence < 30:
+        ml_confidence_pct = self._normalize_confidence_pct(ml_confidence)
+        if ml_confidence_pct is None or ml_confidence_pct < 30:
             logger.debug(f"Trade ignoré pour calibration: ml_confidence={ml_confidence}")
             return False
         
@@ -270,7 +281,7 @@ class MLCalibrationManager:
             return False
         
         # Calculer le bucket et le poids
-        bucket = self.get_confidence_bucket(ml_confidence, config['bucket_size'])
+        bucket = self.get_confidence_bucket(ml_confidence_pct, config['bucket_size'])
         weight = self.calculate_trade_weight(is_live, is_dry_run, trade_timestamp)
         
         logger.info(
@@ -403,15 +414,31 @@ class MLCalibrationManager:
             conn = pg_logger.pool.getconn()
             try:
                 with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO ml_calibration_history 
-                        (direction, confidence_bucket, old_winrate, new_winrate, 
-                         total_trades, weighted_total, reason, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-                    """, (
-                        direction, bucket, old_winrate, new_winrate,
-                        total_trades, weighted_total, reason
-                    ))
+                    history_schema = self._detect_history_schema(cur)
+                    if history_schema == 'v2':
+                        cur.execute("""
+                            INSERT INTO ml_calibration_history 
+                            (direction, confidence_bucket, actual_winrate, total_trades, reason)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            direction, bucket, new_winrate,
+                            total_trades, reason
+                        ))
+                    elif history_schema == 'v1':
+                        cur.execute("""
+                            INSERT INTO ml_calibration_history 
+                            (direction, confidence_bucket, old_winrate, new_winrate, total_trades, reason)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (
+                            direction, bucket, old_winrate, new_winrate,
+                            total_trades, reason
+                        ))
+                    else:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        return False
                     conn.commit()
                     logger.debug(f"[HISTORY] {direction} {bucket}: {old_winrate} -> {new_winrate} ({reason})")
                     return True
@@ -420,6 +447,29 @@ class MLCalibrationManager:
         except Exception as e:
             logger.warning(f"[WARN] Erreur log historique: {e}")
             return False
+
+    def _detect_history_schema(self, cur) -> str:
+        if self._history_schema:
+            return self._history_schema
+        try:
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'ml_calibration_history'
+                """
+            )
+            cols = {row[0] for row in cur.fetchall()}
+            if 'actual_winrate' in cols:
+                self._history_schema = 'v2'
+            elif 'new_winrate' in cols:
+                self._history_schema = 'v1'
+            else:
+                self._history_schema = 'unknown'
+        except Exception:
+            self._history_schema = 'unknown'
+        return self._history_schema
 
     def get_calibrated_winrate(
         self, 
@@ -437,7 +487,10 @@ class MLCalibrationManager:
             Winrate réel (%) ou None si pas assez de données
         """
         config = self._get_config()
-        bucket = self.get_confidence_bucket(ml_confidence, config['bucket_size'])
+        ml_confidence_pct = self._normalize_confidence_pct(ml_confidence)
+        if ml_confidence_pct is None:
+            return None
+        bucket = self.get_confidence_bucket(ml_confidence_pct, config['bucket_size'])
         
         stats = self._get_stats(direction, bucket)
         if not stats:
@@ -477,15 +530,16 @@ class MLCalibrationManager:
         if not config['enabled']:
             return True, None, "calibration_disabled"
         
-        if ml_confidence is None or ml_confidence < 30:
+        ml_confidence_pct = self._normalize_confidence_pct(ml_confidence)
+        if ml_confidence_pct is None or ml_confidence_pct < 30:
             return True, None, "no_ml_confidence"
         
-        calibrated_wr = self.get_calibrated_winrate(direction, ml_confidence)
+        calibrated_wr = self.get_calibrated_winrate(direction, ml_confidence_pct)
         
         if calibrated_wr is None:
             return True, None, "learning_phase"
         
-        bucket = self.get_confidence_bucket(ml_confidence, config['bucket_size'])
+        bucket = self.get_confidence_bucket(ml_confidence_pct, config['bucket_size'])
         min_wr = config['min_winrate']
         
         if calibrated_wr >= min_wr:
@@ -589,15 +643,23 @@ class MLCalibrationManager:
                 with conn.cursor() as cur:
                     # Sauvegarder dans l'historique avant reset
                     try:
-                        cur.execute("""
-                            INSERT INTO ml_calibration_history 
-                            (direction, confidence_bucket, old_winrate, new_winrate, 
-                             total_trades, weighted_total, reason, created_at)
-                            SELECT direction, confidence_bucket, actual_winrate, 0,
-                                   total_trades, weighted_total, %s, NOW()
-                            FROM ml_calibration
-                            WHERE total_trades > 0
-                        """, (reason,))
+                        history_schema = self._detect_history_schema(cur)
+                        if history_schema == 'v2':
+                            cur.execute("""
+                                INSERT INTO ml_calibration_history 
+                                (direction, confidence_bucket, actual_winrate, total_trades, reason)
+                                SELECT direction, confidence_bucket, actual_winrate, total_trades, %s
+                                FROM ml_calibration
+                                WHERE total_trades > 0
+                            """, (reason,))
+                        elif history_schema == 'v1':
+                            cur.execute("""
+                                INSERT INTO ml_calibration_history 
+                                (direction, confidence_bucket, old_winrate, new_winrate, total_trades, reason)
+                                SELECT direction, confidence_bucket, actual_winrate, actual_winrate, total_trades, %s
+                                FROM ml_calibration
+                                WHERE total_trades > 0
+                            """, (reason,))
                         logger.info(f"[HISTORY] Snapshot avant reset ({reason})")
                     except Exception as e:
                         logger.warning(f"[WARN] Erreur log historique reset: {e}")

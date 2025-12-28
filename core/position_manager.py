@@ -163,6 +163,8 @@ class Position:
     ml_confidence: Optional[float] = None  # Confiance ML au moment de l'ouverture (%)
     ml_calibrated_winrate: Optional[float] = None  # 🔥 WR Réel calibré (si disponible)
     adaptive_sizing_multiplier: Optional[float] = None  # Multiplicateur sizing adaptatif (0.5-1.5)
+    ml_prediction: Optional[str] = None
+    ml_features: Optional[Dict[str, Any]] = None
     
     # 🔥 Configuration effective (pour adaptation dynamique)
     effective_config: Dict[str, Any] = field(default_factory=dict)
@@ -267,6 +269,8 @@ class Position:
             'ml_confidence': self.ml_confidence,
             'ml_calibrated_winrate': self.ml_calibrated_winrate,
             'adaptive_sizing_multiplier': self.adaptive_sizing_multiplier,
+            'ml_prediction': self.ml_prediction,
+            'ml_features': self.ml_features if isinstance(self.ml_features, dict) else {},
             # 🔥 FIX: Info TP partiel forcé à 100%
             'min_contract_amount': self.min_contract_amount,
             'force_full_tp_for_partial': self.force_full_tp_for_partial,
@@ -613,12 +617,8 @@ class PositionManager:
                     previous_entry = current_position.entry
                     if previous_entry and abs(live_entry_price - previous_entry) > 1e-8:
                         price_diff = live_entry_price - previous_entry
-                        if current_position.direction == 'LONG':
-                            current_position.tp += price_diff
-                            current_position.sl += price_diff
-                        else:
-                            current_position.tp -= price_diff
-                            current_position.sl -= price_diff
+                        current_position.tp += price_diff
+                        current_position.sl += price_diff
                         logger.info(
                             f"🔁 [LIVE] Prix d'entrée resynchronisé: {previous_entry:.8f} -> {live_entry_price:.8f}"
                         )
@@ -836,7 +836,7 @@ class PositionManager:
         ml_confidence: Optional[float] = None,  # 🔥 FIX: Ajouter ml_confidence
         adaptive_sizing_multiplier: Optional[float] = None,  # 🔥 Multiplicateur sizing adaptatif
         setup_data: Optional[Dict] = None  # 🔥 CRITICAL: Setup complet pour accès indicators_1m/5m
-    ) -> Position:
+    ) -> Optional[Position]:
         """
         Ouvrir une nouvelle position
 
@@ -886,6 +886,10 @@ class PositionManager:
         from config import TRADING_CONFIG
         gb_enabled = TRADING_CONFIG.get('gb_filter_enabled', False)
         logger.warning(f"🔍 DEBUG GB CONFIG: gb_filter_enabled={gb_enabled} pour {symbol}")
+
+        gb_ml_prediction = None
+        gb_ml_features = None
+        gb_ml_confidence = None
         
         if gb_enabled:
             logger.warning(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
@@ -1154,24 +1158,29 @@ class PositionManager:
                 missing_features = [f for f in gb_expected_features if f not in features]
                 if missing_features:
                     logger.warning(f"⚠️ Features GB manquantes: {missing_features}")
+                    logger.warning(f"⚠️ Features insuffisantes pour filtre GradientBoosting - Trade autorisé par défaut")
                 else:
                     logger.warning(f"✅ SUCCÈS: Toutes les 20 features GB sont disponibles!")
-                
-                # Obtenir le prédicteur et faire la prédiction
-                predictor = get_predictor()
-                if predictor:
-                    gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.65)
-                    should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
                     
-                    logger.warning(f"🌳 Prédiction GB: should_trade={should_trade}, confidence={confidence:.3f}, seuil={gb_min_confidence}")
-                    
-                    if not should_trade:
-                        logger.warning(f"🚫 TRADE BLOQUÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} < {gb_min_confidence})")
-                        return None  # Bloquer le trade
+                    # Obtenir le prédicteur et faire la prédiction
+                    predictor = get_predictor()
+                    if predictor:
+                        gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.65)
+                        should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
+
+                        gb_ml_confidence = confidence
+                        gb_ml_prediction = 'win' if confidence >= 0.5 else 'loss'
+                        gb_ml_features = gb_features
+                        
+                        logger.warning(f"🌳 Prédiction GB: should_trade={should_trade}, confidence={confidence:.3f}, seuil={gb_min_confidence}")
+                        
+                        if not should_trade:
+                            logger.warning(f"🚫 TRADE BLOQUÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} < {gb_min_confidence})")
+                            return None  # Bloquer le trade
+                        else:
+                            logger.warning(f"✅ TRADE APPROUVÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} >= {gb_min_confidence})")
                     else:
-                        logger.warning(f"✅ TRADE APPROUVÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} >= {gb_min_confidence})")
-                else:
-                    logger.warning(f"⚠️ Prédicteur GB non disponible - Trade autorisé par défaut")
+                        logger.warning(f"⚠️ Prédicteur GB non disponible - Trade autorisé par défaut")
             
             except Exception as e:
                 logger.warning(f"⚠️ Erreur filtre GradientBoosting: {e} - Trade autorisé par défaut")
@@ -1186,6 +1195,9 @@ class PositionManager:
                     ml_confidence_pct = ml_confidence_pct * 100
             except Exception:
                 ml_confidence_pct = None
+
+        if gb_ml_prediction is None and ml_confidence_pct is not None:
+            gb_ml_prediction = 'win' if ml_confidence_pct >= 50 else 'loss'
 
         # 🔥 ML AUTO-CALIBRATION: Vérifier si le trade doit être pris
         calibrated_wr = None
@@ -1391,6 +1403,23 @@ class PositionManager:
             sl = entry * (1 - sl_pct / 100)
             logger.warning(f"🔧 SL corrigé pour LONG: {sl:.8f} (<{entry:.8f})")
 
+        if direction == 'SHORT' and tp >= entry:
+            logger.error(
+                f"🔴 BUG TP SHORT: tp={tp:.8f} >= entry={entry:.8f} ! "
+                f"TP devrait être EN-DESSOUS de entry pour SHORT. Correction forcée..."
+            )
+            tp_dist = abs(tp - entry)
+            tp = entry - tp_dist
+            logger.warning(f"🔧 TP corrigé pour SHORT: {tp:.8f} (<{entry:.8f})")
+        elif direction == 'LONG' and tp <= entry:
+            logger.error(
+                f"🔴 BUG TP LONG: tp={tp:.8f} <= entry={entry:.8f} ! "
+                f"TP devrait être AU-DESSUS de entry pour LONG. Correction forcée..."
+            )
+            tp_dist = abs(tp - entry)
+            tp = entry + tp_dist
+            logger.warning(f"🔧 TP corrigé pour LONG: {tp:.8f} (>{entry:.8f})")
+
         # 🔥 FIX: Récupérer la précision depuis l'API pour formater correctement les prix
         price_precision = None
         tick_size = None
@@ -1484,6 +1513,20 @@ class PositionManager:
         # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
         self.active_position.ml_confidence = ml_confidence_pct
         self.active_position.ml_calibrated_winrate = calibrated_wr
+
+        ml_prediction_value = gb_ml_prediction
+        if ml_prediction_value is None and isinstance(setup_data, dict):
+            ml_prediction_value = setup_data.get('ml_prediction')
+        self.active_position.ml_prediction = ml_prediction_value
+
+        ml_features_value = gb_ml_features if isinstance(gb_ml_features, dict) else None
+        if (
+            ml_features_value is None
+            and isinstance(setup_data, dict)
+            and isinstance(setup_data.get('ml_features'), dict)
+        ):
+            ml_features_value = setup_data.get('ml_features')
+        self.active_position.ml_features = ml_features_value if isinstance(ml_features_value, dict) else {}
         
         # 🔥 Stocker le multiplicateur sizing adaptatif
         self.active_position.adaptive_sizing_multiplier = adaptive_sizing_multiplier
@@ -1595,12 +1638,8 @@ class PositionManager:
                     if order_result.filled_price and order_result.filled_price > 0:
                         # Ajuster TP/SL pour maintenir la distance relative
                         price_diff = order_result.filled_price - entry
-                        if direction == 'LONG':
-                            self.active_position.tp += price_diff
-                            self.active_position.sl += price_diff
-                        else:
-                            self.active_position.tp -= price_diff
-                            self.active_position.sl -= price_diff
+                        self.active_position.tp += price_diff
+                        self.active_position.sl += price_diff
                             
                         self.active_position.entry = order_result.filled_price
                         self.active_position.entry_fill_price = order_result.filled_price
@@ -1664,12 +1703,8 @@ class PositionManager:
                                 previous_entry = self.active_position.entry
                                 if abs(live_entry_price - previous_entry) > 1e-8:
                                     price_diff = live_entry_price - previous_entry
-                                    if direction == 'LONG':
-                                        self.active_position.tp += price_diff
-                                        self.active_position.sl += price_diff
-                                    else:
-                                        self.active_position.tp -= price_diff
-                                        self.active_position.sl -= price_diff
+                                    self.active_position.tp += price_diff
+                                    self.active_position.sl += price_diff
                                     logger.info(
                                         f"🔁 [LIVE] Prix d'entrée synchronisé avec MEXC: {previous_entry:.8f} -> {live_entry_price:.8f}"
                                     )
@@ -1702,9 +1737,19 @@ class PositionManager:
 
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
                     if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
-                        price_diff = order_result.filled_price - entry
-                        self.active_position.tp += price_diff if direction == 'LONG' else -price_diff
-                        self.active_position.sl += price_diff if direction == 'LONG' else -price_diff
+                        if direction == 'SHORT' and self.active_position.tp >= self.active_position.entry:
+                            tp_dist = abs(self.active_position.tp - self.active_position.entry)
+                            self.active_position.tp = self.active_position.entry - tp_dist
+                        elif direction == 'LONG' and self.active_position.tp <= self.active_position.entry:
+                            tp_dist = abs(self.active_position.tp - self.active_position.entry)
+                            self.active_position.tp = self.active_position.entry + tp_dist
+
+                        if direction == 'SHORT' and self.active_position.sl <= self.active_position.entry:
+                            sl_dist = abs(self.active_position.sl - self.active_position.entry)
+                            self.active_position.sl = self.active_position.entry + sl_dist
+                        elif direction == 'LONG' and self.active_position.sl >= self.active_position.entry:
+                            sl_dist = abs(self.active_position.sl - self.active_position.entry)
+                            self.active_position.sl = self.active_position.entry - sl_dist
 
                     logger.info(
                         f"✅ Ordre LIVE placé: {symbol} | "
@@ -2618,7 +2663,6 @@ class PositionManager:
                                     if close_result:
                                         try:
                                             state = get_state_manager()
-                                            from datetime import datetime
                                             close_result['timestamp'] = datetime.now().isoformat()
                                             state.add_trade(close_result)
                                             try:

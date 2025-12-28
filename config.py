@@ -143,6 +143,11 @@ TRADING_CONFIG = {
     # 🔥 OPT SCALABILITY: Paramètres configurables (anciennement hardcodés)
     "scalability_spread_min": 0.001,  # Spread minimum % (évite slippage nul)
     "scalability_spread_max": 0.06,   # 🔥 OPT #10: Augmenté à 0.06% (accepte altcoins volatils)
+    
+    # 🔥 Spread Thresholds (configurables via UI - onglet Paires)
+    "max_spread_pct": None,           # Override global (si défini, remplace les valeurs par mode)
+    "max_spread_pct_fixe": 0.03,      # Spread max pour mode FIXE (0.03%)
+    "max_spread_pct_atr": 0.06,       # Spread max pour mode ATR (0.06%)
     "scalability_volume_min": 30000,  # 🔥 OPT #10: Réduit à 30k (capture mouvements naissants)
     "scalability_volume_24h_min": 200000,  # 🔥 OPT #10: Réduit à 200k (liquidité suffisante)
     "scalability_funding_rate_max": 0.1,  # 🔥 OPT #10: Augmenté à 0.1% (accepte trends forts)

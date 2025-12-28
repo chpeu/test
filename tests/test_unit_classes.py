@@ -10,6 +10,7 @@ import sys
 import os
 import asyncio
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
+from types import SimpleNamespace
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.position_manager import PositionManager, PositionConfig
@@ -87,6 +88,214 @@ class TestPositionManager:
         assert position.direction == 'SHORT'
         assert position.sl > 50000.0  # SL above entry for SHORT
         assert position.tp < 50000.0  # TP below entry for SHORT
+
+    def test_open_position_atr_mode_entry_shift_slippage_short(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=51000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=2.0,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = True
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        position = manager.open_position(
+            symbol='BTC/USDT:USDT',
+            direction='SHORT',
+            entry=50000.0,
+            size=1000.0,
+            atr=200.0,
+            atr5m=250.0,
+            confirmed_by='EMAs + RSI + MACD'
+        )
+
+        assert position is not None
+        assert position.entry == pytest.approx(order_result.filled_price)
+        assert position.sl > position.entry
+        assert position.tp < position.entry
+
+    def test_open_position_atr_mode_entry_shift_slippage_long(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=49000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=-2.0,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = True
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        position = manager.open_position(
+            symbol='BTC/USDT:USDT',
+            direction='LONG',
+            entry=50000.0,
+            size=1000.0,
+            atr=200.0,
+            atr5m=250.0,
+            confirmed_by='EMAs + RSI + MACD'
+        )
+
+        assert position is not None
+        assert position.entry == pytest.approx(order_result.filled_price)
+        assert position.sl < position.entry
+        assert position.tp > position.entry
+
+    def test_open_position_atr_mode_entry_shift_resync_short(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=50000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=None,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = False
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+            def get_position(self, symbol, prefer_ccxt=True):
+                return {
+                    'entry_price': 51000.0,
+                    'tokens': 0.0,
+                    'contracts': 0.0,
+                    'contract_size': 1.0,
+                }
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        with patch.dict('config.TRADING_CONFIG', {'live_entry_sync_delay_sec': 0}, clear=False), \
+             patch.object(PositionManager, '_schedule_position_sync', return_value=None):
+            position = manager.open_position(
+                symbol='BTC/USDT:USDT',
+                direction='SHORT',
+                entry=50000.0,
+                size=1000.0,
+                atr=200.0,
+                atr5m=250.0,
+                confirmed_by='EMAs + RSI + MACD'
+            )
+
+        assert position is not None
+        assert position.entry == pytest.approx(51000.0)
+        assert position.sl > position.entry
+        assert position.tp < position.entry
+
+    def test_open_position_atr_mode_entry_shift_resync_long(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=50000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=None,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = False
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+            def get_position(self, symbol, prefer_ccxt=True):
+                return {
+                    'entry_price': 49000.0,
+                    'tokens': 0.0,
+                    'contracts': 0.0,
+                    'contract_size': 1.0,
+                }
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        with patch.dict('config.TRADING_CONFIG', {'live_entry_sync_delay_sec': 0}, clear=False), \
+             patch.object(PositionManager, '_schedule_position_sync', return_value=None):
+            position = manager.open_position(
+                symbol='BTC/USDT:USDT',
+                direction='LONG',
+                entry=50000.0,
+                size=1000.0,
+                atr=200.0,
+                atr5m=250.0,
+                confirmed_by='EMAs + RSI + MACD'
+            )
+
+        assert position is not None
+        assert position.entry == pytest.approx(49000.0)
+        assert position.sl < position.entry
+        assert position.tp > position.entry
 
     def test_calculate_position_size_base(self):
         """Test position size calculation"""

@@ -578,8 +578,14 @@ async def _scan_top_pairs():
                             if ml_prediction:
                                 prediction = ml_prediction.get('prediction')
                                 confidence = ml_prediction.get('confidence', 0)
+                                ml_features = ml_prediction.get('features')
 
                                 logger.info(f"🤖 Prédiction ML: {prediction} (confiance: {confidence*100:.1f}%)")
+
+                                if prediction is not None:
+                                    best_setup['ml_prediction'] = prediction
+                                if isinstance(ml_features, dict):
+                                    best_setup['ml_features'] = ml_features
 
                                 # Appliquer filtre selon mode
                                 mode = ML_CONFIG.get('mode', 'STRICT')

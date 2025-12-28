@@ -271,9 +271,9 @@ def load_features_from_postgres(
             s.reject_reason_category,
             
             -- 🔥 Order Flow features (depuis trades)
-            t.delta_volume,
-            t.imbalance_normalized,
-            t.book_depth_ratio,
+            COALESCE(s.delta_volume, t.delta_volume) AS delta_volume,
+            COALESCE(s.imbalance_normalized, t.imbalance_normalized) AS imbalance_normalized,
+            COALESCE(s.book_depth_ratio, t.book_depth_ratio) AS book_depth_ratio,
             
             -- Labels ML
             s.is_opportunity,

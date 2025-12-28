@@ -25,6 +25,7 @@ import joblib
 from pathlib import Path
 from typing import Dict, Tuple, Optional, List
 from datetime import datetime
+from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class OptimizedPredictor:
         self.preprocessor = None  # Scaler + feature_names
         self.feature_cols = None
         self.is_loaded = False
+        self.loaded_model_path: Optional[str] = None
         
         # Charger le modèle
         self._load_model(model_path)
@@ -66,6 +68,8 @@ class OptimizedPredictor:
             models_dir / "best_classifier_latest.pkl",
             models_dir / "optimized_classifier_latest.pkl",
         ]
+
+        loaded_path: Optional[Path] = None
         
         for path in possible_paths:
             if path and Path(path).exists():
@@ -82,6 +86,9 @@ class OptimizedPredictor:
                         # Modèle direct (pas en dict)
                         self.model = loaded_data
                         logger.info(f"✅ Modèle chargé direct: {path}")
+
+                    loaded_path = Path(path)
+                    self.loaded_model_path = str(loaded_path)
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur chargement {path}: {e}")
@@ -89,45 +96,105 @@ class OptimizedPredictor:
         if self.model is None:
             logger.error("❌ Aucun modèle trouvé!")
             return
+
+        if isinstance(self.model, Pipeline):
+            self.preprocessor = None
         
         # 🔥 FIX 20/12/2025: Priorité absolue aux features internes du modèle si disponibles
-        if hasattr(self.model, 'feature_names_in_'):
-            self.feature_cols = list(self.model.feature_names_in_)
-            logger.info(f"✅ Features extraites du modèle (source de vérité): {len(self.feature_cols)}")
-        
-        # Charger preprocessor (scaler)
-        for prep_name in ["gradient_boosting_optimized_preprocessor.pkl", "best_classifier_preprocessor.pkl"]:
-            prep_path = models_dir / prep_name
-            if prep_path.exists():
-                try:
-                    self.preprocessor = joblib.load(prep_path)
-                    # Extraire feature_names du preprocessor SI pas encore définis par le modèle
-                    if isinstance(self.preprocessor, dict) and 'feature_names' in self.preprocessor:
-                        if not self.feature_cols:
-                            self.feature_cols = list(self.preprocessor['feature_names'])
-                            logger.info(f"✅ Features extraites du Preprocessor: {len(self.feature_cols)}")
-                        else:
-                            logger.info(f"ℹ️ Features Preprocessor ignorées (priorité Modèle): {len(self.preprocessor['feature_names'])}")
-                    
-                    logger.info(f"✅ Preprocessor chargé: {prep_name}")
-                    break
-                except Exception as e:
-                    logger.warning(f"⚠️ Erreur preprocessor: {e}")
-        
-        # Charger metadata
-        for metadata_name in ["gradient_boosting_optimized_metadata.json", "best_classifier_metadata.json", "optimized_classifier_metadata.json"]:
+        if isinstance(self.model, Pipeline):
+            estimator = self.model.steps[-1][1] if getattr(self.model, 'steps', None) else None
+            if estimator is not None and hasattr(estimator, 'feature_names_in_'):
+                self.feature_cols = list(estimator.feature_names_in_)
+                logger.info(f"✅ Features extraites du modèle (pipeline): {len(self.feature_cols)}")
+            elif hasattr(self.model, 'feature_names_in_'):
+                self.feature_cols = list(self.model.feature_names_in_)
+                logger.info(f"✅ Features extraites du pipeline: {len(self.feature_cols)}")
+        else:
+            if hasattr(self.model, 'feature_names_in_'):
+                self.feature_cols = list(self.model.feature_names_in_)
+                logger.info(f"✅ Features extraites du modèle (source de vérité): {len(self.feature_cols)}")
+
+        # Charger metadata (priorité: metadata correspondant au modèle chargé)
+        metadata_candidates: List[Path] = []
+        if loaded_path is not None:
+            inferred = models_dir / f"{loaded_path.stem}_metadata.json"
+            if inferred.exists():
+                metadata_candidates.append(inferred)
+
+        for metadata_name in [
+            "gradient_boosting_optimized_metadata.json",
+            "best_classifier_metadata.json",
+            "optimized_classifier_metadata.json",
+        ]:
             metadata_path = models_dir / metadata_name
-            if metadata_path.exists():
-                try:
-                    with open(metadata_path, 'r') as f:
-                        self.metadata = json.load(f)
-                    # Si feature_cols pas encore défini, utiliser metadata
-                    if not self.feature_cols:
-                        self.feature_cols = self.metadata.get('feature_names', self.metadata.get('feature_cols', []))
-                        logger.info(f"✅ Features extraites Metadata: {len(self.feature_cols)}")
+            if metadata_path.exists() and metadata_path not in metadata_candidates:
+                metadata_candidates.append(metadata_path)
+
+        for metadata_path in metadata_candidates:
+            try:
+                with open(metadata_path, 'r') as f:
+                    candidate = json.load(f)
+                candidate_features = candidate.get('feature_names', candidate.get('feature_cols', []))
+                if candidate_features and self.feature_cols:
+                    if list(candidate_features) == list(self.feature_cols):
+                        self.metadata = candidate
+                        break
+                elif candidate_features and not self.feature_cols:
+                    self.metadata = candidate
+                    self.feature_cols = list(candidate_features)
+                    logger.info(f"✅ Features extraites Metadata: {len(self.feature_cols)}")
                     break
+
+                if self.metadata is None:
+                    self.metadata = candidate
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur metadata {metadata_path.name}: {e}")
+
+        # Charger preprocessor (scaler) uniquement si nécessaire et compatible
+        if not isinstance(self.model, Pipeline):
+            preprocessor_candidates: List[Path] = []
+            if loaded_path is not None:
+                inferred = models_dir / f"{loaded_path.stem}_preprocessor.pkl"
+                if inferred.exists():
+                    preprocessor_candidates.append(inferred)
+
+            for prep_name in [
+                "gradient_boosting_optimized_preprocessor.pkl",
+                "best_classifier_preprocessor.pkl",
+            ]:
+                prep_path = models_dir / prep_name
+                if prep_path.exists() and prep_path not in preprocessor_candidates:
+                    preprocessor_candidates.append(prep_path)
+
+            for prep_path in preprocessor_candidates:
+                try:
+                    candidate = joblib.load(prep_path)
+                    candidate_features = (
+                        list(candidate.get('feature_names', []))
+                        if isinstance(candidate, dict)
+                        else []
+                    )
+                    if not candidate_features:
+                        continue
+
+                    if not self.feature_cols:
+                        self.preprocessor = candidate
+                        self.feature_cols = candidate_features
+                        logger.info(f"✅ Features extraites du Preprocessor: {len(self.feature_cols)}")
+                        logger.info(f"✅ Preprocessor chargé: {prep_path.name}")
+                        break
+
+                    if candidate_features == list(self.feature_cols):
+                        self.preprocessor = candidate
+                        logger.info(f"✅ Preprocessor chargé (aligné features): {prep_path.name}")
+                        break
+
+                    logger.warning(
+                        f"⚠️ Preprocessor ignoré ({prep_path.name}): mismatch features "
+                        f"(Preprocessor={len(candidate_features)} vs Modèle={len(self.feature_cols)})"
+                    )
                 except Exception as e:
-                    logger.warning(f"⚠️ Erreur metadata: {e}")
+                    logger.warning(f"⚠️ Erreur preprocessor {prep_path.name}: {e}")
         
         self.is_loaded = self.model is not None
     
@@ -156,29 +223,28 @@ class OptimizedPredictor:
             # Convertir features en DataFrame
             df = self._prepare_features(features)
 
-            # Appliquer le preprocessor (scaler) si disponible
+            input_data = df
+
             if self.preprocessor is not None and isinstance(self.preprocessor, dict):
+                imputer = self.preprocessor.get('imputer')
                 scaler = self.preprocessor.get('scaler')
+
+                transformed = df.values
+                if imputer is not None:
+                    try:
+                        transformed = imputer.transform(transformed)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur imputation (ignoré): {e}")
+                        transformed = df.values
+
                 if scaler is not None:
-                    # Vérifier compatibilité des dimensions avant scaling
-                    if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ != df.shape[1]:
-                        # 🔥 FIX: Log seulement la première fois, puis auto-disable le scaler
-                        if not getattr(self, '_scaler_disabled', False):
-                            logger.warning(f"⚠️ Scaler désactivé: mismatch features (Scaler={scaler.n_features_in_} vs DF={df.shape[1]}). Ce warning ne sera plus affiché.")
-                            self._scaler_disabled = True
-                        input_data = df
-                    else:
-                        # 🔥 FIX: Utiliser df.values pour éviter sklearn warning sur feature names
-                        try:
-                            scaled = scaler.transform(df.values)
-                            input_data = pd.DataFrame(scaled, columns=df.columns)
-                        except Exception as e:
-                            logger.warning(f"⚠️ Erreur scaling (ignoré): {e}")
-                            input_data = df
-                else:
-                    input_data = df
-            else:
-                input_data = df if isinstance(df, pd.DataFrame) else df
+                    try:
+                        transformed = scaler.transform(transformed)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erreur scaling (ignoré): {e}")
+                        transformed = df.values
+
+                input_data = pd.DataFrame(transformed, columns=df.columns)
 
             # 🔥 FIX: S'assurer que le DataFrame a les bons noms de colonnes pour éviter sklearn warning
             if isinstance(input_data, pd.DataFrame) and self.feature_cols:
@@ -189,7 +255,16 @@ class OptimizedPredictor:
                     input_data = input_data.reindex(columns=self.feature_cols, fill_value=0.0)
             
             # Prédire
-            proba = self.model.predict_proba(input_data)[0, 1]  # Probabilité de WIN
+            model_input = input_data
+            if isinstance(model_input, pd.DataFrame):
+                if isinstance(self.model, Pipeline):
+                    scaler_step = getattr(self.model, 'named_steps', {}).get('scaler') if hasattr(self.model, 'named_steps') else None
+                    if scaler_step is not None and not hasattr(scaler_step, 'feature_names_in_'):
+                        model_input = model_input.values
+                elif not hasattr(self.model, 'feature_names_in_'):
+                    model_input = model_input.values
+
+            proba = self.model.predict_proba(model_input)[0, 1]  # Probabilité de WIN
             should_trade = proba >= threshold
             
             # 🔥 Logging détaillé pour debug
@@ -269,6 +344,12 @@ class OptimizedPredictor:
         
         if 'volume_ratio_1m' in df.columns:
             df['volume_spike'] = (df['volume_ratio_1m'] > 1.5).astype(int)
+
+        if 'ema_trend_strength_1m' not in df.columns and 'ema_diff_pct_1m' in df.columns:
+            df['ema_trend_strength_1m'] = df['ema_diff_pct_1m'].abs()
+
+        if 'ema_trend_strength_5m' not in df.columns and 'ema_diff_pct_5m' in df.columns:
+            df['ema_trend_strength_5m'] = df['ema_diff_pct_5m'].abs()
 
         if 'di_gap_1m' not in df.columns and 'di_plus_1m' in df.columns and 'di_minus_1m' in df.columns:
             df['di_gap_1m'] = df['di_plus_1m'] - df['di_minus_1m']

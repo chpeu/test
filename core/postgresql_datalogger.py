@@ -2359,6 +2359,10 @@ class PostgreSQLDataLogger:
             if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
                 book_depth_ratio = float(bid_vol) / float(ask_vol)
 
+            ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
+
             value_tuple = (
                 # En-tête
                 session_id, symbol, scan_duration,
@@ -2436,7 +2440,7 @@ class PostgreSQLDataLogger:
                 scan_data.get('opportunity_direction'),
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 # 🔥 ML Confidence (confiance réelle du modèle)
-                scan_data.get('ml_confidence'),
+                ml_confidence_value,
                 # Params
                 json.dumps(params_snap),
                 # Config

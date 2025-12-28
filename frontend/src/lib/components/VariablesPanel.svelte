@@ -227,7 +227,11 @@
 		pair_scorer_min_trades: 15,
 		pair_scorer_max_adjustment: 2.0,
 		pair_scorer_lookback_days: 30,
-		pair_scorer_refresh_minutes: 60
+		pair_scorer_refresh_minutes: 60,
+		// 🔥 Spread Thresholds (onglet Paires)
+		max_spread_pct: null,           // Override global (null = utiliser valeurs par mode)
+		max_spread_pct_fixe: 0.03,      // Spread max mode FIXE (0.03%)
+		max_spread_pct_atr: 0.06        // Spread max mode ATR (0.06%)
 	};
 
 	let config = { ...DEFAULTS };
@@ -709,6 +713,11 @@
 				top_pairs_limit: tradingConfig.top_pairs_limit,
 				balance_score_min: tradingConfig.balance_score_min,
 			},
+			'💱 Spread Thresholds': {
+				max_spread_pct: tradingConfig.max_spread_pct,
+				max_spread_pct_fixe: tradingConfig.max_spread_pct_fixe,
+				max_spread_pct_atr: tradingConfig.max_spread_pct_atr,
+			},
 			'🤖 Machine Learning V1': {
 				ml_filter_enabled: tradingConfig.ml_filter_enabled,
 				ml_filter_mode: tradingConfig.ml_filter_mode,
@@ -1008,6 +1017,11 @@
 				console.log('🎯 Trailing MFE params:', {
 					trailing_mfe_enabled: config.trailing_mfe_enabled,
 					trailing_mfe_trigger_pct: config.trailing_mfe_trigger_pct
+				});
+				console.log('💱 Spread Thresholds params:', {
+					max_spread_pct: config.max_spread_pct,
+					max_spread_pct_fixe: config.max_spread_pct_fixe,
+					max_spread_pct_atr: config.max_spread_pct_atr
 				});
 			} else {
 				console.warn('⚠️ Aucune config reçue, utilisation des defaults');
@@ -1491,6 +1505,9 @@
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'regimev2'} on:click={() => activeSubTab = 'regimev2'} data-debug-name="activeSubTab">
 			🌡️ Régime V2
+		</button>
+		<button class="subtab" class:active={activeSubTab === 'paires'} on:click={() => activeSubTab = 'paires'} data-debug-name="activeSubTab">
+			💱 Paires
 		</button>
 		<button class="subtab" class:active={activeSubTab === 'adaptations'} on:click={() => activeSubTab = 'adaptations'} data-debug-name="activeSubTab">
 			🎯 Adaptations ML
@@ -4483,6 +4500,109 @@
 					</div>
 				</div>
 				{/if}
+			</div>
+		</section>
+	{/if}
+
+	<!-- 💱 ONGLET PAIRES (Spread Thresholds) -->
+	{#if activeSubTab === 'paires'}
+		<section class="variable-section paires-section">
+			<h3>💱 Configuration Paires - Seuils Spread</h3>
+			<p class="section-info">
+				Configure les seuils de spread maximum pour filtrer les paires. Un spread trop élevé 
+				réduit la rentabilité des trades. Ces seuils sont utilisés par l'analyseur et le scanner.
+			</p>
+
+			<!-- Spread Thresholds -->
+			<div class="subsection">
+				<h4>📊 Seuils Spread Maximum</h4>
+				<p class="subsection-hint">
+					Le spread est la différence entre le prix d'achat (ask) et de vente (bid). 
+					Un spread élevé = coût caché sur chaque trade.
+				</p>
+
+				<!-- Mode FIXE -->
+				<div class="form-row">
+					<label for="max_spread_pct_fixe">
+						<span class="label-text">🔧 Spread Max (Mode FIXE)</span>
+						<span class="label-hint">Seuil pour mode TP/SL FIXE (défaut: 0.03%)</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="max_spread_pct_fixe"
+							bind:value={config.max_spread_pct_fixe}
+							min="0.01"
+							max="0.20"
+							step="0.01"
+							on:change={() => triggerAutoSave('max_spread_pct_fixe', `${config.max_spread_pct_fixe.toFixed(2)}%`)}
+						/>
+						<span class="value">{config.max_spread_pct_fixe.toFixed(2)}%</span>
+					</div>
+				</div>
+
+				<!-- Mode ATR -->
+				<div class="form-row">
+					<label for="max_spread_pct_atr">
+						<span class="label-text">📈 Spread Max (Mode ATR)</span>
+						<span class="label-hint">Seuil pour mode TP/SL ATR (défaut: 0.06%)</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="max_spread_pct_atr"
+							bind:value={config.max_spread_pct_atr}
+							min="0.01"
+							max="0.20"
+							step="0.01"
+							on:change={() => triggerAutoSave('max_spread_pct_atr', `${config.max_spread_pct_atr.toFixed(2)}%`)}
+						/>
+						<span class="value">{config.max_spread_pct_atr.toFixed(2)}%</span>
+					</div>
+				</div>
+
+				<!-- Override Global (optionnel) -->
+				<div class="form-row">
+					<label for="max_spread_pct_override">
+						<span class="label-text">🌐 Override Global (optionnel)</span>
+						<span class="label-hint">Si défini, remplace les valeurs par mode. Laisser à 0 pour désactiver.</span>
+					</label>
+					<div class="input-with-value">
+						<input
+							type="range"
+							id="max_spread_pct_override"
+							bind:value={config.max_spread_pct}
+							min="0"
+							max="0.20"
+							step="0.01"
+							on:change={() => {
+								const val = config.max_spread_pct === 0 ? null : config.max_spread_pct;
+								triggerAutoSave('max_spread_pct', val === null ? 'désactivé' : `${config.max_spread_pct.toFixed(2)}%`);
+							}}
+						/>
+						<span class="value">
+							{#if config.max_spread_pct === 0 || config.max_spread_pct === null}
+								Désactivé
+							{:else}
+								{config.max_spread_pct.toFixed(2)}%
+							{/if}
+						</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Info Box -->
+			<div class="subsection info-box">
+				<h4>ℹ️ Comment ça fonctionne</h4>
+				<ul class="info-list">
+					<li><strong>Mode FIXE</strong> : TP/SL en pourcentage fixe → spread max plus strict (0.03%)</li>
+					<li><strong>Mode ATR</strong> : TP/SL dynamique selon volatilité → spread max plus permissif (0.06%)</li>
+					<li><strong>Override Global</strong> : Force une valeur unique quel que soit le mode (si > 0)</li>
+					<li><strong>Scanner</strong> : Le scanner utilise ces mêmes seuils pour pré-filtrer les paires</li>
+				</ul>
+				<p class="info-note">
+					💡 Un spread de 0.05% sur un trade de 100$ = 0.05$ de coût caché (5 cents aller-retour)
+				</p>
 			</div>
 		</section>
 	{/if}

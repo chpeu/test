@@ -1,6 +1,6 @@
 {
-  "token": "{\"cookies\": {\"uc_token\": \"WEBd3ef48131148dbd894870927baf142abbca824eb50fd6cf2de5966d62e741eb9\"}, \"type\": \"cookie_composite_direct\", \"extracted_at\": \"2025-12-21T18:52:21.205641\", \"bypass_validation\": true}",
-  "extracted_at": "2025-12-21T18:52:21.206181",
-  "expires_at": "2025-12-22T18:52:21.206181",
+  "token": "{\"cookies\": {\"uc_token\": \"WEBaa8dfaf7f2e3cd38260eba8eb51c61d2336ad7453ce07fd69411326022d3e033\"}, \"type\": \"cookie_composite_direct\", \"extracted_at\": \"2025-12-26T10:25:24.766984\", \"bypass_validation\": true}",
+  "extracted_at": "2025-12-26T10:25:24.767487",
+  "expires_at": "2025-12-27T10:25:24.767487",
   "status": "active"
 }

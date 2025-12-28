@@ -135,7 +135,7 @@ class DataLoggerExporter:
         'opportunities': 'created_at DESC',
         'trade_events': 'event_timestamp DESC',
         'ml_calibration': 'model_version DESC, created_at DESC',  # 🔥 NOUVEAU: Tri par version modèle puis date
-        'ml_calibration_history': 'created_at DESC',
+        'ml_calibration_history': 'id DESC',
     }
 
     def get_table_data(self, table_name: str, limit: Optional[int] = None) -> Optional[pd.DataFrame]:

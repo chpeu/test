@@ -184,21 +184,29 @@ def main():
             from config import TRADING_CONFIG
             
             ml_calib_enabled = TRADING_CONFIG.get('ml_calibration_enabled', False)
-            min_winrate_long = TRADING_CONFIG.get('ml_calibration_min_winrate_long', 0.35)
-            min_winrate_short = TRADING_CONFIG.get('ml_calibration_min_winrate_short', 0.35)
+            min_winrate = TRADING_CONFIG.get('ml_calib_min_winrate', 40.0)
             
             print(f'   ml_calibration_enabled: {ml_calib_enabled}')
-            print(f'   min_winrate_long: {min_winrate_long*100:.0f}%')
-            print(f'   min_winrate_short: {min_winrate_short*100:.0f}%')
+            try:
+                min_winrate_value = float(min_winrate)
+                min_winrate_pct = min_winrate_value * 100.0 if min_winrate_value <= 1.0 else min_winrate_value
+                print(f'   ml_calib_min_winrate: {min_winrate_pct:.0f}%')
+            except Exception:
+                print(f'   ml_calib_min_winrate: {min_winrate}')
             
             # Vérifier si les seuils sont cohérents avec le modèle GB
             gb_accuracy_threshold = gb_accuracy * 0.8  # 80% de l'accuracy GB comme seuil raisonnable
             
-            if min_winrate_long >= gb_accuracy_threshold and min_winrate_short >= gb_accuracy_threshold:
-                print(f'   [OK] Seuils coherents avec modele GB (min {gb_accuracy_threshold*100:.1f}%)')
-            else:
-                print(f'   [WARNING] Seuils peut-etre trop bas par rapport au modele GB')
-                print(f'             Recommande min: {gb_accuracy_threshold*100:.1f}%')
+            try:
+                min_wr = float(min_winrate)
+                min_wr = min_wr * 100.0 if min_wr <= 1.0 else min_wr
+                if (min_wr / 100.0) >= gb_accuracy_threshold:
+                    print(f'   [OK] Seuil coherent avec modele GB (min {gb_accuracy_threshold*100:.1f}%)')
+                else:
+                    print(f'   [WARNING] Seuil peut-etre trop bas par rapport au modele GB')
+                    print(f'             Recommande min: {gb_accuracy_threshold*100:.1f}%')
+            except Exception:
+                print('   [WARNING] Seuil ml_calib_min_winrate non numérique, impossible de comparer')
 
         except Exception as e:
             print(f'   [ERROR] Erreur config: {e}')
