@@ -1,5 +1,5 @@
 {
-  "timestamp": 1766952880.0446095,
+  "timestamp": 1766988035.0751314,
   "specs": {
     "DASH_USDT": {
       "symbol": "DASH_USDT",
@@ -148,6 +148,76 @@
       "vol_unit": 1.0,
       "price_unit": 1e-05,
       "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "OP_USDT": {
+      "symbol": "OP_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1200000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "XLM_USDT": {
+      "symbol": "XLM_USDT",
+      "min_vol": 1.0,
+      "max_vol": 310000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "SOL_USDT": {
+      "symbol": "SOL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 120000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "FARTCOIN_USDT": {
+      "symbol": "FARTCOIN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 200000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "LDO_USDT": {
+      "symbol": "LDO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 700000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "ADA_USDT": {
+      "symbol": "ADA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "WLD_USDT": {
+      "symbol": "WLD_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
     }

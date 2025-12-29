@@ -1369,14 +1369,22 @@ class PositionManager:
         use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
 
         # Calculer TP/SL selon le mode
+        # 🔥 FIX 29/12: Capturer l'ATR réellement utilisé (blended + clampé)
+        atr_pct_used = None
+        atr_blended_used = None
         if use_atr and atr:
-            sl, tp = calculate_atr_levels(
+            result = calculate_atr_levels(
                 entry=entry,
                 atr=atr,
                 atr5m=atr5m,
                 direction=direction,
-                config=self.tpsl_config
+                config=self.tpsl_config,
+                return_atr_used=True
             )
+            if len(result) == 4:
+                sl, tp, atr_pct_used, atr_blended_used = result
+            else:
+                sl, tp = result
         else:
             sl, tp = calculate_fixed_levels(
                 entry=entry,
@@ -1460,6 +1468,11 @@ class PositionManager:
             tick_size=tick_size,
             effective_config=effective_params  # 🔥 Stocker la config effective
         )
+        
+        # 🔥 FIX 29/12: Stocker l'ATR réellement utilisé pour diagnostic
+        if atr_pct_used is not None:
+            self.active_position.atr_pct_used = atr_pct_used
+            self.active_position.atr_blended = atr_blended_used
 
         try:
             last_setup_ctx = getattr(self, '_last_setup', None)
@@ -3482,7 +3495,7 @@ class PositionManager:
             # Les petits trades gagnants (+0.05%) étaient affichés comme 0.00% après arrondi à 2 décimales
             'pnl_pct': round(net_pnl_pct, 6),
             'pnl_usdt': round(net_pnl_usdt, 4),
-            'gross_pnl_pct': round(net_pnl_pct, 6),
+            'gross_pnl_pct': round(gross_pnl_pct, 6),  # 🔥 FIX 29/12: Utiliser le vrai PnL brut (était net_pnl_pct par erreur)
             'slippage': round(slippage_pct, 6),  # 6 décimales pour précision
             'slippage_pct': round(slippage_pct, 6),  # Alias
             'slippage_usdt': round(slippage_usdt, 4),
@@ -3814,6 +3827,10 @@ class PositionManager:
                         # Valeurs effectives additionnelles (optionnelles)
                         trade_data['entry_atr_mult_sl'] = get_effective_value('atr_mult_sl')
                         trade_data['entry_atr_mult_tp'] = get_effective_value('atr_mult_tp')
+                        
+                        # 🔥 FIX 29/12: Enregistrer l'ATR réellement utilisé (blended + clampé)
+                        trade_data['entry_atr_pct_used'] = getattr(self.active_position, 'atr_pct_used', None)
+                        trade_data['entry_atr_blended'] = getattr(self.active_position, 'atr_blended', None)
                         trade_data['entry_volume_multiplier'] = get_effective_value('volume_multiplier')
                         trade_data['entry_rsi_filter_mode'] = get_effective_value('rsi_filter_mode')
                         trade_data['entry_position_timeout'] = get_effective_value('position_timeout')

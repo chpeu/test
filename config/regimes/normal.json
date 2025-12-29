@@ -4,7 +4,7 @@
   "optimal_atr_max": 0.30,
   "min_score_required": 8.0,
   "atr_mult_sl": 1.6,
-  "atr_mult_tp": 2.4,
+  "atr_mult_tp": 2.0,
   "break_even_atr_mult": 1.0,
   "trailing_trigger_atr_mult": 1.2,
   "max_position_time": 300,

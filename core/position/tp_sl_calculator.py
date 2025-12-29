@@ -153,7 +153,8 @@ def calculate_atr_levels(
     atr: float,
     atr5m: Optional[float],
     direction: str,
-    config: TPSLConfig
+    config: TPSLConfig,
+    return_atr_used: bool = False
 ) -> Tuple[float, float]:
     """
     Calculer TP/SL en mode ATR (adaptatif)
@@ -164,9 +165,10 @@ def calculate_atr_levels(
         atr5m: ATR timeframe 5m (optionnel)
         direction: 'LONG' ou 'SHORT'
         config: Configuration TP/SL
+        return_atr_used: Si True, retourne aussi l'ATR% utilisé (clampé) et ATR blended
 
     Returns:
-        (sl, tp) : Stop Loss et Take Profit
+        (sl, tp) ou (sl, tp, atr_percent_used, atr_blended) si return_atr_used=True
 
     Raises:
         ValueError: Si ATR invalide, fallback mode FIXE
@@ -272,6 +274,9 @@ def calculate_atr_levels(
         f"entry={entry:.8f} | sl={sl:.8f} | tp={tp:.8f} | {direction}"
     )
 
+    # 🔥 FIX 29/12: Option pour retourner l'ATR réellement utilisé (blended + clampé)
+    if return_atr_used:
+        return sl, tp, atr_percent, atr_blended
     return sl, tp
 
 
