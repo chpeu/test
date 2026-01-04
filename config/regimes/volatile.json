@@ -14,5 +14,7 @@
   "stagnation_min_pnl": 0.02,
   "stagnation_max_loss": -0.12,
   "optimal_atr_min_5m": 0.50,
-  "optimal_atr_max_5m": 1.50
+  "optimal_atr_max_5m": 1.50,
+  "rsi_final_long_max": 70,
+  "rsi_final_short_min": 30
 }

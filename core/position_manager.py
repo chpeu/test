@@ -115,6 +115,12 @@ class Position:
     tp_escalier_profits: List[Dict] = field(default_factory=list)
 
     pnl_history: List[Dict] = field(default_factory=list)
+
+    current_price: Optional[float] = None
+    pnl: Optional[float] = None
+    pnl_pct: Optional[float] = None
+    pnl_usdt: Optional[float] = None
+    next_event: Optional[Dict[str, Any]] = None
     
     # Price precision from API (for accurate price formatting)
     price_precision: Optional[int] = None
@@ -198,6 +204,9 @@ class Position:
             'tp': self.tp,
             'atr': self.atr,
             'atr5m': self.atr5m,
+            'atr_pct_used': getattr(self, 'atr_pct_used', None),
+            'atr_percent': getattr(self, 'atr_pct_used', None),
+            'atr_blended': getattr(self, 'atr_blended', None),
             'confirmed_by': self.confirmed_by,
             'timestamp': self.timestamp,
             'start_time': self.start_time,
@@ -213,12 +222,22 @@ class Position:
             'trailing_activated_at': datetime.fromtimestamp(self.trailing_activated_at).isoformat() if self.trailing_activated_at else None,
             'trailing_final_sl': self.trailing_final_sl,
             'trailing_distance_pct': self.trailing_distance_pct,
+            'trailing_mfe_triggered': getattr(self, 'trailing_mfe_triggered', False),
+            'trailing_mfe_triggered_at': datetime.fromtimestamp(self.trailing_mfe_triggered_at).isoformat() if getattr(self, 'trailing_mfe_triggered_at', None) else None,
+            'trailing_mfe_trigger_pnl_pct': getattr(self, 'trailing_mfe_trigger_pnl_pct', None),
+            'trailing_mfe_trigger_price': getattr(self, 'trailing_mfe_trigger_price', None),
             'max_price_reached': self.max_price_reached,
             'min_price_reached': self.min_price_reached,
             'max_pnl_reached': self.max_pnl_reached,
             'min_pnl_reached': self.min_pnl_reached,
+            'max_pnl_timestamp': datetime.fromtimestamp(getattr(self, 'max_pnl_timestamp')).isoformat() if getattr(self, 'max_pnl_timestamp', None) else None,
+            'min_pnl_timestamp': datetime.fromtimestamp(getattr(self, 'min_pnl_timestamp')).isoformat() if getattr(self, 'min_pnl_timestamp', None) else None,
             'stagnation_detected_at': datetime.fromtimestamp(self.stagnation_detected_at).isoformat() if self.stagnation_detected_at else None,
             'stagnation_pnl_at_detection': self.stagnation_pnl_at_detection,
+            'stagnation_positive_triggered': getattr(self, 'stagnation_positive_triggered', False),
+            'stagnation_mfe_at_exit': getattr(self, 'stagnation_mfe_at_exit', None),
+            'stagnation_pullback_at_exit': getattr(self, 'stagnation_pullback_at_exit', None),
+            'effective_config': getattr(self, 'effective_config', {}),
             'dynamic_sl': self.dynamic_sl,
             'size_remaining': self.size_remaining,
             'partial_profit_usdt': self.partial_profit_usdt,
@@ -229,6 +248,10 @@ class Position:
             'tp_escalier_profits': self.tp_escalier_profits,
             'tp_escalier_levels': self.tp_escalier_levels if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else [],  # 🔥 FIX: Retourner la liste native pour éviter erreurs de type
             'current_price': getattr(self, 'current_price', None),  # 🔥 FIX: Ajouter prix actuel si disponible
+            'pnl': getattr(self, 'pnl', None),
+            'pnl_pct': getattr(self, 'pnl_pct', None),
+            'pnl_usdt': getattr(self, 'pnl_usdt', None),
+            'next_event': getattr(self, 'next_event', None),
             'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
             'tick_size': self.tick_size,  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
             # Live meta
@@ -684,7 +707,7 @@ class PositionManager:
                     # Sinon, essayer de récupérer via l'API (synchrone)
                     try:
                         from trading.live_order_manager_futures import run_async_safely
-                        spec = run_async_safely(bypass_client.get_contract_spec(bypass_symbol))
+                        spec = run_async_safely(bypass_client.get_contract_spec(bypass_symbol), timeout=2.0)
                         if spec:
                             logger.info(f"📋 ContractSize récupéré pour {symbol}: {spec.contract_size}")
                             return spec.contract_size
@@ -715,27 +738,40 @@ class PositionManager:
             
             # Récupérer le client MEXC
             client = get_mexc_client()
+            if not client or not getattr(client, 'exchange', None):
+                return None
             
             # Charger les marchés si pas déjà fait
             if not hasattr(client, '_markets_loaded'):
                 # Utiliser load_markets pour obtenir toutes les infos de marché
                 try:
-                    # Essayer de récupérer la boucle d'événements actuelle
+                    loop = asyncio.get_running_loop()
+                    loading_task = getattr(client, '_markets_loading_task', None)
+                    if loading_task is None or loading_task.done():
+                        client._markets_loading_task = loop.create_task(client.exchange.load_markets())
+
+                        def _on_loaded(task):
+                            try:
+                                markets = task.result()
+                                client._markets_loaded = True
+                                client._markets = markets
+                            except Exception as e:
+                                logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
+                            try:
+                                client._markets_loading_task = None
+                            except Exception:
+                                pass
+
+                        client._markets_loading_task.add_done_callback(_on_loaded)
+                    return None
+                except RuntimeError:
                     try:
-                        loop = asyncio.get_running_loop()
-                        # Si une boucle est en cours, créer une tâche
-                        import concurrent.futures
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(
-                                lambda: asyncio.run(client.exchange.load_markets())
-                            )
-                            markets = future.result(timeout=10)
-                    except RuntimeError:
-                        # Pas de boucle en cours, utiliser asyncio.run
-                        markets = asyncio.run(client.exchange.load_markets())
-                    
-                    client._markets_loaded = True
-                    client._markets = markets
+                        markets = asyncio.run(asyncio.wait_for(client.exchange.load_markets(), timeout=2.0))
+                        client._markets_loaded = True
+                        client._markets = markets
+                    except Exception as e:
+                        logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
+                        return None
                 except Exception as e:
                     logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
                     return None
@@ -1303,7 +1339,12 @@ class PositionManager:
         base_mult_sl = get_effective_value('atr_mult_sl') or 1.0
         base_be_mult = ConfigHelper.get_param('break_even_atr_mult', 1.0, TRADING_CONFIG)
         base_trailing_trigger = ConfigHelper.get_param('trailing_trigger_atr_mult', 1.5, TRADING_CONFIG)
-        base_trailing_dist = ConfigHelper.get_param('trailing_distance_mult', 1.0, TRADING_CONFIG)
+        base_trailing_dist = (
+            TRADING_CONFIG.get('trailing_distance_atr_mult')
+            or TRADING_CONFIG.get('trailing_atr_multiplier')
+            or TRADING_CONFIG.get('trailing_distance_mult')
+            or 1.0
+        )
         base_stagnation_timeout = ConfigHelper.get_param('stagnation_exit_timeout_seconds', 120, TRADING_CONFIG)
         base_stagnation_min_pnl = ConfigHelper.get_param('stagnation_exit_min_pnl_to_stay', 0.05, TRADING_CONFIG)
         base_stagnation_positive_timeout = ConfigHelper.get_param('stagnation_positive_timeout_seconds', 60, TRADING_CONFIG)
@@ -2423,9 +2464,13 @@ class PositionManager:
             )
             if invalidation:
                 # Stocker les détails de l'invalidation pour le logging
-                entry = self.active_position.entry
-                atr = self.active_position.atr
-                atr_pct = (atr / entry * 100) if entry > 0 and atr > 0 else None
+                atr_pct_used = getattr(self.active_position, 'atr_pct_used', None)
+                if atr_pct_used is not None and atr_pct_used > 0:
+                    atr_pct = atr_pct_used
+                else:
+                    entry = self.active_position.entry
+                    atr = self.active_position.atr
+                    atr_pct = (atr / entry * 100) if entry > 0 and atr > 0 else None
                 # Calculer le seuil adaptatif utilisé
                 invalidation_threshold = self.early_invalidation.get_adaptive_threshold(
                     elapsed, atr_pct or 0.5
@@ -2815,7 +2860,13 @@ class PositionManager:
             # Utiliser les multiplicateurs effectifs s'ils existent (adaptés au régime)
             trigger_atr_mult = effective_config.get('trailing_trigger_atr_mult') or TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5)
             # Distance trailing adaptée (ex: plus large en HIGH volatility)
-            distance_atr_mult = effective_config.get('trailing_distance_mult') or TRADING_CONFIG.get('trailing_distance_mult', 1.0)
+            distance_atr_mult = (
+                effective_config.get('trailing_distance_mult')
+                or TRADING_CONFIG.get('trailing_distance_atr_mult')
+                or TRADING_CONFIG.get('trailing_atr_multiplier')
+                or TRADING_CONFIG.get('trailing_distance_mult')
+                or 1.0
+            )
             
             trailing_trigger = atr_pct * trigger_atr_mult
             trailing_distance = atr_pct * distance_atr_mult
@@ -2948,20 +2999,29 @@ class PositionManager:
         
         if not self.active_position:
             return 0.5  # Fallback
-        
+
+        atr_pct_used = getattr(self.active_position, 'atr_pct_used', None)
+        if atr_pct_used is not None and atr_pct_used > 0:
+            return atr_pct_used
+
         entry = self.active_position.entry
         atr = getattr(self.active_position, 'atr', None)
-        
+        atr5m = getattr(self.active_position, 'atr5m', None)
+
         if entry and entry > 0 and atr and atr > 0:
-            atr_pct = (atr / entry) * 100
-            # Clamp entre atr_min et atr_max
-            atr_min = TRADING_CONFIG.get('atr_min', 0.10)
-            atr_max = TRADING_CONFIG.get('atr_max', 1.0)
+            atr_blended = atr
+            if atr5m and atr5m > 0:
+                atr_blended = (atr * 0.7) + (atr5m * 0.3)
+
+            atr_pct = (atr_blended / entry) * 100
+
+            tpsl_config = getattr(self, 'tpsl_config', None)
+            atr_min = getattr(tpsl_config, 'atr_min', None) or TRADING_CONFIG.get('atr_min', 0.10)
+            atr_max = getattr(tpsl_config, 'atr_max', None) or TRADING_CONFIG.get('atr_max', 1.0)
             atr_pct = max(atr_min, min(atr_max, atr_pct))
             return atr_pct
-        else:
-            # Fallback: moyenne raisonnable pour scalping
-            return 0.35
+
+        return 0.35
 
     def _check_stagnation_exit(self, pnl: float) -> Optional[str]:
         """
@@ -3993,10 +4053,14 @@ class PositionManager:
                         try:
                             from core.analysis.what_if_simulator import WhatIfSimulator, TradeData
                             
-                            # Calculer entry_atr_pct
-                            entry_atr_pct = 0.2  # Valeur par défaut
-                            if self.active_position.atr and self.active_position.entry:
-                                entry_atr_pct = (self.active_position.atr / self.active_position.entry) * 100
+                            # Calculer entry_atr_pct - préférer atr_pct_used (blendé/clampé) si disponible
+                            entry_atr_pct = getattr(self.active_position, 'atr_pct_used', None)
+                            if not entry_atr_pct or entry_atr_pct <= 0:
+                                # Fallback: calculer depuis ATR brut
+                                if self.active_position.atr and self.active_position.entry:
+                                    entry_atr_pct = (self.active_position.atr / self.active_position.entry) * 100
+                                else:
+                                    entry_atr_pct = 0.2  # Valeur par défaut
                             
                             # Construire TradeData complet (une seule fois)
                             whatif_trade = TradeData(

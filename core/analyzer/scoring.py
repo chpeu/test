@@ -257,10 +257,17 @@ def evaluate_setup_score(
     )
 
     # Direction basée sur le score effectif (après ajustement pair)
+    # 🔥 FIX 30/12: Choisir la meilleure direction (pas LONG-first)
     temp_direction = 'NEUTRAL'
-    if long_score >= effective_min_score:
+    long_passes = long_score >= effective_min_score
+    short_passes = short_score >= effective_min_score
+    
+    if long_passes and short_passes:
+        # Les deux passent le seuil → choisir le meilleur score
+        temp_direction = 'LONG' if long_score >= short_score else 'SHORT'
+    elif long_passes:
         temp_direction = 'LONG'
-    elif short_score >= effective_min_score:
+    elif short_passes:
         temp_direction = 'SHORT'
 
     # Trend bonus
@@ -274,10 +281,16 @@ def evaluate_setup_score(
             short_score += trend_bonus
 
     # Réévaluer direction après bonus (toujours avec score effectif)
+    # 🔥 FIX 30/12: Même logique - choisir la meilleure direction
     direction = 'NEUTRAL'
-    if long_score >= effective_min_score:
+    long_passes_final = long_score >= effective_min_score
+    short_passes_final = short_score >= effective_min_score
+    
+    if long_passes_final and short_passes_final:
+        direction = 'LONG' if long_score >= short_score else 'SHORT'
+    elif long_passes_final:
         direction = 'LONG'
-    elif short_score >= effective_min_score:
+    elif short_passes_final:
         direction = 'SHORT'
 
     return {

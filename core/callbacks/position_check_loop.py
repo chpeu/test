@@ -243,16 +243,27 @@ async def _emit_position_update(position, current_price: float):
         position: Objet position active
         current_price: Prix actuel du marché
     """
-    if not _position_manager or not _ws_manager:
-        return
+    logger.info(f"🔄 _emit_position_update appelé pour {position.symbol} @ {current_price}")
 
     try:
         # Calculer PnL (BUG #1 FIX: utiliser pnl_calculator au lieu de _calculate_pnl)
-        pnl = _position_manager.pnl_calculator.calculate_pnl_percent(
-            entry=position.entry,
-            current_price=current_price,
-            direction=position.direction
-        )
+        pnl = 0.0
+        try:
+            pnl_calculator = getattr(_position_manager, 'pnl_calculator', None) if _position_manager else None
+            if pnl_calculator:
+                pnl = pnl_calculator.calculate_pnl_percent(
+                    entry=position.entry,
+                    current_price=current_price,
+                    direction=position.direction
+                )
+            else:
+                entry_price = getattr(position, 'entry', 0) or 0
+                if entry_price > 0:
+                    pnl = ((current_price - entry_price) / entry_price) * 100
+                    if getattr(position, 'direction', 'LONG') == 'SHORT':
+                        pnl = -pnl
+        except Exception:
+            pnl = 0.0
         pnl_pct = pnl / 100  # Convertir % en décimal
 
         # Calculer taille à considérer (incluant TP partiel)
@@ -281,11 +292,38 @@ async def _emit_position_update(position, current_price: float):
         )
 
         # Importer config pour récupérer le mode TP/SL
-        from config import TRADING_CONFIG
+        # Import différé pour éviter les problèmes de chargement
+        TRADING_CONFIG = {}
+        try:
+            import sys
+            import importlib
+            if 'config' not in sys.modules:
+                config_module = importlib.import_module('config')
+            else:
+                config_module = sys.modules['config']
+            TRADING_CONFIG = getattr(config_module, 'TRADING_CONFIG', {})
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur import TRADING_CONFIG: {e}")
+            TRADING_CONFIG = {}
 
         # 🔥 FIX: Émettre mise à jour au frontend avec toutes les infos
         import json
         from datetime import datetime
+
+        def _to_iso(ts_value):
+            if ts_value is None:
+                return None
+            if isinstance(ts_value, str):
+                return ts_value
+            if isinstance(ts_value, datetime):
+                return ts_value.isoformat()
+            if isinstance(ts_value, (int, float)):
+                return datetime.fromtimestamp(ts_value).isoformat()
+            try:
+                return datetime.fromtimestamp(float(ts_value)).isoformat()
+            except Exception:
+                return None
+
         # 🔥 NOUVEAU: Ajouter opened_at pour le compte à rebours
         opened_at = None
         if hasattr(position, 'start_time') and position.start_time:
@@ -297,26 +335,122 @@ async def _emit_position_update(position, current_price: float):
             else:
                 opened_at = position.timestamp
         
+        effective_config = getattr(position, 'effective_config', {}) or {}
+
+        atr_percent = getattr(position, 'atr_pct_used', None)
+        if atr_percent is None:
+            atr_percent = getattr(position, 'atr_percent', None)
+
+        break_even_use_atr = TRADING_CONFIG.get('break_even_use_atr', False) if TRADING_CONFIG else False
+        trailing_config = TRADING_CONFIG.get('trailing_stop', {}) if TRADING_CONFIG else {}
+        trailing_use_atr_trigger = (
+            trailing_config.get('use_atr_trigger', False)
+            or (TRADING_CONFIG.get('trailing_use_atr_trigger', False) if TRADING_CONFIG else False)
+        )
+
+        be_atr_mult_effective = effective_config.get('break_even_atr_mult') or (TRADING_CONFIG.get('break_even_atr_mult', 0.5) if TRADING_CONFIG else 0.5)
+        trailing_trigger_atr_mult_effective = effective_config.get('trailing_trigger_atr_mult') or (TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5) if TRADING_CONFIG else 1.5)
+        trailing_distance_mult_effective = (
+            effective_config.get('trailing_distance_mult')
+            or (TRADING_CONFIG.get('trailing_distance_atr_mult') if TRADING_CONFIG else None)
+            or (TRADING_CONFIG.get('trailing_atr_multiplier') if TRADING_CONFIG else None)
+            or (TRADING_CONFIG.get('trailing_distance_mult') if TRADING_CONFIG else None)
+            or 1.0
+        )
+
+        break_even_trigger_pct = None
+        if break_even_use_atr and atr_percent is not None:
+            break_even_trigger_pct = atr_percent * be_atr_mult_effective
+        else:
+            break_even_trigger_pct = TRADING_CONFIG.get('break_even_trigger', None) if TRADING_CONFIG else None
+
+        trailing_trigger_pct = None
+        trailing_distance_pct = None
+        if trailing_use_atr_trigger and atr_percent is not None:
+            trailing_trigger_pct = atr_percent * trailing_trigger_atr_mult_effective
+            trailing_distance_pct = atr_percent * trailing_distance_mult_effective
+        else:
+            trailing_trigger_pct = (
+                trailing_config.get('trigger_pnl')
+                or (TRADING_CONFIG.get('trailing_trigger_pnl', None) if TRADING_CONFIG else None)
+            )
+            trailing_distance_pct = TRADING_CONFIG.get('trailing_distance', None) if TRADING_CONFIG else None
+
+        stagnation_config = TRADING_CONFIG.get('stagnation_exit', {}) if TRADING_CONFIG else {}
+        stagnation_enabled = TRADING_CONFIG.get('stagnation_exit_enabled', stagnation_config.get('enabled', False)) if TRADING_CONFIG else False
+        stagnation_timeout = effective_config.get('stagnation_exit_timeout_seconds')
+        if stagnation_timeout is None:
+            stagnation_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', stagnation_config.get('timeout_seconds', None)) if TRADING_CONFIG else None
+
+        stagnation_positive_timeout = effective_config.get('stagnation_positive_timeout_seconds')
+        if stagnation_positive_timeout is None:
+            stagnation_positive_timeout = TRADING_CONFIG.get('stagnation_positive_timeout_seconds', None) if TRADING_CONFIG else None
+
+        stagnation_min_pnl_to_stay = effective_config.get('stagnation_exit_min_pnl_to_stay')
+        if stagnation_min_pnl_to_stay is None:
+            stagnation_min_pnl_to_stay = TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', None) if TRADING_CONFIG else None
+
+        stagnation_positive_threshold = TRADING_CONFIG.get('stagnation_positive_threshold', None) if TRADING_CONFIG else None
+        stagnation_mfe_pullback_pct = TRADING_CONFIG.get('stagnation_mfe_pullback_pct', None) if TRADING_CONFIG else None
+
+        # 🔥 NOUVEAU: Calculer la prochaine étape attendue
+        next_event = _calculate_next_event(position, current_price, pnl_pct, atr_percent, 
+                                          break_even_trigger_pct, trailing_trigger_pct, 
+                                          effective_config, TRADING_CONFIG if TRADING_CONFIG else {})
+        
+        # 🔥 DEBUG: Log next_event
+        if next_event:
+            logger.info(f"🎯 Next event calculé: {next_event.get('type')} - {next_event.get('description')} - distance: {next_event.get('distance_pct', 0):.2f}%")
+        else:
+            logger.warning("⚠️ Next event = None")
+
+        try:
+            position.current_price = current_price
+            position.pnl = round(pnl, 4)
+            position.pnl_pct = round(pnl_pct, 4)
+            position.pnl_usdt = round(pnl_usdt, 4)
+            position.next_event = next_event
+        except Exception:
+            pass
+
         update_data = {
             'symbol': position.symbol,
             'direction': position.direction,
             'entry': position.entry,
-            'current_price': current_price,
-            'sl': position.sl,
-            'tp': position.tp,
-            'pnl': pnl,
-            'pnl_usdt': pnl_usdt,
             'size': position.size,
-            'opened_at': opened_at,  # 🔥 NOUVEAU: Ajouté pour le compte à rebours
-            'break_even_set': getattr(position, 'break_even_set', False),
+            'current_price': current_price,
+            'pnl': round(pnl, 4),
+            'pnl_pct': round(pnl_pct, 4),
+            'pnl_usdt': round(pnl_usdt, 4),
+            'tp_pct': getattr(position, 'tp_pct', None),
+            'sl_pct': getattr(position, 'sl_pct', None),
+            'tp_mode': getattr(position, 'tp_mode', None),
+            'sl_mode': getattr(position, 'sl_mode', None),
+            'tp_atr_mult': getattr(position, 'tp_atr_mult', None),
+            'sl_atr_mult': getattr(position, 'sl_atr_mult', None),
+            'tp_price': getattr(position, 'tp_price', getattr(position, 'tp', None)),
+            'sl_price': getattr(position, 'sl_price', getattr(position, 'sl', None)),
+            'next_tp_pct': getattr(position, 'next_tp_pct', None),
+            'trailing_stop': getattr(position, 'trailing_stop', None),
+            'trailing_activated': getattr(position, 'trailing_activated', False),
+            'partial_tp_taken': getattr(position, 'partial_tp_taken', False),
             'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
-            'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-            'dynamic_sl': getattr(position, 'dynamic_sl', None),  # 🔥 FIX: Trailing stop
-            'size_remaining': getattr(position, 'size_remaining', None),  # 🔥 FIX: Position restante
-            # 🔥 NOUVEAU: Exposer les tailles en contrats pour l'affichage restant / initial dans le frontend
+            'partial_tp_percent': getattr(position, 'partial_tp_percent', None),
+            'tp_escalier_levels': getattr(position, 'tp_escalier_levels', []),
+            'current_tp_level': getattr(position, 'current_tp_level', None),
+            'partial_profit_usdt': getattr(position, 'partial_profit_usdt', 0.0),
+            'partial_profit_pct': getattr(position, 'partial_profit_pct', None),
+            'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
+            'last_update_at': datetime.now().isoformat(),
+            'opened_at': opened_at,
+            # 🔥 NOUVEAU: Ajouter next_event pour afficher la prochaine étape
+            'next_event': next_event,
             'position_size_contracts': getattr(position, 'position_size_contracts', None),
             'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
             'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
+            'tp_escalier_enabled': getattr(position, 'tp_escalier_enabled', False),
+            'tp_escalier_current_level': getattr(position, 'tp_escalier_current_level', None),
+            'tp_escalier_profits': getattr(position, 'tp_escalier_profits', None),
             'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None,  # 🔥 FIX: Niveaux TP escalier
             # 🔥 FIX: Ajouter levier utilisé pour affichage correct (levier auto adapté)
             'leverage_used': getattr(position, 'leverage_used', None),
@@ -326,7 +460,49 @@ async def _emit_position_update(position, current_price: float):
             'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
             # 🔥 FIX: Ajouter ML confidence et calibrated winrate pour affichage badge
             'ml_confidence': getattr(position, 'ml_confidence', None),
-            'ml_calibrated_winrate': getattr(position, 'ml_calibrated_winrate', None)
+            'ml_calibrated_winrate': getattr(position, 'ml_calibrated_winrate', None),
+            'atr_pct_used': getattr(position, 'atr_pct_used', None),
+            'atr_percent': atr_percent,
+            'atr_blended': getattr(position, 'atr_blended', None),
+            'effective_config': effective_config,
+            'break_even_use_atr': break_even_use_atr,
+            'break_even_atr_mult_effective': be_atr_mult_effective,
+            'break_even_trigger_pct': break_even_trigger_pct,
+            'break_even_triggered_at': _to_iso(getattr(position, 'break_even_triggered_at', None)),
+            'break_even_price': getattr(position, 'be_price_at_trigger', None),
+            'break_even_pnl_pct': getattr(position, 'be_pnl_at_trigger', None),
+            'trailing_use_atr_trigger': trailing_use_atr_trigger,
+            'trailing_trigger_atr_mult_effective': trailing_trigger_atr_mult_effective,
+            'trailing_distance_mult_effective': trailing_distance_mult_effective,
+            'trailing_trigger_pct': trailing_trigger_pct,
+            'trailing_distance_pct_effective': trailing_distance_pct,
+            'trailing_activated': getattr(position, 'trailing_activated', False),
+            'trailing_activated_at': _to_iso(getattr(position, 'trailing_activated_at', None)),
+            'trailing_final_sl': getattr(position, 'trailing_final_sl', None),
+            'trailing_distance_pct': getattr(position, 'trailing_distance_pct', None),
+            'trailing_mfe_enabled': TRADING_CONFIG.get('trailing_mfe_enabled', False) if TRADING_CONFIG else False,
+            'trailing_mfe_trigger_pct': TRADING_CONFIG.get('trailing_mfe_trigger_pct', None) if TRADING_CONFIG else None,
+            'trailing_mfe_triggered': getattr(position, 'trailing_mfe_triggered', False),
+            'trailing_mfe_triggered_at': _to_iso(getattr(position, 'trailing_mfe_triggered_at', None)),
+            'trailing_mfe_trigger_pnl_pct': getattr(position, 'trailing_mfe_trigger_pnl_pct', None),
+            'trailing_mfe_trigger_price': getattr(position, 'trailing_mfe_trigger_price', None),
+            'max_price_reached': getattr(position, 'max_price_reached', None),
+            'min_price_reached': getattr(position, 'min_price_reached', None),
+            'max_pnl_reached': getattr(position, 'max_pnl_reached', None),
+            'min_pnl_reached': getattr(position, 'min_pnl_reached', None),
+            'max_pnl_timestamp': _to_iso(getattr(position, 'max_pnl_timestamp', None)),
+            'min_pnl_timestamp': _to_iso(getattr(position, 'min_pnl_timestamp', None)),
+            'stagnation_enabled': stagnation_enabled,
+            'stagnation_timeout_seconds_effective': stagnation_timeout,
+            'stagnation_positive_timeout_seconds_effective': stagnation_positive_timeout,
+            'stagnation_exit_min_pnl_to_stay_effective': stagnation_min_pnl_to_stay,
+            'stagnation_positive_threshold': stagnation_positive_threshold,
+            'stagnation_mfe_pullback_pct': stagnation_mfe_pullback_pct,
+            'stagnation_detected_at': _to_iso(getattr(position, 'stagnation_detected_at', None)),
+            'stagnation_pnl_at_detection': getattr(position, 'stagnation_pnl_at_detection', None),
+            'stagnation_positive_triggered': getattr(position, 'stagnation_positive_triggered', False),
+            'stagnation_mfe_at_exit': getattr(position, 'stagnation_mfe_at_exit', None),
+            'stagnation_pullback_at_exit': getattr(position, 'stagnation_pullback_at_exit', None)
         }
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
@@ -454,3 +630,141 @@ async def _emit_stats_update():
         
     except Exception as e:
         logger.error(f"❌ Erreur émission stats_update: {e}")
+
+
+def _calculate_next_event(position, current_price, pnl_pct, atr_percent, 
+                         break_even_trigger_pct, trailing_trigger_pct,
+                         effective_config, trading_config):
+    """
+    Calculer la prochaine étape attendue pour la position active.
+    Retourne un dictionnaire avec l'événement, son prix de déclenchement,
+    et la distance en %/ATR.
+    """
+    try:
+        direction = position.direction
+        entry = position.entry
+        current_level = pnl_pct * 100  # Convertir en %
+        
+        # Récupérer TP/SL
+        tp_price = position.tp
+        sl_price = position.sl
+        
+        # Calculer distances
+        events = []
+        
+        # 1. Stop Loss (priorité absolue)
+        if sl_price:
+            if direction == 'LONG':
+                sl_distance = ((sl_price - current_price) / current_price) * 100
+            else:
+                sl_distance = ((current_price - sl_price) / current_price) * 100
+            
+            events.append({
+                'type': 'SL',
+                'price': sl_price,
+                'distance_pct': sl_distance,
+                'distance_atr': sl_distance / atr_percent if atr_percent else None,
+                'priority': 0,  # Plus haute priorité
+                'color': '#ef4444',  # rouge
+                'description': 'Stop Loss'
+            })
+        
+        # 2. Break-even
+        be_triggered = getattr(position, 'break_even_triggered', False)
+        if not be_triggered and break_even_trigger_pct is not None:
+            be_distance = break_even_trigger_pct - current_level
+            if be_distance > 0:
+                be_price = entry * (1 + break_even_trigger_pct / 100) if direction == 'LONG' else entry * (1 - break_even_trigger_pct / 100)
+                events.append({
+                    'type': 'BE',
+                    'price': be_price,
+                    'distance_pct': be_distance,
+                    'distance_atr': be_distance / atr_percent if atr_percent else None,
+                    'priority': 1,
+                    'color': '#3b82f6',  # bleu
+                    'description': 'Break-even'
+                })
+        
+        # 3. Trailing activation
+        trailing_activated = getattr(position, 'trailing_activated', False)
+        if not trailing_activated and trailing_trigger_pct is not None:
+            trailing_distance = trailing_trigger_pct - current_level
+            if trailing_distance > 0:
+                events.append({
+                    'type': 'TRAILING',
+                    'price': None,  # Déclenché par PnL
+                    'distance_pct': trailing_distance,
+                    'distance_atr': trailing_distance / atr_percent if atr_percent else None,
+                    'priority': 2,
+                    'color': '#8b5cf6',  # violet
+                    'description': 'Trailing stop'
+                })
+        
+        # 4. Prochain TP (escalier ou normal)
+        tp_escalier_levels = getattr(position, 'tp_escalier_levels', [])
+        current_tp_level = getattr(position, 'current_tp_level', 0)
+        
+        if tp_escalier_levels and current_tp_level < len(tp_escalier_levels):
+            # Mode escalier
+            next_level = tp_escalier_levels[current_tp_level]
+            tp_pct = next_level.get('pct', 0)
+            tp_distance = tp_pct - current_level
+            if tp_distance > 0:
+                tp_price = entry * (1 + tp_pct / 100) if direction == 'LONG' else entry * (1 - tp_pct / 100)
+                events.append({
+                    'type': f'TP{current_tp_level + 1}',
+                    'price': tp_price,
+                    'distance_pct': tp_distance,
+                    'distance_atr': tp_distance / atr_percent if atr_percent else None,
+                    'priority': 3,
+                    'color': '#10b981',  # vert
+                    'description': f'TP {current_tp_level + 1}/{len(tp_escalier_levels)}'
+                })
+        elif tp_price:
+            # TP normal
+            if direction == 'LONG':
+                tp_distance = ((tp_price - current_price) / current_price) * 100
+            else:
+                tp_distance = ((current_price - tp_price) / current_price) * 100
+            
+            events.append({
+                'type': 'TP',
+                'price': tp_price,
+                'distance_pct': tp_distance,
+                'distance_atr': tp_distance / atr_percent if atr_percent else None,
+                'priority': 3,
+                'color': '#10b981',  # vert
+                'description': 'Take Profit'
+            })
+        
+        # Trier par priorité puis par distance
+        events.sort(key=lambda x: (x['priority'], x['distance_pct']))
+        
+        # Retourner le premier événement (le plus proche)
+        if events:
+            next_ev = events[0]
+            # Ajouter des informations supplémentaires
+            next_ev['current_level_pct'] = current_level
+            next_ev['symbol'] = position.symbol
+            next_ev['direction'] = direction
+            next_ev['atr_percent'] = atr_percent
+            return next_ev
+        
+        # Plus d'événements attendus (position près de la fin)
+        return {
+            'type': 'CLOSE',
+            'price': current_price,
+            'distance_pct': 0,
+            'distance_atr': 0,
+            'priority': 999,
+            'color': '#6b7280',  # gris
+            'description': 'Position terminée',
+            'current_level_pct': current_level,
+            'symbol': position.symbol,
+            'direction': direction,
+            'atr_percent': atr_percent
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur calcul next_event: {e}")
+        return None

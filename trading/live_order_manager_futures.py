@@ -385,7 +385,7 @@ class LiveOrderManagerFutures:
                     'apiKey': api_key,
                     'secret': api_secret,
                     'enableRateLimit': True,
-                    'timeout': 10000,
+                    'timeout': 3000 if dry_run else 10000,
                     'options': {
                         'defaultType': 'swap',
                         'adjustForTimeDifference': True,
@@ -638,7 +638,7 @@ class LiveOrderManagerFutures:
             min_amount = None
 
             # 🔢 Ajuster quantité selon la précision/limites du marché (CCXT uniquement)
-            if self.exchange:
+            if self.exchange and not self.dry_run:
                 try:
                     if not getattr(self.exchange, 'markets', None):
                         self.exchange.load_markets()
@@ -700,25 +700,9 @@ class LiveOrderManagerFutures:
                 # -------------------------------------------------------------
                 start_shadow = time.time()
                 
-                # 1. Récupérer Carnet d'Ordres Réel (L2 Data)
-                # On essaie de récupérer la liquidité réelle pour calculer le vrai prix
+                # 1. (OPTIONNEL) Carnet d'Ordres Réel (L2 Data)
+                # ⚠️ IMPORTANT: en dry_run, on évite tout appel réseau bloquant qui pourrait geler /api/position/open
                 shadow_book = None
-                try:
-                    if self.use_bypass and self.bypass_client:
-                        # Mode Bypass
-                        bypass_symbol_book = self._convert_symbol_to_bypass(symbol)
-                        # Note: get_order_book n'est pas toujours dispo dans bypass, fallback sur CCXT si besoin
-                        # Si bypass a une méthode get_depth ou similaire
-                        pass 
-                    
-                    # Fallback ou Primary: Utiliser CCXT (souvent plus simple pour fetchOrderBook public)
-                    if not shadow_book and self.exchange:
-                        # Utiliser l'instance exchange même en dry_run si dispo, sinon créer une temporaire ? 
-                        # self.exchange est init en mode CCXT, mais peut-être pas en mode Bypass/DryRun pur sans keys
-                        # On va supposer que l'accès public (sans keys) fonctionne pour fetchOrderBook
-                        shadow_book = self.exchange.fetch_order_book(futures_symbol, limit=20)
-                except Exception as e:
-                    logger.debug(f"⚠️ Shadow: Impossible de fetch orderbook: {e}")
 
                 # 2. Calculer Prix d'Exécution Réaliste (Walking the Book)
                 shadow_filled_price = entry_price

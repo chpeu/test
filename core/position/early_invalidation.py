@@ -196,13 +196,17 @@ class EarlyInvalidationChecker:
         # 1. Vérification PnL (fenêtre 10-30s)
         if in_pnl_window:
             # Calculer ATR en pourcentage
-            entry = position.get('entry', 0)
-            atr = position.get('atr', 0)
-
-            if entry > 0 and atr > 0:
-                atr_percent = (atr / entry) * 100
+            atr_pct_used = position.get('atr_pct_used')
+            if isinstance(atr_pct_used, (int, float)) and atr_pct_used > 0:
+                atr_percent = float(atr_pct_used)
             else:
-                atr_percent = 0.5  # Valeur par défaut
+                entry = position.get('entry', 0)
+                atr = position.get('atr', 0)
+
+                if entry > 0 and atr > 0:
+                    atr_percent = (atr / entry) * 100
+                else:
+                    atr_percent = 0.5  # Valeur par défaut
 
             # Obtenir seuil adaptatif
             invalidation_threshold = self.get_adaptive_threshold(elapsed, atr_percent)

@@ -146,8 +146,10 @@ class WebSocketManager:
                 # 🔥 FIX: Vérifier que la connexion est toujours active
                 if connection not in self.active_connections:
                     return None
-                await connection.send_text(message_json)
+                await asyncio.wait_for(connection.send_text(message_json), timeout=1.0)
                 return None  # Succès
+            except asyncio.TimeoutError:
+                return connection  # Timeout - nettoyer connexion
             except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
                 # 🔥 FIX: Ignorer les erreurs de déconnexion normales
                 return connection  # Échec - retourner connexion à nettoyer

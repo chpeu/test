@@ -2023,6 +2023,7 @@ class PostgreSQLDataLogger:
             param_atr_mult_tp = _extract_numeric_value(config_snapshot.get('atr_mult_tp'))
             param_trailing_trigger_mult = _extract_numeric_value(config_snapshot.get('trailing_trigger_atr_mult'))
             param_trailing_distance_mult = _extract_numeric_value(
+                config_snapshot.get('trailing_distance_mult') or
                 config_snapshot.get('trailing_distance_atr_mult') or 
                 config_snapshot.get('trailing_atr_multiplier')
             )
@@ -2049,6 +2050,10 @@ class PostgreSQLDataLogger:
             entry_atr_pct_1m = _extract_numeric_value(entry_indicators.get('atr_pct_1m'))
             entry_atr_pct_5m = _extract_numeric_value(entry_indicators.get('atr_pct_5m'))
             entry_adx = _extract_numeric_value(entry_indicators.get('adx_1m'))
+            
+            # 🔥 ATR effectivement utilisé (après blend + clamp)
+            entry_atr_pct_used = _extract_numeric_value(trade_data.get('entry_atr_pct_used'))
+            entry_atr_blended = _extract_numeric_value(trade_data.get('entry_atr_blended'))
             
             # Déterminer le régime de volatilité
             market_volatility_state = None
@@ -2089,13 +2094,17 @@ class PostgreSQLDataLogger:
                 if calculated_tp_pct < 0.001:
                     calculated_tp_pct = None
             
+            # 🔥 FIX: Utiliser entry_atr_pct_used (blendé/clampé) au lieu de entry_atr_pct_1m brut
+            # pour cohérence avec les calculs runtime de BE/Trailing
+            atr_pct_for_triggers = entry_atr_pct_used or entry_atr_pct_1m
+            
             calculated_be_trigger_pnl_pct = None
-            if param_be_atr_mult and entry_atr_pct_1m:
-                calculated_be_trigger_pnl_pct = param_be_atr_mult * entry_atr_pct_1m
+            if param_be_atr_mult and atr_pct_for_triggers:
+                calculated_be_trigger_pnl_pct = param_be_atr_mult * atr_pct_for_triggers
             
             calculated_trailing_trigger_pnl_pct = None
-            if param_trailing_trigger_mult and entry_atr_pct_1m:
-                calculated_trailing_trigger_pnl_pct = param_trailing_trigger_mult * entry_atr_pct_1m
+            if param_trailing_trigger_mult and atr_pct_for_triggers:
+                calculated_trailing_trigger_pnl_pct = param_trailing_trigger_mult * atr_pct_for_triggers
             
             # Événements
             be_triggered = trade_data.get('break_even_triggered', False)
@@ -2186,6 +2195,7 @@ class PostgreSQLDataLogger:
                 INSERT INTO trade_atr_metrics (
                     trade_id,
                     entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                    entry_atr_pct_used, entry_atr_blended,
                     param_atr_mult_sl, param_atr_mult_tp,
                     param_trailing_trigger_mult, param_trailing_distance_mult,
                     param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
@@ -2213,7 +2223,7 @@ class PostgreSQLDataLogger:
                     regime_detection_method, regime_stability_minutes, regime_confidence,
                     session_atr_multiplier
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     -- Trailing MFE values
                     %s, %s, %s, %s,
                     -- Exit config params values
@@ -2231,6 +2241,8 @@ class PostgreSQLDataLogger:
                     entry_atr_5m = EXCLUDED.entry_atr_5m,
                     entry_atr_pct_1m = EXCLUDED.entry_atr_pct_1m,
                     entry_atr_pct_5m = EXCLUDED.entry_atr_pct_5m,
+                    entry_atr_pct_used = EXCLUDED.entry_atr_pct_used,
+                    entry_atr_blended = EXCLUDED.entry_atr_blended,
                     param_atr_mult_sl = EXCLUDED.param_atr_mult_sl,
                     param_atr_mult_tp = EXCLUDED.param_atr_mult_tp,
                     param_trailing_trigger_mult = EXCLUDED.param_trailing_trigger_mult,
@@ -2301,6 +2313,7 @@ class PostgreSQLDataLogger:
             params = (
                 trade_id,
                 entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                entry_atr_pct_used, entry_atr_blended,
                 param_atr_mult_sl, param_atr_mult_tp,
                 param_trailing_trigger_mult, param_trailing_distance_mult,
                 param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,

@@ -3079,11 +3079,19 @@ async def position_check_loop_callback() -> None:
         from datetime import datetime  # 🔥 FIX: Import au début du try pour éviter UnboundLocalError
         
         # Récupérer prix actuel
-        current_price_data = await price_prov.get_price(pos_mgr.active_position.symbol)
-        if not current_price_data:
-            return
-        
-        current_price = get_preferred_price(current_price_data)
+        symbol = pos_mgr.active_position.symbol
+        current_price_data = await price_prov.get_price(symbol)
+
+        position_fallback_price = getattr(pos_mgr.active_position, 'current_price', None)
+        if position_fallback_price is None or position_fallback_price <= 0:
+            position_fallback_price = getattr(pos_mgr.active_position, 'entry', None)
+
+        current_price = get_preferred_price(current_price_data, fallback=position_fallback_price)
+        if current_price is None or current_price <= 0:
+            logger.warning(f"⚠️ Prix non disponible pour {symbol} - fallback sur entry")
+            current_price = float(getattr(pos_mgr.active_position, 'entry', 0) or 0)
+            if current_price <= 0:
+                return
         
         # Check position (renvoie None ou raison de fermeture)
         close_reason = await pos_mgr.check_position(current_price)
@@ -3201,131 +3209,15 @@ async def position_check_loop_callback() -> None:
         
         # 🔥 FIX: Émettre position_update même si pas de fermeture (pour affichage frontend)
         if not close_reason:
-            # Calculer PnL pour affichage
+            # Utiliser _emit_position_update qui inclut next_event
             pos_mgr = state.get_position_manager()
             position = pos_mgr.active_position if pos_mgr else None
             if position:
-                # 🔥 FIX: Vérifier que position est un objet Position valide
-                # active_position ne doit JAMAIS être une string ou dict - c'est toujours un objet Position
-                if not hasattr(position, 'symbol') or not hasattr(position, 'entry'):
-                    logger.error(f"❌ Position invalide: type={type(position)}, attendu Position object")
-                    return
-                
-                if isinstance(position, dict):
-                    # Si position est déjà un dict, utiliser directement
-                    pnl = pos_mgr.pnl_calculator.calculate_pnl_percent(
-                        entry=position.get('entry', 0),
-                        current_price=current_price,
-                        direction=position.get('direction', 'LONG')
-                    )
-                    pnl_usdt = pos_mgr.pnl_calculator.calculate_pnl_usdt(
-                        position=position,
-                        current_price=current_price
-                    )
-                    # Créer un objet position-like pour le reste du code
-                    class PositionProxy:
-                        def __init__(self, d):
-                            self.symbol = d.get('symbol', '')
-                            self.direction = d.get('direction', 'LONG')
-                            self.entry = d.get('entry', 0)
-                            self.sl = d.get('sl', 0)
-                            self.tp = d.get('tp', 0)
-                            self.size = d.get('size', 0)
-                            self.break_even_set = d.get('break_even_set', False)
-                            self.partial_tp_sold = d.get('partial_tp_sold', False)
-                    position = PositionProxy(position)
-                else:
-                    # Position est un objet Position normal
-                    pnl = pos_mgr.pnl_calculator.calculate_pnl_percent(
-                        entry=position.entry,
-                        current_price=current_price,
-                        direction=position.direction
-                    )
-                    # 🔥 FIX: Calculer PnL USDT avec pnl_calculator (incluant TP partiel automatiquement)
-                    position_dict = position.to_dict() if hasattr(position, 'to_dict') else {}
-                    pnl_usdt = pos_mgr.pnl_calculator.calculate_pnl_usdt(
-                        position=position_dict,
-                        current_price=current_price
-                    )
-                
-                # 🔥 FIX: Log détaillé pour debug
-                logger.debug(
-                    f"📊 Position check: {position.symbol} {position.direction} | "
-                    f"Entry={position.entry:.6f} | Prix={current_price:.6f} | "
-                    f"PnL={pnl:.2f}% | PnL USDT={pnl_usdt:.4f} | "
-                    f"SL={position.sl:.6f} | TP={position.tp:.6f}"
-                )
-                
-                # 🔥 FIX: Récupérer ml_confidence depuis PostgreSQL si null sur la position
-                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
-                ml_conf = getattr(position, 'ml_confidence', None)
-                if ml_conf is None:
-                    try:
-                        from core.callbacks.scanner_loop import get_pg_datalogger
-                        pg_logger = get_pg_datalogger()
-                        if pg_logger and pg_logger.enabled:
-                            ml_conf = await pg_logger.get_ml_confidence_for_symbol_async(position.symbol)
-                            if ml_conf is not None:
-                                position.ml_confidence = round(ml_conf, 1)  # Arrondir et stocker
-                                ml_conf = position.ml_confidence
-                    except Exception as e:
-                        logger.debug(f"⚠️ Impossible de charger ml_confidence depuis PostgreSQL: {e}")
-                
-                # 🔥 FIX: Récupérer adaptive_sizing_multiplier depuis PostgreSQL si null sur la position
-                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
-                sizing_mult = getattr(position, 'adaptive_sizing_multiplier', None)
-                if sizing_mult is None:
-                    try:
-                        from core.callbacks.scanner_loop import get_pg_datalogger
-                        pg_logger = get_pg_datalogger()
-                        if pg_logger and pg_logger.enabled:
-                            sizing_mult = await pg_logger.get_adaptive_sizing_for_symbol_async(position.symbol)
-                            if sizing_mult is not None:
-                                position.adaptive_sizing_multiplier = sizing_mult
-                    except Exception as e:
-                        logger.debug(f"⚠️ Impossible de charger sizing_multiplier depuis PostgreSQL: {e}")
-
-                # 🔥 FIX: Calculer opened_at depuis start_time (opened_at n'est pas un attribut direct)
-                opened_at_iso = None
-                if position.start_time:
-                    opened_at_iso = datetime.fromtimestamp(position.start_time).isoformat()
-                
-                # Émettre update pour le frontend (inclut aussi les tailles en contrats)
-                update_data = {
-                    'symbol': position.symbol,
-                    'direction': position.direction,
-                    'entry': position.entry,
-                    'current_price': current_price,
-                    'sl': position.sl,
-                    'tp': position.tp,
-                    'pnl': pnl,
-                    'pnl_usdt': pnl_usdt,
-                    'size': position.size,
-                    'break_even_set': position.break_even_set,
-                    'partial_tp_sold': position.partial_tp_sold,
-                    'position_size_contracts': getattr(position, 'position_size_contracts', None),
-                    'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
-                    'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
-                    # 🔥 FIX: Ajouter ml_confidence et adaptive_sizing_multiplier
-                    'ml_confidence': ml_conf,
-                    'adaptive_sizing_multiplier': sizing_mult,
-                    # 🔥 FIX: Ajouter tp_sl_mode, opened_at et force_full_tp pour affichage ATR
-                    'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-                    'opened_at': opened_at_iso,  # 🔥 FIX: Calculé depuis start_time
-                    'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
-                    'leverage_used': getattr(position, 'leverage_used', None),
-                }
-                ws_mgr = state.get_ws_manager()
-                if ws_mgr:
-                    await ws_mgr.emit('position_update', update_data)
-                
-                # 🔥 FIX: Log pour vérifier que le prix est bien émis
-                logger.debug(
-                    f"📡 position_update émis: {position.symbol} | "
-                    f"Prix actuel: {current_price:.6f} | "
-                    f"Size: {position.size:.2f} USDT | "
-                    f"PnL: {pnl:.2f}% ({pnl_usdt:.2f} USDT)"
-                )
+                try:
+                    from core.callbacks.position_check_loop import _emit_position_update
+                    await _emit_position_update(position, current_price)
+                except Exception as e:
+                    logger.error(f"❌ Erreur émission position_update avec next_event: {e}")
         
         if close_reason:
             # Position fermée
@@ -4556,46 +4448,51 @@ async def api_open_position(request: Request):
     
     # 🔥 FIX: Utiliser le même lock que le scanner pour éviter les ouvertures multiples
     pos_lock = state.lock("position")
-    async with pos_lock:
-        pos_mgr = state.get_position_manager()
-        if not pos_mgr:
-            return JSONResponse({'error': 'Position manager not available'}, status_code=503)
-        # Vérifier qu'on n'a pas déjà une position active
-        if state.active_position or (pos_mgr and pos_mgr.active_position):
-            return JSONResponse({'error': 'Une position est déjà active'}, status_code=400)
-        
-        try:
+    position = None
+    data = {}
+    try:
+        async with pos_lock:
+            pos_mgr = state.get_position_manager()
+            if not pos_mgr:
+                return JSONResponse({'error': 'Position manager not available'}, status_code=503)
+            # Vérifier qu'on n'a pas déjà une position active
+            if state.active_position or (pos_mgr and pos_mgr.active_position):
+                return JSONResponse({'error': 'Une position est déjà active'}, status_code=400)
+
             data = await request.json() if hasattr(request, 'json') else {}
             data = data if isinstance(data, dict) else {}
-            
+
             # Vérifier données minimales
             if not data or 'symbol' not in data:
                 return JSONResponse({'error': 'Missing symbol'}, status_code=400)
-            
+
             # Double-check après avoir acquis le lock
             if state.active_position or (pos_mgr and pos_mgr.active_position):
                 return JSONResponse({'error': 'Une position est déjà active (double-check)'}, status_code=400)
-            
+
             # 🔥 FIX: Vérifier que entry est fourni et valide
             entry = data.get('entry')
             if not entry or entry <= 0:
                 return JSONResponse({
                     'error': f'Entry invalide ou manquant: {entry}. Entry doit être > 0.'
                 }, status_code=400)
-            
+
             # Extraire paramètres avec valeurs par défaut
             condition_types = data.get('condition_types', [])  # 🔥 PHASE 5: Types de conditions
-            
+
             # 🔥 Calculer le multiplicateur adaptatif si non fourni
             adaptive_mult = data.get('adaptive_sizing_multiplier', 1.0)
-            if adaptive_mult == 1.0 and TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+            if adaptive_mult == 1.0:
                 try:
-                    from core.position.adaptive_sizing import get_adaptive_sizing_manager
-                    adaptive_manager = get_adaptive_sizing_manager()
-                    adaptive_mult = adaptive_manager.get_size_multiplier(data['symbol'])
-                except Exception:
+                    # Import sécurisé de TRADING_CONFIG
+                    from config import TRADING_CONFIG
+                    if TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+                        from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                        adaptive_manager = get_adaptive_sizing_manager()
+                        adaptive_mult = adaptive_manager.get_size_multiplier(data['symbol'])
+                except (ImportError, AttributeError):
                     pass
-            
+
             position = pos_mgr.open_position(
                 symbol=data['symbol'],
                 direction=data.get('direction', 'LONG'),
@@ -4610,34 +4507,59 @@ async def api_open_position(request: Request):
                 adaptive_sizing_multiplier=adaptive_mult,  # 🔥 Multiplicateur adaptatif
                 setup_data=data
             )
-            
+
             if position is None:
                 return JSONResponse({'error': 'Trade rejeté (calibration ML)'}, status_code=400)
-            
+
             # 🔥 FIX: Stocker capital si fourni dans data
             if 'capital' in data:
                 position.capital = data.get('capital')
-            
+
             state.set_active_position(position)
-            
-            # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
-            price_prov = state.get_price_provider()
-            if price_prov and position:
-                await setup_realtime_sl_check(position, price_prov)
-            
-            # 🔥 FIX SL MISMATCH V2: Planifier placement ordre SL sur exchange après 3s
-            if position:
-                await schedule_sl_order_placement(position, delay_seconds=3.0)
-            
-            await add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data['symbol']}")
-            ws_mgr = state.get_ws_manager()
-            if ws_mgr:
-                await ws_mgr.emit('position_opened', position.to_dict())
-            
-            return JSONResponse({'status': 'opened', 'position': position.to_dict()})
-        except Exception as e:
-            logger.error(f"Erreur ouverture position: {e}")
-            return JSONResponse({'error': str(e)}, status_code=500)
+    except Exception as e:
+        logger.error(f"Erreur ouverture position: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+    # ⚠️ IMPORTANT: Tout ce qui suit est volontairement hors lock
+    # pour éviter de bloquer l'API si un envoi WebSocket se fige.
+    try:
+        price_prov = state.get_price_provider()
+        if price_prov and position:
+            await setup_realtime_sl_check(position, price_prov)
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur setup_realtime_sl_check: {e}")
+
+    try:
+        if position:
+            await schedule_sl_order_placement(position, delay_seconds=3.0)
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur schedule_sl_order_placement: {e}")
+
+    try:
+        sched = state.get_scheduler()
+        logger.info(f"🔍 Scheduler check: sched={sched is not None}, is_running={sched.is_running if sched else 'N/A'}")
+        if sched and not sched.is_running:
+            logger.info("🚀 Démarrage du scheduler pour position active...")
+            sched.start()
+            logger.info(f"✅ Scheduler démarré: is_running={sched.is_running}")
+        elif sched and sched.is_running:
+            logger.info("✅ Scheduler déjà actif")
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur démarrage scheduler: {e}")
+
+    try:
+        asyncio.create_task(add_log('INFO', 'Position ouverte', f"{data.get('direction', 'LONG')} {data.get('symbol', '')}"))
+    except Exception:
+        pass
+
+    try:
+        ws_mgr = state.get_ws_manager()
+        if ws_mgr:
+            asyncio.create_task(ws_mgr.emit('position_opened', position.to_dict()))
+    except Exception:
+        pass
+
+    return JSONResponse({'status': 'opened', 'position': position.to_dict()})
 
 
 @app.get("/api/position/active")
@@ -8080,6 +8002,8 @@ async def export_datalogger_excel(
                 # 🔥 PHASE 0: Pour trade_atr_metrics, s'assurer que les colonnes V2 sont présentes
                 if table_name == 'trade_atr_metrics':
                     v2_columns = [
+                        # 🔥 ATR Blendé/Clampé (colonnes critiques pour cohérence)
+                        'entry_atr_pct_used', 'entry_atr_blended',
                         # Saisonnalité
                         'session_market', 'hour_utc', 'day_of_week', 'is_weekend',
                         # Régime V2 Metadata

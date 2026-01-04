@@ -50,6 +50,9 @@ class RegimeConfig:
     # 🔥 ATR 5m avec valeurs par défaut (compatibilité DB)
     optimal_atr_min_5m: float = 0.15  # ATR 5m min par défaut
     optimal_atr_max_5m: float = 0.80  # ATR 5m max par défaut
+    # 🔥 RSI Thresholds par régime (30/12/2025)
+    rsi_final_long_max: int = 65  # LONG bloqué si RSI > seuil
+    rsi_final_short_min: int = 35  # SHORT bloqué si RSI < seuil
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -869,7 +872,10 @@ class MarketRegimeSelector:
             # Paramètres stagnation par régime
             "stagnation_exit_timeout_seconds": self.current_config.stagnation_timeout,
             "stagnation_exit_min_pnl_to_stay": self.current_config.stagnation_min_pnl,
-            "stagnation_exit_max_loss_to_exit": self.current_config.stagnation_max_loss
+            "stagnation_exit_max_loss_to_exit": self.current_config.stagnation_max_loss,
+            # 🔥 RSI Thresholds par régime (30/12/2025)
+            "rsi_final_long_max": self.current_config.rsi_final_long_max,
+            "rsi_final_short_min": self.current_config.rsi_final_short_min
         }
     
     def get_status(self) -> Dict[str, Any]:

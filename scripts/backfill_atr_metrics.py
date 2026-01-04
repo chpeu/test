@@ -114,6 +114,7 @@ def backfill_trade_atr_metrics(limit: int = None, dry_run: bool = False):
             param_atr_mult_tp = extract_numeric(config_snapshot.get('atr_mult_tp'))
             param_trailing_trigger_mult = extract_numeric(config_snapshot.get('trailing_trigger_atr_mult'))
             param_trailing_distance_mult = extract_numeric(
+                config_snapshot.get('trailing_distance_mult') or
                 config_snapshot.get('trailing_distance_atr_mult') or 
                 config_snapshot.get('trailing_atr_multiplier')
             )
@@ -149,6 +150,25 @@ def backfill_trade_atr_metrics(limit: int = None, dry_run: bool = False):
             entry_atr_pct_1m = extract_numeric(trade['entry_atr_pct_1m'])
             entry_atr_pct_5m = extract_numeric(trade['entry_atr_pct_5m'])
             entry_adx = extract_numeric(trade['entry_adx_1m'])
+            
+            # 🔥 Calculer entry_atr_blended et entry_atr_pct_used
+            # Blend: 70% ATR_1m + 30% ATR_5m (fallback sur ATR_1m seul)
+            entry_atr_blended = None
+            if entry_atr_1m is not None:
+                if entry_atr_5m is not None and entry_atr_5m > 0:
+                    entry_atr_blended = 0.7 * entry_atr_1m + 0.3 * entry_atr_5m
+                else:
+                    entry_atr_blended = entry_atr_1m
+            
+            # ATR% utilisé (après clamp entre atr_min et atr_max)
+            entry_atr_pct_used = None
+            entry_price = extract_numeric(trade['entry_price'])
+            if entry_atr_blended is not None and entry_price and entry_price > 0:
+                raw_pct = (entry_atr_blended / entry_price) * 100
+                # Clamp entre atr_min et atr_max depuis config_snapshot
+                atr_min = extract_numeric(config_snapshot.get('atr_min')) or 0.10
+                atr_max = extract_numeric(config_snapshot.get('atr_max')) or 1.0
+                entry_atr_pct_used = max(atr_min, min(raw_pct, atr_max))
             
             # Régime de volatilité
             market_volatility_state = None
@@ -256,6 +276,7 @@ def backfill_trade_atr_metrics(limit: int = None, dry_run: bool = False):
                 INSERT INTO trade_atr_metrics (
                     trade_id,
                     entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                    entry_atr_pct_used, entry_atr_blended,
                     param_atr_mult_sl, param_atr_mult_tp,
                     param_trailing_trigger_mult, param_trailing_distance_mult,
                     param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
@@ -275,6 +296,7 @@ def backfill_trade_atr_metrics(limit: int = None, dry_run: bool = False):
                 ) VALUES (
                     %s,
                     %s, %s, %s, %s,
+                    %s, %s,
                     %s, %s,
                     %s, %s,
                     %s, %s, %s,
@@ -297,6 +319,7 @@ def backfill_trade_atr_metrics(limit: int = None, dry_run: bool = False):
             params = (
                 trade_id,
                 entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                entry_atr_pct_used, entry_atr_blended,
                 param_atr_mult_sl, param_atr_mult_tp,
                 param_trailing_trigger_mult, param_trailing_distance_mult,
                 param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,

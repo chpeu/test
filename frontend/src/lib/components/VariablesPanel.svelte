@@ -840,6 +840,9 @@
 				trailing_trigger_atr_mult: tradingConfig.trailing_trigger_atr_mult,
 				trailing_distance_atr_mult: tradingConfig.trailing_distance_atr_mult || tradingConfig.trailing_atr_multiplier,
 				max_position_time: tradingConfig.max_position_time,
+				// 🔥 RSI Thresholds par régime
+				rsi_final_long_max: tradingConfig.rsi_final_long_max,
+				rsi_final_short_min: tradingConfig.rsi_final_short_min,
 			},
 			// 🔥 SPRINT 2: Adaptations ML - Score Pair Dynamique
 			'🎯 Adaptations ML': {

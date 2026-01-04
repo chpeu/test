@@ -71,7 +71,14 @@ async def get_live_stats():
         config = load_live_config()
 
         # Récupérer stats depuis LiveOrderManager si actif
-        from main import live_order_manager
+        from core.state_manager import get_state_manager
+
+        state = get_state_manager()
+        live_order_manager = state.get_live_order_manager()
+        if not live_order_manager:
+            from main import live_order_manager as legacy_live_order_manager
+
+            live_order_manager = legacy_live_order_manager
 
         if live_order_manager:
             stats = live_order_manager.get_stats()

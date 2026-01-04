@@ -26,7 +26,7 @@
   "optimal_atr_max_5m": 0.8,
   "trend_timeframe": "30m",
   "account_size": 1000.0,
-  "risk_per_trade": 2.0,
+  "risk_per_trade": 1.5,
   "min_risk_per_trade": 1.25,
   "max_risk_per_trade": 5.0,
   "min_score_required": 9.0,

@@ -233,7 +233,16 @@
 						🔄 TS: {regimeData.config_active.trailing_trigger_atr_mult || '-'}x
 					</span>
 				</div>
-				<!-- Ligne 4: SL Exchange dynamique (filet de sécurité) -->
+				<!-- Ligne 4: RSI Thresholds -->
+				<div class="config-row">
+					<span class="config-item rsi-threshold" title="RSI max pour LONG (bloque si RSI > seuil)">
+						📈 RSI Long Max: {regimeData.config_active.rsi_final_long_max || '65'}
+					</span>
+					<span class="config-item rsi-threshold" title="RSI min pour SHORT (bloque si RSI < seuil)">
+						📉 RSI Short Min: {regimeData.config_active.rsi_final_short_min || '35'}
+					</span>
+				</div>
+				<!-- Ligne 5: SL Exchange dynamique (filet de sécurité) -->
 				<div class="config-row">
 					<span class="config-item sl-exchange" title="Stop Loss MEXC dynamique = SL ATR × 1.1 (filet de sécurité si bot crash)">
 						🛡️ SL MEXC: SL×1.1 (~{regimeData.config_active.atr_mult_sl ? (regimeData.config_active.atr_mult_sl * 1.1).toFixed(1) : '-'}x ATR)
@@ -369,6 +378,11 @@
 
 	.config-item.atr-max-disabled {
 		color: #888;
+	}
+
+	.config-item.rsi-threshold {
+		color: #a78bfa;
+		font-weight: 500;
 	}
 
 	.disabled-badge {
