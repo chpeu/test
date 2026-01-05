@@ -3086,6 +3086,11 @@ class PositionManager:
             self.active_position.stagnation_detected_at = time.time()
             self.active_position.stagnation_pnl_at_detection = pnl
         
+        # 🔥 FIX: MFE PROTECT et STAGNATION POSITIVE ne s'appliquent QU'EN MODE ATR
+        # En mode FIXE, seul le timeout normal s'applique
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        use_atr = (tp_sl_mode in ['ATR', 'TP_MULTI', 'ESCALIER']) or self.config.use_atr
+        
         # 🔥 FIX 15/12: Si trailing activé, NI Stagnation Positive NI MFE Protect ne doivent se déclencher
         # Le trailing gère la sortie via son SL dynamique
         if self.active_position.trailing_activated:
@@ -3094,10 +3099,11 @@ class PositionManager:
                 f"Trailing déjà activé, laisse le trailing gérer (PnL={pnl:.2f}%)"
             )
             # Ne pas retourner ici, continuer vers PHASE 3 (timeout normal) si nécessaire
-        else:
+        elif use_atr:  # 🔥 FIX: MFE PROTECT et STAGNATION POSITIVE seulement en mode ATR
             # ═══════════════════════════════════════════════════════════════════
             # 🔥 PHASE 1: MFE PROTECTION (priorité sur Stagnation Positive)
             # Protège un MFE élevé même si PnL actuel est encore au-dessus du seuil
+            # MODE ATR UNIQUEMENT
             # ═══════════════════════════════════════════════════════════════════
             stagnation_use_mfe_tracking = TRADING_CONFIG.get('stagnation_use_mfe_tracking', True)
             stagnation_mfe_pullback_pct = TRADING_CONFIG.get('stagnation_mfe_pullback_pct', 0.08)
@@ -3120,6 +3126,7 @@ class PositionManager:
             # ═══════════════════════════════════════════════════════════════════
             # 🔥 PHASE 2: STAGNATION POSITIVE EXIT (sortie anticipée en profit)
             # Se déclenche si PnL >= seuil ET timeout atteint ET trailing NON activé
+            # MODE ATR UNIQUEMENT
             # ═══════════════════════════════════════════════════════════════════
             if stagnation_positive_enabled and pnl >= stagnation_positive_threshold:
                 if elapsed >= stagnation_positive_timeout:
@@ -3131,6 +3138,11 @@ class PositionManager:
                         f"PnL={pnl:.2f}% >= seuil={stagnation_positive_threshold:.2f}% après {elapsed:.0f}s (trailing non activé)"
                     )
                     return 'STAGNATION_POSITIVE'
+        else:
+            logger.debug(
+                f"⏸️ MFE PROTECT et STAGNATION POSITIVE ignorés {self.active_position.symbol}: "
+                f"Mode FIXE détecté (tp_sl_mode={tp_sl_mode}, use_atr={use_atr})"
+            )
         
         # ═══════════════════════════════════════════════════════════════════
         # 🔥 PHASE 3: LOGIQUE EXISTANTE (timeout normal)

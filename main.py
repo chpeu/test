@@ -5263,6 +5263,43 @@ async def handle_client_command(command: str, params: dict):
                 pos_mgr = state.get_position_manager()
                 if pos_mgr:
                     pos_mgr.config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
+                    
+                    # 🔥 FIX: Recalculer TP/SL de la position active avec le nouveau mode
+                    if pos_mgr.active_position and not pos_mgr.active_position.tp_escalier_enabled:
+                        try:
+                            from core.tp_sl import calculate_atr_levels, calculate_fixed_levels
+                            position = pos_mgr.active_position
+                            entry = position.entry
+                            direction = position.direction
+                            atr = position.atr
+                            atr5m = position.atr5m
+                            
+                            # Recalculer TP/SL selon le nouveau mode
+                            use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
+                            if use_atr and atr:
+                                sl, tp = calculate_atr_levels(
+                                    entry=entry,
+                                    atr=atr,
+                                    atr5m=atr5m,
+                                    direction=direction,
+                                    config=pos_mgr.tpsl_config
+                                )
+                                logger.info(f"🔄 Recalcul TP/SL (mode ATR): TP={tp:.8f}, SL={sl:.8f}")
+                            else:
+                                sl, tp = calculate_fixed_levels(
+                                    entry=entry,
+                                    direction=direction,
+                                    config=pos_mgr.tpsl_config
+                                )
+                                logger.info(f"🔄 Recalcul TP/SL (mode FIXE): TP={tp:.8f}, SL={sl:.8f}")
+                            
+                            # Mettre à jour la position
+                            position.tp = tp
+                            position.sl = sl
+                            logger.info(f"✅ TP/SL recalculés pour position active: {position.symbol} {direction}")
+                        except Exception as e:
+                            logger.error(f"❌ Erreur recalcul TP/SL: {e}")
+                
                 updated['tp_sl_mode'] = mode
                 logger.info(f"✅ Mode TP/SL mis à jour: {mode} (use_atr={pos_cfg.use_atr if pos_cfg else 'N/A'})")
         
