@@ -393,23 +393,29 @@ async def _emit_position_update(position, current_price: float):
         stagnation_positive_threshold = TRADING_CONFIG.get('stagnation_positive_threshold', None) if TRADING_CONFIG else None
         stagnation_mfe_pullback_pct = TRADING_CONFIG.get('stagnation_mfe_pullback_pct', None) if TRADING_CONFIG else None
 
-        # 🔥 NOUVEAU: Calculer la prochaine étape attendue
-        next_event = _calculate_next_event(position, current_price, pnl_pct, atr_percent, 
+        # 🔥 NOUVEAU: Calculer les prochains événements (TP et SL séparés)
+        next_events = _calculate_next_event(position, current_price, pnl_pct, atr_percent, 
                                           break_even_trigger_pct, trailing_trigger_pct, 
                                           effective_config, TRADING_CONFIG if TRADING_CONFIG else {})
         
-        # 🔥 DEBUG: Log next_event
-        if next_event:
-            logger.info(f"🎯 Next event calculé: {next_event.get('type')} - {next_event.get('description')} - distance: {next_event.get('distance_pct', 0):.2f}%")
+        # 🔥 DEBUG: Log next_events
+        if next_events:
+            if next_events.get('next_tp'):
+                logger.info(f"🎯 Next TP: {next_events['next_tp'].get('type')} - {next_events['next_tp'].get('description')} - distance: {next_events['next_tp'].get('distance_pct', 0):.2f}%")
+            if next_events.get('next_sl'):
+                logger.info(f"🛑 Next SL: {next_events['next_sl'].get('type')} - {next_events['next_sl'].get('description')} - distance: {next_events['next_sl'].get('distance_pct', 0):.2f}%")
         else:
-            logger.warning("⚠️ Next event = None")
+            logger.warning("⚠️ Next events = None")
 
         try:
             position.current_price = current_price
             position.pnl = round(pnl, 4)
             position.pnl_pct = round(pnl_pct, 4)
             position.pnl_usdt = round(pnl_usdt, 4)
-            position.next_event = next_event
+            # 🔥 FIX: Stocker next_tp et next_sl séparément + next_event pour compatibilité
+            position.next_event = next_events.get('next_event') if next_events else None
+            position.next_tp = next_events.get('next_tp') if next_events else None
+            position.next_sl = next_events.get('next_sl') if next_events else None
         except Exception:
             pass
 
@@ -443,8 +449,10 @@ async def _emit_position_update(position, current_price: float):
             'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
             'last_update_at': datetime.now().isoformat(),
             'opened_at': opened_at,
-            # 🔥 NOUVEAU: Ajouter next_event pour afficher la prochaine étape
-            'next_event': next_event,
+            # 🔥 NOUVEAU: Ajouter next_tp et next_sl séparément + next_event pour compatibilité
+            'next_event': next_events.get('next_event') if next_events else None,
+            'next_tp': next_events.get('next_tp') if next_events else None,
+            'next_sl': next_events.get('next_sl') if next_events else None,
             'position_size_contracts': getattr(position, 'position_size_contracts', None),
             'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
             'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),
@@ -636,9 +644,8 @@ def _calculate_next_event(position, current_price, pnl_pct, atr_percent,
                          break_even_trigger_pct, trailing_trigger_pct,
                          effective_config, trading_config):
     """
-    Calculer la prochaine étape attendue pour la position active.
-    Retourne un dictionnaire avec l'événement, son prix de déclenchement,
-    et la distance en %/ATR.
+    Calculer les prochains événements pour la position active.
+    Retourne un dictionnaire avec 'next_tp' et 'next_sl' séparés pour affichage distinct.
     """
     try:
         direction = position.direction
@@ -649,27 +656,75 @@ def _calculate_next_event(position, current_price, pnl_pct, atr_percent,
         tp_price = position.tp
         sl_price = position.sl
         
-        # Calculer distances
-        events = []
+        # 🔥 FIX: Construire les événements TP et SL séparément
+        result = {
+            'next_tp': None,
+            'next_sl': None,
+            'next_event': None,  # Événement le plus proche (pour compatibilité)
+            'current_level_pct': current_level,
+            'symbol': position.symbol,
+            'direction': direction,
+            'atr_percent': atr_percent
+        }
         
-        # 1. Stop Loss (priorité absolue)
+        # 1. Stop Loss (toujours affiché)
         if sl_price:
             if direction == 'LONG':
                 sl_distance = ((sl_price - current_price) / current_price) * 100
             else:
                 sl_distance = ((current_price - sl_price) / current_price) * 100
             
-            events.append({
+            result['next_sl'] = {
                 'type': 'SL',
                 'price': sl_price,
                 'distance_pct': sl_distance,
                 'distance_atr': sl_distance / atr_percent if atr_percent else None,
-                'priority': 0,  # Plus haute priorité
                 'color': '#ef4444',  # rouge
                 'description': 'Stop Loss'
-            })
+            }
         
-        # 2. Break-even
+        # 2. Prochain TP (toujours affiché)
+        tp_escalier_levels = getattr(position, 'tp_escalier_levels', [])
+        current_tp_level = getattr(position, 'current_tp_level', 0)
+        
+        if tp_escalier_levels and current_tp_level < len(tp_escalier_levels):
+            # Mode escalier
+            next_level = tp_escalier_levels[current_tp_level]
+            tp_pct = next_level.get('pct', 0)
+            tp_distance = tp_pct - current_level
+            tp_price_calc = entry * (1 + tp_pct / 100) if direction == 'LONG' else entry * (1 - tp_pct / 100)
+            
+            result['next_tp'] = {
+                'type': f'TP{current_tp_level + 1}',
+                'price': tp_price_calc,
+                'distance_pct': tp_distance,
+                'distance_atr': tp_distance / atr_percent if atr_percent else None,
+                'color': '#10b981',  # vert
+                'description': f'TP {current_tp_level + 1}/{len(tp_escalier_levels)}'
+            }
+        elif tp_price:
+            # TP normal
+            if direction == 'LONG':
+                tp_distance = ((tp_price - current_price) / current_price) * 100
+            else:
+                tp_distance = ((current_price - tp_price) / current_price) * 100
+            
+            result['next_tp'] = {
+                'type': 'TP',
+                'price': tp_price,
+                'distance_pct': tp_distance,
+                'distance_atr': tp_distance / atr_percent if atr_percent else None,
+                'color': '#10b981',  # vert
+                'description': 'Take Profit'
+            }
+        
+        # 3. Calculer l'événement le plus proche (pour compatibilité et logique interne)
+        events = []
+        
+        if result['next_sl']:
+            events.append({**result['next_sl'], 'priority': 0})
+        
+        # Break-even
         be_triggered = getattr(position, 'break_even_triggered', False)
         if not be_triggered and break_even_trigger_pct is not None:
             be_distance = break_even_trigger_pct - current_level
@@ -685,14 +740,14 @@ def _calculate_next_event(position, current_price, pnl_pct, atr_percent,
                     'description': 'Break-even'
                 })
         
-        # 3. Trailing activation
+        # Trailing activation
         trailing_activated = getattr(position, 'trailing_activated', False)
         if not trailing_activated and trailing_trigger_pct is not None:
             trailing_distance = trailing_trigger_pct - current_level
             if trailing_distance > 0:
                 events.append({
                     'type': 'TRAILING',
-                    'price': None,  # Déclenché par PnL
+                    'price': None,
                     'distance_pct': trailing_distance,
                     'distance_atr': trailing_distance / atr_percent if atr_percent else None,
                     'priority': 2,
@@ -700,70 +755,15 @@ def _calculate_next_event(position, current_price, pnl_pct, atr_percent,
                     'description': 'Trailing stop'
                 })
         
-        # 4. Prochain TP (escalier ou normal)
-        tp_escalier_levels = getattr(position, 'tp_escalier_levels', [])
-        current_tp_level = getattr(position, 'current_tp_level', 0)
+        if result['next_tp']:
+            events.append({**result['next_tp'], 'priority': 3})
         
-        if tp_escalier_levels and current_tp_level < len(tp_escalier_levels):
-            # Mode escalier
-            next_level = tp_escalier_levels[current_tp_level]
-            tp_pct = next_level.get('pct', 0)
-            tp_distance = tp_pct - current_level
-            if tp_distance > 0:
-                tp_price = entry * (1 + tp_pct / 100) if direction == 'LONG' else entry * (1 - tp_pct / 100)
-                events.append({
-                    'type': f'TP{current_tp_level + 1}',
-                    'price': tp_price,
-                    'distance_pct': tp_distance,
-                    'distance_atr': tp_distance / atr_percent if atr_percent else None,
-                    'priority': 3,
-                    'color': '#10b981',  # vert
-                    'description': f'TP {current_tp_level + 1}/{len(tp_escalier_levels)}'
-                })
-        elif tp_price:
-            # TP normal
-            if direction == 'LONG':
-                tp_distance = ((tp_price - current_price) / current_price) * 100
-            else:
-                tp_distance = ((current_price - tp_price) / current_price) * 100
-            
-            events.append({
-                'type': 'TP',
-                'price': tp_price,
-                'distance_pct': tp_distance,
-                'distance_atr': tp_distance / atr_percent if atr_percent else None,
-                'priority': 3,
-                'color': '#10b981',  # vert
-                'description': 'Take Profit'
-            })
-        
-        # Trier par priorité puis par distance
-        events.sort(key=lambda x: (x['priority'], x['distance_pct']))
-        
-        # Retourner le premier événement (le plus proche)
+        # Trier par priorité puis par valeur absolue de distance
         if events:
-            next_ev = events[0]
-            # Ajouter des informations supplémentaires
-            next_ev['current_level_pct'] = current_level
-            next_ev['symbol'] = position.symbol
-            next_ev['direction'] = direction
-            next_ev['atr_percent'] = atr_percent
-            return next_ev
+            events.sort(key=lambda x: (x['priority'], abs(x['distance_pct'])))
+            result['next_event'] = events[0]
         
-        # Plus d'événements attendus (position près de la fin)
-        return {
-            'type': 'CLOSE',
-            'price': current_price,
-            'distance_pct': 0,
-            'distance_atr': 0,
-            'priority': 999,
-            'color': '#6b7280',  # gris
-            'description': 'Position terminée',
-            'current_level_pct': current_level,
-            'symbol': position.symbol,
-            'direction': direction,
-            'atr_percent': atr_percent
-        }
+        return result
         
     except Exception as e:
         logger.error(f"❌ Erreur calcul next_event: {e}")

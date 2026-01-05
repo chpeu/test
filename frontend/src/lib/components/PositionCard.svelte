@@ -448,19 +448,19 @@
 		</div>
 
 		<!-- 🔥 NOUVEAU: Sections Prochain TP et Prochain SL distinctes -->
-		{#if $activePosition.next_event || $activePosition}
+		{#if $activePosition.next_tp || $activePosition.next_sl || $activePosition}
 			<!-- Section Prochain Take Profit -->
 			<div class="next-event-section tp-section">
 				<div class="next-event-header">
 					<span class="next-event-label">💰 Prochain TP</span>
-					<span class="next-event-type" style="color: {$activePosition.next_event?.color || '#10b981'}">
-						{$activePosition.next_event?.description || 'TP 1/3'}
+					<span class="next-event-type" style="color: {$activePosition.next_tp?.color || '#10b981'}">
+						{$activePosition.next_tp?.description || 'Take Profit'}
 					</span>
 				</div>
 				<div class="next-event-details">
-					{#if $activePosition.next_event?.price}
+					{#if $activePosition.next_tp?.price}
 						<div class="next-event-price">
-							À {formatPrice($activePosition.next_event.price)}
+							À {formatPrice($activePosition.next_tp.price)}
 						</div>
 					{:else}
 						<div class="next-event-price">
@@ -468,9 +468,9 @@
 						</div>
 					{/if}
 					<div class="next-event-distance">
-						{formatPercent($activePosition.next_event?.distance_pct || 0.40)}%
-						{#if $activePosition.next_event?.distance_atr !== null}
-							({$activePosition.next_event.distance_atr.toFixed(2)} ATR)
+						{formatPercent($activePosition.next_tp?.distance_pct || 0.40)}%
+						{#if $activePosition.next_tp?.distance_atr !== null && $activePosition.next_tp?.distance_atr !== undefined}
+							({$activePosition.next_tp.distance_atr.toFixed(2)} ATR)
 						{:else}
 							(0.50 ATR)
 						{/if}
@@ -478,7 +478,7 @@
 				</div>
 				<!-- Barre de progression TP -->
 				<div class="next-event-progress">
-					<div class="next-event-progress-bar tp-bar" style="width: {Math.max(0, Math.min(100, 100 - Math.abs($activePosition.next_event?.distance_pct || 0.40)))}%"></div>
+					<div class="next-event-progress-bar tp-bar" style="width: {Math.max(0, Math.min(100, 100 - Math.abs($activePosition.next_tp?.distance_pct || 0.40)))}%"></div>
 				</div>
 			</div>
 

@@ -252,6 +252,8 @@ class Position:
             'pnl_pct': getattr(self, 'pnl_pct', None),
             'pnl_usdt': getattr(self, 'pnl_usdt', None),
             'next_event': getattr(self, 'next_event', None),
+            'next_tp': getattr(self, 'next_tp', None),  # 🔥 FIX: Prochain TP (toujours affiché)
+            'next_sl': getattr(self, 'next_sl', None),  # 🔥 FIX: Stop Loss (toujours affiché)
             'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
             'tick_size': self.tick_size,  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
             # Live meta
