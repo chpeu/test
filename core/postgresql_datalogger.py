@@ -2141,16 +2141,33 @@ class PostgreSQLDataLogger:
             stagnation_mfe_at_exit = _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))
             stagnation_pullback_at_exit = _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))
             
-            # Calculer SL MEXC dynamique (SL ATR × 1.1)
-            sl_mexc_margin = 1.1
+            # Calculer SL MEXC dynamique selon le mode TP/SL
             sl_mexc_pct = None
             sl_mexc_price = None
+            sl_mexc_margin = None  # 🔥 FIX: Initialiser pour éviter UnboundLocalError
             entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+            direction = trade_data.get('direction', 'LONG')
+            tp_sl_mode = config_snapshot.get('tp_sl_mode', 'FIXE')
             
-            if entry_atr_pct_1m and param_atr_mult_sl and entry_price:
+            # Récupérer le SL bot depuis trade_data
+            sl_bot_price = _extract_numeric_value(trade_data.get('sl_price'))
+            
+            if tp_sl_mode == 'FIXE' and sl_bot_price:
+                # Mode FIXE : SL MEXC = SL bot - 0.05%
+                SL_MEXC_OFFSET_PCT = 0.05
+                if direction == 'LONG':
+                    sl_mexc_price = sl_bot_price * (1 - SL_MEXC_OFFSET_PCT / 100)
+                    if entry_price:
+                        sl_mexc_pct = abs(entry_price - sl_mexc_price) / entry_price * 100
+                else:  # SHORT
+                    sl_mexc_price = sl_bot_price * (1 + SL_MEXC_OFFSET_PCT / 100)
+                    if entry_price:
+                        sl_mexc_pct = abs(sl_mexc_price - entry_price) / entry_price * 100
+            elif entry_atr_pct_1m and param_atr_mult_sl and entry_price:
+                # Mode ATR : SL MEXC = SL ATR × 1.1 (10% de marge)
+                sl_mexc_margin = 1.1
                 sl_atr_pct = entry_atr_pct_1m * param_atr_mult_sl
                 sl_mexc_pct = sl_atr_pct * sl_mexc_margin
-                direction = trade_data.get('direction', 'LONG')
                 if direction == 'LONG':
                     sl_mexc_price = entry_price * (1 - sl_mexc_pct / 100)
                 else:

@@ -94,6 +94,9 @@ TRADING_CONFIG = {
     "trailing_mfe_enabled": False,                  # Activer Trailing MFE (désactivé par défaut)
     "trailing_mfe_trigger_pct": 0.10,               # Seuil MFE% pour déplacer SL à break-even
     
+    # 🔄 INVERSION DES SIGNAUX (pour diagnostic)
+    "invert_signals": True,                         # Si True: LONG → SHORT et SHORT → LONG
+    
     # Trend timeframe pour calculer trend_data (bonus)
     "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
     

@@ -2261,6 +2261,15 @@ async def scanner_loop_callback() -> None:
                                     # Le filtre GradientBoosting optimisé (28+ features) est déjà actif plus haut dans le code
                                     # Cette section basique (7 features) était redondante et causait des conflits
                                     
+                                    # 🔄 INVERSION DES SIGNAUX (pour diagnostic)
+                                    original_direction = direction
+                                    if TRADING_CONFIG.get('invert_signals', False):
+                                        direction = 'SHORT' if direction == 'LONG' else 'LONG'
+                                        logger.warning(
+                                            f"🔄 INVERSION DE SIGNAL ACTIVÉE: {symbol} | "
+                                            f"Signal original: {original_direction} → Direction inversée: {direction}"
+                                        )
+                                    
                                     position = pos_mgr.open_position(
                                         symbol=symbol,
                                         direction=direction,
@@ -3156,18 +3165,34 @@ async def position_check_loop_callback() -> None:
                         entry = pos_mgr.active_position.entry
                         direction = pos_mgr.active_position.direction
                         
-                        # Calculer le SL MEXC (SL bot × 1.1 marge)
-                        SL_MEXC_MARGIN = 1.1
-                        if direction == 'LONG':
-                            sl_distance_pct = abs(entry - sl_bot) / entry if entry > 0 else 0
-                            sl_mexc = entry * (1 - sl_distance_pct * SL_MEXC_MARGIN)
-                            # SL MEXC touché si prix <= sl_mexc
-                            is_sl_mexc_touched = current_price <= sl_mexc
-                        else:  # SHORT
-                            sl_distance_pct = abs(sl_bot - entry) / entry if entry > 0 else 0
-                            sl_mexc = entry * (1 + sl_distance_pct * SL_MEXC_MARGIN)
-                            # SL MEXC touché si prix >= sl_mexc
-                            is_sl_mexc_touched = current_price >= sl_mexc
+                        # Calculer le SL MEXC selon le mode TP/SL
+                        from config import TRADING_CONFIG
+                        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                        
+                        if tp_sl_mode == 'FIXE':
+                            # Mode FIXE : SL MEXC = SL bot - 0.05%
+                            SL_MEXC_OFFSET_PCT = 0.05  # 0.05% de marge
+                            if direction == 'LONG':
+                                sl_mexc = sl_bot * (1 - SL_MEXC_OFFSET_PCT / 100)
+                                # SL MEXC touché si prix <= sl_mexc
+                                is_sl_mexc_touched = current_price <= sl_mexc
+                            else:  # SHORT
+                                sl_mexc = sl_bot * (1 + SL_MEXC_OFFSET_PCT / 100)
+                                # SL MEXC touché si prix >= sl_mexc
+                                is_sl_mexc_touched = current_price >= sl_mexc
+                        else:
+                            # Mode ATR : SL MEXC = SL bot × 1.1 (10% de marge)
+                            SL_MEXC_MARGIN = 1.1
+                            if direction == 'LONG':
+                                sl_distance_pct = abs(entry - sl_bot) / entry if entry > 0 else 0
+                                sl_mexc = entry * (1 - sl_distance_pct * SL_MEXC_MARGIN)
+                                # SL MEXC touché si prix <= sl_mexc
+                                is_sl_mexc_touched = current_price <= sl_mexc
+                            else:  # SHORT
+                                sl_distance_pct = abs(sl_bot - entry) / entry if entry > 0 else 0
+                                sl_mexc = entry * (1 + sl_distance_pct * SL_MEXC_MARGIN)
+                                # SL MEXC touché si prix >= sl_mexc
+                                is_sl_mexc_touched = current_price >= sl_mexc
                         
                         if is_sl_mexc_touched:
                             # 🔥 FIX: Récupérer le vrai prix de fill depuis l'historique MEXC
@@ -4493,9 +4518,19 @@ async def api_open_position(request: Request):
                 except (ImportError, AttributeError):
                     pass
 
+            # 🔄 INVERSION DES SIGNAUX (pour diagnostic) - API manuelle
+            direction = data.get('direction', 'LONG')
+            original_direction = direction
+            if TRADING_CONFIG.get('invert_signals', False):
+                direction = 'SHORT' if direction == 'LONG' else 'LONG'
+                logger.warning(
+                    f"🔄 INVERSION DE SIGNAL ACTIVÉE (API): {data['symbol']} | "
+                    f"Signal original: {original_direction} → Direction inversée: {direction}"
+                )
+
             position = pos_mgr.open_position(
                 symbol=data['symbol'],
-                direction=data.get('direction', 'LONG'),
+                direction=direction,
                 entry=float(entry),  # 🔥 FIX: S'assurer que c'est un float
                 size=data.get('size', 100.0),
                 atr=data.get('atr'),

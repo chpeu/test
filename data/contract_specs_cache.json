@@ -1,5 +1,5 @@
 {
-  "timestamp": 1767634003.267296,
+  "timestamp": 1767723541.8272128,
   "specs": {
     "COAI_USDT": {
       "symbol": "COAI_USDT",
@@ -380,6 +380,106 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "AVAX_USDT": {
+      "symbol": "AVAX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "PEPE_USDT": {
+      "symbol": "PEPE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 24000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-09,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10000000.0
+    },
+    "MANTA_USDT": {
+      "symbol": "MANTA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 60000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "ZEN_USDT": {
+      "symbol": "ZEN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 60000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "LIGHT_USDT": {
+      "symbol": "LIGHT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 7650.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "FLOKI_USDT": {
+      "symbol": "FLOKI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 55500.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-08,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 100000.0
+    },
+    "ETC_USDT": {
+      "symbol": "ETC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 560000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "LTC_USDT": {
+      "symbol": "LTC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2425000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "ONDO_USDT": {
+      "symbol": "ONDO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 300000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "PYTH_USDT": {
+      "symbol": "PYTH_USDT",
+      "min_vol": 1.0,
+      "max_vol": 130000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
     }
   }
 }
