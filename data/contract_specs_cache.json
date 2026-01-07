@@ -1,5 +1,5 @@
 {
-  "timestamp": 1767723541.8272128,
+  "timestamp": 1767751467.4555545,
   "specs": {
     "COAI_USDT": {
       "symbol": "COAI_USDT",
@@ -480,6 +480,16 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "H_USDT": {
+      "symbol": "H_USDT",
+      "min_vol": 1.0,
+      "max_vol": 200000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
