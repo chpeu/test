@@ -1539,6 +1539,22 @@ class PostgreSQLDataLogger:
             elif config_use_confluence is None:
                 config_use_confluence = None
 
+            # 🛡️ Anti-Giveback / Trailing MFE config snapshot
+            config_trailing_mfe_enabled = _normalize_bool(config_snapshot_dict.get('trailing_mfe_enabled'))
+            config_trailing_mfe_trigger_pct = _extract_numeric_value(config_snapshot_dict.get('trailing_mfe_trigger_pct'))
+            config_trailing_mfe_lock_in_pct = _extract_numeric_value(config_snapshot_dict.get('trailing_mfe_lock_in_pct'))
+            config_partial_tp_be_lock_in_pct = _extract_numeric_value(config_snapshot_dict.get('partial_tp_be_lock_in_pct'))
+            
+            # 🔄 Signal Inversion config snapshot
+            config_invert_signals = _normalize_bool(config_snapshot_dict.get('invert_signals', False))
+
+            # 🎯 Trailing MFE tracking (runtime)
+            trailing_mfe_triggered = _normalize_bool(trade_data.get('trailing_mfe_triggered')) or False
+            trailing_mfe_triggered_at = trade_data.get('trailing_mfe_triggered_at')
+            trailing_mfe_trigger_pnl_pct = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_pnl_pct'))
+            trailing_mfe_trigger_price = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_price'))
+            trailing_mfe_new_sl = _extract_numeric_value(trade_data.get('trailing_mfe_new_sl'))
+
             config_snapshot = None
             if config_snapshot_dict:
                 try:
@@ -1835,6 +1851,19 @@ class PostgreSQLDataLogger:
                 ('stagnation_mfe_at_exit', _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))),
                 ('stagnation_positive_triggered', trade_data.get('stagnation_positive_triggered', False)),
                 ('stagnation_pullback_at_exit', _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))),
+
+                # 🛡️ Anti-Giveback / Trailing MFE columns (trades)
+                ('config_trailing_mfe_enabled', config_trailing_mfe_enabled),
+                ('config_trailing_mfe_trigger_pct', config_trailing_mfe_trigger_pct),
+                ('config_trailing_mfe_lock_in_pct', config_trailing_mfe_lock_in_pct),
+                ('config_partial_tp_be_lock_in_pct', config_partial_tp_be_lock_in_pct),
+                # 🔄 Signal Inversion config
+                ('config_invert_signals', config_invert_signals),
+                ('trailing_mfe_triggered', trailing_mfe_triggered),
+                ('trailing_mfe_triggered_at', trailing_mfe_triggered_at),
+                ('trailing_mfe_trigger_pnl_pct', trailing_mfe_trigger_pnl_pct),
+                ('trailing_mfe_trigger_price', trailing_mfe_trigger_price),
+                ('trailing_mfe_new_sl', trailing_mfe_new_sl),
                 ('config_snapshot', config_snapshot),
                 # 🔥 SPRINT 1: Market Regime & Circuit Breaker context
                 ('entry_market_regime', trade_data.get('entry_market_regime')),

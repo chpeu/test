@@ -44,6 +44,31 @@
 		currentPage = 1;
 	}
 
+	function getReliableSizeUsdt(trade) {
+		const initialSize = Number(trade.size_initial_usdt || 0);
+		const executedSize = Number(trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0);
+		const pnlUsdt = Number(trade.net_pnl_usdt || 0);
+		const pnlPct = Number(trade.net_pnl_pct || 0);
+
+		let calculatedSize = 0;
+		if (pnlPct !== 0 && Math.abs(pnlPct) > 0.001) {
+			calculatedSize = Math.abs(pnlUsdt / (pnlPct / 100));
+		}
+
+		let size = executedSize;
+		if (initialSize > 0 && executedSize > 3 * initialSize) {
+			size = calculatedSize > 0 ? calculatedSize : initialSize;
+		} else if (calculatedSize > 0 && executedSize > 0 && Math.abs(calculatedSize - executedSize) > executedSize * 0.5) {
+			size = calculatedSize;
+		} else if (size <= 0 && initialSize > 0) {
+			size = initialSize;
+		} else if (size <= 0 && calculatedSize > 0) {
+			size = calculatedSize;
+		}
+
+		return size > 0 ? size : 0;
+	}
+
 	// 🔥 FIX: Somme simple des colonnes (frais/slippage DÉJÀ déduits dans net_pnl_*)
 	const sessionPnL = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
@@ -52,7 +77,10 @@
 
 	const sessionPnLPct = derived(sortedTrades, $trades => {
 		if ($trades.length === 0) return 0;
-		return $trades.reduce((sum, trade) => sum + (trade.net_pnl_pct || 0), 0);
+		const totalPnlUsdt = $trades.reduce((sum, trade) => sum + Number(trade.net_pnl_usdt || 0), 0);
+		const totalSizeUsdt = $trades.reduce((sum, trade) => sum + getReliableSizeUsdt(trade), 0);
+		if (!totalSizeUsdt) return 0;
+		return (totalPnlUsdt / totalSizeUsdt) * 100;
 	});
 
 	function formatTime(dateStr) {

@@ -54,6 +54,9 @@ class Position:
     size: float
     sl: float
     tp: float
+    sl_percent_at_entry: Optional[float] = None
+    initial_sl: Optional[float] = None
+    entry_sl_exchange_percent: Optional[float] = None
     atr: Optional[float] = None
     atr5m: Optional[float] = None
     confirmed_by: str = ""
@@ -202,6 +205,9 @@ class Position:
             'size': self.size,
             'sl': self.sl,
             'tp': self.tp,
+            'sl_percent_at_entry': getattr(self, 'sl_percent_at_entry', None),
+            'initial_sl': getattr(self, 'initial_sl', None),
+            'entry_sl_exchange_percent': getattr(self, 'entry_sl_exchange_percent', None),
             'atr': self.atr,
             'atr5m': self.atr5m,
             'atr_pct_used': getattr(self, 'atr_pct_used', None),
@@ -742,7 +748,7 @@ class PositionManager:
             client = get_mexc_client()
             if not client or not getattr(client, 'exchange', None):
                 return None
-            
+
             # Charger les marchés si pas déjà fait
             if not hasattr(client, '_markets_loaded'):
                 # Utiliser load_markets pour obtenir toutes les infos de marché
@@ -789,6 +795,51 @@ class PositionManager:
             logger.warning(f"⚠️ Erreur récupération market info pour {symbol}: {e}")
         
         return None
+
+    def _enforce_fixe_sl_not_wider(self, context: str = '') -> None:
+        from config import TRADING_CONFIG
+
+        if not self.active_position:
+            return
+
+        if TRADING_CONFIG.get('tp_sl_mode', 'FIXE') != 'FIXE':
+            return
+
+        sl_pct_cfg = getattr(self.active_position, 'sl_percent_at_entry', None)
+        if not isinstance(sl_pct_cfg, (int, float)) or sl_pct_cfg <= 0:
+            return
+
+        entry = getattr(self.active_position, 'entry', None)
+        sl = getattr(self.active_position, 'sl', None)
+        direction = getattr(self.active_position, 'direction', None)
+        if not entry or not sl or entry <= 0 or direction not in ('LONG', 'SHORT'):
+            return
+
+        if direction == 'LONG':
+            current_sl_pct = (entry - sl) / entry * 100.0
+            desired_sl = entry * (1.0 - (sl_pct_cfg / 100.0))
+            is_wider = current_sl_pct > (sl_pct_cfg + 1e-6)
+        else:
+            current_sl_pct = (sl - entry) / entry * 100.0
+            desired_sl = entry * (1.0 + (sl_pct_cfg / 100.0))
+            is_wider = current_sl_pct > (sl_pct_cfg + 1e-6)
+
+        if not is_wider:
+            return
+
+        logger.error(
+            f"🚨 FIXE SL invariant violé ({context}): {self.active_position.symbol} {direction} | "
+            f"SL actuel distance={current_sl_pct:.4f}% > config={sl_pct_cfg:.4f}% | Correction vers {desired_sl:.8f}"
+        )
+
+        current_price = getattr(self.active_position, 'current_price', None)
+        if isinstance(current_price, (int, float)) and current_price > 0:
+            if direction == 'LONG' and desired_sl >= current_price:
+                desired_sl = current_price * 0.9999
+            if direction == 'SHORT' and desired_sl <= current_price:
+                desired_sl = current_price * 1.0001
+
+        self.active_position.sl = desired_sl
 
     def _init_modules(self, analytics_db):
         """Initialiser tous les modules de gestion"""
@@ -1435,6 +1486,13 @@ class PositionManager:
                 config=self.tpsl_config
             )
 
+        # 🔒 Invariant FIXE: stocker le SL% configuré au moment de l'ouverture
+        sl_percent_at_entry = None
+        try:
+            sl_percent_at_entry = float(trading_params.get('sl_percent'))
+        except Exception:
+            sl_percent_at_entry = None
+
         # 🔥 VALIDATION SL: Vérifier que SL est du bon côté de l'entry
         if direction == 'SHORT' and sl <= entry:
             logger.error(
@@ -1502,6 +1560,8 @@ class PositionManager:
             size=size,
             sl=sl,
             tp=tp,
+            sl_percent_at_entry=sl_percent_at_entry,
+            initial_sl=sl,
             atr=atr,
             atr5m=atr5m,
             confirmed_by=confirmed_by,
@@ -1511,6 +1571,9 @@ class PositionManager:
             tick_size=tick_size,
             effective_config=effective_params  # 🔥 Stocker la config effective
         )
+
+        # 🔒 Invariant FIXE: ne jamais élargir le SL au-delà du SL% initial
+        self._enforce_fixe_sl_not_wider(context='OPEN_POSITION')
         
         # 🔥 FIX 29/12: Stocker l'ATR réellement utilisé pour diagnostic
         if atr_pct_used is not None:
@@ -1692,19 +1755,40 @@ class PositionManager:
                         
                     # Mettre à jour prix d'entrée si différent
                     if order_result.filled_price and order_result.filled_price > 0:
-                        # Ajuster TP/SL pour maintenir la distance relative
-                        price_diff = order_result.filled_price - entry
-                        self.active_position.tp += price_diff
-                        self.active_position.sl += price_diff
-                            
-                        self.active_position.entry = order_result.filled_price
-                        self.active_position.entry_fill_price = order_result.filled_price
+                        # Mode FIXE: Recalculer TP/SL pour respecter EXACTEMENT les % configurés
+                        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                        if tp_sl_mode == 'FIXE':
+                            new_sl, new_tp = calculate_fixed_levels(
+                                entry=order_result.filled_price,
+                                direction=direction,
+                                config=self.tpsl_config
+                            )
+                            self.active_position.sl = new_sl
+                            self.active_position.tp = new_tp
+                            self.active_position.initial_sl = new_sl
+                            self.active_position.entry = order_result.filled_price
+                            self.active_position.entry_fill_price = order_result.filled_price
+                            self._enforce_fixe_sl_not_wider(context='LIVE_FILL_RECALC_TPSL')
+                        else:
+                            # Ajuster TP/SL pour maintenir la distance relative (ATR)
+                            price_diff = order_result.filled_price - entry
+                            self.active_position.tp += price_diff
+                            self.active_position.sl += price_diff
+                            self.active_position.entry = order_result.filled_price
+                            self.active_position.entry_fill_price = order_result.filled_price
                         
                     self.active_position.entry_slippage_pct = order_result.actual_slippage_pct
                     self.active_position.entry_latency_ms = order_result.latency_ms
                     self.active_position.liquidation_price = order_result.liquidation_price
                     self.active_position.entry_fee_usdt = order_result.actual_fees_usdt
                     self.active_position.margin_used = order_result.margin_used
+
+                    # 🔥 Stocker le SL Exchange réel utilisé (en %) pour logging SQL
+                    try:
+                        if getattr(order_result, 'sl_exchange_percent', None) is not None:
+                            self.active_position.entry_sl_exchange_percent = float(order_result.sl_exchange_percent)
+                    except Exception:
+                        pass
                     
                     # 🔥 FIX: Utiliser order_result.min_contract_amount
                     self.active_position.min_contract_amount = order_result.min_contract_amount
@@ -1758,12 +1842,27 @@ class PositionManager:
                             if live_entry_price > 0:
                                 previous_entry = self.active_position.entry
                                 if abs(live_entry_price - previous_entry) > 1e-8:
-                                    price_diff = live_entry_price - previous_entry
-                                    self.active_position.tp += price_diff
-                                    self.active_position.sl += price_diff
-                                    logger.info(
-                                        f"🔁 [LIVE] Prix d'entrée synchronisé avec MEXC: {previous_entry:.8f} -> {live_entry_price:.8f}"
-                                    )
+                                    tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                                    if tp_sl_mode == 'FIXE':
+                                        new_sl, new_tp = calculate_fixed_levels(
+                                            entry=live_entry_price,
+                                            direction=direction,
+                                            config=self.tpsl_config
+                                        )
+                                        self.active_position.sl = new_sl
+                                        self.active_position.tp = new_tp
+                                        self.active_position.initial_sl = new_sl
+                                        logger.info(
+                                            f"🔁 [LIVE] Recalcul TP/SL FIXE après sync entry: {previous_entry:.8f} -> {live_entry_price:.8f}"
+                                        )
+                                        self._enforce_fixe_sl_not_wider(context='LIVE_ENTRY_SYNC_RECALC_TPSL')
+                                    else:
+                                        price_diff = live_entry_price - previous_entry
+                                        self.active_position.tp += price_diff
+                                        self.active_position.sl += price_diff
+                                        logger.info(
+                                            f"🔁 [LIVE] Prix d'entrée synchronisé avec MEXC: {previous_entry:.8f} -> {live_entry_price:.8f}"
+                                        )
                                 self.active_position.entry = live_entry_price
                                 self.active_position.entry_fill_price = live_entry_price
 
@@ -1806,6 +1905,8 @@ class PositionManager:
                         elif direction == 'LONG' and self.active_position.sl >= self.active_position.entry:
                             sl_dist = abs(self.active_position.sl - self.active_position.entry)
                             self.active_position.sl = self.active_position.entry - sl_dist
+
+                        self._enforce_fixe_sl_not_wider(context='LIVE_SLIPPAGE_SIDE_CORRECTION')
 
                     logger.info(
                         f"✅ Ordre LIVE placé: {symbol} | "
@@ -2332,6 +2433,9 @@ class PositionManager:
 
         # 🔥 FIX: Importer TRADING_CONFIG pour lecture dynamique
         from config import TRADING_CONFIG
+
+        # 🔒 Contrôle global: en mode FIXE, empêcher toute fonction imbriquée d'élargir le SL
+        self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_PRE')
         
         # 🔥 BOUCLE DE VÉRIFICATION: Assurer cohérence entre size, tokens et entry
         # Source de vérité = size_initial_contracts (tokens MEXC à l'ouverture)
@@ -2488,6 +2592,7 @@ class PositionManager:
                 }
                 # Stocker dans la position pour le logging
                 self.active_position._early_invalidation_data = early_invalidation_data
+                self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_EARLY_INVALIDATION_RETURN')
                 return invalidation
 
         # 🔥 OPT #13: Time-Based Exit - Fermer si position flat après 20min
@@ -2498,6 +2603,7 @@ class PositionManager:
                     f"⏱️ Time-Based Exit: Position {self.active_position.symbol} {self.active_position.direction} "
                     f"ouverte depuis {elapsed/60:.1f}min avec PnL {pnl:+.2f}% (flat) → Fermeture"
                 )
+                self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_TIME_BASED_EXIT_RETURN')
                 return 'TIME_BASED_EXIT'
 
         # 2. TP Escalier - Vérifier niveaux
@@ -2777,9 +2883,16 @@ class PositionManager:
 
                 # Déplacer SL à break-even après le 1er TP
                 new_sl = self.partial_tp.update_sl_after_partial_tp(
-                    self.active_position.to_dict()
+                    self.active_position.to_dict(),
+                    current_price=current_price
                 )
                 self.active_position.sl = new_sl
+                self._enforce_fixe_sl_not_wider(context='PARTIAL_TP_BE')
+                # 🛡️ Track SL applied (for SQL/Excel analysis)
+                try:
+                    self.active_position.trailing_mfe_new_sl = new_sl
+                except Exception:
+                    pass
                 self.active_position.break_even_set = True
                 # 🔥 PHASE 0.5: Enregistrer timestamp, prix et PnL au moment du BE
                 if not self.active_position.break_even_triggered_at:
@@ -2807,8 +2920,17 @@ class PositionManager:
             trailing_mfe_trigger = TRADING_CONFIG.get('trailing_mfe_trigger_pct', 0.10)
             
             if self.active_position.max_pnl_reached >= trailing_mfe_trigger:
-                # Déplacer SL à break-even (entry price)
-                new_sl = self.active_position.entry
+                # Déplacer SL à break-even + lock-in (entry +/- lock_in_pct)
+                lock_in_pct = float(TRADING_CONFIG.get('trailing_mfe_lock_in_pct', 0.0) or 0.0)
+                lock_in_pct = max(0.0, min(0.50, lock_in_pct))
+                if self.active_position.direction == 'LONG':
+                    new_sl = self.active_position.entry * (1.0 + (lock_in_pct / 100.0))
+                    if new_sl >= current_price:
+                        new_sl = current_price * 0.9999
+                else:
+                    new_sl = self.active_position.entry * (1.0 - (lock_in_pct / 100.0))
+                    if new_sl <= current_price:
+                        new_sl = current_price * 1.0001
                 current_sl = self.active_position.sl
                 
                 # Vérifier que le nouveau SL est plus favorable
@@ -2819,6 +2941,12 @@ class PositionManager:
                 
                 if should_update:
                     self.active_position.sl = new_sl
+                    self._enforce_fixe_sl_not_wider(context='TRAILING_MFE')
+                    # 🛡️ Track SL applied at trigger (for SQL/Excel analysis)
+                    try:
+                        self.active_position.trailing_mfe_new_sl = new_sl
+                    except Exception:
+                        pass
                     self.active_position.trailing_mfe_triggered = True
                     self.active_position.trailing_mfe_triggered_at = time.time()
                     self.active_position.trailing_mfe_trigger_pnl_pct = pnl
@@ -2833,14 +2961,15 @@ class PositionManager:
                     
                     logger.info(
                         f"🎯 TRAILING MFE {self.active_position.symbol}: "
-                        f"SL→BE ({new_sl:.6f}) | MFE={self.active_position.max_pnl_reached:.4f}% >= {trailing_mfe_trigger:.2f}%"
+                        f"SL→BE+{lock_in_pct:.2f}% ({new_sl:.6f}) | MFE={self.active_position.max_pnl_reached:.4f}% >= {trailing_mfe_trigger:.2f}%"
                     )
                     self._schedule_position_sync(self.active_position.symbol)
                     
                     # 🔥 Phase 2H.6: Log trade event
                     self._log_trade_event('TRAILING_MFE_TRIGGERED', current_price, pnl, details={
                         'new_sl': new_sl, 'mfe_pct': self.active_position.max_pnl_reached,
-                        'trigger_threshold': trailing_mfe_trigger
+                        'trigger_threshold': trailing_mfe_trigger,
+                        'lock_in_pct': lock_in_pct
                     })
 
         # 4. Trailing Stop (activé après le 1er TP partiel ou si PnL > trigger ATR)
@@ -2906,6 +3035,7 @@ class PositionManager:
                 new_sl = self._update_trailing_stop_fixe(current_price, trailing_distance)
                 if new_sl:
                     self.active_position.sl = new_sl
+                    self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_FIXE')
                     self.active_position.dynamic_sl = new_sl
                     # PHASE 0.5: Capturer trailing final SL et distance
                     self.active_position.trailing_final_sl = new_sl
@@ -2925,17 +3055,18 @@ class PositionManager:
                 
                 old_sl = self.active_position.sl
                 new_sl = self.trailing_stop.update_trailing_stop(
-                    position=self.active_position.to_dict(),
+                    self.active_position.to_dict(),
                     current_price=current_price,
                     pnl_percent=pnl,
                     custom_distance_pct=custom_dist
                 )
                 if new_sl:
                     self.active_position.sl = new_sl
+                    self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_ATR')
                     self.active_position.dynamic_sl = new_sl
                     # PHASE 0.5: Capturer trailing final SL et distance
                     self.active_position.trailing_final_sl = new_sl
-                    entry = self.active_position.entry or 1
+                    self.active_position.trailing_distance_pct = custom_dist
                     self.active_position.trailing_distance_pct = abs(current_price - new_sl) / entry * 100
                     self._log_trade_event('TRAILING_SL_MOVED', current_price, pnl, details={
                         'old_sl': old_sl,
@@ -2945,9 +3076,11 @@ class PositionManager:
         # 5. HYBRID: Stagnation Exit (Time Decay)
         stagnation_reason = self._check_stagnation_exit(pnl)
         if stagnation_reason:
+            self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_STAGNATION_RETURN')
             return stagnation_reason
 
         # 6. Vérifier TP/SL
+        self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_PRE_CHECK_LEVELS')
         return self._check_levels(current_price)
 
     def _update_trailing_stop_fixe(
@@ -3915,7 +4048,12 @@ class PositionManager:
                         trade_data['entry_rsi_filter_mode'] = get_effective_value('rsi_filter_mode')
                         trade_data['entry_position_timeout'] = get_effective_value('position_timeout')
                         trade_data['entry_optimal_atr_max_1m'] = get_effective_value('optimal_atr_max_1m')
-                        trade_data['entry_sl_exchange_percent'] = get_effective_value('sl_exchange_percent')
+                        trade_data['entry_sl_exchange_percent'] = (
+                            getattr(self.active_position, 'entry_sl_exchange_percent', None)
+                            if self.active_position else None
+                        )
+                        if trade_data['entry_sl_exchange_percent'] is None:
+                            trade_data['entry_sl_exchange_percent'] = get_effective_value('sl_exchange_percent')
 
                         # Contexte régime (optionnel)
                         try:

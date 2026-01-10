@@ -93,6 +93,8 @@ TRADING_CONFIG = {
     # 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil) - Complémentaire à Protection MFE
     "trailing_mfe_enabled": False,                  # Activer Trailing MFE (désactivé par défaut)
     "trailing_mfe_trigger_pct": 0.10,               # Seuil MFE% pour déplacer SL à break-even
+    "trailing_mfe_lock_in_pct": 0.0,
+    "partial_tp_be_lock_in_pct": 0.0,
     
     # 🔄 INVERSION DES SIGNAUX (pour diagnostic)
     "invert_signals": True,                         # Si True: LONG → SHORT et SHORT → LONG

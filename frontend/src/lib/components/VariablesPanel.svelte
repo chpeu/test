@@ -77,6 +77,10 @@
 		// 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil)
 		trailing_mfe_enabled: false,
 		trailing_mfe_trigger_pct: 0.10,
+		trailing_mfe_lock_in_pct: 0.0,
+		partial_tp_be_lock_in_pct: 0.0,
+		// 🔄 Signal Inversion (diagnostic)
+		invert_signals: false,
 		// Mode ESCALIER (TP_MULTI) - 4 niveaux
 		escalier_level1_pnl: 0.20,
 		escalier_level1_size: 25,
@@ -254,6 +258,26 @@
 	let liveConfig = null;
 	let loadingLiveConfig = false;
 	
+	async function verifyBackendConfigSynced(key: string, expectedValue: any, maxAttempts = 8, delayMs = 250) {
+		try {
+			for (let i = 0; i < maxAttempts; i++) {
+				const response = await fetch('/api/config/complete', { cache: 'no-store' as RequestCache });
+				if (response.ok) {
+					const data = await response.json();
+					const backendTrading = data?.trading_config?.[key];
+					const backendEffective = data?.effective_config?.[key];
+					if (backendTrading === expectedValue && backendEffective === expectedValue) {
+						return true;
+					}
+				}
+				await new Promise(resolve => setTimeout(resolve, delayMs));
+			}
+		} catch (e) {
+			return false;
+		}
+		return false;
+	}
+	
 	// Variables pour export Excel et reset DB
 	let exportingExcel = false;
 	let exportingCurrentConfig = false;
@@ -293,6 +317,16 @@
 				config[`escalier_level${l}_size`] = Math.max(0, Math.round(currentValue - reduction));
 			});
 		}
+	}
+
+	function getEffectiveConfigForDisplay() {
+		if (!completeConfig) return null;
+		const base = (completeConfig.effective_config || completeConfig.trading_config || {}) as any;
+		if (!config) return base;
+		return {
+			...base,
+			invert_signals: config.invert_signals
+		};
 	}
 
 	// 🔥 Export XLSX des variables en cours
@@ -372,7 +406,7 @@
 				attempts++;
 				
 				try {
-					const response = await fetch('/api/config/complete');
+					const response = await fetch('/api/config/complete', { cache: 'no-store' });
 					if (response.ok) {
 						const data = await response.json();
 						// Vérifier si les paramètres ML (V1 ou V2) sont présents
@@ -413,7 +447,7 @@
 		loadingCompleteConfig = true;
 		completeConfigError = null;
 		try {
-			const response = await fetch('/api/config/complete');
+			const response = await fetch('/api/config/complete', { cache: 'no-store' as RequestCache });
 			if (!response.ok) {
 				throw new Error(`Erreur HTTP: ${response.status}`);
 			}
@@ -507,21 +541,30 @@
 	// 🔥 FIX: Mettre à jour completeConfig.trading_config avec les valeurs locales si on a des changements non sauvegardés
 	$: if (activeSubTab === 'current' && completeConfig && hasUnsavedChanges) {
 		// Synchroniser les valeurs locales dans completeConfig pour affichage en temps réel
+		let tradingConfigUpdated = completeConfig.trading_config;
 		if (completeConfig.trading_config) {
+			tradingConfigUpdated = { ...completeConfig.trading_config };
 			Object.keys(config).forEach(key => {
-				if (config[key] !== completeConfig.trading_config[key]) {
-					completeConfig.trading_config[key] = config[key];
+				if (config[key] !== tradingConfigUpdated[key]) {
+					tradingConfigUpdated[key] = config[key];
 				}
 			});
 		}
 		// 🔥 PHASE 1D: Synchroniser aussi effective_config pour affichage temps réel
+		let effectiveConfigUpdated = completeConfig.effective_config;
 		if (completeConfig.effective_config) {
+			effectiveConfigUpdated = { ...completeConfig.effective_config };
 			Object.keys(config).forEach(key => {
-				if (config[key] !== completeConfig.effective_config[key]) {
-					completeConfig.effective_config[key] = config[key];
+				if (config[key] !== effectiveConfigUpdated[key]) {
+					effectiveConfigUpdated[key] = config[key];
 				}
 			});
 		}
+		completeConfig = {
+			...completeConfig,
+			trading_config: tradingConfigUpdated,
+			effective_config: effectiveConfigUpdated
+		};
 	}
 	
 	// 🔥 PHASE 1D: Synchroniser immédiatement quand config change (pour toutes les variables V2)
@@ -534,11 +577,20 @@
 				'market_regime_use_smoothing', 'market_regime_smoothing_alpha',
 				'market_regime_use_atr_5m', 'market_regime_use_seasonality', 'market_regime_min_duration_minutes'
 			];
+			let changed = false;
+			const effectiveConfigUpdated = { ...completeConfig.effective_config };
 			v2Keys.forEach(key => {
-				if (config[key] !== undefined && config[key] !== completeConfig.effective_config[key]) {
-					completeConfig.effective_config[key] = config[key];
+				if (config[key] !== undefined && config[key] !== effectiveConfigUpdated[key]) {
+					effectiveConfigUpdated[key] = config[key];
+					changed = true;
 				}
 			});
+			if (changed) {
+				completeConfig = {
+					...completeConfig,
+					effective_config: effectiveConfigUpdated
+				};
+			}
 		}
 	}
 	
@@ -637,6 +689,13 @@
 				sl_percent: tradingConfig.sl_percent,
 				break_even_trigger: tradingConfig.break_even_trigger,
 				trailing_distance: tradingConfig.trailing_distance,
+				invert_signals: tradingConfig.invert_signals,
+			},
+			'🛡️ Anti-Giveback': {
+				trailing_mfe_enabled: tradingConfig.trailing_mfe_enabled,
+				trailing_mfe_trigger_pct: tradingConfig.trailing_mfe_trigger_pct,
+				trailing_mfe_lock_in_pct: tradingConfig.trailing_mfe_lock_in_pct,
+				partial_tp_be_lock_in_pct: tradingConfig.partial_tp_be_lock_in_pct,
 			},
 			'📐 Mode ATR': {
 				atr_mult_tp: tradingConfig.atr_mult_tp,
@@ -672,6 +731,8 @@
 				// 🎯 TRAILING MFE
 				trailing_mfe_enabled: tradingConfig.trailing_mfe_enabled,
 				trailing_mfe_trigger_pct: tradingConfig.trailing_mfe_trigger_pct,
+				trailing_mfe_lock_in_pct: tradingConfig.trailing_mfe_lock_in_pct,
+				partial_tp_be_lock_in_pct: tradingConfig.partial_tp_be_lock_in_pct,
 			},
 			'🪜 TP Escalier': {
 				partial_tp_percent: tradingConfig.partial_tp_percent,
@@ -916,7 +977,7 @@
 			
 			// 🔥 NOUVEAU: Utiliser /api/config/complete REST au lieu de WebSocket
 			// pour garantir que les 11 paramètres ML sont correctement chargés
-			const response = await fetch('/api/config/complete');
+			const response = await fetch('/api/config/complete', { cache: 'no-store' });
 			if (!response.ok) {
 				throw new Error(`Erreur HTTP: ${response.status}`);
 			}
@@ -957,6 +1018,7 @@
 				config = newConfig; // Assigner le nouvel objet pour déclencher la réactivité
 				viewMode = config.tp_sl_mode || 'FIXE';
 				console.log('✅ Config chargée depuis backend via REST API');
+				console.log('✅ invert_signals chargé:', config.invert_signals, typeof config.invert_signals);
 				console.log('✅ ML V1 params:', {
 					ml_max_depth: config.ml_max_depth,
 					ml_min_child_weight: config.ml_min_child_weight,
@@ -1002,6 +1064,9 @@
 					ml_calib_min_winrate: config.ml_calib_min_winrate,
 					ml_calib_bucket_size: config.ml_calib_bucket_size
 				});
+				console.log('✅ Signal Inversion:', {
+					invert_signals: config.invert_signals
+				});
 				console.log('✅ Phase 2D params:', {
 					threshold_optimizer_enabled: config.threshold_optimizer_enabled,
 					threshold_min: config.threshold_min,
@@ -1019,7 +1084,9 @@
 				});
 				console.log('🎯 Trailing MFE params:', {
 					trailing_mfe_enabled: config.trailing_mfe_enabled,
-					trailing_mfe_trigger_pct: config.trailing_mfe_trigger_pct
+					trailing_mfe_trigger_pct: config.trailing_mfe_trigger_pct,
+					trailing_mfe_lock_in_pct: config.trailing_mfe_lock_in_pct,
+					partial_tp_be_lock_in_pct: config.partial_tp_be_lock_in_pct
 				});
 				console.log('💱 Spread Thresholds params:', {
 					max_spread_pct: config.max_spread_pct,
@@ -1072,6 +1139,13 @@
 				saveMessage = `✅ ${updatedCount} paramètre(s) sauvegardé(s) via WebSocket`;
 				hasUnsavedChanges = false; // Marquer comme sauvegardé
 				console.log('✅ Paramètres mis à jour via WebSocket:', result.updated);
+				if (result.updated.invert_signals !== undefined) {
+					const ok = await verifyBackendConfigSynced('invert_signals', config.invert_signals);
+					if (!ok) {
+						saveMessage = `❌ Sync invert_signals échouée: UI=${config.invert_signals} (backend différent)`;
+						setTimeout(() => (saveMessage = ''), 5000);
+					}
+				}
 				
 				// Vérifier que min_score_required est bien dans les updates
 				if (result.updated.min_score_required !== undefined) {
@@ -1088,6 +1162,11 @@
 				saveMessage = `✅ Configuration sauvegardée via WebSocket`;
 				hasUnsavedChanges = false;
 				setTimeout(() => (saveMessage = ''), 3000);
+				const ok = await verifyBackendConfigSynced('invert_signals', config.invert_signals);
+				if (!ok) {
+					saveMessage = `❌ Sync invert_signals échouée: UI=${config.invert_signals} (backend différent)`;
+					setTimeout(() => (saveMessage = ''), 5000);
+				}
 				
 				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde manuelle
 				if (activeSubTab === 'current') {
@@ -1253,6 +1332,13 @@
 					}
 				}
 				
+				if (result.updated.invert_signals !== undefined) {
+					const ok = await verifyBackendConfigSynced('invert_signals', config.invert_signals);
+					if (!ok) {
+						saveMessage = `❌ Sync invert_signals échouée: UI=${config.invert_signals} (backend différent)`;
+						setTimeout(() => (saveMessage = ''), 5000);
+					}
+				}
 				// 🔥 FIX: Rafraîchir automatiquement le sous-onglet "Variables en cours" après sauvegarde
 				if (activeSubTab === 'current') {
 					await loadCompleteConfig();
@@ -2892,6 +2978,30 @@
 					⚠️ <strong>Note:</strong> Ce sélecteur sert uniquement à afficher les paramètres d'un mode.
 					Pour changer le mode actif du bot, utilisez le sélecteur dans l'onglet <strong>Dashboard</strong>.
 				</p>
+				
+				<!-- 🔄 Signal Inversion Toggle -->
+				<div class="variable-item checkbox" data-debug-name="config.invert_signals">
+					<div class="var-header" data-debug-name="config.invert_signals">
+						<label for="invert-signals" data-debug-name="config.invert_signals">
+							<span class="var-name" data-debug-name="config.invert_signals">🔄 Inversion des Signaux</span>
+							<span class="var-desc" data-debug-name="config.invert_signals">Active l'inversion LONG ⟷ SHORT pour diagnostic</span>
+						</label>
+						<button class="btn-reset" on:click={() => resetVariable('invert_signals')} title="Réinitialiser" data-debug-name="config.invert_signals.reset">⟲</button>
+					</div>
+					<div class="checkbox-wrapper" data-debug-name="config.invert_signals">
+						<input
+							id="invert-signals"
+							type="checkbox"
+							bind:checked={config.invert_signals}
+							on:change={() => triggerAutoSave('invert_signals', config.invert_signals ? 'ON' : 'OFF')}
+							data-debug-name="config.invert_signals"
+						/>
+						<label for="invert-signals" class="toggle" data-debug-name="config.invert_signals">
+							<span class="toggle-label" data-debug-name="config.invert_signals">{config.invert_signals ? 'ON' : 'OFF'}</span>
+						</label>
+					</div>
+				</div>
+
 				<div class="variables-list">
 					<div class="variable-item" data-debug-name="viewMode">
 						<div class="var-header" data-debug-name="viewMode">
@@ -2988,6 +3098,29 @@
 								</div>
 							</div>
 
+							<div class="variable-item" data-debug-name="config.partial_tp_be_lock_in_pct">
+								<div class="var-header" data-debug-name="config.partial_tp_be_lock_in_pct">
+									<label for="partial-tp-be-lock-in-fixe" data-debug-name="config.partial_tp_be_lock_in_pct">
+										<span class="var-name" data-debug-name="config.partial_tp_be_lock_in_pct">BE Lock-in (%)</span>
+										<span class="var-desc" data-debug-name="config.partial_tp_be_lock_in_pct">Décalage du SL après TP partiel (anti-giveback)</span>
+									</label>
+									<button class="btn-reset" on:click={() => resetVariable('partial_tp_be_lock_in_pct')} title="Réinitialiser" data-debug-name="config.partial_tp_be_lock_in_pct.reset">⟲</button>
+								</div>
+								<div class="slider-container" data-debug-name="config.partial_tp_be_lock_in_pct">
+									<input
+										id="partial-tp-be-lock-in-fixe"
+										type="range"
+										step="0.01"
+										min="0.00"
+										max="0.50"
+										bind:value={config.partial_tp_be_lock_in_pct}
+										on:change={() => triggerAutoSave('partial_tp_be_lock_in_pct', `${config.partial_tp_be_lock_in_pct.toFixed(2)}%`)}
+										data-debug-name="config.partial_tp_be_lock_in_pct"
+									/>
+									<span class="slider-value" data-debug-name="config.partial_tp_be_lock_in_pct">{Number(config.partial_tp_be_lock_in_pct).toFixed(2)}%</span>
+								</div>
+							</div>
+
 							<div class="variable-item" data-debug-name="config.break_even_trigger">
 								<div class="var-header" data-debug-name="config.break_even_trigger">
 									<label for="break-even-trigger" data-debug-name="config.break_even_trigger">
@@ -3032,6 +3165,73 @@
 									/>
 									<span class="slider-value" data-debug-name="config.trailing_distance">{Number(config.trailing_distance).toFixed(2)}%</span>
 								</div>
+							</div>
+
+							<div class="sub-section" data-debug-name="config.trailing_mfe">
+								<h5 class="sub-title" data-debug-name="config.trailing_mfe.title">🎯 Trailing MFE (SL→BE)</h5>
+								<div class="variable-item checkbox-item" data-debug-name="config.trailing_mfe_enabled">
+									<label class="checkbox-label" data-debug-name="config.trailing_mfe_enabled">
+										<input
+											type="checkbox"
+											bind:checked={config.trailing_mfe_enabled}
+											on:change={() => triggerAutoSave('trailing_mfe_enabled', config.trailing_mfe_enabled ? 'Activé' : 'Désactivé')}
+											data-debug-name="config.trailing_mfe_enabled"
+										/>
+										<span class="checkmark"></span>
+										<span class="checkbox-text" data-debug-name="config.trailing_mfe_enabled.text">
+											<span class="var-name" data-debug-name="config.trailing_mfe_enabled.text.name">Activer Trailing MFE</span>
+											<span class="var-desc" data-debug-name="config.trailing_mfe_enabled.text.desc">Déplacer SL à break-even quand MFE atteint le seuil</span>
+										</span>
+									</label>
+								</div>
+
+								{#if config.trailing_mfe_enabled}
+									<div class="variable-item" data-debug-name="config.trailing_mfe_trigger_pct">
+										<div class="var-header" data-debug-name="config.trailing_mfe_trigger_pct">
+											<label for="trailing-mfe-trigger-fixe" data-debug-name="config.trailing_mfe_trigger_pct">
+												<span class="var-name" data-debug-name="config.trailing_mfe_trigger_pct">Trigger MFE (%)</span>
+												<span class="var-desc" data-debug-name="config.trailing_mfe_trigger_pct">Seuil MFE pour déplacer SL à break-even</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('trailing_mfe_trigger_pct')} title="Réinitialiser" data-debug-name="config.trailing_mfe_trigger_pct.reset">⟲</button>
+										</div>
+										<div class="slider-container" data-debug-name="config.trailing_mfe_trigger_pct">
+											<input
+												id="trailing-mfe-trigger-fixe"
+												type="range"
+												step="0.01"
+												min="0.05"
+												max="0.50"
+												bind:value={config.trailing_mfe_trigger_pct}
+												on:change={() => triggerAutoSave('trailing_mfe_trigger_pct', `${config.trailing_mfe_trigger_pct.toFixed(2)}%`)}
+												data-debug-name="config.trailing_mfe_trigger_pct"
+											/>
+											<span class="slider-value" data-debug-name="config.trailing_mfe_trigger_pct">{Number(config.trailing_mfe_trigger_pct).toFixed(2)}%</span>
+										</div>
+									</div>
+
+									<div class="variable-item" data-debug-name="config.trailing_mfe_lock_in_pct">
+										<div class="var-header" data-debug-name="config.trailing_mfe_lock_in_pct">
+											<label for="trailing-mfe-lock-in-fixe" data-debug-name="config.trailing_mfe_lock_in_pct">
+												<span class="var-name" data-debug-name="config.trailing_mfe_lock_in_pct">Lock-in Profit (%)</span>
+												<span class="var-desc" data-debug-name="config.trailing_mfe_lock_in_pct">Décalage du SL au-dessus du BE (anti-giveback)</span>
+											</label>
+											<button class="btn-reset" on:click={() => resetVariable('trailing_mfe_lock_in_pct')} title="Réinitialiser" data-debug-name="config.trailing_mfe_lock_in_pct.reset">⟲</button>
+										</div>
+										<div class="slider-container" data-debug-name="config.trailing_mfe_lock_in_pct">
+											<input
+												id="trailing-mfe-lock-in-fixe"
+												type="range"
+												step="0.01"
+												min="0.00"
+												max="0.50"
+												bind:value={config.trailing_mfe_lock_in_pct}
+												on:change={() => triggerAutoSave('trailing_mfe_lock_in_pct', `${config.trailing_mfe_lock_in_pct.toFixed(2)}%`)}
+												data-debug-name="config.trailing_mfe_lock_in_pct"
+											/>
+											<span class="slider-value" data-debug-name="config.trailing_mfe_lock_in_pct">{Number(config.trailing_mfe_lock_in_pct).toFixed(2)}%</span>
+										</div>
+									</div>
+								{/if}
 							</div>
 						</div>
 					{/if}
@@ -3449,6 +3649,28 @@
 													on:change={() => triggerAutoSave('trailing_mfe_trigger_pct', `${config.trailing_mfe_trigger_pct.toFixed(2)}%`)}
 												/>
 												<span class="slider-value">{Number(config.trailing_mfe_trigger_pct).toFixed(2)}%</span>
+											</div>
+										</div>
+
+										<div class="variable-item">
+											<div class="var-header">
+												<label for="trailing-mfe-lock-in">
+													<span class="var-name">Lock-in Profit (%)</span>
+													<span class="var-desc">Décalage du SL au-dessus du BE (anti-giveback)</span>
+												</label>
+												<button class="btn-reset" on:click={() => resetVariable('trailing_mfe_lock_in_pct')} title="Réinitialiser">⟲</button>
+											</div>
+											<div class="slider-container">
+												<input
+													id="trailing-mfe-lock-in"
+													type="range"
+													step="0.01"
+													min="0.00"
+													max="0.50"
+													bind:value={config.trailing_mfe_lock_in_pct}
+													on:change={() => triggerAutoSave('trailing_mfe_lock_in_pct', `${config.trailing_mfe_lock_in_pct.toFixed(2)}%`)}
+												/>
+												<span class="slider-value">{Number(config.trailing_mfe_lock_in_pct).toFixed(2)}%</span>
 											</div>
 										</div>
 									{/if}
@@ -5338,7 +5560,7 @@
 					<!-- 🔥 FIX 08/12/2025: Utiliser effective_config au lieu de trading_config -->
 					<div class="config-category main-category" data-debug-name="completeConfig.effective_config">
 						<h4 class="category-title">🔧 CONFIGURATION EFFECTIVE</h4>
-						{#each Object.entries(organizeTradingConfig(completeConfig.effective_config || completeConfig.trading_config)) as [categoryName, categoryVars]}
+						{#each Object.entries(organizeTradingConfig(getEffectiveConfigForDisplay())) as [categoryName, categoryVars]}
 							<div class="config-subcategory" data-debug-name="completeConfig.effective_config.{categoryName}">
 								<h5 class="subcategory-title">{categoryName}</h5>
 								<div class="config-grid">

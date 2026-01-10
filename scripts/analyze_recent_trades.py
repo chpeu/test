@@ -243,8 +243,118 @@ def analyze_trades(trades):
         print(f"  - Gap < 0.1%: {len(small_gaps)} trades (bonne gestion)")
         print(f"  - Gap 0.1-0.3%: {len(medium_gaps)} trades (ameliorable)")
         print(f"  - Gap >= 0.3%: {len(large_gaps)} trades (profit perdu significatif)")
+    
+    # Analyse Anti-Giveback (nouvelles colonnes per-trade)
+    print(f"\n{'='*50}")
+    print("ANALYSE ANTI-GIVEBACK & TRAILING MFE")
+    print(f"{'='*50}")
+    
+    def get_trailing_mfe_triggered(t):
+        return get_field(t, 'trailing_mfe_triggered', default=False)
+    
+    def get_trailing_mfe_trigger_pnl(t):
+        return get_field(t, 'trailing_mfe_trigger_pnl_pct', default=None)
+    
+    def get_config_trailing_mfe_enabled(t):
+        return get_field(t, 'config_trailing_mfe_enabled', default=None)
+    
+    def get_config_lock_in_pct(t):
+        return get_field(t, 'config_trailing_mfe_lock_in_pct', default=None)
+    
+    def get_break_even_set(t):
+        return get_field(t, 'break_even_set', 'be_triggered', default=False)
+    
+    # Statistiques des protections anti-giveback
+    trades_with_ag_config = [t for t in trades if get_config_trailing_mfe_enabled(t) is not None]
+    trades_ag_enabled = [t for t in trades_with_ag_config if get_config_trailing_mfe_enabled(t) == True]
+    trades_mfe_triggered = [t for t in trades if get_trailing_mfe_triggered(t) == True]
+    trades_be_set = [t for t in trades if get_break_even_set(t) == True]
+    
+    print(f"\n--- COUVERTURE ANTI-GIVEBACK ---")
+    print(f"Trades avec config AG remplie: {len(trades_with_ag_config)}/{len(trades)} ({len(trades_with_ag_config)/len(trades)*100:.1f}%)")
+    if trades_with_ag_config:
+        print(f"Trades avec AG activé: {len(trades_ag_enabled)}/{len(trades_with_ag_config)} ({len(trades_ag_enabled)/len(trades_with_ag_config)*100:.1f}%)")
+    print(f"Trades avec Trailing MFE déclenché: {len(trades_mfe_triggered)} ({len(trades_mfe_triggered)/len(trades)*100:.1f}%)")
+    print(f"Trades avec Break-Even activé: {len(trades_be_set)} ({len(trades_be_set)/len(trades)*100:.1f}%)")
+    
+    # Analyse giveback: trades qui étaient profitables après BE/TrailingMFE mais ont fini en perte
+    giveback_trades = []
+    protected_trades = []  # Trades sauvés par les protections
+    
+    for t in trades:
+        pnl = get_pnl(t)
+        be_set = get_break_even_set(t)
+        mfe_triggered = get_trailing_mfe_triggered(t)
+        mfe_trigger_pnl = get_trailing_mfe_trigger_pnl(t)
         
-        # Top 10 des trades avec le plus gros gap
+        # Trade avec protection activée (BE ou TrailingMFE)
+        if be_set or mfe_triggered:
+            if pnl < 0:  # Fini en perte malgré la protection
+                giveback_data = {
+                    'trade': t,
+                    'pnl': pnl,
+                    'be_set': be_set,
+                    'mfe_triggered': mfe_triggered,
+                    'mfe_trigger_pnl': mfe_trigger_pnl,
+                    'protection_type': 'TrailingMFE' if mfe_triggered else 'BreakEven'
+                }
+                giveback_trades.append(giveback_data)
+            elif pnl >= 0:  # Protection a réussi à sauver le trade
+                protected_trades.append(t)
+    
+    print(f"\n--- ANALYSE GIVEBACK ---")
+    protected_count = len(protected_trades)
+    giveback_count = len(giveback_trades)
+    total_protected_attempts = protected_count + giveback_count
+    
+    if total_protected_attempts > 0:
+        protection_success_rate = protected_count / total_protected_attempts * 100
+        print(f"Taux de succès des protections: {protection_success_rate:.1f}% ({protected_count} sauvés / {giveback_count} givebacks sur {total_protected_attempts} tentatives)")
+        
+        if giveback_trades:
+            total_giveback_loss = sum(g['pnl'] * get_field(g['trade'], 'size_usdt', 'size', default=25) / 100 for g in giveback_trades)
+            avg_giveback_loss = sum(g['pnl'] for g in giveback_trades) / len(giveback_trades)
+            
+            print(f"\nTrades avec giveback (protégés -> perdus): {giveback_count}")
+            print(f"Perte moyenne giveback: {avg_giveback_loss:.2f}%")
+            print(f"Perte totale giveback: {total_giveback_loss:.2f} USDT")
+            
+            # Répartition par type de protection
+            be_givebacks = [g for g in giveback_trades if not g['mfe_triggered']]
+            mfe_givebacks = [g for g in giveback_trades if g['mfe_triggered']]
+            
+            print(f"  - Giveback après Break-Even: {len(be_givebacks)}")
+            print(f"  - Giveback après Trailing MFE: {len(mfe_givebacks)}")
+            
+            if mfe_givebacks:
+                avg_mfe_trigger = sum(g['mfe_trigger_pnl'] for g in mfe_givebacks if g['mfe_trigger_pnl']) / len([g for g in mfe_givebacks if g['mfe_trigger_pnl']])
+                print(f"  - PnL moyen au déclenchement Trailing MFE: {avg_mfe_trigger:.2f}%")
+            
+            # Top 5 pires givebacks
+            print(f"\n--- TOP 5 PIRES GIVEBACKS ---")
+            sorted_givebacks = sorted(giveback_trades, key=lambda x: x['pnl'])[:5]
+            for i, g in enumerate(sorted_givebacks, 1):
+                t = g['trade']
+                symbol = get_field(t, 'symbol', default='?')
+                direction = get_field(t, 'direction', default='?')
+                reason = get_reason(t)
+                mfe = get_mfe(t)
+                mfe_str = f"MFE: {mfe:.2f}%" if mfe else "MFE: N/A"
+                trigger_info = ""
+                if g['mfe_triggered'] and g['mfe_trigger_pnl']:
+                    trigger_info = f"(déclenché à {g['mfe_trigger_pnl']:.2f}%)"
+                
+                print(f"{i}. {symbol:15} {direction:5} | {g['protection_type']:10} {trigger_info:20} | {mfe_str:12} -> PnL: {g['pnl']:+.2f}% | {reason}")
+        
+        if protected_trades:
+            protected_pnl = sum(get_pnl_usdt(t) for t in protected_trades)
+            print(f"\nTrades sauvés par les protections: {protected_count}")
+            print(f"PnL total sauvé: {protected_pnl:.2f} USDT")
+    else:
+        print(f"Aucune protection (BE/TrailingMFE) activée sur ces trades")
+    
+    # Top 10 des trades avec le plus gros gap (section déplacée au bon endroit)
+    if gaps:
         print(f"\n--- TOP 10 TRADES AVEC PLUS GROS GAP ---")
         sorted_gaps = sorted(gaps, key=lambda x: x['gap'], reverse=True)[:10]
         for i, g in enumerate(sorted_gaps, 1):

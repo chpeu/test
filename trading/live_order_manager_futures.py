@@ -277,6 +277,8 @@ class FuturesOrderResult:
     # 🔥 FIX: Indique si un TP partiel a été forcé à 100% (position trop petite)
     forced_full_close: bool = False
 
+    sl_exchange_percent: Optional[float] = None
+
 
 class LiveOrderManagerFutures:
     """
@@ -970,8 +972,10 @@ class LiveOrderManagerFutures:
                 # 🔥 SL MEXC DYNAMIQUE: Basé sur SL bot × 1.3 (30% marge de sécurité)
                 # FIX 16/12/2025: Augmenté de 1.1 à 1.3 pour éviter que MEXC SL trigger avant le bot
                 # FIX 16/12/2025 #2: Ajout SL minimum 0.5% pour éviter triggers immédiats (spread/slippage)
-                SL_MEXC_MARGIN = 1.3  # 30% plus large que le SL bot
-                SL_MEXC_MIN_PCT = 0.005  # 🔥 SL minimum 0.5% pour éviter trigger immédiat
+                SL_MEXC_MARGIN = 1.2  # 30% plus large que le SL bot
+                from config import TRADING_CONFIG
+                tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                SL_MEXC_MIN_PCT = 0.0 if tp_sl_mode == 'FIXE' else 0.005
                 
                 # 🔥 FIX 19/12: Utiliser original_entry_price (non-arrondi) pour calculer SL
                 # Sinon le SL peut être au-dessus du prix d'exécution réel (ex: JELLYJELLY)
@@ -993,7 +997,7 @@ class LiveOrderManagerFutures:
                     sl_exchange_percent = sl_distance_pct_final
                     
                     # 🔥 Log si minimum appliqué
-                    min_applied = sl_distance_pct * SL_MEXC_MARGIN < SL_MEXC_MIN_PCT
+                    min_applied = (SL_MEXC_MIN_PCT > 0) and (sl_distance_pct * SL_MEXC_MARGIN < SL_MEXC_MIN_PCT)
                     logger.warning(
                         f"📐 SL MEXC MARGE: Bot_SL={bot_sl_price:.6f} ({sl_distance_pct*100:.4f}%) | "
                         f"MEXC_SL={sl_price:.6f} ({sl_exchange_percent*100:.4f}%) | "
@@ -1308,7 +1312,8 @@ class LiveOrderManagerFutures:
                         executed_at=datetime.now(timezone.utc).isoformat(),
                         raw_api_response=bypass_result.data,
                         min_contract_amount=float(min_amount) if min_amount else None,  # 🔥 FIX: Pour TP partiel
-                        contract_size=real_contract_size  # 🔥 FIX: Contract size pour calcul PNL correct
+                        contract_size=real_contract_size,  # 🔥 FIX: Contract size pour calcul PNL correct
+                        sl_exchange_percent=(sl_exchange_percent * 100.0) if 'sl_exchange_percent' in locals() and sl_exchange_percent is not None else None
                     )
                 else:
                     # 🔥 Circuit Breaker: Enregistrer échec

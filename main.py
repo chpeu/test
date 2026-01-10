@@ -318,7 +318,8 @@ def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> Order
         tp_percent=trading_config.get('tp_percent'),
         sl_percent=trading_config.get('sl_percent'),
         break_even_trigger=trading_config.get('break_even_trigger'),
-        trailing_distance=trading_config.get('trailing_distance')
+        trailing_distance=trading_config.get('trailing_distance'),
+        invert_signals=trading_config.get('invert_signals')
     )
     categories['📐 Mode ATR'] = OrderedDict(
         atr_mult_tp=trading_config.get('atr_mult_tp'),
@@ -5272,6 +5273,21 @@ async def handle_client_command(command: str, params: dict):
         from config import TRADING_CONFIG
         updated = {}
         pos_cfg = state.get_position_config()
+
+        def _coerce_bool(v):
+            if isinstance(v, bool):
+                return v
+            if v is None:
+                return False
+            if isinstance(v, (int, float)):
+                return v != 0
+            if isinstance(v, str):
+                s = v.strip().lower()
+                if s in ('true', '1', 'yes', 'y', 'on'):
+                    return True
+                if s in ('false', '0', 'no', 'n', 'off', ''):
+                    return False
+            return bool(v)
         
         # 🔥 Volume multiplier
         if 'volume_multiplier' in params:
@@ -6303,6 +6319,20 @@ async def handle_client_command(command: str, params: dict):
             updated['trailing_mfe_trigger_pct'] = val
             logger.info(f"✅ trailing_mfe_trigger_pct: {val}%")
 
+        if 'trailing_mfe_lock_in_pct' in params:
+            val = float(params['trailing_mfe_lock_in_pct'])
+            val = max(0.0, min(0.50, val))  # Clamp 0.0-0.50%
+            TRADING_CONFIG['trailing_mfe_lock_in_pct'] = val
+            updated['trailing_mfe_lock_in_pct'] = val
+            logger.info(f"✅ trailing_mfe_lock_in_pct: {val}%")
+
+        if 'partial_tp_be_lock_in_pct' in params:
+            val = float(params['partial_tp_be_lock_in_pct'])
+            val = max(0.0, min(0.50, val))  # Clamp 0.0-0.50%
+            TRADING_CONFIG['partial_tp_be_lock_in_pct'] = val
+            updated['partial_tp_be_lock_in_pct'] = val
+            logger.info(f"✅ partial_tp_be_lock_in_pct: {val}%")
+
         # 🔬 ML Calibration Parameters
         if 'ml_calibration_enabled' in params:
             TRADING_CONFIG['ml_calibration_enabled'] = bool(params['ml_calibration_enabled'])
@@ -6747,6 +6777,12 @@ async def handle_client_command(command: str, params: dict):
             updated['max_spread_pct_atr'] = val
             logger.info(f"✅ max_spread_pct_atr: {val}%")
 
+        # 🔄 Signal Inversion (onglet TP/SL et position)
+        if 'invert_signals' in params:
+            TRADING_CONFIG['invert_signals'] = _coerce_bool(params['invert_signals'])
+            updated['invert_signals'] = TRADING_CONFIG['invert_signals']
+            logger.info(f"✅ invert_signals: {TRADING_CONFIG['invert_signals']}")
+
         if updated:
             logger.info(f"✅ Config mise à jour via WebSocket: {updated}")
             await add_log('INFO', 'Config mise à jour', str(updated))
@@ -7055,6 +7091,10 @@ async def api_get_config():
         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
         'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
         'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
+        'trailing_mfe_enabled': TRADING_CONFIG.get('trailing_mfe_enabled', False),
+        'trailing_mfe_trigger_pct': TRADING_CONFIG.get('trailing_mfe_trigger_pct', 0.10),
+        'trailing_mfe_lock_in_pct': TRADING_CONFIG.get('trailing_mfe_lock_in_pct', 0.0),
+        'partial_tp_be_lock_in_pct': TRADING_CONFIG.get('partial_tp_be_lock_in_pct', 0.0),
         # 4 seuils configurables
         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
@@ -7093,7 +7133,9 @@ async def api_get_config():
         # 🔥 Spread Thresholds (onglet Paires)
         'max_spread_pct': TRADING_CONFIG.get('max_spread_pct'),
         'max_spread_pct_fixe': TRADING_CONFIG.get('max_spread_pct_fixe', 0.03),
-        'max_spread_pct_atr': TRADING_CONFIG.get('max_spread_pct_atr', 0.06)
+        'max_spread_pct_atr': TRADING_CONFIG.get('max_spread_pct_atr', 0.06),
+        # 🔄 Signal Inversion (onglet TP/SL et position)
+        'invert_signals': TRADING_CONFIG.get('invert_signals', False)
     })
 
 
@@ -8050,6 +8092,7 @@ async def export_datalogger_excel(
                         'config_optimal_atr_min_1m', 'config_optimal_atr_max_1m',
                         'config_optimal_atr_min_5m', 'config_optimal_atr_max_5m',
                         'config_volume_multiplier', 'config_use_confluence',
+                        'config_invert_signals',
                         'config_use_anti_whipsaw', 'config_whipsaw_lookback',
                         'config_whipsaw_threshold_pct', 'config_whipsaw_max_alternations',
                         'config_use_retest_confirmation', 'config_retest_tolerance_pct',
@@ -8063,6 +8106,21 @@ async def export_datalogger_excel(
                         'entry_min_score_required', 'entry_atr_mult_sl', 'entry_atr_mult_tp',
                         'entry_cb_state', 'entry_consecutive_losses', 'entry_daily_pnl_pct', 'entry_cb_score_boost'
                     ]
+
+                    # 🛡️ Anti-Giveback / Trailing MFE
+                    anti_giveback_columns = [
+                        'config_trailing_mfe_enabled',
+                        'config_trailing_mfe_trigger_pct',
+                        'config_trailing_mfe_lock_in_pct',
+                        'config_partial_tp_be_lock_in_pct',
+                        'trailing_mfe_triggered',
+                        'trailing_mfe_triggered_at',
+                        'trailing_mfe_trigger_pnl_pct',
+                        'trailing_mfe_trigger_price',
+                        'trailing_mfe_new_sl'
+                    ]
+                    config_columns.extend(anti_giveback_columns)
+
                     for col in config_columns:
                         if col not in headers:
                             headers.append(col)
