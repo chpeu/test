@@ -41,6 +41,7 @@ async def get_regime_status():
         
         # 🔥 FIX: Inclure l'état enabled pour le frontend
         enabled = TRADING_CONFIG.get('market_regime_enabled', True)
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
         
         selector = get_regime_selector()
         status = selector.get_status()
@@ -48,6 +49,7 @@ async def get_regime_status():
         return JSONResponse({
             "success": True,
             "enabled": enabled,
+            "tp_sl_mode": tp_sl_mode,
             **status
         })
     except Exception as e:
@@ -73,6 +75,7 @@ async def force_regime_check():
         JSONResponse avec le nouveau statut du régime
     """
     try:
+        from config import TRADING_CONFIG
         from core.market_regime_selector import get_regime_selector
         
         selector = get_regime_selector()
@@ -125,6 +128,7 @@ async def force_regime_check():
             "success": True,
             "changed": changed,
             "message": f"Régime vérifié: {new_regime.value}" + (" (changement)" if changed else ""),
+            "tp_sl_mode": TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
             **status
         })
         

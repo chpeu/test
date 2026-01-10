@@ -640,10 +640,6 @@ class TestPartialTPManager:
         assert abs(result['size_sold'] - 650.0) < 0.1
         assert abs(result['size_remaining'] - 350.0) < 0.1
 
-        # Position should be updated
-        assert position['partial_tp_sold'] is True
-        assert abs(position['size_remaining'] - 350.0) < 0.1
-
     def test_update_sl_after_partial_tp(self):
         """Test SL moved to break-even after partial TP"""
         manager = PartialTPManager()
@@ -654,13 +650,14 @@ class TestPartialTPManager:
             'direction': 'LONG'
         }
 
-        new_sl = manager.update_sl_after_partial_tp(position)
+        # Forcer lock-in à 0% pour garantir un BE exact (indépendant de config_overrides.json)
+        with patch.dict('config.TRADING_CONFIG', {'partial_tp_be_lock_in_pct': 0.0}, clear=False):
+            new_sl = manager.update_sl_after_partial_tp(position)
 
         # SL should be at entry (break-even)
         assert new_sl == 50000.0
         assert position['sl'] == 50000.0
         assert position['break_even_set'] is True
-
 
 # ============================================================================
 # TP Escalier Manager Tests

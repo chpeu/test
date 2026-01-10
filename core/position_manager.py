@@ -805,6 +805,9 @@ class PositionManager:
         if TRADING_CONFIG.get('tp_sl_mode', 'FIXE') != 'FIXE':
             return
 
+        if getattr(self.config, 'use_atr', False):
+            return
+
         sl_pct_cfg = getattr(self.active_position, 'sl_percent_at_entry', None)
         if not isinstance(sl_pct_cfg, (int, float)) or sl_pct_cfg <= 0:
             return
@@ -1367,103 +1370,117 @@ class PositionManager:
         trading_params = ConfigHelper.get_trading_params(TRADING_CONFIG)
         self.tpsl_config.fixed_tp_pct = trading_params['tp_percent']
         self.tpsl_config.fixed_sl_pct = trading_params['sl_percent']
-        # 🔥 FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
+
+        # 🔥 FIX: Si le PositionManager est forcé en ATR via PositionConfig, respecter ce mode même si TRADING_CONFIG est en FIXE
+        tp_sl_mode = trading_params.get('tp_sl_mode', 'FIXE')
+        # FIX: Accepter aussi 'ESCALIER' comme mode valide (identique à TP_MULTI)
+        use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER') or self.config.use_atr
+        # FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
         from utils.effective_config import get_effective_value
         
-        # 🔥 ADAPTATION LOCALE DYNAMIQUE (Sprint 3)
+        # ADAPTATION LOCALE DYNAMIQUE (Sprint 3)
         # Calculer le régime local basé sur ATR
         effective_params = {}
-        atr_pct = (atr / entry * 100) if atr and entry else 0
-        local_regime = 'UNKNOWN'
-        
-        if atr_pct > 0:
-            if atr_pct < 0.20:
-                local_regime = 'LOW'
-            elif atr_pct < 0.50:
-                local_regime = 'MEDIUM'
-            else:
-                local_regime = 'HIGH'
-        
-        effective_params['local_regime'] = local_regime
-        effective_params['atr_pct'] = atr_pct
-        
-        # Valeurs de base (depuis config manuelle/globale)
-        base_mult_tp = get_effective_value('atr_mult_tp') or 1.5
-        base_mult_sl = get_effective_value('atr_mult_sl') or 1.0
-        base_be_mult = ConfigHelper.get_param('break_even_atr_mult', 1.0, TRADING_CONFIG)
-        base_trailing_trigger = ConfigHelper.get_param('trailing_trigger_atr_mult', 1.5, TRADING_CONFIG)
-        base_trailing_dist = (
-            TRADING_CONFIG.get('trailing_distance_atr_mult')
-            or TRADING_CONFIG.get('trailing_atr_multiplier')
-            or TRADING_CONFIG.get('trailing_distance_mult')
-            or 1.0
-        )
-        base_stagnation_timeout = ConfigHelper.get_param('stagnation_exit_timeout_seconds', 120, TRADING_CONFIG)
-        base_stagnation_min_pnl = ConfigHelper.get_param('stagnation_exit_min_pnl_to_stay', 0.05, TRADING_CONFIG)
-        base_stagnation_positive_timeout = ConfigHelper.get_param('stagnation_positive_timeout_seconds', 60, TRADING_CONFIG)
+        if use_atr:
+            atr_pct = (atr / entry * 100) if atr and entry else 0
+            local_regime = 'UNKNOWN'
+            
+            if atr_pct > 0:
+                if atr_pct < 0.20:
+                    local_regime = 'LOW'
+                elif atr_pct < 0.50:
+                    local_regime = 'MEDIUM'
+                else:
+                    local_regime = 'HIGH'
+            
+            effective_params['local_regime'] = local_regime
+            effective_params['atr_pct'] = atr_pct
+            
+            # Valeurs de base (depuis config manuelle/globale)
+            base_mult_tp = (
+                float(self.config.atr_mult_tp)
+                if getattr(self.config, 'use_atr', False) and isinstance(getattr(self.config, 'atr_mult_tp', None), (int, float))
+                else float(get_effective_value('atr_mult_tp') or 1.5)
+            )
+            base_mult_sl = (
+                float(self.config.atr_mult_sl)
+                if getattr(self.config, 'use_atr', False) and isinstance(getattr(self.config, 'atr_mult_sl', None), (int, float))
+                else float(get_effective_value('atr_mult_sl') or 1.0)
+            )
+            base_be_mult = ConfigHelper.get_param('break_even_atr_mult', 1.0, TRADING_CONFIG)
+            base_trailing_trigger = ConfigHelper.get_param('trailing_trigger_atr_mult', 1.5, TRADING_CONFIG)
+            base_trailing_dist = (
+                TRADING_CONFIG.get('trailing_distance_atr_mult')
+                or TRADING_CONFIG.get('trailing_atr_multiplier')
+                or TRADING_CONFIG.get('trailing_distance_mult')
+                or 1.0
+            )
+            base_stagnation_timeout = ConfigHelper.get_param('stagnation_exit_timeout_seconds', 120, TRADING_CONFIG)
+            base_stagnation_min_pnl = ConfigHelper.get_param('stagnation_exit_min_pnl_to_stay', 0.05, TRADING_CONFIG)
+            base_stagnation_positive_timeout = ConfigHelper.get_param('stagnation_positive_timeout_seconds', 60, TRADING_CONFIG)
         
         # Ajustements selon régime local (Optimisation 10/12/2025)
         # Basé sur analyse trade_atr_metrics et doc BRAINSTORM_ATR_OPTIMIZATION
         
         # MEDIUM (0.2-0.5% ATR): Performance faible - SL trop serré cause pertes
         # → FIX 14/12/2025: BE encore plus tôt (0.5 au lieu de 0.6) pour maximiser BE triggers
-        if local_regime == 'MEDIUM':
-            effective_params['atr_mult_tp'] = base_mult_tp * 0.7  # TP court (prendre profits tôt)
-            effective_params['atr_mult_sl'] = base_mult_sl * 1.3  # 🔥 FIX: SL PLUS LARGE (éviter SL prématurés)
-            effective_params['break_even_atr_mult'] = base_be_mult * 0.5  # 🔥 FIX 14/12: BE très tôt (était 0.6)
-            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.7  # Trigger tôt
-            effective_params['trailing_distance_mult'] = base_trailing_dist * 0.8  # Distance modérée
-            effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 0.8)  # Timeout réduit
-            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 1.2  # Légèrement exigeant
-            effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 0.8)  # Sortie positive rapide
-            effective_params['adjustment_reason'] = 'MEDIUM_VOLATILITY_PROTECTIVE'
-            logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode PROTECTIF (SL×1.3, TP×0.7, BE×0.5)")
-            
-        # HIGH (>0.5% ATR): BE 100% mais ratio PnL/ATR faible (0.30-0.65x)
-        # → FIX 14/12/2025: BE légèrement plus tôt (1.0 au lieu de 1.2) pour protéger gains
-        elif local_regime == 'HIGH':
-            effective_params['atr_mult_tp'] = base_mult_tp
-            effective_params['atr_mult_sl'] = base_mult_sl * 1.2  # SL légèrement plus large (bruit)
-            effective_params['break_even_atr_mult'] = base_be_mult * 1.0  # 🔥 FIX 14/12: BE neutre (était 1.2)
-            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 1.2  # Trigger plus tard
-            effective_params['trailing_distance_mult'] = base_trailing_dist * 1.5  # Distance plus large
-            effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 1.5)  # Plus de temps
-            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 0.5  # Moins exigeant
-            effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 1.5)  # Plus de temps en volatilité
-            effective_params['adjustment_reason'] = 'HIGH_VOLATILITY_WIDEN'
-            logger.info(f"⚡ Régime HIGH détecté ({atr_pct:.2f}%) -> Élargissement SL/Trailing/Stagnation (BE×1.0)")
-            
-        # LOW (<0.2% ATR): Performance 23% WR sans BE, mais 100% WR avec BE
-        # → FIX 14/12/2025: BE plus tôt (0.7 au lieu de 1.0) pour maximiser BE triggers
-        else:
-            effective_params['atr_mult_tp'] = base_mult_tp
-            effective_params['atr_mult_sl'] = base_mult_sl
-            effective_params['break_even_atr_mult'] = base_be_mult * 0.7  # 🔥 FIX 14/12: BE plus tôt (était 1.0)
-            effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.9  # 🔥 FIX 14/12: Trailing légèrement plus tôt
-            effective_params['trailing_distance_mult'] = base_trailing_dist
-            effective_params['stagnation_exit_timeout_seconds'] = base_stagnation_timeout
-            effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl
-            effective_params['stagnation_positive_timeout_seconds'] = base_stagnation_positive_timeout
-            effective_params['adjustment_reason'] = 'LOW_VOLATILITY_EARLY_BE'
-            logger.info(f"⚡ Régime LOW détecté ({atr_pct:.2f}%) -> BE anticipé (BE×0.7, Trail×0.9)")
+        if use_atr:
+            if local_regime == 'MEDIUM':
+                effective_params['atr_mult_tp'] = base_mult_tp * 0.7  # TP court (prendre profits tôt)
+                effective_params['atr_mult_sl'] = base_mult_sl * 1.3  # FIX: SL PLUS LARGE (éviter SL prématurés)
+                effective_params['break_even_atr_mult'] = base_be_mult * 0.5  # FIX 14/12: BE très tôt (était 0.6)
+                effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.7  # Trigger tôt
+                effective_params['trailing_distance_mult'] = base_trailing_dist * 0.8  # Distance modérée
+                effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 0.8)  # Timeout réduit
+                effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 1.2  # Légèrement exigeant
+                effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 0.8)  # Sortie positive rapide
+                effective_params['adjustment_reason'] = 'MEDIUM_VOLATILITY_PROTECTIVE'
+                logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode PROTECTIF (SL×1.3, TP×0.7, BE×0.5)")
+                
+            # HIGH (>0.5% ATR): BE 100% mais ratio PnL/ATR faible (0.30-0.65x)
+            # → FIX 14/12/2025: BE légèrement plus tôt (1.0 au lieu de 1.2) pour protéger gains
+            elif local_regime == 'HIGH':
+                effective_params['atr_mult_tp'] = base_mult_tp
+                effective_params['atr_mult_sl'] = base_mult_sl * 1.2  # SL légèrement plus large (bruit)
+                effective_params['break_even_atr_mult'] = base_be_mult * 1.0  # FIX 14/12: BE neutre (était 1.2)
+                effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 1.2  # Trigger plus tard
+                effective_params['trailing_distance_mult'] = base_trailing_dist * 1.5  # Distance plus large
+                effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 1.5)  # Plus de temps
+                effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 0.5  # Moins exigeant
+                effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 1.5)  # Plus de temps en volatilité
+                effective_params['adjustment_reason'] = 'HIGH_VOLATILITY_WIDEN'
+                logger.info(f"⚡ Régime HIGH détecté ({atr_pct:.2f}%) -> Élargissement SL/Trailing/Stagnation (BE×1.0)")
+                
+            # LOW (<0.2% ATR): Performance 23% WR sans BE, mais 100% WR avec BE
+            # → FIX 14/12/2025: BE plus tôt (0.7 au lieu de 1.0) pour maximiser BE triggers
+            else:
+                effective_params['atr_mult_tp'] = base_mult_tp
+                effective_params['atr_mult_sl'] = base_mult_sl
+                effective_params['break_even_atr_mult'] = base_be_mult * 0.7  # FIX 14/12: BE plus tôt (était 1.0)
+                effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.9  # FIX 14/12: Trailing légèrement plus tôt
+                effective_params['trailing_distance_mult'] = base_trailing_dist
+                effective_params['stagnation_exit_timeout_seconds'] = base_stagnation_timeout
+                effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl
+                effective_params['stagnation_positive_timeout_seconds'] = base_stagnation_positive_timeout
+                effective_params['adjustment_reason'] = 'LOW_VOLATILITY_EARLY_BE'
+                logger.info(f"⚡ Régime LOW détecté ({atr_pct:.2f}%) -> BE anticipé (BE×0.7, Trail×0.9)")
 
         # Appliquer à la config TPSL
-        self.tpsl_config.atr_mult_tp = effective_params['atr_mult_tp']
-        self.tpsl_config.atr_mult_sl = effective_params['atr_mult_sl']
+        if use_atr:
+            self.tpsl_config.atr_mult_tp = effective_params['atr_mult_tp']
+            self.tpsl_config.atr_mult_sl = effective_params['atr_mult_sl']
         self.tpsl_config.atr_min = trading_params['atr_min']
         self.tpsl_config.atr_max = trading_params['atr_max']
         
-        # 🔥 SPRINT 3: Propager les ajustements au système global pour affichage "Variables en cours"
-        from utils.effective_config import set_local_trade_adjustments
-        set_local_trade_adjustments(effective_params)
-        
-        # 🔥 FIX: Mettre à jour use_atr depuis ConfigHelper
-        tp_sl_mode = trading_params['tp_sl_mode']
-        # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide (identique à TP_MULTI)
-        use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
+        # SPRINT 3: Propager les ajustements au système global pour affichage "Variables en cours"
+        from utils.effective_config import set_local_trade_adjustments, clear_local_trade_adjustments
+        if use_atr:
+            set_local_trade_adjustments(effective_params)
+        else:
+            clear_local_trade_adjustments()
 
         # Calculer TP/SL selon le mode
-        # 🔥 FIX 29/12: Capturer l'ATR réellement utilisé (blended + clampé)
+        # FIX 29/12: Capturer l'ATR réellement utilisé (blended + clampé)
         atr_pct_used = None
         atr_blended_used = None
         if use_atr and atr:
@@ -1486,50 +1503,50 @@ class PositionManager:
                 config=self.tpsl_config
             )
 
-        # 🔒 Invariant FIXE: stocker le SL% configuré au moment de l'ouverture
+        # Invariant FIXE: stocker le SL% configuré au moment de l'ouverture
         sl_percent_at_entry = None
         try:
             sl_percent_at_entry = float(trading_params.get('sl_percent'))
         except Exception:
             sl_percent_at_entry = None
 
-        # 🔥 VALIDATION SL: Vérifier que SL est du bon côté de l'entry
+        # VALIDATION SL: Vérifier que SL est du bon côté de l'entry
         if direction == 'SHORT' and sl <= entry:
             logger.error(
-                f"🔴 BUG SL SHORT: sl={sl:.8f} <= entry={entry:.8f} ! "
+                f"BUG SL SHORT: sl={sl:.8f} <= entry={entry:.8f} ! "
                 f"SL devrait être AU-DESSUS de entry pour SHORT. Correction forcée..."
             )
             # Recalculer avec formule correcte
             sl_pct = abs(entry - sl) / entry * 100  # Distance en %
             sl = entry * (1 + sl_pct / 100)  # Inverser: mettre AU-DESSUS
-            logger.warning(f"🔧 SL corrigé pour SHORT: {sl:.8f} (>{entry:.8f})")
+            logger.warning(f"SL corrigé pour SHORT: {sl:.8f} (>{entry:.8f})")
         elif direction == 'LONG' and sl >= entry:
             logger.error(
-                f"🔴 BUG SL LONG: sl={sl:.8f} >= entry={entry:.8f} ! "
+                f"BUG SL LONG: sl={sl:.8f} >= entry={entry:.8f} ! "
                 f"SL devrait être EN-DESSOUS de entry pour LONG. Correction forcée..."
             )
             sl_pct = abs(sl - entry) / entry * 100
             sl = entry * (1 - sl_pct / 100)
-            logger.warning(f"🔧 SL corrigé pour LONG: {sl:.8f} (<{entry:.8f})")
+            logger.warning(f"SL corrigé pour LONG: {sl:.8f} (<{entry:.8f})")
 
         if direction == 'SHORT' and tp >= entry:
             logger.error(
-                f"🔴 BUG TP SHORT: tp={tp:.8f} >= entry={entry:.8f} ! "
+                f"BUG TP SHORT: tp={tp:.8f} >= entry={entry:.8f} ! "
                 f"TP devrait être EN-DESSOUS de entry pour SHORT. Correction forcée..."
             )
             tp_dist = abs(tp - entry)
             tp = entry - tp_dist
-            logger.warning(f"🔧 TP corrigé pour SHORT: {tp:.8f} (<{entry:.8f})")
+            logger.warning(f"TP corrigé pour SHORT: {tp:.8f} (<{entry:.8f})")
         elif direction == 'LONG' and tp <= entry:
             logger.error(
-                f"🔴 BUG TP LONG: tp={tp:.8f} <= entry={entry:.8f} ! "
+                f"BUG TP LONG: tp={tp:.8f} <= entry={entry:.8f} ! "
                 f"TP devrait être AU-DESSUS de entry pour LONG. Correction forcée..."
             )
             tp_dist = abs(tp - entry)
             tp = entry + tp_dist
-            logger.warning(f"🔧 TP corrigé pour LONG: {tp:.8f} (>{entry:.8f})")
+            logger.warning(f"TP corrigé pour LONG: {tp:.8f} (>{entry:.8f})")
 
-        # 🔥 FIX: Récupérer la précision depuis l'API pour formater correctement les prix
+        # FIX: Récupérer la précision depuis l'API pour formater correctement les prix
         price_precision = None
         tick_size = None
         try:
@@ -1550,7 +1567,7 @@ class PositionManager:
                     if price_precision is not None:
                         tick_size = 10 ** (-price_precision)
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de récupérer la précision pour {symbol}: {e}")
+            logger.warning(f"Impossible de récupérer la précision pour {symbol}: {e}")
 
         # Créer position
         self.active_position = Position(
@@ -1569,13 +1586,13 @@ class PositionManager:
             condition_types=condition_types or [],
             price_precision=price_precision,
             tick_size=tick_size,
-            effective_config=effective_params  # 🔥 Stocker la config effective
+            effective_config=effective_params  # Stocker la config effective
         )
 
-        # 🔒 Invariant FIXE: ne jamais élargir le SL au-delà du SL% initial
+        # Invariant FIXE: ne jamais élargir le SL au-delà du SL% initial
         self._enforce_fixe_sl_not_wider(context='OPEN_POSITION')
         
-        # 🔥 FIX 29/12: Stocker l'ATR réellement utilisé pour diagnostic
+        # FIX 29/12: Stocker l'ATR réellement utilisé pour diagnostic
         if atr_pct_used is not None:
             self.active_position.atr_pct_used = atr_pct_used
             self.active_position.atr_blended = atr_blended_used
@@ -1612,7 +1629,7 @@ class PositionManager:
         except Exception:
             pass
 
-        # ✅ Initialiser les tailles en contrats même en mode paper/dry-run
+        # Initialiser les tailles en contrats même en mode paper/dry-run
         try:
             contracts = size / entry if entry else 0.0
         except Exception:
@@ -1623,13 +1640,13 @@ class PositionManager:
         self.active_position.size_remaining_contracts = contracts
         self.active_position.size_remaining = size
         
-        # 🔥 FIX CRITIQUE: Initialiser size_initial_usdt dès l'ouverture avec la taille demandée
+        # FIX CRITIQUE: Initialiser size_initial_usdt dès l'ouverture avec la taille demandée
         # Cette valeur NE DOIT PAS être écrasée par une valeur incorrecte de synchronisation
         self.active_position.size_initial_usdt = size  # size = taille en USDT demandée
-        # 🔥 FIX: Initialiser size_executed_usdt (sera écrasée après exécution ordre live)
+        # FIX: Initialiser size_executed_usdt (sera écrasée après exécution ordre live)
         self.active_position.size_executed_usdt = size  # Par défaut = demandée, mise à jour après ordre
         
-        # 🔥 FIX: Stocker ml_confidence sur la position pour le logging
+        # FIX: Stocker ml_confidence sur la position pour le logging
         self.active_position.ml_confidence = ml_confidence_pct
         self.active_position.ml_calibrated_winrate = calibrated_wr
 
@@ -1647,15 +1664,15 @@ class PositionManager:
             ml_features_value = setup_data.get('ml_features')
         self.active_position.ml_features = ml_features_value if isinstance(ml_features_value, dict) else {}
         
-        # 🔥 Stocker le multiplicateur sizing adaptatif
+        # Stocker le multiplicateur sizing adaptatif
         self.active_position.adaptive_sizing_multiplier = adaptive_sizing_multiplier
         
-        # 🔥 FIX: Initialiser leverage_used dès la création (sera mis à jour après l'ordre)
+        # FIX: Initialiser leverage_used dès la création (sera mis à jour après l'ordre)
         api_params = ConfigHelper.get_api_params(TRADING_CONFIG)
-        configured_leverage = api_params.get('default_leverage', 1)  # 🔥 FIX: 1x par défaut
+        configured_leverage = api_params.get('default_leverage', 1)  # FIX: 1x par défaut
         self.active_position.leverage_used = configured_leverage
 
-        # ✅ Initialiser TP Escalier si mode TP_MULTI
+        # Initialiser TP Escalier si mode TP_MULTI
         levels_config = None
         if tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER':
             # Construire config niveaux depuis ConfigHelper
@@ -1677,20 +1694,20 @@ class PositionManager:
             self.active_position.tp_escalier_enabled = True
             self.active_position.tp_escalier_levels = levels_config
 
-        # 🔥 LIVE TRADING: Passer ordre réel si LiveOrderManager actif
+        # LIVE TRADING: Passer ordre réel si LiveOrderManager actif
         executed_size_usdt = size
 
         if self.live_order_manager:
             try:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
-                size_amount = size / entry
+                size_amount = size / entry if entry else 0.0
 
-                # 🔥 FIX: Récupérer le levier depuis ConfigHelper
-                configured_leverage = api_params.get('default_leverage', 1)  # 🔥 FIX: 1x par défaut
+                # FIX: Récupérer le levier depuis ConfigHelper
+                configured_leverage = api_params.get('default_leverage', 1)  # FIX: 1x par défaut
                 
-                # 🔍 VÉRIFICATION LEVIER: Logger pour debug
+                # VÉRIFICATION LEVIER: Logger pour debug
                 logger.info(
-                    f"🔍 LEVIER CHECK: config={configured_leverage}x | "
+                    f"LEVIER CHECK: config={configured_leverage}x | "
                     f"live_manager_default={self.live_order_manager.default_leverage}x | "
                     f"Utilisation: {configured_leverage}x"
                 )
@@ -1701,7 +1718,7 @@ class PositionManager:
                     entry_price=entry,
                     size_usdt=size,
                     leverage=configured_leverage,
-                    bot_sl_price=sl  # 🔥 FIX: Passer le SL calculé pour SL MEXC = SL × 1.1
+                    bot_sl_price=sl  # FIX: Passer le SL calculé pour SL MEXC = SL × 1.1
                 )
 
                 if order_result.success:
@@ -1712,42 +1729,42 @@ class PositionManager:
                     # FIX: Stocker le levier utilisé pour l'affichage frontend
                     self.active_position.leverage_used = order_result.leverage
                     
-                    # 🔥 FIX: Stocker contract_size pour éviter erreurs de calcul PNL
+                    # FIX: Stocker contract_size pour éviter erreurs de calcul PNL
                     if hasattr(order_result, 'contract_size') and order_result.contract_size:
                         self.active_position.contract_size_used = order_result.contract_size
-                        logger.info(f"📋 Contract size stocké: {order_result.contract_size}")
+                        logger.info(f"Contract size stocké: {order_result.contract_size}")
                     
                     # FIX: Mettre à jour la taille avec la taille réellement exécutée
                     if order_result.filled_size_usdt and order_result.filled_size_usdt > 0:
                         executed_size_usdt = order_result.filled_size_usdt
-                        # 🔥 DEBUG: Log pour tracer le calcul
+                        # DEBUG: Log pour tracer le calcul
                         logger.warning(
-                            f"🔍 DEBUG SIZE (1): filled_size_usdt={order_result.filled_size_usdt:.4f}, "
+                            f"DEBUG SIZE (1): filled_size_usdt={order_result.filled_size_usdt:.4f}, "
                             f"filled_amount={order_result.filled_amount}, filled_price={order_result.filled_price}"
                         )
                         self.active_position.size = executed_size_usdt
                         self.active_position.position_size_usdt = executed_size_usdt
                         self.active_position.size_remaining = executed_size_usdt
-                        # 🔥 FIX: Stocker la taille exécutée pour calcul PnL précis
+                        # FIX: Stocker la taille exécutée pour calcul PnL précis
                         self.active_position.size_executed_usdt = executed_size_usdt
-                        logger.info(f"✅ Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT")
+                        logger.info(f"Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT")
                     
                     if order_result.filled_amount:
-                        # 🔥 FIX CRITIQUE: Utiliser les valeurs de order_result correctement
+                        # FIX CRITIQUE: Utiliser les valeurs de order_result correctement
                         # order_result.filled_amount est DÉJÀ en tokens réels (conversion faite dans bypass)
                         # order_result.contract_size contient le contract_size utilisé
                         
                         # Stocker le contract_size pour les calculs futurs
                         if order_result.contract_size and order_result.contract_size > 0:
                             self.active_position.contract_size_used = order_result.contract_size
-                            logger.info(f"📋 Contract size depuis ordre: {order_result.contract_size} pour {symbol}")
+                            logger.info(f"Contract size depuis ordre: {order_result.contract_size} pour {symbol}")
                         elif not self.active_position.contract_size_used or self.active_position.contract_size_used <= 0:
                             self.active_position.contract_size_used = self._get_contract_size(symbol)
-                            logger.info(f"📋 Contract size récupéré: {self.active_position.contract_size_used} pour {symbol}")
+                            logger.info(f"Contract size récupéré: {self.active_position.contract_size_used} pour {symbol}")
                         
-                        # 🔥 FIX: filled_amount est DÉJÀ en tokens réels, pas besoin de conversion
+                        # FIX: filled_amount est DÉJÀ en tokens réels, pas besoin de conversion
                         real_tokens = order_result.filled_amount
-                        logger.info(f"📊 Position ouverte: {real_tokens:.6f} tokens réels ({real_tokens / self.active_position.contract_size_used if self.active_position.contract_size_used else real_tokens:.2f} contrats MEXC)")
+                        logger.info(f"Position ouverte: {real_tokens:.6f} tokens réels ({real_tokens / self.active_position.contract_size_used if self.active_position.contract_size_used else real_tokens:.2f} contrats MEXC)")
                         
                         self.active_position.position_size_contracts = real_tokens
                         self.active_position.size_initial_contracts = real_tokens
@@ -1756,8 +1773,7 @@ class PositionManager:
                     # Mettre à jour prix d'entrée si différent
                     if order_result.filled_price and order_result.filled_price > 0:
                         # Mode FIXE: Recalculer TP/SL pour respecter EXACTEMENT les % configurés
-                        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                        if tp_sl_mode == 'FIXE':
+                        if not use_atr:
                             new_sl, new_tp = calculate_fixed_levels(
                                 entry=order_result.filled_price,
                                 direction=direction,
@@ -1842,8 +1858,7 @@ class PositionManager:
                             if live_entry_price > 0:
                                 previous_entry = self.active_position.entry
                                 if abs(live_entry_price - previous_entry) > 1e-8:
-                                    tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                                    if tp_sl_mode == 'FIXE':
+                                    if not use_atr:
                                         new_sl, new_tp = calculate_fixed_levels(
                                             entry=live_entry_price,
                                             direction=direction,
@@ -1852,6 +1867,8 @@ class PositionManager:
                                         self.active_position.sl = new_sl
                                         self.active_position.tp = new_tp
                                         self.active_position.initial_sl = new_sl
+                                        self.active_position.entry = live_entry_price
+                                        self.active_position.entry_fill_price = live_entry_price
                                         logger.info(
                                             f"🔁 [LIVE] Recalcul TP/SL FIXE après sync entry: {previous_entry:.8f} -> {live_entry_price:.8f}"
                                         )
