@@ -562,7 +562,11 @@ class PostgreSQLDataLogger:
                     config_cooldown_seconds, config_cooldown_same_symbol,
                     config_use_candle_close, config_candle_close_threshold_seconds,
                     config_use_momentum_continuity, config_momentum_lookback,
-                    config_use_micro_confirmation, config_micro_confirmation_delay_ms
+                    config_use_micro_confirmation, config_micro_confirmation_delay_ms,
+                    -- 🔥 SPRINT 1: Market Regime context
+                    market_regime, market_regime_avg_atr, market_regime_avg_adx,
+                    -- 🔥 PHASE 1A: Session/Heure context
+                    session_market, hour_utc, regime_at_scan, regime_confidence_at_scan
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
@@ -581,7 +585,8 @@ class PostgreSQLDataLogger:
                     %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -758,8 +763,27 @@ class PostgreSQLDataLogger:
                 params_snap.get('use_momentum_continuity'),
                 params_snap.get('momentum_lookback'),
                 params_snap.get('use_micro_confirmation'),
-                params_snap.get('micro_confirmation_delay_ms')
+                params_snap.get('micro_confirmation_delay_ms'),
+                # 🔥 SPRINT 1: Market Regime context
+                scan_data.get('market_regime'),
+                scan_data.get('market_regime_avg_atr'),
+                scan_data.get('market_regime_avg_adx'),
+                # 🔥 PHASE 1A: Session/Heure context
+                scan_data.get('session_market'),
+                scan_data.get('hour_utc'),
+                scan_data.get('regime_at_scan'),
+                scan_data.get('regime_confidence_at_scan')
             )
+
+            placeholder_count = query.count('%s')
+            if placeholder_count != len(params):
+                logger.error(
+                    "❌ Déséquilibre scan_logs INSERT: %s params pour %s placeholders | symbol=%s",
+                    len(params),
+                    placeholder_count,
+                    symbol
+                )
+                return None
             
             result = self._execute_query(query, params, fetch=True)
             if result:
@@ -1040,9 +1064,16 @@ class PostgreSQLDataLogger:
                     trend_bonus, divergence_bonus,
                     conditions_matched, condition_count,
                     entry_suggested, tp_suggested, sl_suggested,
-                    tp_sl_mode, setup_reason
+                    tp_sl_mode, setup_reason,
+                    market_regime, session_context, market_regime_score, market_regime_confidence, market_regime_reason, market_regime_details, market_regime_signal
                 )
-                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                    NOW(), %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s
+                )
                 RETURNING id
             """
             
@@ -1857,8 +1888,7 @@ class PostgreSQLDataLogger:
                 ('config_trailing_mfe_trigger_pct', config_trailing_mfe_trigger_pct),
                 ('config_trailing_mfe_lock_in_pct', config_trailing_mfe_lock_in_pct),
                 ('config_partial_tp_be_lock_in_pct', config_partial_tp_be_lock_in_pct),
-                # 🔄 Signal Inversion config
-                ('config_invert_signals', config_invert_signals),
+                # 🔄 Signal Inversion config (removed - column doesn't exist)
                 ('trailing_mfe_triggered', trailing_mfe_triggered),
                 ('trailing_mfe_triggered_at', trailing_mfe_triggered_at),
                 ('trailing_mfe_trigger_pnl_pct', trailing_mfe_trigger_pnl_pct),
@@ -1890,66 +1920,74 @@ class PostgreSQLDataLogger:
                 ('ml_confidence', ml_confidence_value)
             ])
             
-            # 🔥 LIVE TRADING COLUMNS (ajoutées conditionnellement si présentes)
-            if trade_data.get('is_live_trade') is not None:
-                fields.extend([
-                    ('is_live_trade', trade_data.get('is_live_trade', False)),
-                    ('is_dry_run', trade_data.get('is_dry_run', True)),
-                    ('live_execution_mode', trade_data.get('live_execution_mode')),
-                    # Ordre d'entrée
-                    ('entry_order_id', trade_data.get('entry_order_id')),
-                    ('entry_order_type', trade_data.get('entry_order_type')),
-                    ('entry_requested_price', _extract_numeric_value(trade_data.get('entry_requested_price'))),
-                    ('entry_fill_price', _extract_numeric_value(trade_data.get('entry_fill_price'))),
-                    ('entry_slippage_pct', _extract_numeric_value(trade_data.get('entry_slippage_pct'))),
-                    ('entry_latency_ms', trade_data.get('entry_latency_ms')),
-                    # Ordre de sortie
-                    ('exit_order_id', trade_data.get('exit_order_id')),
-                    ('exit_order_type', trade_data.get('exit_order_type')),
-                    ('exit_requested_price', _extract_numeric_value(trade_data.get('exit_requested_price'))),
-                    ('exit_fill_price', _extract_numeric_value(trade_data.get('exit_fill_price'))),
-                    ('exit_slippage_pct', _extract_numeric_value(trade_data.get('exit_slippage_pct'))),
-                    ('exit_latency_ms', trade_data.get('exit_latency_ms')),
-                    # Timestamps LIVE & API responses
-                    ('entry_timestamp_live', trade_data.get('entry_timestamp')),
-                    ('exit_timestamp_live', trade_data.get('exit_timestamp')),
-                    ('entry_api_response', json.dumps(trade_data.get('entry_api_response')) if trade_data.get('entry_api_response') else None),
-                    ('exit_api_response', json.dumps(trade_data.get('exit_api_response')) if trade_data.get('exit_api_response') else None),
-                    # Futures / Levier
-                    ('leverage_used', trade_data.get('leverage_used', 1)),
-                    ('margin_mode', trade_data.get('margin_mode', 'isolated')),
-                    ('position_size_contracts', _extract_numeric_value(trade_data.get('position_size_contracts'))),
-                    ('liquidation_price', _extract_numeric_value(trade_data.get('liquidation_price'))),
-                    ('margin_used', _extract_numeric_value(trade_data.get('margin_used'))),
-                    # Frais détaillés
-                    ('maker_fee_rate', _extract_numeric_value(trade_data.get('maker_fee_rate'))),
-                    ('taker_fee_rate', _extract_numeric_value(trade_data.get('taker_fee_rate'))),
-                    ('entry_fee_usdt', _extract_numeric_value(trade_data.get('entry_fee_usdt'))),
-                    ('exit_fee_usdt', _extract_numeric_value(trade_data.get('exit_fee_usdt'))),
-                    ('total_fees_usdt', _extract_numeric_value(trade_data.get('total_fees_usdt'))),
-                    ('funding_rate_at_entry', _extract_numeric_value(trade_data.get('funding_rate_at_entry'))),
-                    ('funding_rate_at_exit', _extract_numeric_value(trade_data.get('funding_rate_at_exit'))),
-                    ('funding_paid_usdt', _extract_numeric_value(trade_data.get('funding_paid_usdt'))),
-                    # Performance temps réel
-                    ('time_to_fill_entry_ms', trade_data.get('time_to_fill_entry_ms')),
-                    ('time_to_fill_exit_ms', trade_data.get('time_to_fill_exit_ms')),
-                    ('price_at_signal', _extract_numeric_value(trade_data.get('price_at_signal'))),
-                    ('signal_to_fill_slippage_pct', _extract_numeric_value(trade_data.get('signal_to_fill_slippage_pct'))),
-                    # API & Réseau
-                    ('api_errors', json.dumps(trade_data.get('api_errors', []))),
-                    ('retry_count', trade_data.get('retry_count', 0)),
-                    ('exchange_latency_ms', trade_data.get('exchange_latency_ms')),
-                    ('ws_latency_ms', trade_data.get('ws_latency_ms')),
-                    # Score & ML
-                    ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
-                    # ml_confidence déplacé dans fields principaux
-                    ('ml_prediction', trade_data.get('ml_prediction')),
-                    # Analyse post-trade (risk_reward déjà ajoutés plus haut)
-                    # Notes & Tags
-                    ('trade_notes', trade_data.get('trade_notes')),
-                    ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),
-                    ('user_rating', trade_data.get('user_rating'))
-                ])
+            # 🔥 LIVE TRADING COLUMNS (toujours ajoutées, même si NULL)
+            fields.extend([
+                ('is_live_trade', trade_data.get('is_live_trade', False)),
+                ('is_dry_run', trade_data.get('is_dry_run', True)),
+                ('live_execution_mode', trade_data.get('live_execution_mode')),
+                # Ordre d'entrée
+                ('entry_order_id', trade_data.get('entry_order_id')),
+                ('entry_order_type', trade_data.get('entry_order_type')),
+                ('entry_requested_price', _extract_numeric_value(trade_data.get('entry_requested_price'))),
+                ('entry_fill_price', _extract_numeric_value(trade_data.get('entry_fill_price'))),
+                ('entry_slippage_pct', _extract_numeric_value(trade_data.get('entry_slippage_pct'))),
+                ('entry_latency_ms', trade_data.get('entry_latency_ms')),
+                # Ordre de sortie
+                ('exit_order_id', trade_data.get('exit_order_id')),
+                ('exit_order_type', trade_data.get('exit_order_type')),
+                ('exit_requested_price', _extract_numeric_value(trade_data.get('exit_requested_price'))),
+                ('exit_fill_price', _extract_numeric_value(trade_data.get('exit_fill_price'))),
+                ('exit_slippage_pct', _extract_numeric_value(trade_data.get('exit_slippage_pct'))),
+                ('exit_latency_ms', trade_data.get('exit_latency_ms')),
+                # Timestamps LIVE & API responses
+                ('entry_timestamp_live', trade_data.get('entry_timestamp')),
+                ('exit_timestamp_live', trade_data.get('exit_timestamp')),
+                ('entry_api_response', json.dumps(trade_data.get('entry_api_response')) if trade_data.get('entry_api_response') else None),
+                ('exit_api_response', json.dumps(trade_data.get('exit_api_response')) if trade_data.get('exit_api_response') else None),
+                # Futures / Levier
+                ('leverage_used', trade_data.get('leverage_used', 1)),
+                ('margin_mode', trade_data.get('margin_mode', 'isolated')),
+                ('position_size_contracts', _extract_numeric_value(trade_data.get('position_size_contracts'))),
+                ('liquidation_price', _extract_numeric_value(trade_data.get('liquidation_price'))),
+                ('margin_used', _extract_numeric_value(trade_data.get('margin_used'))),
+                # Frais détaillés
+                ('maker_fee_rate', _extract_numeric_value(trade_data.get('maker_fee_rate'))),
+                ('taker_fee_rate', _extract_numeric_value(trade_data.get('taker_fee_rate'))),
+                ('entry_fee_usdt', _extract_numeric_value(trade_data.get('entry_fee_usdt'))),
+                ('exit_fee_usdt', _extract_numeric_value(trade_data.get('exit_fee_usdt'))),
+                ('total_fees_usdt', _extract_numeric_value(trade_data.get('total_fees_usdt'))),
+                ('funding_rate_at_entry', _extract_numeric_value(trade_data.get('funding_rate_at_entry'))),
+                ('funding_rate_at_exit', _extract_numeric_value(trade_data.get('funding_rate_at_exit'))),
+                ('funding_paid_usdt', _extract_numeric_value(trade_data.get('funding_paid_usdt'))),
+                # Performance temps réel
+                ('time_to_fill_entry_ms', trade_data.get('time_to_fill_entry_ms')),
+                ('time_to_fill_exit_ms', trade_data.get('time_to_fill_exit_ms')),
+                ('price_at_signal', _extract_numeric_value(trade_data.get('price_at_signal'))),
+                ('price_at_order_sent', _extract_numeric_value(trade_data.get('price_at_order_sent'))),
+                ('signal_to_fill_slippage_pct', _extract_numeric_value(trade_data.get('signal_to_fill_slippage_pct'))),
+                # API & Réseau
+                ('api_errors', json.dumps(trade_data.get('api_errors', []))),
+                ('retry_count', trade_data.get('retry_count', 0)),
+                ('exchange_latency_ms', trade_data.get('exchange_latency_ms')),
+                ('ws_latency_ms', trade_data.get('ws_latency_ms')),
+                # Score & ML
+                ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
+                # ml_confidence déplacé dans fields principaux
+                ('ml_prediction', trade_data.get('ml_prediction')),
+                ('ml_features', json.dumps(trade_data.get('ml_features')) if trade_data.get('ml_features') else None),
+                # Analyse post-trade (risk_reward déjà ajoutés plus haut)
+                ('optimal_exit_price', _extract_numeric_value(trade_data.get('optimal_exit_price'))),
+                ('optimal_exit_time', trade_data.get('optimal_exit_time')),
+                ('missed_profit_pct', _extract_numeric_value(trade_data.get('missed_profit_pct'))),
+                # Exit conditions si pas déjà remplies
+                ('exit_recent_volume', exit_recent_volume),
+                ('exit_vol5', exit_vol5), 
+                ('exit_vol15', exit_vol15),
+                # Notes & Tags
+                ('trade_notes', trade_data.get('trade_notes')),
+                ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),
+                ('user_rating', trade_data.get('user_rating'))
+            ])
 
             columns_sql = ',\n                    '.join(name for name, _ in fields)
             placeholders_sql = ', '.join(['%s'] * len(fields))
