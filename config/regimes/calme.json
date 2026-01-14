@@ -1,8 +1,8 @@
 {
   "name": "CALME",
-  "optimal_atr_min": 0.10,
+  "optimal_atr_min": 0.06,
   "optimal_atr_max": 0.20,
-  "min_score_required": 9.5,
+  "min_score_required": 9.0,
   "atr_mult_sl": 1.2,
   "atr_mult_tp": 1.8,
   "break_even_atr_mult": 0.6,

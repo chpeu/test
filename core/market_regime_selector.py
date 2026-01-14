@@ -92,11 +92,11 @@ class RegimeChange:
 DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
     "CALME": RegimeConfig(
         name="CALME",
-        optimal_atr_min=0.05,
+        optimal_atr_min=0.06,
         optimal_atr_max=0.20,
         optimal_atr_min_5m=0.10,  # 🔥 ATR 5m adapté au calme
         optimal_atr_max_5m=0.35,  # 🔥 ATR 5m adapté au calme
-        min_score_required=8.5,   # 🔥 19/12: +1 point (7.5 → 8.5)
+        min_score_required=8.0,   # 🔥 19/12: +1 point (7.5 → 8.5) (Réduit de 0.5)
         atr_mult_sl=1.2,  # 🔥 28/12: 0.8 → 1.2 (SL trop serré causait pertes)
         atr_mult_tp=1.8,
         break_even_atr_mult=0.8,
@@ -110,11 +110,11 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
     ),
     "NORMAL": RegimeConfig(
         name="NORMAL",
-        optimal_atr_min=0.15,
+        optimal_atr_min=0.06,
         optimal_atr_max=0.40,
         optimal_atr_min_5m=0.20,  # 🔥 ATR 5m adapté au normal
         optimal_atr_max_5m=0.60,  # 🔥 ATR 5m adapté au normal
-        min_score_required=8.0,   # 🔥 19/12: +1 point (7.0 → 8.0)
+        min_score_required=7.5,   # 🔥 19/12: +1 point (7.0 → 8.0) (Réduit de 0.5)
         atr_mult_sl=1.6,  # 🔥 28/12: 1.2 → 1.6 (SL trop serré: -0.49$/trade en moyenne)
         atr_mult_tp=2.0,  # 🔥 28/12: 2.2 → 2.0 (prendre profits plus tôt)
         break_even_atr_mult=1.2,
@@ -132,7 +132,7 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         optimal_atr_max=1.5,
         optimal_atr_min_5m=0.40,  # 🔥 ATR 5m adapté au volatile
         optimal_atr_max_5m=2.0,   # 🔥 ATR 5m adapté au volatile
-        min_score_required=7.5,   # 🔥 19/12: +1 point (6.5 → 7.5)
+        min_score_required=7.0,   # 🔥 19/12: +1 point (6.5 → 7.5) (Réduit de 0.5)
         atr_mult_sl=1.5,
         atr_mult_tp=2.5,
         break_even_atr_mult=1.5,
@@ -146,11 +146,11 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
     ),
     "CHOPPY": RegimeConfig(
         name="CHOPPY",
-        optimal_atr_min=0.05,
+        optimal_atr_min=0.06,
         optimal_atr_max=0.25,
         optimal_atr_min_5m=0.10,  # 🔥 ATR 5m adapté au choppy
         optimal_atr_max_5m=0.40,  # 🔥 ATR 5m adapté au choppy
-        min_score_required=10.0,  # 🔥 19/12: +1 point (9.0 → 10.0)
+        min_score_required=9.5,  # 🔥 19/12: +1 point (9.0 → 10.0) (Réduit de 0.5)
         atr_mult_sl=0.7,
         atr_mult_tp=1.5,
         break_even_atr_mult=0.5,

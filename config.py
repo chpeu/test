@@ -136,7 +136,7 @@ TRADING_CONFIG = {
     "di_gap_adx_threshold": 25,  # ADX threshold for DI gap
     
     # Optimal ATR filter (configurables via /api/config) - 🔥 Valeurs mises à jour
-    "optimal_atr_min_1m": 0.08,  # 🔥 FIX 14/12: Abaissé à 0.08% (permet marchés calmes)
+    "optimal_atr_min_1m": 0.06,  # 🔥 FIX 14/12: Abaissé à 0.06% (permet marchés calmes)
     "optimal_atr_max_1m": 0.75,  # 🔥 Ajusté (était 0.8)
     "optimal_atr_min_5m": 0.22,  # 🔥 Ajusté (était 0.20)
     "optimal_atr_max_5m": 1.4,  # 🔥 Ajusté (était 1.5)

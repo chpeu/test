@@ -752,17 +752,24 @@ class ScalabilityScanner:
             
             for symbol, market in markets.items():
                 if market['type'] == 'swap' and market['quote'] == 'USDT':
-                    # Vérifier 0% fees
+                    # 🔥 OPT: Inclure paires majeures même avec frais minimes
                     maker_fee = market.get('maker', 0)
                     taker_fee = market.get('taker', 0)
-                    if maker_fee == 0 and taker_fee == 0:
+                    
+                    # Liste des paires majeures à inclure absolument
+                    major_pairs = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']
+                    
+                    is_major = symbol in major_pairs
+                    # Accepter si 0% fees OU si c'est une paire majeure avec frais très faibles (< 0.02%)
+                    if (maker_fee == 0 and taker_fee == 0) or (is_major and taker_fee <= 0.0002):
                         futures_pairs.append({
                             'symbol': symbol,
                             'maker': maker_fee,
-                            'taker': taker_fee
+                            'taker': taker_fee,
+                            'is_major': is_major
                         })
             
-            logger.info(f"📊 {len(futures_pairs)} paires 0% fees retrouvees")
+            logger.info(f"📊 {len(futures_pairs)} paires selectionnees (incluant majeures)")
             
             # Exclure paires manuellement blacklistées
             excluded = set(TRADING_CONFIG.get("excluded_symbols", []))

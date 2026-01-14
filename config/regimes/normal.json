@@ -1,8 +1,8 @@
 {
   "name": "NORMAL",
-  "optimal_atr_min": 0.10,
+  "optimal_atr_min": 0.06,
   "optimal_atr_max": 0.30,
-  "min_score_required": 8.0,
+  "min_score_required": 7.5,
   "atr_mult_sl": 1.6,
   "atr_mult_tp": 2.0,
   "break_even_atr_mult": 1.0,
