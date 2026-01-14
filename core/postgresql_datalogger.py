@@ -1530,6 +1530,7 @@ class PostgreSQLDataLogger:
             config_optimal_atr_max_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_5m'))
             config_volume_multiplier = _extract_numeric_value(config_snapshot_dict.get('volume_multiplier'))
             config_use_confluence = config_snapshot_dict.get('use_confluence')
+            config_invert_signals = config_snapshot_dict.get('invert_signals')
             config_use_anti_whipsaw = config_snapshot_dict.get('use_anti_whipsaw')
             config_whipsaw_lookback = _extract_numeric_value(config_snapshot_dict.get('whipsaw_lookback'))
             config_whipsaw_threshold_pct = _extract_numeric_value(config_snapshot_dict.get('whipsaw_threshold_pct'))
@@ -1852,6 +1853,7 @@ class PostgreSQLDataLogger:
                 ('config_optimal_atr_max_5m', config_optimal_atr_max_5m),
                 ('config_volume_multiplier', config_volume_multiplier),
                 ('config_use_confluence', config_use_confluence),
+                ('config_invert_signals', config_invert_signals),
                 ('config_use_anti_whipsaw', config_use_anti_whipsaw),
                 ('config_whipsaw_lookback', config_whipsaw_lookback),
                 ('config_whipsaw_threshold_pct', config_whipsaw_threshold_pct),

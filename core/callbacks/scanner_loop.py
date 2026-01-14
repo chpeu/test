@@ -664,8 +664,19 @@ async def _scan_top_pairs():
                         logger.warning(f"⚠️ Trade autorisé malgré erreur ML (failsafe)")
 
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
-                _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
-                _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
+                _position_manager._last_setup_scan_uuid = (
+                    best_setup.get('_scan_uuid')
+                    or (analysis.get('_scan_uuid') if isinstance(analysis, dict) else None)
+                )
+                _position_manager._last_setup_opportunity_id = (
+                    best_setup.get('_opportunity_id')
+                    or (analysis.get('_opportunity_id') if isinstance(analysis, dict) else None)
+                )
+                
+                # 🔥 DEBUG: Tracer la propagation des IDs
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - scan_uuid dans best_setup={best_setup.get('_scan_uuid')}, analysis={analysis.get('_scan_uuid') if isinstance(analysis, dict) else 'N/A'}")
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - opportunity_id dans best_setup={best_setup.get('_opportunity_id')}, analysis={analysis.get('_opportunity_id') if isinstance(analysis, dict) else 'N/A'}")
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - _last_setup_scan_uuid={_position_manager._last_setup_scan_uuid}, _last_setup_opportunity_id={_position_manager._last_setup_opportunity_id}")
                 
                 # 🔥 DEBUG: Vérifier si best_setup contient les indicateurs
                 logger.info(f"🔍 DEBUG best_setup pour {symbol}: contient indicators_1m: {'indicators_1m' in best_setup}, indicators_5m: {'indicators_5m' in best_setup}")
@@ -1197,9 +1208,11 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                                 'ask_vol': ask_vol,
                                 'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
-                                'recentVolume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),  # Alias
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
+                                'volume_24h': pair.get('volume24h') or pair.get('volume_24h'),
+                                'volume24h': pair.get('volume24h') or pair.get('volume_24h'),
                                 'scalability_score': pair.get('score'),
                                 'score': pair.get('score'),
                                 # 🔥 ORDER FLOW: 6 nouvelles métriques
@@ -1458,6 +1471,20 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     scan_data['market_regime'] = regime_status.get('current_regime')
                     scan_data['market_regime_avg_atr'] = regime_status.get('avg_atr')
                     scan_data['market_regime_avg_adx'] = regime_status.get('avg_adx')
+
+                    if scan_data.get('regime_confidence_at_scan') is None:
+                        try:
+                            # Utiliser les vrais attributs de MarketRegimeSelector
+                            sample_count = getattr(regime_selector, 'atr_sample_count', None) or getattr(regime_selector, 'atr_sample_count', None)
+                            sample_size = getattr(regime_selector, 'atr_sample_size', None) or 10
+                            if sample_count is not None and sample_size > 0:
+                                confidence = min(1.0, float(sample_count) / float(sample_size))
+                                scan_data['regime_confidence_at_scan'] = confidence
+                                logger.debug(f"🔍 regime_confidence_at_scan: {confidence:.2f} (sample_count={sample_count}/{sample_size})")
+                        except Exception as e:
+                            logger.debug(f"⚠️ Erreur calcul regime_confidence: {e}")
+                            # Valeur par défaut si erreur
+                            scan_data['regime_confidence_at_scan'] = 0.5
                 except Exception as e:
                     logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {e}")
                 
@@ -1465,16 +1492,45 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 # Les opportunities sont rares (~1:255) donc impact performance négligeable
                 is_opportunity = scan_data.get('is_opportunity', False)
                 use_batch_mode = not is_opportunity  # False si opportunity, True sinon
-                
                 logger.info(f"📝 Appel log_scan_async() pour {symbol} (batch={use_batch_mode})")
                 # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
                 scan_id = await pg_datalogger.log_scan_async(symbol, scan_data, use_batch=use_batch_mode)
                 logger.info(f"✅ log_scan_async() terminé pour {symbol} (scan_id={scan_id})")
-                
-                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
+                logger.debug(f"🔍 DEBUG: scan_id={scan_id} généré pour {symbol}")
+                                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
                 if analysis and isinstance(analysis, dict) and scan_id:
                     analysis['_scan_uuid'] = scan_id
-                    logger.info(f"✅ scan_id ajouté à analysis: {scan_id}")
+                    if isinstance(best_setup, dict):
+                        best_setup['_scan_uuid'] = scan_id
+                    logger.warning(f"🔥 DEBUG: scan_id={scan_id} ajouté à analysis ET best_setup pour {symbol}")
+                    logger.debug(f"🔍 DEBUG: scan_uuid propagé à analysis et best_setup pour {symbol}")
+                
+                # 🔥 Calculer ML prediction et features pour tous les setups valides (pas seulement les opportunities)
+                if best_setup and (best_setup.get('direction') in ['LONG', 'SHORT']):
+                    try:
+                        from optimization.scanner_ml_integration import get_ml_prediction_for_opportunity
+                        
+                        scan_id = best_setup.get('_scan_uuid') or best_setup.get('scan_id')
+                        ml_prediction = await get_ml_prediction_for_opportunity(
+                            klines=klines_1m,
+                            symbol=symbol,
+                            scan_id=scan_id,
+                            model_name=ML_CONFIG.get('model_name', 'xgboost_v1')
+                        )
+                        
+                        if ml_prediction:
+                            prediction = ml_prediction.get('prediction')
+                            confidence = ml_prediction.get('confidence', 0)
+                            ml_features = ml_prediction.get('features')
+                            
+                            logger.debug(f"🤖 ML Setup {symbol}: {prediction} (conf: {confidence*100:.1f}%)")
+                            
+                            if prediction is not None:
+                                best_setup['ml_prediction'] = prediction
+                            if isinstance(ml_features, dict):
+                                best_setup['ml_features'] = ml_features
+                    except Exception as e:
+                        logger.debug(f"⚠️ Erreur calcul ML setup pour {symbol}: {e}")
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 opportunity_id = None
@@ -1523,7 +1579,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     # 🔥 FIX: Ajouter opportunity_id à analysis pour qu'il soit disponible dans best_setup
                     if opportunity_id:
                         analysis['_opportunity_id'] = opportunity_id
-                        logger.info(f"✅ Opportunity loggée pour {symbol} (opportunity_id={opportunity_id})")
+                        if isinstance(best_setup, dict):
+                            best_setup['_opportunity_id'] = opportunity_id
+                        logger.warning(f"🔥 DEBUG: opportunity_id={opportunity_id} ajouté à analysis ET best_setup pour {symbol}")
                     else:
                         logger.warning(f"⚠️ opportunity_id est None pour {symbol} !")
                     

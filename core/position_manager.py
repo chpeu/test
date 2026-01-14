@@ -1798,6 +1798,13 @@ class PositionManager:
                     self.active_position.liquidation_price = order_result.liquidation_price
                     self.active_position.entry_fee_usdt = order_result.actual_fees_usdt
                     self.active_position.margin_used = order_result.margin_used
+                    
+                    # 🔥 Calculer le temps de remplissage de l'ordre d'entrée
+                    if hasattr(self.active_position, 'order_sent_timestamp') and self.active_position.order_sent_timestamp:
+                        fill_time = time.time()
+                        time_to_fill_ms = (fill_time - self.active_position.order_sent_timestamp) * 1000
+                        self.active_position.time_to_fill_entry_ms = time_to_fill_ms
+                        logger.debug(f"⏱️ Temps de remplissage entrée: {time_to_fill_ms:.0f}ms")
 
                     # 🔥 Stocker le SL Exchange réel utilisé (en %) pour logging SQL
                     try:
@@ -1962,6 +1969,11 @@ class PositionManager:
         opportunity_id = getattr(self, '_last_setup_opportunity_id', None)
         last_setup = getattr(self, '_last_setup', None)
         
+        # 🔥 DEBUG: Tracer la propagation des IDs
+        logger.info(f"🔍 DEBUG open_position: scan_uuid={scan_uuid}, opportunity_id={opportunity_id}, last_setup présent={last_setup is not None}")
+        if last_setup:
+            logger.info(f"🔍 DEBUG last_setup keys: {list(last_setup.keys())[:10] if isinstance(last_setup, dict) else 'not dict'}")
+        
         # 🔥 FIX BUG #4: Monitoring amélioré - Log d'alerte si _last_setup est None
         if not last_setup:
             logger.error(
@@ -2109,6 +2121,14 @@ class PositionManager:
                 except Exception:
                     timestamp_entry = datetime.now(timezone.utc).isoformat()
 
+                # Enregistrer l'heure d'envoi de l'ordre
+                import time
+                order_sent_time = time.time()
+                
+                # Mettre à jour la position avec les infos de l'ordre
+                self.active_position.price_at_order_sent = self.active_position.entry
+                self.active_position.order_sent_timestamp = order_sent_time
+                
                 candidate_trade_id = str(uuid.uuid4())
                 # 🔥 FIX: Assigner trade_id AVANT log_trade() pour éviter race condition
                 # Si SL MEXC est touché très rapidement, le trade_id sera déjà disponible
@@ -2137,7 +2157,15 @@ class PositionManager:
                     'pnl_history': [],
                     'is_backtest': False,
                     'ml_confidence': getattr(self.active_position, 'ml_confidence', None),
-                    'adaptive_sizing_multiplier': getattr(self.active_position, 'adaptive_sizing_multiplier', None)
+                    'adaptive_sizing_multiplier': getattr(self.active_position, 'adaptive_sizing_multiplier', None),
+                    # Extra fields to avoid NULLs when we have the data
+                    'setup_score': (last_setup.get('score_total') or last_setup.get('totalScore')) if last_setup else None,
+                    'ml_prediction': (last_setup.get('ml_prediction') if last_setup else None),
+                    'ml_features': (last_setup.get('ml_features') if last_setup else None),
+                    'price_at_signal': getattr(self.active_position, 'price_at_signal', None) or self.active_position.entry,
+                    'price_at_order_sent': getattr(self.active_position, 'price_at_order_sent', None),
+                    'time_to_fill_entry_ms': getattr(self.active_position, 'time_to_fill_entry_ms', None),
+                    'volume_24h_at_entry': (last_setup.get('volume_24h') if last_setup else None)
                 }
 
                 # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
