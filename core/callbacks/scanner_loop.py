@@ -664,18 +664,12 @@ async def _scan_top_pairs():
                         logger.warning(f"⚠️ Trade autorisé malgré erreur ML (failsafe)")
 
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
-                _position_manager._last_setup_scan_uuid = (
-                    best_setup.get('_scan_uuid')
-                    or (analysis.get('_scan_uuid') if isinstance(analysis, dict) else None)
-                )
-                _position_manager._last_setup_opportunity_id = (
-                    best_setup.get('_opportunity_id')
-                    or (analysis.get('_opportunity_id') if isinstance(analysis, dict) else None)
-                )
+                _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
+                _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
                 
                 # 🔥 DEBUG: Tracer la propagation des IDs
-                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - scan_uuid dans best_setup={best_setup.get('_scan_uuid')}, analysis={analysis.get('_scan_uuid') if isinstance(analysis, dict) else 'N/A'}")
-                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - opportunity_id dans best_setup={best_setup.get('_opportunity_id')}, analysis={analysis.get('_opportunity_id') if isinstance(analysis, dict) else 'N/A'}")
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - scan_uuid dans best_setup={best_setup.get('_scan_uuid')}")
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - opportunity_id dans best_setup={best_setup.get('_opportunity_id')}")
                 logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - _last_setup_scan_uuid={_position_manager._last_setup_scan_uuid}, _last_setup_opportunity_id={_position_manager._last_setup_opportunity_id}")
                 
                 # 🔥 DEBUG: Vérifier si best_setup contient les indicateurs
