@@ -638,23 +638,34 @@ class PositionManager:
                     return
 
                 if not current_position or current_position.symbol != symbol:
-                    return
+                    if live_position:
+                        live_entry_price = float(live_position.get('entry_price') or 0)
+                        # 🔥 FIX: Utiliser 'tokens' directement (déjà calculé = contracts × contract_size)
+                        real_tokens = float(live_position.get('tokens') or 0)
 
-                live_entry_price = float(live_position.get('entry_price') or 0)
-                # 🔥 FIX: Utiliser 'tokens' directement (déjà calculé = contracts × contract_size)
-                real_tokens = float(live_position.get('tokens') or 0)
+                        if live_entry_price > 0:
+                            live_size_usdt = real_tokens * live_entry_price
+                            
+                            # 🔥 FIX CRITIQUE: Ne jamais écraser 'size' (taille initiale) après l'ouverture.
+                            # 'size' est le dénominateur pour le calcul du PnL %. 
+                            # Si on l'écrase avec la taille restante (ex: 50%), le PnL % sera doublé !
 
-                if live_entry_price > 0:
-                    previous_entry = current_position.entry
-                    if previous_entry and abs(live_entry_price - previous_entry) > 1e-8:
-                        price_diff = live_entry_price - previous_entry
-                        current_position.tp += price_diff
-                        current_position.sl += price_diff
-                        logger.info(
-                            f"🔁 [LIVE] Prix d'entrée resynchronisé: {previous_entry:.8f} -> {live_entry_price:.8f}"
-                        )
-                    current_position.entry = live_entry_price
-                    current_position.entry_fill_price = live_entry_price
+                            # Mettre à jour uniquement size_remaining
+                            if current_position.partial_tp_sold:
+                                # Si un TP partiel a été fait, on prend le minimum entre le réel et le local
+                                current_position.size_remaining = min(live_size_usdt, current_position.size_remaining or live_size_usdt)
+                            else:
+                                current_position.size_remaining = live_size_usdt
+                            
+                            current_position.position_size_contracts = real_tokens
+                            current_position.size_remaining_contracts = real_tokens
+                            
+                            logger.info(
+                                f"🔄 [SYNC] {symbol}: size_remaining={current_position.size_remaining:.2f} USDT | "
+                                f"contracts={real_tokens:.6f} | entry={live_entry_price}"
+                            )
+                        current_position.entry = live_entry_price
+                        current_position.entry_fill_price = live_entry_price
 
                 if real_tokens > 0 and live_entry_price > 0:
                     # 🔥 FIX: Calculer USDT directement depuis tokens × entry
@@ -668,15 +679,14 @@ class PositionManager:
                         # Première synchro LIVE ou pas de TP partiel → mettre à jour initial
                         current_position.size_initial_contracts = real_tokens
 
-                    # Mettre à jour la taille actuelle (TOUJOURS, même après TP partiel)
-                    current_position.size = live_size_usdt
-                    current_position.position_size_usdt = live_size_usdt
-                    current_position.position_size_contracts = real_tokens
+                    # Mettre à jour uniquement la taille restante (size_remaining)
+                    # Ne JAMAIS écraser current_position.size qui doit rester la taille initiale (dénominateur PnL%)
                     current_position.size_remaining = live_size_usdt
                     current_position.size_remaining_contracts = real_tokens
+                    current_position.position_size_contracts = real_tokens
 
                     logger.info(
-                        f"🔁 [LIVE] Taille resynchronisée: {real_tokens:.6f} tokens × {live_entry_price:.4f} = {live_size_usdt:.4f} USDT"
+                        f"🔁 [LIVE] Taille synchronisée: {real_tokens:.6f} tokens ({live_size_usdt:.4f} USDT restants)"
                     )
             except Exception as e:
                 logger.error(f"❌ Erreur resynchronisation différée position LIVE pour {symbol}: {e}")
@@ -2122,7 +2132,6 @@ class PositionManager:
                     timestamp_entry = datetime.now(timezone.utc).isoformat()
 
                 # Enregistrer l'heure d'envoi de l'ordre
-                import time
                 order_sent_time = time.time()
                 
                 # Mettre à jour la position avec les infos de l'ordre
@@ -3237,7 +3246,6 @@ class PositionManager:
         if not self.active_position or not self.active_position.start_time:
             return None
         
-        import time
         elapsed = time.time() - self.active_position.start_time
         
         # 🔥 Utiliser valeurs dynamiques du régime (priorité effective_config du trade > effective global > TRADING_CONFIG)
@@ -3678,12 +3686,14 @@ class PositionManager:
         total_costs = pnl_data['fees'] + slippage_usdt
 
         # PnL net
-        # 🔥 FIX CRITIQUE: Toujours utiliser la taille ACTUELLE (size) pour calculer le % PnL
-        # Le net_pnl_usdt représente le PnL sur la portion restante, donc le % doit être
-        # calculé sur cette même portion, pas sur une taille reconstruite.
-        # Cela garantit cohérence: si size=25 USDT et pnl=0.0363 USDT → pnl%=0.1452%
-        # (et non pas size=62.5 USDT reconstruit → pnl%=0.058% incorrect)
-        size_for_pct = getattr(self.active_position, 'size_executed_usdt', None) or self.active_position.size
+        # 🔥 FIX CRITIQUE: Toujours utiliser la taille INITIALE (size_initial_usdt) pour calculer le % PnL.
+        # Sinon, si on utilise la taille restante (ex: 50%), le PnL % est artificiellement doublé.
+        # Le PnL USDT net, lui, est déjà correct car il additionne (Profit_Partiel + Profit_Restant).
+        size_for_pct = (
+            getattr(self.active_position, 'size_initial_usdt', None) or 
+            getattr(self.active_position, 'size_executed_usdt', None) or 
+            self.active_position.size
+        )
         
         gross_pnl_pct = pnl_data['pnl_pct']
         
@@ -3721,6 +3731,17 @@ class PositionManager:
                     net_pnl_usdt = mexc_pnl_usdt
                     if size_for_pct > 0:
                         net_pnl_pct = (net_pnl_usdt / size_for_pct) * 100
+
+        # 🔥 DEBUG PNL CRITIQUE
+        logger.info(
+            f"📊 [PNL DEBUG] {self.active_position.symbol} | "
+            f"Entry: {self.active_position.entry} | Exit: {exit_price} | "
+            f"Size: {self.active_position.size} USDT | "
+            f"Contracts: {getattr(self.active_position, 'position_size_contracts', 'N/A')} | "
+            f"Gross PnL: {pnl_data['pnl_usdt_gross']} USDT ({pnl_data['pnl_pct']}%) | "
+            f"Net PnL: {net_pnl_usdt} USDT ({net_pnl_pct}%) | "
+            f"Fees: {pnl_data['fees']} USDT | Slippage: {slippage_usdt} USDT"
+        )
 
         # Taille fermée
         if self.active_position.partial_tp_sold:
@@ -3837,9 +3858,9 @@ class PositionManager:
                                         WHERE id = %s
                                         LIMIT 1
                                     """
-                                    result = pg_datalogger._execute_query(query, (scan_log_id,), fetch=True)
-                                    if result and result[0]:
-                                        row = result[0]
+                                    db_result = pg_datalogger._execute_query(query, (scan_log_id,), fetch=True)
+                                    if db_result and db_result[0]:
+                                        row = db_result[0]
                                         # Reconstruire entry_indicators depuis les colonnes individuelles
                                         entry_indicators = {
                                             'rsi_1m': row[0], 'rsi_5m': row[1], 'rsi_prev_1m': row[2], 'rsi_prev_5m': row[3],
@@ -3945,13 +3966,13 @@ class PositionManager:
                         'is_live_trade': is_live_trade,
                         'is_dry_run': is_dry_run,
                         'live_execution_mode': live_execution_mode,
-                        'gross_pnl_usdt': result['gross_pnl_usdt'],
-                        'gross_pnl_pct': result['gross_pnl_pct'],
-                        'net_pnl_usdt': result['net_pnl_usdt'],
-                        'net_pnl_pct': result['net_pnl_pct'],
-                        'fees': result['fees'],
-                        'slippage': result['slippage_pct'],
-                        'total_costs': result['total_costs'],
+                        'gross_pnl_usdt': pnl_data['pnl_usdt_gross'],
+                        'gross_pnl_pct': pnl_data['pnl_pct'],
+                        'net_pnl_usdt': net_pnl_usdt,
+                        'net_pnl_pct': net_pnl_pct,
+                        'fees': pnl_data['fees'],
+                        'slippage': slippage_pct,
+                        'total_costs': total_costs,
                         'reason': reason,
                         'duration_seconds': duration,
                         'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),

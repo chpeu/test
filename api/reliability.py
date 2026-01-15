@@ -447,6 +447,10 @@ class WebSocketManager:
         """Boucle réception messages"""
         while self._running:
             try:
+                if not self._ws:
+                    await asyncio.sleep(1)
+                    continue
+
                 message = await asyncio.wait_for(
                     self._ws.recv(),
                     timeout=WEBSOCKET_CONFIG['timeout']
@@ -458,73 +462,39 @@ class WebSocketManager:
                 # Parser et appeler callback
                 import json
                 data = json.loads(message)
-                # 🔥 FIX: Le callback peut être sync ou async
-                # Si async, l'appeler directement, sinon via to_thread
+                
                 # 🔥 SPRINT 1.1: WebSocket callback - NON-BLOQUANT, distinguer erreurs
                 try:
                     if asyncio.iscoroutinefunction(self.callback):
                         await self.callback(data)
                     else:
-                        # Callback synchrone - l'exécuter dans un thread pour ne pas bloquer
-                        # ⚠️ IMPORTANT: Le callback synchrone ne doit pas accéder à des données partagées
-                        # sans synchronisation appropriée (locks, queues, etc.)
                         await asyncio.to_thread(self.callback, data)
-                except WebSocketError as callback_err:
-                    # Erreur WebSocket dans callback (emit, etc.) - NON-BLOQUANT
-                    if DEBUG_ENABLED:
-                        logger.warning(f"⚠️ Erreur WebSocket dans callback (non-bloquant): {callback_err}")
-                    # Continuer la boucle
-                except MarketDataError as callback_err:
-                    # Données marché invalides dans callback - NON-BLOQUANT
-                    if DEBUG_ENABLED:
-                        logger.warning(f"⚠️ Données marché invalides dans callback (non-bloquant): {callback_err}")
-                    # Continuer la boucle
-                except TradeCursorError as callback_err:
-                    # Erreur application dans callback - NON-BLOQUANT
-                    logger.warning(f"⚠️ Erreur application dans callback WebSocket (non-bloquant): {callback_err}")
-                    # Continuer la boucle
                 except Exception as callback_err:
-                    # Erreur inattendue dans callback - NON-BLOQUANT
-                    logger.error(f"❌ Erreur inattendue dans callback WebSocket (non-bloquant): {type(callback_err).__name__}: {callback_err}")
-                    # Continuer la boucle pour recevoir les prochains messages
+                    if DEBUG_ENABLED:
+                        logger.error(f"❌ Erreur callback WebSocket: {callback_err}")
                 
             except asyncio.TimeoutError:
                 # Timeout = envoyer ping MEXC
-                if DEBUG_ENABLED:
-                    logger.debug("📡 WebSocket: Ping timeout, envoi heartbeat MEXC...")
-                await self.send_ping()  # Utiliser méthode MEXC ping
+                if self._running and self._connected:
+                    try:
+                        await self.send_ping()
+                    except Exception:
+                        pass
 
-            # 🔥 SPRINT 1.1: WebSocket receive loop - Distinguer erreurs réseau, déconnexion, parsing
-            except (ConnectionError, TimeoutError) as e:
-                # Erreur réseau - déclencher reconnexion
+            except (ConnectionError, asyncio.exceptions.CancelledError) as e:
                 if self._running:
                     if DEBUG_ENABLED:
-                        logger.warning(f"⚠️ Erreur réseau WebSocket receive: {e}")
+                        logger.warning(f"⚠️ Déconnexion WebSocket ou tâche annulée: {e}")
                     await self._reconnect()
                 break
-            except WebSocketDisconnectedError as e:
-                # Déconnexion WebSocket explicite - reconnexion
-                if self._running:
-                    logger.warning(f"🔌 WebSocket déconnecté: {e}")
-                    await self._reconnect()
-                break
-            except (ValueError, json.JSONDecodeError) as e:
-                # Erreur parsing JSON - continuer la boucle (ne pas casser connexion)
-                if DEBUG_ENABLED:
-                    logger.warning(f"⚠️ Erreur parsing message WebSocket (ignoré): {e}")
-                # Ne pas break, continuer à recevoir
             except Exception as e:
-                # Erreur inattendue - reconnexion si running
                 if self._running:
-                    # Déconnexions WebSocket normales (code 1005) en WARNING
-                    if "ConnectionClosedOK" in str(type(e).__name__) and "1005" in str(e):
-                        logger.warning(f"⚠️ WebSocket déconnecté (code 1005) - reconnexion auto")
-                    # Rate limiting MEXC (code 510) en WARNING
-                    elif "ExchangeError" in str(type(e).__name__) and "510" in str(e):
-                        logger.warning(f"⚠️ MEXC rate limit (code 510) - attente avant retry")
+                    # Détection ConnectionClosedError même si non importé directement
+                    if "ConnectionClosed" in type(e).__name__:
+                        if DEBUG_ENABLED:
+                            logger.debug("🔌 WebSocket fermé par le serveur (ConnectionClosed)")
                     else:
-                        # Autres erreurs en ERROR avec détails
-                        logger.error(f"❌ Erreur inattendue réception WebSocket: {type(e).__name__}: {e}", exc_info=True)
+                        logger.error(f"❌ Erreur inattendue réception WebSocket: {type(e).__name__}: {e}")
                     await self._reconnect()
                 break
     
@@ -697,8 +667,19 @@ class WebSocketManager:
     async def send(self, message: dict):
         """Envoyer message"""
         if self._ws:
-            import json
-            await self._ws.send(json.dumps(message))
+            try:
+                import json
+                await self._ws.send(json.dumps(message))
+            except Exception as e:
+                if DEBUG_ENABLED:
+                    logger.debug(f"⚠️ Erreur envoi message WebSocket: {e}")
+                # Ne pas lever d'exception pour les pings/pongs ou si déjà fermé
+                if not self._running:
+                    return
+                # Si c'est une déconnexion, elle sera gérée par la boucle de réception
+                if "ConnectionClosed" in type(e).__name__:
+                    return
+                raise
     
     async def subscribe(self, topic: str):
         """S'abonner à un topic générique (legacy)"""
@@ -761,8 +742,12 @@ class WebSocketManager:
     
     async def send_ping(self):
         """Envoyer ping pour heartbeat MEXC"""
-        if self._ws:
-            await self.send({"method": "ping"})
+        try:
+            if self._ws and self._connected:
+                await self.send({"method": "ping"})
+        except Exception as e:
+            if DEBUG_ENABLED:
+                logger.debug(f"⚠️ Erreur envoi ping WebSocket (ignorer): {e}")
     
     @property
     def connected(self):

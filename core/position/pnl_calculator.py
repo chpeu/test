@@ -112,8 +112,11 @@ class PnLCalculator:
 
         # Taille à clôturer
         partial_tp_sold = position.get('partial_tp_sold', False)
+        size_remaining = position.get('size_remaining')
+        
         if partial_tp_sold:
-            size_remaining = position.get('size_remaining', size * 0.5)
+            if size_remaining is None:
+                size_remaining = size * 0.5
         else:
             size_remaining = size
 
@@ -126,30 +129,46 @@ class PnLCalculator:
         # PnL USDT brut (partie non encore vendue)
         pnl_usdt_unrealized = size_remaining * (price_diff / entry) if entry else 0.0
 
-        # 🔥 FIX BUG #1: Frais uniquement sur taille fermée (pas sur partie déjà vendue au TP partiel)
-        # Si TP partiel déjà effectué, les fees d'entrée sur la partie vendue ont déjà été payés
-        # On calcule donc fees uniquement sur size_remaining × 2 (entrée + sortie de cette partie)
-        if partial_tp_sold:
-            total_fees = size_remaining * (fees_percent / 100) * 2
-        else:
-            total_fees = size * (fees_percent / 100) * 2
+        # 🔥 FIX: Les frais doivent être calculés sur toute la durée du trade
+        # 1. Frais d'entrée sur toute la position
+        # 2. Frais de sortie sur la partie TP partiel
+        # 3. Frais de sortie sur la partie finale
+        # Simplement : size_totale * fees * 2
+        total_fees = size * (fees_percent / 100) * 2
 
         # PnL USDT net
         pnl_usdt_partial = position.get('partial_profit_usdt', 0.0)
+        
+        # 🔥 FIX CRITIQUE: Si partial_tp_sold est False, on ne doit PAS ajouter pnl_usdt_partial
+        # car cela signifierait qu'on double-compte ou qu'on ajoute un profit fantôme.
+        if not partial_tp_sold:
+            pnl_usdt_partial = 0.0
+            
         total_gross_usdt = pnl_usdt_unrealized + pnl_usdt_partial
         net_pnl = total_gross_usdt - total_fees
 
-        # Calculer PnL % réel (sur la taille totale)
+        # Calculer PnL % réel (sur la taille totale initiale)
         if size > 0:
             pnl_pct = (total_gross_usdt / size) * 100
+            net_pnl_pct = (net_pnl / size) * 100
         else:
             pnl_pct = 0.0
+            net_pnl_pct = 0.0
+
+        # Debug log interne
+        logger.debug(
+            f"📊 [REALIZED PNL] {position.get('symbol')} | "
+            f"Size: {size} | Remaining: {size_remaining} | "
+            f"Partial: {pnl_usdt_partial} | Unrealized: {pnl_usdt_unrealized} | "
+            f"Gross: {total_gross_usdt} | Net: {net_pnl}"
+        )
 
         return {
             'pnl_pct': round(pnl_pct, 6),
             'pnl_usdt_gross': round(total_gross_usdt, 4),
             'fees': round(total_fees, 4),
-            'net_pnl': round(net_pnl, 4)
+            'net_pnl': round(net_pnl, 4),
+            'net_pnl_pct': round(net_pnl_pct, 6)
         }
 
     @staticmethod
