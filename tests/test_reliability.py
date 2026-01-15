@@ -379,6 +379,7 @@ class TestWebSocketManager:
 
         ws = WebSocketManager("wss://test.com", mock_callback)
         ws._ws = AsyncMock()
+        ws._connected = True  # 🔥 FIX: Nécessaire pour que send_ping appelle send()
 
         await ws.send_ping()
 

@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768503926.271229,
+  "timestamp": 1768504270.203707,
   "specs": {
     "AAVE_USDT": {
       "symbol": "AAVE_USDT",
@@ -190,6 +190,16 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "SOL_USDT": {
+      "symbol": "SOL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 120000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }
