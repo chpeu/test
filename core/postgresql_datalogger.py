@@ -1072,7 +1072,7 @@ class PostgreSQLDataLogger:
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -1123,6 +1123,15 @@ class PostgreSQLDataLogger:
             condition_count = opportunity_data.get('condition_count', len(conditions_matched))
             setup_reason = opportunity_data.get('setup_reason')
             
+            # 🔥 FIX: Extraire les champs Market Regime
+            market_regime = opportunity_data.get('market_regime')
+            session_context = opportunity_data.get('session_context')
+            market_regime_score = opportunity_data.get('market_regime_score')
+            market_regime_confidence = opportunity_data.get('market_regime_confidence')
+            market_regime_reason = opportunity_data.get('market_regime_reason')
+            market_regime_details = opportunity_data.get('market_regime_details')
+            market_regime_signal = opportunity_data.get('market_regime_signal')
+
             params = (
                 scan_id, session_id, symbol,
                 str(status) if status else 'PENDING',
@@ -1142,7 +1151,15 @@ class PostgreSQLDataLogger:
                 float(tp_price) if tp_price is not None else None,  # tp_suggested
                 float(sl_price) if sl_price is not None else None,  # sl_suggested
                 str(tp_sl_mode) if tp_sl_mode else 'FIXE',  # tp_sl_mode
-                str(setup_reason) if setup_reason else None  # setup_reason
+                str(setup_reason) if setup_reason else None,  # setup_reason
+                # 🔥 FIX: Ajouter les 7 paramètres Market Regime manquants
+                str(market_regime) if market_regime else None,
+                json.dumps(session_context) if session_context else None,
+                float(market_regime_score) if market_regime_score is not None else None,
+                float(market_regime_confidence) if market_regime_confidence is not None else None,
+                str(market_regime_reason) if market_regime_reason else None,
+                json.dumps(market_regime_details) if market_regime_details else None,
+                str(market_regime_signal) if market_regime_signal else None
             )
             
             if any(isinstance(p, dict) for p in params):

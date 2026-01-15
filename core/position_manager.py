@@ -637,6 +637,10 @@ class PositionManager:
                         logger.warning(f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée")
                     return
 
+                # Initialiser les variables pour éviter UnboundLocalError
+                live_entry_price = 0.0
+                real_tokens = 0.0
+
                 if not current_position or current_position.symbol != symbol:
                     if live_position:
                         live_entry_price = float(live_position.get('entry_price') or 0)
@@ -651,21 +655,29 @@ class PositionManager:
                             # Si on l'écrase avec la taille restante (ex: 50%), le PnL % sera doublé !
 
                             # Mettre à jour uniquement size_remaining
-                            if current_position.partial_tp_sold:
+                            if current_position and current_position.partial_tp_sold:
                                 # Si un TP partiel a été fait, on prend le minimum entre le réel et le local
                                 current_position.size_remaining = min(live_size_usdt, current_position.size_remaining or live_size_usdt)
-                            else:
+                            elif current_position:
                                 current_position.size_remaining = live_size_usdt
                             
-                            current_position.position_size_contracts = real_tokens
-                            current_position.size_remaining_contracts = real_tokens
+                            if current_position:
+                                current_position.position_size_contracts = real_tokens
+                                current_position.size_remaining_contracts = real_tokens
                             
                             logger.info(
                                 f"🔄 [SYNC] {symbol}: size_remaining={current_position.size_remaining:.2f} USDT | "
                                 f"contracts={real_tokens:.6f} | entry={live_entry_price}"
                             )
-                        current_position.entry = live_entry_price
-                        current_position.entry_fill_price = live_entry_price
+                        if current_position:
+                            current_position.entry = live_entry_price
+                            current_position.entry_fill_price = live_entry_price
+                else:
+                    # Cas où current_position est déjà le bon, extraire les infos de live_position quand même
+                    if live_position:
+                        live_entry_price = float(live_position.get('entry_price') or 0)
+                        real_tokens = float(live_position.get('tokens') or 0)
+
 
                 if real_tokens > 0 and live_entry_price > 0:
                     # 🔥 FIX: Calculer USDT directement depuis tokens × entry
