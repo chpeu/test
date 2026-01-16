@@ -2659,6 +2659,17 @@ class PostgreSQLDataLogger:
             ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
             if ml_confidence_value is not None and ml_confidence_value <= 1.0:
                 ml_confidence_value = ml_confidence_value * 100.0
+            
+            ml_threshold_used_value = _extract_numeric_value(scan_data.get('ml_threshold_used'))
+            if ml_threshold_used_value is not None and ml_threshold_used_value <= 1.0:
+                ml_threshold_used_value = ml_threshold_used_value * 100.0
+            
+            calibrated_wr_value = _extract_numeric_value(scan_data.get('calibrated_winrate'))
+            if calibrated_wr_value is not None and calibrated_wr_value <= 1.0:
+                calibrated_wr_value = calibrated_wr_value * 100.0
+                
+            # ML threshold type
+            ml_threshold_type = scan_data.get('ml_threshold_type')
 
             value_tuple = (
                 # En-tête
