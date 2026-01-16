@@ -1663,17 +1663,56 @@ class TechnicalAnalyzer:
                         loss_streak = position_manager.config.loss_streak if hasattr(position_manager, 'config') else 0
                         recovery_level = position_manager.get_recovery_level(loss_streak) if hasattr(position_manager, 'get_recovery_level') else None
 
-                        if recovery_level:
-                            recovery_boost = recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
-                            level_num = recovery_level.get('level', 1)
+                        if TRADING_CONFIG.get('recovery_shadow_compare', False):
+                            try:
+                                recovery_state = position_manager.recovery_mode.get_state(loss_streak)
+                                legacy_boost = (
+                                    recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
+                                    if recovery_level else recovery_config.get('min_score_boost', 1.5)
+                                )
+                                legacy_confluence = (
+                                    recovery_level.get('confluence_forced', False)
+                                    if recovery_level else recovery_config.get('confluence_forced', False)
+                                )
+                                if (
+                                    recovery_state.min_score_boost != legacy_boost
+                                    or recovery_state.confluence_forced != legacy_confluence
+                                    or recovery_state.active != recovery_mode_active
+                                ):
+                                    logger.debug(
+                                        "🔎 RECOVERY SHADOW gating: "
+                                        f"loss_streak={loss_streak} "
+                                        f"legacy_boost={legacy_boost:.2f} state_boost={recovery_state.min_score_boost:.2f} "
+                                        f"legacy_conf={legacy_confluence} state_conf={recovery_state.confluence_forced} "
+                                        f"active={recovery_mode_active}->{recovery_state.active} level={recovery_state.level}"
+                                    )
+                            except Exception as e:
+                                logger.debug(f"🔎 RECOVERY SHADOW gating error: {type(e).__name__}: {e}")
+
+                        use_recovery_state = TRADING_CONFIG.get('recovery_refactor_enabled', False)
+                        recovery_state = None
+                        if use_recovery_state:
+                            try:
+                                recovery_state = position_manager.recovery_mode.get_state(loss_streak)
+                            except Exception as e:
+                                logger.debug(f"🔎 RECOVERY STATE error: {type(e).__name__}: {e}")
+                                recovery_state = None
+
+                        if use_recovery_state and recovery_state and recovery_state.level is not None:
+                            recovery_boost = recovery_state.min_score_boost
+                            level_num = recovery_state.level
+                            confluence_forced = recovery_state.confluence_forced
                         else:
-                            recovery_boost = recovery_config.get('min_score_boost', 1.5)
-                            level_num = 1
+                            if recovery_level:
+                                recovery_boost = recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
+                                level_num = recovery_level.get('level', 1)
+                            else:
+                                recovery_boost = recovery_config.get('min_score_boost', 1.5)
+                                level_num = 1
+                            # Forcer confluence si configuré
+                            confluence_forced = recovery_level.get('confluence_forced', False) if recovery_level else recovery_config.get('confluence_forced', False)
 
                         adjusted_min_score = min_score_required + recovery_boost
-
-                        # Forcer confluence si configuré
-                        confluence_forced = recovery_level.get('confluence_forced', False) if recovery_level else recovery_config.get('confluence_forced', False)
 
                         if confluence_forced:
                             use_confluence = True

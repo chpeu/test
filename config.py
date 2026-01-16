@@ -338,6 +338,10 @@ TRADING_CONFIG = {
             }
         ]
     },
+
+    # 🔒 Recovery Refactor Flags (sécurisés, OFF par défaut)
+    "recovery_refactor_enabled": False,  # Bascule vers RecoveryState (phase 2+)
+    "recovery_shadow_compare": False,  # Logs comparaison legacy vs RecoveryState
     
     # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session (basé sur WR temps réel)
     "adaptive_sizing_enabled": True,

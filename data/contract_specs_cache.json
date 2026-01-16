@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768575216.030817,
+  "timestamp": 1768583233.7405398,
   "specs": {
     "AAVE_USDT": {
       "symbol": "AAVE_USDT",
@@ -340,6 +340,46 @@
       "price_precision": 3,
       "vol_precision": 1,
       "contract_size": 0.1
+    },
+    "GRT_USDT": {
+      "symbol": "GRT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1300000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "S_USDT": {
+      "symbol": "S_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1135000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "RIVER_USDT": {
+      "symbol": "RIVER_USDT",
+      "min_vol": 1.0,
+      "max_vol": 410.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "CHZ_USDT": {
+      "symbol": "CHZ_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1118500.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }

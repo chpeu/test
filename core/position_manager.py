@@ -2353,6 +2353,28 @@ class PositionManager:
         
         # Recovery Mode - Réduction de taille progressive
         recovery_mult = self.recovery_mode.get_position_size_multiplier(self.config.loss_streak)
+
+        recovery_state = None
+        if (
+            TRADING_CONFIG.get('recovery_shadow_compare', False)
+            or TRADING_CONFIG.get('recovery_refactor_enabled', False)
+        ):
+            try:
+                recovery_state = self.recovery_mode.get_state(self.config.loss_streak)
+            except Exception as e:
+                logger.debug(f"🔎 RECOVERY STATE sizing error: {type(e).__name__}: {e}")
+                recovery_state = None
+
+        if TRADING_CONFIG.get('recovery_shadow_compare', False) and recovery_state:
+            if recovery_state.position_size_mult != recovery_mult or recovery_state.active != self.recovery_mode.active:
+                logger.debug(
+                    f"🔎 RECOVERY SHADOW sizing: loss_streak={self.config.loss_streak} "
+                    f"legacy_mult={recovery_mult:.2f} state_mult={recovery_state.position_size_mult:.2f} "
+                    f"active={self.recovery_mode.active}->{recovery_state.active} level={recovery_state.level}"
+                )
+
+        if TRADING_CONFIG.get('recovery_refactor_enabled', False) and recovery_state and recovery_state.level is not None:
+            recovery_mult = recovery_state.position_size_mult
         
         if recovery_mult < 1.0:
             # Si le Recovery Mode est actif, il dicte la réduction
