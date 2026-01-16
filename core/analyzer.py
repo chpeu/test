@@ -1210,10 +1210,36 @@ class TechnicalAnalyzer:
                     RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
                     
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
+                        reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
                     if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
+                        reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
 
                 # === VÉRIFICATIONS DE MARCHÉ ===
@@ -1559,10 +1585,22 @@ class TechnicalAnalyzer:
                 )
 
                 if manipulation_check['suspicious']:
+                    reason = f"Manipulation suspectée ({manipulation_check['reason']})"
                     logger.warning(
-                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
-                        f"Manipulation suspectée ({manipulation_check['reason']})"
+                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : {reason}"
                     )
+                    if return_reason:
+                        indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                        indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                        return {
+                            'reason': reason,
+                            'symbol': symbol,
+                            'analysis_1m': analysis_1m,
+                            'analysis_5m': analysis_5m,
+                            'indicators_1m': indicators_1m_reject,
+                            'indicators_5m': indicators_5m_reject,
+                            'reject_category': 'manipulation_filter'
+                        }
                     return None
 
                 # === VÉRIFICATIONS DE CORRÉLATION ===
@@ -2096,10 +2134,36 @@ class TechnicalAnalyzer:
                     RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
                     
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
+                        reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
                     if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
+                        reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
 
                 logger.info(
