@@ -276,7 +276,57 @@ class ScalabilityScanner:
         
         # 🔥 OPT #1: Paramètres configurables (plus hardcodés)
         spread_min = TRADING_CONFIG.get('scalability_spread_min', 0.001)
+        try:
+            spread_min = float(spread_min)
+        except (TypeError, ValueError):
+            spread_min = 0.001
+
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+
+        max_spread_override = TRADING_CONFIG.get('max_spread_pct')
+        max_spread_fixe = TRADING_CONFIG.get('max_spread_pct_fixe')
+        max_spread_atr = TRADING_CONFIG.get('max_spread_pct_atr')
+
+        try:
+            max_spread_override = float(max_spread_override) if max_spread_override is not None else None
+        except (TypeError, ValueError):
+            max_spread_override = None
+
+        try:
+            max_spread_fixe = float(max_spread_fixe) if max_spread_fixe is not None else None
+        except (TypeError, ValueError):
+            max_spread_fixe = None
+
+        try:
+            max_spread_atr = float(max_spread_atr) if max_spread_atr is not None else None
+        except (TypeError, ValueError):
+            max_spread_atr = None
+
+        if tp_sl_mode == 'FIXE':
+            if max_spread_fixe is not None:
+                max_spread_trading = max_spread_fixe
+            elif max_spread_override is not None:
+                max_spread_trading = max_spread_override
+            else:
+                max_spread_trading = 0.03
+        else:
+            if max_spread_atr is not None:
+                max_spread_trading = max_spread_atr
+            elif max_spread_override is not None:
+                max_spread_trading = max_spread_override
+            else:
+                max_spread_trading = 0.06
+
         spread_max = TRADING_CONFIG.get('scalability_spread_max', 0.02)
+        try:
+            spread_max = float(spread_max) if spread_max is not None else None
+        except (TypeError, ValueError):
+            spread_max = None
+
+        if spread_max is None:
+            spread_max = max_spread_trading
+        else:
+            spread_max = min(spread_max, max_spread_trading)
         volume_min = TRADING_CONFIG.get('scalability_volume_min', 100000)
         funding_max = TRADING_CONFIG.get('scalability_funding_rate_max', 0.05)
         balance_min = TRADING_CONFIG.get('balance_score_min', 0.7)
@@ -702,17 +752,24 @@ class ScalabilityScanner:
             
             for symbol, market in markets.items():
                 if market['type'] == 'swap' and market['quote'] == 'USDT':
-                    # Vérifier 0% fees
+                    # 🔥 OPT: Inclure paires majeures même avec frais minimes
                     maker_fee = market.get('maker', 0)
                     taker_fee = market.get('taker', 0)
-                    if maker_fee == 0 and taker_fee == 0:
+                    
+                    # Liste des paires majeures à inclure absolument
+                    major_pairs = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']
+                    
+                    is_major = symbol in major_pairs
+                    # Accepter si 0% fees OU si c'est une paire majeure avec frais très faibles (< 0.02%)
+                    if (maker_fee == 0 and taker_fee == 0) or (is_major and taker_fee <= 0.0002):
                         futures_pairs.append({
                             'symbol': symbol,
                             'maker': maker_fee,
-                            'taker': taker_fee
+                            'taker': taker_fee,
+                            'is_major': is_major
                         })
             
-            logger.info(f"📊 {len(futures_pairs)} paires 0% fees retrouvees")
+            logger.info(f"📊 {len(futures_pairs)} paires selectionnees (incluant majeures)")
             
             # Exclure paires manuellement blacklistées
             excluded = set(TRADING_CONFIG.get("excluded_symbols", []))
@@ -776,6 +833,9 @@ class ScalabilityScanner:
             total_batches = math.ceil(len(filtered_pairs) / BATCH_SIZE)
             
             for i in range(0, len(filtered_pairs), BATCH_SIZE):
+                # 🔥 FIX: Yield control to event loop to prevent WebSocket blocking
+                await asyncio.sleep(0)
+                
                 batch = filtered_pairs[i:i + BATCH_SIZE]
                 batch_num = (i // BATCH_SIZE) + 1
                 progress = f"{i + 1}-{min(i + BATCH_SIZE, len(filtered_pairs))}"
@@ -803,14 +863,17 @@ class ScalabilityScanner:
                             'askVol': 0,
                             'price': 0,
                             'adx': 0,
-                            'atr': 0,  # 🔥 FIX: ATR par défaut
-                            'atr_percent': 0,  # 🔥 FIX: ATR% par défaut
+                            'atr': 0,
+                            'atr_percent': 0,
                             'directionBias': 'NEUTRAL'
                         })
                 
-                # Petite pause entre batches
+                # Pause plus longue entre batches pour laisser le WS respirer
                 if i + BATCH_SIZE < len(filtered_pairs):
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.1)
+            
+            # 🔥 FIX: Yield avant calculs lourds finaux
+            await asyncio.sleep(0)
             
             # Calculer normalisations
             valid_pairs = [p for p in filtered_pairs if p.get('recentVolume', 0) > 0]

@@ -7,6 +7,7 @@ Calcul des niveaux Take Profit et Stop Loss (modes FIXE et ATR)
 import logging
 from typing import Tuple, Optional
 from dataclasses import dataclass
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,22 @@ def calculate_fixed_levels(
     sl_rounded = round(sl, precision)
     tp_rounded = round(tp, precision)
 
+    # 🔥 FIX: Garantir que le SL arrondi n'est jamais plus large que le SL configuré
+    # (ex: rounding peut éloigner le SL de l'entry). En mode FIXE, on ne veut pas de SL > config.fixed_sl_pct.
+    try:
+        sl_target = entry * (1 - sl_pct / 100) if direction == 'LONG' else entry * (1 + sl_pct / 100)
+        multiplier = 10 ** precision
+        if direction == 'LONG':
+            # Pour LONG: un SL plus large = sl_rounded plus bas que la cible
+            if sl_rounded < sl_target:
+                sl_rounded = math.ceil(sl_target * multiplier) / multiplier
+        else:
+            # Pour SHORT: un SL plus large = sl_rounded plus haut que la cible
+            if sl_rounded > sl_target:
+                sl_rounded = math.floor(sl_target * multiplier) / multiplier
+    except Exception:
+        pass
+
     # Vérifier différence APRÈS arrondi
     sl_rounded_diff = abs(sl_rounded - entry)
     tp_rounded_diff = abs(tp_rounded - entry)
@@ -107,7 +124,7 @@ def calculate_fixed_levels(
     if sl_rounded_diff < tolerance or tp_rounded_diff < tolerance:
         # Recalculer avec pourcentage plus élevé
         min_diff_pct = 0.15 if entry < 0.001 else 0.1
-        min_diff_pct = max(min_diff_pct, config.fixed_sl_pct * 1.2)
+        min_diff_pct = max(min_diff_pct, config.fixed_sl_pct)
 
         if direction == 'LONG':
             sl_rounded = round(entry * (1 - min_diff_pct / 100), precision)
@@ -122,7 +139,7 @@ def calculate_fixed_levels(
 
         if final_sl_diff < tolerance or final_tp_diff < tolerance:
             # Dernière tentative avec 0.2% minimum
-            min_diff_pct = 0.2
+            min_diff_pct = max(0.2, config.fixed_sl_pct)
             if direction == 'LONG':
                 sl_rounded = round(entry * (1 - min_diff_pct / 100), precision)
                 tp_rounded = round(entry * (1 + min_diff_pct / 100), precision)
@@ -153,7 +170,8 @@ def calculate_atr_levels(
     atr: float,
     atr5m: Optional[float],
     direction: str,
-    config: TPSLConfig
+    config: TPSLConfig,
+    return_atr_used: bool = False
 ) -> Tuple[float, float]:
     """
     Calculer TP/SL en mode ATR (adaptatif)
@@ -164,9 +182,10 @@ def calculate_atr_levels(
         atr5m: ATR timeframe 5m (optionnel)
         direction: 'LONG' ou 'SHORT'
         config: Configuration TP/SL
+        return_atr_used: Si True, retourne aussi l'ATR% utilisé (clampé) et ATR blended
 
     Returns:
-        (sl, tp) : Stop Loss et Take Profit
+        (sl, tp) ou (sl, tp, atr_percent_used, atr_blended) si return_atr_used=True
 
     Raises:
         ValueError: Si ATR invalide, fallback mode FIXE
@@ -272,6 +291,9 @@ def calculate_atr_levels(
         f"entry={entry:.8f} | sl={sl:.8f} | tp={tp:.8f} | {direction}"
     )
 
+    # 🔥 FIX 29/12: Option pour retourner l'ATR réellement utilisé (blended + clampé)
+    if return_atr_used:
+        return sl, tp, atr_percent, atr_blended
     return sl, tp
 
 

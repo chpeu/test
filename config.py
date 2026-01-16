@@ -59,8 +59,9 @@ TRADING_CONFIG = {
     "trailing_distance": 0.15,  # Trailing fallback
     
     # 🔥 ATR mode - HYBRID INTELLIGENT
-    "atr_mult_tp": 2.2,   # 🔥 TP = 2.2 × ATR (plus atteignable, était 3.0)
-    "atr_mult_sl": 1.2,   # 🔥 SL = 1.2 × ATR (laisse respirer le trade)
+    # 🔥 28/12: Optimisé selon analyse 2041 trades ATR
+    "atr_mult_tp": 2.0,   # 🔥 28/12: 2.2 → 2.0 (prendre profits plus tôt)
+    "atr_mult_sl": 1.6,   # 🔥 28/12: 1.2 → 1.6 (SL trop serré causait -0.49$/trade)
     "sl_max_pct": 0.50,   # 🔥 FIX 18/12: SL MAXIMUM 0.5% (limite les pertes)
     "atr_min": 0.10,      # ATR minimum 0.10% (micro-volatilité)
     "atr_max": 1.0,       # ATR maximum 1.0% (macro-volatilité)
@@ -92,6 +93,11 @@ TRADING_CONFIG = {
     # 🎯 TRAILING MFE (SL→BE quand MFE atteint seuil) - Complémentaire à Protection MFE
     "trailing_mfe_enabled": False,                  # Activer Trailing MFE (désactivé par défaut)
     "trailing_mfe_trigger_pct": 0.10,               # Seuil MFE% pour déplacer SL à break-even
+    "trailing_mfe_lock_in_pct": 0.0,
+    "partial_tp_be_lock_in_pct": 0.0,
+    
+    # 🔄 INVERSION DES SIGNAUX (pour diagnostic)
+    "invert_signals": True,                         # Si True: LONG → SHORT et SHORT → LONG
     
     # Trend timeframe pour calculer trend_data (bonus)
     "trend_timeframe": "15m",  # 5m, 15m, 30m, 1h
@@ -130,7 +136,7 @@ TRADING_CONFIG = {
     "di_gap_adx_threshold": 25,  # ADX threshold for DI gap
     
     # Optimal ATR filter (configurables via /api/config) - 🔥 Valeurs mises à jour
-    "optimal_atr_min_1m": 0.08,  # 🔥 FIX 14/12: Abaissé à 0.08% (permet marchés calmes)
+    "optimal_atr_min_1m": 0.06,  # 🔥 FIX 14/12: Abaissé à 0.06% (permet marchés calmes)
     "optimal_atr_max_1m": 0.75,  # 🔥 Ajusté (était 0.8)
     "optimal_atr_min_5m": 0.22,  # 🔥 Ajusté (était 0.20)
     "optimal_atr_max_5m": 1.4,  # 🔥 Ajusté (était 1.5)
@@ -143,6 +149,11 @@ TRADING_CONFIG = {
     # 🔥 OPT SCALABILITY: Paramètres configurables (anciennement hardcodés)
     "scalability_spread_min": 0.001,  # Spread minimum % (évite slippage nul)
     "scalability_spread_max": 0.06,   # 🔥 OPT #10: Augmenté à 0.06% (accepte altcoins volatils)
+    
+    # 🔥 Spread Thresholds (configurables via UI - onglet Paires)
+    "max_spread_pct": None,           # Override global (si défini, remplace les valeurs par mode)
+    "max_spread_pct_fixe": 0.03,      # Spread max pour mode FIXE (0.03%)
+    "max_spread_pct_atr": 0.06,       # Spread max pour mode ATR (0.06%)
     "scalability_volume_min": 30000,  # 🔥 OPT #10: Réduit à 30k (capture mouvements naissants)
     "scalability_volume_24h_min": 200000,  # 🔥 OPT #10: Réduit à 200k (liquidité suffisante)
     "scalability_funding_rate_max": 0.1,  # 🔥 OPT #10: Augmenté à 0.1% (accepte trends forts)
@@ -327,6 +338,10 @@ TRADING_CONFIG = {
             }
         ]
     },
+
+    # 🔒 Recovery Refactor Flags (sécurisés, OFF par défaut)
+    "recovery_refactor_enabled": False,  # Bascule vers RecoveryState (phase 2+)
+    "recovery_shadow_compare": False,  # Logs comparaison legacy vs RecoveryState
     
     # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session (basé sur WR temps réel)
     "adaptive_sizing_enabled": True,
@@ -435,7 +450,9 @@ TRADING_CONFIG = {
     "ml_calib_dryrun_weight": 0.5,           # Poids des trades DRY-RUN (slider: 0.0-1.0)
     "ml_calib_decay_days": 14,               # Demi-vie en jours (slider: 7-60)
     "ml_calib_min_trades": 30,               # Minimum de trades pondérés pour activer (slider: 10-100)
-    "ml_calib_min_winrate": 40.0,            # Seuil WR minimum pour accepter un trade (slider: 30-60%)
+    "ml_calib_min_winrate": 38.0,            # Seuil WR minimum pour accepter un trade (slider: 30-60%)
+    "ml_calibration_min_winrate_long": 0.40,  # Seuil LONG cohérent avec performance observée
+    "ml_calibration_min_winrate_short": 0.35, # Seuil SHORT plus bas (performance historique 38.2%)
     "ml_calib_bucket_size": 5,               # Taille des buckets de confiance (ex: 30-35, 35-40)
     
     # ============================================================

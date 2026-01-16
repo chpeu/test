@@ -158,12 +158,30 @@ def get_effective_config() -> Dict[str, Any]:
     with _config_lock:
         # Commencer avec une copie de TRADING_CONFIG (valeurs base)
         effective = deepcopy(TRADING_CONFIG)
+
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        atr_only_keys = {
+            'atr_mult_sl',
+            'atr_mult_tp',
+            'break_even_atr_mult',
+            'trailing_trigger_atr_mult',
+            'trailing_distance_mult',
+            'optimal_atr_min_1m',
+            'optimal_atr_max_1m',
+            'optimal_atr_min_5m',
+            'optimal_atr_max_5m',
+            'sl_exchange_percent',
+        }
         
         # Appliquer les ajustements du régime (si régime activé)
         if TRADING_CONFIG.get('market_regime_enabled', True):
             for key, value in _active_adjustments.get('regime', {}).items():
-                if value is not None:
-                    effective[key] = value
+                if value is None:
+                    continue
+                # Si mode FIXE, ne pas appliquer les ajustements spécifiques ATR
+                if tp_sl_mode == 'FIXE' and key in atr_only_keys:
+                    continue
+                effective[key] = value
         
         # Appliquer les ajustements du Circuit Breaker
         if TRADING_CONFIG.get('trading_circuit_breaker_enabled', True):
@@ -178,7 +196,8 @@ def get_effective_config() -> Dict[str, Any]:
         
         # 🔥 SPRINT 3: Appliquer les ajustements locaux du trade actif
         local_adj = _active_adjustments.get('local_trade', {})
-        if local_adj:
+        # Si mode FIXE, ne pas appliquer d'ajustements locaux (réservé aux modes ATR/TP_MULTI/ESCALIER)
+        if local_adj and tp_sl_mode != 'FIXE':
             for key, value in local_adj.items():
                 if value is not None and key in REGIME_ADJUSTABLE_KEYS:
                     effective[key] = value
@@ -232,6 +251,20 @@ def get_config_summary() -> Dict[str, Any]:
     
     effective = get_effective_config()
     regime_enabled = TRADING_CONFIG.get('market_regime_enabled', True)
+
+    tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+    atr_only_keys = {
+        'atr_mult_sl',
+        'atr_mult_tp',
+        'break_even_atr_mult',
+        'trailing_trigger_atr_mult',
+        'trailing_distance_mult',
+        'optimal_atr_min_1m',
+        'optimal_atr_max_1m',
+        'optimal_atr_min_5m',
+        'optimal_atr_max_5m',
+        'sl_exchange_percent',
+    }
     
     # 🔥 14/12/2025: ATR MAX désactivé si régime actif (données prouvent ATR haut = rentable)
     # Ne pas inclure ATR MAX dans les différences si régime actif
@@ -240,6 +273,9 @@ def get_config_summary() -> Dict[str, Any]:
     # Calculer les différences pour affichage
     differences = {}
     for key in REGIME_ADJUSTABLE_KEYS:
+        # 🔥 FIX: Si mode FIXE, masquer les paramètres spécifiques ATR (TP/SL ATR, filtres ATR)
+        if tp_sl_mode != 'ATR' and key in atr_only_keys:
+            continue
         # 🔥 Skip ATR MAX si régime actif (ces valeurs ne sont plus utilisées)
         if regime_enabled and key in atr_max_keys:
             continue

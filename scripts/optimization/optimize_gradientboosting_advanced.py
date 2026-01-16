@@ -73,19 +73,31 @@ y = df['target_win'].copy()
 # Nettoyer
 X = X.replace([np.inf, -np.inf], np.nan)
 
-# Imputer
-imputer = SimpleImputer(strategy='median')
-X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns, index=X.index)
-
 print(f"   Features initiales: {len(feature_cols)}")
 print(f"   Win rate: {y.mean()*100:.1f}%")
 
 # Split temporel 80/20
 split_idx = int(len(df) * 0.8)
-X_train, X_test = X_imputed.iloc[:split_idx], X_imputed.iloc[split_idx:]
+X_train_raw, X_test_raw = X.iloc[:split_idx], X.iloc[split_idx:]
 y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
-print(f"   Train: {len(X_train)} | Test: {len(X_test)}")
+# Imputer (fit sur train uniquement)
+imputer_full = SimpleImputer(strategy='median')
+X_train_imputed = pd.DataFrame(
+    imputer_full.fit_transform(X_train_raw),
+    columns=X_train_raw.columns,
+    index=X_train_raw.index,
+)
+X_test_imputed = pd.DataFrame(
+    imputer_full.transform(X_test_raw),
+    columns=X_test_raw.columns,
+    index=X_test_raw.index,
+)
+
+X_train = X_train_imputed
+X_test = X_test_imputed
+
+print(f"   Train: {len(X_train_raw)} | Test: {len(X_test_raw)}")
 
 # =============================================================================
 # FEATURE SELECTION
@@ -103,7 +115,7 @@ selector_model = xgb.XGBClassifier(
 
 # Scaler temporaire
 temp_scaler = StandardScaler()
-X_train_scaled = temp_scaler.fit_transform(X_train)
+X_train_scaled = temp_scaler.fit_transform(X_train_imputed)
 
 selector_model.fit(X_train_scaled, y_train)
 
@@ -124,8 +136,21 @@ print(f"   Features selectionnees: {len(selected_features)}/{len(feature_cols)}"
 print(f"   Top 5: {selected_features[:5]}")
 
 # Appliquer sélection
-X_train_selected = X_train[selected_features]
-X_test_selected = X_test[selected_features]
+X_train_selected_raw = X_train_raw[selected_features]
+X_test_selected_raw = X_test_raw[selected_features]
+
+# Imputer final (fit sur train + features sélectionnées uniquement)
+imputer = SimpleImputer(strategy='median')
+X_train_selected = pd.DataFrame(
+    imputer.fit_transform(X_train_selected_raw),
+    columns=selected_features,
+    index=X_train_selected_raw.index,
+)
+X_test_selected = pd.DataFrame(
+    imputer.transform(X_test_selected_raw),
+    columns=selected_features,
+    index=X_test_selected_raw.index,
+)
 
 # =============================================================================
 # OPTIMISATION OPTUNA (100 trials)

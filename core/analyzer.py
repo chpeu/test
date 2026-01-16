@@ -1210,10 +1210,36 @@ class TechnicalAnalyzer:
                     RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
                     
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
+                        reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
                     if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
+                        reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
 
                 # === VÉRIFICATIONS DE MARCHÉ ===
@@ -1559,10 +1585,22 @@ class TechnicalAnalyzer:
                 )
 
                 if manipulation_check['suspicious']:
+                    reason = f"Manipulation suspectée ({manipulation_check['reason']})"
                     logger.warning(
-                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
-                        f"Manipulation suspectée ({manipulation_check['reason']})"
+                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : {reason}"
                     )
+                    if return_reason:
+                        indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                        indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                        return {
+                            'reason': reason,
+                            'symbol': symbol,
+                            'analysis_1m': analysis_1m,
+                            'analysis_5m': analysis_5m,
+                            'indicators_1m': indicators_1m_reject,
+                            'indicators_5m': indicators_5m_reject,
+                            'reject_category': 'manipulation_filter'
+                        }
                     return None
 
                 # === VÉRIFICATIONS DE CORRÉLATION ===
@@ -1625,17 +1663,56 @@ class TechnicalAnalyzer:
                         loss_streak = position_manager.config.loss_streak if hasattr(position_manager, 'config') else 0
                         recovery_level = position_manager.get_recovery_level(loss_streak) if hasattr(position_manager, 'get_recovery_level') else None
 
-                        if recovery_level:
-                            recovery_boost = recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
-                            level_num = recovery_level.get('level', 1)
+                        if TRADING_CONFIG.get('recovery_shadow_compare', False):
+                            try:
+                                recovery_state = position_manager.recovery_mode.get_state(loss_streak)
+                                legacy_boost = (
+                                    recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
+                                    if recovery_level else recovery_config.get('min_score_boost', 1.5)
+                                )
+                                legacy_confluence = (
+                                    recovery_level.get('confluence_forced', False)
+                                    if recovery_level else recovery_config.get('confluence_forced', False)
+                                )
+                                if (
+                                    recovery_state.min_score_boost != legacy_boost
+                                    or recovery_state.confluence_forced != legacy_confluence
+                                    or recovery_state.active != recovery_mode_active
+                                ):
+                                    logger.debug(
+                                        "🔎 RECOVERY SHADOW gating: "
+                                        f"loss_streak={loss_streak} "
+                                        f"legacy_boost={legacy_boost:.2f} state_boost={recovery_state.min_score_boost:.2f} "
+                                        f"legacy_conf={legacy_confluence} state_conf={recovery_state.confluence_forced} "
+                                        f"active={recovery_mode_active}->{recovery_state.active} level={recovery_state.level}"
+                                    )
+                            except Exception as e:
+                                logger.debug(f"🔎 RECOVERY SHADOW gating error: {type(e).__name__}: {e}")
+
+                        use_recovery_state = TRADING_CONFIG.get('recovery_refactor_enabled', False)
+                        recovery_state = None
+                        if use_recovery_state:
+                            try:
+                                recovery_state = position_manager.recovery_mode.get_state(loss_streak)
+                            except Exception as e:
+                                logger.debug(f"🔎 RECOVERY STATE error: {type(e).__name__}: {e}")
+                                recovery_state = None
+
+                        if use_recovery_state and recovery_state and recovery_state.level is not None:
+                            recovery_boost = recovery_state.min_score_boost
+                            level_num = recovery_state.level
+                            confluence_forced = recovery_state.confluence_forced
                         else:
-                            recovery_boost = recovery_config.get('min_score_boost', 1.5)
-                            level_num = 1
+                            if recovery_level:
+                                recovery_boost = recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
+                                level_num = recovery_level.get('level', 1)
+                            else:
+                                recovery_boost = recovery_config.get('min_score_boost', 1.5)
+                                level_num = 1
+                            # Forcer confluence si configuré
+                            confluence_forced = recovery_level.get('confluence_forced', False) if recovery_level else recovery_config.get('confluence_forced', False)
 
                         adjusted_min_score = min_score_required + recovery_boost
-
-                        # Forcer confluence si configuré
-                        confluence_forced = recovery_level.get('confluence_forced', False) if recovery_level else recovery_config.get('confluence_forced', False)
 
                         if confluence_forced:
                             use_confluence = True
@@ -2096,10 +2173,36 @@ class TechnicalAnalyzer:
                     RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
                     
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})")
+                        reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
                     if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
-                        logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})")
+                        reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
                         return None
 
                 logger.info(
@@ -2216,6 +2319,27 @@ class TechnicalAnalyzer:
                 }
             result['indicators_1m'] = indicators_1m
             result['indicators_5m'] = indicators_5m
+            
+            # 🔥 FIX: Ajouter métriques de filtres même lors de rejet pour éviter colonnes vides en DB
+            filters_rejection = {
+                'snr_1m': analysis_1m.get('snr') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'snr_5m': analysis_5m.get('snr') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m and isinstance(analysis_5m, dict) else None
+            }
+            result['filters'] = filters_rejection
             
             return result
 

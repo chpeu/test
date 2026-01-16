@@ -215,6 +215,10 @@ def calculate_technical_indicators(klines: List, symbol: str) -> Optional[Dict]:
         for key, value in features.items():
             if pd.isna(value) or np.isinf(value):
                 features[key] = 0
+            elif isinstance(value, (np.integer, np.floating)):
+                features[key] = value.item()
+            elif isinstance(value, np.bool_):
+                features[key] = bool(value)
         
         return features
         
@@ -344,7 +348,8 @@ async def get_ml_prediction_for_opportunity(
                 'confidence': confidence,
                 'model': 'GradientBoosting_Optimized',
                 'symbol': symbol,
-                'scan_id': scan_id
+                'scan_id': scan_id,
+                'features': features
             }
         
         # Fallback: ancien predictor XGBoost V1
@@ -357,7 +362,10 @@ async def get_ml_prediction_for_opportunity(
             scan_id=scan_id,
             log_to_db=True
         )
-        
+
+        if isinstance(prediction, dict) and 'features' not in prediction:
+            prediction['features'] = features
+
         return prediction
         
     except Exception as e:

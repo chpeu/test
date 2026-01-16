@@ -78,13 +78,17 @@ class TrailingStopManager:
             return None
 
         # Calculer ATR en pourcentage
-        entry = position.get('entry', 0)
-        atr = position.get('atr', 0)
-
-        if entry > 0 and atr > 0:
-            atr_percent = (atr / entry) * 100
+        atr_pct_used = position.get('atr_pct_used')
+        if isinstance(atr_pct_used, (int, float)) and atr_pct_used > 0:
+            atr_percent = float(atr_pct_used)
         else:
-            atr_percent = 0.5  # Fallback
+            entry = position.get('entry', 0)
+            atr = position.get('atr', 0)
+
+            if entry > 0 and atr > 0:
+                atr_percent = (atr / entry) * 100
+            else:
+                atr_percent = 0.5  # Fallback
 
         # Calculer distance trailing adaptative
         if custom_distance_pct is not None:

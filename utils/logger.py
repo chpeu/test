@@ -130,6 +130,15 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     Returns:
         Logger configuré
     """
+    try:
+        if os.name == 'nt':
+            if hasattr(sys.stdout, 'reconfigure'):
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            if hasattr(sys.stderr, 'reconfigure'):
+                sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
     
@@ -167,7 +176,8 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
             )
             
             # 🎯 Niveau WARNING+ uniquement (optimisé pour production)
-            file_handler.setLevel(logging.WARNING)
+            # 🔥 DEBUG TEMPORAIRE: Passer à DEBUG pour diagnostiquer WebSocket
+            file_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else logging.INFO)
             
             # Format sans couleurs ANSI pour fichier
             file_formatter = logging.Formatter(

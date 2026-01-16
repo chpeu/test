@@ -15,7 +15,7 @@ except ImportError:
     sys.exit(1)
 
 
-def check_tables(password):
+def check_tables(password, days_scan: int = 7, days_trades: int = 30, top: int = 40):
     """Vérifier toutes les tables et partitions"""
 
     # Connection
@@ -28,6 +28,62 @@ def check_tables(password):
         print("=" * 70)
         print("📊 DIAGNOSTIC DATALOGGER POSTGRESQL")
         print("=" * 70)
+        print()
+
+        def get_columns(table_name: str):
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (table_name,)
+            )
+            return [row['column_name'] for row in cursor.fetchall()]
+
+        def audit_nulls(table_name: str, ts_column: str, days: int, top: int):
+            columns = get_columns(table_name)
+            if not columns:
+                print(f"⚠️ Aucune colonne trouvée pour {table_name}")
+                return
+
+            if ts_column not in columns:
+                print(f"⚠️ Colonne timestamp '{ts_column}' absente de {table_name} (audit NULL complet)")
+                where_sql = ""
+                where_params = ()
+            else:
+                where_sql = f"WHERE {ts_column} >= NOW() - INTERVAL %s"
+                where_params = (f"{days} days",)
+
+            count_exprs = [f"COUNT({c}) AS filled__{c}" for c in columns]
+            query = f"SELECT COUNT(*) AS total, {', '.join(count_exprs)} FROM {table_name} {where_sql}"
+            cursor.execute(query, where_params)
+            row = cursor.fetchone() or {}
+            total = int(row.get('total') or 0)
+            if total <= 0:
+                print(f"⚠️ {table_name}: 0 lignes dans la fenêtre (days={days})")
+                return
+
+            stats = []
+            for c in columns:
+                filled = int(row.get(f"filled__{c}") or 0)
+                nulls = total - filled
+                null_pct = (nulls / total) * 100.0
+                if nulls > 0:
+                    stats.append((null_pct, nulls, c))
+
+            stats.sort(reverse=True)
+            print(f"🔍 Colonnes avec NULL (table={table_name}, total={total}, days={days})")
+            for null_pct, nulls, c in stats[:top]:
+                print(f"  - {c:40s} : {nulls:>10,} NULL ({null_pct:6.2f}%)")
+
+        print("🔎 Audit NULL (scan_logs / trades)")
+        print("-" * 70)
+        audit_nulls('scan_logs', 'timestamp', days_scan, top)
+        print()
+        audit_nulls('trades', 'timestamp_entry', days_trades, top)
         print()
 
         # 0. Forcer le flush du datalogger si possible
@@ -190,5 +246,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Diagnostic DataLogger PostgreSQL')
     parser.add_argument('--password', required=True, help='PostgreSQL password')
 
+    parser.add_argument('--days-scan', type=int, default=7, help='Fenêtre (jours) pour audit scan_logs')
+    parser.add_argument('--days-trades', type=int, default=30, help='Fenêtre (jours) pour audit trades')
+    parser.add_argument('--top', type=int, default=40, help='Nombre de colonnes affichées (triées par % NULL)')
+
     args = parser.parse_args()
-    check_tables(args.password)
+    check_tables(args.password, days_scan=args.days_scan, days_trades=args.days_trades, top=args.top)

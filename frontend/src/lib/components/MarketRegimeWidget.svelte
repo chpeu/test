@@ -11,6 +11,7 @@
 		last_check: string | null;
 		next_check: string | null;
 		regime_since: string | null;
+		tp_sl_mode?: string;
 		config_active: Record<string, any>;
 		atr_sample_count: number;
 		check_interval_minutes: number;
@@ -25,6 +26,7 @@
 		last_check: null,
 		next_check: null,
 		regime_since: null,
+		tp_sl_mode: 'FIXE',
 		config_active: {},
 		atr_sample_count: 0,
 		check_interval_minutes: 60
@@ -48,6 +50,8 @@
 	$: colors = !regimeData.enabled 
 		? REGIME_COLORS['DISABLED'] 
 		: (REGIME_COLORS[regimeData.current_regime] || REGIME_COLORS['UNKNOWN']);
+
+	$: isAtrMode = (regimeData.tp_sl_mode || 'FIXE') === 'ATR';
 
 	onMount(async () => {
 		await loadRegimeStatus();
@@ -80,6 +84,7 @@
 						last_check: data.last_check,
 						next_check: data.next_check,
 						regime_since: data.regime_since,
+						tp_sl_mode: data.tp_sl_mode || 'FIXE',
 						config_active: data.config_active || {},
 						atr_sample_count: data.atr_sample_count || 0,
 						check_interval_minutes: data.check_interval_minutes || 60
@@ -102,12 +107,14 @@
 				const data = await res.json();
 				if (data.success) {
 					regimeData = {
+						enabled: data.enabled !== false,
 						current_regime: data.current_regime || 'UNKNOWN',
 						avg_atr: data.avg_atr || 0,
 						avg_adx: data.avg_adx || 0,
 						last_check: data.last_check,
 						next_check: data.next_check,
 						regime_since: data.regime_since,
+						tp_sl_mode: data.tp_sl_mode || regimeData.tp_sl_mode || 'FIXE',
 						config_active: data.config_active || {},
 						atr_sample_count: data.atr_sample_count || 0,
 						check_interval_minutes: data.check_interval_minutes || 60
@@ -202,43 +209,60 @@
 					<span class="config-item" title="Score minimum requis pour ouvrir un trade">
 						📊 Score: {regimeData.config_active.min_score_required || '-'}
 					</span>
-					<span class="config-item" title="Multiplicateur ATR pour Stop Loss">
-						🛑 SL: {regimeData.config_active.atr_mult_sl || '-'}x
-					</span>
-					<span class="config-item" title="Multiplicateur ATR pour Take Profit">
-						🎯 TP: {regimeData.config_active.atr_mult_tp || '-'}x
-					</span>
+					{#if isAtrMode}
+						<span class="config-item" title="Multiplicateur ATR pour Stop Loss">
+							🛑 SL: {regimeData.config_active.atr_mult_sl || '-'}x
+						</span>
+						<span class="config-item" title="Multiplicateur ATR pour Take Profit">
+							🎯 TP: {regimeData.config_active.atr_mult_tp || '-'}x
+						</span>
+					{/if}
 				</div>
 				<!-- Ligne 2: Filtres dynamiques -->
 				<div class="config-row">
-					<span class="config-item atr-max-disabled" title="ATR Max DÉSACTIVÉ si régime actif (données prouvent ATR haut = rentable)">
-						📈 ATR Max: <span class="disabled-badge">OFF</span>
-					</span>
 					<span class="config-item" title="Multiplicateur volume (exigence de volume)">
 						📊 Vol: {regimeData.config_active.volume_multiplier || '-'}x
 					</span>
-					<span class="config-item" title="ATR 5m range optimal (ATR Min uniquement, Max désactivé)">
-						📊 ATR5m: {regimeData.config_active.optimal_atr_min_5m?.toFixed(2) || '-'}%+
-					</span>
+					{#if isAtrMode}
+						<span class="config-item atr-max-disabled" title="ATR Max DÉSACTIVÉ si régime actif (données prouvent ATR haut = rentable)">
+							📈 ATR Max: <span class="disabled-badge">OFF</span>
+						</span>
+						<span class="config-item" title="ATR 5m range optimal (ATR Min uniquement, Max désactivé)">
+							📊 ATR5m: {regimeData.config_active.optimal_atr_min_5m?.toFixed(2) || '-'}%+
+						</span>
+					{/if}
 				</div>
 				<!-- Ligne 3: Timeout & Trailing -->
 				<div class="config-row">
 					<span class="config-item" title="Durée max position avant sortie stagnation">
 						⏱️ Timeout: {regimeData.config_active.position_timeout ? Math.floor(regimeData.config_active.position_timeout / 60) + 'min' : '-'}
 					</span>
-					<span class="config-item" title="Break-Even trigger (multiplicateur ATR)">
-						💰 BE: {regimeData.config_active.break_even_atr_mult || '-'}x
-					</span>
-					<span class="config-item" title="Trailing Stop trigger (multiplicateur ATR)">
-						🔄 TS: {regimeData.config_active.trailing_trigger_atr_mult || '-'}x
-					</span>
+					{#if isAtrMode}
+						<span class="config-item" title="Break-Even trigger (multiplicateur ATR)">
+							💰 BE: {regimeData.config_active.break_even_atr_mult || '-'}x
+						</span>
+						<span class="config-item" title="Trailing Stop trigger (multiplicateur ATR)">
+							🔄 TS: {regimeData.config_active.trailing_trigger_atr_mult || '-'}x
+						</span>
+					{/if}
 				</div>
-				<!-- Ligne 4: SL Exchange dynamique (filet de sécurité) -->
+				<!-- Ligne 4: RSI Thresholds -->
 				<div class="config-row">
-					<span class="config-item sl-exchange" title="Stop Loss MEXC dynamique = SL ATR × 1.1 (filet de sécurité si bot crash)">
-						🛡️ SL MEXC: SL×1.1 (~{regimeData.config_active.atr_mult_sl ? (regimeData.config_active.atr_mult_sl * 1.1).toFixed(1) : '-'}x ATR)
+					<span class="config-item rsi-threshold" title="RSI max pour LONG (bloque si RSI > seuil)">
+						📈 RSI Long Max: {regimeData.config_active.rsi_final_long_max || '65'}
+					</span>
+					<span class="config-item rsi-threshold" title="RSI min pour SHORT (bloque si RSI < seuil)">
+						📉 RSI Short Min: {regimeData.config_active.rsi_final_short_min || '35'}
 					</span>
 				</div>
+				<!-- Ligne 5: SL Exchange dynamique (filet de sécurité) -->
+				{#if isAtrMode}
+					<div class="config-row">
+						<span class="config-item sl-exchange" title="Stop Loss MEXC dynamique = SL ATR × 1.1 (filet de sécurité si bot crash)">
+							🛡️ SL MEXC: SL×1.1 (~{regimeData.config_active.atr_mult_sl ? (regimeData.config_active.atr_mult_sl * 1.1).toFixed(1) : '-'}x ATR)
+						</span>
+					</div>
+				{/if}
 			</div>
 		{/if}
 		
@@ -369,6 +393,11 @@
 
 	.config-item.atr-max-disabled {
 		color: #888;
+	}
+
+	.config-item.rsi-threshold {
+		color: #a78bfa;
+		font-weight: 500;
 	}
 
 	.disabled-badge {

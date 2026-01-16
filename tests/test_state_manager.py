@@ -153,8 +153,8 @@ class TestStateManager:
         """Test gestion trade history"""
         assert self.state.trade_history == []
 
-        trade1 = {"symbol": "BTC/USDT", "pnl": 100.0}
-        trade2 = {"symbol": "ETH/USDT", "pnl": -50.0}
+        trade1 = {"symbol": "BTC/USDT", "net_pnl_usdt": 100.0}
+        trade2 = {"symbol": "ETH/USDT", "net_pnl_usdt": -50.0}
 
         self.state.add_trade(trade1)
         assert len(self.state.trade_history) == 1

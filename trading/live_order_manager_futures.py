@@ -277,6 +277,8 @@ class FuturesOrderResult:
     # 🔥 FIX: Indique si un TP partiel a été forcé à 100% (position trop petite)
     forced_full_close: bool = False
 
+    sl_exchange_percent: Optional[float] = None
+
 
 class LiveOrderManagerFutures:
     """
@@ -385,7 +387,7 @@ class LiveOrderManagerFutures:
                     'apiKey': api_key,
                     'secret': api_secret,
                     'enableRateLimit': True,
-                    'timeout': 10000,
+                    'timeout': 3000 if dry_run else 10000,
                     'options': {
                         'defaultType': 'swap',
                         'adjustForTimeDifference': True,
@@ -638,7 +640,7 @@ class LiveOrderManagerFutures:
             min_amount = None
 
             # 🔢 Ajuster quantité selon la précision/limites du marché (CCXT uniquement)
-            if self.exchange:
+            if self.exchange and not self.dry_run:
                 try:
                     if not getattr(self.exchange, 'markets', None):
                         self.exchange.load_markets()
@@ -700,25 +702,9 @@ class LiveOrderManagerFutures:
                 # -------------------------------------------------------------
                 start_shadow = time.time()
                 
-                # 1. Récupérer Carnet d'Ordres Réel (L2 Data)
-                # On essaie de récupérer la liquidité réelle pour calculer le vrai prix
+                # 1. (OPTIONNEL) Carnet d'Ordres Réel (L2 Data)
+                # ⚠️ IMPORTANT: en dry_run, on évite tout appel réseau bloquant qui pourrait geler /api/position/open
                 shadow_book = None
-                try:
-                    if self.use_bypass and self.bypass_client:
-                        # Mode Bypass
-                        bypass_symbol_book = self._convert_symbol_to_bypass(symbol)
-                        # Note: get_order_book n'est pas toujours dispo dans bypass, fallback sur CCXT si besoin
-                        # Si bypass a une méthode get_depth ou similaire
-                        pass 
-                    
-                    # Fallback ou Primary: Utiliser CCXT (souvent plus simple pour fetchOrderBook public)
-                    if not shadow_book and self.exchange:
-                        # Utiliser l'instance exchange même en dry_run si dispo, sinon créer une temporaire ? 
-                        # self.exchange est init en mode CCXT, mais peut-être pas en mode Bypass/DryRun pur sans keys
-                        # On va supposer que l'accès public (sans keys) fonctionne pour fetchOrderBook
-                        shadow_book = self.exchange.fetch_order_book(futures_symbol, limit=20)
-                except Exception as e:
-                    logger.debug(f"⚠️ Shadow: Impossible de fetch orderbook: {e}")
 
                 # 2. Calculer Prix d'Exécution Réaliste (Walking the Book)
                 shadow_filled_price = entry_price
@@ -986,8 +972,10 @@ class LiveOrderManagerFutures:
                 # 🔥 SL MEXC DYNAMIQUE: Basé sur SL bot × 1.3 (30% marge de sécurité)
                 # FIX 16/12/2025: Augmenté de 1.1 à 1.3 pour éviter que MEXC SL trigger avant le bot
                 # FIX 16/12/2025 #2: Ajout SL minimum 0.5% pour éviter triggers immédiats (spread/slippage)
-                SL_MEXC_MARGIN = 1.3  # 30% plus large que le SL bot
-                SL_MEXC_MIN_PCT = 0.005  # 🔥 SL minimum 0.5% pour éviter trigger immédiat
+                SL_MEXC_MARGIN = 1.2  # 30% plus large que le SL bot
+                from config import TRADING_CONFIG
+                tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                SL_MEXC_MIN_PCT = 0.0 if tp_sl_mode == 'FIXE' else 0.005
                 
                 # 🔥 FIX 19/12: Utiliser original_entry_price (non-arrondi) pour calculer SL
                 # Sinon le SL peut être au-dessus du prix d'exécution réel (ex: JELLYJELLY)
@@ -1009,7 +997,7 @@ class LiveOrderManagerFutures:
                     sl_exchange_percent = sl_distance_pct_final
                     
                     # 🔥 Log si minimum appliqué
-                    min_applied = sl_distance_pct * SL_MEXC_MARGIN < SL_MEXC_MIN_PCT
+                    min_applied = (SL_MEXC_MIN_PCT > 0) and (sl_distance_pct * SL_MEXC_MARGIN < SL_MEXC_MIN_PCT)
                     logger.warning(
                         f"📐 SL MEXC MARGE: Bot_SL={bot_sl_price:.6f} ({sl_distance_pct*100:.4f}%) | "
                         f"MEXC_SL={sl_price:.6f} ({sl_exchange_percent*100:.4f}%) | "
@@ -1324,7 +1312,8 @@ class LiveOrderManagerFutures:
                         executed_at=datetime.now(timezone.utc).isoformat(),
                         raw_api_response=bypass_result.data,
                         min_contract_amount=float(min_amount) if min_amount else None,  # 🔥 FIX: Pour TP partiel
-                        contract_size=real_contract_size  # 🔥 FIX: Contract size pour calcul PNL correct
+                        contract_size=real_contract_size,  # 🔥 FIX: Contract size pour calcul PNL correct
+                        sl_exchange_percent=(sl_exchange_percent * 100.0) if 'sl_exchange_percent' in locals() and sl_exchange_percent is not None else None
                     )
                 else:
                     # 🔥 Circuit Breaker: Enregistrer échec

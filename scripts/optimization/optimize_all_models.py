@@ -123,7 +123,7 @@ print("[2/5] OPTIMISATION XGBOOST V1 (Classification)")
 print("=" * 70)
 
 def objective_xgb_v1(trial):
-    """Objective function pour Optuna - XGBoost V1"""
+    """Fonction objectif pour Optuna - XGBoost V1"""
     params = {
         'max_depth': trial.suggest_int('max_depth', 2, 8),
         'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
@@ -141,13 +141,13 @@ def objective_xgb_v1(trial):
         'n_jobs': -1
     }
     
-    # Cross-validation temporelle
+    # Validation croisée temporelle
     scores = []
     for train_idx, val_idx in tscv.split(X_train):
         X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
         y_tr, y_val = y_train_class.iloc[train_idx], y_train_class.iloc[val_idx]
         
-        # Scaler
+        # Normalisation
         scaler = StandardScaler()
         X_tr_scaled = scaler.fit_transform(X_tr)
         X_val_scaled = scaler.transform(X_val)
@@ -161,7 +161,7 @@ def objective_xgb_v1(trial):
     
     return np.mean(scores)
 
-print("   Optimisation Optuna (50 trials)...")
+print("   Optimisation Optuna (50 essais)...")
 study_v1 = optuna.create_study(direction='maximize', study_name='xgboost_v1')
 study_v1.optimize(objective_xgb_v1, n_trials=50, show_progress_bar=True)
 
@@ -169,8 +169,8 @@ best_params_v1 = study_v1.best_params
 print(f"   Meilleur F1: {study_v1.best_value*100:.1f}%")
 print(f"   Params: max_depth={best_params_v1['max_depth']}, lr={best_params_v1['learning_rate']:.3f}")
 
-# Entraîner modèle final
-print("   Entrainement modele final...")
+# Entraîner le modèle final
+print("   Entrainement du modele final...")
 scaler_v1 = StandardScaler()
 X_train_scaled = scaler_v1.fit_transform(X_train)
 X_test_scaled = scaler_v1.transform(X_test)
@@ -187,7 +187,7 @@ final_params_v1 = {
 model_v1 = xgb.XGBClassifier(**final_params_v1)
 model_v1.fit(X_train_scaled, y_train_class, verbose=False)
 
-# Évaluer
+# Évaluation
 y_pred_v1 = model_v1.predict(X_test_scaled)
 y_proba_v1 = model_v1.predict_proba(X_test_scaled)[:, 1]
 
@@ -206,7 +206,7 @@ print(f"      Recall:    {metrics_v1['recall']*100:.1f}%")
 print(f"      F1 Score:  {metrics_v1['f1']*100:.1f}%")
 print(f"      ROC-AUC:   {metrics_v1['roc_auc']*100:.1f}%")
 
-# Sauvegarder
+# Sauvegarde
 preprocessor_v1 = {
     'scaler': scaler_v1,
     'imputer': imputer,
@@ -237,14 +237,14 @@ print("\n" + "=" * 70)
 print("[3/5] OPTIMISATION XGBOOST V2 (Regression PNL%)")
 print("=" * 70)
 
-# Winsorize target pour éviter outliers extrêmes
+# Winsorisation de la cible pour éviter les valeurs aberrantes extrêmes
 y_train_reg_clipped = y_train_reg.clip(
     lower=y_train_reg.quantile(0.01),
     upper=y_train_reg.quantile(0.99)
 )
 
 def objective_xgb_v2(trial):
-    """Objective function pour Optuna - XGBoost V2 Régression"""
+    """Fonction objectif pour Optuna - XGBoost V2 Régression"""
     params = {
         'max_depth': trial.suggest_int('max_depth', 2, 6),
         'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
@@ -260,7 +260,7 @@ def objective_xgb_v2(trial):
         'n_jobs': -1
     }
     
-    # Cross-validation temporelle
+    # Validation croisée temporelle
     scores = []
     for train_idx, val_idx in tscv.split(X_train):
         X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
@@ -274,13 +274,13 @@ def objective_xgb_v2(trial):
         model.fit(X_tr_scaled, y_tr, verbose=False)
         
         y_pred = model.predict(X_val_scaled)
-        # Utiliser MAE négatif (à maximiser)
+        # Utilisation du MAE négatif (à maximiser)
         score = -mean_absolute_error(y_val, y_pred)
         scores.append(score)
     
     return np.mean(scores)
 
-print("   Optimisation Optuna (50 trials)...")
+print("   Optimisation Optuna (50 essais)...")
 study_v2 = optuna.create_study(direction='maximize', study_name='xgboost_v2')
 study_v2.optimize(objective_xgb_v2, n_trials=50, show_progress_bar=True)
 
@@ -288,8 +288,8 @@ best_params_v2 = study_v2.best_params
 print(f"   Meilleur MAE: {-study_v2.best_value:.3f}%")
 print(f"   Params: max_depth={best_params_v2['max_depth']}, lr={best_params_v2['learning_rate']:.3f}")
 
-# Entraîner modèle final
-print("   Entrainement modele final...")
+# Entraîner le modèle final
+print("   Entrainement du modele final...")
 scaler_v2 = StandardScaler()
 X_train_scaled_v2 = scaler_v2.fit_transform(X_train)
 X_test_scaled_v2 = scaler_v2.transform(X_test)
@@ -304,13 +304,13 @@ final_params_v2 = {
 model_v2 = xgb.XGBRegressor(**final_params_v2)
 model_v2.fit(X_train_scaled_v2, y_train_reg_clipped, verbose=False)
 
-# Évaluer
+# Évaluation
 y_pred_v2 = model_v2.predict(X_test_scaled_v2)
 
 metrics_v2 = {
     'mae': mean_absolute_error(y_test_reg, y_pred_v2),
     'r2': r2_score(y_test_reg, y_pred_v2),
-    # Classification dérivée
+    # Classification dérivée (seuil à 0)
     'accuracy': accuracy_score(y_test_class, (y_pred_v2 > 0).astype(int)),
     'f1': f1_score(y_test_class, (y_pred_v2 > 0).astype(int))
 }
@@ -321,7 +321,7 @@ print(f"      R2:        {metrics_v2['r2']:.3f}")
 print(f"      Accuracy:  {metrics_v2['accuracy']*100:.1f}% (classification derivee)")
 print(f"      F1 Score:  {metrics_v2['f1']*100:.1f}%")
 
-# Sauvegarder
+# Sauvegarde
 preprocessor_v2 = {
     'scaler': scaler_v2,
     'imputer': imputer,
@@ -353,8 +353,30 @@ print("\n" + "=" * 70)
 print("[4/5] OPTIMISATION GRADIENTBOOSTING")
 print("=" * 70)
 
+gb_feature_names = list(feature_cols)
+try:
+    gb_meta_path = "optimization/saved_models/gradient_boosting_optimized_metadata.json"
+    if os.path.exists(gb_meta_path):
+        with open(gb_meta_path, 'r', encoding='utf-8') as f:
+            gb_meta = json.load(f)
+        candidate = gb_meta.get('selected_features') or gb_meta.get('feature_names')
+        if candidate:
+            gb_feature_names = [c for c in candidate if c in X_train.columns]
+            missing = [c for c in candidate if c not in X_train.columns]
+            print(f"   Features GB depuis metadata: {len(gb_feature_names)}")
+            if missing:
+                print(f"   ⚠️ Features manquantes ignorees: {len(missing)}")
+except Exception:
+    pass
+
+X_train_gb = X_train[gb_feature_names]
+X_test_gb = X_test[gb_feature_names]
+
+imputer_gb = SimpleImputer(strategy='median')
+imputer_gb.fit(X_train_gb)
+
 def objective_gb(trial):
-    """Objective function pour Optuna - GradientBoosting"""
+    """Fonction objectif pour Optuna - GradientBoosting"""
     params = {
         'n_estimators': trial.suggest_int('n_estimators', 50, 300),
         'max_depth': trial.suggest_int('max_depth', 2, 8),
@@ -366,7 +388,7 @@ def objective_gb(trial):
         'random_state': 42
     }
     
-    # Cross-validation temporelle
+    # Validation croisée temporelle
     scores = []
     for train_idx, val_idx in tscv.split(X_train):
         X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
@@ -385,7 +407,7 @@ def objective_gb(trial):
     
     return np.mean(scores)
 
-print("   Optimisation Optuna (50 trials)...")
+print("   Optimisation Optuna (50 essais)...")
 study_gb = optuna.create_study(direction='maximize', study_name='gradient_boosting')
 study_gb.optimize(objective_gb, n_trials=50, show_progress_bar=True)
 
@@ -393,11 +415,11 @@ best_params_gb = study_gb.best_params
 print(f"   Meilleur F1: {study_gb.best_value*100:.1f}%")
 print(f"   Params: max_depth={best_params_gb['max_depth']}, lr={best_params_gb['learning_rate']:.3f}")
 
-# Entraîner modèle final
-print("   Entrainement modele final...")
+# Entraîner le modèle final
+print("   Entrainement du modele final...")
 scaler_gb = StandardScaler()
-X_train_scaled_gb = scaler_gb.fit_transform(X_train)
-X_test_scaled_gb = scaler_gb.transform(X_test)
+X_train_scaled_gb = scaler_gb.fit_transform(X_train_gb)
+X_test_scaled_gb = scaler_gb.transform(X_test_gb)
 
 final_params_gb = {
     **best_params_gb,
@@ -407,7 +429,7 @@ final_params_gb = {
 model_gb = GradientBoostingClassifier(**final_params_gb)
 model_gb.fit(X_train_scaled_gb, y_train_class)
 
-# Évaluer
+# Évaluation
 y_pred_gb = model_gb.predict(X_test_scaled_gb)
 y_proba_gb = model_gb.predict_proba(X_test_scaled_gb)[:, 1]
 
@@ -426,11 +448,11 @@ print(f"      Recall:    {metrics_gb['recall']*100:.1f}%")
 print(f"      F1 Score:  {metrics_gb['f1']*100:.1f}%")
 print(f"      ROC-AUC:   {metrics_gb['roc_auc']*100:.1f}%")
 
-# Sauvegarder
+# Sauvegarde
 preprocessor_gb = {
     'scaler': scaler_gb,
-    'imputer': imputer,
-    'feature_names': list(feature_cols),
+    'imputer': imputer_gb,
+    'feature_names': list(gb_feature_names),
     'scaler_type': 'StandardScaler'
 }
 
@@ -439,13 +461,13 @@ metadata_gb = {
     'model_type': 'classification',
     'trained_at': datetime.now().isoformat(),
     'n_samples': len(X_train),
-    'n_features': len(feature_cols),
+    'n_features': len(gb_feature_names),
     'hyperparameters': best_params_gb,
     'metrics': {
         'test': metrics_gb,
         'cv_f1': study_gb.best_value
     },
-    'feature_names': list(feature_cols)
+    'feature_names': list(gb_feature_names)
 }
 
 save_model(model_gb, preprocessor_gb, metadata_gb, 'gradient_boosting_optimized')
@@ -460,7 +482,7 @@ print("=" * 70)
 import shutil
 models_dir = "optimization/saved_models"
 
-# Copier vers les noms "latest" utilisés par les predictors
+# Copie vers les noms "latest" utilisés par les prédicteurs
 copies = [
     ('xgboost_v1_optimized', 'xgboost_v1'),
     ('xgboost_v2_optimized', 'xgboost_v2_latest'),
@@ -501,7 +523,7 @@ print(f"""
    - gradient_boosting_optimized.pkl
 """)
 
-# Sauvegarder rapport
+# Sauvegarde du rapport
 report = {
     'timestamp': datetime.now().isoformat(),
     'n_samples': len(df),
@@ -528,7 +550,7 @@ report = {
 with open('optimization_report.json', 'w') as f:
     json.dump(report, f, indent=2, default=str)
 
-print("Rapport: optimization_report.json")
+print("   Rapport: optimization_report.json")
 print("=" * 70)
 print("  OPTIMISATION TERMINEE")
 print("=" * 70)

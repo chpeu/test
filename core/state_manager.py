@@ -262,10 +262,57 @@ class StateManager:
             return self._app_state.trade_history.copy()
 
     def add_trade(self, trade: Dict[str, Any]) -> None:
-        """Add trade to history (thread-safe)"""
+        """Add or update trade in history (thread-safe upsert)"""
         with self._thread_lock:
-            self._app_state.trade_history.append(trade)
-            logger.debug(f"Trade added: {trade.get('symbol')}")
+            if not trade or not isinstance(trade, dict):
+                return
+            
+            # Validation minimale : ignorer les trades vides ou sans symbole
+            if not trade.get('symbol'):
+                return
+
+            # 🔥 FIX: Ignorer les trades qui semblent "ouverts" ou incomplets (N/A dans UI)
+            # Un trade historique doit avoir une raison de sortie ou un PnL finalisé
+            has_reason = bool(trade.get('reason') or trade.get('exit_reason') or trade.get('close_reason'))
+            has_pnl = trade.get('pnl_usdt') is not None or trade.get('net_pnl_usdt') is not None
+            
+            if not has_reason and not has_pnl:
+                # logger.debug(f"⚠️ Trade ignoré dans l'historique (incomplet/ouvert): {trade.get('symbol')}")
+                return
+
+            # Récupérer l'ID pour l'upsert
+            trade_id = trade.get('id') or trade.get('trade_id') or trade.get('closure_id')
+            
+            target_idx = -1
+            
+            # 1. Essayer de trouver par ID explicite
+            if trade_id:
+                for i, t in enumerate(self._app_state.trade_history):
+                    t_id = t.get('id') or t.get('trade_id') or t.get('closure_id')
+                    if t_id == trade_id:
+                        target_idx = i
+                        break
+            
+            # 2. Si pas trouvé et ID manquant, essayer détection heuristique (Symbol + Timestamp précis)
+            # Risqué, donc on ne le fait que si on a des timestamps précis
+            if target_idx == -1 and not trade_id:
+                ts = trade.get('timestamp') or trade.get('closed_at')
+                if ts:
+                    for i, t in enumerate(self._app_state.trade_history):
+                        if t.get('symbol') == trade['symbol']:
+                            t_ts = t.get('timestamp') or t.get('closed_at')
+                            if t_ts == ts:
+                                target_idx = i
+                                break
+
+            if target_idx >= 0:
+                # UPDATE
+                self._app_state.trade_history[target_idx].update(trade)
+                logger.debug(f"Trade updated in history: {trade.get('symbol')} (ID: {trade_id})")
+            else:
+                # INSERT
+                self._app_state.trade_history.append(trade)
+                logger.debug(f"Trade added to history: {trade.get('symbol')} (ID: {trade_id})")
 
     def set_trade_history(self, history: List[Dict[str, Any]]) -> None:
         """Set trade history (thread-safe)"""

@@ -8,6 +8,11 @@ import sys
 import psycopg2
 from dotenv import load_dotenv
 
+# Ensure Unicode prints don't crash on Windows consoles
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Load environment
 load_dotenv()
 
@@ -93,19 +98,22 @@ def verify_columns():
             SELECT 
                 id,
                 symbol,
+                timestamp_entry,
                 config_rsi_filter_enabled,
                 config_rsi_long_max,
                 config_rsi_short_min
             FROM trades
-            ORDER BY id DESC
+            ORDER BY timestamp_entry DESC NULLS LAST
             LIMIT 5;
         """)
         samples = cur.fetchall()
         
         if samples:
             for s in samples:
-                enabled_str = "✅ ON" if s[2] else "❌ OFF" if s[2] is not None else "NULL"
-                print(f"   Trade #{s[0]} {s[1]}: RSI Filter {enabled_str} | Long Max: {s[3]} | Short Min: {s[4]}")
+                enabled_str = "✅ ON" if s[3] else "❌ OFF" if s[3] is not None else "NULL"
+                print(
+                    f"   Trade #{s[0]} {s[1]} @ {s[2]}: RSI Filter {enabled_str} | Long Max: {s[4]} | Short Min: {s[5]}"
+                )
         else:
             print("   (Aucun trade trouvé)")
         

@@ -1,7 +1,7 @@
 <script>
 	// 🔄 FORCE RELOAD: 2025-12-04T23:58:00 - Badge calibration fix
 	import { activePosition, pnlColor, slDistance, tpDistance, positionDuration, clearPosition, updatePosition } from '$lib/stores/position';
-	import { formatPrice, formatPercent, formatUSDT, getSignificantDecimals, formatWithoutTrailingZeros } from '$lib/utils/format';
+	import { formatPrice, formatPercent, formatUSDT, getSignificantDecimals, formatWithoutTrailingZeros, formatTime } from '$lib/utils/format';
 	import { sendCommandViaWS } from '$lib/utils/websocket';
 	import { onMount, onDestroy } from 'svelte';
 
@@ -45,6 +45,7 @@
 	// 🔥 NOUVEAU: Compte à rebours dynamique de la durée
 	let liveDuration = '';
 	let durationInterval = null;
+	let nowTs = Date.now();
 
 	// 🔥 FIX BUG #6: Support jours pour positions > 24h
 	function formatDurationFromSeconds(seconds) {
@@ -62,14 +63,14 @@
 	}
 
 	function updateLiveDuration() {
+		nowTs = Date.now();
 		if (!$activePosition || !$activePosition.opened_at) {
 			liveDuration = '';
 			return;
 		}
 		
-		const now = new Date();
 		const opened = new Date($activePosition.opened_at);
-		const diffMs = now - opened;
+		const diffMs = nowTs - opened.getTime();
 		const diffSec = Math.floor(diffMs / 1000);
 		liveDuration = formatDurationFromSeconds(diffSec);
 	}
@@ -90,18 +91,8 @@
 		liveDuration = '';
 	}
 
-	onMount(async () => {
-		await loadConfig();
-		// Écouter les mises à jour de config
-		const { getWebSocket } = await import('$lib/utils/websocket');
-		const ws = getWebSocket();
-		if (ws) {
-			ws.on('config_updated', (data) => {
-				if (data.updated) {
-					tradingConfig = { ...tradingConfig, ...data.updated };
-				}
-			});
-		}
+	onMount(() => {
+		loadConfig();
 	});
 
 	onDestroy(() => {
@@ -313,6 +304,68 @@
 			alert(`❌ Erreur: ${err.message || 'Impossible de clôturer la position. Vérifiez la connexion WebSocket.'}`);
 		}
 	}
+
+	function clamp(value, min = 0, max = 100) {
+		return Math.min(max, Math.max(min, value));
+	}
+
+	function safePct(value) {
+		if (value === null || value === undefined || isNaN(value)) {
+			return null;
+		}
+		return clamp(value);
+	}
+
+	$: lastUpdateAgeSec = $activePosition?.last_update_at
+		? (nowTs - new Date($activePosition.last_update_at).getTime()) / 1000
+		: null;
+	$: positionIsStale = lastUpdateAgeSec !== null && lastUpdateAgeSec > 6;
+
+	$: beTriggerPct = $activePosition?.break_even_trigger_pct ?? null;
+	$: trailingTriggerPct = $activePosition?.trailing_trigger_pct ?? null;
+	$: trailingMfeTriggerPct = $activePosition?.trailing_mfe_enabled
+		? ($activePosition?.trailing_mfe_trigger_pct ?? null)
+		: null;
+
+	$: pnlScaleMax = (() => {
+		const values = [];
+		if (beTriggerPct !== null && beTriggerPct !== undefined) values.push(beTriggerPct);
+		if (trailingTriggerPct !== null && trailingTriggerPct !== undefined) values.push(trailingTriggerPct);
+		if (trailingMfeTriggerPct !== null && trailingMfeTriggerPct !== undefined) values.push(trailingMfeTriggerPct);
+		if (nextTpInfo && nextTpInfo.pnl !== null && nextTpInfo.pnl !== undefined) values.push(nextTpInfo.pnl);
+		return values.length ? Math.max(...values) : null;
+	})();
+
+	$: pnlProgressPct = pnlScaleMax && pnlScaleMax > 0 && $activePosition?.pnl !== null && $activePosition?.pnl !== undefined
+		? safePct(($activePosition.pnl / pnlScaleMax) * 100)
+		: null;
+	$: beMarkerPos = pnlScaleMax && pnlScaleMax > 0 && beTriggerPct !== null && beTriggerPct !== undefined
+		? safePct((beTriggerPct / pnlScaleMax) * 100)
+		: null;
+	$: trailingMarkerPos = pnlScaleMax && pnlScaleMax > 0 && trailingTriggerPct !== null && trailingTriggerPct !== undefined
+		? safePct((trailingTriggerPct / pnlScaleMax) * 100)
+		: null;
+	$: trailingMfeMarkerPos = pnlScaleMax && pnlScaleMax > 0 && trailingMfeTriggerPct !== null && trailingMfeTriggerPct !== undefined
+		? safePct((trailingMfeTriggerPct / pnlScaleMax) * 100)
+		: null;
+
+	$: openedAgeSec = $activePosition?.opened_at
+		? (nowTs - new Date($activePosition.opened_at).getTime()) / 1000
+		: null;
+	$: stagnationTimeoutSec = $activePosition?.stagnation_timeout_seconds_effective ?? null;
+	$: stagnationPositiveTimeoutSec = $activePosition?.stagnation_positive_timeout_seconds_effective ?? null;
+	$: stagnationEffectiveTimeoutSec = (() => {
+		const values = [];
+		if (stagnationTimeoutSec !== null && stagnationTimeoutSec !== undefined) values.push(stagnationTimeoutSec);
+		if (stagnationPositiveTimeoutSec !== null && stagnationPositiveTimeoutSec !== undefined) values.push(stagnationPositiveTimeoutSec);
+		return values.length ? Math.min(...values) : null;
+	})();
+	$: stagnationEffectiveProgressPct = stagnationEffectiveTimeoutSec && stagnationEffectiveTimeoutSec > 0 && openedAgeSec !== null && openedAgeSec !== undefined
+		? safePct((openedAgeSec / stagnationEffectiveTimeoutSec) * 100)
+		: null;
+	$: stagnationTimeLeftSec = stagnationEffectiveTimeoutSec && openedAgeSec !== null && openedAgeSec !== undefined
+		? Math.max(0, stagnationEffectiveTimeoutSec - openedAgeSec)
+		: null;
 </script>
 
 {#if $activePosition}
@@ -353,6 +406,11 @@
 						Mode: {$activePosition.tp_sl_mode}
 					</div>
 				{/if}
+				{#if $activePosition.last_update_at}
+					<div class="live-badge" class:stale={positionIsStale}>
+						Live: {lastUpdateAgeSec !== null ? lastUpdateAgeSec.toFixed(1) + 's' : '-'}
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -389,6 +447,65 @@
 			</div>
 		</div>
 
+		<!-- 🔥 NOUVEAU: Sections Prochain TP et Prochain SL distinctes -->
+		{#if $activePosition.next_tp || $activePosition.next_sl || $activePosition}
+			<!-- Section Prochain Take Profit -->
+			<div class="next-event-section tp-section">
+				<div class="next-event-header">
+					<span class="next-event-label">💰 Prochain TP</span>
+					<span class="next-event-type" style="color: {$activePosition.next_tp?.color || '#10b981'}">
+						{$activePosition.next_tp?.description || 'Take Profit'}
+					</span>
+				</div>
+				<div class="next-event-details">
+					{#if $activePosition.next_tp?.price}
+						<div class="next-event-price">
+							À {formatPrice($activePosition.next_tp.price)}
+						</div>
+					{:else}
+						<div class="next-event-price">
+							À {formatPrice($activePosition.tp || 98980)}
+						</div>
+					{/if}
+					<div class="next-event-distance">
+						{formatPercent($activePosition.next_tp?.distance_pct || 0.40)}%
+						{#if $activePosition.next_tp?.distance_atr !== null && $activePosition.next_tp?.distance_atr !== undefined}
+							({$activePosition.next_tp.distance_atr.toFixed(2)} ATR)
+						{:else}
+							(0.50 ATR)
+						{/if}
+					</div>
+				</div>
+				<!-- Barre de progression TP -->
+				<div class="next-event-progress">
+					<div class="next-event-progress-bar tp-bar" style="width: {Math.max(0, Math.min(100, 100 - Math.abs($activePosition.next_tp?.distance_pct || 0.40)))}%"></div>
+				</div>
+			</div>
+
+			<!-- Section Stop Loss (protection) -->
+			<div class="next-event-section sl-section">
+				<div class="next-event-header">
+					<span class="next-event-label">🛡️ Stop Loss</span>
+					<span class="next-event-type" style="color: #ef4444">
+						Protection
+					</span>
+				</div>
+				<div class="next-event-details">
+					<div class="next-event-price">
+						À {formatPrice($activePosition.sl || 96530)}
+					</div>
+					<div class="next-event-distance">
+						{formatPercent($activePosition.next_sl?.distance_pct || -2.15)}%
+						({($activePosition.next_sl?.distance_atr || 2.69).toFixed(2)} ATR)
+					</div>
+				</div>
+				<!-- Barre de progression SL (inverse) -->
+				<div class="next-event-progress">
+					<div class="next-event-progress-bar sl-bar" style="width: {Math.max(0, Math.min(100, 100 - Math.abs(($activePosition.next_sl?.distance_pct || -2.15) * -0.4)))}%"></div>
+				</div>
+			</div>
+		{/if}
+
 		<div class="tpsl-grid">
 			<div class="tpsl-box tp" data-debug-name="activePosition.tp">
 				<div class="tpsl-label" data-debug-name="activePosition.tp">Prochain Take Profit</div>
@@ -422,6 +539,236 @@
 					<div class="trailing-stop" data-debug-name="activePosition.dynamic_sl">
 						Trailing: {formatPriceWithPrecision($activePosition.dynamic_sl)}
 					</div>
+				{/if}
+			</div>
+		</div>
+
+		<div class="telemetry-grid">
+			<div class="telemetry-box">
+				<div class="telemetry-title">Live</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">Dernière maj</span>
+					<span class="telemetry-value" class:stale-text={positionIsStale}>
+						{lastUpdateAgeSec !== null ? lastUpdateAgeSec.toFixed(1) + 's' : '-'}
+					</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">Opened</span>
+					<span class="telemetry-value">{formatTime($activePosition.opened_at)}</span>
+				</div>
+				{#if $activePosition.partial_tp_sold !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">TP partiel</span>
+						<span class="telemetry-value">
+							{$activePosition.partial_tp_sold ? 'oui' : 'non'}
+							{#if $activePosition.partial_tp_percent !== null && $activePosition.partial_tp_percent !== undefined}
+								({formatPercent($activePosition.partial_tp_percent)}%)
+							{/if}
+						</span>
+					</div>
+				{/if}
+				{#if $activePosition.partial_profit_usdt !== null && $activePosition.partial_profit_usdt !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Profit partiel</span>
+						<span class="telemetry-value">{formatUSDT($activePosition.partial_profit_usdt)} USDT</span>
+					</div>
+				{/if}
+				{#if $activePosition.tp_escalier_enabled}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Escalier lvl</span>
+						<span class="telemetry-value">{$activePosition.tp_escalier_current_level ?? '-'}</span>
+					</div>
+				{/if}
+			</div>
+
+			<div class="telemetry-box">
+				<div class="telemetry-title">ATR / Seuils</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">ATR%</span>
+					<span class="telemetry-value">
+						{$activePosition.atr_percent !== null && $activePosition.atr_percent !== undefined ? formatPercent($activePosition.atr_percent) + '%' : '-'}
+					</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">BE trig</span>
+					<span class="telemetry-value">{beTriggerPct !== null && beTriggerPct !== undefined ? formatPercent(beTriggerPct) + '%' : '-'}</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TR trig</span>
+					<span class="telemetry-value">{trailingTriggerPct !== null && trailingTriggerPct !== undefined ? formatPercent(trailingTriggerPct) + '%' : '-'}</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TR dist</span>
+					<span class="telemetry-value">
+						{$activePosition.trailing_distance_pct_effective !== null && $activePosition.trailing_distance_pct_effective !== undefined ? formatPercent($activePosition.trailing_distance_pct_effective) + '%' : '-'}
+					</span>
+				</div>
+				{#if $activePosition.break_even_atr_mult_effective !== null && $activePosition.break_even_atr_mult_effective !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">BE mult</span>
+						<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.break_even_atr_mult_effective, 2)}</span>
+					</div>
+				{/if}
+				{#if $activePosition.trailing_trigger_atr_mult_effective !== null && $activePosition.trailing_trigger_atr_mult_effective !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">TR mult</span>
+						<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.trailing_trigger_atr_mult_effective, 2)}</span>
+					</div>
+				{/if}
+				{#if $activePosition.trailing_distance_mult_effective !== null && $activePosition.trailing_distance_mult_effective !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Dist mult</span>
+						<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.trailing_distance_mult_effective, 2)}</span>
+					</div>
+				{/if}
+
+				{#if pnlScaleMax !== null && pnlProgressPct !== null}
+					<div class="telemetry-progress">
+						<div class="telemetry-progress-bar">
+							<div class="telemetry-progress-fill" style="width: {pnlProgressPct}%"></div>
+							{#if beMarkerPos !== null}
+								<div class="telemetry-marker be" style="left: {beMarkerPos}%"></div>
+							{/if}
+							{#if trailingMarkerPos !== null}
+								<div class="telemetry-marker trailing" style="left: {trailingMarkerPos}%"></div>
+							{/if}
+							{#if trailingMfeMarkerPos !== null}
+								<div class="telemetry-marker mfe" style="left: {trailingMfeMarkerPos}%"></div>
+							{/if}
+						</div>
+						<div class="telemetry-progress-legend">
+							<span>0%</span>
+							<span>{formatPercent(pnlScaleMax)}%</span>
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<div class="telemetry-box">
+				<div class="telemetry-title">BE / Trailing</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">BE set</span>
+					<span class="telemetry-value">{$activePosition.break_even_set ? 'oui' : 'non'}</span>
+				</div>
+				{#if $activePosition.break_even_triggered_at}
+					<div class="telemetry-row">
+						<span class="telemetry-label">BE at</span>
+						<span class="telemetry-value">{formatTime($activePosition.break_even_triggered_at)}</span>
+					</div>
+				{/if}
+				{#if $activePosition.break_even_price !== null && $activePosition.break_even_price !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">BE price</span>
+						<span class="telemetry-value">{formatPriceWithPrecision($activePosition.break_even_price)}</span>
+					</div>
+				{/if}
+				{#if $activePosition.break_even_pnl_pct !== null && $activePosition.break_even_pnl_pct !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">BE pnl</span>
+						<span class="telemetry-value">+{formatPercent($activePosition.break_even_pnl_pct)}%</span>
+					</div>
+				{/if}
+
+				<div class="telemetry-row">
+					<span class="telemetry-label">Trailing</span>
+					<span class="telemetry-value">{$activePosition.trailing_activated ? 'oui' : 'non'}</span>
+				</div>
+				{#if $activePosition.trailing_activated_at}
+					<div class="telemetry-row">
+						<span class="telemetry-label">TR at</span>
+						<span class="telemetry-value">{formatTime($activePosition.trailing_activated_at)}</span>
+					</div>
+				{/if}
+				{#if $activePosition.trailing_final_sl !== null && $activePosition.trailing_final_sl !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Final SL</span>
+						<span class="telemetry-value">{formatPriceWithPrecision($activePosition.trailing_final_sl)}</span>
+					</div>
+				{/if}
+				{#if $activePosition.dynamic_sl !== null && $activePosition.dynamic_sl !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Dyn SL</span>
+						<span class="telemetry-value">{formatPriceWithPrecision($activePosition.dynamic_sl)}</span>
+					</div>
+				{/if}
+
+				{#if $activePosition.trailing_mfe_enabled}
+					<div class="telemetry-row">
+						<span class="telemetry-label">MFE trig</span>
+						<span class="telemetry-value">{$activePosition.trailing_mfe_triggered ? 'oui' : 'non'}</span>
+					</div>
+					{#if $activePosition.trailing_mfe_triggered_at}
+						<div class="telemetry-row">
+							<span class="telemetry-label">MFE at</span>
+							<span class="telemetry-value">{formatTime($activePosition.trailing_mfe_triggered_at)}</span>
+						</div>
+					{/if}
+					{#if $activePosition.trailing_mfe_trigger_pnl_pct !== null && $activePosition.trailing_mfe_trigger_pnl_pct !== undefined}
+						<div class="telemetry-row">
+							<span class="telemetry-label">MFE pnl</span>
+							<span class="telemetry-value">+{formatPercent($activePosition.trailing_mfe_trigger_pnl_pct)}%</span>
+						</div>
+					{/if}
+				{/if}
+			</div>
+
+			<div class="telemetry-box">
+				<div class="telemetry-title">MFE / Stagnation</div>
+				{#if $activePosition.max_pnl_reached !== null && $activePosition.max_pnl_reached !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Max PnL</span>
+						<span class="telemetry-value">
+							+{formatPercent($activePosition.max_pnl_reached)}%
+							{#if $activePosition.max_pnl_timestamp}({formatTime($activePosition.max_pnl_timestamp)}){/if}
+						</span>
+					</div>
+				{/if}
+				{#if $activePosition.min_pnl_reached !== null && $activePosition.min_pnl_reached !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Min PnL</span>
+						<span class="telemetry-value">
+							{formatPercent($activePosition.min_pnl_reached)}%
+							{#if $activePosition.min_pnl_timestamp}({formatTime($activePosition.min_pnl_timestamp)}){/if}
+						</span>
+					</div>
+				{/if}
+				{#if $activePosition.max_price_reached !== null && $activePosition.max_price_reached !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Max px</span>
+						<span class="telemetry-value">{formatPriceWithPrecision($activePosition.max_price_reached)}</span>
+					</div>
+				{/if}
+				{#if $activePosition.min_price_reached !== null && $activePosition.min_price_reached !== undefined}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Min px</span>
+						<span class="telemetry-value">{formatPriceWithPrecision($activePosition.min_price_reached)}</span>
+					</div>
+				{/if}
+
+				{#if $activePosition.stagnation_enabled}
+					<div class="telemetry-row">
+						<span class="telemetry-label">Detected</span>
+						<span class="telemetry-value">{$activePosition.stagnation_detected_at ? formatTime($activePosition.stagnation_detected_at) : '-'}</span>
+					</div>
+					{#if $activePosition.stagnation_pnl_at_detection !== null && $activePosition.stagnation_pnl_at_detection !== undefined}
+						<div class="telemetry-row">
+							<span class="telemetry-label">PnL det</span>
+							<span class="telemetry-value">{formatPercent($activePosition.stagnation_pnl_at_detection)}%</span>
+						</div>
+					{/if}
+					{#if stagnationEffectiveTimeoutSec !== null && openedAgeSec !== null}
+						<div class="telemetry-row">
+							<span class="telemetry-label">Timeout</span>
+							<span class="telemetry-value">{stagnationTimeLeftSec !== null ? Math.round(stagnationTimeLeftSec) + 's' : '-'}</span>
+						</div>
+						{#if stagnationEffectiveProgressPct !== null}
+							<div class="telemetry-progress">
+								<div class="telemetry-progress-bar small">
+									<div class="telemetry-progress-fill" style="width: {stagnationEffectiveProgressPct}%"></div>
+								</div>
+							</div>
+						{/if}
+					{/if}
 				{/if}
 			</div>
 		</div>
@@ -565,6 +912,23 @@
 		font-family: 'Courier New', monospace;
 	}
 
+	.live-badge {
+		background: rgba(0, 255, 136, 0.1);
+		color: #00ff88;
+		padding: 4px 12px;
+		border-radius: 6px;
+		font-size: 11px;
+		font-weight: bold;
+		border: 1px solid rgba(0, 255, 136, 0.3);
+		font-family: 'Courier New', monospace;
+	}
+
+	.live-badge.stale {
+		background: rgba(255, 68, 68, 0.15);
+		color: #ff4444;
+		border: 1px solid rgba(255, 68, 68, 0.4);
+	}
+
 	.direction.long {
 		background: rgba(0, 255, 136, 0.2);
 		color: #00ff88;
@@ -637,6 +1001,208 @@
 		margin-bottom: 15px;
 	}
 
+	.telemetry-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 12px;
+		margin-bottom: 15px;
+	}
+
+	.telemetry-box {
+		background: #0a0e27;
+		padding: 12px;
+		border-radius: 8px;
+		border: 1px solid #2a3a6b;
+	}
+
+	.telemetry-title {
+		font-size: 11px;
+		color: #00aaff;
+		margin-bottom: 10px;
+		text-transform: uppercase;
+		font-weight: bold;
+	}
+
+	.telemetry-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 10px;
+		margin-top: 4px;
+		font-size: 11px;
+		color: #888;
+	}
+
+	.telemetry-label {
+		text-transform: uppercase;
+		font-size: 10px;
+	}
+
+	.telemetry-value {
+		color: #fff;
+		font-weight: bold;
+		font-family: 'Courier New', monospace;
+		text-align: right;
+	}
+
+	.telemetry-value.stale-text {
+		color: #ff4444;
+	}
+
+	.telemetry-progress {
+		margin-top: 10px;
+	}
+
+	.telemetry-progress-bar {
+		height: 12px;
+		background: rgba(255, 255, 255, 0.08);
+		border-radius: 8px;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.telemetry-progress-bar.small {
+		height: 8px;
+	}
+
+	.telemetry-progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #00aaff 0%, #00ff88 100%);
+		border-radius: 8px;
+		transition: width 0.5s ease;
+	}
+
+	.telemetry-marker {
+		position: absolute;
+		top: -2px;
+		width: 2px;
+		height: 16px;
+		opacity: 0.95;
+	}
+
+	.telemetry-marker.be {
+		background: #00ff88;
+	}
+
+	.telemetry-marker.trailing {
+		background: #ffaa00;
+	}
+
+	.telemetry-marker.mfe {
+		background: #b388ff;
+	}
+
+	.telemetry-progress-legend {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 6px;
+		font-size: 10px;
+		color: #888;
+		font-family: 'Courier New', monospace;
+	}
+
+	/* 🔥 NOUVEAU: Styles pour les sections TP et SL distinctes */
+	.next-event-section {
+		background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+		border: 1px solid #2a3a6b;
+		border-radius: 12px;
+		padding: 16px;
+		margin-bottom: 16px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		transition: all 0.3s ease;
+	}
+
+	.next-event-section:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+	}
+
+	/* Section TP - thème vert/or */
+	.next-event-section.tp-section {
+		border-color: rgba(16, 185, 129, 0.3);
+		background: linear-gradient(135deg, #0a1f1a 0%, #1a2f2a 100%);
+	}
+
+	/* Section SL - thème rouge/or */
+	.next-event-section.sl-section {
+		border-color: rgba(239, 68, 68, 0.3);
+		background: linear-gradient(135deg, #1f0a0a 0%, #2f1a1a 100%);
+	}
+
+	.next-event-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.next-event-label {
+		font-size: 12px;
+		color: #888;
+		text-transform: uppercase;
+		font-weight: bold;
+		letter-spacing: 0.5px;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.next-event-type {
+		font-size: 14px;
+		font-weight: bold;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.next-event-details {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.next-event-price {
+		font-size: 16px;
+		font-weight: bold;
+		color: #fff;
+	}
+
+	.next-event-distance {
+		font-size: 14px;
+		color: #ccc;
+		font-family: 'Courier New', monospace;
+	}
+
+	.next-event-progress {
+		height: 6px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.next-event-progress-bar {
+		height: 100%;
+		border-radius: 3px;
+		border: 1px solid;
+		transition: width 0.3s ease, background-color 0.3s ease;
+	}
+
+	/* Barre TP - verte */
+	.next-event-progress-bar.tp-bar {
+		background-color: rgba(16, 185, 129, 0.2);
+		border-color: #10b981;
+		box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+	}
+
+	/* Barre SL - rouge */
+	.next-event-progress-bar.sl-bar {
+		background-color: rgba(239, 68, 68, 0.2);
+		border-color: #ef4444;
+		box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+	}
+
+	/* Styles pour les badges TP/SL existants */
 	.tpsl-box {
 		background: #0a0e27;
 		padding: 15px;
@@ -885,6 +1451,10 @@
 	@media (max-width: 768px) {
 		.price-grid {
 			grid-template-columns: repeat(2, 1fr);
+		}
+
+		.telemetry-grid {
+			grid-template-columns: 1fr;
 		}
 
 		.pnl-value {

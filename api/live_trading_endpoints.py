@@ -31,7 +31,7 @@ def load_live_config() -> Dict[str, Any]:
         'max_slippage_pct': 0.15,
         'max_latency_ms': 1000,
         'max_pnl_discrepancy_pct': 20,
-        'default_leverage': 10  # 🔥 FUTURES: Levier par défaut (1-125x)
+        'default_leverage': 1   # 🔥 FUTURES: Levier par défaut (1-125x)
     }
 
     if not LIVE_CONFIG_FILE.exists():
@@ -71,7 +71,14 @@ async def get_live_stats():
         config = load_live_config()
 
         # Récupérer stats depuis LiveOrderManager si actif
-        from main import live_order_manager
+        from core.state_manager import get_state_manager
+
+        state = get_state_manager()
+        live_order_manager = state.get_live_order_manager()
+        if not live_order_manager:
+            from main import live_order_manager as legacy_live_order_manager
+
+            live_order_manager = legacy_live_order_manager
 
         if live_order_manager:
             stats = live_order_manager.get_stats()
@@ -253,7 +260,7 @@ async def update_live_config(data: Dict[str, Any]):
             if config.get('api_key_mexc') and config.get('api_secret_mexc'):
                 import main
                 from config import TRADING_CONFIG
-                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 1))
                 browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
                 use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
 

@@ -59,20 +59,50 @@ async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
         # Seuil dynamique selon mode TP/SL
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
 
+        max_spread_override = TRADING_CONFIG.get('max_spread_pct')
+        max_spread_fixe = TRADING_CONFIG.get('max_spread_pct_fixe')
+        max_spread_atr = TRADING_CONFIG.get('max_spread_pct_atr')
+
+        try:
+            max_spread_override = float(max_spread_override) if max_spread_override is not None else None
+        except (TypeError, ValueError):
+            max_spread_override = None
+
+        try:
+            max_spread_fixe = float(max_spread_fixe) if max_spread_fixe is not None else None
+        except (TypeError, ValueError):
+            max_spread_fixe = None
+
+        try:
+            max_spread_atr = float(max_spread_atr) if max_spread_atr is not None else None
+        except (TypeError, ValueError):
+            max_spread_atr = None
+
         if tp_sl_mode == 'FIXE':
-            max_spread = 0.03  # 0.03% pour TP +0.25%
+            if max_spread_fixe is not None:
+                max_spread = max_spread_fixe
+            elif max_spread_override is not None:
+                max_spread = max_spread_override
+            else:
+                max_spread = 0.03  # 0.03% pour TP +0.25%
         else:
-            max_spread = 0.06  # 0.06% pour TP ATR
+            if max_spread_atr is not None:
+                max_spread = max_spread_atr
+            elif max_spread_override is not None:
+                max_spread = max_spread_override
+            else:
+                max_spread = 0.06  # 0.06% pour TP ATR
 
         valid = spread_pct <= max_spread
 
         # Quality scoring
-        if spread_pct < 0.01:
-            quality = 'EXCELLENT'
-        elif spread_pct < 0.015:
-            quality = 'GOOD'
-        elif spread_pct < max_spread:
-            quality = 'ACCEPTABLE'
+        if valid:
+            if spread_pct < 0.01:
+                quality = 'EXCELLENT'
+            elif spread_pct < 0.015:
+                quality = 'GOOD'
+            else:
+                quality = 'ACCEPTABLE'
         else:
             quality = 'POOR'
 
