@@ -532,7 +532,8 @@ async def _scan_top_pairs():
                                                 symbol=symbol,
                                                 reject_reason=reject_reason,
                                                 reject_category="ml_gb_confidence",
-                                                ml_confidence=ml_conf_pct
+                                                ml_confidence=ml_conf_pct,
+                                                ml_threshold_used=gb_min_confidence * 100
                                             )
                                 except Exception as pg_err:
                                     logger.debug(f"⚠️ Erreur update PostgreSQL ml_confidence: {type(pg_err).__name__}: {pg_err}")
@@ -653,6 +654,50 @@ async def _scan_top_pairs():
 
                                 if should_reject:
                                     logger.warning(f"❌ ML REJETTE le trade: {reject_reason}")
+                                    
+                                    # 🔥 FIX 16/01: Logger le rejet ML v1 dans scan_logs
+                                    try:
+                                        pg_logger = get_pg_datalogger()
+                                        if pg_logger and pg_logger.enabled:
+                                            # Déterminer la catégorie selon le mode
+                                            if mode == 'STRICT':
+                                                reject_category = "ml_xgboost_strict"
+                                            elif mode == 'SOFT':
+                                                reject_category = "ml_xgboost_soft"
+                                            elif mode == 'NEGATIVE':
+                                                reject_category = "ml_negative_filter"
+                                            else:
+                                                reject_category = "ml_xgboost_unknown"
+                                            
+                                            # Stocker le seuil utilisé dans reject_reason
+                                            if mode == 'STRICT':
+                                                full_reason = f"{reject_reason} | seuil_min: {min_confidence*100:.1f}%"
+                                            elif mode == 'SOFT':
+                                                full_reason = f"{reject_reason} | seuil_loss: {max_loss_confidence*100:.1f}%"
+                                            elif mode == 'NEGATIVE':
+                                                full_reason = f"{reject_reason} | seuil_loss: {loss_threshold*100:.1f}%"
+                                            else:
+                                                full_reason = reject_reason
+                                            
+                                            # Déterminer le seuil utilisé selon le mode
+                                            threshold_used = None
+                                            if mode == 'STRICT':
+                                                threshold_used = min_confidence * 100
+                                            elif mode == 'SOFT':
+                                                threshold_used = max_loss_confidence * 100
+                                            elif mode == 'NEGATIVE':
+                                                threshold_used = loss_threshold * 100
+                                            
+                                            await pg_logger.update_ml_rejection_async(
+                                                symbol=symbol,
+                                                reject_reason=full_reason,
+                                                reject_category=reject_category,
+                                                ml_confidence=confidence*100 if confidence else None,
+                                                ml_threshold_used=threshold_used
+                                            )
+                                    except Exception as ml_rej_err:
+                                        logger.debug(f"⚠️ Erreur log ML v1 rejection: {ml_rej_err}")
+                                    
                                     return  # Bloquer l'ouverture de position
                                 else:
                                     logger.info(f"✅ ML APPROUVE le trade: {prediction} (confiance: {confidence*100:.1f}%)")

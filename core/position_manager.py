@@ -1346,7 +1346,8 @@ class PositionManager:
                                         symbol=symbol,
                                         reject_reason=reject_reason_calib,
                                         reject_category="ml_calibration_winrate",
-                                        ml_confidence=ml_confidence_pct
+                                        ml_confidence=ml_confidence_pct,
+                                        calibrated_winrate=calibrated_wr
                                     )
                                 except Exception:
                                     pass
@@ -1360,7 +1361,8 @@ class PositionManager:
                                         symbol=symbol,
                                         reject_reason=reject_reason_calib,
                                         reject_category="ml_calibration_winrate",
-                                        ml_confidence=ml_confidence_pct
+                                        ml_confidence=ml_confidence_pct,
+                                        calibrated_winrate=calibrated_wr
                                     )
                                 except Exception:
                                     pass

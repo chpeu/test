@@ -92,6 +92,25 @@ def _extract_numeric_value(value: Any) -> Optional[float]:
     return None
 
 
+def _derive_ml_threshold_type(reject_category: Optional[str]) -> Optional[str]:
+    """
+    Déduire le type de seuil ML à partir de la catégorie de rejet.
+    """
+    if not reject_category:
+        return None
+    if 'gb_confidence' in reject_category:
+        return 'gb_confidence'
+    if 'calibration' in reject_category:
+        return 'calibration_winrate'
+    if 'threshold_optimizer' in reject_category:
+        return 'threshold_optimizer'
+    if 'xgboost' in reject_category:
+        return 'xgboost_' + reject_category.split('_')[-1]
+    if 'negative' in reject_category:
+        return 'negative_filter'
+    return reject_category
+
+
 def serialize_config_safe(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     🔥 FIX BUG #1: Convertir config en JSON-safe dict
@@ -304,6 +323,38 @@ class PostgreSQLDataLogger:
                 conn.rollback()
                 self._return_connection(conn)
             return None
+
+    def _update_scan_buffer(
+        self,
+        symbol: str,
+        updates: Dict[str, Any],
+        only_if_missing: Optional[Sequence[str]] = None
+    ) -> bool:
+        """
+        Mettre à jour le dernier scan en buffer pour un symbole donné.
+        Utile lorsque les scans sont encore en batch (non encore flushés).
+        """
+        if not symbol or not updates:
+            return False
+
+        if not self.scan_buffer:
+            return False
+
+        only_if_missing_set = set(only_if_missing or [])
+        with self.buffer_lock:
+            for item in reversed(self.scan_buffer):
+                if item.get('symbol') != symbol:
+                    continue
+                scan_data = item.get('scan_data')
+                if not isinstance(scan_data, dict):
+                    scan_data = {}
+                    item['scan_data'] = scan_data
+                for key, value in updates.items():
+                    if key in only_if_missing_set and scan_data.get(key) is not None:
+                        continue
+                    scan_data[key] = value
+                return True
+        return False
     
     def get_or_create_session(self, session_id: Optional[str] = None) -> Optional[str]:
         """
@@ -546,6 +597,7 @@ class PostgreSQLDataLogger:
                     
                     -- 🔥 ML Confidence (confiance réelle du modèle)
                     ml_confidence,
+                    ml_threshold_used, ml_threshold_type, calibrated_winrate,
                     
                     -- Params snapshot
                     params_snapshot,
@@ -581,7 +633,7 @@ class PostgreSQLDataLogger:
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s,
+                    %s, %s, %s, %s,
                     %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
@@ -648,6 +700,15 @@ class PostgreSQLDataLogger:
             ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
             if ml_confidence_value is not None and ml_confidence_value <= 1.0:
                 ml_confidence_value = ml_confidence_value * 100.0
+            ml_threshold_used_value = _extract_numeric_value(scan_data.get('ml_threshold_used'))
+            if ml_threshold_used_value is not None and ml_threshold_used_value <= 1.0:
+                ml_threshold_used_value = ml_threshold_used_value * 100.0
+            calibrated_wr_value = _extract_numeric_value(scan_data.get('calibrated_winrate'))
+            if calibrated_wr_value is not None and calibrated_wr_value <= 1.0:
+                calibrated_wr_value = calibrated_wr_value * 100.0
+            ml_threshold_type = scan_data.get('ml_threshold_type')
+            if not ml_threshold_type:
+                ml_threshold_type = _derive_ml_threshold_type(scan_data.get('reject_reason_category'))
             params = (
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
@@ -735,6 +796,9 @@ class PostgreSQLDataLogger:
                 
                 # 🔥 ML Confidence (confiance réelle du modèle, si disponible)
                 ml_confidence_value,
+                ml_threshold_used_value,
+                ml_threshold_type,
+                calibrated_wr_value,
                 
                 # Params
                 json.dumps(params_snap),
@@ -824,6 +888,14 @@ class PostgreSQLDataLogger:
             if ml_confidence_value is not None and ml_confidence_value <= 1.0:
                 ml_confidence_value = ml_confidence_value * 100.0
 
+            buffer_updated = False
+            if ml_confidence_value is not None:
+                buffer_updated = self._update_scan_buffer(
+                    symbol,
+                    {'ml_confidence': ml_confidence_value},
+                    only_if_missing=['ml_confidence']
+                )
+
             # Mettre à jour le scan le plus récent pour ce symbole
             query = """
                 UPDATE scan_logs 
@@ -853,6 +925,9 @@ class PostgreSQLDataLogger:
             if result is not None:
                 logger.info(f"✅ ml_confidence mis à jour pour {symbol}: {ml_confidence_value:.1f}%")
                 return True
+            if buffer_updated:
+                logger.debug(f"📝 ml_confidence mis à jour en buffer pour {symbol}")
+                return True
             return False
             
         except Exception as e:
@@ -865,6 +940,8 @@ class PostgreSQLDataLogger:
         reject_reason: str,
         reject_category: str,
         ml_confidence: Optional[float] = None,
+        ml_threshold_used: Optional[float] = None,
+        calibrated_winrate: Optional[float] = None,
         minutes_ago: int = 5
     ) -> bool:
         """
@@ -878,6 +955,8 @@ class PostgreSQLDataLogger:
             reject_reason: Raison du rejet (ex: "ML confidence 45.2% < seuil 57%")
             reject_category: Catégorie du rejet (ex: "ml_gb_confidence", "ml_threshold", "ml_calibration")
             ml_confidence: Confiance ML en pourcentage (optionnel)
+            ml_threshold_used: Seuil ML utilisé en pourcentage (ex: 55.0 pour 55%)
+            calibrated_winrate: Winrate calibré en pourcentage si applicable
             minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
         
         Returns:
@@ -887,45 +966,72 @@ class PostgreSQLDataLogger:
             return False
         
         try:
-            # Construire la requête selon si ml_confidence est fourni
+            # Normaliser les valeurs
+            ml_confidence_value = None
             if ml_confidence is not None:
                 ml_confidence_value = _extract_numeric_value(ml_confidence)
                 if ml_confidence_value is not None and ml_confidence_value <= 1.0:
                     ml_confidence_value = ml_confidence_value * 100.0
-                query = """
-                    UPDATE scan_logs 
-                    SET reject_reason = %s,
-                        reject_reason_category = %s,
-                        ml_confidence = %s,
-                        is_opportunity = FALSE
-                    WHERE id = (
-                        SELECT id FROM scan_logs 
-                        WHERE symbol = %s 
-                        AND timestamp > NOW() - INTERVAL '%s minutes'
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                    )
-                """
-                params = (reject_reason, reject_category, ml_confidence_value, symbol, minutes_ago)
-            else:
-                query = """
-                    UPDATE scan_logs 
-                    SET reject_reason = %s,
-                        reject_reason_category = %s,
-                        is_opportunity = FALSE
-                    WHERE id = (
-                        SELECT id FROM scan_logs 
-                        WHERE symbol = %s 
-                        AND timestamp > NOW() - INTERVAL '%s minutes'
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                    )
-                """
-                params = (reject_reason, reject_category, symbol, minutes_ago)
+            
+            ml_threshold_value = None
+            if ml_threshold_used is not None:
+                ml_threshold_value = _extract_numeric_value(ml_threshold_used)
+                if ml_threshold_value is not None and ml_threshold_value <= 1.0:
+                    ml_threshold_value = ml_threshold_value * 100.0
+            
+            calibrated_wr_value = None
+            if calibrated_winrate is not None:
+                calibrated_wr_value = _extract_numeric_value(calibrated_winrate)
+                if calibrated_wr_value is not None and calibrated_wr_value <= 1.0:
+                    calibrated_wr_value = calibrated_wr_value * 100.0
+
+            # Déterminer ml_threshold_type depuis reject_category
+            ml_threshold_type = _derive_ml_threshold_type(reject_category)
+
+            buffer_updates = {
+                'reject_reason': reject_reason,
+                'reject_reason_category': reject_category,
+                'is_opportunity': False
+            }
+            if ml_confidence_value is not None:
+                buffer_updates['ml_confidence'] = ml_confidence_value
+            if ml_threshold_value is not None:
+                buffer_updates['ml_threshold_used'] = ml_threshold_value
+            if ml_threshold_type is not None:
+                buffer_updates['ml_threshold_type'] = ml_threshold_type
+            if calibrated_wr_value is not None:
+                buffer_updates['calibrated_winrate'] = calibrated_wr_value
+
+            buffer_updated = self._update_scan_buffer(symbol, buffer_updates)
+            
+            # Construire la requête avec toutes les nouvelles colonnes
+            query = """
+                UPDATE scan_logs 
+                SET reject_reason = %s,
+                    reject_reason_category = %s,
+                    ml_confidence = %s,
+                    ml_threshold_used = %s,
+                    ml_threshold_type = %s,
+                    calibrated_winrate = %s,
+                    is_opportunity = FALSE
+                WHERE id = (
+                    SELECT id FROM scan_logs 
+                    WHERE symbol = %s 
+                    AND timestamp > NOW() - INTERVAL '%s minutes'
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                )
+            """
+            params = (reject_reason, reject_category, ml_confidence_value, 
+                     ml_threshold_value, ml_threshold_type, calibrated_wr_value,
+                     symbol, minutes_ago)
             
             result = self._execute_query(query, params)
             if result is not None:
                 logger.info(f"✅ ML rejection logged for {symbol}: {reject_category} ({reject_reason[:50]}...)")
+                return True
+            if buffer_updated:
+                logger.debug(f"📝 ML rejection mis à jour en buffer pour {symbol}")
                 return True
             return False
             
@@ -2632,6 +2738,9 @@ class PostgreSQLDataLogger:
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 # 🔥 ML Confidence (confiance réelle du modèle)
                 ml_confidence_value,
+                ml_threshold_used_value,
+                ml_threshold_type,
+                calibrated_wr_value,
                 # Params
                 json.dumps(params_snap),
                 # Config
@@ -2718,6 +2827,7 @@ class PostgreSQLDataLogger:
             'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
             # 🔥 ML Confidence (confiance réelle du modèle)
             'ml_confidence',
+            'ml_threshold_used', 'ml_threshold_type', 'calibrated_winrate',
             'params_snapshot',
             'config_min_score_required', 'config_snr_threshold',
             'config_atr_min_1m', 'config_atr_max_1m',
@@ -2983,6 +3093,8 @@ class PostgreSQLDataLogger:
         reject_reason: str,
         reject_category: str,
         ml_confidence: Optional[float] = None,
+        ml_threshold_used: Optional[float] = None,
+        calibrated_winrate: Optional[float] = None,
         minutes_ago: int = 5
     ) -> bool:
         """
@@ -2992,7 +3104,7 @@ class PostgreSQLDataLogger:
         import asyncio
         return await asyncio.to_thread(
             self.update_ml_rejection, symbol, reject_reason, reject_category,
-            ml_confidence, minutes_ago
+            ml_confidence, ml_threshold_used, calibrated_winrate, minutes_ago
         )
     
     async def get_ml_confidence_for_symbol_async(

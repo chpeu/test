@@ -1,0 +1,90 @@
+{
+  "final_status": "⚠️ NEEDS FIXES",
+  "success_rate": 75.0,
+  "total_tests": 12,
+  "passed_tests": 9,
+  "failed_tests": 3,
+  "critical_failures": [
+    "Integration Cycle"
+  ],
+  "minor_failures": [
+    "Scan Creation Fixed",
+    "Data Validation"
+  ],
+  "recommendation": "Implémentation fonctionnelle mais nécessite des corrections.",
+  "test_details": [
+    {
+      "test": "Schema Validation",
+      "success": true,
+      "details": "3 colonnes ML avec types corrects",
+      "timestamp": "2026-01-16T12:53:28.572275"
+    },
+    {
+      "test": "Scan Creation Fixed",
+      "success": false,
+      "details": "log_scan returned None ou 0",
+      "timestamp": "2026-01-16T12:53:29.091193"
+    },
+    {
+      "test": "ML Workflow - GradientBoosting Low Confidence",
+      "success": true,
+      "details": "Logging réussi",
+      "timestamp": "2026-01-16T12:53:29.607709"
+    },
+    {
+      "test": "ML Workflow - XGBoost Strict Mode",
+      "success": true,
+      "details": "Logging réussi",
+      "timestamp": "2026-01-16T12:53:29.607709"
+    },
+    {
+      "test": "ML Workflow - ML Calibration Winrate",
+      "success": true,
+      "details": "Logging réussi",
+      "timestamp": "2026-01-16T12:53:29.607709"
+    },
+    {
+      "test": "ML Workflow - Negative Filter",
+      "success": true,
+      "details": "Logging réussi",
+      "timestamp": "2026-01-16T12:53:29.607709"
+    },
+    {
+      "test": "ML Workflow - Threshold Optimizer",
+      "success": true,
+      "details": "Logging réussi",
+      "timestamp": "2026-01-16T12:53:29.612137"
+    },
+    {
+      "test": "Complete ML Workflow",
+      "success": true,
+      "details": "5/5 scénarios réussis",
+      "timestamp": "2026-01-16T12:53:29.612137"
+    },
+    {
+      "test": "Data Validation",
+      "success": false,
+      "details": "Aucun rejet ML trouvé",
+      "timestamp": "2026-01-16T12:53:30.125951"
+    },
+    {
+      "test": "Export Logic Direct",
+      "success": true,
+      "details": "Toutes les colonnes ML présentes dans main.py: ['ml_threshold_used', 'ml_threshold_type', 'calibrated_winrate']",
+      "timestamp": "2026-01-16T12:53:30.638394"
+    },
+    {
+      "test": "Export-DB Consistency",
+      "success": true,
+      "details": "Colonnes export cohérentes avec DB",
+      "timestamp": "2026-01-16T12:53:30.640958"
+    },
+    {
+      "test": "Integration Cycle",
+      "success": false,
+      "details": "Erreur: unsupported operand type(s) for -: 'decimal.Decimal' and 'float'",
+      "timestamp": "2026-01-16T12:53:31.162759"
+    }
+  ],
+  "timestamp": "2026-01-16T12:53:31.162759"
+}

@@ -2168,7 +2168,8 @@ async def scanner_loop_callback() -> None:
                                                                     symbol=symbol,
                                                                     reject_reason=reject_reason,
                                                                     reject_category=reject_cat,
-                                                                    ml_confidence=ml_conf_pct
+                                                                    ml_confidence=ml_conf_pct,
+                                                                    ml_threshold_used=gb_min_confidence * 100
                                                                 )
                                                         except ImportError as ml_rej_err:
                                                             # Module PostgreSQL non disponible
@@ -8101,6 +8102,8 @@ async def export_datalogger_excel(
                         'config_use_candle_close', 'config_candle_close_threshold_seconds',
                         'config_use_momentum_continuity', 'config_momentum_lookback',
                         'delta_volume', 'imbalance_normalized', 'book_depth_ratio',
+                        # 🔥 ML Decision metrics
+                        'ml_confidence', 'ml_threshold_used', 'ml_threshold_type', 'calibrated_winrate',
                         # 🔥 SPRINT 1: Colonnes Market Regime et Circuit Breaker
                         'entry_market_regime', 'entry_market_regime_avg_atr', 'entry_market_regime_avg_adx',
                         'entry_min_score_required', 'entry_atr_mult_sl', 'entry_atr_mult_tp',
@@ -8151,9 +8154,12 @@ async def export_datalogger_excel(
                         if col not in headers:
                             headers.append(col)
 
-                # 🔥 PHASE 0: Pour scan_logs, ajouter colonnes session/régime
+                # 🔥 PHASE 0: Pour scan_logs, ajouter colonnes session/régime et seuils ML
                 if table_name == 'scan_logs':
-                    scan_v2_columns = ['session_market', 'hour_utc', 'regime_at_scan', 'regime_confidence_at_scan']
+                    scan_v2_columns = [
+                        'session_market', 'hour_utc', 'regime_at_scan', 'regime_confidence_at_scan',
+                        'ml_threshold_used', 'ml_threshold_type', 'calibrated_winrate'
+                    ]
                     for col in scan_v2_columns:
                         if col not in headers:
                             headers.append(col)
@@ -8165,6 +8171,15 @@ async def export_datalogger_excel(
                         'session_market', 'hysteresis_applied', 'outliers_filtered_count', 'ml_confidence'
                     ]
                     for col in mrh_v2_columns:
+                        if col not in headers:
+                            headers.append(col)
+
+                if table_name == 'opportunities':
+                    opp_columns = [
+                        'ml_confidence', 'ml_threshold_used', 'ml_threshold_type', 'calibrated_winrate',
+                        'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx'
+                    ]
+                    for col in opp_columns:
                         if col not in headers:
                             headers.append(col)
 

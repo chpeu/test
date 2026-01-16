@@ -2217,6 +2217,27 @@ class TechnicalAnalyzer:
             result['indicators_1m'] = indicators_1m
             result['indicators_5m'] = indicators_5m
             
+            # 🔥 FIX: Ajouter métriques de filtres même lors de rejet pour éviter colonnes vides en DB
+            filters_rejection = {
+                'snr_1m': analysis_1m.get('snr') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'snr_5m': analysis_5m.get('snr') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m and isinstance(analysis_5m, dict) else None
+            }
+            result['filters'] = filters_rejection
+            
             return result
 
         # 🔥 SPRINT 1.2: Top-level analyze_pair - Distinguer toutes erreurs possibles

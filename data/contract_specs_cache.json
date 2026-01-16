@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768505795.084254,
+  "timestamp": 1768547647.9840848,
   "specs": {
     "AAVE_USDT": {
       "symbol": "AAVE_USDT",
@@ -210,6 +210,96 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "XLM_USDT": {
+      "symbol": "XLM_USDT",
+      "min_vol": 1.0,
+      "max_vol": 310000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "SHIB_USDT": {
+      "symbol": "SHIB_USDT",
+      "min_vol": 1.0,
+      "max_vol": 150000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-09,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1000.0
+    },
+    "AVAX_USDT": {
+      "symbol": "AVAX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "H_USDT": {
+      "symbol": "H_USDT",
+      "min_vol": 1.0,
+      "max_vol": 200000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "DASH_USDT": {
+      "symbol": "DASH_USDT",
+      "min_vol": 1.0,
+      "max_vol": 72000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "FARTCOIN_USDT": {
+      "symbol": "FARTCOIN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 56000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "ETC_USDT": {
+      "symbol": "ETC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 560000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "PIPPIN_USDT": {
+      "symbol": "PIPPIN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 9800.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "APT_USDT": {
+      "symbol": "APT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 5800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }
