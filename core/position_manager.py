@@ -2377,11 +2377,11 @@ class PositionManager:
             recovery_mult = recovery_state.position_size_mult
         
         if recovery_mult < 1.0:
-            # Si le Recovery Mode est actif, il dicte la réduction
+            # Le Recovery Mode dicte la réduction (activé ou pas)
             # Cela remplace tout multiplicateur de streak précédent
             streak_mult = recovery_mult
             logger.debug(
-                f"🔄 Recovery Mode Actif: Taille réduite à {recovery_mult:.0%} (Streak de {self.config.loss_streak} pertes)"
+                f"🔄 Recovery Mode: Taille réduite à {recovery_mult:.0%} (Streak de {self.config.loss_streak} pertes)"
             )
 
         # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
