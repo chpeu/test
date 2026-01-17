@@ -201,6 +201,13 @@ _adaptive_circuit_breaker = AdaptiveCircuitBreaker(
 )
 
 
+def _reraise_last_retry_error(retry_state):
+    """Ré-émettre la dernière exception pour éviter RetryError."""
+    if retry_state.outcome.failed:
+        raise retry_state.outcome.exception()
+    return retry_state.outcome.result()
+
+
 @retry(
     stop=stop_after_attempt(RETRY_CONFIG['max_attempts']),
     wait=wait_exponential(
@@ -209,7 +216,8 @@ _adaptive_circuit_breaker = AdaptiveCircuitBreaker(
         max=RETRY_CONFIG['wait_max']
     ),
     retry=retry_if_exception_type((ConnectionError, TimeoutError, asyncio.TimeoutError, NetworkError, RateLimitError)),
-    reraise=True
+    reraise=True,
+    retry_error_callback=_reraise_last_retry_error
 )
 async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
     """
