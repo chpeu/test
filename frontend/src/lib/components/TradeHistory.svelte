@@ -4,6 +4,14 @@
 
 	import { formatAdaptive, formatPercent, formatUSDT, formatPrice, getSignificantDecimals } from '$lib/utils/format';
 
+	const ORDER_EVENT_TYPES = new Set(['PARTIAL_TP', 'TP_ESCALIER_LEVEL', 'EXIT']);
+	const ORDER_EVENT_LABELS = {
+		PARTIAL_TP: 'TP partiel',
+		TP_ESCALIER_LEVEL: 'TP escalier',
+		EXIT: 'Sortie finale'
+	};
+	const ORDER_EVENT_ORDER = ['PARTIAL_TP', 'TP_ESCALIER_LEVEL', 'EXIT'];
+
 	// 🔥 PAGINATION: Variables de pagination
 	let currentPage = 1;
 	const tradesPerPage = 50;
@@ -14,6 +22,52 @@
 		const end = start + tradesPerPage;
 		return $trades.slice(start, end);
 	});
+
+	// 🔥 Détails d'ordres (trade_events)
+	let expandedTrades = new Set();
+	let tradeEventsById = {};
+	let tradeEventsLoading = {};
+	let tradeEventsError = {};
+
+	function isTradeExpanded(tradeId) {
+		return expandedTrades.has(tradeId);
+	}
+
+	async function loadTradeEvents(tradeId) {
+		if (!tradeId || tradeEventsById[tradeId] || tradeEventsLoading[tradeId]) return;
+		tradeEventsLoading = { ...tradeEventsLoading, [tradeId]: true };
+		tradeEventsError = { ...tradeEventsError, [tradeId]: null };
+		try {
+			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+			if (!ws || !ws.connected) {
+				throw new Error('WebSocket non connecté');
+			}
+			const response = await sendRequestViaWS('trade_events', { trade_id: tradeId });
+			const payload = response?.data || response || {};
+			if (payload?.error) {
+				throw new Error(payload.error);
+			}
+			tradeEventsById = { ...tradeEventsById, [tradeId]: payload?.events || [] };
+		} catch (err) {
+			tradeEventsError = { ...tradeEventsError, [tradeId]: err?.message || 'Erreur chargement ordres' };
+		} finally {
+			tradeEventsLoading = { ...tradeEventsLoading, [tradeId]: false };
+		}
+	}
+
+	function toggleTrade(trade) {
+		const tradeId = trade?.id;
+		if (!tradeId) return;
+		const next = new Set(expandedTrades);
+		if (next.has(tradeId)) {
+			next.delete(tradeId);
+		} else {
+			next.add(tradeId);
+			loadTradeEvents(tradeId);
+		}
+		expandedTrades = next;
+	}
 
 	// Nombre total de pages
 	const totalPages = derived(sortedTrades, $trades => {
@@ -106,6 +160,133 @@
 		return `${seconds}s`;
 	}
 
+	function getEventLabel(event) {
+		return ORDER_EVENT_LABELS[event?.event_type] || event?.event_type || 'Ordre';
+	}
+
+	function getEventMeta(event) {
+		const details = event?.details || {};
+		const metaBits = [];
+		if (details.level !== undefined) {
+			metaBits.push(`Niveau ${details.level}`);
+		}
+		if (details.sold_pct !== undefined) {
+			metaBits.push(`${formatPercent(details.sold_pct)}%`);
+		}
+		if (details.sold_usdt !== undefined) {
+			metaBits.push(`${formatUSDT(details.sold_usdt)} USDT`);
+		}
+		if (details.sold_qty !== undefined) {
+			metaBits.push(`${formatQuantity(details.sold_qty)} qty`);
+		}
+		if (details.sold_contracts !== undefined) {
+			metaBits.push(`${formatQuantity(details.sold_contracts)} ctr`);
+		}
+		if (details.remaining_usdt !== undefined) {
+			metaBits.push(`reste ${formatUSDT(details.remaining_usdt)} USDT`);
+		}
+		if (details.remaining_qty !== undefined) {
+			metaBits.push(`reste ${formatQuantity(details.remaining_qty)} qty`);
+		}
+		if (details.remaining_contracts !== undefined) {
+			metaBits.push(`reste ${formatQuantity(details.remaining_contracts)} ctr`);
+		}
+		return metaBits.join(' · ');
+	}
+
+	function formatQuantity(value) {
+		if (value === null || value === undefined || isNaN(value)) return '0';
+		return formatAdaptive(value, 2, 6);
+	}
+
+	function getEventPnlPct(event) {
+		const value = event?.pnl_pct_at_event;
+		if (value === null || value === undefined || isNaN(value)) return 'N/A';
+		return `${value >= 0 ? '+' : ''}${formatPercent(value)}%`;
+	}
+
+	function getEventPnlUsdt(event) {
+		const value = event?.pnl_usdt_at_event;
+		if (value === null || value === undefined || isNaN(value)) return 'N/A';
+		return `${value >= 0 ? '+' : ''}${formatUSDT(value)} USDT`;
+	}
+
+	function getEventPrice(event, trade) {
+		const price = event?.price_at_event ?? event?.details?.price ?? event?.details?.fill_price;
+		if (!price) return 'N/A';
+		const entryPrice = trade?.entry_price || trade?.entry;
+		const decimals = entryPrice ? getSignificantDecimals(entryPrice) : null;
+		return formatPrice(price, decimals);
+	}
+
+	function getEventTimestamp(event, trade) {
+		const timestamp = event?.event_timestamp || trade?.closed_at || trade?.timestamp;
+		if (!timestamp) return null;
+		return formatTime(timestamp);
+	}
+
+	function buildFallbackExit(trade) {
+		const exitPrice = trade?.exit_price || trade?.close_price || trade?.filled_exit_price || trade?.exit;
+		const pnlPct = trade?.net_pnl_pct ?? trade?.pnl_pct;
+		const pnlUsdt = trade?.net_pnl_usdt ?? trade?.pnl_usdt;
+		if (exitPrice === undefined && pnlPct === undefined && pnlUsdt === undefined) return null;
+		return {
+			event_type: 'EXIT',
+			event_timestamp: trade?.closed_at || trade?.timestamp,
+			price_at_event: exitPrice,
+			pnl_pct_at_event: pnlPct,
+			pnl_usdt_at_event: pnlUsdt,
+			details: {
+				reason: trade?.reason || trade?.close_reason
+			}
+		};
+	}
+
+	function groupOrderEvents(orderEvents) {
+		if (!orderEvents?.length) return [];
+		const groups = [];
+		ORDER_EVENT_ORDER.forEach(type => {
+			const events = orderEvents.filter(event => event?.event_type === type);
+			if (events.length) {
+				const sorted = [...events].sort((a, b) => {
+					const aTime = a?.event_timestamp ? new Date(a.event_timestamp).getTime() : 0;
+					const bTime = b?.event_timestamp ? new Date(b.event_timestamp).getTime() : 0;
+					return aTime - bTime;
+				});
+				groups.push({
+					type,
+					label: ORDER_EVENT_LABELS[type] || type,
+					events: sorted
+				});
+			}
+		});
+
+		const extras = orderEvents.filter(event => !ORDER_EVENT_ORDER.includes(event?.event_type));
+		if (extras.length) {
+			groups.push({
+				type: 'OTHER',
+				label: 'Autres',
+				events: extras
+			});
+		}
+
+		return groups;
+	}
+
+	function getOrderEvents(trade) {
+		const tradeId = trade?.id;
+		const events = (tradeId && tradeEventsById[tradeId]) || [];
+		const orderEvents = (events || []).filter(event => ORDER_EVENT_TYPES.has(event?.event_type));
+		const hasExit = orderEvents.some(event => event?.event_type === 'EXIT');
+		if (!hasExit) {
+			const fallbackExit = buildFallbackExit(trade);
+			if (fallbackExit) {
+				return [...orderEvents, fallbackExit];
+			}
+		}
+		return orderEvents;
+	}
+
 	// 🔥 FIX: Formater la durée depuis des secondes (format backend)
 	function formatDurationFromSeconds(seconds) {
 		if (!seconds || seconds <= 0) return 'N/A';
@@ -141,6 +322,7 @@
 			<table class="trades-table">
 				<thead>
 					<tr>
+						<th class="expand-column" data-debug-name="tradeHistory.column.expand"></th>
 						<th data-debug-name="tradeHistory.column.index">#</th>
 						<th data-debug-name="tradeHistory.column.time">Heure</th>
 						<th data-debug-name="tradeHistory.column.symbol">Paire</th>
@@ -158,7 +340,12 @@
 					{#each $paginatedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
 						{@const globalIndex = (currentPage - 1) * tradesPerPage + index}
 						{@const isWin = (trade.net_pnl_usdt || 0) >= 0}
-						<tr class:row-win={isWin} class:row-loss={!isWin} data-debug-name="trade[{globalIndex}]">
+						<tr class:row-win={isWin} class:row-loss={!isWin} class:row-expanded={isTradeExpanded(trade.id)} data-debug-name="trade[{globalIndex}]">
+							<td class="expand-cell" data-debug-name="trade.expand">
+								<button class="expand-toggle" on:click={() => toggleTrade(trade)} aria-label="Afficher les ordres">
+									<span class:expanded={isTradeExpanded(trade.id)}>▶</span>
+								</button>
+							</td>
 							<td class="index" data-debug-name="trade.index">{globalIndex + 1}</td>
 							<td class="time" data-debug-name="trade.closed_at">{formatTime(trade.closed_at || trade.timestamp)}</td>
 							<td class="symbol" data-debug-name="trade.symbol" title="Taille: {trade.filled_size_usdt ? trade.filled_size_usdt.toFixed(2) : (trade.size || 'N/A')} USDT">{trade.symbol}</td>
@@ -296,6 +483,112 @@
 								})()}
 							</td>
 						</tr>
+						{#if isTradeExpanded(trade.id)}
+							{@const orderEvents = getOrderEvents(trade)}
+							{@const orderGroups = groupOrderEvents(orderEvents)}
+							<tr class="order-row" data-debug-name="trade[{globalIndex}].orders">
+								<td colspan="12">
+									<div class="order-details">
+										<div class="order-details-header">Ordres du trade</div>
+										{#if tradeEventsLoading[trade.id]}
+											<div class="order-details-status loading">Chargement des ordres...</div>
+										{:else if tradeEventsError[trade.id]}
+											<div class="order-details-status error">{tradeEventsError[trade.id]}</div>
+											{#if orderGroups.length > 0}
+												<div class="order-details-status hint">Fallback local (sortie finale)</div>
+												<div class="order-groups">
+													{#each orderGroups as group}
+														<div class="order-group" data-debug-name="trade[{globalIndex}].orders.group.{group.type}">
+															<div class="order-group-title">
+																{group.label}
+																<span class="order-group-count">{group.events.length}</span>
+															</div>
+															<div class="order-list">
+																{#each group.events as event, eventIndex}
+																	{@const eventTime = getEventTimestamp(event, trade)}
+																	<div
+																		class="order-item"
+																		class:order-partial={event?.event_type === 'PARTIAL_TP'}
+																		class:order-escalier={event?.event_type === 'TP_ESCALIER_LEVEL'}
+																		class:order-final={event?.event_type === 'EXIT'}
+																		class:order-positive={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event >= 0}
+																		class:order-negative={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event < 0}
+																	>
+																		<div class="order-main">
+																			<span class="order-type">{getEventLabel(event)}</span>
+																			{#if eventTime}
+																				<span class="order-time">{eventTime}</span>
+																			{/if}
+																			{#if getEventMeta(event)}
+																				<span class="order-meta">{getEventMeta(event)}</span>
+																			{/if}
+																			{#if event?.details?.reason}
+																				<span class="order-reason">{event.details.reason}</span>
+																			{/if}
+																		</div>
+																		<div class="order-metrics">
+																			<span class="order-price">Sortie: {getEventPrice(event, trade)}</span>
+																			<span class="order-pnl">{getEventPnlPct(event)}</span>
+																			<span class="order-pnl-usdt">{getEventPnlUsdt(event)}</span>
+																		</div>
+																	</div>
+																{/each}
+															</div>
+														</div>
+													{/each}
+												</div>
+											{/if}
+										{:else}
+											{#if orderGroups.length === 0}
+												<div class="order-details-status empty">Aucun ordre enregistré</div>
+											{:else}
+												<div class="order-groups">
+													{#each orderGroups as group}
+														<div class="order-group" data-debug-name="trade[{globalIndex}].orders.group.{group.type}">
+															<div class="order-group-title">
+																{group.label}
+																<span class="order-group-count">{group.events.length}</span>
+															</div>
+															<div class="order-list">
+																{#each group.events as event, eventIndex}
+																	{@const eventTime = getEventTimestamp(event, trade)}
+																	<div
+																		class="order-item"
+																		class:order-partial={event?.event_type === 'PARTIAL_TP'}
+																		class:order-escalier={event?.event_type === 'TP_ESCALIER_LEVEL'}
+																		class:order-final={event?.event_type === 'EXIT'}
+																		class:order-positive={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event >= 0}
+																		class:order-negative={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event < 0}
+																	>
+																		<div class="order-main">
+																			<span class="order-type">{getEventLabel(event)}</span>
+																			{#if eventTime}
+																				<span class="order-time">{eventTime}</span>
+																			{/if}
+																			{#if getEventMeta(event)}
+																				<span class="order-meta">{getEventMeta(event)}</span>
+																			{/if}
+																			{#if event?.details?.reason}
+																				<span class="order-reason">{event.details.reason}</span>
+																			{/if}
+																		</div>
+																		<div class="order-metrics">
+																			<span class="order-price">Sortie: {getEventPrice(event, trade)}</span>
+																			<span class="order-pnl">{getEventPnlPct(event)}</span>
+																			<span class="order-pnl-usdt">{getEventPnlUsdt(event)}</span>
+																		</div>
+																	</div>
+																{/each}
+															</div>
+														</div>
+													{/each}
+												</div>
+											{/if}
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>
@@ -483,6 +776,224 @@
 	.trades-table td {
 		padding: 10px;
 		color: #fff;
+	}
+
+	.expand-column {
+		width: 34px;
+	}
+
+	.expand-cell {
+		text-align: center;
+		padding: 6px 4px;
+	}
+
+	.row-expanded {
+		background: rgba(0, 170, 255, 0.08);
+		border-left-color: #00aaff;
+	}
+
+	.row-expanded:hover {
+		background: rgba(0, 170, 255, 0.16);
+	}
+
+	.expand-toggle {
+		background: rgba(0, 170, 255, 0.15);
+		border: 1px solid rgba(0, 170, 255, 0.4);
+		color: #00aaff;
+		width: 26px;
+		height: 26px;
+		border-radius: 6px;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s ease;
+		font-weight: bold;
+		padding: 0;
+	}
+
+	.expand-toggle:hover {
+		background: rgba(0, 170, 255, 0.25);
+		transform: translateY(-1px);
+		box-shadow: 0 4px 10px rgba(0, 170, 255, 0.25);
+	}
+
+	.expand-toggle span {
+		display: inline-block;
+		transition: transform 0.2s ease;
+	}
+
+	.expand-toggle span.expanded {
+		transform: rotate(90deg);
+	}
+
+	.order-row td {
+		padding: 0;
+		background: rgba(10, 14, 39, 0.9);
+		border-bottom: 1px solid #2a3a6b;
+	}
+
+	.order-details {
+		padding: 14px 16px 16px;
+		border-top: 1px solid rgba(0, 170, 255, 0.2);
+		background: linear-gradient(180deg, rgba(0, 170, 255, 0.06), rgba(10, 14, 39, 0.9));
+	}
+
+	.order-details-header {
+		text-transform: uppercase;
+		font-size: 11px;
+		letter-spacing: 0.8px;
+		color: #7ed0ff;
+		margin-bottom: 10px;
+		font-weight: 700;
+	}
+
+	.order-details-status {
+		font-size: 12px;
+		color: #8897c4;
+		margin-bottom: 10px;
+	}
+
+	.order-details-status.loading {
+		color: #7ed0ff;
+	}
+
+	.order-details-status.error {
+		color: #ff6b6b;
+	}
+
+	.order-details-status.hint {
+		color: #ffd166;
+	}
+
+	.order-details-status.empty {
+		color: #6c7aa6;
+	}
+
+	.order-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.order-groups {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.order-group {
+		padding-top: 4px;
+	}
+
+	.order-group-title {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.7px;
+		color: #9bb8ff;
+		margin-bottom: 6px;
+		font-weight: 700;
+	}
+
+	.order-group-count {
+		background: rgba(0, 170, 255, 0.18);
+		color: #7ed0ff;
+		font-size: 10px;
+		padding: 2px 8px;
+		border-radius: 999px;
+		border: 1px solid rgba(0, 170, 255, 0.35);
+	}
+
+	.order-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 12px;
+		border-radius: 8px;
+		background: rgba(30, 39, 73, 0.6);
+		border: 1px solid rgba(126, 208, 255, 0.15);
+		font-size: 12px;
+		gap: 12px;
+	}
+
+	.order-item.order-partial {
+		border-color: rgba(0, 255, 136, 0.4);
+		background: rgba(0, 255, 136, 0.08);
+	}
+
+	.order-item.order-escalier {
+		border-color: rgba(255, 209, 102, 0.45);
+		background: rgba(255, 209, 102, 0.12);
+	}
+
+	.order-item.order-final {
+		border-color: rgba(126, 208, 255, 0.4);
+		background: rgba(0, 170, 255, 0.12);
+	}
+
+	.order-main {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.order-time {
+		font-size: 11px;
+		color: #6c7aa6;
+		font-family: 'Courier New', monospace;
+	}
+
+	.order-type {
+		font-weight: 700;
+		color: #ffffff;
+	}
+
+	.order-meta {
+		color: #ffd166;
+		font-weight: 600;
+	}
+
+	.order-reason {
+		color: #7ed0ff;
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.order-metrics {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+		font-family: 'Courier New', monospace;
+		color: #c7d4ff;
+	}
+
+	.order-price {
+		color: #7ed0ff;
+		font-weight: 600;
+	}
+
+	.order-pnl {
+		font-weight: 700;
+	}
+
+	.order-pnl-usdt {
+		font-weight: 700;
+	}
+
+	.order-positive .order-pnl,
+	.order-positive .order-pnl-usdt {
+		color: #00ff88;
+	}
+
+	.order-negative .order-pnl,
+	.order-negative .order-pnl-usdt {
+		color: #ff6b6b;
 	}
 
 	.index {

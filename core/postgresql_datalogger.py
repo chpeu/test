@@ -3008,6 +3008,63 @@ class PostgreSQLDataLogger:
                     pass
             return None
 
+    def get_trade_events(self, trade_id: str) -> List[Dict[str, Any]]:
+        """
+        Récupérer les événements d'un trade (trade_events).
+
+        Args:
+            trade_id: UUID du trade
+
+        Returns:
+            Liste d'événements triés par timestamp
+        """
+        if not self.enabled or not trade_id:
+            return []
+
+        try:
+            query = """
+                SELECT id, trade_id, event_type, event_timestamp,
+                       price_at_event, pnl_pct_at_event, pnl_usdt_at_event, details
+                FROM trade_events
+                WHERE trade_id = %s
+                ORDER BY event_timestamp ASC
+            """
+            rows = self._execute_query(
+                query,
+                (str(trade_id),),
+                fetch=True,
+                cursor_factory=RealDictCursor
+            ) or []
+
+            events: List[Dict[str, Any]] = []
+            for row in rows:
+                details = row.get('details')
+                if isinstance(details, str):
+                    try:
+                        details = json.loads(details)
+                    except Exception:
+                        details = {'raw': details}
+
+                event_timestamp = row.get('event_timestamp')
+                if hasattr(event_timestamp, 'isoformat'):
+                    event_timestamp = event_timestamp.isoformat()
+
+                events.append({
+                    'id': row.get('id'),
+                    'trade_id': str(row.get('trade_id')) if row.get('trade_id') else None,
+                    'event_type': row.get('event_type'),
+                    'event_timestamp': event_timestamp,
+                    'price_at_event': _extract_numeric_value(row.get('price_at_event')),
+                    'pnl_pct_at_event': _extract_numeric_value(row.get('pnl_pct_at_event')),
+                    'pnl_usdt_at_event': _extract_numeric_value(row.get('pnl_usdt_at_event')),
+                    'details': details or {}
+                })
+
+            return events
+        except Exception as e:
+            logger.error(f"❌ Erreur get_trade_events pour trade {trade_id}: {e}")
+            return []
+
     # =========================================================================
     # 🔥 ASYNC WRAPPERS - Non-blocking methods for asyncio event loop
     # =========================================================================

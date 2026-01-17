@@ -118,6 +118,7 @@ class Position:
     tp_escalier_profits: List[Dict] = field(default_factory=list)
 
     pnl_history: List[Dict] = field(default_factory=list)
+    position_events: List[Dict[str, Any]] = field(default_factory=list)
 
     current_price: Optional[float] = None
     pnl: Optional[float] = None
@@ -260,6 +261,7 @@ class Position:
             'next_event': getattr(self, 'next_event', None),
             'next_tp': getattr(self, 'next_tp', None),  # 🔥 FIX: Prochain TP (toujours affiché)
             'next_sl': getattr(self, 'next_sl', None),  # 🔥 FIX: Stop Loss (toujours affiché)
+            'position_events': getattr(self, 'position_events', []),
             'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
             'tick_size': self.tick_size,  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
             # Live meta
@@ -398,7 +400,7 @@ class PositionManager:
         self.last_price_update = datetime.now().timestamp() * 1000
         self.market_info_cache: Dict[str, Dict] = {}  # 🔥 FIX: Cache pour informations de marché (précision)
 
-        # 🔥 LIVE TRADING: Gestionnaire ordres live (None = paper trading)
+        # 
         self.live_order_manager = live_order_manager
 
         # Initialiser modules spécialisés
@@ -418,6 +420,25 @@ class PositionManager:
         """
         if not self.active_position:
             return
+
+        # 
+        # 
+        try:
+            if not getattr(self.active_position, 'position_events', None):
+                self.active_position.position_events = []
+            self.active_position.position_events.append({
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'type': event_type,
+                'price': price,
+                'pnl_pct': pnl_pct,
+                'pnl_usdt': pnl_usdt,
+                'details': details or {}
+            })
+            # Garder uniquement les 50 derniers événements
+            if len(self.active_position.position_events) > 50:
+                self.active_position.position_events = self.active_position.position_events[-50:]
+        except Exception:
+            pass
         
         trade_id = getattr(self.active_position, '_trade_id', None)
         if not trade_id:
@@ -2709,6 +2730,9 @@ class PositionManager:
                 current_price=current_price
             )
             if level_result:
+                escalier_filled_contracts = None
+                escalier_remaining_contracts = None
+                escalier_order_failed = False
                 # 🔥 LIVE TRADING: Exécuter l'ordre TP Escalier réel sur MEXC
                 if self.live_order_manager and not self.live_order_manager.dry_run:
                     try:
@@ -2735,6 +2759,8 @@ class PositionManager:
                             # Mettre à jour les contrats restants
                             remaining_contracts = size_contracts - filled_amount
                             self.active_position.position_size_contracts = remaining_contracts
+                            escalier_filled_contracts = filled_amount
+                            escalier_remaining_contracts = remaining_contracts
                             
                             level_result['profit_usdt'] = escalier_order_result.actual_pnl_usdt or level_result['profit_usdt']
                             
@@ -2745,10 +2771,12 @@ class PositionManager:
                                 f"PnL: {level_result['profit_usdt']:.2f} USDT"
                             )
                         else:
+                            escalier_order_failed = True
                             logger.error(
                                 f"❌ [LIVE] Échec TP Escalier: {escalier_order_result.error_message}"
                             )
                     except Exception as e:
+                        escalier_order_failed = True
                         logger.error(f"❌ Erreur TP Escalier LIVE: {e}")
                 
                 # Mettre à jour position avec résultats TP Escalier
@@ -2756,6 +2784,46 @@ class PositionManager:
                 self.active_position.tp_escalier_size_remaining = self.active_position.to_dict()['tp_escalier_size_remaining'] - level_result['size_pct']
                 self.active_position.tp_escalier_profits.append(level_result)
                 self.active_position.partial_profit_usdt += level_result['profit_usdt']
+
+                # 🔥 Phase 2H.6: Log trade event TP Escalier
+                try:
+                    if not (self.live_order_manager and not self.live_order_manager.dry_run and escalier_order_failed):
+                        entry_price = self.active_position.entry or current_price or 1
+                        sold_pct_value = level_result.get('size_pct')
+                        sold_pct = sold_pct_value * 100 if sold_pct_value is not None else None
+                        sold_usdt = level_result.get('size_usdt')
+                        if sold_usdt is None and sold_pct_value is not None and self.active_position.size:
+                            sold_usdt = self.active_position.size * sold_pct_value
+
+                        remaining_usdt = None
+                        if self.active_position.size is not None and self.active_position.tp_escalier_size_remaining is not None:
+                            remaining_usdt = self.active_position.size * self.active_position.tp_escalier_size_remaining
+
+                        sold_contracts = escalier_filled_contracts
+                        remaining_contracts = escalier_remaining_contracts
+                        if sold_contracts is None and sold_usdt is not None and entry_price:
+                            sold_contracts = sold_usdt / entry_price
+                        if remaining_contracts is None and remaining_usdt is not None and entry_price:
+                            remaining_contracts = remaining_usdt / entry_price
+
+                        self._log_trade_event(
+                            'TP_ESCALIER_LEVEL',
+                            current_price,
+                            pnl,
+                            pnl_usdt=level_result.get('profit_usdt'),
+                            details={
+                                'level': level_result.get('level'),
+                                'sold_pct': sold_pct,
+                                'sold_usdt': sold_usdt,
+                                'remaining_usdt': remaining_usdt,
+                                'sold_qty': sold_contracts,
+                                'remaining_qty': remaining_contracts,
+                                'sold_contracts': sold_contracts,
+                                'remaining_contracts': remaining_contracts
+                            }
+                        )
+                except Exception:
+                    pass
 
         # 3. TP Partiel (si pas TP Escalier) - utiliser break_even_trigger comme seuil du 1er TP
         if not self.active_position.tp_escalier_enabled:
@@ -2868,7 +2936,11 @@ class PositionManager:
                                 details={
                                     'sold_pct': partial_tp_percent,
                                     'sold_usdt': filled_size_usdt,
-                                    'remaining_usdt': remaining_usdt
+                                    'remaining_usdt': remaining_usdt,
+                                    'sold_qty': filled_amount,
+                                    'remaining_qty': remaining_contracts,
+                                    'sold_contracts': filled_amount,
+                                    'remaining_contracts': remaining_contracts
                                 })
 
                             # 📢 NOTIFICATION: TP Escalier level hit
@@ -2969,12 +3041,21 @@ class PositionManager:
                     self.active_position.position_size_contracts = remaining_contracts
                     self.active_position.size_remaining_contracts = remaining_contracts
                     
+                    sold_qty = None
+                    if entry_price:
+                        sold_qty = partial_result.get('size_sold', 0) / entry_price
+
                     # 🔥 Phase 2H.6: Log trade event (Paper mode)
                     self._log_trade_event('PARTIAL_TP', current_price, pnl, 
                         pnl_usdt=partial_result.get('profit_usdt'),
                         details={
                             'sold_pct': partial_tp_percent,
+                            'sold_usdt': partial_result.get('size_sold'),
                             'remaining_usdt': partial_result['size_remaining'],
+                            'sold_qty': sold_qty,
+                            'remaining_qty': remaining_contracts,
+                            'sold_contracts': sold_qty,
+                            'remaining_contracts': remaining_contracts,
                             'mode': 'PAPER'
                         })
 
@@ -3834,32 +3915,6 @@ class PositionManager:
             'direction': self.active_position.direction,
             'entry': self.active_position.entry,
             'entry_price': self.active_position.entry,  # 🔥 FIX: Ajouté pour PostgreSQL log_trade
-            'exit': exit_price,
-            'exit_price': exit_price,  # 🔥 FIX: Alias pour compatibilité frontend
-            # 🔥 FIX PRECISION: Conserver 6 décimales pour les pourcentages (éviter arrondi trop agressif)
-            # Les petits trades gagnants (+0.05%) étaient affichés comme 0.00% après arrondi à 2 décimales
-            'pnl_pct': round(net_pnl_pct, 6),
-            'pnl_usdt': round(net_pnl_usdt, 4),
-            'gross_pnl_pct': round(gross_pnl_pct, 6),  # 🔥 FIX 29/12: Utiliser le vrai PnL brut (était net_pnl_pct par erreur)
-            'slippage': round(slippage_pct, 6),  # 6 décimales pour précision
-            'slippage_pct': round(slippage_pct, 6),  # Alias
-            'slippage_usdt': round(slippage_usdt, 4),
-            'gross_pnl_usdt': round(pnl_data['pnl_usdt_gross'], 4),
-            'fees': round(pnl_data['fees'], 4),
-            'total_costs': round(total_costs, 4),  # 4 décimales au lieu de 2
-            'total_costs_usdt': round(total_costs, 4),
-            'net_pnl': round(net_pnl_pct, 6),  # 6 décimales pour précision
-            'net_pnl_pct': round(net_pnl_pct, 6),  # 6 décimales pour précision
-            'net_pnl_usdt': round(net_pnl_usdt, 4),
-            'duration': duration,
-            'reason': reason,
-            'close_reason': reason,
-            'timestamp': self.active_position.timestamp,
-            'opened_at': opened_at,  # 🔥 FIX: Ajouté pour l'affichage frontend
-            'closed_at': closed_at,  # 🔥 FIX: Ajouté pour l'affichage frontend
-            'closure_id': closure_id,
-            'has_partial_tp': self.active_position.partial_tp_sold,
-            'size_closed': round(size_closed, 4),
             # 🔥 FIX Option B: Utiliser la taille exécutée (réelle) pour cohérence avec PnL
             'size': round(size_for_pct, 4),  # Taille utilisée pour calcul PnL
             'size_initial_usdt': getattr(self.active_position, 'size_initial_usdt', None),
@@ -4730,12 +4785,38 @@ class PositionManager:
                     args=(whatif_data,),
                     daemon=True
                 ).start()
-                logger.debug(f"📊 What-If lancé pour trade {trade_id[:8]}...")
+                logger.debug(f" What-If lancé pour trade {trade_id[:8]}...")
         except Exception as e:
             logger.debug(f"Erreur What-If (non-bloquant): {e}")
 
-        # 🔥 Phase 2H.6: Log EXIT event
-        # 🔥 FIX: Utiliser fire-and-forget async pour ne pas bloquer l'event loop
+        # Phase 2H.6: Log EXIT event
+        # FIX: Utiliser fire-and-forget async pour ne pas bloquer l'event loop
+        exit_sold_usdt = size_closed if size_closed is not None else None
+        if getattr(position, 'tp_escalier_enabled', False):
+            tp_remaining = getattr(position, 'tp_escalier_size_remaining', None)
+            position_size = getattr(position, 'size', None)
+            if tp_remaining is not None and position_size is not None:
+                exit_sold_usdt = position_size * tp_remaining
+        if exit_sold_usdt is None:
+            if getattr(position, 'partial_tp_sold', False):
+                exit_sold_usdt = getattr(position, 'size_remaining', None)
+            else:
+                exit_sold_usdt = getattr(position, 'size', None)
+        if exit_sold_usdt is None:
+            exit_sold_usdt = 0.0
+
+        exit_sold_pct = None
+        if size_for_pct and exit_sold_usdt is not None:
+            exit_sold_pct = (exit_sold_usdt / size_for_pct) * 100
+
+        exit_entry_price = getattr(position, 'entry', None) or exit_price or 1
+        exit_sold_contracts = getattr(position, 'size_remaining_contracts', None)
+        if exit_sold_contracts is None or exit_sold_contracts <= 0:
+            exit_sold_contracts = getattr(position, 'position_size_contracts', None)
+        if (exit_sold_contracts is None or exit_sold_contracts <= 0) and exit_entry_price and exit_sold_usdt is not None:
+            exit_sold_contracts = exit_sold_usdt / exit_entry_price
+        exit_remaining_contracts = 0.0
+
         try:
             from core.postgresql_datalogger import get_pg_datalogger
             pg_logger = get_pg_datalogger()
@@ -4756,7 +4837,14 @@ class PositionManager:
                                     'reason': reason,
                                     'duration_seconds': duration,
                                     'gross_pnl_pct': result['gross_pnl_pct'],
-                                    'fees_usdt': result['fees']
+                                    'fees_usdt': result['fees'],
+                                    'sold_pct': exit_sold_pct,
+                                    'sold_usdt': exit_sold_usdt,
+                                    'remaining_usdt': 0.0,
+                                    'sold_qty': exit_sold_contracts,
+                                    'remaining_qty': exit_remaining_contracts,
+                                    'sold_contracts': exit_sold_contracts,
+                                    'remaining_contracts': exit_remaining_contracts
                                 }
                             )
                         except Exception:
@@ -4777,7 +4865,14 @@ class PositionManager:
                                     'reason': reason,
                                     'duration_seconds': duration,
                                     'gross_pnl_pct': result['gross_pnl_pct'],
-                                    'fees_usdt': result['fees']
+                                    'fees_usdt': result['fees'],
+                                    'sold_pct': exit_sold_pct,
+                                    'sold_usdt': exit_sold_usdt,
+                                    'remaining_usdt': 0.0,
+                                    'sold_qty': exit_sold_contracts,
+                                    'remaining_qty': exit_remaining_contracts,
+                                    'sold_contracts': exit_sold_contracts,
+                                    'remaining_contracts': exit_remaining_contracts
                                 }
                             )
                         except Exception:

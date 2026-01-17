@@ -5053,6 +5053,36 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'request_type': request_type,
                                 'data': pos
                             }, websocket)
+
+                    elif request_type == 'trade_events':
+                        trade_id = (message.get('params') or {}).get('trade_id')
+                        ws_mgr = state.get_ws_manager()
+                        events = []
+                        error_msg = None
+                        if trade_id:
+                            try:
+                                from core.postgresql_datalogger import get_pg_datalogger
+                                pg_logger = get_pg_datalogger()
+                                if pg_logger:
+                                    events = await asyncio.to_thread(pg_logger.get_trade_events, trade_id)
+                                else:
+                                    error_msg = 'PostgreSQL logger désactivé'
+                            except Exception as trade_events_err:
+                                error_msg = str(trade_events_err)
+                        else:
+                            error_msg = 'trade_id manquant'
+
+                        if ws_mgr:
+                            await ws_mgr.send_personal_message({
+                                'type': 'request_response',
+                                'id': request_id,
+                                'request_type': request_type,
+                                'data': {
+                                    'trade_id': trade_id,
+                                    'events': events,
+                                    'error': error_msg
+                                }
+                            }, websocket)
                     
                     elif request_type == 'state':
                         # 🔥 NOUVEAU: Handler pour chargement état initial complet via WebSocket

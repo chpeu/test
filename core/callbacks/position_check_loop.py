@@ -452,6 +452,7 @@ async def _emit_position_update(position, current_price: float):
             'next_event': next_events.get('next_event') if next_events else None,
             'next_tp': next_events.get('next_tp') if next_events else None,
             'next_sl': next_events.get('next_sl') if next_events else None,
+            'position_events': getattr(position, 'position_events', []),
             'position_size_contracts': getattr(position, 'position_size_contracts', None),
             'size_initial_contracts': getattr(position, 'size_initial_contracts', None),
             'size_remaining_contracts': getattr(position, 'size_remaining_contracts', None),

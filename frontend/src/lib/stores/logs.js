@@ -83,7 +83,7 @@ export async function loadAllErrors(limit = null, offset = 0) {
 		if (limit) params.append('limit', limit.toString());
 		if (offset > 0) params.append('offset', offset.toString());
 		
-		const response = await fetch(`/logs/errors?${params}`);
+		const response = await fetch(`/api/logs/errors?${params}`);
 		const data = await response.json();
 		
 		if (data.success) {
@@ -102,7 +102,7 @@ export async function loadAllErrors(limit = null, offset = 0) {
 export async function loadMoreErrors(currentCount) {
 	persistentErrorsLoading.set(true);
 	try {
-		const response = await fetch(`/logs/errors?limit=50&offset=${currentCount}`);
+		const response = await fetch(`/api/logs/errors?limit=50&offset=${currentCount}`);
 		const data = await response.json();
 		
 		if (data.success) {
@@ -121,7 +121,7 @@ export async function loadMoreErrors(currentCount) {
 
 export async function loadRecentErrors(limit = 50) {
 	try {
-		const response = await fetch(`/logs/errors/recent?limit=${limit}`);
+		const response = await fetch(`/api/logs/errors/recent?limit=${limit}`);
 		const data = await response.json();
 		
 		if (data.success) {
@@ -134,7 +134,7 @@ export async function loadRecentErrors(limit = 50) {
 
 export async function clearAllErrors() {
 	try {
-		const response = await fetch('/logs/errors/clear', {
+		const response = await fetch('/api/logs/errors/clear', {
 			method: 'POST'
 		});
 		const data = await response.json();

@@ -366,6 +366,47 @@
 	$: stagnationTimeLeftSec = stagnationEffectiveTimeoutSec && openedAgeSec !== null && openedAgeSec !== undefined
 		? Math.max(0, stagnationEffectiveTimeoutSec - openedAgeSec)
 		: null;
+
+	$: isFixedMode = ($activePosition?.tp_sl_mode || tradingConfig?.tp_sl_mode || 'FIXE') === 'FIXE';
+	$: positionEvents = ($activePosition?.position_events || []).slice(-6).reverse();
+	$: latestEvent = positionEvents.length ? positionEvents[0] : null;
+
+	function eventLabel(eventType) {
+		const labels = {
+			ENTRY: 'Entrée',
+			PARTIAL_TP: 'TP partiel',
+			BE_TRIGGERED: 'Break-even',
+			TRAILING_ACTIVATED: 'Trailing ON',
+			TRAILING_SL_MOVED: 'SL déplacé',
+			TRAILING_MFE_TRIGGERED: 'MFE → BE',
+			MAX_PNL_REACHED: 'Max PnL',
+			MIN_PNL_REACHED: 'Min PnL'
+		};
+		return labels[eventType] || eventType || 'Événement';
+	}
+
+	function eventColor(eventType) {
+		switch (eventType) {
+			case 'ENTRY':
+				return '#3b82f6';
+			case 'PARTIAL_TP':
+				return '#10b981';
+			case 'BE_TRIGGERED':
+				return '#00ff88';
+			case 'TRAILING_ACTIVATED':
+				return '#f59e0b';
+			case 'TRAILING_SL_MOVED':
+				return '#f97316';
+			case 'TRAILING_MFE_TRIGGERED':
+				return '#a855f7';
+			case 'MAX_PNL_REACHED':
+				return '#22c55e';
+			case 'MIN_PNL_REACHED':
+				return '#ef4444';
+			default:
+				return '#94a3b8';
+		}
+	}
 </script>
 
 {#if $activePosition}
@@ -375,6 +416,11 @@
 			
 			<!-- 🔥 ML & Sizing Badges -->
 			<div class="ml-sizing-badges">
+				{#if latestEvent}
+					<div class="badge event-badge" title="Dernier événement">
+						🧭 {eventLabel(latestEvent.type)} · {formatTime(latestEvent.timestamp)}
+					</div>
+				{/if}
 				{#if $activePosition.ml_confidence !== undefined && $activePosition.ml_confidence !== null && $activePosition.ml_confidence > 0}
 					<div class="badge ml-badge" title="Confiance ML au moment de l'ouverture">
 						🧠 {$activePosition.ml_confidence.toFixed(1)}%
@@ -582,6 +628,41 @@
 			</div>
 
 			<div class="telemetry-box">
+			{#if isFixedMode}
+				<div class="telemetry-title">FIXE / Seuils</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TP%</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.tp_percent ?? 0.6)}%</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">SL%</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.sl_percent ?? 0.25)}%</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">BE trig</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.break_even_trigger ?? 0.3)}%</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TP partiel</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.partial_tp_percent ?? 50)}%</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TR trig</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_trigger_pnl ?? 0.15)}%</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TR min</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_min_distance ?? 0.1)}%</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TR max</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_max_distance ?? 0.3)}%</span>
+				</div>
+				<div class="telemetry-row">
+					<span class="telemetry-label">TR cap</span>
+					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_pnl_cap ?? 0.6)}%</span>
+				</div>
+			{:else}
 				<div class="telemetry-title">ATR / Seuils</div>
 				<div class="telemetry-row">
 					<span class="telemetry-label">ATR%</span>
@@ -642,6 +723,7 @@
 						</div>
 					</div>
 				{/if}
+			{/if}
 			</div>
 
 			<div class="telemetry-box">
@@ -712,6 +794,7 @@
 				{/if}
 			</div>
 
+		{#if !isFixedMode}
 			<div class="telemetry-box">
 				<div class="telemetry-title">MFE / Stagnation</div>
 				{#if $activePosition.max_pnl_reached !== null && $activePosition.max_pnl_reached !== undefined}
@@ -771,40 +854,48 @@
 					{/if}
 				{/if}
 			</div>
+		{/if}
+
+		{#if positionEvents.length}
+			<div class="telemetry-box">
+				<div class="telemetry-title">Événements</div>
+				{#each positionEvents as ev (ev.timestamp)}
+					<div class="event-row">
+						<span class="event-dot" style="background: {eventColor(ev.type)}"></span>
+						<span class="event-type">{eventLabel(ev.type)}</span>
+						<span class="event-time">{formatTime(ev.timestamp)}</span>
+						<span class="event-pnl">
+							{ev.pnl_pct !== null && ev.pnl_pct !== undefined ? `${formatPercent(ev.pnl_pct)}%` : '-'}
+						</span>
+					</div>
+					{#if ev.details?.new_sl}
+						<div class="event-detail">SL → {formatPriceWithPrecision(ev.details.new_sl)}</div>
+					{/if}
+				{/each}
+			</div>
+		{/if}
+	</div>
+
+	{#if $activePosition && $activePosition.opened_at}
+		<div class="duration" data-debug-name="positionDuration">
+			<div class="duration-label" data-debug-name="positionDuration.label">⏱️ Durée:</div>
+			<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date() - new Date($activePosition.opened_at)) / 1000))}</div>
 		</div>
+	{/if}
 
-		{#if $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== null && $activePosition.size}
-			<div class="position-info" data-debug-name="activePosition.size_remaining">
-				<div class="info-item" data-debug-name="activePosition.size_remaining">
-					<span class="info-label" data-debug-name="activePosition.size_remaining">Position restante:</span>
-					<span class="info-value" data-debug-name="activePosition.size_remaining">
-						{formatPrice($activePosition.size_remaining)} USDT 
-						({formatPercent(($activePosition.size_remaining / $activePosition.size) * 100)}%)
-					</span>
-				</div>
-			</div>
-		{/if}
-
-		{#if $activePosition && $activePosition.opened_at}
-			<div class="duration" data-debug-name="positionDuration">
-				<div class="duration-label" data-debug-name="positionDuration.label">⏱️ Durée:</div>
-				<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date() - new Date($activePosition.opened_at)) / 1000))}</div>
-			</div>
-		{/if}
-
-		{#if $activePosition.confirmed_by}
-			<div class="signals" data-debug-name="activePosition.confirmed_by">
-				<div class="signals-label" data-debug-name="activePosition.confirmed_by">Confirmed by:</div>
-				<div class="signals-list" data-debug-name="activePosition.confirmed_by">{$activePosition.confirmed_by}</div>
-			</div>
-		{/if}
-
-		<!-- 🔥 FIX: Bouton pour clôturer la position manuellement -->
-		<div class="close-position-section">
-			<button class="close-position-btn" on:click={closePosition}>
-				🚪 Clôturer la Position
-			</button>
+	{#if $activePosition.confirmed_by}
+		<div class="signals" data-debug-name="activePosition.confirmed_by">
+			<div class="signals-label" data-debug-name="activePosition.confirmed_by">Confirmed by:</div>
+			<div class="signals-list" data-debug-name="activePosition.confirmed_by">{$activePosition.confirmed_by}</div>
 		</div>
+	{/if}
+
+	<!-- 🔥 FIX: Bouton pour clôturer la position manuellement -->
+	<div class="close-position-section">
+		<button class="close-position-btn" on:click={closePosition}>
+			🚪 Clôturer la Position
+		</button>
+	</div>
 	</div>
 {:else}
 	<div class="no-position">
@@ -892,6 +983,16 @@
 		background: rgba(255, 215, 0, 0.15);
 		color: #ffd700;
 		border: 1px solid rgba(255, 215, 0, 0.4);
+	}
+
+	.event-badge {
+		background: rgba(156, 163, 175, 0.15);
+		color: #94a3b8;
+		border: 1px solid rgba(156, 163, 175, 0.4);
+		max-width: 200px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.direction {
@@ -1099,6 +1200,44 @@
 		font-size: 10px;
 		color: #888;
 		font-family: 'Courier New', monospace;
+	}
+
+	.event-row {
+		display: grid;
+		grid-template-columns: 8px 1fr auto auto;
+		gap: 8px;
+		align-items: center;
+		font-size: 11px;
+		color: #bbb;
+		margin-top: 6px;
+	}
+
+	.event-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+	}
+
+	.event-type {
+		color: #fff;
+		font-weight: 700;
+	}
+
+	.event-time {
+		color: #888;
+		font-family: 'Courier New', monospace;
+	}
+
+	.event-pnl {
+		color: #00ff88;
+		font-family: 'Courier New', monospace;
+	}
+
+	.event-detail {
+		margin-left: 14px;
+		margin-top: 4px;
+		font-size: 10px;
+		color: #999;
 	}
 
 	/* 🔥 NOUVEAU: Styles pour les sections TP et SL distinctes */
