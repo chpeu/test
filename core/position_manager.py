@@ -3924,7 +3924,29 @@ class PositionManager:
             'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
             # ✅ FIX: Tracking source du exit_price
             'exit_price_source': exit_price_source,
-            'exit_price_from_fallback': exit_price_source != "api"
+            'exit_price_from_fallback': exit_price_source != "api",
+            # ✅ Métadonnées clôture + PnL (attendu par tests/loggers/UI)
+            'closure_id': closure_id,
+            'exit': exit_price,
+            'exit_price': exit_price,
+            'reason': reason,
+            'close_reason': reason,
+            'exit_reason': reason,
+            'opened_at': opened_at,
+            'closed_at': closed_at,
+            'duration': duration,
+            'duration_seconds': duration,
+            'pnl_pct': pnl_data['pnl_pct'],
+            'pnl_usdt': pnl_data['pnl_usdt_gross'],
+            'gross_pnl_pct': pnl_data['pnl_pct'],
+            'gross_pnl_usdt': pnl_data['pnl_usdt_gross'],
+            'net_pnl_pct': net_pnl_pct,
+            'net_pnl_usdt': net_pnl_usdt,
+            'fees': pnl_data['fees'],
+            'slippage_pct': slippage_pct,
+            'slippage_usdt': slippage_usdt,
+            'total_costs': total_costs,
+            'total_costs_pct': total_costs_pct
         }
 
         # ========================================
