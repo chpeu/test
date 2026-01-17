@@ -361,7 +361,7 @@ TRADING_CONFIG = {
     "adaptive_sizing_big_loss_threshold": -2.0, # Seuil grosse perte %
 
     # ✅ TP Escalier / Multi-Level TP (paramètres individuels pour frontend)
-    "partial_tp_percent": 50,  # % de position vendue au 1er TP (mode FIXE)
+    "partial_tp_percent": 40,  # % de position vendue au 1er TP (mode FIXE)
     "escalier_level1_pnl": 0.20,
     "escalier_level1_size": 25,
     "escalier_level2_pnl": 0.35,
@@ -378,6 +378,7 @@ TRADING_CONFIG = {
     "trailing_distance_atr_mult": 0.8,  # 🔥 ALIAS clair pour trailing_atr_multiplier
     "trailing_min_distance": 0.10,  # 🔥 Minimum 0.10% (était 0.08)
     "trailing_max_distance": 0.30,  # 🔥 Maximum 0.30% (était 0.25)
+    "trailing_pnl_cap": 0.60,  # 🔥 PnL% auquel trailing_max_distance est atteint (mode FIXE linéaire)
 
     # 🔥 PHASE 7: TP Escalier (Multi-Level TP) - Format legacy
     "tp_escalier": {

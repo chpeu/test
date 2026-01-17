@@ -343,7 +343,8 @@ def _organize_trading_config_for_export(trading_config: Dict[str, Any]) -> Order
         trailing_trigger_pnl=trading_config.get('trailing_trigger_pnl'),
         trailing_atr_multiplier=trading_config.get('trailing_atr_multiplier'),
         trailing_min_distance=trading_config.get('trailing_min_distance'),
-        trailing_max_distance=trading_config.get('trailing_max_distance')
+        trailing_max_distance=trading_config.get('trailing_max_distance'),
+        trailing_pnl_cap=trading_config.get('trailing_pnl_cap')
     )
     categories['⏱️ Timeframe & Trend'] = OrderedDict(
         trend_timeframe=trading_config.get('trend_timeframe'),
@@ -3428,6 +3429,8 @@ async def scalability_refresh_loop_callback():
 def init_instances() -> None:
     """
     Initialiser toutes les instances globales nécessaires au fonctionnement du bot.
+    
+    🔥 NEW: Inclut le reset de l'historique des erreurs au démarrage
 
     Cette fonction est le point d'initialisation central pour tous les composants
     du système de trading. Elle est appelée au démarrage et peut être rappelée
@@ -3466,6 +3469,14 @@ def init_instances() -> None:
     """
     # 🔥 SPRINT 2.1: Use StateManager instead of global variables
     # No more global declarations - all managed by state
+    
+    # 🔥 NEW: Reset de l'historique des erreurs au démarrage du backend
+    try:
+        from utils.error_history import reset_error_history
+        reset_error_history()
+        logger.info("🗑️ Historique des erreurs réinitialisé au démarrage")
+    except Exception as e:
+        logger.debug(f"Erreur reset historique erreurs: {e}")
     
     # 🔥 FIX: Configurer le logger avec WebSocket handler pour envoyer les logs au frontend
     try:
@@ -5639,9 +5650,16 @@ async def handle_client_command(command: str, params: dict):
             TRADING_CONFIG['trailing_max_distance'] = val
             updated['trailing_max_distance'] = val
         
+        # 🔥 NOUVEAU: trailing_pnl_cap (PnL% auquel max_distance est atteint en mode FIXE)
+        if 'trailing_pnl_cap' in params:
+            val = float(params['trailing_pnl_cap'])
+            val = max(0.2, min(2.0, val))  # Clamp 0.2-2.0%
+            TRADING_CONFIG['trailing_pnl_cap'] = val
+            updated['trailing_pnl_cap'] = val
+        
         # 🔥 FIX: Mettre à jour dynamiquement le trailing_stop manager si paramètres trailing changés
         trailing_keys = ['trailing_enabled', 'trailing_trigger_pnl', 'trailing_atr_multiplier', 
-                         'trailing_distance_atr_mult', 'trailing_min_distance', 'trailing_max_distance']
+                         'trailing_distance_atr_mult', 'trailing_min_distance', 'trailing_max_distance', 'trailing_pnl_cap']
         pos_mgr = state.get_position_manager()
         if any(k in updated for k in trailing_keys) and pos_mgr and hasattr(pos_mgr, 'trailing_stop'):
             from core.position.trailing_stop import TrailingStopConfig
@@ -6805,18 +6823,24 @@ async def handle_client_command(command: str, params: dict):
                 # Mettre à jour les valeurs TP/SL si elles ont changé
                 if 'tp_sl_mode' in updated:
                     tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                    # 🔥 FIX: Accepter aussi 'ESCALIER' comme mode valide
-                    pos_cfg.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER')
+                    # 🔥 FIX: Séparer les modes - ESCALIER ne doit PAS hériter des paramètres ATR
+                    pos_cfg.use_atr = (tp_sl_mode == 'ATR')
                     # 🔥 FIX: Mettre à jour aussi position_manager.config.use_atr si position_manager existe
                     pos_mgr = state.get_position_manager()
                     if pos_mgr:
-                        pos_mgr.config.use_atr = pos_cfg.use_atr
-                if 'tp_percent' in updated:
-                    pos_cfg.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
-                if 'sl_percent' in updated:
-                    pos_cfg.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
-                if 'atr_mult_tp' in updated:
-                    pos_cfg.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
+                        pos_mgr.config.use_atr = (tp_sl_mode == 'ATR')
+                    if 'tp_percent' in updated:
+                        pos_cfg.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.6)
+                    if 'sl_percent' in updated:
+                        pos_cfg.fixed_sl_pct = TRADING_CONFIG.get('sl_percent', 0.25)
+                    if 'atr_mult_tp' in updated:
+                        pos_cfg.atr_mult_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
+                    if 'atr_mult_sl' in updated:
+                        pos_cfg.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
+                    if 'atr_min' in updated:
+                        pos_cfg.atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                    if 'atr_max' in updated:
+                        pos_cfg.atr_max = TRADING_CONFIG.get('atr_max', 1.5)
                 if 'atr_mult_sl' in updated:
                     pos_cfg.atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl', 1.0)
                 if 'atr_min' in updated:

@@ -23,6 +23,8 @@ from .ml import router as ml_router
 from .config import router as config_router  # 🆕 Routes config (token MEXC)
 from .ml_calibration import router as ml_calibration_router  # 🆕 Routes ML Calibration
 from .ml_config import router as ml_config_router  # 🆕 Phase 2D: ML Config API
+from .logs import logs_router  # 🆕 Routes logs/erreurs persistantes
+from .test_errors import test_errors_router  # 🆕 Routes test erreurs fictives
 
 # Créer un router combiné pour compatibilité avec main.py
 router = APIRouter()
@@ -32,6 +34,8 @@ router.include_router(ml_router)  # 🆕 Routes ML
 router.include_router(config_router)  # 🆕 Routes config (token MEXC)
 router.include_router(ml_calibration_router)  # 🆕 Routes ML Calibration
 router.include_router(ml_config_router)  # 🆕 Phase 2D: ML Config API
+router.include_router(logs_router, prefix="/logs")  # 🆕 Routes logs/erreurs persistantes
+router.include_router(test_errors_router, prefix="/test/errors")  # 🆕 Routes test erreurs fictives
 
 # Variables pour les dépendances injectées
 _analytics_db = None

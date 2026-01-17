@@ -341,12 +341,11 @@ async def _emit_position_update(position, current_price: float):
         if atr_percent is None:
             atr_percent = getattr(position, 'atr_percent', None)
 
-        break_even_use_atr = TRADING_CONFIG.get('break_even_use_atr', False) if TRADING_CONFIG else False
+        tp_sl_mode = getattr(position, 'tp_sl_mode', None) or (TRADING_CONFIG.get('tp_sl_mode', 'FIXE') if TRADING_CONFIG else 'FIXE')
+        use_atr_mode = (tp_sl_mode == 'ATR')
+        break_even_use_atr = use_atr_mode
         trailing_config = TRADING_CONFIG.get('trailing_stop', {}) if TRADING_CONFIG else {}
-        trailing_use_atr_trigger = (
-            trailing_config.get('use_atr_trigger', False)
-            or (TRADING_CONFIG.get('trailing_use_atr_trigger', False) if TRADING_CONFIG else False)
-        )
+        trailing_use_atr_trigger = use_atr_mode
 
         be_atr_mult_effective = effective_config.get('break_even_atr_mult') or (TRADING_CONFIG.get('break_even_atr_mult', 0.5) if TRADING_CONFIG else 0.5)
         trailing_trigger_atr_mult_effective = effective_config.get('trailing_trigger_atr_mult') or (TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5) if TRADING_CONFIG else 1.5)
@@ -377,7 +376,7 @@ async def _emit_position_update(position, current_price: float):
             trailing_distance_pct = TRADING_CONFIG.get('trailing_distance', None) if TRADING_CONFIG else None
 
         stagnation_config = TRADING_CONFIG.get('stagnation_exit', {}) if TRADING_CONFIG else {}
-        stagnation_enabled = TRADING_CONFIG.get('stagnation_exit_enabled', stagnation_config.get('enabled', False)) if TRADING_CONFIG else False
+        stagnation_enabled = use_atr_mode and (TRADING_CONFIG.get('stagnation_exit_enabled', stagnation_config.get('enabled', False)) if TRADING_CONFIG else False)
         stagnation_timeout = effective_config.get('stagnation_exit_timeout_seconds')
         if stagnation_timeout is None:
             stagnation_timeout = TRADING_CONFIG.get('stagnation_exit_timeout_seconds', stagnation_config.get('timeout_seconds', None)) if TRADING_CONFIG else None
@@ -488,8 +487,8 @@ async def _emit_position_update(position, current_price: float):
             'trailing_activated_at': _to_iso(getattr(position, 'trailing_activated_at', None)),
             'trailing_final_sl': getattr(position, 'trailing_final_sl', None),
             'trailing_distance_pct': getattr(position, 'trailing_distance_pct', None),
-            'trailing_mfe_enabled': TRADING_CONFIG.get('trailing_mfe_enabled', False) if TRADING_CONFIG else False,
-            'trailing_mfe_trigger_pct': TRADING_CONFIG.get('trailing_mfe_trigger_pct', None) if TRADING_CONFIG else None,
+            'trailing_mfe_enabled': (TRADING_CONFIG.get('trailing_mfe_enabled', False) if TRADING_CONFIG else False) if use_atr_mode else False,
+            'trailing_mfe_trigger_pct': (TRADING_CONFIG.get('trailing_mfe_trigger_pct', None) if TRADING_CONFIG else None) if use_atr_mode else None,
             'trailing_mfe_triggered': getattr(position, 'trailing_mfe_triggered', False),
             'trailing_mfe_triggered_at': _to_iso(getattr(position, 'trailing_mfe_triggered_at', None)),
             'trailing_mfe_trigger_pnl_pct': getattr(position, 'trailing_mfe_trigger_pnl_pct', None),

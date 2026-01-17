@@ -12,7 +12,7 @@
   "use_confluence": false,
   "invert_signals": false,
   "tp_sl_mode": "FIXE",
-  "tp_percent": 0.5,
+  "tp_percent": 5.0,
   "sl_percent": 0.25,
   "break_even_trigger": 0.1,
   "trailing_distance": 0.1,
@@ -51,7 +51,7 @@
   "escalier_level3_size": 25.0,
   "escalier_level4_pnl": 0.8,
   "escalier_level4_size": 25.0,
-  "trailing_enabled": false,
+  "trailing_enabled": true,
   "trailing_trigger_pnl": 0.1,
   "trailing_atr_multiplier": 0.4,
   "trailing_distance_atr_mult": 0.4,
@@ -204,5 +204,6 @@
   "max_spread_pct_fixe": 0.03,
   "max_spread_pct_atr": 0.04,
   "trailing_mfe_lock_in_pct": 0.04,
-  "partial_tp_be_lock_in_pct": 0.04
+  "partial_tp_be_lock_in_pct": 0.03,
+  "trailing_pnl_cap": 0.9
 }

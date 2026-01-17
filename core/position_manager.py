@@ -1395,15 +1395,18 @@ class PositionManager:
         self.tpsl_config.fixed_tp_pct = trading_params['tp_percent']
         self.tpsl_config.fixed_sl_pct = trading_params['sl_percent']
 
-        # 🔥 FIX: Si le PositionManager est forcé en ATR via PositionConfig, respecter ce mode même si TRADING_CONFIG est en FIXE
+        # 🔥 FIX: Séparer complètement les modes - pas de mélange de paramètres
         tp_sl_mode = trading_params.get('tp_sl_mode', 'FIXE')
-        # FIX: Accepter aussi 'ESCALIER' comme mode valide (identique à TP_MULTI)
-        use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER') or self.config.use_atr
+        
+        # Modes distincts sans mélange
+        use_atr = (tp_sl_mode == 'ATR') or self.config.use_atr
+        use_escalier = (tp_sl_mode in ['TP_MULTI', 'ESCALIER'])
+        is_fixe_mode = (tp_sl_mode == 'FIXE' and not use_atr and not use_escalier)
         # FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
         from utils.effective_config import get_effective_value
         
-        # ADAPTATION LOCALE DYNAMIQUE (Sprint 3)
-        # Calculer le régime local basé sur ATR
+        # 🔥 FIX: Paramètres ATR UNIQUEMENT en mode ATR
+        # ADAPTATION LOCALE DYNAMIQUE (Sprint 3) - SEULEMENT si mode ATR
         effective_params = {}
         if use_atr:
             atr_pct = (atr / entry * 100) if atr and entry else 0
@@ -1420,7 +1423,7 @@ class PositionManager:
             effective_params['local_regime'] = local_regime
             effective_params['atr_pct'] = atr_pct
             
-            # Valeurs de base (depuis config manuelle/globale)
+            # Valeurs de base ATR (depuis config manuelle/globale)
             base_mult_tp = (
                 float(self.config.atr_mult_tp)
                 if getattr(self.config, 'use_atr', False) and isinstance(getattr(self.config, 'atr_mult_tp', None), (int, float))
@@ -1442,6 +1445,9 @@ class PositionManager:
             base_stagnation_timeout = ConfigHelper.get_param('stagnation_exit_timeout_seconds', 120, TRADING_CONFIG)
             base_stagnation_min_pnl = ConfigHelper.get_param('stagnation_exit_min_pnl_to_stay', 0.05, TRADING_CONFIG)
             base_stagnation_positive_timeout = ConfigHelper.get_param('stagnation_positive_timeout_seconds', 60, TRADING_CONFIG)
+        else:
+            # 🔥 Mode FIXE/ESCALIER : NE PAS charger les paramètres ATR
+            logger.debug(f"📊 Mode {tp_sl_mode}: Paramètres ATR ignorés (pas de régime dynamique)")
         
         # Ajustements selon régime local (Optimisation 10/12/2025)
         # Basé sur analyse trade_atr_metrics et doc BRAINSTORM_ATR_OPTIMIZATION
@@ -1698,7 +1704,7 @@ class PositionManager:
 
         # Initialiser TP Escalier si mode TP_MULTI
         levels_config = None
-        if tp_sl_mode == 'TP_MULTI' or tp_sl_mode == 'ESCALIER':
+        if use_escalier:
             # Construire config niveaux depuis ConfigHelper
             levels_config = []
             for level in [1, 2, 3, 4]:
@@ -2753,8 +2759,9 @@ class PositionManager:
 
         # 3. TP Partiel (si pas TP Escalier) - utiliser break_even_trigger comme seuil du 1er TP
         if not self.active_position.tp_escalier_enabled:
-            # 🔥 HYBRID: Break-even basé sur ATR ou % fixe
-            break_even_use_atr = TRADING_CONFIG.get('break_even_use_atr', False)
+            # 🔥 FIX: Break-even déterminé par tp_sl_mode, pas par flag séparé
+            tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+            break_even_use_atr = (tp_sl_mode == 'ATR') or self.config.use_atr
             
             # 🔥 SPRINT 3: Utiliser config effective si disponible (Adaptation Régime)
             effective_config = getattr(self.active_position, 'effective_config', {})
@@ -3003,7 +3010,12 @@ class PositionManager:
 
         # 3.5 🎯 TRAILING MFE: Déplacer SL à break-even quand MFE atteint le seuil
         # Complémentaire au trailing stop existant - protection précoce du capital
-        if (TRADING_CONFIG.get('trailing_mfe_enabled', False) 
+        # 🔥 FIX: Trailing MFE uniquement en mode ATR
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        use_atr_for_mfe = (tp_sl_mode == 'ATR') or self.config.use_atr
+        
+        if (use_atr_for_mfe
+            and TRADING_CONFIG.get('trailing_mfe_enabled', False) 
             and not self.active_position.trailing_mfe_triggered
             and self.active_position.max_pnl_reached is not None):
             
@@ -3063,105 +3075,124 @@ class PositionManager:
                     })
 
         # 4. Trailing Stop (activé après le 1er TP partiel ou si PnL > trigger ATR)
-        # 🔥 HYBRID: Trailing trigger basé sur ATR ou % fixe
-        # Support both nested (trailing_stop.use_atr_trigger) and flat (trailing_use_atr_trigger) config keys
+        # 🔥 FIX: Trailing déterminé par tp_sl_mode, pas par flag séparé
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        use_atr_trigger = (tp_sl_mode == 'ATR') or self.config.use_atr
         trailing_config = TRADING_CONFIG.get('trailing_stop', {})
-        use_atr_trigger = (
-            trailing_config.get('use_atr_trigger', False) or 
-            TRADING_CONFIG.get('trailing_use_atr_trigger', False)
-        )
         
-        # 🔥 SPRINT 3: Utiliser config effective si disponible (Adaptation Régime)
-        effective_config = getattr(self.active_position, 'effective_config', {})
-        
-        if use_atr_trigger:
-            # 🔥 Mode ATR: trigger dès PnL >= X × ATR%
-            atr_pct = self._get_position_atr_percent()
-            
-            # Utiliser les multiplicateurs effectifs s'ils existent (adaptés au régime)
-            trigger_atr_mult = effective_config.get('trailing_trigger_atr_mult') or TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5)
-            # Distance trailing adaptée (ex: plus large en HIGH volatility)
-            distance_atr_mult = (
-                effective_config.get('trailing_distance_mult')
-                or TRADING_CONFIG.get('trailing_distance_atr_mult')
-                or TRADING_CONFIG.get('trailing_atr_multiplier')
-                or TRADING_CONFIG.get('trailing_distance_mult')
-                or 1.0
-            )
-            
-            trailing_trigger = atr_pct * trigger_atr_mult
-            trailing_distance = atr_pct * distance_atr_mult
-            
-            logger.debug(
-                f"🎢 Trailing ATR: trigger={trailing_trigger:.3f}% ({trigger_atr_mult}×ATR), "
-                f"distance={trailing_distance:.3f}% ({distance_atr_mult}×ATR)"
-            )
+        # 🔥 GATING: trailing_enabled coupe le trailing en mode FIXE
+        trailing_enabled = TRADING_CONFIG.get('trailing_enabled', True)
+        if tp_sl_mode == 'FIXE' and not trailing_enabled:
+            # Trailing désactivé en mode FIXE, on skip cette section
+            pass
         else:
-            # Mode FIXE
-            trailing_trigger = (
-                trailing_config.get('trigger_pnl') or
-                TRADING_CONFIG.get('trailing_trigger_pnl', 0.15)
-            )
-        
-        trailing_should_activate = self.active_position.partial_tp_sold or pnl >= trailing_trigger
-        
-        if trailing_should_activate:
-            # 🔥 PHASE 0.5: Enregistrer timestamp trailing activation
-            if not self.active_position.trailing_activated:
-                self.active_position.trailing_activated = True
-                self.active_position.trailing_activated_at = datetime.now().timestamp()
-                # Phase 2H.6: Log trade event
-                self._log_trade_event('TRAILING_ACTIVATED', current_price, pnl, details={
-                    'trigger_pct': trailing_trigger
-                })
+            # 🔥 SPRINT 3: Utiliser config effective si disponible (Adaptation Régime)
+            effective_config = getattr(self.active_position, 'effective_config', {})
             
-            # 🔥 FIX: Une fois trailing activé, mettre à jour SL à CHAQUE tick (pas seulement si pnl >= trigger)
-            # Le trailing doit suivre le prix même si le PnL redescend après activation
-            tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-            if tp_sl_mode == 'FIXE':
-                # Mode FIXE : utiliser trailing_distance directement
-                trailing_distance = TRADING_CONFIG.get('trailing_distance', 0.15)
-                old_sl = self.active_position.sl
-                new_sl = self._update_trailing_stop_fixe(current_price, trailing_distance)
-                if new_sl:
-                    self.active_position.sl = new_sl
-                    self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_FIXE')
-                    self.active_position.dynamic_sl = new_sl
-                    # PHASE 0.5: Capturer trailing final SL et distance
-                    self.active_position.trailing_final_sl = new_sl
-                    self.active_position.trailing_distance_pct = trailing_distance
-                    logger.info(
-                        f"🎢 Trailing FIXE {self.active_position.symbol}: "
-                        f"SL {old_sl:.8f} → {new_sl:.8f} | PnL={pnl:.3f}% | Distance={trailing_distance}%"
-                    )
-                    self._log_trade_event('TRAILING_SL_MOVED', current_price, pnl, details={
-                        'old_sl': old_sl,
-                        'new_sl': new_sl
-                    })
-            else:
-                # Mode ATR : utiliser distance adaptative
-                # FIX SPRINT 3: Passer la distance calculée avec les multiplicateurs adaptatifs
-                custom_dist = trailing_distance if use_atr_trigger else None
+            if use_atr_trigger:
+                # 🔥 Mode ATR: trigger dès PnL >= X × ATR%
+                atr_pct = self._get_position_atr_percent()
                 
-                old_sl = self.active_position.sl
-                new_sl = self.trailing_stop.update_trailing_stop(
-                    self.active_position.to_dict(),
-                    current_price=current_price,
-                    pnl_percent=pnl,
-                    custom_distance_pct=custom_dist
+                # Utiliser les multiplicateurs effectifs s'ils existent (adaptés au régime)
+                trigger_atr_mult = effective_config.get('trailing_trigger_atr_mult') or TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5)
+                # Distance trailing adaptée (ex: plus large en HIGH volatility)
+                distance_atr_mult = (
+                    effective_config.get('trailing_distance_mult')
+                    or TRADING_CONFIG.get('trailing_distance_atr_mult')
+                    or TRADING_CONFIG.get('trailing_atr_multiplier')
+                    or TRADING_CONFIG.get('trailing_distance_mult')
+                    or 1.0
                 )
-                if new_sl:
-                    self.active_position.sl = new_sl
-                    self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_ATR')
-                    self.active_position.dynamic_sl = new_sl
-                    # PHASE 0.5: Capturer trailing final SL et distance
-                    self.active_position.trailing_final_sl = new_sl
-                    self.active_position.trailing_distance_pct = custom_dist
-                    self.active_position.trailing_distance_pct = abs(current_price - new_sl) / entry * 100
-                    self._log_trade_event('TRAILING_SL_MOVED', current_price, pnl, details={
-                        'old_sl': old_sl,
-                        'new_sl': new_sl
+                
+                trailing_trigger = atr_pct * trigger_atr_mult
+                trailing_distance = atr_pct * distance_atr_mult
+                
+                logger.debug(
+                    f"🎢 Trailing ATR: trigger={trailing_trigger:.3f}% ({trigger_atr_mult}×ATR), "
+                    f"distance={trailing_distance:.3f}% ({distance_atr_mult}×ATR)"
+                )
+            else:
+                # Mode FIXE
+                trailing_trigger = (
+                    trailing_config.get('trigger_pnl') or
+                    TRADING_CONFIG.get('trailing_trigger_pnl', 0.15)
+                )
+            
+            trailing_should_activate = self.active_position.partial_tp_sold or pnl >= trailing_trigger
+            
+            if trailing_should_activate:
+                # 🔥 PHASE 0.5: Enregistrer timestamp trailing activation
+                if not self.active_position.trailing_activated:
+                    self.active_position.trailing_activated = True
+                    self.active_position.trailing_activated_at = datetime.now().timestamp()
+                    # Phase 2H.6: Log trade event
+                    self._log_trade_event('TRAILING_ACTIVATED', current_price, pnl, details={
+                        'trigger_pct': trailing_trigger
                     })
+                
+                # 🔥 FIX: Une fois trailing activé, mettre à jour SL à CHAQUE tick (pas seulement si pnl >= trigger)
+                # Le trailing doit suivre le prix même si le PnL redescend après activation
+                tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                if tp_sl_mode == 'FIXE':
+                    # 🔥 Mode FIXE LINÉAIRE: distance adaptative basée sur PnL (min → max)
+                    # Formule: distance = min + (max - min) * clamp((pnl - trigger) / (pnl_cap - trigger), 0, 1)
+                    min_dist = TRADING_CONFIG.get('trailing_min_distance', 0.10)
+                    max_dist = TRADING_CONFIG.get('trailing_max_distance', 0.30)
+                    pnl_cap = TRADING_CONFIG.get('trailing_pnl_cap', 0.60)
+                    
+                    # Calcul linéaire de la distance
+                    if pnl <= trailing_trigger:
+                        trailing_distance = min_dist
+                    else:
+                        denominator = pnl_cap - trailing_trigger
+                        if denominator > 0:
+                            x = min(1.0, max(0.0, (pnl - trailing_trigger) / denominator))
+                            trailing_distance = min_dist + (max_dist - min_dist) * x
+                        else:
+                            trailing_distance = max_dist
+                    
+                    old_sl = self.active_position.sl
+                    new_sl = self._update_trailing_stop_fixe(current_price, trailing_distance)
+                    if new_sl:
+                        self.active_position.sl = new_sl
+                        self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_FIXE')
+                        self.active_position.dynamic_sl = new_sl
+                        # PHASE 0.5: Capturer trailing final SL et distance
+                        self.active_position.trailing_final_sl = new_sl
+                        self.active_position.trailing_distance_pct = trailing_distance
+                        logger.info(
+                            f"🎢 Trailing FIXE {self.active_position.symbol}: "
+                            f"SL {old_sl:.8f} → {new_sl:.8f} | PnL={pnl:.3f}% | Distance={trailing_distance:.3f}%"
+                        )
+                        self._log_trade_event('TRAILING_SL_MOVED', current_price, pnl, details={
+                            'old_sl': old_sl,
+                            'new_sl': new_sl,
+                            'trailing_distance': trailing_distance
+                        })
+                else:
+                    # Mode ATR : utiliser distance adaptative
+                    # FIX SPRINT 3: Passer la distance calculée avec les multiplicateurs adaptatifs
+                    custom_dist = trailing_distance if use_atr_trigger else None
+                    
+                    old_sl = self.active_position.sl
+                    new_sl = self.trailing_stop.update_trailing_stop(
+                        self.active_position.to_dict(),
+                        current_price=current_price,
+                        pnl_percent=pnl,
+                        custom_distance_pct=custom_dist
+                    )
+                    if new_sl:
+                        self.active_position.sl = new_sl
+                        self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_ATR')
+                        self.active_position.dynamic_sl = new_sl
+                        # PHASE 0.5: Capturer trailing final SL et distance
+                        self.active_position.trailing_final_sl = new_sl
+                        self.active_position.trailing_distance_pct = custom_dist
+                        self.active_position.trailing_distance_pct = abs(current_price - new_sl) / entry * 100
+                        self._log_trade_event('TRAILING_SL_MOVED', current_price, pnl, details={
+                            'old_sl': old_sl,
+                            'new_sl': new_sl
+                        })
 
         # 5. HYBRID: Stagnation Exit (Time Decay)
         stagnation_reason = self._check_stagnation_exit(pnl)
@@ -3312,10 +3343,10 @@ class PositionManager:
             self.active_position.stagnation_detected_at = time.time()
             self.active_position.stagnation_pnl_at_detection = pnl
         
-        # 🔥 FIX: MFE PROTECT et STAGNATION POSITIVE ne s'appliquent QU'EN MODE ATR
-        # En mode FIXE, seul le timeout normal s'applique
+        # 🔥 FIX: MFE PROTECT et STAGNATION ne s'appliquent QU'EN MODE ATR
+        # En mode FIXE/ESCALIER, pas de stagnation exit
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-        use_atr = (tp_sl_mode in ['ATR', 'TP_MULTI', 'ESCALIER']) or self.config.use_atr
+        use_atr = (tp_sl_mode == 'ATR') or self.config.use_atr
         
         # 🔥 FIX 15/12: Si trailing activé, NI Stagnation Positive NI MFE Protect ne doivent se déclencher
         # Le trailing gère la sortie via son SL dynamique
@@ -3326,6 +3357,8 @@ class PositionManager:
             )
             # Ne pas retourner ici, continuer vers PHASE 3 (timeout normal) si nécessaire
         elif use_atr:  # 🔥 FIX: MFE PROTECT et STAGNATION POSITIVE seulement en mode ATR
+            logger.debug(f"🔄 Stagnation checks activées (mode ATR): {tp_sl_mode}")
+            
             # ═══════════════════════════════════════════════════════════════════
             # 🔥 PHASE 1: MFE PROTECTION (priorité sur Stagnation Positive)
             # Protège un MFE élevé même si PnL actuel est encore au-dessus du seuil
@@ -3365,10 +3398,9 @@ class PositionManager:
                     )
                     return 'STAGNATION_POSITIVE'
         else:
-            logger.debug(
-                f"⏸️ MFE PROTECT et STAGNATION POSITIVE ignorés {self.active_position.symbol}: "
-                f"Mode FIXE détecté (tp_sl_mode={tp_sl_mode}, use_atr={use_atr})"
-            )
+            # 🔥 Mode FIXE/ESCALIER : Pas de stagnation exit, retourner None
+            logger.debug(f"🚫 Stagnation exit désactivée en mode {tp_sl_mode} (non-ATR)")
+            return None
         
         # ═══════════════════════════════════════════════════════════════════
         # 🔥 PHASE 3: LOGIQUE EXISTANTE (timeout normal)

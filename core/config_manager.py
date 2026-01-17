@@ -46,6 +46,13 @@ class TradingConfigSection:
     sl_percent: float = 0.20
     break_even_trigger: float = 0.3
     trailing_distance: float = 0.15
+    
+    # Trailing stop adaptatif (mode FIXE)
+    trailing_enabled: bool = True
+    trailing_trigger_pnl: float = 0.25
+    trailing_min_distance: float = 0.10
+    trailing_max_distance: float = 0.30
+    trailing_pnl_cap: float = 0.60  # PnL% auquel max_distance est atteint
 
     # ATR mode
     atr_mult_tp: float = 1.5

@@ -21,7 +21,7 @@ class WebSocketLogHandler(logging.Handler):
         self.ws_manager = ws_manager
     
     def emit(self, record):
-        """Envoyer le log au frontend"""
+        """Envoyer le log au frontend et stocker les erreurs de façon persistante"""
         try:
             if not self.ws_manager:
                 return
@@ -35,6 +35,20 @@ class WebSocketLogHandler(logging.Handler):
                 logging.CRITICAL: 'CRITICAL'
             }
             level = level_map.get(record.levelno, 'INFO')
+            
+            # 🔥 NEW: Stocker les erreurs de façon persistante
+            if level in ['ERROR', 'CRITICAL']:
+                try:
+                    from utils.error_history import get_error_history
+                    error_history = get_error_history()
+                    message_with_colors = record.getMessage()
+                    error_history.add_error(
+                        level=level,
+                        message=message_with_colors,
+                        raw_message=message_with_colors
+                    )
+                except Exception as e:
+                    print(f"⚠️ Erreur sauvegarde erreur: {e}", file=sys.stderr)
             
             # 🔥 FIX: Formater le message avec le ColoredFormatter pour préserver les couleurs ANSI et emojis
             # Utiliser le formatter pour obtenir les couleurs ANSI

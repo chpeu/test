@@ -96,6 +96,7 @@
 		trailing_atr_multiplier: 0.8,  // 🔥 Distance plus large (était 0.4, trop serré)
 		trailing_min_distance: 0.10,  // 🔥 Minimum augmenté (était 0.08)
 		trailing_max_distance: 0.30,  // 🔥 Maximum augmenté (était 0.25)
+		trailing_pnl_cap: 0.60,  // 🔥 PnL% auquel max_distance est atteint (mode FIXE linéaire)
 		// Machine Learning V1
 		ml_filter_enabled: false,  // 🔥 PHASE 4 : Désactivé (accuracy 51%)
 		ml_filter_mode: 'NEGATIVE',  // 🔥 Mode NEGATIVE = filtre négatif (+2.9% win rate)
@@ -688,7 +689,8 @@
 				tp_percent: tradingConfig.tp_percent,
 				sl_percent: tradingConfig.sl_percent,
 				break_even_trigger: tradingConfig.break_even_trigger,
-				trailing_distance: tradingConfig.trailing_distance,
+				// 🔥 trailing_distance supprimé en mode FIXE (remplacé par min/max/cap adaptatif)
+				...(tradingConfig.tp_sl_mode !== 'FIXE' ? { trailing_distance: tradingConfig.trailing_distance } : {}),
 				invert_signals: tradingConfig.invert_signals,
 			},
 			'🛡️ Anti-Giveback': {
@@ -748,9 +750,11 @@
 			'📉 Trailing Stop': {
 				trailing_enabled: tradingConfig.trailing_enabled,
 				trailing_trigger_pnl: tradingConfig.trailing_trigger_pnl,
-				trailing_atr_multiplier: tradingConfig.trailing_atr_multiplier,
+				// 🔥 trailing_atr_multiplier masqué en mode FIXE (utilise min/max/cap adaptatif)
+				...(tradingConfig.tp_sl_mode !== 'FIXE' ? { trailing_atr_multiplier: tradingConfig.trailing_atr_multiplier } : {}),
 				trailing_min_distance: tradingConfig.trailing_min_distance,
 				trailing_max_distance: tradingConfig.trailing_max_distance,
+				trailing_pnl_cap: tradingConfig.trailing_pnl_cap,
 			},
 			'📊 Sizing Adaptatif': {
 				adaptive_sizing_enabled: tradingConfig.adaptive_sizing_enabled,
@@ -1087,6 +1091,13 @@
 					trailing_mfe_trigger_pct: config.trailing_mfe_trigger_pct,
 					trailing_mfe_lock_in_pct: config.trailing_mfe_lock_in_pct,
 					partial_tp_be_lock_in_pct: config.partial_tp_be_lock_in_pct
+				});
+				console.log('🎢 Trailing Stop FIXE params:', {
+					trailing_enabled: config.trailing_enabled,
+					trailing_trigger_pnl: config.trailing_trigger_pnl,
+					trailing_min_distance: config.trailing_min_distance,
+					trailing_max_distance: config.trailing_max_distance,
+					trailing_pnl_cap: config.trailing_pnl_cap
 				});
 				console.log('💱 Spread Thresholds params:', {
 					max_spread_pct: config.max_spread_pct,
@@ -3142,30 +3153,9 @@
 									/>
 									<span class="slider-value" data-debug-name="config.break_even_trigger">{Number(config.break_even_trigger).toFixed(2)}%</span>
 								</div>
-							</div>
+						</div>
 
-							<div class="variable-item" data-debug-name="config.trailing_distance">
-								<div class="var-header" data-debug-name="config.trailing_distance">
-									<label for="trailing-distance-fixe" data-debug-name="config.trailing_distance">
-										<span class="var-name" data-debug-name="config.trailing_distance">Trailing Distance (%)</span>
-										<span class="var-desc" data-debug-name="config.trailing_distance">Distance du trailing stop (après 1er TP)</span>
-									</label>
-									<button class="btn-reset" on:click={() => resetVariable('trailing_distance')} title="Réinitialiser" data-debug-name="config.trailing_distance.reset">⟲</button>
-								</div>
-								<div class="slider-container" data-debug-name="config.trailing_distance">
-									<input
-										id="trailing-distance-fixe"
-										type="range"
-										step="0.01"
-										min="0.05"
-										max="1"
-										bind:value={config.trailing_distance}
-										on:change={() => triggerAutoSave('trailing_distance', `${config.trailing_distance.toFixed(2)}%`)}
-										data-debug-name="config.trailing_distance"
-									/>
-									<span class="slider-value" data-debug-name="config.trailing_distance">{Number(config.trailing_distance).toFixed(2)}%</span>
-								</div>
-							</div>
+							<!-- 🔥 trailing_distance supprimé en mode FIXE - remplacé par trailing adaptatif (min/max/cap) -->
 
 							<div class="sub-section" data-debug-name="config.trailing_mfe">
 								<h5 class="sub-title" data-debug-name="config.trailing_mfe.title">🎯 Trailing MFE (SL→BE)</h5>
@@ -4066,11 +4056,13 @@
 						</div>
 					</div>
 
+					<!-- 🔥 ATR Multiplier masqué en mode FIXE (utilise min/max/cap adaptatif à la place) -->
+					{#if viewMode !== 'FIXE'}
 					<div class="variable-item" data-debug-name="config.trailing_atr_multiplier">
 						<div class="var-header" data-debug-name="config.trailing_atr_multiplier">
 							<label for="trailing-atr-mult" data-debug-name="config.trailing_atr_multiplier">
 								<span class="var-name" data-debug-name="config.trailing_atr_multiplier">ATR Multiplier</span>
-								<span class="var-desc" data-debug-name="config.trailing_atr_multiplier">Distance = ATR × multiplier</span>
+								<span class="var-desc" data-debug-name="config.trailing_atr_multiplier">Distance = ATR × multiplier (mode ATR uniquement)</span>
 							</label>
 							<button class="btn-reset" on:click={() => resetVariable('trailing_atr_multiplier')} title="Réinitialiser" data-debug-name="config.trailing_atr_multiplier.reset">⟲</button>
 						</div>
@@ -4088,6 +4080,7 @@
 							<span class="slider-value" data-debug-name="config.trailing_atr_multiplier">{Number(config.trailing_atr_multiplier).toFixed(1)}x</span>
 						</div>
 					</div>
+					{/if}
 
 					<div class="variable-item" data-debug-name="config.trailing_min_distance">
 						<div class="var-header" data-debug-name="config.trailing_min_distance">
@@ -4133,6 +4126,60 @@
 							/>
 							<span class="slider-value" data-debug-name="config.trailing_max_distance">{Number(config.trailing_max_distance).toFixed(2)}%</span>
 						</div>
+					</div>
+
+					<div class="variable-item" data-debug-name="config.trailing_pnl_cap">
+						<div class="var-header" data-debug-name="config.trailing_pnl_cap">
+							<label for="trailing-pnl-cap" data-debug-name="config.trailing_pnl_cap">
+								<span class="var-name" data-debug-name="config.trailing_pnl_cap">PnL Cap (%)</span>
+								<span class="var-desc" data-debug-name="config.trailing_pnl_cap">PnL% auquel max distance est atteint</span>
+							</label>
+							<button class="btn-reset" on:click={() => resetVariable('trailing_pnl_cap')} title="Réinitialiser" data-debug-name="config.trailing_pnl_cap.reset">⟲</button>
+						</div>
+						<div class="slider-container" data-debug-name="config.trailing_pnl_cap">
+							<input
+								id="trailing-pnl-cap"
+								type="range"
+								step="0.05"
+								min="0.2"
+								max="2"
+								bind:value={config.trailing_pnl_cap}
+								on:change={() => triggerAutoSave('trailing_pnl_cap', `${config.trailing_pnl_cap.toFixed(2)}%`)}
+								data-debug-name="config.trailing_pnl_cap"
+							/>
+							<span class="slider-value" data-debug-name="config.trailing_pnl_cap">{Number(config.trailing_pnl_cap).toFixed(2)}%</span>
+						</div>
+					</div>
+
+					<!-- 📊 Tableau de prévisualisation des distances trailing -->
+					<div class="trailing-preview-table" data-debug-name="trailing-preview">
+						<h4 style="margin: 1rem 0 0.5rem 0; font-size: 0.85rem; color: var(--text-secondary);">📊 Prévisualisation Distance Trailing</h4>
+						<table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+							<thead>
+								<tr style="background: var(--bg-tertiary);">
+									<th style="padding: 4px 8px; text-align: left; border: 1px solid var(--border-color);">PnL%</th>
+									<th style="padding: 4px 8px; text-align: right; border: 1px solid var(--border-color);">Distance%</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0] as pnlValue}
+									{@const trigger = config.trailing_trigger_pnl ?? 0.1}
+									{@const minDist = config.trailing_min_distance ?? 0.1}
+									{@const maxDist = config.trailing_max_distance ?? 0.3}
+									{@const pnlCap = config.trailing_pnl_cap ?? 0.6}
+									{@const denominator = pnlCap - trigger}
+									{@const x = pnlValue <= trigger ? 0 : (denominator > 0 ? Math.min(1, Math.max(0, (pnlValue - trigger) / denominator)) : 1)}
+									{@const distance = minDist + (maxDist - minDist) * x}
+									<tr style="background: {pnlValue <= trigger ? 'var(--bg-secondary)' : 'transparent'};">
+										<td style="padding: 3px 8px; border: 1px solid var(--border-color);">{pnlValue.toFixed(2)}%</td>
+										<td style="padding: 3px 8px; text-align: right; border: 1px solid var(--border-color); color: {pnlValue <= trigger ? 'var(--text-muted)' : 'var(--success-color)'};">{distance.toFixed(3)}%</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+						<p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.3rem;">
+							Formule: distance = min + (max - min) × clamp((pnl - trigger) / (cap - trigger), 0, 1)
+						</p>
 					</div>
 				</div>
 			</section>

@@ -60,13 +60,8 @@ def calculate_fixed_levels(
             f"fixed_tp_pct={config.fixed_tp_pct}%"
         )
 
-    # 🔥 FIX 18/12: Appliquer sl_max_pct aussi en mode FIXE
-    from config import TRADING_CONFIG
-    sl_max_pct = TRADING_CONFIG.get('sl_max_pct', 0.50)
+    # Mode FIXE : utiliser directement les valeurs configurées sans limitation ATR
     sl_pct = config.fixed_sl_pct
-    if sl_pct > sl_max_pct:
-        logger.warning(f"⚠️ Mode FIXE: SL capped: {sl_pct:.2f}% → {sl_max_pct}% (max)")
-        sl_pct = sl_max_pct
 
     # Calcul initial
     if direction == 'LONG':
