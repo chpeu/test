@@ -29,44 +29,69 @@
 	let tradeEventsLoading = {};
 	let tradeEventsError = {};
 
-	function isTradeExpanded(tradeId) {
-		return expandedTrades.has(tradeId);
+	function getTradeEventId(trade) {
+		return trade?.id || trade?.trade_id || trade?.closure_id;
 	}
 
-	async function loadTradeEvents(tradeId) {
-		if (!tradeId || tradeEventsById[tradeId] || tradeEventsLoading[tradeId]) return;
-		tradeEventsLoading = { ...tradeEventsLoading, [tradeId]: true };
-		tradeEventsError = { ...tradeEventsError, [tradeId]: null };
+	function getTradeKey(trade, index) {
+		const eventId = getTradeEventId(trade);
+		if (eventId) return eventId;
+		const symbol = trade?.symbol || 'trade';
+		const timestamp = trade?.closed_at || trade?.opened_at || trade?.timestamp || '';
+		return `${symbol}_${timestamp}_${index ?? ''}`;
+	}
+
+	function isTradeExpanded(tradeKey) {
+		return expandedTrades.has(tradeKey);
+	}
+
+	async function loadTradeEvents(tradeEventId) {
+		if (!tradeEventId || tradeEventsById[tradeEventId] || tradeEventsLoading[tradeEventId]) return;
+		tradeEventsLoading = { ...tradeEventsLoading, [tradeEventId]: true };
+		tradeEventsError = { ...tradeEventsError, [tradeEventId]: null };
 		try {
 			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
 			if (!ws || !ws.connected) {
 				throw new Error('WebSocket non connecté');
 			}
-			const response = await sendRequestViaWS('trade_events', { trade_id: tradeId });
+			const response = await sendRequestViaWS('trade_events', { trade_id: tradeEventId });
 			const payload = response?.data || response || {};
 			if (payload?.error) {
 				throw new Error(payload.error);
 			}
-			tradeEventsById = { ...tradeEventsById, [tradeId]: payload?.events || [] };
+			tradeEventsById = { ...tradeEventsById, [tradeEventId]: payload?.events || [] };
 		} catch (err) {
-			tradeEventsError = { ...tradeEventsError, [tradeId]: err?.message || 'Erreur chargement ordres' };
+			tradeEventsError = { ...tradeEventsError, [tradeEventId]: err?.message || 'Erreur chargement ordres' };
 		} finally {
-			tradeEventsLoading = { ...tradeEventsLoading, [tradeId]: false };
+			tradeEventsLoading = { ...tradeEventsLoading, [tradeEventId]: false };
 		}
 	}
 
-	function toggleTrade(trade) {
-		const tradeId = trade?.id;
-		if (!tradeId) return;
+	function toggleTrade(trade, index) {
+		const tradeKey = getTradeKey(trade, index);
+		console.log('🔍 Toggle trade:', { tradeKey, trade: trade?.symbol, index });
+		if (!tradeKey) {
+			console.error('❌ Pas de tradeKey généré');
+			return;
+		}
 		const next = new Set(expandedTrades);
-		if (next.has(tradeId)) {
-			next.delete(tradeId);
+		if (next.has(tradeKey)) {
+			console.log('🔽 Fermeture expansion:', tradeKey);
+			next.delete(tradeKey);
 		} else {
-			next.add(tradeId);
-			loadTradeEvents(tradeId);
+			console.log('🔼 Ouverture expansion:', tradeKey);
+			next.add(tradeKey);
+			const tradeEventId = getTradeEventId(trade);
+			if (tradeEventId) {
+				console.log('📡 Chargement events pour:', tradeEventId);
+				loadTradeEvents(tradeEventId);
+			} else {
+				console.log('⚠️ Pas d\'ID backend, expansion locale seulement');
+			}
 		}
 		expandedTrades = next;
+		console.log('✅ Expanded trades:', Array.from(expandedTrades));
 	}
 
 	// Nombre total de pages
@@ -274,8 +299,8 @@
 	}
 
 	function getOrderEvents(trade) {
-		const tradeId = trade?.id;
-		const events = (tradeId && tradeEventsById[tradeId]) || [];
+		const tradeEventId = getTradeEventId(trade);
+		const events = (tradeEventId && tradeEventsById[tradeEventId]) || [];
 		const orderEvents = (events || []).filter(event => ORDER_EVENT_TYPES.has(event?.event_type));
 		const hasExit = orderEvents.some(event => event?.event_type === 'EXIT');
 		if (!hasExit) {
@@ -337,173 +362,175 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each $paginatedTrades as trade, index (trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp}_${index}`)}
-						{@const globalIndex = (currentPage - 1) * tradesPerPage + index}
-						{@const isWin = (trade.net_pnl_usdt || 0) >= 0}
-						<tr class:row-win={isWin} class:row-loss={!isWin} class:row-expanded={isTradeExpanded(trade.id)} data-debug-name="trade[{globalIndex}]">
-							<td class="expand-cell" data-debug-name="trade.expand">
-								<button class="expand-toggle" on:click={() => toggleTrade(trade)} aria-label="Afficher les ordres">
-									<span class:expanded={isTradeExpanded(trade.id)}>▶</span>
-								</button>
-							</td>
-							<td class="index" data-debug-name="trade.index">{globalIndex + 1}</td>
-							<td class="time" data-debug-name="trade.closed_at">{formatTime(trade.closed_at || trade.timestamp)}</td>
-							<td class="symbol" data-debug-name="trade.symbol" title="Taille: {trade.filled_size_usdt ? trade.filled_size_usdt.toFixed(2) : (trade.size || 'N/A')} USDT">{trade.symbol}</td>
-							<td class="direction" data-debug-name="trade.direction">
-								<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'} data-debug-name="trade.direction">
-									{trade.direction}
-								</span>
-							</td>
-							<td class="reason" data-debug-name="trade.reason">
-								{#if trade.reason === 'MANUAL'}
-									<span class="reason-manual" data-debug-name="trade.reason">👤 Manuel</span>
-								{:else}
-									{(() => {
-										const reason = trade.reason || trade.close_reason || 'N/A';
-										const pnl = trade.net_pnl_usdt || 0;
-										
-										// Clarifier les cas ambigus
-										if (reason === 'TP' && pnl < 0) return 'TP (Slippage)';
-										if (reason === 'SL' && pnl > 0) return 'SL (Profit)';
-										
-										return reason;
-									})()}
-								{/if}
-							</td>
-							<td class="entry-price" data-debug-name="trade.entry_price">
+					{#each $paginatedTrades as trade, index (getTradeKey(trade, index))}
+					{@const tradeKey = getTradeKey(trade, index)}
+					{@const tradeEventId = getTradeEventId(trade)}
+					{@const globalIndex = (currentPage - 1) * tradesPerPage + index}
+					{@const isWin = (trade.net_pnl_usdt || 0) >= 0}
+					<tr class:row-win={isWin} class:row-loss={!isWin} class:row-expanded={isTradeExpanded(tradeKey)} data-debug-name="trade[{globalIndex}]">
+						<td class="expand-cell" data-debug-name="trade.expand">
+							<button class="expand-toggle" on:click={() => toggleTrade(trade, index)} aria-label="Afficher les ordres">
+								<span class:expanded={isTradeExpanded(tradeKey)}>▶</span>
+							</button>
+						</td>
+						<td class="index" data-debug-name="trade.index">{globalIndex + 1}</td>
+						<td class="time" data-debug-name="trade.closed_at">{formatTime(trade.closed_at || trade.timestamp)}</td>
+						<td class="symbol" data-debug-name="trade.symbol" title="Taille: {trade.filled_size_usdt ? trade.filled_size_usdt.toFixed(2) : (trade.size || 'N/A')} USDT">{trade.symbol}</td>
+						<td class="direction" data-debug-name="trade.direction">
+							<span class:long={trade.direction === 'LONG'} class:short={trade.direction === 'SHORT'} data-debug-name="trade.direction">
+								{trade.direction}
+							</span>
+						</td>
+						<td class="reason" data-debug-name="trade.reason">
+							{#if trade.reason === 'MANUAL'}
+								<span class="reason-manual" data-debug-name="trade.reason">👤 Manuel</span>
+							{:else}
 								{(() => {
-									const entryPrice = trade.entry_price || trade.entry;
-									return entryPrice ? formatPrice(entryPrice) : 'N/A';
-								})()}
-							</td>
-							<td class="exit-price" data-debug-name="trade.exit_price">
-								{(() => {
-									const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price || trade.exit;
-									const entryPrice = trade.entry_price || trade.entry;
+									const reason = trade.reason || trade.close_reason || 'N/A';
+									const pnl = trade.net_pnl_usdt || 0;
 									
-									// Si pas de prix de sortie ou prix suspect (0 ou 1 pour un actif > 10)
-									if (!exitPrice || (exitPrice <= 1 && entryPrice > 10)) {
-										// Essayer de reconstruire depuis PnL si possible
-										if (entryPrice && trade.pnl_pct) {
-											const pnlMult = 1 + (trade.pnl_pct / 100 * (trade.direction === 'SHORT' ? -1 : 1));
-											const estPrice = entryPrice * pnlMult;
-											const decimals = getSignificantDecimals(entryPrice);
-											return `≈${formatPrice(estPrice, decimals)}`;
-										}
-										return exitPrice ? formatPrice(exitPrice) : 'N/A';
-									}
+									// Clarifier les cas ambigus
+									if (reason === 'TP' && pnl < 0) return 'TP (Slippage)';
+									if (reason === 'SL' && pnl > 0) return 'SL (Profit)';
 									
-									// Utiliser le nombre de décimales du prix d'entrée
-									const decimals = entryPrice ? getSignificantDecimals(entryPrice) : null;
-									return formatPrice(exitPrice, decimals);
+									return reason;
 								})()}
-							</td>
-							<!-- 🔥 Size USDT (montant réellement exécuté) -->
-							<td class="size-usdt" data-debug-name="trade.size">
-								{(() => {
-									// 🔥 FIX: Validation intelligente de la taille
-									// Si size_executed_usdt est > 3x size_initial_usdt, c'est probablement une erreur
-									const initialSize = trade.size_initial_usdt || 0;
-									const executedSize = trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0;
-									
-									// 🔥 FIX: Recalculer size depuis PnL si disponible (plus fiable)
-									const pnlUsdt = trade.net_pnl_usdt || 0;
-									const pnlPct = trade.net_pnl_pct || 0;
-									let calculatedSize = 0;
-									if (pnlPct !== 0 && Math.abs(pnlPct) > 0.001) {
-										calculatedSize = Math.abs(pnlUsdt / (pnlPct / 100));
+							{/if}
+						</td>
+						<td class="entry-price" data-debug-name="trade.entry_price">
+							{(() => {
+								const entryPrice = trade.entry_price || trade.entry;
+								return entryPrice ? formatPrice(entryPrice) : 'N/A';
+							})()}
+						</td>
+						<td class="exit-price" data-debug-name="trade.exit_price">
+							{(() => {
+								const exitPrice = trade.exit_price || trade.close_price || trade.filled_exit_price || trade.exit;
+								const entryPrice = trade.entry_price || trade.entry;
+								
+								// Si pas de prix de sortie ou prix suspect (0 ou 1 pour un actif > 10)
+								if (!exitPrice || (exitPrice <= 1 && entryPrice > 10)) {
+									// Essayer de reconstruire depuis PnL si possible
+									if (entryPrice && trade.pnl_pct) {
+										const pnlMult = 1 + (trade.pnl_pct / 100 * (trade.direction === 'SHORT' ? -1 : 1));
+										const estPrice = entryPrice * pnlMult;
+										const decimals = getSignificantDecimals(entryPrice);
+										return `≈${formatPrice(estPrice, decimals)}`;
 									}
-									
-									// Utiliser la taille la plus fiable
-									let size = executedSize;
-									if (initialSize > 0 && executedSize > 3 * initialSize) {
-										// Taille exécutée suspicieusement grande - utiliser calculée ou initiale
-										size = calculatedSize > 0 ? calculatedSize : initialSize;
-									} else if (calculatedSize > 0 && Math.abs(calculatedSize - executedSize) > executedSize * 0.5) {
-										// Écart > 50% entre calculée et exécutée - utiliser calculée
-										size = calculatedSize;
+									return exitPrice ? formatPrice(exitPrice) : 'N/A';
+								}
+								
+								// Utiliser le nombre de décimales du prix d'entrée
+								const decimals = entryPrice ? getSignificantDecimals(entryPrice) : null;
+								return formatPrice(exitPrice, decimals);
+							})()}
+						</td>
+						<!-- 🔥 Size USDT (montant réellement exécuté) -->
+						<td class="size-usdt" data-debug-name="trade.size">
+							{(() => {
+								// 🔥 FIX: Validation intelligente de la taille
+								// Si size_executed_usdt est > 3x size_initial_usdt, c'est probablement une erreur
+								const initialSize = trade.size_initial_usdt || 0;
+								const executedSize = trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0;
+								
+								// 🔥 FIX: Recalculer size depuis PnL si disponible (plus fiable)
+								const pnlUsdt = trade.net_pnl_usdt || 0;
+								const pnlPct = trade.net_pnl_pct || 0;
+								let calculatedSize = 0;
+								if (pnlPct !== 0 && Math.abs(pnlPct) > 0.001) {
+									calculatedSize = Math.abs(pnlUsdt / (pnlPct / 100));
+								}
+								
+								// Utiliser la taille la plus fiable
+								let size = executedSize;
+								if (initialSize > 0 && executedSize > 3 * initialSize) {
+									// Taille exécutée suspicieusement grande - utiliser calculée ou initiale
+									size = calculatedSize > 0 ? calculatedSize : initialSize;
+								} else if (calculatedSize > 0 && Math.abs(calculatedSize - executedSize) > executedSize * 0.5) {
+									// Écart > 50% entre calculée et exécutée - utiliser calculée
+									size = calculatedSize;
+								}
+								
+								return size > 0 ? formatUSDT(size) : 'N/A';
+							})()}
+						</td>
+						<!-- 🔥 PnL Net % calculé depuis size et pnl_usdt réel -->
+						<td class="pnl-net" class:positive={isWin} class:negative={!isWin} data-debug-name="trade.net_pnl_pct">
+							{(() => {
+								// Priorité 1: net_pnl_pct du backend
+								if (trade.net_pnl_pct !== undefined && trade.net_pnl_pct !== null) {
+									return `${trade.net_pnl_pct >= 0 ? '+' : ''}${formatPercent(trade.net_pnl_pct)}%`;
+								}
+								// Priorité 2: Calculer depuis size_executed (réelle) et pnl_usdt
+								const size = trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0;
+								const pnlUsdt = trade.net_pnl_usdt || 0;
+								if (size > 0) {
+									const pnlPct = (pnlUsdt / size) * 100;
+									return `${pnlPct >= 0 ? '+' : ''}${formatPercent(pnlPct)}%`;
+								}
+								return 'N/A';
+							})()}
+						</td>
+						<!-- 🔥 FIX: PnL Réalisé USDT = PnL réel depuis API MEXC (4 décimales comme l'API) -->
+						<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt" title="PnL réalisé depuis API MEXC | Entry: {trade.entry_price || trade.entry || 'N/A'} | Exit: {trade.exit_price || trade.exit || 'N/A'}">
+							{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{(trade.net_pnl_usdt || 0).toFixed(4)} USDT
+						</td>
+						<!-- 🔥 FIX: Supprimé PnL Total USDT car redondant et calcul incorrect -->
+						
+						<!-- 🔥 FIX: Duration (calculée si manquante) -->
+						<td class="duration" data-debug-name="trade.duration">
+							{(() => {
+								// Priorité 1: duration_seconds (format backend)
+								if (trade.duration_seconds !== undefined && trade.duration_seconds !== null && trade.duration_seconds !== '') {
+									return formatDurationFromSeconds(Number(trade.duration_seconds));
+								}
+								// Priorité 2: duration (en secondes, format backend)
+								if (trade.duration !== undefined && trade.duration !== null && trade.duration !== '') {
+									const durationNum = typeof trade.duration === 'number' ? trade.duration : Number(trade.duration);
+									if (!isNaN(durationNum) && durationNum > 0) {
+										return formatDurationFromSeconds(durationNum);
 									}
-									
-									return size > 0 ? formatUSDT(size) : 'N/A';
-								})()}
-							</td>
-							<!-- 🔥 PnL Net % calculé depuis size et pnl_usdt réel -->
-							<td class="pnl-net" class:positive={isWin} class:negative={!isWin} data-debug-name="trade.net_pnl_pct">
-								{(() => {
-									// Priorité 1: net_pnl_pct du backend
-									if (trade.net_pnl_pct !== undefined && trade.net_pnl_pct !== null) {
-										return `${trade.net_pnl_pct >= 0 ? '+' : ''}${formatPercent(trade.net_pnl_pct)}%`;
+								}
+								// Priorité 3: Calculer depuis opened_at et closed_at
+								if (trade.opened_at && trade.closed_at) {
+									const calculated = formatDuration(trade.opened_at, trade.closed_at);
+									if (calculated !== 'N/A') {
+										return calculated;
 									}
-									// Priorité 2: Calculer depuis size_executed (réelle) et pnl_usdt
-									const size = trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0;
-									const pnlUsdt = trade.net_pnl_usdt || 0;
-									if (size > 0) {
-										const pnlPct = (pnlUsdt / size) * 100;
-										return `${pnlPct >= 0 ? '+' : ''}${formatPercent(pnlPct)}%`;
+								}
+								// Priorité 4: Calculer depuis timestamp et closed_at
+								if (trade.timestamp && trade.closed_at) {
+									const calculated = formatDuration(trade.timestamp, trade.closed_at);
+									if (calculated !== 'N/A') {
+										return calculated;
 									}
-									return 'N/A';
-								})()}
-							</td>
-							<!-- 🔥 FIX: PnL Réalisé USDT = PnL réel depuis API MEXC (4 décimales comme l'API) -->
-							<td class="pnl-usdt" class:positive={(trade.net_pnl_usdt || 0) >= 0} class:negative={(trade.net_pnl_usdt || 0) < 0} data-debug-name="trade.net_pnl_usdt" title="PnL réalisé depuis API MEXC | Entry: {trade.entry_price || trade.entry || 'N/A'} | Exit: {trade.exit_price || trade.exit || 'N/A'}">
-								{(trade.net_pnl_usdt || 0) >= 0 ? '+' : ''}{(trade.net_pnl_usdt || 0).toFixed(4)} USDT
-							</td>
-							<!-- 🔥 FIX: Supprimé PnL Total USDT car redondant et calcul incorrect -->
-							
-							<!-- 🔥 FIX: Duration (calculée si manquante) -->
-							<td class="duration" data-debug-name="trade.duration">
-								{(() => {
-									// Priorité 1: duration_seconds (format backend)
-									if (trade.duration_seconds !== undefined && trade.duration_seconds !== null && trade.duration_seconds !== '') {
-										return formatDurationFromSeconds(Number(trade.duration_seconds));
-									}
-									// Priorité 2: duration (en secondes, format backend)
-									if (trade.duration !== undefined && trade.duration !== null && trade.duration !== '') {
-										const durationNum = typeof trade.duration === 'number' ? trade.duration : Number(trade.duration);
-										if (!isNaN(durationNum) && durationNum > 0) {
-											return formatDurationFromSeconds(durationNum);
-										}
-									}
-									// Priorité 3: Calculer depuis opened_at et closed_at
-									if (trade.opened_at && trade.closed_at) {
-										const calculated = formatDuration(trade.opened_at, trade.closed_at);
-										if (calculated !== 'N/A') {
-											return calculated;
-										}
-									}
-									// Priorité 4: Calculer depuis timestamp et closed_at
-									if (trade.timestamp && trade.closed_at) {
-										const calculated = formatDuration(trade.timestamp, trade.closed_at);
-										if (calculated !== 'N/A') {
-											return calculated;
-										}
-									}
-									// Fallback
-									return 'N/A';
-								})()}
-							</td>
-						</tr>
-						{#if isTradeExpanded(trade.id)}
-							{@const orderEvents = getOrderEvents(trade)}
-							{@const orderGroups = groupOrderEvents(orderEvents)}
-							<tr class="order-row" data-debug-name="trade[{globalIndex}].orders">
-								<td colspan="12">
-									<div class="order-details">
-										<div class="order-details-header">Ordres du trade</div>
-										{#if tradeEventsLoading[trade.id]}
-											<div class="order-details-status loading">Chargement des ordres...</div>
-										{:else if tradeEventsError[trade.id]}
-											<div class="order-details-status error">{tradeEventsError[trade.id]}</div>
-											{#if orderGroups.length > 0}
-												<div class="order-details-status hint">Fallback local (sortie finale)</div>
-												<div class="order-groups">
-													{#each orderGroups as group}
-														<div class="order-group" data-debug-name="trade[{globalIndex}].orders.group.{group.type}">
-															<div class="order-group-title">
-																{group.label}
-																<span class="order-group-count">{group.events.length}</span>
-															</div>
-															<div class="order-list">
+								}
+								// Fallback
+								return 'N/A';
+							})()}
+						</td>
+					</tr>
+					{#if isTradeExpanded(tradeKey)}
+					{@const orderEvents = getOrderEvents(trade)}
+					{@const orderGroups = groupOrderEvents(orderEvents)}
+					<tr class="order-row" data-debug-name="trade[{globalIndex}].orders">
+						<td colspan="12">
+							<div class="order-details">
+								<div class="order-details-header">Ordres du trade</div>
+								{#if tradeEventId && tradeEventsLoading[tradeEventId]}
+									<div class="order-details-status loading">Chargement des ordres...</div>
+								{:else if tradeEventId && tradeEventsError[tradeEventId]}
+									<div class="order-details-status error">{tradeEventsError[tradeEventId]}</div>
+										{#if orderGroups.length > 0}
+											<div class="order-details-status hint">Fallback local (sortie finale)</div>
+											<div class="order-groups">
+												{#each orderGroups as group}
+													<div class="order-group" data-debug-name="trade[{globalIndex}].orders.group.{group.type}">
+														<div class="order-group-title">
+															{group.label}
+															<span class="order-group-count">{group.events.length}</span>
+														</div>
+														<div class="order-list">
 																{#each group.events as event, eventIndex}
 																	{@const eventTime = getEventTimestamp(event, trade)}
 																	<div
