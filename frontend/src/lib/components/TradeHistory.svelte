@@ -24,7 +24,7 @@
 	});
 
 	// 🔥 Détails d'ordres (trade_events)
-	let expandedTrades = new Set();
+	let expandedTrades = {}; // Utiliser un objet simple pour la réactivité
 	let tradeEventsById = {};
 	let tradeEventsLoading = {};
 	let tradeEventsError = {};
@@ -34,21 +34,23 @@
 	}
 
 	function getTradeKey(trade, index) {
-		const eventId = getTradeEventId(trade);
-		if (eventId) return eventId;
+		// Priorité absolue à l'ID technique pour la stabilité du state Svelte
+		const id = trade?.id || trade?.trade_id || trade?.closure_id || trade?._trade_id || trade?.id_trade;
+		if (id) return String(id);
+		
+		// Fallback sur symbole + timestamp précis
 		const symbol = trade?.symbol || 'trade';
-		const timestamp = trade?.closed_at || trade?.opened_at || trade?.timestamp || '';
-		return `${symbol}_${timestamp}_${index ?? ''}`;
-	}
-
-	function isTradeExpanded(tradeKey) {
-		return expandedTrades.has(tradeKey);
+		const ts = trade?.closed_at || trade?.opened_at || trade?.timestamp || '';
+		return `${symbol}_${ts}`;
 	}
 
 	async function loadTradeEvents(tradeEventId) {
 		if (!tradeEventId || tradeEventsById[tradeEventId] || tradeEventsLoading[tradeEventId]) return;
+		
+		// Mise à jour réactive des états de chargement
 		tradeEventsLoading = { ...tradeEventsLoading, [tradeEventId]: true };
 		tradeEventsError = { ...tradeEventsError, [tradeEventId]: null };
+		
 		try {
 			const { getWebSocket, sendRequestViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
@@ -62,36 +64,49 @@
 			}
 			tradeEventsById = { ...tradeEventsById, [tradeEventId]: payload?.events || [] };
 		} catch (err) {
+			console.error(`❌ Erreur chargement events (${tradeEventId}):`, err);
 			tradeEventsError = { ...tradeEventsError, [tradeEventId]: err?.message || 'Erreur chargement ordres' };
 		} finally {
 			tradeEventsLoading = { ...tradeEventsLoading, [tradeEventId]: false };
 		}
 	}
 
-	function toggleTrade(trade, index) {
-		const tradeKey = getTradeKey(trade, index);
-		console.log('🔍 Toggle trade:', { tradeKey, trade: trade?.symbol, index });
-		if (!tradeKey) {
-			console.error('❌ Pas de tradeKey généré');
-			return;
+	function toggleTrade(event, trade, index) {
+		if (event) {
+			event.preventDefault();
+			event.stopPropagation();
 		}
-		const next = new Set(expandedTrades);
-		if (next.has(tradeKey)) {
-			console.log('🔽 Fermeture expansion:', tradeKey);
-			next.delete(tradeKey);
+		
+		const tradeKey = getTradeKey(trade, index);
+		const id = trade?.id || trade?.trade_id || trade?.closure_id;
+		
+		console.log('🔵 Toggle Trade HISTORY:', { 
+			tradeKey, 
+			symbol: trade?.symbol, 
+			id,
+			currentlyExpanded: !!expandedTrades[tradeKey]
+		});
+
+		// Nouvelle référence d'objet pour garantir la réactivité Svelte 4
+		const nextExpanded = { ...expandedTrades };
+		
+		if (nextExpanded[tradeKey]) {
+			delete nextExpanded[tradeKey];
+			console.log('🔽 Expansion FERMÉE for:', tradeKey);
 		} else {
-			console.log('🔼 Ouverture expansion:', tradeKey);
-			next.add(tradeKey);
+			nextExpanded[tradeKey] = true;
+			console.log('🔼 Expansion OUVERTE for:', tradeKey);
+			
 			const tradeEventId = getTradeEventId(trade);
 			if (tradeEventId) {
-				console.log('📡 Chargement events pour:', tradeEventId);
+				console.log('📡 Fetching events for:', tradeEventId);
 				loadTradeEvents(tradeEventId);
 			} else {
-				console.log('⚠️ Pas d\'ID backend, expansion locale seulement');
+				console.log('⚠️ No tradeEventId found, fallback only');
 			}
 		}
-		expandedTrades = next;
-		console.log('✅ Expanded trades:', Array.from(expandedTrades));
+		
+		expandedTrades = nextExpanded;
 	}
 
 	// Nombre total de pages
@@ -367,10 +382,10 @@
 					{@const tradeEventId = getTradeEventId(trade)}
 					{@const globalIndex = (currentPage - 1) * tradesPerPage + index}
 					{@const isWin = (trade.net_pnl_usdt || 0) >= 0}
-					<tr class:row-win={isWin} class:row-loss={!isWin} class:row-expanded={isTradeExpanded(tradeKey)} data-debug-name="trade[{globalIndex}]">
+					<tr class:row-win={isWin} class:row-loss={!isWin} class:row-expanded={expandedTrades[tradeKey]} data-debug-name="trade[{globalIndex}]" on:click={(e) => toggleTrade(e, trade, index)} style="cursor: pointer;">
 						<td class="expand-cell" data-debug-name="trade.expand">
-							<button class="expand-toggle" on:click={() => toggleTrade(trade, index)} aria-label="Afficher les ordres">
-								<span class:expanded={isTradeExpanded(tradeKey)}>▶</span>
+							<button class="expand-toggle" on:click|stopPropagation={(e) => toggleTrade(e, trade, index)} aria-label="Afficher les ordres">
+								<span class:expanded={expandedTrades[tradeKey]} style="pointer-events: none;">▶</span>
 							</button>
 						</td>
 						<td class="index" data-debug-name="trade.index">{globalIndex + 1}</td>
@@ -510,7 +525,7 @@
 							})()}
 						</td>
 					</tr>
-					{#if isTradeExpanded(tradeKey)}
+					{#if expandedTrades[tradeKey]}
 					{@const orderEvents = getOrderEvents(trade)}
 					{@const orderGroups = groupOrderEvents(orderEvents)}
 					<tr class="order-row" data-debug-name="trade[{globalIndex}].orders">
@@ -519,103 +534,64 @@
 								<div class="order-details-header">Ordres du trade</div>
 								{#if tradeEventId && tradeEventsLoading[tradeEventId]}
 									<div class="order-details-status loading">Chargement des ordres...</div>
-								{:else if tradeEventId && tradeEventsError[tradeEventId]}
-									<div class="order-details-status error">{tradeEventsError[tradeEventId]}</div>
+								{:else}
+									{#if tradeEventId && tradeEventsError[tradeEventId]}
+										<div class="order-details-status error">{tradeEventsError[tradeEventId]}</div>
 										{#if orderGroups.length > 0}
 											<div class="order-details-status hint">Fallback local (sortie finale)</div>
-											<div class="order-groups">
-												{#each orderGroups as group}
-													<div class="order-group" data-debug-name="trade[{globalIndex}].orders.group.{group.type}">
-														<div class="order-group-title">
-															{group.label}
-															<span class="order-group-count">{group.events.length}</span>
-														</div>
-														<div class="order-list">
-																{#each group.events as event, eventIndex}
-																	{@const eventTime = getEventTimestamp(event, trade)}
-																	<div
-																		class="order-item"
-																		class:order-partial={event?.event_type === 'PARTIAL_TP'}
-																		class:order-escalier={event?.event_type === 'TP_ESCALIER_LEVEL'}
-																		class:order-final={event?.event_type === 'EXIT'}
-																		class:order-positive={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event >= 0}
-																		class:order-negative={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event < 0}
-																	>
-																		<div class="order-main">
-																			<span class="order-type">{getEventLabel(event)}</span>
-																			{#if eventTime}
-																				<span class="order-time">{eventTime}</span>
-																			{/if}
-																			{#if getEventMeta(event)}
-																				<span class="order-meta">{getEventMeta(event)}</span>
-																			{/if}
-																			{#if event?.details?.reason}
-																				<span class="order-reason">{event.details.reason}</span>
-																			{/if}
-																		</div>
-																		<div class="order-metrics">
-																			<span class="order-price">Sortie: {getEventPrice(event, trade)}</span>
-																			<span class="order-pnl">{getEventPnlPct(event)}</span>
-																			<span class="order-pnl-usdt">{getEventPnlUsdt(event)}</span>
-																		</div>
-																	</div>
-																{/each}
-															</div>
-														</div>
-													{/each}
-												</div>
-											{/if}
-										{:else}
-											{#if orderGroups.length === 0}
-												<div class="order-details-status empty">Aucun ordre enregistré</div>
-											{:else}
-												<div class="order-groups">
-													{#each orderGroups as group}
-														<div class="order-group" data-debug-name="trade[{globalIndex}].orders.group.{group.type}">
-															<div class="order-group-title">
-																{group.label}
-																<span class="order-group-count">{group.events.length}</span>
-															</div>
-															<div class="order-list">
-																{#each group.events as event, eventIndex}
-																	{@const eventTime = getEventTimestamp(event, trade)}
-																	<div
-																		class="order-item"
-																		class:order-partial={event?.event_type === 'PARTIAL_TP'}
-																		class:order-escalier={event?.event_type === 'TP_ESCALIER_LEVEL'}
-																		class:order-final={event?.event_type === 'EXIT'}
-																		class:order-positive={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event >= 0}
-																		class:order-negative={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event < 0}
-																	>
-																		<div class="order-main">
-																			<span class="order-type">{getEventLabel(event)}</span>
-																			{#if eventTime}
-																				<span class="order-time">{eventTime}</span>
-																			{/if}
-																			{#if getEventMeta(event)}
-																				<span class="order-meta">{getEventMeta(event)}</span>
-																			{/if}
-																			{#if event?.details?.reason}
-																				<span class="order-reason">{event.details.reason}</span>
-																			{/if}
-																		</div>
-																		<div class="order-metrics">
-																			<span class="order-price">Sortie: {getEventPrice(event, trade)}</span>
-																			<span class="order-pnl">{getEventPnlPct(event)}</span>
-																			<span class="order-pnl-usdt">{getEventPnlUsdt(event)}</span>
-																		</div>
-																	</div>
-																{/each}
-															</div>
-														</div>
-													{/each}
-												</div>
-											{/if}
 										{/if}
-									</div>
-								</td>
-							</tr>
-						{/if}
+									{/if}
+
+									{#if orderGroups.length === 0}
+										<div class="order-details-status empty">Aucun ordre enregistré</div>
+									{:else}
+										<div class="order-groups">
+											{#each orderGroups as group}
+												<div class="order-group" data-debug-name="trade[{globalIndex}].orders.group.{group.type}">
+													<div class="order-group-title">
+														{group.label}
+														<span class="order-group-count">{group.events.length}</span>
+													</div>
+													<div class="order-list">
+														{#each group.events as event}
+															{@const eventTime = getEventTimestamp(event, trade)}
+															<div
+																class="order-item"
+																class:order-partial={event?.event_type === 'PARTIAL_TP'}
+																class:order-escalier={event?.event_type === 'TP_ESCALIER_LEVEL'}
+																class:order-final={event?.event_type === 'EXIT'}
+																class:order-positive={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event >= 0}
+																class:order-negative={event?.pnl_usdt_at_event !== null && event?.pnl_usdt_at_event !== undefined && event?.pnl_usdt_at_event < 0}
+															>
+																<div class="order-main">
+																	<span class="order-type">{getEventLabel(event)}</span>
+																	{#if eventTime}
+																		<span class="order-time">{eventTime}</span>
+																	{/if}
+																	{#if getEventMeta(event)}
+																		<span class="order-meta">{getEventMeta(event)}</span>
+																	{/if}
+																	{#if event?.details?.reason}
+																		<span class="order-reason">{event.details.reason}</span>
+																	{/if}
+																</div>
+																<div class="order-metrics">
+																	<span class="order-price">Sortie: {getEventPrice(event, trade)}</span>
+																	<span class="order-pnl">{getEventPnlPct(event)}</span>
+																	<span class="order-pnl-usdt">{getEventPnlUsdt(event)}</span>
+																</div>
+															</div>
+														{/each}
+													</div>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								{/if}
+							</div>
+						</td>
+					</tr>
+				{/if}
 					{/each}
 				</tbody>
 			</table>

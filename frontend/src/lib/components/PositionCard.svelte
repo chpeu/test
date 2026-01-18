@@ -371,6 +371,24 @@
 	$: positionEvents = ($activePosition?.position_events || []).slice(-6).reverse();
 	$: latestEvent = positionEvents.length ? positionEvents[0] : null;
 
+	// Function to get latest event of each type
+	function getLatestEventsByType(events) {
+		if (!events || events.length === 0) return [];
+		
+		const eventsByType = {};
+		
+		// Group events by type, keeping only the latest of each type
+		events.forEach(event => {
+			const type = event.type;
+			if (!eventsByType[type] || event.timestamp > eventsByType[type].timestamp) {
+				eventsByType[type] = event;
+			}
+		});
+		
+		// Return as array, sorted by timestamp (most recent first)
+		return Object.values(eventsByType).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+	}
+
 	function eventLabel(eventType) {
 		const labels = {
 			ENTRY: 'Entrée',
@@ -494,7 +512,7 @@
 		</div>
 
 		<!-- 🔥 NOUVEAU: Sections Prochain TP et Prochain SL distinctes -->
-		{#if $activePosition.next_tp || $activePosition.next_sl || $activePosition}
+		{#if $activePosition.next_tp || $activePosition.next_sl}
 			<!-- Section Prochain Take Profit -->
 			<div class="next-event-section tp-section">
 				<div class="next-event-header">
@@ -607,8 +625,10 @@
 						<span class="telemetry-label">TP partiel</span>
 						<span class="telemetry-value">
 							{$activePosition.partial_tp_sold ? 'oui' : 'non'}
-							{#if $activePosition.partial_tp_percent !== null && $activePosition.partial_tp_percent !== undefined}
-								({formatPercent($activePosition.partial_tp_percent)}%)
+							{#if $activePosition.partial_tp_sold && $activePosition.partial_tp_percent !== null && $activePosition.partial_tp_percent !== undefined}
+								({formatPercent($activePosition.partial_tp_percent)}% exécuté)
+							{:else if !$activePosition.partial_tp_sold && tradingConfig?.partial_tp_percent}
+								({formatPercent(tradingConfig.partial_tp_percent)}% configuré)
 							{/if}
 						</span>
 					</div>
@@ -627,104 +647,100 @@
 				{/if}
 			</div>
 
-			<div class="telemetry-box">
 			{#if isFixedMode}
-				<div class="telemetry-title">FIXE / Seuils</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TP%</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.tp_percent ?? 0.6)}%</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">SL%</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.sl_percent ?? 0.25)}%</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">BE trig</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.break_even_trigger ?? 0.3)}%</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TP partiel</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.partial_tp_percent ?? 50)}%</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TR trig</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_trigger_pnl ?? 0.15)}%</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TR min</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_min_distance ?? 0.1)}%</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TR max</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_max_distance ?? 0.3)}%</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TR cap</span>
-					<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_pnl_cap ?? 0.6)}%</span>
+				<div class="telemetry-box">
+					<div class="telemetry-title">Position Live</div>
+					<div class="telemetry-row">
+						<span class="telemetry-label">Taille actuelle</span>
+						<span class="telemetry-value">{formatUSDT($activePosition.size)} USDT</span>
+					</div>
+					{#if $activePosition.size_remaining !== null && $activePosition.size_remaining !== undefined && $activePosition.size_remaining !== $activePosition.size}
+						<div class="telemetry-row">
+							<span class="telemetry-label">Restant</span>
+							<span class="telemetry-value">{formatUSDT($activePosition.size_remaining)} USDT</span>
+						</div>
+					{/if}
+					{#if $activePosition.tp && $activePosition.entry}
+						<div class="telemetry-row">
+							<span class="telemetry-label">TP distance</span>
+							<span class="telemetry-value">{$tpDistance ? formatPercent(parseFloat($tpDistance.replace('%', ''))) + '%' : '-'}</span>
+						</div>
+					{/if}
+					{#if $activePosition.sl && $activePosition.entry}
+						<div class="telemetry-row">
+							<span class="telemetry-label">SL distance</span>
+							<span class="telemetry-value">{$slDistance ? formatPercent(parseFloat($slDistance.replace('%', ''))) + '%' : '-'}</span>
+						</div>
+					{/if}
+					<div class="telemetry-row">
+						<span class="telemetry-label">TR cap</span>
+						<span class="telemetry-value">{formatPercent(tradingConfig?.trailing_pnl_cap ?? 0.6)}%</span>
+					</div>
 				</div>
 			{:else}
-				<div class="telemetry-title">ATR / Seuils</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">ATR%</span>
-					<span class="telemetry-value">
-						{$activePosition.atr_percent !== null && $activePosition.atr_percent !== undefined ? formatPercent($activePosition.atr_percent) + '%' : '-'}
-					</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">BE trig</span>
-					<span class="telemetry-value">{beTriggerPct !== null && beTriggerPct !== undefined ? formatPercent(beTriggerPct) + '%' : '-'}</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TR trig</span>
-					<span class="telemetry-value">{trailingTriggerPct !== null && trailingTriggerPct !== undefined ? formatPercent(trailingTriggerPct) + '%' : '-'}</span>
-				</div>
-				<div class="telemetry-row">
-					<span class="telemetry-label">TR dist</span>
-					<span class="telemetry-value">
-						{$activePosition.trailing_distance_pct_effective !== null && $activePosition.trailing_distance_pct_effective !== undefined ? formatPercent($activePosition.trailing_distance_pct_effective) + '%' : '-'}
-					</span>
-				</div>
-				{#if $activePosition.break_even_atr_mult_effective !== null && $activePosition.break_even_atr_mult_effective !== undefined}
+				<div class="telemetry-box">
+					<div class="telemetry-title">ATR / Seuils</div>
 					<div class="telemetry-row">
-						<span class="telemetry-label">BE mult</span>
-						<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.break_even_atr_mult_effective, 2)}</span>
+						<span class="telemetry-label">ATR%</span>
+						<span class="telemetry-value">
+							{$activePosition.atr_percent !== null && $activePosition.atr_percent !== undefined ? formatPercent($activePosition.atr_percent) + '%' : '-'}
+						</span>
 					</div>
-				{/if}
-				{#if $activePosition.trailing_trigger_atr_mult_effective !== null && $activePosition.trailing_trigger_atr_mult_effective !== undefined}
 					<div class="telemetry-row">
-						<span class="telemetry-label">TR mult</span>
-						<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.trailing_trigger_atr_mult_effective, 2)}</span>
+						<span class="telemetry-label">BE trig</span>
+						<span class="telemetry-value">{beTriggerPct !== null && beTriggerPct !== undefined ? formatPercent(beTriggerPct) + '%' : '-'}</span>
 					</div>
-				{/if}
-				{#if $activePosition.trailing_distance_mult_effective !== null && $activePosition.trailing_distance_mult_effective !== undefined}
 					<div class="telemetry-row">
-						<span class="telemetry-label">Dist mult</span>
-						<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.trailing_distance_mult_effective, 2)}</span>
+						<span class="telemetry-label">TR trig</span>
+						<span class="telemetry-value">{trailingTriggerPct !== null && trailingTriggerPct !== undefined ? formatPercent(trailingTriggerPct) + '%' : '-'}</span>
 					</div>
-				{/if}
+					<div class="telemetry-row">
+						<span class="telemetry-label">TR dist</span>
+						<span class="telemetry-value">
+							{$activePosition.trailing_distance_pct_effective !== null && $activePosition.trailing_distance_pct_effective !== undefined ? formatPercent($activePosition.trailing_distance_pct_effective) + '%' : '-'}
+						</span>
+					</div>
+					{#if $activePosition.break_even_atr_mult_effective !== null && $activePosition.break_even_atr_mult_effective !== undefined}
+						<div class="telemetry-row">
+							<span class="telemetry-label">BE mult</span>
+							<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.break_even_atr_mult_effective, 2)}</span>
+						</div>
+					{/if}
+					{#if $activePosition.trailing_trigger_atr_mult_effective !== null && $activePosition.trailing_trigger_atr_mult_effective !== undefined}
+						<div class="telemetry-row">
+							<span class="telemetry-label">TR mult</span>
+							<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.trailing_trigger_atr_mult_effective, 2)}</span>
+						</div>
+					{/if}
+					{#if $activePosition.trailing_distance_mult_effective !== null && $activePosition.trailing_distance_mult_effective !== undefined}
+						<div class="telemetry-row">
+							<span class="telemetry-label">Dist mult</span>
+							<span class="telemetry-value">x{formatWithoutTrailingZeros($activePosition.trailing_distance_mult_effective, 2)}</span>
+						</div>
+					{/if}
 
-				{#if pnlScaleMax !== null && pnlProgressPct !== null}
-					<div class="telemetry-progress">
-						<div class="telemetry-progress-bar">
-							<div class="telemetry-progress-fill" style="width: {pnlProgressPct}%"></div>
-							{#if beMarkerPos !== null}
-								<div class="telemetry-marker be" style="left: {beMarkerPos}%"></div>
-							{/if}
-							{#if trailingMarkerPos !== null}
-								<div class="telemetry-marker trailing" style="left: {trailingMarkerPos}%"></div>
-							{/if}
-							{#if trailingMfeMarkerPos !== null}
-								<div class="telemetry-marker mfe" style="left: {trailingMfeMarkerPos}%"></div>
-							{/if}
+					{#if pnlScaleMax !== null && pnlProgressPct !== null}
+						<div class="telemetry-progress">
+							<div class="telemetry-progress-bar">
+								<div class="telemetry-progress-fill" style="width: {pnlProgressPct}%"></div>
+								{#if beMarkerPos !== null}
+									<div class="telemetry-marker be" style="left: {beMarkerPos}%"></div>
+								{/if}
+								{#if trailingMarkerPos !== null}
+									<div class="telemetry-marker trailing" style="left: {trailingMarkerPos}%"></div>
+								{/if}
+								{#if trailingMfeMarkerPos !== null}
+									<div class="telemetry-marker mfe" style="left: {trailingMfeMarkerPos}%"></div>
+								{/if}
+							</div>
+							<div class="telemetry-progress-legend">
+								<span>0%</span>
+								<span>{formatPercent(pnlScaleMax)}%</span>
+							</div>
 						</div>
-						<div class="telemetry-progress-legend">
-							<span>0%</span>
-							<span>{formatPercent(pnlScaleMax)}%</span>
-						</div>
-					</div>
-				{/if}
+					{/if}
+				</div>
 			{/if}
-			</div>
 
 			<div class="telemetry-box">
 				<div class="telemetry-title">BE / Trailing</div>
@@ -774,7 +790,7 @@
 					</div>
 				{/if}
 
-				{#if $activePosition.trailing_mfe_enabled}
+				{#if $activePosition.trailing_mfe_enabled && (tradingConfig?.trailing_mfe_enabled !== false)}
 					<div class="telemetry-row">
 						<span class="telemetry-label">MFE trig</span>
 						<span class="telemetry-value">{$activePosition.trailing_mfe_triggered ? 'oui' : 'non'}</span>
@@ -856,10 +872,34 @@
 			</div>
 		{/if}
 
-		{#if positionEvents.length}
+		{#if positionEvents.length || $activePosition.next_tp || $activePosition.next_sl}
 			<div class="telemetry-box">
-				<div class="telemetry-title">Événements</div>
-				{#each positionEvents as ev (ev.timestamp)}
+				<div class="telemetry-title">Événements & Prochains</div>
+				
+				<!-- Prochains événements -->
+				{#if $activePosition.next_tp}
+					<div class="event-row next-event">
+						<span class="event-dot" style="background: #10b981"></span>
+						<span class="event-type">Prochain TP</span>
+						<span class="event-price">{formatPriceWithPrecision($activePosition.next_tp.price)}</span>
+						<span class="event-distance">
+							{$activePosition.next_tp.distance_pct > 0 ? '+' : ''}{formatPercent($activePosition.next_tp.distance_pct)}%
+						</span>
+					</div>
+				{/if}
+				{#if $activePosition.next_sl}
+					<div class="event-row next-event">
+						<span class="event-dot" style="background: #ef4444"></span>
+						<span class="event-type">Prochain SL</span>
+						<span class="event-price">{formatPriceWithPrecision($activePosition.next_sl.price)}</span>
+						<span class="event-distance">
+							{formatPercent($activePosition.next_sl.distance_pct)}%
+						</span>
+					</div>
+				{/if}
+				
+				<!-- Derniers événements par type -->
+				{#each getLatestEventsByType(positionEvents) as ev (ev.type + ev.timestamp)}
 					<div class="event-row">
 						<span class="event-dot" style="background: {eventColor(ev.type)}"></span>
 						<span class="event-type">{eventLabel(ev.type)}</span>
@@ -896,7 +936,7 @@
 			🚪 Clôturer la Position
 		</button>
 	</div>
-	</div>
+</div>
 {:else}
 	<div class="no-position">
 		<div class="no-position-icon">📊</div>
@@ -1124,19 +1164,28 @@
 		font-weight: bold;
 	}
 
-	.telemetry-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 10px;
-		margin-top: 4px;
-		font-size: 11px;
-		color: #888;
-	}
+.telemetry-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 8px;
+	padding: 8px 12px;
+	background: rgba(255, 255, 255, 0.03);
+	border-radius: 4px;
+	border-left: 3px solid rgba(0, 255, 136, 0.3);
+	transition: all 0.2s ease;
+}
+
+.telemetry-row:hover {
+	background: rgba(255, 255, 255, 0.06);
+	border-left-color: rgba(0, 255, 136, 0.6);
+}
 
 	.telemetry-label {
-		text-transform: uppercase;
 		font-size: 10px;
+		color: #888;
+		text-transform: uppercase;
+		font-weight: 500;
 	}
 
 	.telemetry-value {
@@ -1210,6 +1259,38 @@
 		font-size: 11px;
 		color: #bbb;
 		margin-top: 6px;
+		padding: 6px 8px;
+		border-radius: 4px;
+		transition: background-color 0.2s ease;
+	}
+
+	.event-row:hover {
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.event-row.next-event {
+		background: rgba(0, 255, 136, 0.08);
+		border: 1px solid rgba(0, 255, 136, 0.2);
+		border-radius: 6px;
+		margin-bottom: 8px;
+		font-weight: 500;
+	}
+
+	.event-row.next-event .event-type {
+		color: #00ff88;
+	}
+
+	.event-price {
+		color: #fff;
+		font-family: 'Courier New', monospace;
+		font-weight: bold;
+	}
+
+	.event-distance {
+		color: #00ff88;
+		font-family: 'Courier New', monospace;
+		font-weight: bold;
+		font-size: 12px;
 	}
 
 	.event-dot {
