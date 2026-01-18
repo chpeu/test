@@ -802,6 +802,11 @@ class PositionManager:
                     loop = asyncio.get_running_loop()
                     loading_task = getattr(client, '_markets_loading_task', None)
                     if loading_task is None or loading_task.done():
+                        try:
+                            if hasattr(client.exchange, 'markets_loading'):
+                                client.exchange.markets_loading = None
+                        except Exception:
+                            pass
                         client._markets_loading_task = loop.create_task(client.exchange.load_markets())
 
                         def _on_loaded(task):
@@ -809,8 +814,20 @@ class PositionManager:
                                 markets = task.result()
                                 client._markets_loaded = True
                                 client._markets = markets
+                            except asyncio.CancelledError:
+                                logger.warning("⚠️ Chargement des marchés annulé")
+                                try:
+                                    if hasattr(client.exchange, 'markets_loading'):
+                                        client.exchange.markets_loading = None
+                                except Exception:
+                                    pass
                             except Exception as e:
                                 logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
+                                try:
+                                    if hasattr(client.exchange, 'markets_loading'):
+                                        client.exchange.markets_loading = None
+                                except Exception:
+                                    pass
                             try:
                                 client._markets_loading_task = None
                             except Exception:
@@ -820,11 +837,29 @@ class PositionManager:
                     return None
                 except RuntimeError:
                     try:
+                        try:
+                            if hasattr(client.exchange, 'markets_loading'):
+                                client.exchange.markets_loading = None
+                        except Exception:
+                            pass
                         markets = asyncio.run(asyncio.wait_for(client.exchange.load_markets(), timeout=2.0))
                         client._markets_loaded = True
                         client._markets = markets
+                    except asyncio.CancelledError:
+                        logger.warning("⚠️ Chargement des marchés annulé")
+                        try:
+                            if hasattr(client.exchange, 'markets_loading'):
+                                client.exchange.markets_loading = None
+                        except Exception:
+                            pass
+                        return None
                     except Exception as e:
                         logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
+                        try:
+                            if hasattr(client.exchange, 'markets_loading'):
+                                client.exchange.markets_loading = None
+                        except Exception:
+                            pass
                         return None
                 except Exception as e:
                     logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
