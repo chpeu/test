@@ -1358,9 +1358,8 @@ class TechnicalAnalyzer:
                     direction = best_setup.get('direction')
                     
                     if entry_price and direction:
-                        import time as time_module
                         logger.info(f"⚡ {symbol} Micro-confirmation: attente {delay_ms}ms...")
-                        time_module.sleep(delay_ms / 1000.0)  # Convertir ms en secondes
+                        await asyncio.sleep(delay_ms / 1000.0)  # Convertir ms en secondes
                         
                         # Récupérer le prix actuel après le délai
                         try:
@@ -1429,7 +1428,6 @@ class TechnicalAnalyzer:
                     try:
                         from core.websocket_manager import get_websocket_manager
                         from datetime import datetime
-                        import asyncio
                         ws_mgr = get_websocket_manager()
                         if ws_mgr:
                             try:

@@ -1122,7 +1122,12 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             direction = analysis.get('direction')
             
             # 🔥 OPT #15: Anti-Whipsaw Filter
-            klines_1m = analysis.get('klines_1m') or analysis.get('klines')
+            klines_1m = None
+            analysis_1m = analysis.get('analysis_1m')
+            if isinstance(analysis_1m, dict):
+                klines_1m = analysis_1m.get('ohlcv') or analysis_1m.get('klines_1m') or analysis_1m.get('klines')
+            if not klines_1m:
+                klines_1m = analysis.get('ohlcv') or analysis.get('klines_1m') or analysis.get('klines')
             if klines_1m:
                 whipsaw_result = check_whipsaw_filter(klines_1m, symbol)
                 if whipsaw_result:

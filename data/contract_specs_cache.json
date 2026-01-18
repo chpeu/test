@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768754591.1387596,
+  "timestamp": 1768763231.0861342,
   "specs": {
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -175,6 +175,36 @@
       "symbol": "WLD_USDT",
       "min_vol": 1.0,
       "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "BEAT_USDT": {
+      "symbol": "BEAT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 110000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "PIPPIN_USDT": {
+      "symbol": "PIPPIN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 9800.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "XRP_USDT": {
+      "symbol": "XRP_USDT",
+      "min_vol": 1.0,
+      "max_vol": 840000.0,
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
