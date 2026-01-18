@@ -1730,8 +1730,8 @@ async def scanner_loop_callback() -> None:
                                     
                                     # Calculer SL% selon le mode
                                     tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-                                    # 🔥 PHASE 7: TP_MULTI utilise aussi le calcul ATR
-                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI') and atr and entry_price:
+                                    # ATR-based SL only in ATR mode
+                                    if tp_sl_mode == 'ATR' and atr and entry_price:
                                         sl_percent = (atr / entry_price) * 100
                                         # Clamp selon config
                                         atr_min = TRADING_CONFIG.get('atr_min', 0.15)
@@ -1883,7 +1883,7 @@ async def scanner_loop_callback() -> None:
                                     max_slippage_pct = TRADING_CONFIG.get('max_slippage_pct', 0.5)  # 0.5% par défaut
                                     
                                     # Calculer SL pour le prix réel
-                                    if (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI') and atr and entry_price:
+                                    if tp_sl_mode == 'ATR' and atr and entry_price:
                                         calculated_sl = entry_price - (atr * TRADING_CONFIG.get('atr_mult_sl', 1.0)) if direction == 'LONG' else entry_price + (atr * TRADING_CONFIG.get('atr_mult_sl', 1.0))
                                     else:
                                         sl_pct = TRADING_CONFIG.get('sl_percent', 0.25) / 100
@@ -3645,8 +3645,8 @@ def init_instances() -> None:
         
         # Configurer TP/SL mode depuis TRADING_CONFIG
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-        # 🔥 PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
-        pos_config.use_atr = (tp_sl_mode == 'ATR' or tp_sl_mode == 'TP_MULTI')
+        # ATR mode only when tp_sl_mode == 'ATR'
+        pos_config.use_atr = (tp_sl_mode == 'ATR')
         
         # Configurer valeurs FIXE depuis TRADING_CONFIG
         pos_config.fixed_tp_pct = TRADING_CONFIG.get('tp_percent', 0.25)
@@ -5351,16 +5351,16 @@ async def handle_client_command(command: str, params: dict):
                 TRADING_CONFIG['tp_sl_mode'] = mode
                 # 🔥 FIX: Ne pas appeler init_instances() car cela réinitialise tout, utiliser directement position_config et position_manager
                 if pos_cfg:
-                    pos_cfg.use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
+                    pos_cfg.use_atr = (mode == 'ATR')
                 # 🔥 FIX: Mettre à jour aussi position_manager.config.use_atr si position_manager existe
                 pos_mgr = state.get_position_manager()
                 if pos_mgr:
-                    pos_mgr.config.use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
+                    pos_mgr.config.use_atr = (mode == 'ATR')
                     
                     # 🔥 FIX: Recalculer TP/SL de la position active avec le nouveau mode
                     if pos_mgr.active_position and not pos_mgr.active_position.tp_escalier_enabled:
                         try:
-                            from core.tp_sl import calculate_atr_levels, calculate_fixed_levels
+                            from core.position.tp_sl_calculator import calculate_atr_levels, calculate_fixed_levels
                             position = pos_mgr.active_position
                             entry = position.entry
                             direction = position.direction
@@ -5368,7 +5368,7 @@ async def handle_client_command(command: str, params: dict):
                             atr5m = position.atr5m
                             
                             # Recalculer TP/SL selon le nouveau mode
-                            use_atr = (mode == 'ATR' or mode == 'TP_MULTI' or mode == 'ESCALIER')
+                            use_atr = (mode == 'ATR')
                             if use_atr and atr:
                                 sl, tp = calculate_atr_levels(
                                     entry=entry,
@@ -7321,14 +7321,14 @@ async def api_update_config(request: Request):
         # 🔥 TP/SL Mode
         if 'tp_sl_mode' in data:
             mode = str(data['tp_sl_mode']).upper()
-            if mode in ['FIXE', 'ATR', 'TP_MULTI']:  # 🔥 PHASE 7: TP_MULTI remplace ATR_MULTI
+            if mode in ['FIXE', 'ATR', 'TP_MULTI', 'ESCALIER']:  # 🔥 PHASE 7: TP_MULTI remplace ATR_MULTI
                 TRADING_CONFIG['tp_sl_mode'] = mode
                 # Mettre à jour PositionConfig si position_manager existe
                 init_instances()
                 pos_cfg = state.get_position_config()
                 if pos_cfg:
-                    # 🔥 PHASE 7: TP_MULTI utilise aussi le mode ATR (pour calculer ATR)
-                    pos_cfg.use_atr = (mode == 'ATR' or mode == 'TP_MULTI')
+                    # ATR mode only when tp_sl_mode == 'ATR'
+                    pos_cfg.use_atr = (mode == 'ATR')
                 updated['tp_sl_mode'] = mode
         
         if 'tp_percent' in data:

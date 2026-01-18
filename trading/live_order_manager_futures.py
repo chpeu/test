@@ -63,6 +63,16 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _sleep_non_blocking(seconds: float) -> None:
+    """Pause non-bloquante via la loop dédiée (remplace time.sleep)."""
+    if not seconds or seconds <= 0:
+        return
+    try:
+        run_async_safely(asyncio.sleep(seconds), timeout=max(1.0, seconds + 1.0))
+    except Exception as e:
+        logger.debug(f"⚠️ sleep non-bloquant échoué ({seconds}s): {e}")
+
+
 # ============================================================================
 # CIRCUIT BREAKER
 # ============================================================================
@@ -237,7 +247,7 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay:
                         f"⚠️ Retry {attempt + 1}/{max_retries} après erreur: {e} | "
                         f"Attente: {delay:.1f}s"
                     )
-                    time.sleep(delay)
+                    _sleep_non_blocking(delay)
                 except Exception as e:
                     # Erreurs non-réseau: ne pas retry
                     raise e
@@ -577,7 +587,7 @@ class LiveOrderManagerFutures:
                 return result
             if attempt < retries - 1:
                 logger.debug(f"⏳ verify_position_size retry {attempt + 1}/{retries-1} dans {delay_sec}s...")
-                time.sleep(delay_sec)
+                _sleep_non_blocking(delay_sec)
 
         logger.warning(f"⚠️ Impossible de vérifier taille réelle pour {symbol} après {retries} tentatives")
         return None
@@ -745,7 +755,7 @@ class LiveOrderManagerFutures:
                 # On ajoute un bruit aléatoire pour simuler le temps de trajet réel
                 import random
                 network_latency = random.uniform(0.050, 0.150)
-                time.sleep(network_latency)
+                _sleep_non_blocking(network_latency)
                 
                 latency_ms = (time.time() - start_time) * 1000
 
@@ -1138,7 +1148,7 @@ class LiveOrderManagerFutures:
                 if bypass_result.success:
                     # 🔥 VÉRIFICATION POST-CRÉATION: S'assurer que l'ordre existe réellement
                     # Attendre 300ms pour que MEXC traite l'ordre
-                    time.sleep(0.3)
+                    _sleep_non_blocking(0.3)
 
                     # Vérifier si l'ordre existe réellement
                     order_check = run_async_safely(
@@ -1376,7 +1386,7 @@ class LiveOrderManagerFutures:
                             f"Timeout/Network error (tentative {attempt + 1}/{max_retries}), "
                             f"retry dans {wait_time}s..."
                         )
-                        time.sleep(wait_time)
+                        _sleep_non_blocking(wait_time)
                     else:
                         raise last_error
             
@@ -1548,7 +1558,7 @@ class LiveOrderManagerFutures:
         if time_since_last < self._min_request_interval_sec:
             wait_time = self._min_request_interval_sec - time_since_last
             logger.debug(f"⏳ Anti rate-limit: attente {wait_time:.2f}s avant close_position")
-            time.sleep(wait_time)
+            _sleep_non_blocking(wait_time)
         LiveOrderManagerFutures._last_close_request_time = time.time()
 
         # 🔥 CIRCUIT BREAKER: Ordres de fermeture TOUJOURS autorisés (is_closing_order=True)
@@ -1810,7 +1820,7 @@ class LiveOrderManagerFutures:
 
                 if bypass_result.success:
                     # 🔥 VÉRIFICATION POST-CRÉATION: S'assurer que l'ordre existe réellement
-                    time.sleep(0.3)
+                    _sleep_non_blocking(0.3)
 
                     order_check = run_async_safely(
                         self.bypass_client.get_order(bypass_result.order_id)
@@ -2041,7 +2051,7 @@ class LiveOrderManagerFutures:
                             f"Timeout fermeture (tentative {attempt + 1}/{max_retries}), "
                             f"retry dans {wait_time}s..."
                         )
-                        time.sleep(wait_time)
+                        _sleep_non_blocking(wait_time)
                     else:
                         raise last_error
 
@@ -2309,7 +2319,7 @@ class LiveOrderManagerFutures:
                 if elapsed < self._read_rate_limit_sec:
                     wait_time = self._read_rate_limit_sec - elapsed
                     logger.debug(f"⏳ Rate limit lecture bypass: attente {wait_time:.2f}s")
-                    time.sleep(wait_time)
+                    _sleep_non_blocking(wait_time)
                 self._last_read_request_time = time.time()
                 
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
@@ -2407,7 +2417,7 @@ class LiveOrderManagerFutures:
                 if elapsed < self._read_rate_limit_sec:
                     wait_time = self._read_rate_limit_sec - elapsed
                     logger.debug(f"⏳ Rate limit lecture bypass: attente {wait_time:.2f}s")
-                    time.sleep(wait_time)
+                    _sleep_non_blocking(wait_time)
                 self._last_read_request_time = time.time()
                 
                 asset = run_async_safely(
@@ -2882,7 +2892,7 @@ if __name__ == "__main__":
         print(f"❌ Échec: {result_open.error_message}")
 
     # Simuler attente
-    time.sleep(1)
+    _sleep_non_blocking(1)
 
     # Exemple 2: Fermer position avec profit (prix a baissé)
     print("\n=== FERMETURE SHORT ===")

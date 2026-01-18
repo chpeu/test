@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768732419.3871868,
+  "timestamp": 1768754591.1387596,
   "specs": {
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -88,6 +88,96 @@
       "vol_unit": 1.0,
       "price_unit": 1e-05,
       "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "DOGE_USDT": {
+      "symbol": "DOGE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 250000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 100.0
+    },
+    "CHZ_USDT": {
+      "symbol": "CHZ_USDT",
+      "min_vol": 1.0,
+      "max_vol": 855000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "FARTCOIN_USDT": {
+      "symbol": "FARTCOIN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 56000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "PENGU_USDT": {
+      "symbol": "PENGU_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2500000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-06,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "SPX_USDT": {
+      "symbol": "SPX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 160000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "WIF_USDT": {
+      "symbol": "WIF_USDT",
+      "min_vol": 1.0,
+      "max_vol": 88000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "SUI_USDT": {
+      "symbol": "SUI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "TRUMPOFFICIAL_USDT": {
+      "symbol": "TRUMPOFFICIAL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1100000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "WLD_USDT": {
+      "symbol": "WLD_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
     }
