@@ -59,9 +59,9 @@ class PostExitTracker:
     used_trailing_min_distance: Optional[float] = None
     used_partial_tp_pct: Optional[float] = None
     
-    # Configuration
-    tracking_duration_sec: int = 300
-    sample_interval_ms: int = 1000
+    # Configuration - Optimisé pour capturer les MFE tardifs
+    tracking_duration_sec: int = 600  # 10 min (was 5 min) - MFE max observé à 8.7 min
+    sample_interval_ms: int = 2000    # 2s (was 1s) - Réduit charge DB sans perte de précision
     
     # State
     samples: List[PostExitSample] = field(default_factory=list)
@@ -210,6 +210,7 @@ class PostExitTracker:
         ml_optimal_sl_pct = self._compute_optimal_sl()
         ml_optimal_trailing_trigger = self._compute_optimal_trailing_trigger()
         ml_optimal_be_trigger = self._compute_optimal_be_trigger()
+        ml_optimal_trailing_distance = self._compute_optimal_trailing_distance()
         
         return {
             "trade_id": self.trade_id,
@@ -266,6 +267,7 @@ class PostExitTracker:
             "ml_optimal_sl_pct": ml_optimal_sl_pct,
             "ml_optimal_trailing_trigger": ml_optimal_trailing_trigger,
             "ml_optimal_be_trigger": ml_optimal_be_trigger,
+            "ml_optimal_trailing_distance": ml_optimal_trailing_distance,
             "ml_should_use_partial": self.would_have_hit_original_tp and self.post_exit_mfe_pct > 0.1,
         }
     
@@ -307,6 +309,96 @@ class PostExitTracker:
             return round((self.used_be_trigger or 0.2) * 1.3, 4)
         
         return self.used_be_trigger
+    
+    def _compute_optimal_trailing_distance(self) -> Optional[float]:
+        """
+        Calculer le trailing distance optimal via simulation tick-by-tick.
+        
+        Simule différentes distances de trailing et détermine laquelle aurait
+        maximisé le profit en rejouant les samples post-exit.
+        
+        Returns:
+            Distance optimale en % ou None si pas assez de données
+        """
+        if len(self.samples) < 5:
+            return self.used_trailing_min_distance
+        
+        # Seulement pour les trades gagnants avec un MFE significatif
+        if self.realized_pnl_pct <= 0 or self.post_exit_mfe_pct < 0.03:
+            return self.used_trailing_min_distance
+        
+        # Distances à tester (en %)
+        test_distances = [0.03, 0.05, 0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30]
+        
+        best_distance = self.used_trailing_min_distance or 0.10
+        best_pnl = self.realized_pnl_pct  # PnL actuel comme baseline
+        
+        for distance in test_distances:
+            simulated_pnl = self._simulate_trailing_with_distance(distance)
+            if simulated_pnl is not None and simulated_pnl > best_pnl:
+                best_pnl = simulated_pnl
+                best_distance = distance
+        
+        return round(best_distance, 4) if best_distance else self.used_trailing_min_distance
+    
+    def _simulate_trailing_with_distance(self, distance_pct: float) -> Optional[float]:
+        """
+        Simule un trailing stop avec une distance donnée sur les samples post-exit.
+        
+        Args:
+            distance_pct: Distance du trailing en %
+            
+        Returns:
+            PnL simulé en % ou None si stop jamais touché
+        """
+        if not self.samples:
+            return None
+        
+        # État du trailing simulé
+        trailing_active = True  # On simule que le trailing était déjà actif à la sortie
+        highest_price = self.exit_price  # Pour LONG
+        lowest_price = self.exit_price   # Pour SHORT
+        
+        is_long = self.direction.upper() == 'LONG'
+        
+        for sample in self.samples:
+            price = sample.price
+            
+            if is_long:
+                # LONG: trailing suit les hausses
+                if price > highest_price:
+                    highest_price = price
+                
+                # Calculer le niveau du trailing stop
+                trailing_sl = highest_price * (1 - distance_pct / 100)
+                
+                # Vérifier si le stop aurait été touché
+                if price <= trailing_sl:
+                    # Stop touché - calculer le PnL
+                    exit_pnl = ((trailing_sl - self.exit_price) / self.exit_price) * 100
+                    return round(self.realized_pnl_pct + exit_pnl, 4)
+            else:
+                # SHORT: trailing suit les baisses
+                if price < lowest_price:
+                    lowest_price = price
+                
+                # Calculer le niveau du trailing stop
+                trailing_sl = lowest_price * (1 + distance_pct / 100)
+                
+                # Vérifier si le stop aurait été touché
+                if price >= trailing_sl:
+                    # Stop touché - calculer le PnL
+                    exit_pnl = ((self.exit_price - trailing_sl) / self.exit_price) * 100
+                    return round(self.realized_pnl_pct + exit_pnl, 4)
+        
+        # Trailing jamais touché - utiliser le dernier prix
+        final_sample = self.samples[-1]
+        if is_long:
+            final_pnl = ((final_sample.price - self.exit_price) / self.exit_price) * 100
+        else:
+            final_pnl = ((self.exit_price - final_sample.price) / self.exit_price) * 100
+        
+        return round(self.realized_pnl_pct + final_pnl, 4)
     
     def get_samples_for_db(self) -> List[Dict[str, Any]]:
         """Retourner les samples formatés pour insertion DB"""

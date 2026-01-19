@@ -32,21 +32,23 @@ class PostExitManager:
     """Gestionnaire centralisé des trackers post-exit"""
     
     DEFAULT_CONFIG = {
-        # Durée de suivi
-        "tracking_duration_seconds": 300,      # 5 minutes
-        "sample_interval_ms": 1000,            # 1 sample/seconde
+        # Durée de suivi - Optimisé pour capturer les MFE tardifs (max observé ~8.7 min)
+        "tracking_duration_seconds": 600,      # 10 minutes (was 5 min)
+        "sample_interval_ms": 2000,            # 1 sample/2 secondes (was 1s) - réduit charge DB
         
         # Durée adaptative
         "adaptive_duration": True,
-        "min_duration_seconds": 60,            # Min 1 minute
-        "max_duration_seconds": 600,           # Max 10 minutes
+        "min_duration_seconds": 120,           # Min 2 minutes (was 1 min)
+        "max_duration_seconds": 900,           # Max 15 minutes (was 10 min)
         "duration_multiplier": 2.0,            # durée = trade_duration × multiplier
         
         # Gestion ressources
         "max_concurrent_trackers": 15,
         
-        # Persistence
+        # Persistence - Survivre aux redémarrages
         "store_raw_samples": True,
+        "persist_on_shutdown": True,           # Sauvegarder en DB avant arrêt
+        "restore_on_startup": True,            # Restaurer depuis DB au démarrage
         "enabled": True,                       # Master switch
     }
     
@@ -347,7 +349,7 @@ class PostExitManager:
                             post_exit_final_pct, post_exit_final_price,
                             exit_efficiency_pct, regret_pct, regret_usdt, exit_timing_grade,
                             would_have_hit_original_tp, would_have_hit_original_sl, price_returned_to_entry,
-                            ml_optimal_sl_pct, ml_optimal_trailing_trigger, ml_optimal_be_trigger, ml_should_use_partial
+                            ml_optimal_sl_pct, ml_optimal_trailing_trigger, ml_optimal_be_trigger, ml_optimal_trailing_distance, ml_should_use_partial
                         ) VALUES (
                             %s, %s, %s, %s, %s, %s,
                             %s, %s,
@@ -359,7 +361,7 @@ class PostExitManager:
                             %s, %s,
                             %s, %s, %s, %s,
                             %s, %s, %s,
-                            %s, %s, %s, %s
+                            %s, %s, %s, %s, %s
                         )
                         ON CONFLICT (trade_id) DO UPDATE SET
                             symbol = EXCLUDED.symbol,
@@ -403,6 +405,7 @@ class PostExitManager:
                         metrics.get('ml_optimal_sl_pct'),
                         metrics.get('ml_optimal_trailing_trigger'),
                         metrics.get('ml_optimal_be_trigger'),
+                        metrics.get('ml_optimal_trailing_distance'),
                         metrics.get('ml_should_use_partial'),
                     ))
                     
@@ -486,3 +489,265 @@ class PostExitManager:
     def is_tracking(self, symbol: str) -> bool:
         """Vérifier si un symbole est en cours de tracking"""
         return symbol in self.active_trackers
+    
+    # ========== PERSISTANCE DES TRACKERS ==========
+    
+    async def persist_active_trackers(self) -> int:
+        """
+        Sauvegarder tous les trackers actifs en DB pour survivre aux redémarrages.
+        Appelé périodiquement ou avant shutdown.
+        
+        Returns:
+            Nombre de trackers persistés
+        """
+        if not self.active_trackers:
+            return 0
+        
+        try:
+            from core.postgresql_datalogger import get_pg_datalogger
+            import json
+            
+            datalogger = get_pg_datalogger()
+            if not datalogger or not datalogger.enabled:
+                return 0
+            
+            conn = datalogger._get_connection()
+            if not conn:
+                return 0
+            
+            persisted = 0
+            
+            try:
+                with conn.cursor() as cur:
+                    for symbol, tracker in self.active_trackers.items():
+                        # Préparer les samples en JSON compact
+                        samples_json = json.dumps([
+                            {
+                                'ts': s.timestamp.isoformat(),
+                                'p': s.price,
+                                'pnl': s.pnl_vs_exit_pct,
+                                'mfe': s.cumulative_mfe_pct,
+                                'mae': s.cumulative_mae_pct
+                            }
+                            for s in tracker.samples
+                        ])
+                        
+                        cur.execute("""
+                            INSERT INTO post_exit_active_trackers (
+                                trade_id, symbol, direction,
+                                exit_price, exit_timestamp, exit_reason,
+                                realized_pnl_pct, realized_pnl_usdt,
+                                original_sl, original_tp, entry_price,
+                                used_sl_pct, used_tp_pct, used_be_trigger,
+                                used_trailing_trigger, used_trailing_min_distance, used_partial_tp_pct,
+                                tracking_duration_sec, sample_interval_ms,
+                                start_time, samples_collected,
+                                post_exit_mfe_pct, post_exit_mfe_price, post_exit_mfe_timestamp,
+                                post_exit_mae_pct, post_exit_mae_price, post_exit_mae_timestamp,
+                                would_have_hit_original_tp, would_have_hit_original_sl, price_returned_to_entry,
+                                samples_json
+                            ) VALUES (
+                                %s, %s, %s,
+                                %s, %s, %s,
+                                %s, %s,
+                                %s, %s, %s,
+                                %s, %s, %s,
+                                %s, %s, %s,
+                                %s, %s,
+                                %s, %s,
+                                %s, %s, %s,
+                                %s, %s, %s,
+                                %s, %s, %s,
+                                %s
+                            )
+                            ON CONFLICT (trade_id) DO UPDATE SET
+                                samples_collected = EXCLUDED.samples_collected,
+                                post_exit_mfe_pct = EXCLUDED.post_exit_mfe_pct,
+                                post_exit_mfe_price = EXCLUDED.post_exit_mfe_price,
+                                post_exit_mfe_timestamp = EXCLUDED.post_exit_mfe_timestamp,
+                                post_exit_mae_pct = EXCLUDED.post_exit_mae_pct,
+                                would_have_hit_original_tp = EXCLUDED.would_have_hit_original_tp,
+                                would_have_hit_original_sl = EXCLUDED.would_have_hit_original_sl,
+                                price_returned_to_entry = EXCLUDED.price_returned_to_entry,
+                                samples_json = EXCLUDED.samples_json,
+                                updated_at = NOW()
+                        """, (
+                            str(tracker.trade_id), tracker.symbol, tracker.direction,
+                            tracker.exit_price, tracker.exit_timestamp, tracker.exit_reason,
+                            tracker.realized_pnl_pct, tracker.realized_pnl_usdt,
+                            tracker.original_sl, tracker.original_tp, tracker.entry_price,
+                            tracker.used_sl_pct, tracker.used_tp_pct, tracker.used_be_trigger,
+                            tracker.used_trailing_trigger, tracker.used_trailing_min_distance, tracker.used_partial_tp_pct,
+                            tracker.tracking_duration_sec, tracker.sample_interval_ms,
+                            datetime.fromtimestamp(tracker.start_time, tz=timezone.utc), len(tracker.samples),
+                            tracker.post_exit_mfe_pct, tracker.post_exit_mfe_price, tracker.post_exit_mfe_timestamp,
+                            tracker.post_exit_mae_pct, tracker.post_exit_mae_price, tracker.post_exit_mae_timestamp,
+                            tracker.would_have_hit_original_tp, tracker.would_have_hit_original_sl, tracker.price_returned_to_entry,
+                            samples_json
+                        ))
+                        persisted += 1
+                    
+                    conn.commit()
+                    logger.info(f"💾 PostExit: {persisted} trackers persistés en DB")
+                    
+            finally:
+                datalogger._return_connection(conn)
+            
+            return persisted
+            
+        except Exception as e:
+            logger.error(f"❌ PostExit persist error: {e}", exc_info=True)
+            return 0
+    
+    def persist_active_trackers_sync(self) -> int:
+        """Version synchrone de persist_active_trackers"""
+        try:
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(self.persist_active_trackers())
+            loop.close()
+            return result
+        except Exception as e:
+            logger.error(f"❌ PostExit persist_sync error: {e}")
+            return 0
+    
+    async def restore_active_trackers(self) -> int:
+        """
+        Restaurer les trackers actifs depuis la DB après un redémarrage.
+        Appelé au démarrage du backend.
+        
+        Returns:
+            Nombre de trackers restaurés
+        """
+        try:
+            from core.postgresql_datalogger import get_pg_datalogger
+            from psycopg2.extras import RealDictCursor
+            import json
+            from .tracker import PostExitSample
+            
+            datalogger = get_pg_datalogger()
+            if not datalogger or not datalogger.enabled:
+                return 0
+            
+            conn = datalogger._get_connection()
+            if not conn:
+                return 0
+            
+            restored = 0
+            deleted = 0
+            
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Récupérer les trackers non expirés
+                cur.execute("""
+                    SELECT * FROM post_exit_active_trackers
+                    WHERE start_time + (tracking_duration_sec || ' seconds')::interval > NOW()
+                """)
+                
+                rows = cur.fetchall()
+                
+                for row in rows:
+                    # Recréer le tracker
+                    tracker = PostExitTracker(
+                        trade_id=row['trade_id'],
+                        symbol=row['symbol'],
+                        direction=row['direction'],
+                        exit_price=float(row['exit_price']),
+                        exit_timestamp=row['exit_timestamp'],
+                        exit_reason=row['exit_reason'] or '',
+                        realized_pnl_pct=float(row['realized_pnl_pct'] or 0),
+                        realized_pnl_usdt=float(row['realized_pnl_usdt'] or 0),
+                        original_sl=float(row['original_sl'] or 0),
+                        original_tp=float(row['original_tp'] or 0),
+                        entry_price=float(row['entry_price']),
+                        tracking_duration_sec=row['tracking_duration_sec'],
+                        sample_interval_ms=row['sample_interval_ms'],
+                        used_sl_pct=float(row['used_sl_pct']) if row['used_sl_pct'] else None,
+                        used_tp_pct=float(row['used_tp_pct']) if row['used_tp_pct'] else None,
+                        used_be_trigger=float(row['used_be_trigger']) if row['used_be_trigger'] else None,
+                        used_trailing_trigger=float(row['used_trailing_trigger']) if row['used_trailing_trigger'] else None,
+                        used_trailing_min_distance=float(row['used_trailing_min_distance']) if row['used_trailing_min_distance'] else None,
+                        used_partial_tp_pct=float(row['used_partial_tp_pct']) if row['used_partial_tp_pct'] else None,
+                    )
+                    
+                    # Restaurer l'état
+                    tracker.start_time = row['start_time'].timestamp()
+                    tracker.post_exit_mfe_pct = float(row['post_exit_mfe_pct'] or 0)
+                    tracker.post_exit_mfe_price = float(row['post_exit_mfe_price']) if row['post_exit_mfe_price'] else None
+                    tracker.post_exit_mfe_timestamp = row['post_exit_mfe_timestamp']
+                    tracker.post_exit_mae_pct = float(row['post_exit_mae_pct'] or 0)
+                    tracker.post_exit_mae_price = float(row['post_exit_mae_price']) if row['post_exit_mae_price'] else None
+                    tracker.post_exit_mae_timestamp = row['post_exit_mae_timestamp']
+                    tracker.would_have_hit_original_tp = row['would_have_hit_original_tp'] or False
+                    tracker.would_have_hit_original_sl = row['would_have_hit_original_sl'] or False
+                    tracker.price_returned_to_entry = row['price_returned_to_entry'] or False
+                    
+                    # Restaurer les samples
+                    samples_data = row['samples_json'] or []
+                    if isinstance(samples_data, str):
+                        samples_data = json.loads(samples_data)
+                    
+                    for s in samples_data:
+                        sample = PostExitSample(
+                            timestamp=datetime.fromisoformat(s['ts']),
+                            price=s['p'],
+                            pnl_vs_exit_pct=s['pnl'],
+                            cumulative_mfe_pct=s['mfe'],
+                            cumulative_mae_pct=s['mae']
+                        )
+                        tracker.samples.append(sample)
+                    
+                    if tracker.samples:
+                        tracker.last_sample_time = tracker.samples[-1].timestamp.timestamp()
+                    
+                    # Ajouter au manager
+                    self.active_trackers[row['symbol']] = tracker
+                    restored += 1
+                    
+                    logger.info(f"🔄 PostExit: Restauré tracker {row['symbol']} ({len(tracker.samples)} samples)")
+                
+                # Supprimer les trackers expirés de la DB
+                cur.execute("""
+                    DELETE FROM post_exit_active_trackers
+                    WHERE start_time + (tracking_duration_sec || ' seconds')::interval <= NOW()
+                    RETURNING trade_id
+                """)
+                deleted = cur.rowcount
+                
+                # Supprimer les trackers restaurés de la DB (ils sont maintenant en mémoire)
+                if restored > 0:
+                    cur.execute("DELETE FROM post_exit_active_trackers")
+                
+                conn.commit()
+                
+                if restored > 0 or deleted > 0:
+                    logger.info(f"🔄 PostExit: {restored} trackers restaurés, {deleted} expirés supprimés")
+                    
+            finally:
+                datalogger._return_connection(conn)
+            
+            return restored
+            
+        except Exception as e:
+            logger.error(f"❌ PostExit restore error: {e}", exc_info=True)
+            return 0
+    
+    def restore_active_trackers_sync(self) -> int:
+        """Version synchrone de restore_active_trackers"""
+        try:
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(self.restore_active_trackers())
+            loop.close()
+            return result
+        except Exception as e:
+            logger.error(f"❌ PostExit restore_sync error: {e}")
+            return 0
+    
+    async def cleanup_and_persist(self) -> None:
+        """
+        Appeler avant shutdown: terminer proprement et persister les trackers actifs.
+        """
+        if self.active_trackers:
+            logger.info(f"🛑 PostExit: Shutdown - {len(self.active_trackers)} trackers actifs à persister...")
+            await self.persist_active_trackers()
+            logger.info("✅ PostExit: Trackers persistés, prêts pour restauration au prochain démarrage")

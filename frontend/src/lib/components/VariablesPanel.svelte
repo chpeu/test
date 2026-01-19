@@ -289,6 +289,13 @@
 	let showExportPopup = false;
 	let exportRowCount = 50; // Défaut: 50 lignes
 	
+	// 🔥 POST-EXIT ANALYSIS: Popup et variables
+	let showPostExitPopup = false;
+	let postExitMinTrades = 10;
+	let postExitLoading = false;
+	let postExitResult: any = null;
+	let postExitError = '';
+	
 	// FIX: Variables pour métriques ML dynamiques
 	let mlMetrics = {
 		test_accuracy: 55.3,
@@ -1383,6 +1390,33 @@
 	// 🔥 Fermer le popup export
 	function closeExportPopup() {
 		showExportPopup = false;
+	}
+	
+	// 🔥 POST-EXIT ANALYSIS: Lancer l'analyse et afficher les résultats
+	async function runPostExitAnalysis() {
+		if (postExitLoading) return;
+		
+		postExitLoading = true;
+		postExitError = '';
+		postExitResult = null;
+		
+		try {
+			const response = await fetch(`/api/analytics/post-exit/analyze?min_trades=${postExitMinTrades}&force=false`, {
+				method: 'POST'
+			});
+			
+			const data = await response.json();
+			
+			if (!data.success) {
+				postExitError = data.error || 'Erreur inconnue';
+			} else {
+				postExitResult = data;
+			}
+		} catch (error: any) {
+			postExitError = `Erreur: ${error.message}`;
+		} finally {
+			postExitLoading = false;
+		}
 	}
 	
 	// 🔥 Export Excel avec nombre de lignes personnalisé
@@ -2990,6 +3024,40 @@
 					Pour changer le mode actif du bot, utilisez le sélecteur dans l'onglet <strong>Dashboard</strong>.
 				</p>
 				
+				<!-- 📊 POST-EXIT ANALYSIS: Bouton et popup -->
+				<div class="variable-item action-item">
+					<div class="var-header">
+						<label>
+							<span class="var-name">📊 Analyse Post-Exit</span>
+							<span class="var-desc">Calcule les paramètres ML optimaux à partir des trades fermés</span>
+						</label>
+					</div>
+					<div class="action-row">
+						<div class="input-with-label">
+							<label for="post-exit-min-trades">Min trades:</label>
+							<input
+								id="post-exit-min-trades"
+								type="number"
+								min="1"
+								max="1000"
+								bind:value={postExitMinTrades}
+								class="small-input"
+							/>
+						</div>
+						<button
+							class="btn-action btn-analyze"
+							on:click={() => { showPostExitPopup = true; runPostExitAnalysis(); }}
+							disabled={postExitLoading}
+						>
+							{#if postExitLoading}
+								⏳ Analyse...
+							{:else}
+								📊 Lancer l'analyse
+							{/if}
+						</button>
+					</div>
+				</div>
+				
 				<!-- 🔄 Signal Inversion Toggle -->
 				<div class="variable-item checkbox" data-debug-name="config.invert_signals">
 					<div class="var-header" data-debug-name="config.invert_signals">
@@ -3075,8 +3143,8 @@
 									<input
 										id="sl-percent"
 										type="range"
-										step="0.05"
-										min="0.05"
+										step="0.01"
+										min="0.1"
 										max="5"
 										bind:value={config.sl_percent}
 										on:change={() => triggerAutoSave('sl_percent', `${config.sl_percent.toFixed(2)}%`)}
@@ -3098,7 +3166,7 @@
 									<input
 										id="partial-tp-percent-fixe"
 										type="range"
-										step="5"
+										step="1"
 										min="0"
 										max="100"
 										bind:value={config.partial_tp_percent}
@@ -3153,7 +3221,7 @@
 									/>
 									<span class="slider-value" data-debug-name="config.break_even_trigger">{Number(config.break_even_trigger).toFixed(2)}%</span>
 								</div>
-						</div>
+							</div>
 
 							<!-- 🔥 trailing_distance supprimé en mode FIXE - remplacé par trailing adaptatif (min/max/cap) -->
 
@@ -3682,10 +3750,10 @@
 									<div class="slider-container">
 										<input
 											id="partial-tp-atr"
-											type="range"
-											step="5"
-											min="25"
-											max="100"
+													type="range"
+													step="1"
+													min="25"
+													max="100"
 											bind:value={config.partial_tp_percent}
 											on:change={() => triggerAutoSave('partial_tp_percent', `${config.partial_tp_percent}%`)}
 										/>
@@ -4045,7 +4113,7 @@
 							<input
 								id="trailing-trigger"
 								type="range"
-								step="0.05"
+								step="0.01"
 								min="0.1"
 								max="3"
 								bind:value={config.trailing_trigger_pnl}
@@ -5803,6 +5871,169 @@
 	</div>
 {/if}
 
+<!-- 🔥 POPUP Post-Exit Analysis avec résultats -->
+{#if showPostExitPopup}
+	<div class="popup-overlay" on:click={() => showPostExitPopup = false}>
+		<div class="popup-content popup-large" on:click|stopPropagation>
+			<div class="popup-header">
+				<h3>📊 Analyse Post-Exit</h3>
+				<button class="popup-close" on:click={() => showPostExitPopup = false}>✕</button>
+			</div>
+			<div class="popup-body">
+				{#if postExitLoading}
+					<div class="loading-state">
+						<div class="spinner"></div>
+						<p>⏳ Analyse en cours...</p>
+					</div>
+				{:else if postExitError}
+					<div class="error-state">
+						<p class="error-icon">❌</p>
+						<p class="error-message">{postExitError}</p>
+					</div>
+				{:else if postExitResult}
+					<div class="post-exit-results">
+						<div class="result-section">
+							<h4>✅ {postExitResult.total_trades} trades analysés</h4>
+							{#if postExitResult.updated_count > 0}
+								<p class="update-info">🔄 {postExitResult.updated_count} nouveaux trades mis à jour</p>
+							{/if}
+						</div>
+						
+						<div class="result-section metrics-grid">
+							<div class="metric-card">
+								<span class="metric-label">📊 Exit Efficiency moyenne</span>
+								<span class="metric-value">{postExitResult.avg_efficiency}%</span>
+							</div>
+							<div class="metric-card">
+								<span class="metric-label">📊 Regret moyen</span>
+								<span class="metric-value">{postExitResult.avg_regret}%</span>
+							</div>
+							<div class="metric-card">
+								<span class="metric-label">📊 Taux excellents exits (A+/A)</span>
+								<span class="metric-value">{postExitResult.excellent_exit_rate}%</span>
+							</div>
+						</div>
+						
+						<div class="result-section metrics-grid">
+							<div class="metric-card highlight">
+								<span class="metric-label">🎯 SL optimal moyen</span>
+								<span class="metric-value">{postExitResult.avg_optimal_sl}%</span>
+							</div>
+							<div class="metric-card highlight">
+								<span class="metric-label">🎯 Trailing trigger optimal</span>
+								<span class="metric-value">{postExitResult.avg_optimal_trailing}%</span>
+							</div>
+							<div class="metric-card highlight">
+								<span class="metric-label">🎯 BE optimal moyen</span>
+								<span class="metric-value">{postExitResult.avg_optimal_be}%</span>
+							</div>
+							<div class="metric-card highlight">
+								<span class="metric-label">🎯 Trailing distance optimal</span>
+								<span class="metric-value">{postExitResult.avg_optimal_trailing_distance || 'N/A'}%</span>
+							</div>
+						</div>
+						
+						<div class="result-section">
+							<h4>📊 Distribution des grades</h4>
+							<div class="grade-distribution">
+								{#each Object.entries(postExitResult.grade_distribution || {}) as [grade, data]}
+									<div class="grade-item">
+										<span class="grade-label">{grade}</span>
+										<div class="grade-bar-container">
+											<div class="grade-bar" style="width: {data.percentage}%"></div>
+										</div>
+										<span class="grade-count">{data.count} ({data.percentage}%)</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+						
+						{#if postExitResult.simulation}
+						<div class="result-section simulation-section">
+							<h4>🚀 SIMULATION: Performance avec paramètres optimaux</h4>
+							
+							{#if postExitResult.simulation.unique_configs && postExitResult.simulation.unique_configs.length > 0}
+							<div class="simulation-configs-used">
+								<span class="config-title">⚙️ Configurations utilisées ({postExitResult.simulation.configs_count} différentes):</span>
+								<div class="configs-list">
+									{#each postExitResult.simulation.unique_configs as cfg}
+										<div class="config-item">
+											<span class="config-name">{cfg.config}</span>
+											<span class="config-stats">
+												{cfg.trades} trades | WR: {cfg.winrate}% | 
+												PnL: {cfg.pnl}% → {cfg.optimal_pnl}% 
+												<span class="{cfg.improvement >= 0 ? 'positive' : 'negative'}">
+													({cfg.improvement >= 0 ? '+' : ''}{cfg.improvement}%)
+												</span>
+											</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+							{/if}
+							
+							<div class="simulation-comparison">
+								<div class="comparison-row">
+									<span class="comparison-label">Winrate</span>
+									<span class="comparison-current">{postExitResult.simulation.current_winrate}%</span>
+									<span class="comparison-arrow">→</span>
+									<span class="comparison-optimal">{postExitResult.simulation.optimal_winrate}%</span>
+									<span class="comparison-diff {postExitResult.simulation.winrate_improvement >= 0 ? 'positive' : 'negative'}">
+										({postExitResult.simulation.winrate_improvement >= 0 ? '+' : ''}{postExitResult.simulation.winrate_improvement}%)
+									</span>
+								</div>
+								<div class="comparison-row">
+									<span class="comparison-label">PnL total</span>
+									<span class="comparison-current">{postExitResult.simulation.current_pnl_total}%</span>
+									<span class="comparison-arrow">→</span>
+									<span class="comparison-optimal">{postExitResult.simulation.optimal_pnl_total}%</span>
+									<span class="comparison-diff {postExitResult.simulation.pnl_improvement >= 0 ? 'positive' : 'negative'}">
+										({postExitResult.simulation.pnl_improvement >= 0 ? '+' : ''}{postExitResult.simulation.pnl_improvement}%)
+									</span>
+								</div>
+								<div class="comparison-row">
+									<span class="comparison-label">Exit Efficiency</span>
+									<span class="comparison-current">{postExitResult.simulation.current_efficiency}%</span>
+									<span class="comparison-arrow">→</span>
+									<span class="comparison-optimal">{postExitResult.simulation.optimal_efficiency}%</span>
+									<span class="comparison-diff {postExitResult.simulation.efficiency_improvement >= 0 ? 'positive' : 'negative'}">
+										({postExitResult.simulation.efficiency_improvement >= 0 ? '+' : ''}{postExitResult.simulation.efficiency_improvement}%)
+									</span>
+								</div>
+								<div class="comparison-row">
+									<span class="comparison-label">Regret moyen</span>
+									<span class="comparison-current">{postExitResult.simulation.current_regret}%</span>
+									<span class="comparison-arrow">→</span>
+									<span class="comparison-optimal">{postExitResult.simulation.optimal_regret}%</span>
+									<span class="comparison-diff {postExitResult.simulation.regret_improvement <= 0 ? 'positive' : 'negative'}">
+										({postExitResult.simulation.regret_improvement}%)
+									</span>
+								</div>
+							</div>
+							
+							{#if postExitResult.simulation.gain_multiplier > 1}
+							<div class="simulation-impact">
+								<span class="impact-icon">💰</span>
+								<span class="impact-text">Gains multipliés par <strong>{postExitResult.simulation.gain_multiplier}x</strong> avec paramètres optimaux!</span>
+							</div>
+							{/if}
+						</div>
+						{/if}
+					</div>
+				{:else}
+					<p class="no-data">Cliquez sur "Lancer l'analyse" pour voir les résultats.</p>
+				{/if}
+			</div>
+			<div class="popup-actions">
+				<button class="btn-secondary" on:click={() => showPostExitPopup = false}>Fermer</button>
+				<button class="btn-primary" on:click={runPostExitAnalysis} disabled={postExitLoading}>
+					{postExitLoading ? '⏳ Analyse...' : '🔄 Relancer l\'analyse'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	/* Sélecteurs Version ML */
 	.ml-version-selector {
@@ -7314,6 +7545,338 @@
 		font-family: 'Courier New', monospace;
 		font-size: 11px;
 		color: #00ff88;
+	}
+
+	/* 🔥 POST-EXIT ANALYSIS: Styles */
+	.popup-large {
+		min-width: 550px;
+		max-width: 650px;
+	}
+	
+	.action-item {
+		margin-bottom: 16px;
+		padding-bottom: 16px;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	
+	.action-row {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		margin-top: 8px;
+	}
+	
+	.input-with-label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	
+	.input-with-label label {
+		color: #888;
+		font-size: 13px;
+		white-space: nowrap;
+	}
+	
+	.small-input {
+		width: 80px;
+		padding: 6px 10px;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid #2a3a6b;
+		border-radius: 6px;
+		color: white;
+		font-size: 14px;
+	}
+	
+	.btn-analyze {
+		background: linear-gradient(135deg, #3b82f6, #2563eb);
+		border: none;
+		color: white;
+		padding: 8px 16px;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 13px;
+		transition: all 0.2s;
+	}
+	
+	.btn-analyze:hover:not(:disabled) {
+		background: linear-gradient(135deg, #60a5fa, #3b82f6);
+		transform: translateY(-1px);
+	}
+	
+	.btn-analyze:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	
+	.loading-state, .error-state {
+		text-align: center;
+		padding: 30px;
+	}
+	
+	.spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid rgba(0, 255, 136, 0.2);
+		border-top-color: #00ff88;
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+		margin: 0 auto 16px;
+	}
+	
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+	
+	.error-icon {
+		font-size: 40px;
+		margin-bottom: 8px;
+	}
+	
+	.error-message {
+		color: #f87171;
+		font-size: 14px;
+	}
+	
+	.post-exit-results {
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+	
+	.result-section h4 {
+		color: #00ff88;
+		margin: 0 0 8px;
+		font-size: 16px;
+	}
+	
+	.update-info {
+		color: #60a5fa;
+		font-size: 13px;
+		margin: 4px 0 0;
+	}
+	
+	.metrics-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 12px;
+	}
+	
+	.metric-card {
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid #2a3a6b;
+		border-radius: 8px;
+		padding: 12px;
+		text-align: center;
+	}
+	
+	.metric-card.highlight {
+		background: rgba(0, 255, 136, 0.1);
+		border-color: rgba(0, 255, 136, 0.3);
+	}
+	
+	.metric-label {
+		display: block;
+		color: #888;
+		font-size: 11px;
+		margin-bottom: 6px;
+	}
+	
+	.metric-value {
+		display: block;
+		color: white;
+		font-size: 18px;
+		font-weight: 600;
+	}
+	
+	.metric-card.highlight .metric-value {
+		color: #00ff88;
+	}
+	
+	.grade-distribution {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	
+	.grade-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	
+	.grade-label {
+		width: 30px;
+		font-weight: 600;
+		color: #ccc;
+	}
+	
+	.grade-bar-container {
+		flex: 1;
+		height: 16px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+	
+	.grade-bar {
+		height: 100%;
+		background: linear-gradient(90deg, #00ff88, #3b82f6);
+		border-radius: 4px;
+		transition: width 0.3s ease;
+	}
+	
+	.grade-count {
+		width: 80px;
+		text-align: right;
+		color: #888;
+		font-size: 12px;
+	}
+	
+	.no-data {
+		color: #888;
+		text-align: center;
+		padding: 20px;
+	}
+
+	/* 🚀 SIMULATION Styles */
+	.simulation-section {
+		background: linear-gradient(135deg, rgba(0, 100, 200, 0.1), rgba(0, 50, 100, 0.15));
+		border: 1px solid rgba(0, 150, 255, 0.3);
+		border-radius: 12px;
+		padding: 15px;
+		margin-top: 15px;
+	}
+
+	.simulation-section h4 {
+		color: #00aaff;
+		margin: 0 0 15px 0;
+		font-size: 14px;
+	}
+
+	.simulation-configs-used {
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 8px;
+		padding: 12px;
+		margin-bottom: 15px;
+	}
+
+	.simulation-configs-used .config-title {
+		color: #888;
+		font-size: 12px;
+		display: block;
+		margin-bottom: 10px;
+	}
+
+	.configs-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.config-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		background: rgba(255, 255, 255, 0.05);
+		padding: 8px 12px;
+		border-radius: 6px;
+		border-left: 3px solid #00aaff;
+	}
+
+	.config-item .config-name {
+		font-size: 11px;
+		color: #00aaff;
+		font-family: monospace;
+	}
+
+	.config-item .config-stats {
+		font-size: 11px;
+		color: #aaa;
+	}
+
+	.config-item .config-stats .positive {
+		color: #00ff88;
+	}
+
+	.config-item .config-stats .negative {
+		color: #ff6b6b;
+	}
+
+	.simulation-comparison {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.comparison-row {
+		display: grid;
+		grid-template-columns: 120px 70px 30px 70px 80px;
+		align-items: center;
+		padding: 8px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 6px;
+	}
+
+	.comparison-label {
+		color: #aaa;
+		font-size: 12px;
+	}
+
+	.comparison-current {
+		color: #888;
+		font-size: 13px;
+		text-align: center;
+	}
+
+	.comparison-arrow {
+		color: #555;
+		text-align: center;
+	}
+
+	.comparison-optimal {
+		color: #00ff88;
+		font-size: 13px;
+		font-weight: 600;
+		text-align: center;
+	}
+
+	.comparison-diff {
+		font-size: 11px;
+		text-align: right;
+	}
+
+	.comparison-diff.positive {
+		color: #00ff88;
+	}
+
+	.comparison-diff.negative {
+		color: #ff6b6b;
+	}
+
+	.simulation-impact {
+		margin-top: 15px;
+		padding: 12px;
+		background: linear-gradient(135deg, rgba(0, 255, 136, 0.15), rgba(0, 150, 100, 0.1));
+		border: 1px solid rgba(0, 255, 136, 0.4);
+		border-radius: 8px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.simulation-impact .impact-icon {
+		font-size: 24px;
+	}
+
+	.simulation-impact .impact-text {
+		color: #00ff88;
+		font-size: 14px;
+	}
+
+	.simulation-impact .impact-text strong {
+		font-size: 18px;
+		color: #00ffaa;
 	}
 
 	/* 🛡️ SPRINT 1: Protection & Régime Styles */
