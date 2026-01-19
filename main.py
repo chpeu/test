@@ -8495,6 +8495,58 @@ async def reset_datalogger_db():
         )
 
 
+# 🔥 ENDPOINTS LOGS - Pour l'affichage des erreurs dans le frontend
+@app.get("/api/logs/errors")
+async def api_get_errors(limit: int = 50, offset: int = 0):
+    """Récupérer les erreurs avec pagination"""
+    try:
+        from utils.error_history import get_error_history
+        error_history = get_error_history()
+        
+        # Récupérer toutes les erreurs depuis le gestionnaire en mémoire
+        all_errors = error_history.get_errors()
+        total_count = len(all_errors)
+        
+        # Appliquer la pagination
+        start_idx = offset
+        end_idx = offset + limit
+        paginated_errors = all_errors[start_idx:end_idx]
+        
+        return JSONResponse({
+            "success": True,
+            "errors": paginated_errors,
+            "total_count": total_count
+        })
+            
+    except Exception as e:
+        logger.error(f"Erreur endpoint /api/logs/errors: {e}")
+        return JSONResponse({
+            "success": False,
+            "errors": [],
+            "total_count": 0,
+            "message": str(e)
+        })
+
+
+@app.get("/api/logs/errors/recent")
+async def api_get_recent_errors(limit: int = 50):
+    """Récupérer les erreurs récentes"""
+    return await api_get_errors(limit=limit, offset=0)
+
+
+@app.post("/api/logs/errors/clear")
+async def api_clear_errors():
+    """Vider toutes les erreurs"""
+    try:
+        from utils.error_history import get_error_history
+        error_history = get_error_history()
+        error_history.clear_errors()
+        return JSONResponse({"success": True, "message": "Historique des erreurs vidé"})
+    except Exception as e:
+        logger.error(f"Erreur endpoint /api/logs/errors/clear: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+
 if __name__ == '__main__':
     import uvicorn
     import socket
@@ -8592,55 +8644,3 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"❌ Erreur démarrage serveur: {e}", exc_info=True)
         sys.exit(1)
-
-
-# 🔥 ENDPOINTS LOGS - Pour l'affichage des erreurs dans le frontend
-@app.get("/api/logs/errors")
-async def api_get_errors(limit: int = 50, offset: int = 0):
-    """Récupérer les erreurs avec pagination"""
-    try:
-        from utils.error_history import get_error_history
-        error_history = get_error_history()
-        
-        # Récupérer toutes les erreurs depuis le gestionnaire en mémoire
-        all_errors = error_history.get_errors()
-        total_count = len(all_errors)
-        
-        # Appliquer la pagination
-        start_idx = offset
-        end_idx = offset + limit
-        paginated_errors = all_errors[start_idx:end_idx]
-        
-        return JSONResponse({
-            "success": True,
-            "errors": paginated_errors,
-            "total_count": total_count
-        })
-            
-    except Exception as e:
-        logger.error(f"Erreur endpoint /api/logs/errors: {e}")
-        return JSONResponse({
-            "success": False,
-            "errors": [],
-            "total_count": 0,
-            "message": str(e)
-        })
-
-
-@app.get("/api/logs/errors/recent")
-async def api_get_recent_errors(limit: int = 50):
-    """Récupérer les erreurs récentes"""
-    return await api_get_errors(limit=limit, offset=0)
-
-
-@app.post("/api/logs/errors/clear")
-async def api_clear_errors():
-    """Vider toutes les erreurs"""
-    try:
-        from utils.error_history import get_error_history
-        error_history = get_error_history()
-        error_history.clear_errors()
-        return JSONResponse({"success": True, "message": "Historique des erreurs vidé"})
-    except Exception as e:
-        logger.error(f"Erreur endpoint /api/logs/errors/clear: {e}")
-        return JSONResponse({"success": False, "error": str(e)})

@@ -3553,6 +3553,7 @@ class PositionManager:
 
     def _check_levels(self, current_price: float) -> Optional[str]:
         """Vérifier si TP ou SL est touché"""
+        from config import TRADING_CONFIG
         direction = self.active_position.direction
         sl = self.active_position.sl
         tp = self.active_position.tp
@@ -3591,16 +3592,24 @@ class PositionManager:
         # Le bloc précédent empêchait le TP final d'être atteint.
         # La vérification standard ci-dessous gère correctement tous les cas.
 
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+        disable_final_tp_after_partial = TRADING_CONFIG.get('partial_tp_disable_final_tp', False)
+        skip_final_tp = (
+            tp_sl_mode == 'FIXE'
+            and disable_final_tp_after_partial
+            and getattr(self.active_position, 'partial_tp_sold', False)
+        )
+
         # Vérification standard TP/SL
         if direction == 'LONG':
             if current_price <= sl:
                 return 'TS' if pnl >= 0 else 'SL'
-            if current_price >= tp:
+            if not skip_final_tp and current_price >= tp:
                 return 'TP'
         else:  # SHORT
             if current_price >= sl:
                 return 'TS' if pnl >= 0 else 'SL'
-            if current_price <= tp:
+            if not skip_final_tp and current_price <= tp:
                 return 'TP'
 
         return None

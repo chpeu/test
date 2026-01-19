@@ -362,6 +362,7 @@ TRADING_CONFIG = {
 
     # ✅ TP Escalier / Multi-Level TP (paramètres individuels pour frontend)
     "partial_tp_percent": 40,  # % de position vendue au 1er TP (mode FIXE)
+    "partial_tp_disable_final_tp": False,  # Si True: ignorer TP final après TP partiel (mode FIXE)
     "escalier_level1_pnl": 0.20,
     "escalier_level1_size": 25,
     "escalier_level2_pnl": 0.35,

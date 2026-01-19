@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768763231.0861342,
+  "timestamp": 1768795309.4219496,
   "specs": {
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -210,6 +210,66 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "XLM_USDT": {
+      "symbol": "XLM_USDT",
+      "min_vol": 1.0,
+      "max_vol": 310000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "MANTA_USDT": {
+      "symbol": "MANTA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 60000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "TIA_USDT": {
+      "symbol": "TIA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 550000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "APT_USDT": {
+      "symbol": "APT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 5800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "LTC_USDT": {
+      "symbol": "LTC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2425000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "SILVER_USDT": {
+      "symbol": "SILVER_USDT",
+      "min_vol": 1.0,
+      "max_vol": 120000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
     }
   }
 }

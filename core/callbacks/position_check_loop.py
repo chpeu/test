@@ -686,8 +686,29 @@ def _calculate_next_event(position, current_price, pnl_pct, atr_percent,
         # 2. Prochain TP (toujours affiché)
         tp_escalier_levels = getattr(position, 'tp_escalier_levels', [])
         current_tp_level = getattr(position, 'current_tp_level', 0)
-        
-        if tp_escalier_levels and current_tp_level < len(tp_escalier_levels):
+        tp_sl_mode = getattr(position, 'tp_sl_mode', None) or trading_config.get('tp_sl_mode', 'FIXE')
+        partial_tp_sold = getattr(position, 'partial_tp_sold', False)
+        disable_final_tp = trading_config.get('partial_tp_disable_final_tp', False)
+        use_partial_tp_as_next = (
+            tp_sl_mode == 'FIXE'
+            and not partial_tp_sold
+            and break_even_trigger_pct is not None
+        )
+
+        if use_partial_tp_as_next:
+            tp_pct = break_even_trigger_pct
+            tp_distance = tp_pct - current_level
+            tp_price_calc = entry * (1 + tp_pct / 100) if direction == 'LONG' else entry * (1 - tp_pct / 100)
+
+            result['next_tp'] = {
+                'type': 'TP_PARTIAL',
+                'price': tp_price_calc,
+                'distance_pct': tp_distance,
+                'distance_atr': tp_distance / atr_percent if atr_percent else None,
+                'color': '#10b981',  # vert
+                'description': 'TP Partiel'
+            }
+        elif tp_escalier_levels and current_tp_level < len(tp_escalier_levels):
             # Mode escalier
             next_level = tp_escalier_levels[current_tp_level]
             tp_pct = next_level.get('pct', 0)
@@ -702,7 +723,7 @@ def _calculate_next_event(position, current_price, pnl_pct, atr_percent,
                 'color': '#10b981',  # vert
                 'description': f'TP {current_tp_level + 1}/{len(tp_escalier_levels)}'
             }
-        elif tp_price:
+        elif tp_price and not (disable_final_tp and partial_tp_sold):
             # TP normal
             if direction == 'LONG':
                 tp_distance = ((tp_price - current_price) / current_price) * 100
