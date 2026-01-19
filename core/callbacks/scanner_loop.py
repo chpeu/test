@@ -1587,6 +1587,29 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     divergence_bonus = scan_data.get('divergence_bonus')
                     setup_reason = analysis.get('reason')
 
+                    # 🔥 FIX: Récupérer le contexte Market Regime pour l'opportunity
+                    market_regime_data = {}
+                    try:
+                        from core.market_regime_selector import get_regime_selector
+                        regime_selector = get_regime_selector()
+                        regime_status = regime_selector.get_status()
+                        market_regime_data = {
+                            'market_regime': regime_status.get('current_regime'),
+                            'market_regime_score': regime_status.get('avg_atr'),
+                            'market_regime_confidence': regime_status.get('confidence', 0.5),
+                            'market_regime_reason': regime_status.get('reason'),
+                            'market_regime_details': {
+                                'avg_atr': regime_status.get('avg_atr'),
+                                'avg_adx': regime_status.get('avg_adx'),
+                                'sample_count': regime_status.get('sample_count')
+                            },
+                            'session_context': regime_status.get('session_context'),
+                            'market_regime_signal': regime_status.get('signal')
+                        }
+                        logger.debug(f"📊 Market regime pour opportunity: {market_regime_data.get('market_regime')}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Impossible de récupérer régime pour opportunity: {e}")
+                    
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
@@ -1610,6 +1633,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'size_usdt': None,
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
+                        # 🔥 FIX: Ajouter les champs Market Regime
+                        **market_regime_data
                     }
                     # 🔥 FIX: Mode direct (pas de batch) pour obtenir opportunity_id immédiatement
                     # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop

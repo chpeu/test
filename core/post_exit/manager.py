@@ -165,22 +165,40 @@ class PostExitManager:
             return tracker
     
     def start_tracking_sync(self, **kwargs) -> Optional[PostExitTracker]:
-        """Version synchrone de start_tracking pour appel depuis code sync"""
-        with self._sync_lock:
+        """
+        Version synchrone de start_tracking pour appel depuis code sync
+        
+        Gère les cas:
+        1. Appelé depuis thread avec event loop running (main thread FastAPI)
+        2. Appelé depuis thread sans event loop (position_sync thread)
+        """
+        symbol = kwargs.get('symbol', 'N/A')
+        
+        try:
+            # 🔥 FIX: Essayer d'obtenir une loop existante
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Créer une tâche dans la loop existante
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.start_tracking(**kwargs),
-                        loop
-                    )
-                    return future.result(timeout=5.0)
-                else:
-                    return loop.run_until_complete(self.start_tracking(**kwargs))
-            except Exception as e:
-                logger.error(f"❌ PostExit start_tracking_sync error: {e}", exc_info=True)
+                loop = asyncio.get_running_loop()
+                # Loop running - fire-and-forget
+                asyncio.run_coroutine_threadsafe(
+                    self.start_tracking(**kwargs),
+                    loop
+                )
+                logger.debug(f"📊 PostExit tracking lancé (running loop) pour {symbol}")
                 return None
+            except RuntimeError:
+                # Pas de loop running dans ce thread
+                pass
+            
+            # 🔥 FIX: Créer une nouvelle loop pour ce thread
+            # Utiliser asyncio.run() qui crée et ferme proprement une loop
+            logger.debug(f"📊 PostExit: Création nouvelle loop pour {symbol}")
+            result = asyncio.run(self.start_tracking(**kwargs))
+            logger.info(f"✅ PostExit tracking démarré (nouvelle loop) pour {symbol}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ PostExit start_tracking_sync error: {e}", exc_info=True)
+            return None
     
     async def on_price_update(self, symbol: str, price: float) -> None:
         """
@@ -206,10 +224,15 @@ class PostExitManager:
             return
         
         tracker = self.active_trackers[symbol]
-        tracker.add_sample(price)
+        sample_added = tracker.add_sample(price)
+        
+        # Log périodique pour debug
+        if sample_added and len(tracker.samples) % 30 == 1:
+            logger.warning(f"📊 PostExit {symbol}: {len(tracker.samples)} samples collectés, is_active={tracker.is_active}")
         
         # Si tracking terminé
         if not tracker.is_active:
+            logger.warning(f"🟢 PostExit {symbol}: Tracking terminé, lancement complétion...")
             # Planifier la complétion dans un thread
             threading.Thread(
                 target=self._complete_tracker_sync,
@@ -220,12 +243,14 @@ class PostExitManager:
     def _complete_tracker_sync(self, symbol: str, reason: str) -> None:
         """Version synchrone de _complete_tracker"""
         try:
+            logger.warning(f"🔄 PostExit {symbol}: _complete_tracker_sync démarré...")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._complete_tracker(symbol, reason))
+            result = loop.run_until_complete(self._complete_tracker(symbol, reason))
             loop.close()
+            logger.warning(f"✅ PostExit {symbol}: Complétion terminée, result={result is not None}")
         except Exception as e:
-            logger.error(f"❌ PostExit _complete_tracker_sync error: {e}")
+            logger.error(f"❌ PostExit _complete_tracker_sync error: {e}", exc_info=True)
     
     async def _complete_tracker(self, symbol: str, reason: str = "complete") -> Optional[Dict]:
         """
@@ -261,7 +286,9 @@ class PostExitManager:
             del self.completed_metrics[oldest_id]
         
         # Sauvegarder en DB
-        await self._save_to_database(tracker, metrics)
+        logger.warning(f"💾 PostExit {symbol}: Sauvegarde DB avec {metrics.get('sample_count', 0)} samples...")
+        save_ok = await self._save_to_database(tracker, metrics)
+        logger.warning(f"💾 PostExit {symbol}: Sauvegarde DB = {save_ok}")
         
         efficiency = metrics.get("exit_efficiency_pct", 0)
         grade = metrics.get("exit_timing_grade", "?")
@@ -291,13 +318,19 @@ class PostExitManager:
             from core.postgresql_datalogger import get_datalogger
             
             datalogger = get_datalogger()
-            if not datalogger or not datalogger.enabled:
-                logger.debug("PostgreSQL DataLogger non disponible, skip save post-exit")
+            if not datalogger:
+                logger.warning("❌ PostExit DB: DataLogger non disponible")
+                return False
+            if not datalogger.enabled:
+                logger.warning("❌ PostExit DB: DataLogger désactivé")
                 return False
             
             conn = datalogger._get_connection()
             if not conn:
+                logger.warning("❌ PostExit DB: Connexion non disponible")
                 return False
+            
+            logger.warning(f"🔍 PostExit DB: trade_id={metrics['trade_id']} (type={type(metrics['trade_id']).__name__})")
             
             try:
                 with conn.cursor() as cur:
@@ -404,7 +437,7 @@ class PostExitManager:
                     
             except Exception as e:
                 conn.rollback()
-                logger.error(f"❌ PostExit DB save error: {e}")
+                logger.error(f"❌ PostExit DB save error: {e}", exc_info=True)
                 return False
             finally:
                 datalogger._return_connection(conn)

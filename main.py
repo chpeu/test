@@ -124,6 +124,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 🔥 Ajouter handler pour logger les erreurs vers PostgreSQL scan_errors
+try:
+    from core.error_logger import ErrorLoggerHandler
+    error_db_handler = ErrorLoggerHandler(level=logging.ERROR)
+    logging.getLogger().addHandler(error_db_handler)
+    logger.info("✅ ErrorLoggerHandler ajouté - Les erreurs seront loggées vers scan_errors")
+except Exception as e:
+    logger.warning(f"⚠️ Impossible d'ajouter ErrorLoggerHandler: {e}")
+
 # 🔥 FIX: Configurer le logger avec WebSocket handler après l'initialisation de ws_manager
 # (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
@@ -8310,7 +8319,9 @@ async def export_datalogger_excel(
                 if table_name == 'opportunities':
                     opp_columns = [
                         'ml_confidence', 'ml_threshold_used', 'ml_threshold_type', 'calibrated_winrate',
-                        'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx'
+                        'market_regime', 'session_context', 'market_regime_score', 
+                        'market_regime_confidence', 'market_regime_reason', 
+                        'market_regime_details', 'market_regime_signal'
                     ]
                     for col in opp_columns:
                         if col not in headers:
@@ -8577,7 +8588,7 @@ async def reset_datalogger_db():
 # 🔥 ENDPOINTS LOGS - Pour l'affichage des erreurs dans le frontend
 @app.get("/api/logs/errors")
 async def api_get_errors(limit: int = 50, offset: int = 0):
-    """Récupérer les erreurs avec pagination"""
+    """Récupérer les erreurs avec pagination depuis ErrorHistoryManager (en mémoire)"""
     try:
         from utils.error_history import get_error_history
         error_history = get_error_history()
@@ -8600,10 +8611,9 @@ async def api_get_errors(limit: int = 50, offset: int = 0):
     except Exception as e:
         logger.error(f"Erreur endpoint /api/logs/errors: {e}")
         return JSONResponse({
-            "success": False,
+            "success": True,
             "errors": [],
-            "total_count": 0,
-            "message": str(e)
+            "total_count": 0
         })
 
 
@@ -8615,7 +8625,7 @@ async def api_get_recent_errors(limit: int = 50):
 
 @app.post("/api/logs/errors/clear")
 async def api_clear_errors():
-    """Vider toutes les erreurs"""
+    """Vider toutes les erreurs du gestionnaire en mémoire"""
     try:
         from utils.error_history import get_error_history
         error_history = get_error_history()

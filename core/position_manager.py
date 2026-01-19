@@ -4642,11 +4642,13 @@ class PositionManager:
         
         # 🔥 POST-EXIT ANALYSIS: Démarrer le tracking des prix après clôture
         try:
+            logger.warning(f"📊 Démarrage PostExit tracking pour {position.symbol}...")
             from core.post_exit import get_post_exit_manager
             post_exit_manager = get_post_exit_manager()
             
             # Récupérer trade_id (peut être None si pas encore loggé)
             db_trade_id = getattr(position, '_trade_id', None) or 0
+            logger.debug(f"📊 PostExit: trade_id={db_trade_id}, symbol={position.symbol}")
             
             # Params utilisés pour analyse
             used_params = {
@@ -4658,6 +4660,7 @@ class PositionManager:
                 'partial_tp_pct': TRADING_CONFIG.get('partial_tp_percent'),
             }
             
+            logger.debug(f"📊 PostExit: Appel start_tracking_sync...")
             post_exit_manager.start_tracking_sync(
                 trade_id=db_trade_id,
                 symbol=position.symbol,
@@ -4672,13 +4675,14 @@ class PositionManager:
                 trade_duration_sec=float(duration),
                 used_params=used_params
             )
+            logger.warning(f"✅ PostExit tracking lancé pour {position.symbol}")
         except Exception as post_exit_err:
             logger.warning(f"⚠️ PostExit tracking ignoré (non-bloquant): {post_exit_err}", exc_info=True)
         
         # Réinitialiser position
         self.active_position = None
 
-        logger.info(
+        logger.warning(
             f"🔴 POSITION FERMÉE: {result['symbol']} | "
             f"Raison: {reason} | PnL net: {net_pnl_pct:.2f}% ({net_pnl_usdt:.4f} USDT) | "
             f"Slippage: {slippage_pct:.4f}% ({slippage_usdt:.4f} USDT)"

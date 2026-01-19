@@ -34,7 +34,7 @@ async def post_exit_loop():
     global _is_running
     _is_running = True
     
-    logger.info("🔄 Post-Exit Loop démarrée")
+    logger.warning("\ud83d\udd04 Post-Exit Loop démarrée")
     
     while _is_running:
         try:
@@ -46,11 +46,19 @@ async def post_exit_loop():
             active_symbols = post_exit_mgr.get_active_symbols()
             
             if not active_symbols:
-                # Pas de trackers actifs, attendre
+                # Pas de trackers actifs, attendre (pas de log pour éviter spam)
                 await asyncio.sleep(POST_EXIT_LOOP_INTERVAL_SEC * 2)
                 continue
             
+            # Log uniquement toutes les 30 itérations pour réduire le spam
+            if not hasattr(post_exit_loop, '_iteration_count'):
+                post_exit_loop._iteration_count = 0
+            post_exit_loop._iteration_count += 1
+            if post_exit_loop._iteration_count % 30 == 1:
+                logger.warning(f"\ud83d\udcca PostExit Loop: {len(active_symbols)} symboles actifs: {active_symbols}")
+            
             if not _price_provider:
+                logger.warning("Pas de price provider disponible")
                 await asyncio.sleep(POST_EXIT_LOOP_INTERVAL_SEC)
                 continue
             
@@ -60,27 +68,44 @@ async def post_exit_loop():
                     price_data = await _price_provider.get_price(symbol)
                     if price_data:
                         # Extraire le prix (peut être dict ou float)
+                        price = None
                         if isinstance(price_data, dict):
-                            price = price_data.get('price') or price_data.get('last') or price_data.get('mark')
+                            # 🔥 FIX: Utiliser les bonnes clés MEXC (lastPrice, markPrice, fairPrice, referencePrice)
+                            price = (
+                                price_data.get('lastPrice') or 
+                                price_data.get('markPrice') or 
+                                price_data.get('fairPrice') or
+                                price_data.get('referencePrice') or
+                                price_data.get('price') or 
+                                price_data.get('last') or 
+                                price_data.get('mark')
+                            )
+                            # Convertir en float si c'est une string
+                            if isinstance(price, str):
+                                try:
+                                    price = float(price)
+                                except:
+                                    price = None
                         else:
                             price = float(price_data)
                         
                         if price and price > 0:
                             post_exit_mgr.on_price_update_sync(symbol, price)
+                        # Pas de log pour prix invalide (trop spammy)
                 except Exception as e:
-                    logger.debug(f"PostExit: Erreur récupération prix {symbol}: {e}")
+                    logger.debug(f"Erreur récupération prix {symbol}: {e}")
             
             await asyncio.sleep(POST_EXIT_LOOP_INTERVAL_SEC)
             
         except asyncio.CancelledError:
-            logger.info("🛑 Post-Exit Loop annulée")
+            logger.warning("Post-Exit Loop annulée")
             break
         except Exception as e:
-            logger.error(f"❌ Erreur post_exit_loop: {e}")
+            logger.error(f"Erreur post_exit_loop: {e}")
             await asyncio.sleep(POST_EXIT_LOOP_INTERVAL_SEC * 2)
     
     _is_running = False
-    logger.info("🔄 Post-Exit Loop arrêtée")
+    logger.warning("Post-Exit Loop arrêtée")
 
 
 async def start_post_exit_loop():
@@ -92,7 +117,7 @@ async def start_post_exit_loop():
         return
     
     _task = asyncio.create_task(post_exit_loop())
-    logger.info("✅ Post-Exit Loop task créée")
+    logger.warning("\u2705 Post-Exit Loop task créée")
 
 
 async def stop_post_exit_loop():

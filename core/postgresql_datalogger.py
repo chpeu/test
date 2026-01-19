@@ -1174,7 +1174,7 @@ class PostgreSQLDataLogger:
                     market_regime, session_context, market_regime_score, market_regime_confidence, market_regime_reason, market_regime_details, market_regime_signal
                 )
                 VALUES (
-                    NOW(), %s, %s, %s,
+                    %s, %s, %s, NOW(),
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
@@ -3222,6 +3222,68 @@ class PostgreSQLDataLogger:
         import asyncio
         return await asyncio.to_thread(self.get_or_create_session, session_id)
 
+    def log_error(
+        self,
+        error_type: str,
+        error_message: str,
+        error_stack: Optional[str] = None,
+        symbol: Optional[str] = None,
+        scan_context: Optional[Dict] = None
+    ) -> bool:
+        """
+        Logger une erreur dans la table scan_errors
+        
+        Args:
+            error_type: Type d'erreur (ERROR, CRITICAL, WARNING, etc.)
+            error_message: Message d'erreur
+            error_stack: Stack trace complète (optionnel)
+            symbol: Symbole concerné (optionnel)
+            scan_context: Contexte additionnel (optionnel)
+            
+        Returns:
+            True si succès, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        conn = self._get_connection()
+        if not conn:
+            return False
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Récupérer session_id actuel si disponible
+            session_id = getattr(self, '_current_session_id', None)
+            
+            cursor.execute("""
+                INSERT INTO scan_errors (
+                    timestamp, session_id, symbol, error_type, 
+                    error_message, error_stack, scan_context
+                )
+                VALUES (NOW(), %s, %s, %s, %s, %s, %s)
+            """, (
+                session_id,
+                symbol,
+                error_type,
+                error_message,
+                error_stack,
+                json.dumps(scan_context) if scan_context else None
+            ))
+            
+            conn.commit()
+            cursor.close()
+            self._return_connection(conn)
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur log_error vers scan_errors: {e}")
+            if conn:
+                conn.rollback()
+                cursor.close() if 'cursor' in locals() else None
+                self._return_connection(conn)
+            return False
+    
     def close(self):
         """
         Fermer le pool de connexions PostgreSQL
