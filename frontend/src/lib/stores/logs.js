@@ -150,9 +150,12 @@ export async function clearAllErrors() {
 	}
 }
 
-// 🔥 NEW: Charger les erreurs récentes au démarrage
+// 🔥 NEW: Charger les erreurs récentes au démarrage (avec délai pour laisser le backend démarrer)
+const INITIAL_ERRORS_LOAD_DELAY_MS = 2000;
 if (typeof window !== 'undefined') {
-	loadRecentErrors();
+	setTimeout(() => {
+		loadRecentErrors();
+	}, INITIAL_ERRORS_LOAD_DELAY_MS);
 }
 
 export function clearConfigLogs() {
