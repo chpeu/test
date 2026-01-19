@@ -84,25 +84,45 @@ class WebSocketLogHandler(logging.Handler):
             }
             
             # Envoyer via WebSocket (asynchrone, fire-and-forget)
+            # 🔥 FIX: Utiliser call_soon_threadsafe avec une coroutine simplifiée
             import asyncio
             try:
                 loop = asyncio.get_running_loop()
                 
-                async def send_log_safe():
-                    try:
-                        await asyncio.wait_for(
-                            self.ws_manager.emit('log', entry),
-                            timeout=1.0  # Timeout court pour éviter blocage
-                        )
-                    except (asyncio.TimeoutError, asyncio.CancelledError):
-                        pass  # Ignorer silencieusement
-                    except Exception:
-                        pass  # Ignorer les erreurs d'envoi
+                # Vérifier que le loop est actif et pas en shutdown
+                if not loop.is_running() or loop.is_closed():
+                    return
                 
-                # Créer la tâche avec gestion d'erreur
-                task = loop.create_task(send_log_safe())
-                # Supprimer la référence pour éviter les warnings
-                task.add_done_callback(lambda t: None)
+                # Vérifier si shutdown est en cours via le module shutdown
+                try:
+                    from core.shutdown import get_shutdown_manager
+                    shutdown_mgr = get_shutdown_manager()
+                    if shutdown_mgr and shutdown_mgr.is_shutting_down:
+                        return  # Ne pas créer de nouvelles tasks pendant shutdown
+                except Exception:
+                    pass  # Module non disponible, continuer
+                
+                # Utiliser ensure_future avec une coroutine simple sans gather
+                async def send_log_direct():
+                    try:
+                        # Appel direct sans passer par broadcast/gather
+                        if hasattr(self.ws_manager, 'active_connections'):
+                            import json
+                            message = json.dumps({'type': 'log', 'data': entry})
+                            # Envoyer à une seule connexion à la fois, pas de gather
+                            for conn in list(self.ws_manager.active_connections):
+                                try:
+                                    await conn.send_text(message)
+                                except Exception:
+                                    pass  # Ignorer les erreurs de connexion
+                    except asyncio.CancelledError:
+                        pass  # Normal pendant shutdown
+                    except Exception:
+                        pass  # Ignorer toutes les erreurs
+                
+                # Créer la tâche
+                task = loop.create_task(send_log_direct())
+                task.add_done_callback(lambda t: t.cancelled() or t.exception() is None or None)
             except RuntimeError:
                 # Pas de loop en cours, ignorer
                 pass

@@ -315,9 +315,9 @@ class PostExitManager:
             True si sauvegarde réussie
         """
         try:
-            from core.postgresql_datalogger import get_datalogger
+            from core.postgresql_datalogger import get_pg_datalogger
             
-            datalogger = get_datalogger()
+            datalogger = get_pg_datalogger()
             if not datalogger:
                 logger.warning("❌ PostExit DB: DataLogger non disponible")
                 return False
@@ -337,7 +337,7 @@ class PostExitManager:
                     # 1. Insérer les métriques agrégées
                     cur.execute("""
                         INSERT INTO trade_post_exit_analysis (
-                            trade_id, exit_price, exit_timestamp, exit_reason, direction,
+                            trade_id, symbol, exit_price, exit_timestamp, exit_reason, direction,
                             realized_pnl_pct, realized_pnl_usdt,
                             used_sl_pct, used_tp_pct, used_be_trigger, used_trailing_trigger,
                             used_trailing_min_distance, used_partial_tp_pct,
@@ -349,7 +349,7 @@ class PostExitManager:
                             would_have_hit_original_tp, would_have_hit_original_sl, price_returned_to_entry,
                             ml_optimal_sl_pct, ml_optimal_trailing_trigger, ml_optimal_be_trigger, ml_should_use_partial
                         ) VALUES (
-                            %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s,
                             %s, %s,
                             %s, %s, %s, %s,
                             %s, %s,
@@ -362,11 +362,13 @@ class PostExitManager:
                             %s, %s, %s, %s
                         )
                         ON CONFLICT (trade_id) DO UPDATE SET
+                            symbol = EXCLUDED.symbol,
                             exit_efficiency_pct = EXCLUDED.exit_efficiency_pct,
                             post_exit_mfe_pct = EXCLUDED.post_exit_mfe_pct,
                             sample_count = EXCLUDED.sample_count
                     """, (
                         metrics['trade_id'],
+                        tracker.symbol,
                         metrics['exit_price'],
                         tracker.exit_timestamp,
                         metrics['exit_reason'],

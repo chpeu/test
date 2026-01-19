@@ -68,7 +68,9 @@ class DataLoggerExporter:
         'market_regime_history',  # 🔥 SPRINT 1: Historique des changements de régime
         'pair_performance_stats',  # 🔥 SPRINT 2: Stats de performance par paire
         'trade_atr_metrics',  # 🔥 ATR Optimization: Métriques ATR par trade
-        'trade_events'  # 🔥 Phase 2H.6: Événements du cycle de vie des trades
+        'trade_events',  # 🔥 Phase 2H.6: Événements du cycle de vie des trades
+        'trade_post_exit_analysis',  # 🔥 POST-EXIT: Métriques post-exit par trade
+        'trade_post_exit_samples'  # 🔥 POST-EXIT: Samples de prix post-exit (1Hz)
     ]
 
     def __init__(

@@ -4646,9 +4646,12 @@ class PositionManager:
             from core.post_exit import get_post_exit_manager
             post_exit_manager = get_post_exit_manager()
             
-            # Récupérer trade_id (peut être None si pas encore loggé)
-            db_trade_id = getattr(position, '_trade_id', None) or 0
-            logger.debug(f"📊 PostExit: trade_id={db_trade_id}, symbol={position.symbol}")
+            # Récupérer trade_id (UUID string, requis pour sauvegarde DB)
+            db_trade_id = getattr(position, '_trade_id', None)
+            if not db_trade_id:
+                logger.warning(f"⚠️ PostExit: Pas de trade_id pour {position.symbol}, skip tracking")
+                raise ValueError("trade_id manquant pour PostExit tracking")
+            logger.warning(f"📊 PostExit: trade_id={db_trade_id} (type={type(db_trade_id).__name__}), symbol={position.symbol}")
             
             # Params utilisés pour analyse
             used_params = {

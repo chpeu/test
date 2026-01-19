@@ -2959,6 +2959,29 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     divergence_bonus = analysis.get('divergence_bonus')
                     setup_reason = analysis.get('setup_reason')
                     
+                    # 🔥 FIX: Récupérer le contexte Market Regime pour l'opportunity
+                    market_regime_data = {}
+                    try:
+                        from core.market_regime_selector import get_regime_selector
+                        regime_selector = get_regime_selector()
+                        if regime_selector:
+                            regime_status = regime_selector.get_status()
+                            market_regime_data = {
+                                'market_regime': regime_status.get('current_regime'),
+                                'market_regime_score': regime_status.get('avg_atr'),
+                                'market_regime_confidence': regime_status.get('confidence', 0.5),
+                                'market_regime_reason': regime_status.get('reason'),
+                                'market_regime_details': {
+                                    'avg_atr': regime_status.get('avg_atr'),
+                                    'avg_adx': regime_status.get('avg_adx'),
+                                    'sample_count': regime_status.get('atr_sample_count')
+                                },
+                                'session_context': regime_status.get('session_context'),
+                                'market_regime_signal': regime_status.get('signal')
+                            }
+                    except Exception as e:
+                        logger.debug(f"⚠️ Impossible de récupérer régime pour opportunity: {e}")
+                    
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
@@ -2982,6 +3005,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'size_usdt': None,
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
+                        # 🔥 FIX: Ajouter les champs Market Regime
+                        **market_regime_data
                     }
                     # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
                     logger.info(f"📝 Appel log_opportunity_async() pour {symbol} (main.py)")
@@ -3874,6 +3899,109 @@ async def api_post_exit_recent(limit: int = 10):
             "success": False,
             "error": str(e),
             "metrics": []
+        })
+
+
+@app.get("/api/analytics/post-exit/summary")
+async def api_post_exit_summary():
+    """
+    Résumé des métriques post-exit (Phase 2)
+    
+    Returns:
+        - avg_efficiency: Exit efficiency moyenne
+        - avg_regret: Regret moyen (PnL% manqué)
+        - excellent_exit_rate: % de trades avec grade A+/A
+        - avg_optimal_sl: SL optimal moyen
+        - avg_optimal_trailing: Trailing optimal moyen
+        - grade_distribution: Distribution des grades
+    """
+    try:
+        from core.postgresql_datalogger import get_pg_datalogger
+        datalogger = get_pg_datalogger()
+        
+        if not datalogger or not datalogger.enabled:
+            return JSONResponse({
+                "success": False,
+                "error": "PostgreSQL DataLogger non disponible"
+            })
+        
+        conn = datalogger._get_connection()
+        if not conn:
+            return JSONResponse({
+                "success": False,
+                "error": "Connexion PostgreSQL non disponible"
+            })
+        
+        try:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Statistiques globales
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_trades,
+                    AVG(exit_efficiency_pct) as avg_efficiency,
+                    AVG(regret_pct) as avg_regret,
+                    COUNT(CASE WHEN exit_timing_grade IN ('A+', 'A') THEN 1 END) as excellent_exits,
+                    AVG(ml_optimal_sl_pct) as avg_optimal_sl,
+                    AVG(ml_optimal_trailing_trigger) as avg_optimal_trailing,
+                    AVG(ml_optimal_be_trigger) as avg_optimal_be,
+                    COUNT(CASE WHEN ml_should_use_partial = true THEN 1 END) as should_use_partial_count
+                FROM trade_post_exit_analysis
+                WHERE sample_count > 10
+            """)
+            
+            stats = cursor.fetchone()
+            
+            if not stats or stats['total_trades'] == 0:
+                return JSONResponse({
+                    "success": True,
+                    "total_trades": 0,
+                    "message": "Aucune donnée post-exit disponible"
+                })
+            
+            # Distribution des grades
+            cursor.execute("""
+                SELECT 
+                    exit_timing_grade,
+                    COUNT(*) as count
+                FROM trade_post_exit_analysis
+                WHERE sample_count > 10
+                GROUP BY exit_timing_grade
+                ORDER BY exit_timing_grade
+            """)
+            
+            grade_distribution = {}
+            for row in cursor.fetchall():
+                grade = row['exit_timing_grade'] or 'N/A'
+                count = row['count']
+                pct = count / stats['total_trades'] * 100
+                grade_distribution[grade] = {
+                    'count': count,
+                    'percentage': round(pct, 1)
+                }
+            
+            return JSONResponse({
+                "success": True,
+                "total_trades": stats['total_trades'],
+                "avg_efficiency": round(float(stats['avg_efficiency'] or 0), 2),
+                "avg_regret": round(float(stats['avg_regret'] or 0), 3),
+                "excellent_exit_rate": round(stats['excellent_exits'] / stats['total_trades'] * 100, 1) if stats['total_trades'] > 0 else 0,
+                "avg_optimal_sl": round(float(stats['avg_optimal_sl'] or 0), 3),
+                "avg_optimal_trailing": round(float(stats['avg_optimal_trailing'] or 0), 3),
+                "avg_optimal_be": round(float(stats['avg_optimal_be'] or 0), 3),
+                "should_use_partial_rate": round(stats['should_use_partial_count'] / stats['total_trades'] * 100, 1) if stats['total_trades'] > 0 else 0,
+                "grade_distribution": grade_distribution
+            })
+            
+        finally:
+            datalogger._return_connection(conn)
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur /api/analytics/post-exit/summary: {e}", exc_info=True)
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
         })
 
 

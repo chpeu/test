@@ -158,11 +158,16 @@ class WebSocketManager:
                 logger.debug(f"⚠️ Erreur broadcast WebSocket: {e}")
                 return connection  # Échec - retourner connexion à nettoyer
         
-        # Exécuter tous les envois en parallèle
-        results = await asyncio.gather(
-            *[send_to_connection(conn) for conn in connections_to_send],
-            return_exceptions=True
-        )
+        # Exécuter tous les envois en parallèle avec protection contre event loop fermée
+        try:
+            results = await asyncio.gather(
+                *[send_to_connection(conn) for conn in connections_to_send],
+                return_exceptions=True
+            )
+        except RuntimeError as e:
+            # Event loop fermée pendant l'envoi - ignorer silencieusement
+            logger.debug(f"⚠️ Event loop fermée pendant broadcast: {e}")
+            return
         
         # 🔥 FIX: Nettoyer les connexions déconnectées (filtrer les exceptions et None)
         disconnected = []

@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768827848.9471798,
+  "timestamp": 1768842283.4017403,
   "specs": {
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -330,6 +330,26 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 1000.0
+    },
+    "COAI_USDT": {
+      "symbol": "COAI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 27300.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "ETHFI_USDT": {
+      "symbol": "ETHFI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 145000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }

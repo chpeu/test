@@ -5,7 +5,7 @@ Trade Cursor v7.0
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class PostExitTracker:
     """Tracker pour un trade fermé - collecte les prix post-exit"""
     
     # Identifiants
-    trade_id: int
+    trade_id: Union[str, int]  # UUID string ou int
     symbol: str
     direction: str  # LONG ou SHORT
     
