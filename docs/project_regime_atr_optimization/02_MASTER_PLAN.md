@@ -49,12 +49,14 @@
 
 ## OBJECTIFS & MÉTRIQUES
 
-| Métrique | Actuel | Phase 2F | Phase 3 | Objectif Final |
-|----------|--------|----------|---------|----------------|
-| Win Rate | 44.8% | 49% | 52% | 55%+ |
-| Avg PnL/trade | +0.098% | +0.15% | +0.20% | +0.25% |
-| Nombre Trades | 2,311 | **2,311** | **2,311** | **MAINTENIR** ⚠️ |
-| Profit Factor | ~1.35 | 1.6 | 1.8 | 2.0 |
+| Métrique | Actuel | Phase 2F | Phase 2H | Phase 3 | Objectif Final |
+|----------|--------|----------|----------|---------|----------------|
+| Win Rate | 44.8% | 49% | 54% | 58% | 60%+ |
+| Avg PnL/trade | +0.098% | +0.15% | +0.22% | +0.28% | +0.35% |
+| Nombre Trades | 2,311 | **2,311** | **2,311** | **2,311** | **MAINTENIR** ⚠️ |
+| Profit Factor | ~1.35 | 1.6 | 1.8 | 2.0 | 2.2 |
+| Exit Efficiency | ~60% | ~65% | **~75%** | ~80% | 85%+ |
+| Regret moyen | ~0.8% | ~0.6% | **~0.3%** | ~0.2% | <0.15% |
 
 ### CONTRAINTE ABSOLUE
 | Règle | Impact |
@@ -78,6 +80,12 @@ PHASE 1B: Régime V2 Quick Wins (4h) ← Médiane + Hystérésis + Lissage
 PHASE 1C: What-If Régime (3h)       ← Quel régime aurait été optimal?
     │                                  Bot: ✅ Running
     ▼
+PHASE 1D: Intégration Frontend (4h) ← UI Régime V2 + Toggles
+    │                                  Bot: ✅ Running
+    ▼
+PHASE 1E: Auto-Calibration + BTC (6h) ← Seuils dynamiques + Indicateur BTC
+    │                                    Bot: ✅ Running
+    ▼
 ══════════════════════════════════════════════════════════════
     ⏸️ PAUSE: Accumulation 50+ trades (3-7 jours)
 ══════════════════════════════════════════════════════════════
@@ -95,37 +103,51 @@ PHASE 2C: Optimizer Suggestions (SUPPRIMÉ) ← remplacé par 2D (auto-adaptatio
 PHASE 2D: Auto-Adaptation ML (10h)  ← Threshold Optimizer + Drift Detector
     │                                  (= ATR_OPT Phase 2.1)
     ▼
-PHASE 2F: Quick Wins Gestion (4h)   ← 🆕 Stagnation Positive + Trailing MFE
-    │                                  ⚠️ Sans réduction trades
+PHASE 2E: Filtres ML Stricts (3h)   ← ATR MIN/MAX, Spread, Volume
+    │                                  Bot: ✅ Running
     ▼
-PHASE 2G: ML Monitor + Rollback (8h) ← Observabilité + Sécurité (14/12)
+PHASE 2F: Quick Wins Gestion (4h)   ← 🆕 Stagnation Positive + Trailing MFE
+    │                                  ⚠️ Sans réduction trades (MODE FIXE)
+    ▼
+PHASE 2G: ML Monitor + Rollback (8h) ← Observabilité + Sécurité
     │   Monitor, Rollback Dual, Data Quality, Backfill
     ▼
-PHASE 2H: ML Calibration EV (15h)    ← 🆕 Brainstorming 16/12
-    │   2H.1: Migration SQL EV (2h)
-    │   2H.2: Model version tracking (3h)
-    │   2H.3: Simulated seeding (5h)
-    │   2H.4: Gating EV-based (4h)
-    │   2H.5: exit_reason filter (1h) ← ✅ PARTIELLEMENT FAIT
+PHASE 2H: POST-EXIT ANALYSIS (12h)  ← 🆕 INTÉGRÉ 19/01/2026
+    │   2H.1: Data Collection (✅ DONE)     - Tracking prix post-exit
+    │   2H.2: Metrics & ML Targets (2h)    - Calcul optimal_sl/trailing/be
+    │   2H.3: ML Model Training (4h)       - Multi-output regressor
+    │   2H.4: Live Integration (3h)        - MLParamPredictor
+    │   2H.5: Frontend Dashboard (3h)      - PostExitAnalysis.svelte
+    ▼
+PHASE 2I: ML Calibration EV (6h)     ← 🔄 SIMPLIFIÉ MODE FIXE
+    │   2I.1: Migration SQL EV (2h)
+    │   2I.2: Model version tracking (3h)
+    │   2I.5: exit_reason filter (1h)
+    │   ❌ 2I.3: Simulated seeding (SUPPRIMÉ - ROI incertain)
+    │   ❌ 2I.4: Gating EV-based (SUPPRIMÉ - besoin 100+ trades/bucket)
     ▼
 ══════════════════════════════════════════════════════════════
-    ⏸️ PAUSE: Accumulation 200+ trades (2-3 semaines)
+    ⏸️ PAUSE: Accumulation 500+ trades (3-4 semaines)
+    ⏸️ Prérequis Phase 2H.3: 500+ trades avec targets ML
 ══════════════════════════════════════════════════════════════
     │
     ▼
-PHASE 3: Ensemble Learning (8h)     ← Multi-Model Voting + Stacking
+PHASE 3A: Mixture-of-Experts (8h)   ← ⏸️ REPORTER (besoin 50+ trades/régime)
+    │   Un modèle ML par régime (CALME/NORMAL/VOLATILE/CHOPPY)
+    ▼
+PHASE 3B: Ensemble Learning (8h)    ← Multi-Model Voting + Stacking
     │                                    GB + XGBoost + LightGBM
     ▼
-PHASE 4: Feature Engineering (10h)  ← 🆕 21 nouvelles features (Brainstorm 11/12)
+PHASE 3C: Feature Engineering (10h) ← 21 nouvelles features
     │                                    Lag, Rolling, BTC, Sentiment
     ▼
-PHASE 5: Séquences Temporelles (8h) ← GRU/LSTM (prérequis: 1000+ trades)
+══════════════════════════════════════════════════════════════
+    ⏸️ PHASES SUPPRIMÉES DU SCOPE MODE FIXE
+══════════════════════════════════════════════════════════════
     │
-    ▼
-PHASE 6: Reinforcement Learning     ← PPO (prérequis: GPU + 1000+ trades)
-    │
-    ▼
-PHASE 7: MLOps & Production (8h)    ← Auto-retrain, A/B testing, Registry
+    ❌ Phase 4: Séquences Temporelles (SUPPRIMÉ - prérequis 1000+ trades)
+    ❌ Phase 5: Reinforcement Learning (SUPPRIMÉ - trop complexe)
+    ❌ Phase 6: MLOps & Production (REPORTER - système pas encore stable)
 ```
 
 ---
@@ -387,15 +409,17 @@ core/market_regime_selector.py
 ## 📄 DOCUMENTS DÉTAILLÉS
 
 Les détails d'implémentation sont dans:
-- `docs/PHASE_0_INFRASTRUCTURE.md` ← SQL + Config détaillés
-- `docs/PHASE_1_IMPLEMENTATION.md` ← Code Python Logging + Régime V2
-- `docs/PHASE_2_3_ANALYSIS_ML.md` ← Analyse + Dashboard + ML Regime
-- `docs/PHASE_2D_ML_PARAMETER_OPTIMIZER.md` ← 🆕 ML optimisation params par régime
-- `docs/INTERACTIONS_REGIME_PARAMS.md` ← Comment les params circulent dans le pipeline
+- `phases/PHASE_0_INFRASTRUCTURE.md` ← SQL + Config détaillés
+- `phases/PHASE_1_IMPLEMENTATION.md` ← Code Python Logging + Régime V2
+- `phases/PHASE_2_3_ANALYSIS_ML.md` ← Analyse + Dashboard + ML Regime
+- `phases/PHASE_2D_ML_PARAMETER_OPTIMIZER.md` ← ML optimisation params par régime
+- `10_POST_EXIT_INTEGRATION.md` ← 🆕 Phase 2H - Guide complet Post-Exit (5 sous-phases)
+- `11_PROJECT_OVERVIEW_PERFORMANCE.md` ← 🆕 Analyse impact performance de chaque composant
+- `architecture/INTERACTIONS_REGIME_PARAMS.md` ← Comment les params circulent dans le pipeline
 
 **Documents de référence existants:**
-- `docs/ATR_OPTIMIZATION_NEXT_STEPS.md` ← Roadmap originale ATR (intégrée ici)
-- `docs/PLAN_MARKET_REGIME_OPTIMIZATION.md` ← Architecture conceptuelle
+- `reference/ATR_OPTIMIZATION_NEXT_STEPS.md` ← Roadmap originale ATR (intégrée ici)
+- `architecture/PLAN_MARKET_REGIME.md` ← Architecture conceptuelle
 
 ---
 
@@ -412,8 +436,139 @@ Les détails d'implémentation sont dans:
 | **Régime → SL MEXC** | ✅ | INTERACTIONS |
 | **Régime → GB Features** | ✅ | INTERACTIONS |
 | **ML Optimisation Params** | ✅ | PHASE_2D |
+| **Post-Exit Analysis** | ✅ | PHASE_2H (10_POST_EXIT) |
+| **ML Params Dynamiques** | 🔄 | PHASE_2H.3-2H.4 |
 | Auto-Apply & Rollback | ✅ | PHASE_3C |
 | Dashboard | ✅ | PHASE_2B |
+
+---
+
+## 🎯 PHASE 2H: POST-EXIT ANALYSIS - DÉTAILS
+
+### Objectif global
+Optimiser les paramètres de sortie (SL, Trailing, BE) en analysant les mouvements de prix APRÈS chaque trade.
+
+### Architecture
+```
+Trade fermé → Tracking 5min → Métriques → Targets ML → Modèle → Prédictions live
+```
+
+### Sous-phases
+
+#### 2H.1: Data Collection ✅ TERMINÉE (19/01/2026)
+**Durée:** Déjà implémenté | **Prérequis:** Aucun
+
+**Fichiers créés:**
+- `database/migrations/add_post_exit_analysis_tables.sql`
+- `core/post_exit/tracker.py`
+- `core/post_exit/manager.py`
+- `core/callbacks/post_exit_loop.py`
+
+**Fichiers modifiés:**
+- `core/position_manager.py` (hook ligne 4643-4676)
+- `main.py` (startup/shutdown + API endpoints)
+
+**Tables SQL:**
+- `trade_post_exit_analysis` (métriques agrégées)
+- `trade_post_exit_samples` (données brutes 1Hz)
+
+**Livrable:** ✅ Collecte automatique active
+
+---
+
+#### 2H.2: Metrics & ML Targets ⬜ À FAIRE
+**Durée:** 2h | **Prérequis:** 100+ trades avec données post-exit
+
+**Tâches:**
+1. Script `scripts/analyze_post_exit.py`
+2. Calcul `ml_optimal_sl_pct`, `ml_optimal_trailing_trigger`, `ml_optimal_be_trigger`
+3. Endpoint `/api/analytics/post-exit/summary`
+
+**Formules:**
+```python
+# SL optimal (trade gagnant)
+ml_optimal_sl_pct = max(used_sl, abs(post_exit_mae) * 1.1 + 0.02)
+
+# Trailing trigger optimal
+if post_exit_mfe > 0.5:
+    ml_optimal_trailing_trigger = realized_pnl * 0.8
+else:
+    ml_optimal_trailing_trigger = realized_pnl * 0.5
+
+# BE trigger optimal
+ml_optimal_be_trigger = realized_pnl * 0.4
+```
+
+**Livrable:** Targets ML calculés pour chaque trade
+
+---
+
+#### 2H.3: ML Model Training ⬜ À FAIRE
+**Durée:** 4h | **Prérequis:** 500+ trades avec targets ML
+
+**Tâches:**
+1. `optimization/post_exit_dataset.py` (dataset builder)
+2. Feature engineering (ATR, régime, session, ADX, RSI, etc.)
+3. Multi-output regressor (GradientBoosting)
+4. Validation temporelle (train/test split)
+5. Sauvegarder `exit_optimizer.pkl`
+
+**Features (8):**
+- `atr_entry`, `market_regime`, `session`, `adx`, `rsi_1m`, `spread_bps`, `hour_utc`, `direction`
+
+**Targets (3):**
+- `ml_optimal_sl_pct`, `ml_optimal_trailing_trigger`, `ml_optimal_be_trigger`
+
+**Métriques cibles:**
+- MAE < 0.05% sur chaque param
+- R² > 0.3 sur chaque param
+
+**Livrable:** Modèle ML entraîné et validé
+
+---
+
+#### 2H.4: Live Integration ⬜ À FAIRE
+**Durée:** 3h | **Prérequis:** Phase 2H.3 terminée
+
+**Tâches:**
+1. `core/ml_param_predictor.py` (MLParamPredictor class)
+2. Intégration dans `PositionManager.open_position()`
+3. Config `ml_dynamic_params_enabled`
+4. Fallback si confidence < seuil
+5. Logging params prédits vs utilisés
+
+**Bornes de sécurité:**
+```python
+sl_pct: (0.08, 0.50)
+trailing_trigger: (0.10, 0.50)
+be_trigger: (0.10, 0.40)
+```
+
+**Livrable:** Params dynamiques ML en production
+
+---
+
+#### 2H.5: Frontend Dashboard ⬜ À FAIRE
+**Durée:** 3h | **Prérequis:** Phase 2H.4 en production
+
+**Tâches:**
+1. `PostExitDashboard.svelte`
+2. Graphiques exit_efficiency par jour
+3. Distribution grades (A+, A, B, C, D, F)
+4. Comparaison params prédits vs utilisés
+5. Métriques ML accuracy
+
+**Livrable:** Interface monitoring complète
+
+---
+
+### Impact attendu Phase 2H
+| Métrique | Avant | Après Phase 2H | Amélioration |
+|----------|-------|----------------|--------------|
+| Exit Efficiency | 60% | 75% | +25% |
+| Regret moyen | 0.8% | 0.3% | -62% |
+| Winrate | 54% | 58% | +7% |
+| Profit Factor | 1.6 | 1.8 | +12% |
 
 ---
 

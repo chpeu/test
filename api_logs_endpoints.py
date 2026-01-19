@@ -26,14 +26,14 @@ async def api_get_errors(limit: int = 50, offset: int = 0):
             cursor = conn.cursor()
             
             # Compter le total
-            cursor.execute("SELECT COUNT(*) FROM scan_errors WHERE level IN ('ERROR', 'CRITICAL')")
+            cursor.execute("SELECT COUNT(*) FROM scan_errors WHERE error_type IN ('ERROR', 'CRITICAL')")
             total_count = cursor.fetchone()[0]
             
             # Récupérer les erreurs avec pagination
             cursor.execute("""
-                SELECT timestamp, level, message, details
+                SELECT timestamp, error_type, error_message, error_stack
                 FROM scan_errors 
-                WHERE level IN ('ERROR', 'CRITICAL')
+                WHERE error_type IN ('ERROR', 'CRITICAL')
                 ORDER BY timestamp DESC
                 LIMIT %s OFFSET %s
             """, (limit, offset))
@@ -44,9 +44,9 @@ async def api_get_errors(limit: int = 50, offset: int = 0):
                 errors.append({
                     'id': f"error_{row[0].timestamp()}_{hash(row[2])}", 
                     'timestamp': row[0].isoformat(),
-                    'level': row[1],
-                    'message': row[2],
-                    'detail': row[3]
+                    'level': row[1],  # error_type
+                    'message': row[2],  # error_message
+                    'detail': row[3]  # error_stack
                 })
             
             cursor.close()
@@ -99,7 +99,7 @@ async def api_clear_errors():
         
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM scan_errors WHERE level IN ('ERROR', 'CRITICAL')")
+            cursor.execute("DELETE FROM scan_errors WHERE error_type IN ('ERROR', 'CRITICAL')")
             deleted_count = cursor.rowcount
             conn.commit()
             cursor.close()

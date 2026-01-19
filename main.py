@@ -582,6 +582,15 @@ async def lifespan(app: FastAPI):
             })
             logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
 
+        # 🔥 POST-EXIT ANALYSIS: Démarrer la boucle de tracking post-exit
+        try:
+            from core.callbacks.post_exit_loop import start_post_exit_loop, set_price_provider as set_post_exit_price_provider
+            set_post_exit_price_provider(state.get_price_provider())
+            await start_post_exit_loop()
+            logger.info("✅ Post-Exit Loop démarrée")
+        except Exception as e:
+            logger.warning(f"⚠️ Post-Exit Loop non démarrée (non-bloquant): {e}")
+
         yield
 
         logger.info("🟢 LIFESPAN YIELD: Execution principale terminée, début du shutdown")
@@ -644,6 +653,14 @@ async def lifespan(app: FastAPI):
                         logger.info("✅ DataLogger arrêté proprement")
                     except Exception as e:
                         logger.error(f"❌ Erreur arrêt DataLogger: {e}", exc_info=True)
+
+                # 🔥 POST-EXIT ANALYSIS: Arrêter la boucle de tracking
+                try:
+                    from core.callbacks.post_exit_loop import stop_post_exit_loop
+                    await stop_post_exit_loop()
+                    logger.info("✅ Post-Exit Loop arrêtée proprement")
+                except Exception as e:
+                    logger.debug(f"Post-Exit Loop arrêt ignoré: {e}")
 
                 try:
                     from core.callbacks.scanner_loop import get_pg_datalogger
@@ -3811,6 +3828,44 @@ async def favicon():
 async def api_status():
     """État global de l'application"""
     return JSONResponse(app_state.to_dict())
+
+
+# 🔥 POST-EXIT ANALYSIS: Endpoints pour monitoring
+@app.get("/api/post-exit/status")
+async def api_post_exit_status():
+    """Statut du système de tracking post-exit"""
+    try:
+        from core.post_exit import get_post_exit_manager
+        manager = get_post_exit_manager()
+        return JSONResponse({
+            "success": True,
+            **manager.get_tracker_status()
+        })
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e),
+            "enabled": False,
+            "active_count": 0
+        })
+
+
+@app.get("/api/post-exit/recent")
+async def api_post_exit_recent(limit: int = 10):
+    """Récupérer les métriques post-exit récentes"""
+    try:
+        from core.post_exit import get_post_exit_manager
+        manager = get_post_exit_manager()
+        return JSONResponse({
+            "success": True,
+            "metrics": manager.get_recent_metrics(limit=limit)
+        })
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e),
+            "metrics": []
+        })
 
 
 # 🔥 FIX: Endpoints sessions pour compatibilité frontend Svelte
@@ -8115,6 +8170,12 @@ async def export_datalogger_excel(
                 elif table_name == 'opportunities':
                     # 🔥 FIX 10/12/2025: Trier par timestamp DESC (plus récent en haut)
                     base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
+                elif table_name == 'trade_post_exit_analysis':
+                    # 🔥 POST-EXIT: Trier par exit_timestamp DESC (plus récent en haut)
+                    base_query += f" ORDER BY exit_timestamp DESC LIMIT {limit}"
+                elif table_name == 'trade_post_exit_samples':
+                    # 🔥 POST-EXIT: Trier par timestamp DESC
+                    base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp:
                     base_query += f" ORDER BY timestamp DESC LIMIT {limit}"
                 elif has_timestamp_entry:
@@ -8225,6 +8286,24 @@ async def export_datalogger_excel(
                         'session_market', 'hysteresis_applied', 'outliers_filtered_count', 'ml_confidence'
                     ]
                     for col in mrh_v2_columns:
+                        if col not in headers:
+                            headers.append(col)
+
+                # 🔥 POST-EXIT ANALYSIS: Ajouter colonnes pour trade_post_exit_analysis
+                if table_name == 'trade_post_exit_analysis':
+                    post_exit_columns = [
+                        'trade_id', 'exit_price', 'exit_timestamp', 'exit_reason', 'direction',
+                        'realized_pnl_pct', 'realized_pnl_usdt',
+                        'used_sl_pct', 'used_tp_pct', 'used_be_trigger', 'used_trailing_trigger',
+                        'tracking_duration_sec', 'sample_count',
+                        'post_exit_mfe_pct', 'post_exit_mfe_price', 'post_exit_mfe_timestamp', 'time_to_mfe_sec',
+                        'post_exit_mae_pct', 'post_exit_mae_price', 'post_exit_mae_timestamp',
+                        'post_exit_final_pct', 'post_exit_final_price',
+                        'exit_efficiency_pct', 'regret_pct', 'regret_usdt', 'exit_timing_grade',
+                        'would_have_hit_original_tp', 'would_have_hit_original_sl', 'price_returned_to_entry',
+                        'ml_optimal_sl_pct', 'ml_optimal_trailing_trigger', 'ml_optimal_be_trigger', 'ml_should_use_partial'
+                    ]
+                    for col in post_exit_columns:
                         if col not in headers:
                             headers.append(col)
 

@@ -1841,7 +1841,7 @@ class LiveOrderManagerFutures:
                         try:
                             check_pos = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
                             if check_pos is not None and len(check_pos) == 0:
-                                logger.warning(f"🛑 Position disparue: Probablement fermée par SL Exchange pendant l'envoi de l'ordre")
+                                logger.warning(f"🛑 Position disparue (code {error_code}): Probablement fermée par SL Exchange ou manuellement")
                                 return FuturesOrderResult(
                                     success=True,
                                     order_id="sl_exchange_race_condition",
@@ -1851,6 +1851,8 @@ class LiveOrderManagerFutures:
                                     actual_pnl_usdt=0.0,  # Inconnu
                                     latency_ms=latency_ms
                                 )
+                            else:
+                                logger.error(f"❌ Position existe toujours mais ordre rejeté (code {error_code}): {error_details}")
                         except Exception as e:
                             logger.warning(f"⚠️ Impossible de vérifier position après échec: {e}")
 
@@ -1995,6 +1997,25 @@ class LiveOrderManagerFutures:
                         forced_full_close=forced_full_close  # 🔥 Indique si TP partiel forcé à 100%
                     )
                 else:
+                    # 🔥 CHECK: Vérifier si position existe encore (code 2009 = Position is nonexistent or closed)
+                    if "nonexistent" in bypass_result.error_message.lower() or "2009" in str(bypass_result.error_message):
+                        logger.warning(f"⚠️ Position déjà fermée (code 2009): Probablement fermée par SL Exchange ou manuellement")
+                        try:
+                            check_pos = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                            if check_pos is not None and len(check_pos) == 0:
+                                logger.info(f"✅ Confirmation: Position n'existe plus sur MEXC")
+                                return FuturesOrderResult(
+                                    success=True,
+                                    order_id="already_closed",
+                                    filled_price=current_price,
+                                    filled_amount=amount,
+                                    filled_size_usdt=amount * current_price,
+                                    actual_pnl_usdt=0.0,
+                                    latency_ms=latency_ms
+                                )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Impossible de vérifier position: {e}")
+                    
                     # 🔥 Circuit Breaker: Enregistrer échec
                     if self.circuit_breaker:
                         self.circuit_breaker.record_failure()

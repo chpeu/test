@@ -55,7 +55,7 @@
   "trailing_trigger_pnl": 0.2,
   "trailing_atr_multiplier": 0.4,
   "trailing_distance_atr_mult": 0.4,
-  "trailing_min_distance": 0.2,
+  "trailing_min_distance": 0.15,
   "use_slippage_calculation": true,
   "trailing_max_distance": 0.4,
   "trailing_use_atr_trigger": false,

@@ -4640,6 +4640,41 @@ class PositionManager:
         from utils.effective_config import clear_local_trade_adjustments
         clear_local_trade_adjustments()
         
+        # 🔥 POST-EXIT ANALYSIS: Démarrer le tracking des prix après clôture
+        try:
+            from core.post_exit import get_post_exit_manager
+            post_exit_manager = get_post_exit_manager()
+            
+            # Récupérer trade_id (peut être None si pas encore loggé)
+            db_trade_id = getattr(position, '_trade_id', None) or 0
+            
+            # Params utilisés pour analyse
+            used_params = {
+                'sl_pct': getattr(position, 'sl_percent_at_entry', None),
+                'tp_pct': TRADING_CONFIG.get('tp_percent'),
+                'be_trigger': TRADING_CONFIG.get('break_even_trigger'),
+                'trailing_trigger': TRADING_CONFIG.get('trailing_trigger_pnl'),
+                'trailing_min_distance': TRADING_CONFIG.get('trailing_min_distance'),
+                'partial_tp_pct': TRADING_CONFIG.get('partial_tp_percent'),
+            }
+            
+            post_exit_manager.start_tracking_sync(
+                trade_id=db_trade_id,
+                symbol=position.symbol,
+                direction=position.direction,
+                exit_price=exit_price,
+                exit_reason=reason,
+                realized_pnl_pct=net_pnl_pct,
+                realized_pnl_usdt=net_pnl_usdt,
+                original_sl=position.initial_sl or position.sl,
+                original_tp=position.tp,
+                entry_price=position.entry,
+                trade_duration_sec=float(duration),
+                used_params=used_params
+            )
+        except Exception as post_exit_err:
+            logger.warning(f"⚠️ PostExit tracking ignoré (non-bloquant): {post_exit_err}", exc_info=True)
+        
         # Réinitialiser position
         self.active_position = None
 

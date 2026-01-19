@@ -166,6 +166,15 @@ async def position_check_loop_callback():
             logger.debug(f"⚠️ Prix non exploitable pour {symbol}: {current_price}")
             return
 
+        # 🔥 POST-EXIT: Envoyer prix aux trackers actifs (si le symbole est en tracking)
+        try:
+            from core.post_exit import get_post_exit_manager
+            post_exit_mgr = get_post_exit_manager()
+            if post_exit_mgr.is_tracking(symbol):
+                post_exit_mgr.on_price_update_sync(symbol, current_price)
+        except Exception:
+            pass  # Non-bloquant
+
         # Vérifier la position (retourne None ou raison de fermeture)
         # Stocker le SL avant pour détecter les changements
         sl_before = position.sl if hasattr(position, 'sl') else None

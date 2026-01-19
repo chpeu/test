@@ -151,7 +151,7 @@ export async function clearAllErrors() {
 }
 
 // 🔥 NEW: Charger les erreurs récentes au démarrage (avec délai pour laisser le backend démarrer)
-const INITIAL_ERRORS_LOAD_DELAY_MS = 2000;
+const INITIAL_ERRORS_LOAD_DELAY_MS = 8000;
 if (typeof window !== 'undefined') {
 	setTimeout(() => {
 		loadRecentErrors();

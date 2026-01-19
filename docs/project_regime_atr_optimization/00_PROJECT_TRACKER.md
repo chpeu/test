@@ -1,25 +1,102 @@
-# 📊 PROJECT TRACKER - REGIME & ATR OPTIMIZATION
+# 📊 PROJECT TRACKER - REGIME FIXE OPTIMIZATION
 ## Document de Suivi Central
 
-> **Dernière mise à jour:** 14/12/2025 15:30
-> **Status global:** ✅ PHASES 0-2E OPÉRATIONNELLES | ✅ Stagnation Positive Exit | ✅ Optimisation BE Trigger + ATR MIN
-> **Phase actuelle:** ▶️ RUNNING | Prochaine: Phase 2G ML Monitor + Rollback Dual
+> **Dernière mise à jour:** 19/01/2026 06:45
+> **Status global:** ✅ PHASES 0-2E OPÉRATIONNELLES | ✅ POST-EXIT ANALYSIS Phase 1 PRÊT
+> **Phase actuelle:** ▶️ RUNNING | **Mode:** FIXE uniquement (pas ATR)
 > 
 > **⚠️ CONTRAINTE MAJEURE:** Aucune modification ne doit réduire le nombre de trades
+> 
+> **🔄 CHANGEMENT 19/01/2026:** Projet recentré sur mode FIXE (pas ATR)
 
 ---
 
-## 🎯 OBJECTIF DU PROJET
+## 🎯 OBJECTIF DU PROJET (MODE FIXE)
 
 Créer un système d'optimisation intelligent qui:
 1. **Détecte** le régime de marché (CALME/NORMAL/VOLATILE/CHOPPY) de manière fiable
-2. **Adapte** automatiquement 34+ paramètres de trading selon le régime
-3. **Optimise** ces paramètres via ML basé sur les données historiques
+2. **Adapte** automatiquement **9 paramètres FIXE** selon le régime
+3. **Optimise** ces paramètres via ML + Post-Exit Analysis
 4. **Applique** les optimisations automatiquement avec rollback de sécurité
+
+### Variables FIXE optimisables (9 total)
+
+| Variable | Priorité ML | Description |
+|----------|-------------|-------------|
+| `sl_percent` | ⭐⭐⭐⭐⭐ | Stop Loss initial |
+| `trailing_trigger_pnl` | ⭐⭐⭐⭐⭐ | PnL% pour activer trailing |
+| `break_even_trigger` | ⭐⭐⭐⭐ | PnL% pour déplacer SL à entry |
+| `trailing_min_distance` | ⭐⭐⭐⭐ | Distance initiale trailing |
+| `tp_percent` | ⭐⭐⭐⭐ | Take Profit final |
+| `partial_tp_percent` | ⭐⭐⭐⭐ | % position vendue au TP partiel |
+| `trailing_max_distance` | ⭐⭐⭐ | Distance max trailing |
+| `trailing_pnl_cap` | ⭐⭐⭐ | PnL% pour atteindre max_distance |
+| `trailing_enabled` | ⭐⭐ | Activer/désactiver trailing |
+
+### ❌ Variables NON utilisées (ATR-only, supprimées du scope)
+- `stagnation_exit_*` (tout le bloc)
+- `stagnation_positive_*` (tout le bloc)
+- `trailing_mfe_*` (tout le bloc)
+- `atr_mult_*` (multiplicateurs ATR)
 
 ---
 
-## ✅ ÉTAT RUNTIME (13/12/2025)
+## 🆕 POST-EXIT ANALYSIS SYSTEM (19/01/2026) - ✅ PRÊT À DÉPLOYER
+
+> **Documentation:** `docs/POST_EXIT_ANALYSIS_ML_SYSTEM.md`
+> **Status:** ✅ Phase 1 IMPLÉMENTÉE ET TESTÉE | ⬜ Phases 2-5 EN ATTENTE
+> **Activation:** Automatique au redémarrage du backend
+
+### Objectif
+Collecter les données de prix APRÈS clôture de chaque trade pour:
+1. Évaluer l'optimalité des sorties (`exit_efficiency_pct`)
+2. Générer des **targets ML** pour les 9 variables FIXE
+3. Alimenter le ML Param Optimizer avec des données précises
+
+### Intégration avec le projet Regime FIXE
+
+| Composant | Utilisation Post-Exit |
+|-----------|----------------------|
+| **ML Param Optimizer** | Fournit `ml_optimal_sl_pct`, `ml_optimal_trailing_trigger`, `ml_optimal_be_trigger` |
+| **ML Monitor** | Métriques `exit_efficiency_pct`, `regret_pct` |
+| **Mixture-of-Experts** | Targets segmentés par `entry_market_regime` |
+
+### ⚠️ Supprimé (ATR-only)
+- ~~Phase 2F (Trailing MFE)~~ → Ne s'applique pas en mode FIXE
+
+### Fichiers implémentés
+
+| Fichier | Description |
+|---------|-------------|
+| `database/migrations/add_post_exit_analysis_tables.sql` | Tables SQL + vues |
+| `core/post_exit/tracker.py` | `PostExitTracker` dataclass |
+| `core/post_exit/manager.py` | `PostExitManager` singleton |
+| `core/callbacks/post_exit_loop.py` | Boucle prix dédiée |
+| `core/position_manager.py:4643-4676` | Hook start_tracking |
+| `main.py:3833-3868` | API endpoints |
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/post-exit/status` | Statut système (enabled, active_count) |
+| `GET /api/post-exit/recent` | Métriques récentes |
+
+### Prochaines étapes
+1. **Phase 2**: Calculer métriques + targets ML
+2. **Phase 3**: Entraîner modèle multi-output
+3. **Phase 4**: Intégration live
+4. **Phase 5**: Frontend dashboard
+
+### 📚 Documentation complète
+| Document | Description |
+|----------|-------------|
+| `10_POST_EXIT_INTEGRATION.md` | Guide d'implémentation détaillé (toutes les phases) |
+| `11_PROJECT_OVERVIEW_PERFORMANCE.md` | Analyse d'impact performance de chaque composant |
+
+---
+
+## ✅ ÉTAT RUNTIME (19/01/2026)
 
 - **Régime V2**
   - `market_regime_v2_enabled` utilise:
@@ -366,6 +443,51 @@ docs/project_regime_atr_optimization/
 | **ML Monitor Frontend** | ⬜ TODO | 🔴 HAUTE | Nouvel onglet "ML Monitor" |
 | **Smart Backfill Script** | ⬜ TODO | 🟠 MOYENNE | Backfill cohérent only |
 
+---
+
+### 🆕 Phase 2H: POST-EXIT ANALYSIS (INTÉGRÉ - 19/01/2026)
+> **Objectif:** Optimiser params de sortie via analyse prix post-exit
+> **Documentation:** `10_POST_EXIT_INTEGRATION.md`, `11_PROJECT_OVERVIEW_PERFORMANCE.md`
+
+| Sous-Phase | Status | Durée | Prérequis | Description |
+|------------|--------|-------|-----------|-------------|
+| **2H.1: Data Collection** | ✅ DONE | - | Aucun | Tracking prix 5min post-exit |
+| **2H.2: Metrics & Targets** | ⬜ TODO | 2h | 100+ trades | Calcul ml_optimal_* |
+| **2H.3: ML Model Training** | ⬜ TODO | 4h | 500+ trades | Multi-output regressor |
+| **2H.4: Live Integration** | ⬜ TODO | 3h | Phase 2H.3 | MLParamPredictor |
+| **2H.5: Frontend Dashboard** | ⬜ TODO | 3h | Phase 2H.4 | PostExitAnalysis.svelte |
+
+#### 2H.1: Data Collection ✅ TERMINÉE (19/01/2026)
+**Fichiers créés:**
+- `database/migrations/add_post_exit_analysis_tables.sql`
+- `core/post_exit/tracker.py` (PostExitTracker dataclass)
+- `core/post_exit/manager.py` (PostExitManager singleton)
+- `core/callbacks/post_exit_loop.py` (Boucle prix 1Hz)
+
+**Fichiers modifiés:**
+- `core/position_manager.py:4643-4676` (Hook start_tracking)
+- `main.py:585-592` (Startup post_exit_loop)
+- `main.py:657-663` (Shutdown post_exit_loop)
+- `main.py:3833-3868` (API endpoints)
+
+**Tables SQL:**
+- `trade_post_exit_analysis` (métriques agrégées)
+- `trade_post_exit_samples` (données brutes 1Hz)
+
+**API Endpoints:**
+- `GET /api/post-exit/status` (statut système)
+- `GET /api/post-exit/recent` (métriques récentes)
+
+**Status:** ✅ Collecte automatique active depuis redémarrage
+
+#### Impact attendu Phase 2H complète
+| Métrique | Avant | Après 2H | Amélioration |
+|----------|-------|----------|--------------|
+| Exit Efficiency | 60% | 75% | +25% |
+| Regret moyen | 0.8% | 0.3% | -62% |
+| Winrate | 54% | 58% | +7% |
+| Profit Factor | 1.6 | 1.8 | +12% |
+
 #### Décisions Phase 2G (14/12/2025)
 
 **1. Stratégie Backfill:**
@@ -423,17 +545,38 @@ au lieu de BLOQUER les trades.
 
 ---
 
-### 🆕 Phase 3A: Mixture-of-Experts par Régime (NOUVEAU - 13/12/2025)
+---
+
+### 🆕 Phase 2I: ML Calibration EV (SIMPLIFIÉ - 6h au lieu de 15h)
+> **Objectif:** Calibration basée sur Expected Value
+> **Documentation:** `09_BRAINSTORMING_ML_CALIBRATION.md`, `13_PHASE_ANALYSIS_FIXE_MODE.md`
+
+| Sous-Phase | Status | Durée | Description |
+|------------|--------|-------|-------------|
+| 2I.1: Migration SQL EV | ⬜ TODO | 2h | Colonnes EV dans trades |
+| 2I.2: Model version tracking | ⬜ TODO | 3h | Versioning modèles |
+| 2I.5: exit_reason filter | ⬜ TODO | 1h | Filtrage raisons exit |
+| ❌ 2I.3: Simulated seeding | ❌ SUPPRIMÉ | - | ROI incertain, complexe |
+| ❌ 2I.4: Gating EV-based | ❌ SUPPRIMÉ | - | Besoin 100+ trades/bucket |
+
+**Économie:** -9h (-60% de la phase)
+
+---
+
+### ⏸️ Phase 3A: Mixture-of-Experts par Régime (REPORTER)
 > **Objectif:** Un modèle ML par régime, activé seulement si assez de données
+> **Status:** ⏸️ REPORTER - Pas assez de trades VOLATILE (6) et CHOPPY (10)
 
 | Tâche | Status | Prérequis |
 |-------|--------|-----------|
-| Architecture gating (seuil trades par régime) | ⬜ TODO | - |
-| Model CALME (si 50+ trades) | ⬜ TODO | 50 trades CALME |
-| Model NORMAL (si 50+ trades) | ⬜ TODO | 50 trades NORMAL |
-| Model VOLATILE (si 50+ trades) | ⬜ TODO | 50 trades VOLATILE |
-| Model CHOPPY (si 50+ trades) | ⬜ TODO | 50 trades CHOPPY |
-| Fallback rule-based si pas assez de données | ⬜ TODO | - |
+| Architecture gating (seuil trades par régime) | ⏸️ REPORTER | - |
+| Model CALME (si 50+ trades) | ⏸️ REPORTER | 50 trades CALME (✅ 138 OK) |
+| Model NORMAL (si 50+ trades) | ⏸️ REPORTER | 50 trades NORMAL (✅ 82 OK) |
+| Model VOLATILE (si 50+ trades) | ⏸️ REPORTER | 50 trades VOLATILE (❌ 6 insuffisant) |
+| Model CHOPPY (si 50+ trades) | ⏸️ REPORTER | 50 trades CHOPPY (❌ 10 insuffisant) |
+| Fallback rule-based si pas assez de données | ⏸️ REPORTER | - |
+
+**Réactivation:** Après accumulation 500+ trades (dont 50+ VOLATILE et 50+ CHOPPY)
 
 #### Architecture
 ```
@@ -482,29 +625,45 @@ au lieu de BLOQUER les trades.
 | Order Flow cumulatifs | ⬜ TODO | - | 2 features: delta_10, trend_5 |
 | **PHASE 3C COMPLETE** | ⬜ | - | 21 nouvelles features |
 
-### Phase 4: Séquences Temporelles (GRU/LSTM) - RENOMMÉ (ancienne Phase 5)
-| Tâche | Status | Date | Notes |
-|-------|--------|------|-------|
-| GRU Séquences 10-20 scans | ⬜ TODO | - | River ou PyTorch |
-| Transformer Attention | ⬜ TODO | - | Multi-timeframe |
-| **PHASE 5 COMPLETE** | ⬜ | - | Prérequis: 1000+ trades |
+### ❌ Phase 4: Séquences Temporelles (SUPPRIMÉ DU SCOPE)
+> **Raison:** Prérequis 1000+ trades non atteints, complexité élevée, ROI incertain
+> **Documentation:** `13_PHASE_ANALYSIS_FIXE_MODE.md`
 
-### Phase 6: Reinforcement Learning (PPO)
-| Tâche | Status | Date | Notes |
-|-------|--------|------|-------|
-| Environment Simulation | ⬜ TODO | - | Gym-like trading env |
-| Agent PPO | ⬜ TODO | - | Entrée + gestion position |
-| Reward Shaping | ⬜ TODO | - | Optimiser Sharpe, pas PnL |
-| **PHASE 6 COMPLETE** | ⬜ | - | Prérequis: GPU + 1000+ trades |
+| Tâche | Status | Notes |
+|-------|--------|-------|
+| GRU Séquences 10-20 scans | ❌ SUPPRIMÉ | Prérequis: 1000+ trades |
+| Transformer Attention | ❌ SUPPRIMÉ | Deep Learning complexe |
 
-### Phase 7: MLOps & Production
-| Tâche | Status | Date | Notes |
-|-------|--------|------|-------|
-| Auto-Retrain hebdomadaire | ⬜ TODO | - | Si drift détecté |
-| A/B Testing modèles | ⬜ TODO | - | Comparaison parallèle |
-| Model Registry (MLflow) | ⬜ TODO | - | Versioning modèles |
-| Monitoring & Alertes | ⬜ TODO | - | Si performance dégradée |
-| **PHASE 7 COMPLETE** | ⬜ | - | - |
+**Réévaluation:** Après 1000+ trades et stabilisation Phases 2H-3C
+
+---
+
+### ❌ Phase 5: Reinforcement Learning (SUPPRIMÉ DU SCOPE)
+> **Raison:** Trop complexe, ROI très incertain, besoin GPU + expertise RL
+> **Documentation:** `13_PHASE_ANALYSIS_FIXE_MODE.md`
+
+| Tâche | Status | Notes |
+|-------|--------|-------|
+| Environment Simulation | ❌ SUPPRIMÉ | Besoin simulateur fiable |
+| Agent PPO | ❌ SUPPRIMÉ | Expertise RL requise |
+| Reward Shaping | ❌ SUPPRIMÉ | Complexité élevée |
+
+**Décision:** SUPPRIMÉ DÉFINITIVEMENT du scope Mode FIXE
+
+---
+
+### ⏸️ Phase 6: MLOps & Production (REPORTER)
+> **Raison:** Système pas encore stable, prématuré
+> **Documentation:** `13_PHASE_ANALYSIS_FIXE_MODE.md`
+
+| Tâche | Status | Notes |
+|-------|--------|-------|
+| Auto-Retrain hebdomadaire | ⏸️ REPORTER | Après Phase 2H complète |
+| A/B Testing modèles | ⏸️ REPORTER | Besoin infrastructure |
+| Model Registry (MLflow) | ⏸️ REPORTER | Après 6+ mois production |
+| Monitoring & Alertes | ⏸️ REPORTER | Après stabilisation |
+
+**Réactivation:** Après Phase 3C + 6 mois production stable
 
 ---
 

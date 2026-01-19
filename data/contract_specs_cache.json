@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768795309.4219496,
+  "timestamp": 1768802382.9314287,
   "specs": {
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -270,6 +270,16 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "S_USDT": {
+      "symbol": "S_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1135000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
