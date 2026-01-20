@@ -1,5 +1,5 @@
 {
-  "timestamp": 1768842283.4017403,
+  "timestamp": 1768920863.825084,
   "specs": {
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -350,6 +350,66 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "DASH_USDT": {
+      "symbol": "DASH_USDT",
+      "min_vol": 1.0,
+      "max_vol": 3500.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "AAVE_USDT": {
+      "symbol": "AAVE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "BCH_USDT": {
+      "symbol": "BCH_USDT",
+      "min_vol": 1.0,
+      "max_vol": 350000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "AVAX_USDT": {
+      "symbol": "AVAX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "ONDO_USDT": {
+      "symbol": "ONDO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 150000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "PEPE_USDT": {
+      "symbol": "PEPE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 24000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-09,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10000000.0
     }
   }
 }

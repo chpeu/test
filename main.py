@@ -77,16 +77,42 @@ except ImportError as e:
     get_metrics_collector = None
 
 # 🔥 ARCHITECTURE V2: Nouveaux imports
+# 🔥 IMPORT CRITIQUE: ErrorHistoryManager (obligatoire)
+try:
+    from utils.error_history import ErrorHistoryManager
+except ImportError as e:
+    logging.error(f"❌ Import critique ErrorHistoryManager échoué: {e}")
+    # Créer une classe fallback minimale
+    class ErrorHistoryManager:
+        def __init__(self, max_errors=1000):
+            self.errors = []
+        def add_error(self, level, message, detail="", raw_message=""):
+            self.errors.append({"level": level, "message": message, "detail": detail, "raw_message": raw_message})
+        def get_errors(self, limit=None):
+            return self.errors[-limit:] if limit else self.errors
+        def clear_errors(self):
+            self.errors.clear()
+
 try:
     from core.analytics_database import AnalyticsDatabase
-    from notifications import create_notification_manager
+    from utils.notifications import get_notification_manager
+    from utils.logger import setup_logger
+    from utils.errors import TradeCursorError, DatabaseConnectionError, ConfigurationError, NetworkError, NotificationError
     from api.routes import router as api_router, set_analytics_db, set_position_manager, set_notification_manager, set_instance_port, set_app_state, set_websocket_manager as set_websocket_manager_routes
 except ImportError as e:
     logging.warning(f"Architecture V2 imports (optionnels): {e}")
+    # Définir toutes les variables manquantes comme None
     AnalyticsDatabase = None
+    get_notification_manager = None
     create_notification_manager = None
+    setup_logger = None
     api_router = None
     set_analytics_db = None
+    set_position_manager = None
+    set_notification_manager = None
+    set_instance_port = None
+    set_app_state = None
+    set_websocket_manager_routes = None
 
 # 🔥 REFACTORING SPRINT 1.1: Exception Handling System
 try:
@@ -263,6 +289,10 @@ state = get_state_manager()
 
 # 🔥 WebSocket Natif - Initialize and store in StateManager
 state.set_ws_manager(get_websocket_manager())
+
+# 🔥 INSTANCE GLOBALE: ErrorHistoryManager pour toute l'application
+global_error_history = ErrorHistoryManager(max_errors=1000)
+logger.info("✅ ErrorHistoryManager global initialisé")
 
 # 🔥 MIGRATION COMPLÈTE: Injecter ws_manager dans les routes
 def get_websocket_manager_for_routes() -> WebSocketManager:
@@ -3759,8 +3789,12 @@ def init_instances() -> None:
         state.set_position_manager(pos_mgr)
         
         # 🔥 NOUVEAU: Injecter Position Manager dans API routes (pour webhook Telegram)
-        if set_position_manager:
-            set_position_manager(state.get_position_manager())
+        if set_position_manager and callable(set_position_manager):
+            try:
+                set_position_manager(state.get_position_manager())
+                logger.info("✅ Position Manager injecté dans API routes")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur injection Position Manager dans API routes: {e}")
 
     # 🔥 LIVE TRADING: Initialiser LiveOrderManager si mode LIVE
     logger.info(f"🔍 DEBUG: live_order_manager={state.get_live_order_manager()}, LiveOrderManager disponible={LiveOrderManager is not None}")
@@ -4029,7 +4063,7 @@ async def api_post_exit_summary():
         })
 
 
-def simulate_optimal_performance(cursor):
+def simulate_optimal_performance(cursor, trade_id_texts=None):
     """
     Simule les performances si les paramètres ML optimaux étaient appliqués.
     Utilise les paramètres RÉELS utilisés par chaque trade (stockés en DB).
@@ -4040,7 +4074,7 @@ def simulate_optimal_performance(cursor):
     
     try:
         # Récupérer les trades avec leurs paramètres utilisés
-        cursor.execute("""
+        query = """
             SELECT 
                 pea.*,
                 t.entry_price,
@@ -4052,7 +4086,13 @@ def simulate_optimal_performance(cursor):
                 pea.ml_optimal_sl_pct IS NOT NULL
                 AND pea.post_exit_mfe_pct IS NOT NULL
                 AND pea.realized_pnl_pct IS NOT NULL
-        """)
+        """
+
+        if trade_id_texts:
+            query += " AND pea.trade_id::text = ANY(%s)"
+            cursor.execute(query, (trade_id_texts,))
+        else:
+            cursor.execute(query)
         
         trades = cursor.fetchall()
         if not trades:
@@ -4164,6 +4204,13 @@ def simulate_optimal_performance(cursor):
                 'improvement': round(improvement, 2)
             })
         
+        current_total_pnl = float(current_stats['total_pnl'] or 0)
+        optimal_total_pnl = float(optimal_stats['total_pnl'] or 0)
+
+        gain_multiplier = None
+        if current_total_pnl > 0:
+            gain_multiplier = round(optimal_total_pnl / current_total_pnl, 2)
+
         return {
             'unique_configs': unique_configs,
             'configs_count': len(unique_configs),
@@ -4181,7 +4228,7 @@ def simulate_optimal_performance(cursor):
             'current_regret': round(current_stats['total_regret'] / n, 3),
             'optimal_regret': round(optimal_stats['total_regret'] / n, 3),
             'regret_improvement': round((optimal_stats['total_regret'] - current_stats['total_regret']) / n, 3),
-            'gain_multiplier': round(optimal_stats['total_pnl'] / max(current_stats['total_pnl'], 0.01), 1)
+            'gain_multiplier': gain_multiplier
         }
         
     except Exception as e:
@@ -4223,9 +4270,13 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # 1. Compter les trades disponibles
-            cursor.execute("SELECT COUNT(*) as count FROM trade_post_exit_analysis")
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM trade_post_exit_analysis
+                WHERE sample_count > 10
+            """)
             total_trades = cursor.fetchone()['count']
-            
+
             if total_trades < min_trades:
                 return JSONResponse({
                     "success": False,
@@ -4233,10 +4284,31 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
                     "total_trades": total_trades,
                     "min_required": min_trades
                 })
-            
+
+            cursor.execute("""
+                SELECT trade_id::text as trade_id
+                FROM trade_post_exit_analysis
+                WHERE sample_count > 10
+                ORDER BY exit_timestamp DESC
+                LIMIT %s
+            """, (min_trades,))
+            trade_id_texts = [r['trade_id'] for r in cursor.fetchall()]
+
             # 2. Récupérer les trades à analyser
-            where_clause = "" if force else "WHERE pea.ml_optimal_sl_pct IS NULL"
-            
+            conditions = ["pea.trade_id::text = ANY(%s)"]
+            params = [trade_id_texts]
+
+            if not force:
+                conditions.append(
+                    "(pea.ml_optimal_sl_pct IS NULL "
+                    "OR (pea.ml_optimal_trailing_trigger IS NULL AND COALESCE(pea.realized_pnl_pct, 0) > 0) "
+                    "OR pea.ml_optimal_be_trigger IS NULL "
+                    "OR pea.ml_optimal_trailing_distance IS NULL "
+                    "OR pea.ml_should_use_partial IS NULL)"
+                )
+
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+
             cursor.execute(f"""
                 SELECT 
                     pea.*,
@@ -4246,8 +4318,8 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
                 FROM trade_post_exit_analysis pea
                 JOIN trades t ON t.id::text = pea.trade_id::text
                 {where_clause}
-                ORDER BY pea.created_at DESC
-            """)
+                ORDER BY pea.exit_timestamp DESC
+            """, tuple(params))
             rows = cursor.fetchall()
             
             # 3. Calculer les targets pour chaque trade
@@ -4270,11 +4342,14 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
                 targets['ml_optimal_sl_pct'] = max(0.08, min(0.50, targets['ml_optimal_sl_pct']))
                 
                 # Trailing trigger optimal
-                if post_exit_mfe > 0.5:
-                    targets['ml_optimal_trailing_trigger'] = abs(realized_pnl) * 0.8 if realized_pnl != 0 else 0.20
+                if realized_pnl <= 0:
+                    targets['ml_optimal_trailing_trigger'] = None
+                elif post_exit_mfe > 0.5:
+                    targets['ml_optimal_trailing_trigger'] = realized_pnl * 0.8 if realized_pnl != 0 else 0.20
                 else:
-                    targets['ml_optimal_trailing_trigger'] = abs(realized_pnl) * 0.5 if realized_pnl != 0 else 0.15
-                targets['ml_optimal_trailing_trigger'] = max(0.10, min(0.50, targets['ml_optimal_trailing_trigger']))
+                    targets['ml_optimal_trailing_trigger'] = realized_pnl * 0.5 if realized_pnl != 0 else 0.15
+                if targets['ml_optimal_trailing_trigger'] is not None:
+                    targets['ml_optimal_trailing_trigger'] = max(0.10, min(0.50, targets['ml_optimal_trailing_trigger']))
                 
                 # BE trigger optimal
                 if realized_pnl > 0:
@@ -4282,28 +4357,48 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
                 else:
                     targets['ml_optimal_be_trigger'] = 0.15
                 targets['ml_optimal_be_trigger'] = max(0.10, min(0.40, targets['ml_optimal_be_trigger']))
+
+                used_trailing_dist = float(post_exit_data.get('used_trailing_min_distance') or 0.10)
+                if realized_pnl > 0 and post_exit_mfe > 0.05:
+                    targets['ml_optimal_trailing_distance'] = max(abs(post_exit_mae) * 1.2, used_trailing_dist * 0.8)
+                else:
+                    targets['ml_optimal_trailing_distance'] = used_trailing_dist
+                targets['ml_optimal_trailing_distance'] = max(0.03, min(0.30, targets['ml_optimal_trailing_distance']))
                 
                 # Should use partial TP
                 targets['ml_should_use_partial'] = would_have_hit_tp
                 
                 return targets
+
+            update_query = """
+                UPDATE trade_post_exit_analysis
+                SET 
+                    ml_optimal_sl_pct = %s,
+                    ml_optimal_trailing_trigger = %s,
+                    ml_optimal_be_trigger = %s,
+                    ml_optimal_trailing_distance = %s,
+                    ml_should_use_partial = %s
+                WHERE trade_id = %s
+            """ if force else """
+                UPDATE trade_post_exit_analysis
+                SET 
+                    ml_optimal_sl_pct = COALESCE(ml_optimal_sl_pct, %s),
+                    ml_optimal_trailing_trigger = COALESCE(ml_optimal_trailing_trigger, %s),
+                    ml_optimal_be_trigger = COALESCE(ml_optimal_be_trigger, %s),
+                    ml_optimal_trailing_distance = COALESCE(ml_optimal_trailing_distance, %s),
+                    ml_should_use_partial = COALESCE(ml_should_use_partial, %s)
+                WHERE trade_id = %s
+            """
             
             for row in rows:
                 post_exit_data = dict(row)
                 targets = calculate_ml_targets(post_exit_data)
                 
-                cursor.execute("""
-                    UPDATE trade_post_exit_analysis
-                    SET 
-                        ml_optimal_sl_pct = %s,
-                        ml_optimal_trailing_trigger = %s,
-                        ml_optimal_be_trigger = %s,
-                        ml_should_use_partial = %s
-                    WHERE trade_id = %s
-                """, (
+                cursor.execute(update_query, (
                     targets['ml_optimal_sl_pct'],
                     targets['ml_optimal_trailing_trigger'],
                     targets['ml_optimal_be_trigger'],
+                    targets['ml_optimal_trailing_distance'],
                     targets['ml_should_use_partial'],
                     row['trade_id']
                 ))
@@ -4324,8 +4419,9 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
                     AVG(ml_optimal_trailing_distance) as avg_optimal_trailing_distance,
                     COUNT(CASE WHEN ml_should_use_partial = true THEN 1 END) as should_use_partial_count
                 FROM trade_post_exit_analysis
-                WHERE ml_optimal_sl_pct IS NOT NULL
-            """)
+                WHERE trade_id::text = ANY(%s)
+                    AND sample_count > 10
+            """, (trade_id_texts,))
             
             stats = cursor.fetchone()
             
@@ -4335,9 +4431,11 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
                     exit_timing_grade,
                     COUNT(*) as count
                 FROM trade_post_exit_analysis
+                WHERE trade_id::text = ANY(%s)
+                    AND sample_count > 10
                 GROUP BY exit_timing_grade
                 ORDER BY exit_timing_grade
-            """)
+            """, (trade_id_texts,))
             
             grade_distribution = {}
             for row in cursor.fetchall():
@@ -4350,7 +4448,7 @@ async def api_post_exit_analyze(min_trades: int = 10, force: bool = False):
                 }
             
             # 6. 🔥 SIMULATION avec paramètres optimaux
-            simulation = simulate_optimal_performance(cursor)
+            simulation = simulate_optimal_performance(cursor, trade_id_texts)
             
             return JSONResponse({
                 "success": True,
@@ -9093,8 +9191,11 @@ async def reset_datalogger_db():
 async def api_get_errors(limit: int = 50, offset: int = 0):
     """Récupérer les erreurs avec pagination depuis ErrorHistoryManager (en mémoire)"""
     try:
-        from utils.error_history import get_error_history
-        error_history = get_error_history()
+        # Utiliser l'instance globale
+        error_history = global_error_history
+        
+        # Debug: Vérifier l'instance
+        logger.info(f"🔍 DEBUG GET ERRORS: Instance {id(error_history)}, Count: {len(error_history.get_errors())}")
         
         # Récupérer toutes les erreurs depuis le gestionnaire en mémoire
         all_errors = error_history.get_errors()
@@ -9130,13 +9231,72 @@ async def api_get_recent_errors(limit: int = 50):
 async def api_clear_errors():
     """Vider toutes les erreurs du gestionnaire en mémoire"""
     try:
-        from utils.error_history import get_error_history
-        error_history = get_error_history()
+        # Utiliser l'instance globale
+        error_history = global_error_history
         error_history.clear_errors()
+        logger.info(f"🔍 DEBUG CLEAR: Instance {id(error_history)} vidée")
         return JSONResponse({"success": True, "message": "Historique des erreurs vidé"})
     except Exception as e:
         logger.error(f"Erreur endpoint /api/logs/errors/clear: {e}")
         return JSONResponse({"success": False, "error": str(e)})
+
+
+@app.post("/api/test/trigger-error")
+async def api_trigger_test_error(error_type: str = "test", message: str = "Erreur de test pour vérifier la persistance"):
+    """
+    🧪 ENDPOINT DE TEST: Déclencher une erreur fictive pour tester l'affichage frontend
+    
+    Args:
+        error_type: Type d'erreur (test, critical, warning, etc.)
+        message: Message d'erreur personnalisé
+    """
+    try:
+        from datetime import datetime, timezone
+        
+        # Utiliser l'instance globale
+        error_history = global_error_history
+        
+        # Debug: Vérifier l'instance
+        logger.info(f"🔍 DEBUG: ErrorHistoryManager instance: {id(error_history)}")
+        logger.info(f"🔍 DEBUG: Erreurs avant ajout: {len(error_history.get_errors())}")
+        
+        # Créer une erreur fictive
+        test_error = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": error_type,
+            "message": message,
+            "details": "Ceci est une erreur de test déclenchée manuellement via /api/test/trigger-error",
+            "source": "TEST_ENDPOINT",
+            "severity": "warning"
+        }
+        
+        # Ajouter l'erreur à l'historique
+        # Forcer le level à "ERROR" pour que le frontend l'affiche
+        error_history.add_error(
+            level="ERROR",  # Toujours ERROR pour l'affichage frontend
+            message=f"[{error_type.upper()}] {message}",
+            detail=test_error["details"],
+            raw_message=f"TEST_ENDPOINT: {message}"
+        )
+        
+        # Debug: Vérifier après ajout
+        logger.info(f"🔍 DEBUG: Erreurs après ajout: {len(error_history.get_errors())}")
+        
+        # Logger aussi dans les logs backend
+        logger.warning(f"🧪 TEST ERROR TRIGGERED: {error_type} - {message}")
+        
+        return JSONResponse({
+            "success": True,
+            "message": "Erreur de test déclenchée avec succès",
+            "error": test_error
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du déclenchement de l'erreur de test: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        })
 
 
 if __name__ == '__main__':

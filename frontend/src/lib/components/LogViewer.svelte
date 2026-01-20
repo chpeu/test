@@ -14,6 +14,7 @@
 		clearAllErrors
 	} from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
+	import { debugMode } from '$lib/stores/debug';
 
 	let logContainer;
 	let errorContainer;
@@ -91,6 +92,49 @@
 	async function handleClearErrors() {
 		if (confirm('Voulez-vous vraiment vider tout l\'historique des erreurs ?')) {
 			await clearAllErrors();
+		}
+	}
+	
+	// 🧪 NOUVEAU: Déclencher une erreur fictive de test
+	async function triggerTestError() {
+		console.log('🧪 Déclenchement erreur fictive...');
+		try {
+			const response = await fetch('/api/test/trigger-error?error_type=test&message=Erreur%20fictive%20de%20test', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			});
+			
+			console.log('📡 Réponse reçue:', response.status);
+			
+			if (!response.ok) {
+				console.error('❌ Erreur HTTP:', response.status, response.statusText);
+				alert(`Erreur HTTP ${response.status}: ${response.statusText}`);
+				return;
+			}
+			
+			const data = await response.json();
+			console.log('📦 Data:', data);
+			
+			if (data.success) {
+				console.log('✅ Erreur de test déclenchée:', data.error);
+				alert('✅ Erreur fictive créée avec succès!');
+				
+				// Recharger les erreurs pour afficher la nouvelle
+				if (showAllErrors) {
+					await loadAllErrors(50, 0);
+				} else {
+					const { loadRecentErrors } = await import('$lib/stores/logs');
+					await loadRecentErrors(50);
+				}
+			} else {
+				console.error('❌ Erreur lors du déclenchement:', data.error);
+				alert(`❌ Échec: ${data.error}`);
+			}
+		} catch (error) {
+			console.error('❌ Erreur API:', error);
+			alert(`❌ Erreur réseau: ${error.message}`);
 		}
 	}
 
@@ -244,6 +288,15 @@
 					{/if}
 				</div>
 				<div class="controls-group">
+					{#if $debugMode}
+						<button 
+							class="demo-error-btn" 
+							on:click={triggerTestError}
+							data-debug-name="triggerTestError"
+						>
+							🧪 Erreur fictive
+						</button>
+					{/if}
 					<button 
 						class="toggle-btn" 
 						class:active={showAllErrors}
@@ -405,6 +458,26 @@
 	.clear-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+	
+	.demo-error-btn {
+		background: rgba(255, 136, 0, 0.2);
+		color: #ff8800;
+		border: 2px solid #ff8800;
+		border-radius: 8px;
+		padding: 8px 16px;
+		cursor: pointer;
+		font-size: 12px;
+		font-weight: bold;
+		transition: all 0.2s ease;
+	}
+	
+	.demo-error-btn:hover {
+		background: rgba(255, 136, 0, 0.3);
+		border-color: #ffaa00;
+		color: #ffaa00;
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(255, 136, 0, 0.3);
 	}
 	
 	.loading-indicator {
