@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import argparse
 import os
 import re
@@ -161,7 +162,25 @@ def _parse_all_usdt_amounts(s: Optional[str]) -> List[float]:
     return vals
 
 
+def _get_contract_size(symbol: str, specs: Dict[str, Any]) -> float:
+    if symbol in specs:
+        return float(specs[symbol].get("contract_size", 1.0))
+    # Fallback to 1.0 if not found
+    return 1.0
+
+
 def parse_mexc_fr_orders_xlsx(path: str, sheet: Optional[str]) -> pd.DataFrame:
+    # Load contract specs cache
+    specs = {}
+    cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "contract_specs_cache.json")
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                specs = data.get("specs", {})
+        except Exception as e:
+            print(f"Warning: Could not load contract specs cache: {e}")
+
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb[sheet] if sheet else wb[wb.sheetnames[0]]
 
@@ -176,6 +195,38 @@ def parse_mexc_fr_orders_xlsx(path: str, sheet: Optional[str]) -> pd.DataFrame:
     if header_row is None:
         raise RuntimeError("Impossible de détecter la ligne d'en-tête (Direction) dans l'export MEXC")
 
+    header_vals = [ws.cell(header_row, c).value for c in range(1, ws.max_column + 1)]
+    header_txt = [(_clean_text(v) or "").strip() for v in header_vals]
+    header_l = [h.lower() for h in header_txt]
+
+    def _find_col(candidates: List[str]) -> Optional[int]:
+        for cand in candidates:
+            cand_l = cand.strip().lower()
+            for i, h in enumerate(header_l):
+                if h == cand_l or (cand_l and cand_l in h):
+                    return i
+        return None
+
+    symbol_idx = _find_col(["paire de trading", "paire", "contract", "instrument", "symbole", "symbol", "cryptomonnaie", "crypto"])
+    time_idx = _find_col(["date", "time", "timestamp", "heure"])
+    direction_idx = _find_col(["direction", "side", "type"])
+    qty_idx = _find_col(
+        [
+            "montant exécuté",
+            "montant execute",
+            "quantité exécutée",
+            "quantite executee",
+            "montant",
+            "qty",
+            "quantity",
+        ]
+    )
+    exec_price_idx = _find_col(["prix d'exécution", "prix d'execution", "execution price", "prix exécuté", "prix execute"])
+    pnl_idx = _find_col(["pertes et profits (p&l)", "p&l", "pnl", "profit", "pertes et profits"])
+    fee_idx = _find_col(["frais", "fee", "fees", "commission"])
+    status_idx = _find_col(["statut", "status"])
+    reduce_only_idx = _find_col(["ordres reduce-only", "ordre reduce-only", "reduce-only", "reduce only"])
+
     orders = []
     for r in range(header_row + 1, ws.max_row + 1):
         cells = [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
@@ -186,9 +237,29 @@ def parse_mexc_fr_orders_xlsx(path: str, sheet: Optional[str]) -> pd.DataFrame:
         if len(non_empty) == 1 and _clean_text(non_empty[0]) and "%" in str(non_empty[0]):
             continue
 
-        symbol = _normalize_symbol(_clean_text(cells[0]))
-        ts = _to_utc_ts(_clean_text(cells[1]) or cells[1])
-        side_raw = _clean_text(cells[2])
+        def _cell(i: Optional[int]) -> Any:
+            if i is None or i < 0 or i >= len(cells):
+                return None
+            return cells[i]
+
+        symbol_raw = _clean_text(_cell(symbol_idx))
+        if not symbol_raw:
+            for v in cells:
+                s = _clean_text(v)
+                if not s:
+                    continue
+                u = s.upper()
+                if "USDT" in u and re.search(r"[A-Z]", u.replace("USDT", "")):
+                    symbol_raw = s
+                    break
+                if "/" in u or "PERP" in u or "PERPETUEL" in u or "PERPÉTUEL" in u:
+                    symbol_raw = s
+                    break
+
+        symbol = _normalize_symbol(symbol_raw)
+        ts_cell = _cell(time_idx)
+        ts = _to_utc_ts(_clean_text(ts_cell) or ts_cell)
+        side_raw = _clean_text(_cell(direction_idx))
         side = None
         if side_raw:
             s = side_raw.strip().lower()
@@ -197,13 +268,21 @@ def parse_mexc_fr_orders_xlsx(path: str, sheet: Optional[str]) -> pd.DataFrame:
             elif s.startswith("vendre"):
                 side = "SELL"
 
-        # Heuristic column mapping based on observed export
-        qty_str = _clean_text(cells[6])
-        exec_price = _num(_clean_text(cells[7]) or cells[7])
-        pnl_usdt = _parse_usdt_amount(_clean_text(cells[8]))
-        fee_info = _clean_text(cells[9])
-        status = _clean_text(cells[10])
-        reduce_only = (_clean_text(cells[11]) or "").strip().lower() in ("oui", "yes", "true")
+        qty_str = _clean_text(_cell(qty_idx))
+        exec_price_cell = _cell(exec_price_idx)
+        exec_price = _num(_clean_text(exec_price_cell) or exec_price_cell)
+
+        pnl_cell = _cell(pnl_idx)
+        if isinstance(pnl_cell, (int, float)):
+            pnl_usdt = float(pnl_cell)
+        else:
+            pnl_usdt = _parse_usdt_amount(_clean_text(pnl_cell)) or _num(_clean_text(pnl_cell) or pnl_cell)
+
+        fee_cell = _cell(fee_idx)
+        fee_info = _clean_text(fee_cell)
+        status = _clean_text(_cell(status_idx))
+        reduce_only_txt = _clean_text(_cell(reduce_only_idx))
+        reduce_only = (reduce_only_txt or "").strip().lower() in ("oui", "yes", "true", "1")
 
         qty = _parse_qty_to_float(qty_str)
         size_usdt = None
@@ -218,6 +297,8 @@ def parse_mexc_fr_orders_xlsx(path: str, sheet: Optional[str]) -> pd.DataFrame:
         elif len(fees_candidates) >= 2:
             fee_usdt = fees_candidates[0]
             saved_usdt = fees_candidates[1]
+        else:
+            fee_usdt = _num(_clean_text(fee_cell) or fee_cell)
 
         if not symbol or ts is None or not side:
             continue
@@ -248,7 +329,7 @@ def mexc_orders_to_trades(df_orders: pd.DataFrame) -> pd.DataFrame:
         return df_orders
 
     df_orders = df_orders.sort_values(by=["time"]).reset_index(drop=True)
-    open_positions: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    active_positions: Dict[Tuple[str, str], Dict[str, Any]] = {}
     trades: List[Dict[str, Any]] = []
 
     for _, row in df_orders.iterrows():
@@ -263,30 +344,94 @@ def mexc_orders_to_trades(df_orders: pd.DataFrame) -> pd.DataFrame:
 
         key = (symbol, inferred_dir)
 
+        qty = _num(row.get("qty"))
+        exec_price = _num(row.get("exec_price"))
+        size_usdt = _num(row.get("size_usdt"))
+        pnl_usdt = _num(row.get("pnl_usdt"))
+        fee_usdt = _num(row.get("fee_usdt"))
+        saved_usdt = _num(row.get("saved_usdt"))
+        ts = _num(row.get("time"))
+
         if not reduce_only:
-            open_positions.setdefault(key, []).append(row.to_dict())
+            pos = active_positions.get(key)
+            if pos is None:
+                pos = {
+                    "symbol": symbol,
+                    "direction": inferred_dir,
+                    "open_time": ts,
+                    "close_time": None,
+                    "entry_qty": 0.0,
+                    "entry_cost_usdt": 0.0,
+                    "entry_size_usdt": 0.0,
+                    "exit_qty": 0.0,
+                    "exit_cost_usdt": 0.0,
+                    "pnl_usdt": 0.0,
+                    "fee_usdt": 0.0,
+                    "saved_usdt": 0.0,
+                    "last_exit_size_usdt": 0.0,
+                    "__sheet__": row.get("__sheet__"),
+                }
+                active_positions[key] = pos
+
+            if ts is not None:
+                if pos.get("open_time") is None or ts < pos.get("open_time"):
+                    pos["open_time"] = ts
+
+            if qty is not None:
+                pos["entry_qty"] += float(qty)
+                if exec_price is not None:
+                    pos["entry_cost_usdt"] += float(qty) * float(exec_price)
+
+            if size_usdt is not None:
+                pos["entry_size_usdt"] += float(size_usdt)
             continue
 
         # closing order
-        if key not in open_positions or not open_positions[key]:
+        pos = active_positions.get(key)
+        if pos is None:
             continue
-        open_row = open_positions[key].pop(0)
 
-        trades.append(
-            {
-                "symbol": symbol,
-                "direction": inferred_dir,
-                "open_time": open_row.get("time"),
-                "close_time": row.get("time"),
-                "entry_price": open_row.get("exec_price"),
-                "exit_price": row.get("exec_price"),
-                "size_usdt": open_row.get("size_usdt"),
-                "pnl_usdt": row.get("pnl_usdt"),
-                "fee_usdt": row.get("fee_usdt"),
-                "saved_usdt": row.get("saved_usdt"),
-                "__sheet__": row.get("__sheet__"),
-            }
-        )
+        if ts is not None:
+            if pos.get("close_time") is None or ts > pos.get("close_time"):
+                pos["close_time"] = ts
+
+        # Accumuler PnL, frais et économies
+        if pnl_usdt is not None:
+            pos["pnl_usdt"] += float(pnl_usdt)
+        if fee_usdt is not None:
+            pos["fee_usdt"] += float(fee_usdt)
+        if saved_usdt is not None:
+            pos["saved_usdt"] += float(saved_usdt)
+
+        if qty is not None:
+            pos["exit_qty"] += float(qty)
+            if exec_price is not None:
+                pos["exit_cost_usdt"] += float(qty) * float(exec_price)
+        
+        # Garder la taille de la DERNIÈRE portion fermée pour matcher size_usdt en DB
+        # Le bot logue souvent la taille de la portion finale
+        if size_usdt is not None:
+            pos["last_exit_size_usdt"] = float(size_usdt)
+
+        # Si la position est totalement fermée (ou presque)
+        if pos["exit_qty"] >= pos["entry_qty"] - 1e-9:
+            entry_price = float(pos["entry_cost_usdt"]) / max(float(pos["entry_qty"]), 1e-12)
+            exit_price = float(pos["exit_cost_usdt"]) / max(float(pos["exit_qty"]), 1e-12)
+            
+            trades.append({
+                "symbol": pos["symbol"],
+                "direction": pos["direction"],
+                "open_time": pos["open_time"],
+                "close_time": pos["close_time"],
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "size_usdt": pos["last_exit_size_usdt"], # Match DB size_usdt
+                "pnl_usdt": pos["pnl_usdt"],
+                "fee_usdt": pos["fee_usdt"],
+                "saved_usdt": pos["saved_usdt"],
+                "__sheet__": pos["__sheet__"]
+            })
+            del active_positions[key]
 
     return pd.DataFrame(trades)
 

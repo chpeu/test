@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -146,6 +147,22 @@ def load_frontend_trade_history(state_url: str) -> List[Dict[str, Any]]:
         v = payload.get(key)
         if isinstance(v, list):
             return [t for t in v if isinstance(t, dict)]
+    return []
+
+
+def load_frontend_trade_history_json(path: str) -> List[Dict[str, Any]]:
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    if isinstance(payload, list):
+        return [t for t in payload if isinstance(t, dict)]
+
+    if isinstance(payload, dict):
+        for key in ("trade_history", "trades", "tradeHistory"):
+            v = payload.get(key)
+            if isinstance(v, list):
+                return [t for t in v if isinstance(t, dict)]
+
     return []
 
 
@@ -353,13 +370,13 @@ def reconcile(frontend_trades: List[Dict[str, Any]], db_trades: List[Dict[str, A
     matched_df = pd.DataFrame(matches)
 
     print("=" * 110)
-    print("Reconcile Frontend trade_history ↔ DB")
+    print("Reconcile Frontend trade_history DB")
     print("frontend_rows:", len(df2))
     print("db_rows_loaded:", len(db))
     print("matched:", len(matched_df))
 
     if matched_df.empty:
-        print("⚠️ Aucun match trouvé. Augmente --time-tolerance-seconds ou vérifie les timestamps.")
+        print(" Aucun match trouvé. Augmente --time-tolerance-seconds ou vérifie les timestamps.")
         return
 
     exch_pnl = df2.loc[matched_df["frontend_idx"].values, "_pnl_usdt"].reset_index(drop=True)
@@ -426,6 +443,8 @@ def reconcile(frontend_trades: List[Dict[str, Any]], db_trades: List[Dict[str, A
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--state-url", default="http://127.0.0.1:3000/api/state")
+    ap.add_argument("--history-json", default=None, help="Chemin vers trade_history_instance_*.json (fallback frontend)")
+    ap.add_argument("--date", default=None, help="Filtrer sur la date locale (YYYY-MM-DD). Par défaut: aujourd'hui")
 
     ap.add_argument("--time-tolerance-seconds", type=int, default=300)
     ap.add_argument("--time-diff-seconds-threshold", type=int, default=60)
@@ -441,7 +460,10 @@ def main() -> None:
 
     args = ap.parse_args()
 
-    frontend_trades = load_frontend_trade_history(args.state_url)
+    if args.history_json:
+        frontend_trades = load_frontend_trade_history_json(args.history_json)
+    else:
+        frontend_trades = load_frontend_trade_history(args.state_url)
 
     password = os.environ.get("POSTGRES_PASSWORD") or "@Cmtr1di12345"
     password = quote_plus(password)
@@ -455,6 +477,23 @@ def main() -> None:
         db_trades = load_db_trades(conn)
     finally:
         conn.close()
+
+    if args.date:
+        target_date = datetime.strptime(args.date, "%Y-%m-%d").date()
+    else:
+        target_date = datetime.now().date()
+
+    def _is_in_target_day(ts: Optional[float]) -> bool:
+        if ts is None:
+            return False
+        return datetime.fromtimestamp(float(ts)).date() == target_date
+
+    frontend_trades = [
+        t
+        for t in frontend_trades
+        if _is_in_target_day(_to_utc_ts(t.get("closed_at") or t.get("timestamp_exit") or t.get("timestamp") or t.get("closedAt")))
+    ]
+    db_trades = [t for t in db_trades if _is_in_target_day(_to_utc_ts(t.get("timestamp_exit")))]
 
     reconcile(frontend_trades, db_trades, args)
 
