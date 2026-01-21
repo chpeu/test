@@ -8,7 +8,7 @@ import random
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
-test_errors_router = APIRouter()
+router = APIRouter()
 
 # Messages d'erreur fictifs pour les tests
 FAKE_ERROR_MESSAGES = [
@@ -31,7 +31,7 @@ FAKE_CRITICAL_MESSAGES = [
     "⚠️ CRITIQUE: Base de données corrompue détectée"
 ]
 
-@test_errors_router.post("/generate")
+@router.post("/generate")
 def generate_test_errors(
     count: int = Query(5, description="Nombre d'erreurs à générer", ge=1, le=20),
     include_critical: bool = Query(True, description="Inclure des erreurs CRITICAL")
@@ -80,7 +80,7 @@ def generate_test_errors(
             'error': str(e)
         }
 
-@test_errors_router.post("/stress-test")  
+@router.post("/stress-test")  
 def stress_test_errors(
     batches: int = Query(3, description="Nombre de lots d'erreurs", ge=1, le=10),
     batch_size: int = Query(10, description="Taille de chaque lot", ge=5, le=50)

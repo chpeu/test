@@ -501,6 +501,15 @@ class StateManager:
         with self._thread_lock:
             self._trade_history_file = path
 
+    def get_legacy_proxy(self) -> 'LegacyAppStateProxy':
+        """
+        Get a LegacyAppStateProxy for backward compatibility.
+        
+        Returns:
+            LegacyAppStateProxy instance
+        """
+        return LegacyAppStateProxy(self)
+
     # ==================== Locks ====================
 
     def lock(self, name: str) -> asyncio.Lock:

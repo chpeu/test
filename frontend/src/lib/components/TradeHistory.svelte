@@ -327,6 +327,46 @@
 		return orderEvents;
 	}
 
+	// 🔥 RECONCILIATION: États pour la réconciliation MEXC
+	let showReconcileModal = false;
+	let reconcileLoading = false;
+	let reconcileResults = null;
+	let reconcileError = null;
+
+	async function handleReconcile() {
+		reconcileLoading = true;
+		reconcileError = null;
+		reconcileResults = null;
+		showReconcileModal = true;
+
+		try {
+			const response = await fetch('/api/live/reconcile-mexc', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			});
+
+			const data = await response.json();
+			if (data.success) {
+				reconcileResults = data;
+			} else {
+				reconcileError = data.error || 'Erreur lors de la réconciliation';
+			}
+		} catch (err) {
+			console.error('❌ Erreur réconciliation:', err);
+			reconcileError = err.message || 'Erreur de connexion au serveur';
+		} finally {
+			reconcileLoading = false;
+		}
+	}
+
+	function closeReconcileModal() {
+		showReconcileModal = false;
+		reconcileResults = null;
+		reconcileError = null;
+	}
+
 	// 🔥 FIX: Formater la durée depuis des secondes (format backend)
 	function formatDurationFromSeconds(seconds) {
 		if (!seconds || seconds <= 0) return 'N/A';
@@ -343,6 +383,18 @@
 	<div class="history-header" data-debug-name="tradeHistory.header">
 		<h3 data-debug-name="tradeHistory.title">📜 Historique des Trades</h3>
 		<div class="header-stats" data-debug-name="tradeHistory.stats">
+			<button 
+				class="reconcile-btn" 
+				on:click={handleReconcile} 
+				disabled={reconcileLoading}
+				title="Lancer la réconciliation MEXC vs Base de données"
+			>
+				{#if reconcileLoading}
+					<span class="loading-spinner"></span> Patientez...
+				{:else}
+					🔍 Réconciliation MEXC
+				{/if}
+			</button>
 			<div class="total-count" data-debug-name="sortedTrades.length">{$sortedTrades.length} trades</div>
 			{#if $sortedTrades.length > 0}
 				<div class="session-pnl" class:positive={$sessionPnL >= 0} class:negative={$sessionPnL < 0} data-debug-name="sessionPnL">
@@ -625,6 +677,92 @@
 			</div>
 		{/if}
 	{/if}
+
+	<!-- 🔥 RECONCILIATION MODAL -->
+	{#if showReconcileModal}
+		<div class="modal-overlay" on:click={closeReconcileModal}>
+			<div class="modal-content" on:click|stopPropagation>
+				<div class="modal-header">
+					<h4>📊 Réconciliation MEXC vs DB</h4>
+					<button class="close-btn" on:click={closeReconcileModal}>&times;</button>
+				</div>
+				<div class="modal-body">
+					{#if reconcileLoading}
+						<div class="reconcile-loading">
+							<div class="spinner-large"></div>
+							<p>Analyse en cours des trades MEXC...</p>
+							<p class="subtitle">Regroupement des ordres et calcul du notionnel final</p>
+						</div>
+					{:else if reconcileError}
+						<div class="reconcile-error">
+							<div class="error-icon">⚠️</div>
+							<p>{reconcileError}</p>
+							<button class="retry-btn" on:click={handleReconcile}>Réessayer</button>
+						</div>
+					{:else if reconcileResults}
+						<div class="reconcile-success">
+							<div class="summary-cards">
+								<div class="summary-card">
+									<span class="card-label">Écarts détectés</span>
+									<span class="card-value {reconcileResults.summary.total_mismatches > 0 ? 'warning' : 'success'}">
+										{reconcileResults.summary.total_mismatches}
+									</span>
+								</div>
+								<div class="summary-card">
+									<span class="card-label">PnL Moyen Diff.</span>
+									<span class="card-value">{reconcileResults.summary.mean_pnl_diff.toFixed(4)} USDT</span>
+								</div>
+								<div class="summary-card">
+									<span class="card-label">Écart Taille Max</span>
+									<span class="card-value">{(reconcileResults.summary.max_size_diff * 100).toFixed(2)}%</span>
+								</div>
+							</div>
+
+							{#if reconcileResults.results && reconcileResults.results.length > 0}
+								<div class="results-table-container">
+									<table class="reconcile-results-table">
+										<thead>
+											<tr>
+												<th>DB ID</th>
+												<th>Time Diff</th>
+												<th>Size Diff %</th>
+												<th>PnL Diff</th>
+											</tr>
+										</thead>
+										<tbody>
+											{#each reconcileResults.results.slice(0, 10) as res}
+												<tr>
+													<td class="db-id" title={res.db_id}>{res.db_id.slice(0, 8)}...</td>
+													<td>{res.time_diff_s.toFixed(1)}s</td>
+													<td class:warning={res.size_diff_ratio > 0.05}>
+														{(res.size_diff_ratio * 100).toFixed(2)}%
+													</td>
+													<td class:warning={Math.abs(res.pnl_diff_usdt) > 0.2}>
+														{res.pnl_diff_usdt.toFixed(4)} USDT
+													</td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+									{#if reconcileResults.results.length > 10}
+										<p class="more-results">+ {reconcileResults.results.length - 10} autres écarts dans le rapport CSV</p>
+									{/if}
+								</div>
+							{:else}
+								<div class="no-mismatch">
+									<div class="success-icon">✅</div>
+									<p>Parfait ! Tous les trades sont 100% alignés entre MEXC et la base de données.</p>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+				<div class="modal-footer">
+					<button class="footer-close-btn" on:click={closeReconcileModal}>Fermer</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -681,6 +819,281 @@
 		color: #00ff88;
 		font-weight: bold;
 		margin: 0;
+	}
+
+	.history-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 25px;
+		padding-bottom: 15px;
+		border-bottom: 1px solid rgba(0, 170, 255, 0.2);
+	}
+
+	.header-stats {
+		display: flex;
+		align-items: center;
+		gap: 15px;
+	}
+
+	.reconcile-btn {
+		background: rgba(0, 170, 255, 0.15);
+		color: #00aaff;
+		border: 1px solid rgba(0, 170, 255, 0.4);
+		padding: 6px 14px;
+		border-radius: 6px;
+		font-weight: 700;
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.2s;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.reconcile-btn:hover:not(:disabled) {
+		background: #00aaff;
+		color: #0a0e27;
+		box-shadow: 0 0 15px rgba(0, 170, 255, 0.4);
+	}
+
+	.reconcile-btn:disabled {
+		opacity: 0.6;
+		cursor: wait;
+	}
+
+	/* Spinner */
+	.loading-spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid rgba(255, 255, 255, 0.3);
+		border-radius: 50%;
+		border-top-color: #fff;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	/* Modal Styles */
+	.modal-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: rgba(0, 0, 0, 0.85);
+		backdrop-filter: blur(5px);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		z-index: 9999;
+	}
+
+	.modal-content {
+		background: #0f172a;
+		border: 1px solid rgba(0, 170, 255, 0.3);
+		border-radius: 12px;
+		width: 90%;
+		max-width: 600px;
+		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.modal-header {
+		padding: 15px 20px;
+		background: rgba(0, 170, 255, 0.1);
+		border-bottom: 1px solid rgba(0, 170, 255, 0.2);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.modal-header h4 {
+		margin: 0;
+		color: #00aaff;
+		font-size: 16px;
+		font-weight: 700;
+	}
+
+	.close-btn {
+		background: none;
+		border: none;
+		color: #64748b;
+		font-size: 24px;
+		cursor: pointer;
+		transition: color 0.2s;
+	}
+
+	.close-btn:hover {
+		color: #fff;
+	}
+
+	.modal-body {
+		padding: 20px;
+		min-height: 200px;
+	}
+
+	.reconcile-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 40px 0;
+		color: #94a3b8;
+	}
+
+	.spinner-large {
+		width: 40px;
+		height: 40px;
+		border: 4px solid rgba(0, 170, 255, 0.1);
+		border-radius: 50%;
+		border-top-color: #00aaff;
+		animation: spin 1s linear infinite;
+		margin-bottom: 20px;
+	}
+
+	.reconcile-loading .subtitle {
+		font-size: 12px;
+		opacity: 0.7;
+		margin-top: 5px;
+	}
+
+	.summary-cards {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 15px;
+		margin-bottom: 25px;
+	}
+
+	.summary-card {
+		background: rgba(30, 41, 59, 0.5);
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		padding: 12px;
+		border-radius: 8px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+	}
+
+	.card-label {
+		font-size: 11px;
+		color: #94a3b8;
+		margin-bottom: 5px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.card-value {
+		font-size: 18px;
+		font-weight: 700;
+		color: #fff;
+	}
+
+	.card-value.success { color: #10b981; }
+	.card-value.warning { color: #f59e0b; }
+
+	.results-table-container {
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		border-radius: 8px;
+		overflow: hidden;
+	}
+
+	.reconcile-results-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 12px;
+	}
+
+	.reconcile-results-table th {
+		background: rgba(30, 41, 59, 0.8);
+		padding: 10px;
+		text-align: left;
+		color: #94a3b8;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.reconcile-results-table td {
+		padding: 10px;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		color: #e2e8f0;
+	}
+
+	.db-id {
+		font-family: monospace;
+		color: #00aaff;
+	}
+
+	.warning { color: #f59e0b; font-weight: 700; }
+
+	.more-results {
+		text-align: center;
+		font-size: 11px;
+		color: #64748b;
+		padding: 10px;
+		margin: 0;
+		background: rgba(30, 41, 59, 0.3);
+	}
+
+	.no-mismatch {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 30px 0;
+		text-align: center;
+	}
+
+	.success-icon {
+		font-size: 48px;
+		margin-bottom: 15px;
+	}
+
+	.modal-footer {
+		padding: 15px 20px;
+		background: rgba(15, 23, 42, 0.8);
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.footer-close-btn {
+		background: #1e293b;
+		color: #fff;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		padding: 8px 20px;
+		border-radius: 6px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.footer-close-btn:hover {
+		background: #334155;
+	}
+
+	.reconcile-error {
+		text-align: center;
+		padding: 30px 0;
+	}
+
+	.error-icon {
+		font-size: 40px;
+		margin-bottom: 15px;
+	}
+
+	.retry-btn {
+		margin-top: 15px;
+		background: #ef4444;
+		color: #fff;
+		border: none;
+		padding: 8px 20px;
+		border-radius: 6px;
+		font-weight: 600;
+		cursor: pointer;
 	}
 
 	.total-count {

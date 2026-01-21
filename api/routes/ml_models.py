@@ -5,7 +5,7 @@ Migrated from ml_legacy.py as part of Phase 5 modularization
 
 import logging
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from typing import Optional
 import pandas as pd
@@ -492,5 +492,66 @@ async def get_experiments(limit: int = 10):
 
 # ========== PREDICTIONS ==========
 
+@router.post("/retrain")
+async def api_ml_retrain(request: Request):
+    """
+    🤖 Réentraîner le modèle classifier (GradientBoosting ou XGBoost) avec hyperparamètres personnalisés
+    """
+    try:
+        data = await request.json() if hasattr(request, 'json') else {}
 
-logger.info("✅ ML models router initialized (6 routes)")
+        # Récupérer les hyperparamètres (avec valeurs par défaut)
+        hyperparams = {
+            'max_depth': int(data.get('max_depth', 6)),
+            'min_child_weight': int(data.get('min_child_weight', 3)),
+            'reg_alpha': float(data.get('reg_alpha', 0.5)),
+            'reg_lambda': float(data.get('reg_lambda', 2.0)),
+            'subsample': float(data.get('subsample', 0.8)),
+            'colsample_bytree': float(data.get('colsample_bytree', 0.8)),
+            'n_estimators': int(data.get('n_estimators', 300)),
+            'learning_rate': float(data.get('learning_rate', 0.03))
+        }
+
+        logger.info(f"🤖 Démarrage réentraînement ML avec hyperparamètres: {hyperparams}")
+
+        # Import du trainer
+        from optimization.models.xgboost_trainer import XGBoostTrainer
+
+        # Créer une instance du trainer
+        trainer = XGBoostTrainer(model_name='xgboost_v1')
+
+        # Lancer l'entraînement avec les hyperparamètres
+        metrics = trainer.train(
+            min_trades=100,
+            n_estimators=hyperparams['n_estimators'],
+            max_depth=hyperparams['max_depth'],
+            learning_rate=hyperparams['learning_rate'],
+            early_stopping_rounds=20,
+            max_features=40,
+            min_child_weight=hyperparams['min_child_weight'],
+            reg_alpha=hyperparams['reg_alpha'],
+            reg_lambda=hyperparams['reg_lambda'],
+            subsample=hyperparams['subsample'],
+            colsample_bytree=hyperparams['colsample_bytree'],
+            gamma=0.1
+        )
+
+        if metrics is None:
+            logger.error("❌ Échec réentraînement: metrics is None")
+            return JSONResponse({'error': 'Échec du réentraînement'}, status_code=500)
+
+        logger.info(f"✅ Réentraînement terminé: {metrics}")
+
+        return JSONResponse({
+            'success': True,
+            'metrics': metrics,
+            'hyperparams': hyperparams,
+            'message': 'Modèle réentraîné avec succès'
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Erreur réentraînement ML: {e}", exc_info=True)
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+logger.info("✅ ML models router initialized (7 routes)")

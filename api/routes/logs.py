@@ -1,98 +1,56 @@
-"""
-Routes API pour la gestion des logs et erreurs
-"""
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import JSONResponse
 import logging
+from typing import Optional, Dict, List
+import time
 from utils.error_history import get_error_history
 
 logger = logging.getLogger(__name__)
-logs_router = APIRouter()
+router = APIRouter(prefix="/api/logs", tags=["logs"])
 
-@logs_router.get('/errors')
-def get_errors(
-    limit: int = Query(None, description="Limite du nombre d'erreurs à retourner"),
-    offset: int = Query(0, description="Décalage pour la pagination")
-):
-    """Récupérer l'historique complet des erreurs"""
+@router.get('/errors')
+async def api_get_errors(limit: int = 50, offset: int = 0):
+    """Récupérer les erreurs avec pagination depuis ErrorHistoryManager (en mémoire)"""
     try:
         error_history = get_error_history()
-        
-        all_errors = error_history.get_errors()
-        total_count = len(all_errors)
+        errors = error_history.get_errors()
         
         # Pagination
-        if limit:
-            start_idx = offset
-            end_idx = start_idx + limit
-            errors = all_errors[start_idx:end_idx]
-        else:
-            errors = all_errors
-            
-        return {
-            'success': True,
-            'errors': errors,
-            'total_count': total_count,
-            'returned_count': len(errors)
-        }
-    except Exception as e:
-        logger.error(f"Erreur récupération erreurs: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
-
-@logs_router.get('/errors/count')
-def get_error_count():
-    """Récupérer le nombre total d'erreurs"""
-    try:
-        error_history = get_error_history()
-        count = error_history.get_error_count()
+        paged_errors = errors[offset:offset+limit]
         
         return {
-            'success': True,
-            'count': count
+            "success": True,
+            "errors": paged_errors,
+            "total_count": len(errors),
+            "limit": limit,
+            "offset": offset
         }
     except Exception as e:
-        logger.error(f"Erreur récupération nombre erreurs: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+        logger.error(f"❌ Erreur api_get_errors: {e}")
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
-@logs_router.get('/errors/recent')
-def get_recent_errors(
-    limit: int = Query(50, description="Limite du nombre d'erreurs récentes")
-):
-    """Récupérer les erreurs récentes (pour compatibilité WebSocket)"""
-    try:
-        error_history = get_error_history()
-        errors = error_history.get_recent_errors(limit=limit)
-        
-        return {
-            'success': True,
-            'errors': errors
-        }
-    except Exception as e:
-        logger.error(f"Erreur récupération erreurs récentes: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+@router.get('/errors/recent')
+async def api_get_recent_errors(limit: int = 50):
+    """Récupérer les erreurs récentes"""
+    return await api_get_errors(limit=limit, offset=0)
 
-@logs_router.post('/errors/clear')
-def clear_errors():
-    """Vider l'historique des erreurs"""
+@router.post('/errors/clear')
+async def api_clear_errors():
+    """Vider toutes les erreurs du gestionnaire en mémoire"""
     try:
         error_history = get_error_history()
         error_history.clear_errors()
-        
-        return {
-            'success': True,
-            'message': 'Historique des erreurs vidé'
-        }
+        return {"success": True, "message": "Historique des erreurs vidé"}
     except Exception as e:
-        logger.error(f"Erreur vidage erreurs: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+        logger.error(f"❌ Erreur api_clear_errors: {e}")
+        return JSONResponse({"success": False, "error": str(e)})
+
+@router.post("/test/trigger-error")
+async def api_trigger_test_error(error_type: str = "test", message: str = "Erreur de test pour vérifier la persistance"):
+    """🧪 ENDPOINT DE TEST: Déclencher une erreur fictive"""
+    try:
+        from main import add_log
+        await add_log('ERROR', f"Test Error: {error_type}", message)
+        return {"success": True, "message": f"Erreur de test '{error_type}' déclenchée"}
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})

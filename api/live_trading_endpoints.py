@@ -58,6 +58,78 @@ def save_live_config(config: Dict[str, Any]) -> bool:
         return False
 
 
+@router.post("/reconcile-mexc")
+async def run_mexc_reconciliation():
+    """
+    Exécute le script de réconciliation MEXC vs DB
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+    
+    script_path = Path("verification/reconcile_exchange_export_vs_db.py")
+    excel_path = Path("export mexc.xlsx")
+    output_csv = Path("verification/reconcile_mexc_vs_db_agg.csv")
+    
+    if not excel_path.exists():
+        return JSONResponse({
+            "success": False,
+            "error": "Fichier 'export mexc.xlsx' introuvable à la racine."
+        }, status_code=404)
+        
+    try:
+        # Exécuter la commande
+        cmd = [
+            sys.executable, str(script_path),
+            "--file", str(excel_path),
+            "--mexc-fr-orders",
+            "--output-csv", str(output_csv),
+            "--sheet", "Feuil3",
+            "--auto-time-offset",
+            "--time-tolerance-seconds", "3600"
+        ]
+        
+        process = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        
+        if process.returncode != 0:
+            logger.error(f"Erreur réconciliation: {process.stderr}")
+            return JSONResponse({
+                "success": False,
+                "error": f"Erreur lors de l'exécution du script: {process.stderr}"
+            }, status_code=500)
+            
+        # Lire le résultat du CSV pour le renvoyer
+        import pandas as pd
+        if output_csv.exists():
+            df = pd.read_csv(output_csv)
+            # On ne renvoie que les colonnes intéressantes
+            results = df.to_dict(orient="records")
+            return JSONResponse({
+                "success": True,
+                "output": process.stdout,
+                "results": results,
+                "summary": {
+                    "total_mismatches": len(df),
+                    "mean_pnl_diff": float(df["pnl_diff_usdt"].mean()) if not df.empty else 0,
+                    "max_size_diff": float(df["size_diff_ratio"].max()) if not df.empty else 0
+                }
+            })
+        else:
+            return JSONResponse({
+                "success": True,
+                "output": process.stdout,
+                "results": [],
+                "message": "Aucun écart détecté."
+            })
+            
+    except Exception as e:
+        logger.error(f"Exception pendant réconciliation: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+
 @router.get("/stats")
 async def get_live_stats():
     """
