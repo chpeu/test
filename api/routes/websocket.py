@@ -86,18 +86,19 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception:
             pass
         
-        # Reset session frontend
-        try:
-            await ws_mgr.send_personal_message({
-                'type': 'event',
-                'event': 'reset_session',
-                'data': {
-                    'timestamp': time.time(),
-                    'reason': 'new_connection'
-                }
-            }, websocket)
-        except Exception:
-            pass
+        # Reset session frontend - 🔥 REMOVED: Should not clear history on every new connection
+        # only on real backend startup/reboot via lifespan or command.
+        # try:
+        #     await ws_mgr.send_personal_message({
+        #         'type': 'event',
+        #         'event': 'reset_session',
+        #         'data': {
+        #             'timestamp': time.time(),
+        #             'reason': 'new_connection'
+        #         }
+        #     }, websocket)
+        # except Exception:
+        #     pass
         
         # Boucle de réception
         try:

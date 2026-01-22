@@ -302,6 +302,20 @@ async def perform_close_position(reason: str = 'MANUAL', exit_price: Optional[fl
         if closed_symbol:
             cancel_pending_sl_task(closed_symbol)
         
+        # 🔥 FIX: Redémarrer le WebSocket pour tous les top_pairs après fermeture
+        # (car il avait été restreint au symbole de la position uniquement)
+        if pp and state.top_pairs:
+            try:
+                symbols = [p.get('symbol', '') for p in state.top_pairs[:30] if p.get('symbol')]
+                if symbols:
+                    # Arrêter d'abord le WebSocket restreint
+                    await pp.stop_websocket()
+                    # Redémarrer pour tous les symboles
+                    await pp.start_websocket(symbols)
+                    logger.info(f"🔄 WebSocket redémarré pour {len(symbols)} symboles après fermeture position")
+            except Exception as ws_restart_err:
+                logger.warning(f"⚠️ Impossible de redémarrer WebSocket global: {ws_restart_err}")
+
         lom = _live_order_manager or state.get_live_order_manager()
         mode_str = "🟡 LIVE DRY-RUN" if (lom and lom.dry_run) else ("🔴 LIVE RÉEL" if lom else "📝 PAPER")
             

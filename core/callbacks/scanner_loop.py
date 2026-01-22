@@ -125,11 +125,21 @@ def get_pg_datalogger():
     if _pg_datalogger is not None:
         return _pg_datalogger
     
+    # 🔥 FIX: Utiliser l'instance globale du StateManager si possible
+    from core.state_manager import get_state_manager
+    state = get_state_manager()
+    pg_logger = state.get_pg_datalogger()
+    if pg_logger:
+        return pg_logger
+    
     # Sinon, créer une instance si elle n'existe pas
     if _pg_datalogger_instance is None:
         try:
+            from core.postgresql_datalogger import PostgreSQLDataLogger
             _pg_datalogger_instance = PostgreSQLDataLogger()
             logger.info("✅ PostgreSQL DataLogger créé (Force Initialization)")
+            # Stocker dans StateManager aussi
+            state.set_pg_datalogger(_pg_datalogger_instance)
         except Exception as e:
             logger.error(f"❌ Erreur création PostgreSQL DataLogger: {e}")
             return None
@@ -172,18 +182,24 @@ async def scanner_loop_callback():
     5. Analyser les résultats et ouvrir position si setup trouvé
     6. Émettre événements SocketIO de mise à jour
     """
+    logger.info("📡 [DEBUG-SCAN] scanner_loop_callback: Début de l'itération")
     if not _scanner or not _app_state or not _scanner_lock:
-        logger.debug("⚠️ Instances non disponibles pour scanner_loop_callback")
+        logger.info("⚠️ [DEBUG-SCAN] Instances non disponibles pour scanner_loop_callback - vérifiez bootstrap")
+        if not _scanner: logger.warning("   - _scanner est None")
+        if not _app_state: logger.warning("   - _app_state est None")
+        if not _scanner_lock: logger.warning("   - _scanner_lock est None")
         return
 
     try:
         # Acquérir le lock pour éviter les scans multiples en parallèle
+        logger.debug("📡 [DEBUG-SCAN] scanner_loop_callback: Tentative acquisition du lock...")
         async with _scanner_lock:
+            logger.debug("📡 [DEBUG-SCAN] scanner_loop_callback: Lock acquis")
             # 🔥 OPT #17: Vérifier cooldown post-trade
             cooldown_mgr = get_cooldown_manager()
             can_trade, cooldown_reason = cooldown_mgr.can_trade("")  # Check général
             if not can_trade:
-                logger.info(f"⏸️ Scanner ignoré: {cooldown_reason}")
+                logger.info(f"⏸️ [DEBUG-SCAN] Scanner ignoré: {cooldown_reason}")
                 return
             
             # Vérifier qu'on n'a pas déjà une position active
@@ -193,19 +209,27 @@ async def scanner_loop_callback():
                 # BUG #11 FIX: Logging informatif au lieu de debug
                 active_pos = _position_manager.active_position if _position_manager else _app_state.get('active_position')
                 symbol = active_pos.symbol if hasattr(active_pos, 'symbol') else active_pos.get('symbol', 'UNKNOWN') if isinstance(active_pos, dict) else 'UNKNOWN'
-                logger.info(f"⏸️ Scanner ignoré: position active sur {symbol}")
+                logger.info(f"⏸️ [DEBUG-SCAN] Scanner ignoré: position active sur {symbol}")
                 return
 
             # Si on n'a pas de top_pairs, les scanner d'abord
             if not _app_state.get('top_pairs'):
+                logger.info("📡 [DEBUG-SCAN] top_pairs vide, lancement scan initial...")
                 await _scan_initial_top_pairs()
+                # 🔥 OPT #14: Enchaîner immédiatement avec un scan de setups
+                # après avoir trouvé les top_pairs (ne pas attendre 45s)
+                if _app_state.get('top_pairs'):
+                    logger.info(f"📡 [DEBUG-SCAN] {len(_app_state['top_pairs'])} paires trouvées, enchaînement immédiat setup scan")
+                    await _scan_top_pairs()
                 return
 
             # Scanner les top pairs
+            logger.info("📡 [DEBUG-SCAN] Lancement du scan des top pairs...")
             await _scan_top_pairs()
+            logger.info("📡 [DEBUG-SCAN] scanner_loop_callback: Itération terminée avec succès")
 
     except Exception as e:
-        logger.error(f"❌ Erreur scanner_loop_callback: {e}")
+        logger.error(f"❌ [DEBUG-SCAN] Erreur scanner_loop_callback: {e}", exc_info=True)
         await _notify_error('scanner_loop_callback', str(e))
 
 

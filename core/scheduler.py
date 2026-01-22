@@ -42,9 +42,11 @@ class Scheduler:
     
     async def _scanner_loop(self):
         """Boucle scanner - toutes les 45 secondes"""
+        logger.info("📡 Boucle scanner démarrée")
         while self.is_running:
             try:
                 if self.scanner_callback:
+                    logger.info("🔍 Exécution du callback scanner...")
                     await self.scanner_callback()
                 
                 # Attendre 45 secondes
@@ -55,6 +57,7 @@ class Scheduler:
     
     async def _position_check_loop(self):
         """Boucle position check - toutes les 0.1 secondes (optimisé pour scalping ultra-rapide)"""
+        logger.info("🛡️ Boucle position check démarrée")
         while self.is_running:
             try:
                 if self.position_check_callback:
@@ -69,6 +72,7 @@ class Scheduler:
     
     async def _scalability_refresh_loop(self):
         """Boucle scalability refresh - toutes les 90 secondes"""
+        logger.info("📊 Boucle scalability refresh démarrée")
         # 🔥 FIX: Attendre avant le premier refresh pour éviter conflit avec scanner_loop
         # scanner_loop démarre immédiatement, donc on attend 60s avant le premier refresh
         await asyncio.sleep(60)
@@ -76,6 +80,7 @@ class Scheduler:
         while self.is_running:
             try:
                 if self.scalability_refresh_callback:
+                    logger.info("📊 Exécution du callback scalability refresh...")
                     await self.scalability_refresh_callback()
                 
                 # Attendre 90 secondes
@@ -87,10 +92,11 @@ class Scheduler:
     def start(self):
         """Démarrer toutes les boucles"""
         if self.is_running:
-            logger.warning("Scheduler déjà démarré")
+            logger.warning("⚠️ Scheduler déjà démarré, skip start()")
             return
         
         self.is_running = True
+        logger.info("🚀 Démarrage des boucles du Scheduler...")
         
         # Démarrer scanner loop
         if self.scanner_callback:

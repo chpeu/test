@@ -157,6 +157,11 @@ def set_scheduler(s):
     set_scheduler_pos(s)
     set_scheduler_ws(s)
 
+def set_live_order_manager(lom):
+    """Injecter live order manager"""
+    from .position import set_live_order_manager as set_lom_pos
+    set_lom_pos(lom)
+
 __all__ = [
     'router',
     'scanner_router',

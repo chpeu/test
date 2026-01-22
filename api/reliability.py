@@ -365,10 +365,14 @@ class WebSocketManager:
                 ssl_context.check_hostname = True
                 ssl_context.verify_mode = ssl.CERT_REQUIRED
 
-            self._ws = await websockets.connect(
-                self.url,
-                ping_interval=WEBSOCKET_CONFIG['ping_interval'],
-                ssl=ssl_context
+            # 🔥 FIX: Ajouter un timeout à la connexion pour éviter les blocages indéfinis
+            self._ws = await asyncio.wait_for(
+                websockets.connect(
+                    self.url,
+                    ping_interval=WEBSOCKET_CONFIG.get('ping_interval', 30),
+                    ssl=ssl_context
+                ),
+                timeout=WEBSOCKET_CONFIG.get('timeout', 10)
             )
             
             self._connected = True

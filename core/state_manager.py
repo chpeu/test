@@ -137,18 +137,15 @@ class StateManager:
         self._analytics_db = None
         self._notification_manager = None
         self._live_order_manager = None
+        self._pg_datalogger = None
         self._simple_logger = None
         self._ws_manager = None  # Sprint 2.1
         
         # Files & Paths
         self._trade_history_file = None  # Sprint 2.1
 
-        # Locks for synchronization
-        self._locks: Dict[str, asyncio.Lock] = {
-            "position": asyncio.Lock(),
-            "scanner": asyncio.Lock(),
-            "state": asyncio.Lock(),  # Pour opérations atomiques sur state
-        }
+        # Locks for synchronization (Lazy initialization to avoid event loop issues)
+        self._locks: Dict[str, asyncio.Lock] = {}
 
         # Thread lock for sync access
         self._thread_lock = Lock()
@@ -460,6 +457,16 @@ class StateManager:
         with self._thread_lock:
             self._notification_manager = manager
 
+    def get_pg_datalogger(self):
+        """Get PostgreSQL DataLogger instance"""
+        with self._thread_lock:
+            return self._pg_datalogger
+
+    def set_pg_datalogger(self, datalogger) -> None:
+        """Set PostgreSQL DataLogger instance"""
+        with self._thread_lock:
+            self._pg_datalogger = datalogger
+
     def get_live_order_manager(self):
         """Get live order manager instance"""
         with self._thread_lock:
@@ -515,23 +522,22 @@ class StateManager:
     def lock(self, name: str) -> asyncio.Lock:
         """
         Get async lock by name for synchronized operations
+        (Lazy initialization ensures the lock is created in the current event loop)
 
         Args:
             name: Lock name ("position", "scanner", "state")
 
         Returns:
             asyncio.Lock
-
-        Example:
-            ```python
-            async with state.lock("position"):
-                # Atomic position operations
-                pass
-            ```
         """
-        if name not in self._locks:
-            raise ValueError(f"Unknown lock: {name}. Available: {list(self._locks.keys())}")
-        return self._locks[name]
+        valid_locks = ["position", "scanner", "state"]
+        if name not in valid_locks:
+            raise ValueError(f"Unknown lock: {name}. Available: {valid_locks}")
+        
+        with self._thread_lock:
+            if name not in self._locks:
+                self._locks[name] = asyncio.Lock()
+            return self._locks[name]
 
     # ==================== Serialization ====================
 
@@ -563,6 +569,7 @@ class StateManager:
                 "trade_history": self._app_state.trade_history.copy(),
                 "close_failure_count": self._app_state.close_failure_count,
                 "close_failure_symbol": self._app_state.close_failure_symbol,
+                "session_id": self._app_state.session_id,
             }
 
     # ==================== Cleanup ====================

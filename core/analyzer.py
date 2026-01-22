@@ -69,9 +69,14 @@ class TechnicalAnalyzer:
     """Analyseur technique pour détecter les setups LONG/SHORT"""
 
     def __init__(self):
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
         self.client = get_mexc_client()
         self.indicators = Indicators()
-        self.price_provider = get_price_provider()  # Prix WebSocket
+        self.price_provider = state.get_price_provider()  # Utilise le singleton PriceProvider du StateManager
+        if not self.price_provider:
+            from api.price_provider import get_price_provider
+            self.price_provider = get_price_provider()
         # Cache spread (5 secondes)
         self._spread_cache: Dict[str, Dict] = {}
         # Cache orderbook (2 secondes)

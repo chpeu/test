@@ -28,9 +28,16 @@ class WebSocketManager:
         self.active_connections: Set[WebSocket] = set()
         self.connection_data: Dict[WebSocket, dict] = {}
         self.rooms: Dict[str, Set[WebSocket]] = {}  # Support rooms
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None  # 🔥 Lazy initialization
         # 🔥 LIVE TRADING: Système de commandes WebSocket
         self._command_handlers: Dict[str, callable] = {}
+    
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Lazy initialization of the lock to ensure it's in the correct event loop"""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
     
     def command(self, name: str):
         """
@@ -92,7 +99,7 @@ class WebSocketManager:
     async def connect(self, websocket: WebSocket):
         """Accepter une nouvelle connexion WebSocket"""
         await websocket.accept()
-        async with self._lock:
+        async with self.lock:
             self.active_connections.add(websocket)
             self.connection_data[websocket] = {
                 'connected_at': datetime.now().isoformat(),
@@ -102,7 +109,7 @@ class WebSocketManager:
     
     async def disconnect(self, websocket: WebSocket):
         """Déconnecter un WebSocket (optimisé)"""
-        async with self._lock:
+        async with self.lock:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
             # 🔥 OPTIMISATION: Nettoyer aussi des rooms en une seule passe
@@ -182,7 +189,7 @@ class WebSocketManager:
                     disconnected.append(connections_to_send[i])
         
         if disconnected:
-            async with self._lock:
+            async with self.lock:
                 for conn in disconnected:
                     self.active_connections.discard(conn)
                     self.connection_data.pop(conn, None)
@@ -198,10 +205,14 @@ class WebSocketManager:
             event: Nom de l'événement
             data: Données à envoyer
         """
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
+        
         message = {
             'type': 'event',
             'event': event,
             'data': data,
+            'session_id': state.session_id,  # 🔥 Propager session_id avec chaque événement
             'timestamp': datetime.now().isoformat()
         }
         await self.broadcast(message)
@@ -308,7 +319,7 @@ class WebSocketManager:
                 # Nettoyer connexions déconnectées
                 disconnected = [conn for conn in results if conn is not None and not isinstance(conn, Exception)]
                 if disconnected:
-                    async with self._lock:
+                    async with self.lock:
                         for conn in disconnected:
                             self.rooms[room].discard(conn)
                             self.active_connections.discard(conn)

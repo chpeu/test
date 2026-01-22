@@ -213,6 +213,18 @@ class TradeDatabase:
         row = cursor.fetchone()
         return dict(row) if row else {}
     
+    def clear_all_trades(self):
+        """Vider tous les trades de la base de données (pour réinitialiser les stats au démarrage)"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute('DELETE FROM trades')
+            self.conn.commit()
+            logger.info(f"✅ Tous les trades ont été supprimés de la base de données: {self.db_path}")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la suppression des trades: {e}")
+            self.conn.rollback()
+            raise
+
     def __enter__(self):
         """Context manager entry"""
         return self

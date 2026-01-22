@@ -47,7 +47,7 @@ class HybridPriceProvider:
 
         # Cache des derniers prix reçus
         self.price_cache: Dict[str, Dict] = {}
-        self.cache_lock = asyncio.Lock()
+        self._cache_lock: Optional[asyncio.Lock] = None  # 🔥 Lazy initialization
 
         # 🔥 v6.6.1 Phase 2A: Buffer pour backpressure (optionnel)
         self.message_buffer = deque(maxlen=100)
@@ -64,6 +64,13 @@ class HybridPriceProvider:
         self._sl_check_callback = None
         self._sl_check_params = None  # {symbol, direction, sl_level, entry_price}
         
+    @property
+    def cache_lock(self) -> asyncio.Lock:
+        """Lazy initialization of the cache lock to ensure it's in the correct event loop"""
+        if self._cache_lock is None:
+            self._cache_lock = asyncio.Lock()
+        return self._cache_lock
+
     def _handle_mexc_message(self, data: dict):
         """
         Callback pour traitement messages WebSocket MEXC
@@ -74,6 +81,9 @@ class HybridPriceProvider:
         
         Note: Callback synchrone, mais WebSocketManager l'appelle depuis un contexte async
         """
+        if DEBUG_ENABLED:
+            logger.debug(f"📥 Message WebSocket reçu: {data.get('channel') or 'unknown'}")
+
         # Heartbeat response
         if data.get("channel") == "pong":
             if DEBUG_ENABLED:
@@ -98,6 +108,9 @@ class HybridPriceProvider:
                 
                 # Extraire prix
                 last_price = _safe_float(ticker_data.get("lastPrice")) or 0.0
+                
+                if DEBUG_ENABLED:
+                    logger.debug(f"📊 Prix WebSocket {ccxt_symbol}: {last_price}")
                 volume24 = _safe_float(ticker_data.get("volume24")) or 0.0
                 mark_price = _safe_float(ticker_data.get("markPrice"))
                 fair_price = _safe_float(ticker_data.get("fairPrice"))

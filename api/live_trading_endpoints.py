@@ -345,7 +345,7 @@ async def update_live_config(data: Dict[str, Any]):
                     if hasattr(main.notification_manager, 'telegram_notifier'):
                         telegram_notif = main.notification_manager.telegram_notifier
 
-                main.live_order_manager = LiveOrderManagerFutures(
+                lom = LiveOrderManagerFutures(
                     api_key=config['api_key_mexc'],
                     api_secret=config['api_secret_mexc'],
                     browser_token=browser_token if browser_token else None,
@@ -356,6 +356,12 @@ async def update_live_config(data: Dict[str, Any]):
                     enable_circuit_breaker=True,       # 🔥 v7.3: Circuit Breaker actif
                     circuit_breaker_threshold=5        # 🔥 v7.3: 5 échecs → ouverture circuit
                 )
+                
+                # 🔥 SYNC: Update both StateManager and main module
+                from core.state_manager import get_state_manager
+                get_state_manager().set_live_order_manager(lom)
+                main.live_order_manager = lom
+                
                 logger.info(
                     f"✅ LiveOrderManagerFutures réinitialisé | "
                     f"Mode: {'DRY_RUN' if config['dry_run'] else 'LIVE RÉEL'} | "

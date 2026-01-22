@@ -47,13 +47,7 @@ class MEXCClient:
 
     def __init__(self):
         # 🔥 v6.6: Connection pooling avec aiohttp
-        self.session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(
-                limit=100,
-                ttl_dns_cache=300,
-                keepalive_timeout=30
-            )
-        )
+        self._session = None
         
         self.exchange = ccxt.mexc({
             'options': {
@@ -64,6 +58,19 @@ class MEXCClient:
         })
         self.cache = {}  # Cache pour éviter appels répétés
         self.ws_manager = None  # WebSocket manager
+    
+    @property
+    def session(self) -> aiohttp.ClientSession:
+        """Lazy initialization of aiohttp ClientSession"""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                connector=aiohttp.TCPConnector(
+                    limit=100,
+                    ttl_dns_cache=300,
+                    keepalive_timeout=30
+                )
+            )
+        return self._session
         
     @async_safe(default_return=None, log_errors=True, suppress_errors=True)
     async def fetch_ticker(self, symbol: str) -> Optional[Dict]:
@@ -124,6 +131,23 @@ class MEXCClient:
             return ticker.get('info', {}).get('fundingRate', 0)
         return None
     
+    async def load_markets(self):
+        """Charger les marchés MEXC avec protection contre les blocages"""
+        try:
+            # 🔥 FIX: Ajouter un timeout pour éviter de bloquer indéfiniment si MEXC est lent
+            await asyncio.wait_for(self.exchange.load_markets(), timeout=10.0)
+            import logging
+            logging.getLogger(__name__).info("✅ Marchés MEXC chargés")
+            return True
+        except asyncio.TimeoutError:
+            import logging
+            logging.getLogger(__name__).error("❌ Timeout lors du chargement des marchés MEXC (10s)")
+            return False
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"❌ Erreur chargement marchés MEXC: {e}")
+            return False
+
     async def __aenter__(self):
         """Async context manager entry"""
         return self
@@ -178,4 +202,3 @@ def get_mexc_client() -> Optional[MEXCClient]:
             logger.debug(traceback.format_exc())
             return None
     return _mexc_client
-

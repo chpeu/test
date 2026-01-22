@@ -76,9 +76,11 @@ async def get_status():
         return JSONResponse({'error': 'App state not available'}, status_code=503)
 
     try:
-        if hasattr(_app_state, 'to_dict'):
-            return JSONResponse(_app_state.to_dict())
-        return JSONResponse(_app_state)
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
+        
+        status_data = state.to_dict()
+        return JSONResponse(status_data)
     except Exception as e:
         logger.error(f"Erreur récupération statut: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
@@ -132,6 +134,7 @@ async def get_complete_state():
 
         return JSONResponse({
             'success': True,
+            'session_id': _app_state.get('session_id'),
             'config': {
                 'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                 'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),

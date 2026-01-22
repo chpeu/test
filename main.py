@@ -9,138 +9,79 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import sys
-
-# 🔥 INSTANCES GLOBALES (Accessibles via main.live_order_manager)
-live_order_manager = None  # Sera initialisé via bootstrap ou config
-trade_db = None
-
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
-if hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
 import asyncio
 import logging
 import json
 import os
-import csv
-import io
-import subprocess
+import time
 import uvicorn
-from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple, Callable
-from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse
-# 🔥 CLEANUP: HTMLResponse, StaticFiles et Jinja2Templates supprimés - Frontend Svelte gère l'interface
-# 🔥 MIGRATION COMPLÈTE: socketio supprimé - WebSocket natif uniquement
-from core.websocket_manager import get_websocket_manager, WebSocketManager
-import time
-from utils.effective_config import get_effective_value
-# 🔥 FIX: Import colorama pour les couleurs dans les logs
-try:
-    import colorama
-    colorama.init()  # Initialiser colorama
-except ImportError:
-    colorama = None
+from collections import OrderedDict
 
 # 🔥 SPRINT 2.1: StateManager for centralized state management
-from core.state_manager import get_state_manager, LegacyAppStateProxy
+from core.state_manager import get_state_manager
+
+# FastAPI imports
+from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
 
 # 🔥 v7.0: Imports complets
 try:
-    from api.price_provider import get_price_provider as create_price_provider
-    from core.scanner import ScalabilityScanner
-    from core.analyzer import TechnicalAnalyzer
-    from core.position_manager import PositionManager, PositionConfig
-    from core.scheduler import Scheduler
-    from core.metrics import get_metrics_collector
-    from core.database import TradeDatabase  # 🔥 PHASE 8: SQLite (legacy)
-    from core.shutdown import GracefulShutdown  # 🔥 SPRINT 1.3: Graceful shutdown
-    # 🔥 LIVE TRADING: Imports pour live trading
-    from api.live_trading_endpoints import router as live_router, register_websocket_commands
-    from api.regime_endpoints import router as regime_router
-    from trading.live_order_manager_futures import LiveOrderManagerFutures as LiveOrderManager
     from core.bootstrap import init_instances, run_initial_top_pairs_scan
     from utils.logging_utils import add_log
-    from utils.history_utils import get_trade_history_file, save_trade_history, load_trade_history
-    from core.position.sl_services import setup_realtime_sl_check, schedule_sl_order_placement, cancel_pending_sl_task
+    from core.websocket_manager import get_websocket_manager
+    from core.shutdown import GracefulShutdown
 except ImportError as e:
-    logging.error(f"Import error: {e}")
-    # Fallback pour les dépendances manquantes
-    create_price_provider = None
-    TradeDatabase = None
-    GracefulShutdown = None
-    ScalabilityScanner = None
-    TechnicalAnalyzer = None
-    PositionManager = None
-    PositionConfig = None
-    Scheduler = None
-    get_metrics_collector = None
-
-# Instances globales
-# (Définies au début du fichier)
+    logging.error(f"❌ Erreur imports critiques: {e}")
+    sys.exit(1)
 
 # 🔥 ARCHITECTURE V2: Nouveaux imports
-# 🔥 IMPORT CRITIQUE: ErrorHistoryManager (obligatoire)
-try:
-    from utils.error_history import ErrorHistoryManager
-except ImportError as e:
-    logging.error(f"❌ Import critique ErrorHistoryManager échoué: {e}")
-    # Créer une classe fallback minimale
-    class ErrorHistoryManager:
-        def __init__(self, max_errors=1000):
-            self.errors = []
-        def add_error(self, level, message, detail="", raw_message=""):
-            self.errors.append({"level": level, "message": message, "detail": detail, "raw_message": raw_message})
-        def get_errors(self, limit=None):
-            return self.errors[-limit:] if limit else self.errors
-        def clear_errors(self):
-            self.errors.clear()
-
 try:
     from core.analytics_database import AnalyticsDatabase
     from notifications import create_notification_manager
     from utils.logger import setup_logger
-    from core.exceptions import TradeCursorError, DatabaseConnectionError, ConfigurationError, NetworkError, NotificationError
-    from api.routes import router as api_router, set_analytics_db, set_position_manager, set_notification_manager, set_instance_port, set_app_state, set_websocket_manager as set_websocket_manager_routes
+    from api.routes import (
+        router as api_router, 
+        set_analytics_db, 
+        set_position_manager, 
+        set_notification_manager, 
+        set_instance_port, 
+        set_app_state, 
+        set_websocket_manager as set_websocket_manager_routes,
+        set_live_order_manager
+    )
+    from utils.error_history import ErrorHistoryManager
+    from api.live_trading_endpoints import router as live_router, register_websocket_commands
+    from api.regime_endpoints import router as regime_router
 except ImportError as e:
-    logging.warning(f"Architecture V2 imports (optionnels): {e}")
-    # Définir toutes les variables manquantes comme None
+    logging.warning(f"⚠️ Architecture V2 imports (optionnels): {e}")
     AnalyticsDatabase = None
-    get_notification_manager = None
     create_notification_manager = None
     setup_logger = None
     api_router = None
-    # Instances globales déjà définies au début du fichier
     set_position_manager = None
     set_notification_manager = None
     set_instance_port = None
     set_app_state = None
     set_websocket_manager_routes = None
+    set_live_order_manager = None
+    live_router = None
+    regime_router = None
+    register_websocket_commands = lambda x: None
+    
+    class ErrorHistoryManager:
+        def __init__(self, max_errors=1000): self.errors = []
+        def add_error(self, *args, **kwargs): pass
+        def get_errors(self, *args, **kwargs): return []
+        def clear_errors(self): pass
 
 # 🔥 REFACTORING SPRINT 1.1: Exception Handling System
 try:
-    from core.exceptions import (
-        TradeCursorError,
-        ConfigurationError,
-        ValidationError,
-        MarketDataError,
-        PriceDataError,
-        PositionError,
-        OrderExecutionError,
-        APIError,
-        NetworkError,
-        WebSocketError,
-        DatabaseError,
-        NotificationError,
-    )
     from core.error_handling import (
         handle_errors,
         log_errors,
@@ -148,11 +89,19 @@ try:
         ErrorContext,
     )
 except ImportError as e:
-    logging.warning(f"Exception handling system (Sprint 1.1): {e}")
-    # Fallback to standard exceptions
-    TradeCursorError = Exception
-    ConfigurationError = Exception
+    logging.warning(f"⚠️ Exception handling system (Sprint 1.1) non trouvé: {e}")
     handle_errors = lambda **kwargs: lambda f: f
+
+# 🔥 FIX: Import colorama pour les couleurs dans les logs
+try:
+    import colorama
+    colorama.init()
+except ImportError:
+    colorama = None
+
+# 🔥 INSTANCES GLOBALES (Maintenues pour compatibilité descendante via StateManager)
+live_order_manager = None
+trade_db = None
 
 # Configuration logging
 logging.basicConfig(
@@ -342,6 +291,13 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager pour initialiser et fermer proprement les ressources"""
     logger.info("🚀 LIFESPAN ENTER: Début du context manager (avant initialisation)")
+    
+    # 🔥 SPRINT 2.1: StateManager for centralized state management
+    state = get_state_manager()
+    
+    # 🔥 RESET SESSION: Notifier le frontend immédiatement pour nettoyer son état
+    # Note: On essaiera d'émettre dès que ws_manager est prêt
+    
     logger.info("🚀 LIFESPAN STARTUP: Initialisation...")
 
     # 🔥 SPRINT 1.3: Graceful shutdown manager
@@ -373,15 +329,33 @@ async def lifespan(app: FastAPI):
             logger.error(f"❌ Erreur inattendue initialisation DataLogger: {e}", exc_info=True)
             app.state.data_logger = None
 
-        # Charger l'historique des trades
-        from utils.history_utils import load_trade_history
-        load_trade_history()
-        
-        # Initialiser les instances
-        from core.bootstrap import init_instances
+        # Initialiser les instances (Inclut maintenant le Scheduler et les composants core)
+        from core.bootstrap import init_instances, run_initial_top_pairs_scan
         init_instances()
-        logger.info("✅ LIFESPAN: init_instances() terminé")
+        
+        # 🔥 FIX: Injection manuelle du session_id dans ws_manager pour garantir la cohérence
+        ws_mgr = state.get_ws_manager()
+        if ws_mgr:
+            # S'assurer que le session_id est bien celui du StateManager
+            ws_mgr.session_id = state.session_id
+            
+            # Émettre reset_session immédiatement après init_instances
+            await ws_mgr.emit('reset_session', {
+                'timestamp': time.time(),
+                'reason': 'backend_startup',
+                'session_id': state.session_id
+            })
+            logger.info(f"✅ Événement reset_session émis (session_id: {state.session_id})")
 
+        # Lancer le scan initial en arrière-plan
+        asyncio.create_task(run_initial_top_pairs_scan())
+
+        # 🔥 RESET HISTORY: Par défaut, on ne charge pas l'historique au démarrage pour repartir de zéro
+        # comme demandé par l'utilisateur. Décommenter pour restaurer la persistance.
+        # from utils.history_utils import load_trade_history
+        # load_trade_history()
+        # logger.info("✅ LIFESPAN: load_trade_history() (désactivé par défaut pour reset)")
+        
         # 🔬 Vérification système HistGradientBoosting au démarrage
         try:
             from verification.verify_histgb_system import verify_config_overrides, verify_model_file
@@ -439,13 +413,8 @@ async def lifespan(app: FastAPI):
             logger.warning("⚠️ Timeout lors de l'initialisation WebSocket")
 
         ws_mgr = state.get_ws_manager()
-        if ws_mgr:
-            await ws_mgr.emit('reset_session', {
-                'timestamp': time.time(),
-                'reason': 'backend_startup'
-            })
-            logger.info("✅ Événement reset_session émis au démarrage (AVANT le scan)")
-
+        # Bloc reset_session déjà géré plus haut après init_instances
+        
         # 🔥 POST-EXIT ANALYSIS: Démarrer la boucle de tracking post-exit
         try:
             from core.callbacks.post_exit_loop import start_post_exit_loop, set_price_provider as set_post_exit_price_provider
@@ -472,6 +441,18 @@ async def lifespan(app: FastAPI):
         logger.info("🟢 LIFESPAN YIELD: Execution principale terminée, début du shutdown")
 
     finally:
+        # 🔥 RESET SESSION: Notifier le frontend de l'arrêt
+        ws_mgr = state.get_ws_manager()
+        if ws_mgr:
+            try:
+                await ws_mgr.emit('reset_session', {
+                    'timestamp': time.time(),
+                    'reason': 'backend_shutdown'
+                })
+                logger.info("✅ Événement reset_session émis avant le shutdown")
+                await asyncio.sleep(0.2) # Laisser le temps à l'émission
+            except: pass
+
         # 🔥 POST-EXIT PERSISTENCE: Sauvegarder les trackers actifs AVANT shutdown
         try:
             from core.post_exit.manager import get_post_exit_manager
@@ -656,18 +637,9 @@ if __name__ == '__main__':
     if port != original_port:
         logger.info(f"✅ Port changé de {original_port} à {port}")
     
-    # 🔥 FIX CRITIQUE: Forcer l'initialisation via bootstrap
-    print("🚀 INIT: Initialisation via core.bootstrap...")
-    try:
-        from core.bootstrap import init_instances
-        init_instances()
-        print("✅ INIT: bootstrap terminé avec succès")
-    except Exception as e:
-        print(f"❌ INIT: Erreur initialisation: {e}")
-        logger.error(f"❌ INIT: Erreur initialisation: {e}", exc_info=True)
-    
     try:
         # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
+        # L'initialisation se fera via le lifespan (init_instances)
         uvicorn.run(app, host='0.0.0.0', port=port, log_level="info", lifespan="on")
     except OSError as e:
         logger.error(f"❌ Erreur binding port {port}: {e}")

@@ -38,7 +38,13 @@ class ScalabilityScanner:
     """Scanner de scalabilité pour identifier les meilleures paires"""
     
     def __init__(self):
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
         self.client = get_mexc_client()
+        self.price_provider = state.get_price_provider()
+        if not self.price_provider:
+            from api.price_provider import get_price_provider
+            self.price_provider = get_price_provider()
         self.is_scanning = False
         # 🔥 OPT #7: caches par instance (évite contamination tests)
         self._orderbook_cache: Dict[str, Dict] = {}

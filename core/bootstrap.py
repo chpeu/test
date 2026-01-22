@@ -46,7 +46,32 @@ def init_instances() -> None:
             logger.info("✅ WebSocket log handler configured")
     except Exception as e:
         logger.debug(f"Could not configure WebSocket log handler: {e}")
-    
+
+    # 2b. Initialize TradeDatabase (Legacy SQLite)
+    if not state.get_trade_db():
+        try:
+            from core.database import TradeDatabase
+            db = TradeDatabase()
+            state.set_trade_db(db)
+            
+            # 🔥 SYNC: Update main module global instance
+            try:
+                import main
+                main.trade_db = db
+            except (ImportError, AttributeError):
+                pass
+                
+            # Reset history at startup if needed
+            try:
+                db.clear_all_trades()
+                logger.info("✅ Legacy TradeDatabase reset at startup")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not reset legacy trades: {e}")
+                
+            logger.info("✅ TradeDatabase (SQLite legacy) ready")
+        except Exception as e:
+            logger.error(f"❌ Error init TradeDatabase: {e}")
+
     # 3. Initialize Analytics DB
     if not state.get_analytics_db():
         from config import ANALYTICS_DB_PATH
@@ -65,7 +90,8 @@ def init_instances() -> None:
                 db.clear_all_trades()
                 state.update_stats(total_trades=0, wins=0, losses=0)
                 state.set_trade_history([])
-                logger.info("✅ Stats reset at startup")
+                state.clear_logs()  # 🔥 Clear logs buffer at startup
+                logger.info("✅ Stats and logs reset at startup")
             except Exception as e:
                 logger.warning(f"⚠️ Could not reset stats: {e}")
         except Exception as e:
@@ -73,30 +99,30 @@ def init_instances() -> None:
             state.set_analytics_db(None)
             
     # 4. Initialize PostgreSQL DataLogger
-    try:
-        from core.postgresql_datalogger import PostgreSQLDataLogger
-        from config import (
-            POSTGRES_ENABLED, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
-            POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_MIN_CONN, POSTGRES_MAX_CONN
-        )
-        
-        if POSTGRES_ENABLED:
-            pg_datalogger = PostgreSQLDataLogger(
-                host=POSTGRES_HOST,
-                port=POSTGRES_PORT,
-                database=POSTGRES_DB,
-                user=POSTGRES_USER,
-                password=POSTGRES_PASSWORD,
-                min_conn=POSTGRES_MIN_CONN,
-                max_conn=POSTGRES_MAX_CONN
+    if not state.get_pg_datalogger():
+        try:
+            from core.postgresql_datalogger import PostgreSQLDataLogger
+            from config import (
+                POSTGRES_ENABLED, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
+                POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_MIN_CONN, POSTGRES_MAX_CONN
             )
             
-            if pg_datalogger.enabled:
-                logger.info("✅ PostgreSQL DataLogger initialized")
-                # Inject into scanner_loop callback if needed
-                # (This is usually done via module-level setters)
-    except Exception as e:
-        logger.warning(f"⚠️ Error initializing PostgreSQL DataLogger: {e}")
+            if POSTGRES_ENABLED:
+                pg_datalogger = PostgreSQLDataLogger(
+                    host=POSTGRES_HOST,
+                    port=POSTGRES_PORT,
+                    database=POSTGRES_DB,
+                    user=POSTGRES_USER,
+                    password=POSTGRES_PASSWORD,
+                    min_conn=POSTGRES_MIN_CONN,
+                    max_conn=POSTGRES_MAX_CONN
+                )
+                
+                if pg_datalogger.enabled:
+                    state.set_pg_datalogger(pg_datalogger)
+                    logger.info("✅ PostgreSQL DataLogger initialized and stored in StateManager")
+        except Exception as e:
+            logger.warning(f"⚠️ Error initializing PostgreSQL DataLogger: {e}")
         
     # 5. Initialize Notification Manager
     if not state.get_notification_manager():
@@ -120,6 +146,68 @@ def init_instances() -> None:
         )
         state.set_notification_manager(notif_mgr)
         logger.info(f"📱 Notification Manager initialized (Telegram: {'ENABLED' if TELEGRAM_ENABLED else 'DISABLED'})")
+
+    # 5b. Initialize Core Trading Components (Scanner, Analyzer, PositionManager, PriceProvider)
+    try:
+        from core.scanner import ScalabilityScanner
+        from core.analyzer import TechnicalAnalyzer
+        from core.position_manager import PositionManager, PositionConfig
+        from api.price_provider import get_price_provider
+        
+        if not state.get_price_provider():
+            price_provider = get_price_provider()
+            state.set_price_provider(price_provider)
+            logger.info("✅ PriceProvider initialized")
+
+        if not state.get_analyzer():
+            analyzer = TechnicalAnalyzer()
+            state.set_analyzer(analyzer)
+            logger.info("✅ TechnicalAnalyzer initialized")
+
+        if not state.get_scanner():
+            scanner = ScalabilityScanner()
+            state.set_scanner(scanner)
+            logger.info("✅ ScalabilityScanner initialized")
+
+        if not state.get_position_manager():
+            config = PositionConfig()
+            # PositionManager needs access to state for various checks
+            # 🔥 SYNC: Pass analytics_db and live_order_manager to constructor
+            pos_mgr = PositionManager(
+                config=config,
+                analytics_db=state.get_analytics_db(),
+                live_order_manager=state.get_live_order_manager()
+            )
+            state.set_position_manager(pos_mgr)
+            logger.info("✅ PositionManager initialized with AnalyticsDB and LiveOrderManager")
+            
+        # 🔥 SYNC: Initialiser live_order_manager si nécessaire
+        if not state.get_live_order_manager():
+            from api.live_trading_endpoints import load_live_config
+            live_config = load_live_config()
+            if live_config.get('trading_mode') == 'LIVE' and live_config.get('api_key_mexc'):
+                try:
+                    from trading.live_order_manager_futures import LiveOrderManagerFutures
+                    lom = LiveOrderManagerFutures(
+                        api_key=live_config['api_key_mexc'],
+                        api_secret=live_config['api_secret_mexc'],
+                        dry_run=live_config.get('dry_run', True)
+                    )
+                    state.set_live_order_manager(lom)
+                    
+                    # 🔥 SYNC: Update main module global instance
+                    try:
+                        import main
+                        main.live_order_manager = lom
+                    except (ImportError, AttributeError):
+                        pass
+                        
+                    logger.info(f"✅ LiveOrderManager initialized (Mode: {'DRY-RUN' if live_config.get('dry_run') else 'LIVE'})")
+                except Exception as lom_err:
+                    logger.warning(f"⚠️ Could not init LiveOrderManager: {lom_err}")
+            
+    except Exception as e:
+        logger.error(f"❌ Error initializing core trading components: {e}", exc_info=True)
 
     # 6. Inject into API routes
     try:
@@ -147,6 +235,8 @@ def init_instances() -> None:
             set_price_provider(state.get_price_provider())
         if state.get_scheduler():
             set_scheduler(state.get_scheduler())
+        if state.get_live_order_manager():
+            set_live_order_manager(state.get_live_order_manager())
             
         logger.info("✅ Dependencies injected into API routes")
     except Exception as e:
@@ -171,19 +261,74 @@ def init_instances() -> None:
         ws_mgr = state.get_ws_manager()
         # Inject ws_manager into callback modules if they have setters
         try:
-            from core.callbacks.scanner_loop import set_websocket_manager as set_ws_scanner
-            if ws_mgr: set_ws_scanner(ws_mgr)
-        except (ImportError, AttributeError): pass
-        
-        try:
-            from core.callbacks.position_check_loop import set_websocket_manager as set_ws_pos
-            if ws_mgr: set_ws_pos(ws_mgr)
-        except (ImportError, AttributeError): pass
+            from core.callbacks.scanner_loop import (
+                set_websocket_manager as set_ws_scanner,
+                set_scanner as set_inst_scanner,
+                set_analyzer as set_inst_analyzer,
+                set_position_manager as set_inst_pos,
+                set_price_provider as set_inst_price,
+                set_app_state as set_inst_state,
+                set_notification_manager as set_inst_notif,
+                set_pg_datalogger as set_inst_pg,
+                set_scanner_lock as set_lock_scanner_inst
+            )
+            from core.callbacks.position_check_loop import (
+                set_websocket_manager as set_ws_pos,
+                set_position_manager as set_inst_pos_check,
+                set_price_provider as set_inst_price_check,
+                set_app_state as set_inst_state_check,
+                set_notification_manager as set_inst_notif_check,
+                set_analytics_db as set_inst_analytics_check,
+                set_position_lock as set_lock_pos_inst
+            )
+            from core.callbacks.scalability_refresh import (
+                set_websocket_manager as set_ws_scal,
+                set_scanner as set_inst_scanner_scal,
+                set_position_manager as set_inst_pos_scal,
+                set_price_provider as set_inst_price_scal,
+                set_app_state as set_inst_state_scal
+            )
 
-        try:
-            from core.callbacks.scalability_refresh import set_websocket_manager as set_ws_scal
-            if ws_mgr: set_ws_scal(ws_mgr)
-        except (ImportError, AttributeError): pass
+            if ws_mgr:
+                set_ws_scanner(ws_mgr)
+                set_ws_pos(ws_mgr)
+                set_ws_scal(ws_mgr)
+
+            # Scanner loop injections
+            if state.get_scanner(): set_inst_scanner(state.get_scanner())
+            if state.get_analyzer(): set_inst_analyzer(state.get_analyzer())
+            if state.get_position_manager(): set_inst_pos(state.get_position_manager())
+            if state.get_price_provider(): set_inst_price(state.get_price_provider())
+            set_inst_state(state.get_legacy_proxy())
+            if state.get_notification_manager(): set_inst_notif(state.get_notification_manager())
+            set_lock_scanner_inst(state.lock("scanner"))
+            
+            # Position check loop injections
+            if state.get_position_manager(): set_inst_pos_check(state.get_position_manager())
+            if state.get_price_provider(): set_inst_price_check(state.get_price_provider())
+            set_inst_state_check(state.get_legacy_proxy())
+            if state.get_notification_manager(): set_inst_notif_check(state.get_notification_manager())
+            if state.get_analytics_db(): set_inst_analytics_check(state.get_analytics_db())
+            set_lock_pos_inst(state.lock("position"))
+
+            # Scalability refresh injections
+            if state.get_scanner(): set_inst_scanner_scal(state.get_scanner())
+            if state.get_position_manager(): set_inst_pos_scal(state.get_position_manager())
+            if state.get_price_provider(): set_inst_price_scal(state.get_price_provider())
+            set_inst_state_scal(state.get_legacy_proxy())
+
+            # Use current pg_datalogger if available
+            pg_logger = state.get_pg_datalogger()
+            if pg_logger and pg_logger.enabled:
+                set_inst_pg(pg_logger)
+            
+        except (ImportError, AttributeError) as e:
+            logger.warning(f"⚠️ Error injecting dependencies into loops: {e}")
+        
+        # Start the scheduler automatically
+        sched.start()
+        state.set_is_scanning(True)
+        logger.info("✅ Scheduler started automatically")
             
         logger.info("✅ Scheduler initialized with callbacks")
 
@@ -197,41 +342,78 @@ async def run_initial_top_pairs_scan() -> None:
     init_instances()
     state = get_state_manager()
     
-    if state.top_pairs:
-        return
-        
-    try:
-        await add_log('INFO', 'Scanner started', 'Initial top pairs scan in background...')
-        scanner_inst = state.get_scanner()
-        if not scanner_inst:
-            logger.warning("⚠️ Scanner not available")
+    # 🔥 Use scanner lock to avoid concurrent scans
+    scanner_lock = state.lock("scanner")
+    
+    logger.info("📡 [DEBUG-SCAN] run_initial_top_pairs_scan: Tentative d'acquisition du lock...")
+    async with scanner_lock:
+        logger.info("📡 [DEBUG-SCAN] run_initial_top_pairs_scan: Lock acquis")
+        if state.top_pairs:
+            logger.info("📡 [DEBUG-SCAN] top_pairs déjà présent, skip scan initial")
             return
             
-        if scanner_inst.is_scanning:
-            return
+        try:
+            await add_log('INFO', 'Scanner started', 'Initial top pairs scan in background...')
+            scanner_inst = state.get_scanner()
+            if not scanner_inst:
+                logger.error("⚠️ [DEBUG-SCAN] Scanner non disponible dans le StateManager")
+                return
+                
+            if scanner_inst.is_scanning:
+                logger.warning("⚠️ [DEBUG-SCAN] Scanner est déjà en train de scanner")
+                return
+                
+            logger.info("📡 [DEBUG-SCAN] Appel scanner_inst.scan_top_pairs(20)...")
+            top_pairs = await scanner_inst.scan_top_pairs(20)
+            if not top_pairs:
+                logger.warning("⚠️ [DEBUG-SCAN] Scan initial terminé sans résultats")
+                return
+                
+            logger.info(f"📡 [DEBUG-SCAN] {len(top_pairs)} paires trouvées lors du scan initial")
+            state.set_top_pairs(top_pairs)
             
-        top_pairs = await scanner_inst.scan_top_pairs(20)
-        if not top_pairs:
-            logger.warning("⚠️ Initial scan finished with no results")
-            return
+            ws_mgr = state.get_ws_manager()
+            if ws_mgr:
+                await ws_mgr.emit('top_pairs_update', {'pairs': top_pairs})
+                
+            price_prov = state.get_price_provider()
+            if price_prov:
+                # 🔥 FIX: Extraire les symboles et s'assurer qu'ils sont au format MEXC si nécessaire
+                symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
+                if symbols:
+                    try:
+                        logger.info(f"📡 [DEBUG-SCAN] Démarrage WebSocket prix pour {len(symbols)} symboles...")
+                        # start_websocket gère déjà la conversion de format
+                        # 🔥 FIX: Ajouter un timeout pour éviter de bloquer tout le scanner si MEXC est lent
+                        await asyncio.wait_for(price_prov.start_websocket(symbols), timeout=15.0)
+                        await add_log('INFO', 'WebSocket started', f'{len(symbols)} symbols monitored')
+                    except asyncio.TimeoutError:
+                        logger.error("❌ [DEBUG-SCAN] Timeout lors du démarrage du WebSocket prix (15s)")
+                        await add_log('WARNING', 'Price WebSocket Timeout', 'Using REST fallback')
+                    except Exception as e:
+                        logger.error(f"❌ [DEBUG-SCAN] Erreur démarrage WebSocket prix: {e}", exc_info=True)
             
-        state.set_top_pairs(top_pairs)
-        
-        ws_mgr = state.get_ws_manager()
-        if ws_mgr:
-            await ws_mgr.emit('top_pairs_update', {'pairs': top_pairs})
-            
-        price_prov = state.get_price_provider()
-        if price_prov:
-            symbols = [p.get('symbol', '') for p in top_pairs[:30] if p.get('symbol')]
-            if symbols:
-                try:
-                    await price_prov.start_websocket(symbols)
-                    await add_log('INFO', 'WebSocket started', f'{len(symbols)} symbols monitored')
-                except Exception as e:
-                    logger.warning(f"⚠️ Error starting WebSocket: {e}")
-    except Exception as e:
-        logger.error(f"❌ Error during initial top pairs scan: {e}")
+            # 🔥 OPT #14: Immediate setup scan after initial top pairs scan
+            try:
+                from core.callbacks.scanner_loop import scan_pair_for_setup
+                from config import TRADING_CONFIG
+                
+                limit = TRADING_CONFIG.get('top_pairs_limit', 20)
+                pairs_to_scan = top_pairs[:limit]
+                
+                if pairs_to_scan:
+                    logger.info(f"🔍 [DEBUG-SCAN] Lancement du premier scan de setups ({len(pairs_to_scan)} paires)...")
+                    scan_tasks = [scan_pair_for_setup(p.get('symbol', '')) for p in pairs_to_scan if p.get('symbol')]
+                    if scan_tasks:
+                        results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+                        valid_count = sum(1 for r in results if r and isinstance(r, dict) and 'direction' in r)
+                        logger.info(f"✅ [DEBUG-SCAN] Premier scan de setups terminé: {valid_count} setups valides trouvés")
+            except Exception as setup_err:
+                logger.error(f"❌ [DEBUG-SCAN] Erreur lors du premier scan de setups: {setup_err}", exc_info=True)
+
+        except Exception as e:
+            logger.error(f"❌ [DEBUG-SCAN] Erreur critique lors du scan initial: {e}", exc_info=True)
+            await add_log('ERROR', 'Initial scan failed', str(e))
                     
 async def perform_backend_reboot(reason: str = 'manual'):
     """
