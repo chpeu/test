@@ -1452,7 +1452,7 @@ class PositionManager:
         self.tpsl_config.fixed_sl_pct = get_effective_value('sl_percent') or 0.10
 
         # 🔥 FIX: Séparer complètement les modes - pas de mélange de paramètres
-        tp_sl_mode = trading_params.get('tp_sl_mode', 'FIXE')
+        tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
 
         # Modes distincts sans mélange
         use_atr = (tp_sl_mode == 'ATR') or self.config.use_atr

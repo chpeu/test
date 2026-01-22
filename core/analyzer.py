@@ -1202,6 +1202,13 @@ class TechnicalAnalyzer:
                     best_setup = analysis_5m
 
             if best_setup:
+                # Récupérer final_rsi pour les filtres
+                final_rsi = best_setup.get('rsi')
+                if final_rsi is None:
+                    # Fallback sur les indicateurs extraits si non présent dans le setup direct
+                    indicators_best = self._extract_indicators(best_setup)
+                    final_rsi = indicators_best.get('rsi', 50)
+
                 # 🔥 FIX: Vérification RSI FINALE avant les autres vérifications (configurable)
                 rsi_filter_enabled = get_effective_value('rsi_final_filter_enabled')
                 if rsi_filter_enabled is None:

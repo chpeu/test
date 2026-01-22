@@ -733,14 +733,14 @@ class ScalabilityScanner:
             
             for symbol, market in markets.items():
                 if market.get('type') == 'swap' and market.get('quote') == 'USDT' and market.get('active'):
-                    # 🔥 RELAXED FEE FILTER: Accepter les paires avec des frais raisonnables (< 0.08% taker)
                     maker_fee = market.get('maker', 0)
                     taker_fee = market.get('taker', 0)
                     major_pairs = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']
                     is_major = symbol in major_pairs
                     
-                    # 🔥 Augmenté à 0.0008 (0.08%) pour être plus large sur MEXC
-                    if taker_fee <= 0.0008 or is_major:
+                    # 🔥 SPRINT 3: STRICT 0-FEE FILTER
+                    # On ne sélectionne QUE les paires à 0 frais (taker == 0)
+                    if taker_fee == 0 or is_major:
                         futures_pairs.append({
                             'symbol': symbol,
                             'maker': maker_fee,
@@ -749,7 +749,7 @@ class ScalabilityScanner:
                         })
                     else:
                         if DEBUG_ENABLED:
-                            logger.debug(f"⏭️ {symbol} ignoré: taker_fee={taker_fee*100:.4f}% > 0.08%")
+                            logger.debug(f"⏭️ {symbol} ignoré: taker_fee={taker_fee*100:.4f}% > 0%")
             
             logger.info(f"📊 {len(futures_pairs)} paires après filtrage des frais (incluant majeures)")
             
