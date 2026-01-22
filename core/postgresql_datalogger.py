@@ -3256,6 +3256,11 @@ class PostgreSQLDataLogger:
             # Récupérer session_id actuel si disponible
             session_id = getattr(self, '_current_session_id', None)
             
+            # 🔥 FIX: Tronquer les valeurs pour éviter "valeur trop longue pour character varying(30)"
+            # au cas où l'extraction de symbole ou le type d'erreur dépasse les limites
+            safe_symbol = symbol[:30] if symbol and isinstance(symbol, str) else symbol
+            safe_error_type = error_type[:50] if error_type and isinstance(error_type, str) else error_type
+            
             cursor.execute("""
                 INSERT INTO scan_errors (
                     timestamp, session_id, symbol, error_type, 
@@ -3264,8 +3269,8 @@ class PostgreSQLDataLogger:
                 VALUES (NOW(), %s, %s, %s, %s, %s, %s)
             """, (
                 session_id,
-                symbol,
-                error_type,
+                safe_symbol,
+                safe_error_type,
                 error_message,
                 error_stack,
                 json.dumps(scan_context) if scan_context else None

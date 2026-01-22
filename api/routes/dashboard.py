@@ -61,25 +61,18 @@ async def get_status():
     """
     GET /api/status
     Récupérer l'état global de l'application
-
-    Response:
-    {
-        "is_scanning": bool,
-        "active_position": bool,
-        "stats": {...},
-        "top_pairs": [...],
-        "logs": [...],
-        "trade_history": [...]
-    }
     """
     if not _app_state:
         return JSONResponse({'error': 'App state not available'}, status_code=503)
 
     try:
-        from core.state_manager import get_state_manager
-        state = get_state_manager()
-        
-        status_data = state.to_dict()
+        # 🔥 FIX: Utiliser _app_state injecté au lieu de get_state_manager() pour cohérence et tests
+        if hasattr(_app_state, 'to_dict'):
+            status_data = _app_state.to_dict()
+        else:
+            # Fallback pour les tests ou si c'est un dict
+            status_data = dict(_app_state)
+            
         return JSONResponse(status_data)
     except Exception as e:
         logger.error(f"Erreur récupération statut: {e}")

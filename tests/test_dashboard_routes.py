@@ -138,13 +138,13 @@ class TestDashboardRoutes:
 
     def test_get_status_exception(self, client):
         """Test /api/status with exception"""
-        # Set app_state to an object that causes exception during JSON serialization
-        class UnserializableObject:
-            def __init__(self):
-                self.circular = self
-                self.value = "test"
+        # Set app_state to an object that causes exception during dict() conversion
+        # Use a mock that raises an exception when iterated
+        mock_broken_state = MagicMock()
+        mock_broken_state.__iter__.side_effect = Exception("Serialization error")
+        mock_broken_state.to_dict.side_effect = Exception("Serialization error")
 
-        dashboard._app_state = {"data": UnserializableObject()}
+        dashboard._app_state = mock_broken_state
 
         response = client.get("/api/status")
         assert response.status_code == 500

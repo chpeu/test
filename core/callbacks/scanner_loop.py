@@ -924,6 +924,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         # 🔥 PHASE 3: Mesurer la durée du scan
         import time
         scan_start_time = time.time()
+        klines_1m = None  # Initialisation préventive pour éviter NameError
 
         # Récupérer configuration
         from config import TRADING_CONFIG
@@ -1298,7 +1299,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 if not scalability_data:
                     logger.warning(f"⚠️ scalability_data vide après recherche dans top_pairs pour {symbol}")
 
-                # Fallback: utiliser les infos présentes dans l'analyse/best_setup
+                # Fallback: utiliser les infos présentes dans l'analyse
                 if not scalability_data:
                     analysis_obj = analysis or {}
                     orderbook_check = analysis_obj.get('orderbook_check') or {}
@@ -1543,7 +1544,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     if scan_data.get('regime_confidence_at_scan') is None:
                         try:
                             # Utiliser les vrais attributs de MarketRegimeSelector
-                            sample_count = getattr(regime_selector, 'atr_sample_count', None) or getattr(regime_selector, 'atr_sample_count', None)
+                            sample_count = getattr(regime_selector, 'atr_sample_count', None)
                             sample_size = getattr(regime_selector, 'atr_sample_size', None) or 10
                             if sample_count is not None and sample_size > 0:
                                 confidence = min(1.0, float(sample_count) / float(sample_size))
@@ -1565,20 +1566,18 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 scan_id = await pg_datalogger.log_scan_async(symbol, scan_data, use_batch=use_batch_mode)
                 logger.info(f"✅ log_scan_async() terminé pour {symbol} (scan_id={scan_id})")
                 logger.debug(f"🔍 DEBUG: scan_id={scan_id} généré pour {symbol}")
-                                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
+                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans d'autres étapes
                 if analysis and isinstance(analysis, dict) and scan_id:
                     analysis['_scan_uuid'] = scan_id
-                    if isinstance(best_setup, dict):
-                        best_setup['_scan_uuid'] = scan_id
-                    logger.warning(f"🔥 DEBUG: scan_id={scan_id} ajouté à analysis ET best_setup pour {symbol}")
-                    logger.debug(f"🔍 DEBUG: scan_uuid propagé à analysis et best_setup pour {symbol}")
+                    logger.warning(f"🔥 DEBUG: scan_id={scan_id} ajouté à analysis pour {symbol}")
+                    logger.debug(f"🔍 DEBUG: scan_uuid propagé à analysis pour {symbol}")
                 
                 # 🔥 Calculer ML prediction et features pour tous les setups valides (pas seulement les opportunities)
-                if best_setup and (best_setup.get('direction') in ['LONG', 'SHORT']):
+                if analysis and (analysis.get('direction') in ['LONG', 'SHORT']):
                     try:
                         from optimization.scanner_ml_integration import get_ml_prediction_for_opportunity
                         
-                        scan_id = best_setup.get('_scan_uuid') or best_setup.get('scan_id')
+                        scan_id = analysis.get('_scan_uuid') or analysis.get('scan_id')
                         ml_prediction = await get_ml_prediction_for_opportunity(
                             klines=klines_1m,
                             symbol=symbol,
@@ -1594,9 +1593,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                             logger.debug(f"🤖 ML Setup {symbol}: {prediction} (conf: {confidence*100:.1f}%)")
                             
                             if prediction is not None:
-                                best_setup['ml_prediction'] = prediction
+                                analysis['ml_prediction'] = prediction
                             if isinstance(ml_features, dict):
-                                best_setup['ml_features'] = ml_features
+                                analysis['ml_features'] = ml_features
                     except Exception as e:
                         logger.debug(f"⚠️ Erreur calcul ML setup pour {symbol}: {e}")
                 
@@ -1669,12 +1668,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         use_batch=False  # Mode direct pour avoir l'ID immédiatement
                     )
                     
-                    # 🔥 FIX: Ajouter opportunity_id à analysis pour qu'il soit disponible dans best_setup
+                    # 🔥 FIX: Ajouter opportunity_id à analysis pour qu'il soit disponible dans d'autres étapes
                     if opportunity_id:
                         analysis['_opportunity_id'] = opportunity_id
-                        if isinstance(best_setup, dict):
-                            best_setup['_opportunity_id'] = opportunity_id
-                        logger.warning(f"🔥 DEBUG: opportunity_id={opportunity_id} ajouté à analysis ET best_setup pour {symbol}")
+                        logger.warning(f"🔥 DEBUG: opportunity_id={opportunity_id} ajouté à analysis pour {symbol}")
                     else:
                         logger.warning(f"⚠️ opportunity_id est None pour {symbol} !")
                     

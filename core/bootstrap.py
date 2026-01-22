@@ -21,17 +21,21 @@ def init_instances() -> None:
     """
     Initialize all global instances required for the bot to function.
     """
+    import time
+    start_total = time.time()
     state = get_state_manager()
     
     # 1. Reset error history
+    start = time.time()
     try:
         from utils.error_history import reset_error_history
         reset_error_history()
-        logger.info("🗑️ Error history reset at startup")
+        logger.info(f"🗑️ Error history reset at startup ({time.time()-start:.3f}s)")
     except Exception as e:
         logger.debug(f"Error resetting error history: {e}")
     
     # 2. Configure WebSocket log handler
+    start = time.time()
     try:
         from utils.logger import WebSocketLogHandler
         root_logger = logging.getLogger()
@@ -43,11 +47,12 @@ def init_instances() -> None:
             ws_handler.setLevel(logging.INFO)
             ws_handler.setFormatter(logging.Formatter('%(message)s'))
             root_logger.addHandler(ws_handler)
-            logger.info("✅ WebSocket log handler configured")
+            logger.info(f"✅ WebSocket log handler configured ({time.time()-start:.3f}s)")
     except Exception as e:
         logger.debug(f"Could not configure WebSocket log handler: {e}")
 
     # 2b. Initialize TradeDatabase (Legacy SQLite)
+    start = time.time()
     if not state.get_trade_db():
         try:
             from core.database import TradeDatabase
@@ -64,7 +69,7 @@ def init_instances() -> None:
             # Reset history at startup if needed
             try:
                 db.clear_all_trades()
-                logger.info("✅ Legacy TradeDatabase reset at startup")
+                logger.info(f"✅ Legacy TradeDatabase reset at startup ({time.time()-start:.3f}s)")
             except Exception as e:
                 logger.warning(f"⚠️ Could not reset legacy trades: {e}")
                 
@@ -73,6 +78,7 @@ def init_instances() -> None:
             logger.error(f"❌ Error init TradeDatabase: {e}")
 
     # 3. Initialize Analytics DB
+    start = time.time()
     if not state.get_analytics_db():
         from config import ANALYTICS_DB_PATH
         from core.analytics_database import AnalyticsDatabase
@@ -83,7 +89,7 @@ def init_instances() -> None:
             port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 5000
             db = AnalyticsDatabase(db_path=ANALYTICS_DB_PATH, instance_port=port)
             state.set_analytics_db(db)
-            logger.info(f"✅ Analytics DB ready: {ANALYTICS_DB_PATH}")
+            logger.info(f"✅ Analytics DB ready: {ANALYTICS_DB_PATH} ({time.time()-start:.3f}s)")
             
             # Reset stats at startup
             try:
@@ -99,6 +105,7 @@ def init_instances() -> None:
             state.set_analytics_db(None)
             
     # 4. Initialize PostgreSQL DataLogger
+    start = time.time()
     if not state.get_pg_datalogger():
         try:
             from core.postgresql_datalogger import PostgreSQLDataLogger
@@ -120,11 +127,12 @@ def init_instances() -> None:
                 
                 if pg_datalogger.enabled:
                     state.set_pg_datalogger(pg_datalogger)
-                    logger.info("✅ PostgreSQL DataLogger initialized and stored in StateManager")
+                    logger.info(f"✅ PostgreSQL DataLogger initialized ({time.time()-start:.3f}s)")
         except Exception as e:
             logger.warning(f"⚠️ Error initializing PostgreSQL DataLogger: {e}")
         
     # 5. Initialize Notification Manager
+    start = time.time()
     if not state.get_notification_manager():
         from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
         from config import NOTIFICATION_BATCHING_ENABLED
@@ -145,9 +153,10 @@ def init_instances() -> None:
             instance_port=port
         )
         state.set_notification_manager(notif_mgr)
-        logger.info(f"📱 Notification Manager initialized (Telegram: {'ENABLED' if TELEGRAM_ENABLED else 'DISABLED'})")
+        logger.info(f"📱 Notification Manager initialized ({time.time()-start:.3f}s)")
 
     # 5b. Initialize Core Trading Components (Scanner, Analyzer, PositionManager, PriceProvider)
+    start = time.time()
     try:
         from core.scanner import ScalabilityScanner
         from core.analyzer import TechnicalAnalyzer
@@ -179,9 +188,10 @@ def init_instances() -> None:
                 live_order_manager=state.get_live_order_manager()
             )
             state.set_position_manager(pos_mgr)
-            logger.info("✅ PositionManager initialized with AnalyticsDB and LiveOrderManager")
+            logger.info(f"✅ PositionManager initialized ({time.time()-start:.3f}s)")
             
         # 🔥 SYNC: Initialiser live_order_manager si nécessaire
+        start_lom = time.time()
         if not state.get_live_order_manager():
             from api.live_trading_endpoints import load_live_config
             live_config = load_live_config()
@@ -202,7 +212,7 @@ def init_instances() -> None:
                     except (ImportError, AttributeError):
                         pass
                         
-                    logger.info(f"✅ LiveOrderManager initialized (Mode: {'DRY-RUN' if live_config.get('dry_run') else 'LIVE'})")
+                    logger.info(f"✅ LiveOrderManager initialized ({time.time()-start_lom:.3f}s)")
                 except Exception as lom_err:
                     logger.warning(f"⚠️ Could not init LiveOrderManager: {lom_err}")
             
@@ -210,39 +220,31 @@ def init_instances() -> None:
         logger.error(f"❌ Error initializing core trading components: {e}", exc_info=True)
 
     # 6. Inject into API routes
+    start = time.time()
     try:
         from api.routes import (
             set_analytics_db, set_notification_manager, set_instance_port,
             set_app_state, set_websocket_manager, set_position_manager,
-            set_price_provider, set_scheduler
+            set_price_provider, set_scheduler, set_live_order_manager
         )
         
         port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 5000
         set_instance_port(port)
         
-        if state.get_analytics_db():
-            set_analytics_db(state.get_analytics_db())
-        if state.get_notification_manager():
-            set_notification_manager(state.get_notification_manager())
-        if state.get_ws_manager():
-            set_websocket_manager(state.get_ws_manager())
-            
+        if state.get_analytics_db(): set_analytics_db(state.get_analytics_db())
+        if state.get_notification_manager(): set_notification_manager(state.get_notification_manager())
         set_app_state(state.get_legacy_proxy())
+        if state.get_ws_manager(): set_websocket_manager(state.get_ws_manager())
+        if state.get_position_manager(): set_position_manager(state.get_position_manager())
+        if state.get_price_provider(): set_price_provider(state.get_price_provider())
+        if state.get_live_order_manager(): set_live_order_manager(state.get_live_order_manager())
         
-        if state.get_position_manager():
-            set_position_manager(state.get_position_manager())
-        if state.get_price_provider():
-            set_price_provider(state.get_price_provider())
-        if state.get_scheduler():
-            set_scheduler(state.get_scheduler())
-        if state.get_live_order_manager():
-            set_live_order_manager(state.get_live_order_manager())
-            
-        logger.info("✅ Dependencies injected into API routes")
-    except Exception as e:
+        logger.info(f"✅ Dependencies injected into API routes ({time.time()-start:.3f}s)")
+    except (ImportError, AttributeError, NameError) as e:
         logger.warning(f"⚠️ Error injecting dependencies into API routes: {e}")
 
     # 7. Initialize Scheduler and configure callbacks
+    start = time.time()
     if not state.get_scheduler():
         from core.scheduler import Scheduler
         from core.callbacks import (
@@ -328,9 +330,9 @@ def init_instances() -> None:
         # Start the scheduler automatically
         sched.start()
         state.set_is_scanning(True)
-        logger.info("✅ Scheduler started automatically")
+        logger.info(f"✅ Scheduler started automatically ({time.time()-start:.3f}s)")
             
-        logger.info("✅ Scheduler initialized with callbacks")
+    logger.info(f"🏁 init_instances terminé en {time.time()-start_total:.3f}s")
 
 async def run_initial_top_pairs_scan() -> None:
     """

@@ -302,13 +302,16 @@ class TestMEXCClient:
         client = MEXCClient()
 
         # Mock session and exchange
-        client.session = AsyncMock()
-        client.exchange = AsyncMock()
+        mock_session = AsyncMock()
+        mock_session.closed = False  # 🔥 Crucial: avoid lazy re-init if mock looks closed
+        mock_exchange = AsyncMock()
+        client.session = mock_session
+        client.exchange = mock_exchange
 
         await client.close()
 
-        client.session.close.assert_called_once()
-        client.exchange.close.assert_called_once()
+        mock_session.close.assert_called_once()
+        mock_exchange.close.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_close_with_ws_manager(self):
@@ -316,15 +319,19 @@ class TestMEXCClient:
         client = MEXCClient()
 
         # Mock session, exchange and ws_manager
-        client.session = AsyncMock()
-        client.exchange = AsyncMock()
-        client.ws_manager = AsyncMock()
+        mock_session = AsyncMock()
+        mock_session.closed = False
+        mock_exchange = AsyncMock()
+        mock_ws = AsyncMock()
+        client.session = mock_session
+        client.exchange = mock_exchange
+        client.ws_manager = mock_ws
 
         await client.close()
 
-        client.ws_manager.disconnect.assert_called_once()
-        client.session.close.assert_called_once()
-        client.exchange.close.assert_called_once()
+        mock_ws.disconnect.assert_called_once()
+        mock_session.close.assert_called_once()
+        mock_exchange.close.assert_called_once()
 
     def test_destructor(self):
         """Test __del__ method doesn't raise exceptions"""

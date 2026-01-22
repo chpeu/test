@@ -10,13 +10,13 @@ export default defineConfig({
 		proxy: {
 			// Proxy API vers FastAPI backend
 			'/api': {
-				target: 'http://localhost:5000',
+				target: 'http://127.0.0.1:5000',
 				changeOrigin: true,
 				ws: false
 			},
 			// 🔥 REMPLACEMENT: WebSocket natif au lieu de Socket.IO
 			'/ws': {
-				target: 'ws://localhost:5000',
+				target: 'ws://127.0.0.1:5000',
 				changeOrigin: true,
 				ws: true, // WebSocket support
 				rewrite: (path) => path,

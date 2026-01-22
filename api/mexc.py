@@ -71,6 +71,11 @@ class MEXCClient:
                 )
             )
         return self._session
+
+    @session.setter
+    def session(self, value):
+        """Setter for session (useful for mocking in tests)"""
+        self._session = value
         
     @async_safe(default_return=None, log_errors=True, suppress_errors=True)
     async def fetch_ticker(self, symbol: str) -> Optional[Dict]:

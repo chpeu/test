@@ -18,6 +18,9 @@ class TestWebSocketManager:
         assert len(manager.active_connections) == 0
         assert len(manager.connection_data) == 0
         assert len(manager.rooms) == 0
+        # _lock est initialisé paresseusement via la propriété lock
+        assert manager._lock is None
+        assert manager.lock is not None
         assert manager._lock is not None
 
     @pytest.mark.asyncio

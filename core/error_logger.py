@@ -124,13 +124,23 @@ class ErrorLoggerHandler(logging.Handler):
             
             error_type = level_map.get(record.levelno, 'ERROR')
             
-            # Extraire le symbole du message si présent (format: "BTCUSDT: error...")
+            # Extraire le symbole du message si présent (format: "BTC/USDT: error...")
+            # 🔥 FIX: Logique plus robuste pour éviter de capturer du texte comme symbole
             symbol = None
             msg = record.getMessage()
-            if ':' in msg and '/' in msg.split(':')[0]:
-                potential_symbol = msg.split(':')[0].strip()
-                if 'USDT' in potential_symbol:
-                    symbol = potential_symbol
+            if ':' in msg:
+                potential_part = msg.split(':')[0].strip()
+                # Un symbole ne contient généralement pas d'espaces et a une structure spécifique
+                if '/' in potential_part and ' ' not in potential_part:
+                    if 'USDT' in potential_part or 'BTC' in potential_part or 'ETH' in potential_part:
+                        # Nettoyer d'éventuels emojis au début
+                        clean_symbol = ''.join(c for c in potential_part if c.isalnum() or c in '/:_')
+                        if clean_symbol:
+                            symbol = clean_symbol
+            
+            # Si le symbole est trop long pour la DB (VARCHAR(100)), le tronquer
+            if symbol and len(symbol) > 100:
+                symbol = symbol[:100]
             
             # Stack trace si disponible
             error_stack = None
