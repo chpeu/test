@@ -325,13 +325,15 @@ async def init_background_services() -> None:
     if not state.get_live_order_manager():
         from api.live_trading_endpoints import load_live_config
         live_config = load_live_config()
-        if live_config.get('trading_mode') == 'LIVE' and live_config.get('api_key_mexc'):
+        if live_config.get('trading_mode') == 'LIVE' and (live_config.get('api_key_mexc') or live_config.get('browser_token_mexc')):
             try:
                 from trading.live_order_manager_futures import LiveOrderManagerFutures
                 lom = LiveOrderManagerFutures(
-                    api_key=live_config['api_key_mexc'],
-                    api_secret=live_config['api_secret_mexc'],
-                    dry_run=live_config.get('dry_run', True)
+                    api_key=live_config.get('api_key_mexc'),
+                    api_secret=live_config.get('api_secret_mexc'),
+                    browser_token=live_config.get('browser_token_mexc'),
+                    dry_run=live_config.get('dry_run', True),
+                    use_bypass=True # Forcer bypass si disponible
                 )
                 state.set_live_order_manager(lom)
                 
@@ -400,6 +402,27 @@ async def run_initial_top_pairs_scan() -> None:
             logger.info(f"📡 [DEBUG-SCAN] {len(top_pairs)} paires trouvées lors du scan initial")
             state.set_top_pairs(top_pairs)
             
+            # 🔥 SPRINT 1: Mettre à jour le Market Regime initial
+            try:
+                from core.market_regime_selector import get_regime_selector
+                regime_selector = get_regime_selector()
+                
+                atr_values = [p.get('atr_percent') for p in top_pairs if p.get('atr_percent') is not None]
+                atr_5m_values = [p.get('atr_percent_5m') for p in top_pairs if p.get('atr_percent_5m') is not None]
+                adx_values = [p.get('adx') for p in top_pairs if p.get('adx') is not None]
+                
+                if atr_values:
+                    logger.info(f"🌡️ [DEBUG-SCAN] Initialisation du régime avec {len(atr_values)} samples ATR...")
+                    await regime_selector.check_regime(
+                        atr_values=atr_values,
+                        atr_5m_values=atr_5m_values,
+                        adx_values=adx_values,
+                        force=True,
+                        trigger="auto"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ [DEBUG-SCAN] Erreur initialisation régime: {e}")
+
             ws_mgr = state.get_ws_manager()
             if ws_mgr:
                 await ws_mgr.emit('top_pairs_update', {'pairs': top_pairs})

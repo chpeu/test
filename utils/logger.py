@@ -105,16 +105,9 @@ class WebSocketLogHandler(logging.Handler):
                 # Utiliser ensure_future avec une coroutine simple sans gather
                 async def send_log_direct():
                     try:
-                        # Appel direct sans passer par broadcast/gather
-                        if hasattr(self.ws_manager, 'active_connections'):
-                            import json
-                            message = json.dumps({'type': 'log', 'data': entry})
-                            # Envoyer à une seule connexion à la fois, pas de gather
-                            for conn in list(self.ws_manager.active_connections):
-                                try:
-                                    await conn.send_text(message)
-                                except Exception:
-                                    pass  # Ignorer les erreurs de connexion
+                        # Appel direct via ws_manager.emit pour cohérence de format
+                        if self.ws_manager:
+                            await self.ws_manager.emit('log', entry)
                     except asyncio.CancelledError:
                         pass  # Normal pendant shutdown
                     except Exception:

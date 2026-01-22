@@ -49,7 +49,13 @@ class MEXCClient:
         # 🔥 v6.6: Connection pooling avec aiohttp
         self._session = None
         
+        import os
+        api_key = os.getenv('MEXC_API_KEY')
+        api_secret = os.getenv('MEXC_API_SECRET')
+        
         self.exchange = ccxt.mexc({
+            'apiKey': api_key,
+            'secret': api_secret,
             'options': {
                 'defaultType': 'swap',  # Futures
             },

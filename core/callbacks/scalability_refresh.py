@@ -216,6 +216,32 @@ async def _refresh_top_pairs() -> list:
             logger.warning("⚠️ Aucune paire retournée par scanner")
             return []
 
+        # 🔥 SPRINT 1: Mettre à jour le Market Regime avec les nouvelles données
+        try:
+            from core.market_regime_selector import get_regime_selector
+            regime_selector = get_regime_selector()
+            
+            atr_values = [p.get('atr_percent') for p in top_pairs if p.get('atr_percent') is not None]
+            atr_5m_values = [p.get('atr_percent_5m') for p in top_pairs if p.get('atr_percent_5m') is not None]
+            adx_values = [p.get('adx') for p in top_pairs if p.get('adx') is not None]
+            
+            if atr_values:
+                logger.info(f"🌡️ Mise à jour du régime avec {len(atr_values)} samples ATR...")
+                await regime_selector.check_regime(
+                    atr_values=atr_values,
+                    atr_5m_values=atr_5m_values,
+                    adx_values=adx_values,
+                    force=True,
+                    trigger="auto"
+                )
+                
+                # Émettre l'événement de changement de régime via WebSocket si nécessaire
+                if _ws_manager:
+                    status = regime_selector.get_status()
+                    await _ws_manager.emit('regime_changed', status)
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lors de la mise à jour du régime pendant refresh: {e}")
+
         # Mettre à jour le cache
         _app_state['top_pairs'] = top_pairs
 

@@ -28,6 +28,7 @@ def load_live_config() -> Dict[str, Any]:
         'dry_run': True,
         'api_key_mexc': '',
         'api_secret_mexc': '',
+        'browser_token_mexc': os.getenv('MEXC_BROWSER_TOKEN', ''),
         'max_slippage_pct': 0.15,
         'max_latency_ms': 1000,
         'max_pnl_discrepancy_pct': 20,
@@ -274,6 +275,8 @@ async def get_live_config():
             config_safe['api_key_mexc'] = '***' + config_safe['api_key_mexc'][-4:] if len(config_safe['api_key_mexc']) > 4 else '***'
         if config_safe.get('api_secret_mexc'):
             config_safe['api_secret_mexc'] = '***'
+        if config_safe.get('browser_token_mexc'):
+            config_safe['browser_token_mexc'] = '***' + config_safe['browser_token_mexc'][-4:] if len(config_safe['browser_token_mexc']) > 4 else '***'
 
         return JSONResponse({
             'success': True,
@@ -309,6 +312,8 @@ async def update_live_config(data: Dict[str, Any]):
             config['api_key_mexc'] = data['api_key_mexc']
         if 'api_secret_mexc' in data and data['api_secret_mexc']:
             config['api_secret_mexc'] = data['api_secret_mexc']
+        if 'browser_token_mexc' in data and data['browser_token_mexc']:
+            config['browser_token_mexc'] = data['browser_token_mexc']
         if 'max_slippage_pct' in data:
             config['max_slippage_pct'] = float(data['max_slippage_pct'])
         if 'max_latency_ms' in data:
@@ -333,7 +338,7 @@ async def update_live_config(data: Dict[str, Any]):
                 import main
                 from config import TRADING_CONFIG
                 default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 1))
-                browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
+                browser_token = config.get('browser_token_mexc') or TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
                 use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
 
                 if use_bypass_mode and not browser_token:

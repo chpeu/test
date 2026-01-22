@@ -268,7 +268,7 @@ async def handle_client_command(command: str, params: dict):
     from utils.logging_utils import add_log
     
     if command == 'start_scanner':
-        init_instances()
+        await init_instances()
         ws_mgr = _ws_manager or state.get_ws_manager()
         if ws_mgr:
             await ws_mgr.emit('scan_started', {'timestamp': time.time()})
@@ -279,10 +279,10 @@ async def handle_client_command(command: str, params: dict):
         if not state.top_pairs:
             asyncio.create_task(run_initial_top_pairs_scan())
         
-        sched = _scheduler or state.get_scheduler()
-        if sched:
-            sched.start()
-            await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
+        # sched = _scheduler or state.get_scheduler()
+        # if sched:
+        #     sched.start()
+        #     await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
         
         return {'status': 'started', 'is_scanning': True}
     
