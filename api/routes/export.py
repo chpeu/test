@@ -133,11 +133,26 @@ async def export_datalogger_excel(
         wb = Workbook()
         wb.remove(wb.active)
 
-        # Tables à exporter
+        # Tables à exporter avec leur colonne de date pour le filtrage/tri
         tables = [
+            ("trading_sessions", "start_time"),
+            ("config_snapshots", "timestamp"),
             ("scan_logs", "timestamp"),
             ("opportunities", "timestamp"),
-            ("trades", "timestamp_entry")
+            ("trades", "timestamp_entry"),
+            ("market_context", "timestamp"),
+            ("scan_errors", "timestamp"),
+            ("model_predictions", "timestamp"),
+            ("features_engineered", "timestamp"),
+            ("ml_calibration", "updated_at"),
+            ("ml_calibration_history", "created_at"),
+            ("circuit_breaker_events", "timestamp"),
+            ("market_regime_history", "timestamp"),
+            ("pair_performance_stats", "last_updated"),
+            ("trade_atr_metrics", "created_at"),
+            ("trade_events", "event_timestamp"),
+            ("trade_post_exit_analysis", "created_at"),
+            ("trade_post_exit_samples", "timestamp")
         ]
 
         for table_name, date_col in tables:

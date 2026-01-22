@@ -10,6 +10,10 @@ load_dotenv()
 
 import sys
 
+# 🔥 INSTANCES GLOBALES (Accessibles via main.live_order_manager)
+live_order_manager = None  # Sera initialisé via bootstrap ou config
+trade_db = None
+
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -80,6 +84,9 @@ except ImportError as e:
     Scheduler = None
     get_metrics_collector = None
 
+# Instances globales
+# (Définies au début du fichier)
+
 # 🔥 ARCHITECTURE V2: Nouveaux imports
 # 🔥 IMPORT CRITIQUE: ErrorHistoryManager (obligatoire)
 try:
@@ -111,7 +118,7 @@ except ImportError as e:
     create_notification_manager = None
     setup_logger = None
     api_router = None
-    set_analytics_db = None
+    # Instances globales déjà définies au début du fichier
     set_position_manager = None
     set_notification_manager = None
     set_instance_port = None
