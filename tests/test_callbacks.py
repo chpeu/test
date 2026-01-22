@@ -313,6 +313,10 @@ class TestScalabilityRefresh:
         """Test rafraîchissement réussi"""
         from core.callbacks import scalability_refresh
 
+        # 🔥 FIX: Initialiser les variables globales pour que should_refresh() retourne True
+        scalability_refresh._last_refresh_time = 0  # Force refresh
+        scalability_refresh._current_interval = 60
+
         # Mock scanner
         mock_scanner = AsyncMock()
         mock_scanner.scan_top_pairs = AsyncMock(return_value=[

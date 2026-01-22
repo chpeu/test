@@ -688,12 +688,12 @@ class PostgreSQLDataLogger:
             book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
             
             # Calculer automatiquement si manquant et bid/ask disponibles
-            if delta_volume is None and bid_vol and ask_vol:
+            if delta_volume is None and bid_vol is not None and ask_vol is not None:
                 delta_volume = float(bid_vol) - float(ask_vol)
-            if imbalance_normalized is None and bid_vol and ask_vol:
+            if imbalance_normalized is None and bid_vol is not None and ask_vol is not None:
                 total = float(bid_vol) + float(ask_vol)
                 imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
-            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+            if book_depth_ratio is None and bid_vol is not None and ask_vol is not None and float(ask_vol) > 0:
                 book_depth_ratio = float(bid_vol) / float(ask_vol)
             
             # Préparer les paramètres
@@ -2648,12 +2648,12 @@ class PostgreSQLDataLogger:
             book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
             
             # Calculer automatiquement si manquant et bid/ask disponibles
-            if delta_volume is None and bid_vol and ask_vol:
+            if delta_volume is None and bid_vol is not None and ask_vol is not None:
                 delta_volume = float(bid_vol) - float(ask_vol)
-            if imbalance_normalized is None and bid_vol and ask_vol:
+            if imbalance_normalized is None and bid_vol is not None and ask_vol is not None:
                 total = float(bid_vol) + float(ask_vol)
                 imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
-            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+            if book_depth_ratio is None and bid_vol is not None and ask_vol is not None and float(ask_vol) > 0:
                 book_depth_ratio = float(bid_vol) / float(ask_vol)
 
             ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))

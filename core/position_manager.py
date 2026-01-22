@@ -1555,8 +1555,8 @@ class PositionManager:
         if use_atr:
             self.tpsl_config.atr_mult_tp = effective_params['atr_mult_tp']
             self.tpsl_config.atr_mult_sl = effective_params['atr_mult_sl']
-        self.tpsl_config.atr_min = trading_params['atr_min']
-        self.tpsl_config.atr_max = trading_params['atr_max']
+        self.tpsl_config.atr_min = get_effective_value('atr_min') or 0.0005
+        self.tpsl_config.atr_max = get_effective_value('atr_max') or 0.015
 
         # SPRINT 3: Propager les ajustements au système global pour affichage "Variables en cours"
         from utils.effective_config import set_local_trade_adjustments, clear_local_trade_adjustments

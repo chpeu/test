@@ -11,7 +11,7 @@
   "volume_multiplier": 0.8,
   "use_confluence": false,
   "invert_signals": false,
-  "tp_sl_mode": "ATR",
+  "tp_sl_mode": "FIXE",
   "tp_percent": 5.0,
   "sl_percent": 0.26,
   "break_even_trigger": 0.2,
