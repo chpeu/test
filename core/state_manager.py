@@ -756,7 +756,16 @@ class LegacyAppStateProxy(MutableMapping):
             return self._state.backend_reboot_in_progress
         if key == "session_id":
             return self._state.session_id
-        return self._extras[key]
+        
+        # 🔥 FIX: Rechercher dans TRADING_CONFIG si la clé n'est pas dans l'état de l'app
+        if key in self._extras:
+            return self._extras[key]
+            
+        from config import TRADING_CONFIG
+        if key in TRADING_CONFIG:
+            return TRADING_CONFIG[key]
+            
+        raise KeyError(key)
 
     def __setitem__(self, key, value):
         if key == "is_scanning":

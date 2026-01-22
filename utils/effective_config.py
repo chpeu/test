@@ -50,6 +50,10 @@ REGIME_ADJUSTABLE_KEYS = [
     'rsi_final_filter_enabled',
     'rsi_final_long_max',
     'rsi_final_short_min',
+    # 🔥 Scanner Filters (ajustables par régime)
+    'scalability_spread_max',
+    'scalability_volume_min',
+    'balance_score_min',
 ]
 
 # Stockage des ajustements actifs (ne modifie pas TRADING_CONFIG)

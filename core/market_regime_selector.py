@@ -53,6 +53,10 @@ class RegimeConfig:
     # 🔥 RSI Thresholds par régime (30/12/2025)
     rsi_final_long_max: int = 65  # LONG bloqué si RSI > seuil
     rsi_final_short_min: int = 35  # SHORT bloqué si RSI < seuil
+    # 🔥 Scanner Filters par régime
+    scalability_spread_max: float = 0.06
+    scalability_volume_min: float = 100000
+    balance_score_min: float = 0.7
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -106,7 +110,10 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         sl_exchange_percent=0.25,
         stagnation_timeout=360,
         stagnation_min_pnl=0.05,
-        stagnation_max_loss=-0.08
+        stagnation_max_loss=-0.08,
+        scalability_spread_max=0.04,  # Spread serré en calme
+        scalability_volume_min=50000,  # Moins de volume requis
+        balance_score_min=0.75        # Balance plus stricte
     ),
     "NORMAL": RegimeConfig(
         name="NORMAL",
@@ -124,7 +131,10 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         sl_exchange_percent=0.30,
         stagnation_timeout=480,
         stagnation_min_pnl=0.04,
-        stagnation_max_loss=-0.10
+        stagnation_max_loss=-0.10,
+        scalability_spread_max=0.06,
+        scalability_volume_min=100000,
+        balance_score_min=0.70
     ),
     "VOLATILE": RegimeConfig(
         name="VOLATILE",
@@ -142,7 +152,10 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         sl_exchange_percent=0.35,
         stagnation_timeout=600,
         stagnation_min_pnl=0.02,
-        stagnation_max_loss=-0.12
+        stagnation_max_loss=-0.12,
+        scalability_spread_max=0.10,  # Accepter plus de spread
+        scalability_volume_min=200000, # Beaucoup de volume requis
+        balance_score_min=0.65        # Balance moins stricte
     ),
     "CHOPPY": RegimeConfig(
         name="CHOPPY",
@@ -160,7 +173,10 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
         sl_exchange_percent=0.20,
         stagnation_timeout=180,
         stagnation_min_pnl=0.08,
-        stagnation_max_loss=-0.05
+        stagnation_max_loss=-0.05,
+        scalability_spread_max=0.05,
+        scalability_volume_min=75000,
+        balance_score_min=0.80
     )
 }
 
@@ -811,6 +827,9 @@ class MarketRegimeSelector:
         self.last_check = now
         self.next_check = now + self.check_interval
         
+        # 🔥 FIX: Appliquer les paramètres si c'est le premier check réussi ou si le régime a changé
+        should_apply_params = changed or (self.current_regime != MarketRegime.UNKNOWN and not getattr(self, '_initial_params_applied', False))
+
         if changed:
             self.current_regime = new_regime
             self.current_config = self.regime_configs.get(new_regime.value)
@@ -838,6 +857,20 @@ class MarketRegimeSelector:
             )
             self._notify_regime_change(old_regime, new_regime)
             
+        if should_apply_params:
+            # 🔥 SPRINT 1: Appliquer les paramètres du régime à la configuration effective
+            try:
+                from utils.effective_config import get_effective_config_manager
+                config_mgr = get_effective_config_manager()
+                active_params = self.get_active_config()
+                if active_params:
+                    logger.info(f"⚙️ Application des paramètres du régime {self.current_regime.value} à EFFECTIVE_CONFIG (trigger: {trigger})")
+                    config_mgr.update_from_regime(active_params)
+                    self._initial_params_applied = True
+            except Exception as e:
+                logger.error(f"❌ Erreur application paramètres régime: {e}")
+            
+        if changed:
             # 🔥 SPRINT 1: Logger dans market_regime_history
             self._log_regime_change_to_db(old_regime, new_regime, trigger)
         else:
@@ -875,7 +908,11 @@ class MarketRegimeSelector:
             "stagnation_exit_max_loss_to_exit": self.current_config.stagnation_max_loss,
             # 🔥 RSI Thresholds par régime (30/12/2025)
             "rsi_final_long_max": self.current_config.rsi_final_long_max,
-            "rsi_final_short_min": self.current_config.rsi_final_short_min
+            "rsi_final_short_min": self.current_config.rsi_final_short_min,
+            # 🔥 Scanner Filters
+            "scalability_spread_max": self.current_config.scalability_spread_max,
+            "scalability_volume_min": self.current_config.scalability_volume_min,
+            "balance_score_min": self.current_config.balance_score_min
         }
     
     def get_status(self) -> Dict[str, Any]:

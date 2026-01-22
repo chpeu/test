@@ -108,6 +108,9 @@ async def get_complete_state():
         }, status_code=200)
 
     try:
+        from utils.effective_config import get_effective_config
+        effective_cfg = get_effective_config()
+        
         # Récupérer position active
         active_position_dict = None
         if _position_manager and _position_manager.active_position:
@@ -123,47 +126,41 @@ async def get_complete_state():
             'winrate': _app_state.get('stats', {}).get('winrate', 0.0)
         }
 
-        from config import TRADING_CONFIG
-
         return JSONResponse({
             'success': True,
             'session_id': _app_state.get('session_id'),
             'config': {
-                'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
-                'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
-                'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                'di_gap_min': TRADING_CONFIG.get('di_gap_min', 4.0),
-                'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
-                'account_size': TRADING_CONFIG.get('account_size', 1000.0),
-                'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
-                'telegram_enabled': TRADING_CONFIG.get('telegram_enabled', False),
-                'use_confluence': TRADING_CONFIG.get('use_confluence', False),
-                'invert_signals': TRADING_CONFIG.get('invert_signals', False),
-                'break_even_trigger': TRADING_CONFIG.get('break_even_trigger', 0.3),
-                'break_even_use_atr': TRADING_CONFIG.get('break_even_use_atr', False),
-                'break_even_atr_mult': TRADING_CONFIG.get('break_even_atr_mult', 0.5),
-                'partial_tp_percent': TRADING_CONFIG.get('partial_tp_percent', 50.0),
-                'trailing_trigger_pnl': TRADING_CONFIG.get('trailing_trigger_pnl', 0.15),
-                'trailing_distance': TRADING_CONFIG.get('trailing_distance', 0.15),
-                'trailing_use_atr_trigger': TRADING_CONFIG.get('trailing_use_atr_trigger', False),
-                'trailing_trigger_atr_mult': TRADING_CONFIG.get('trailing_trigger_atr_mult', 1.5),
-                'trailing_distance_atr_mult': TRADING_CONFIG.get('trailing_distance_atr_mult', 1.0),
-                'stagnation_exit_enabled': TRADING_CONFIG.get('stagnation_exit_enabled', False),
-                'stagnation_exit_timeout_seconds': TRADING_CONFIG.get('stagnation_exit_timeout_seconds', 120),
-                'stagnation_exit_min_pnl_to_stay': TRADING_CONFIG.get('stagnation_exit_min_pnl_to_stay', 0.10),
-                'stagnation_exit_max_loss_to_exit': TRADING_CONFIG.get('stagnation_exit_max_loss_to_exit', -0.05),
-                'stagnation_positive_exit_enabled': TRADING_CONFIG.get('stagnation_positive_exit_enabled', True),
-                'stagnation_positive_threshold': TRADING_CONFIG.get('stagnation_positive_threshold', 0.03),
-                'stagnation_positive_timeout_seconds': TRADING_CONFIG.get('stagnation_positive_timeout_seconds', 60),
-                'stagnation_use_mfe_tracking': TRADING_CONFIG.get('stagnation_use_mfe_tracking', True),
-                'stagnation_mfe_pullback_pct': TRADING_CONFIG.get('stagnation_mfe_pullback_pct', 0.08),
-                'trailing_mfe_enabled': TRADING_CONFIG.get('trailing_mfe_enabled', False),
-                'trailing_mfe_trigger_pct': TRADING_CONFIG.get('trailing_mfe_trigger_pct', 0.10),
-                'tp_sl_mode': TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
-                'tp_percent': TRADING_CONFIG.get('tp_percent', 0.25),
-                'sl_percent': TRADING_CONFIG.get('sl_percent', 0.25),
-                'volume_multiplier': TRADING_CONFIG.get('volume_multiplier', 0.95),
-                'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                'snr_threshold': effective_cfg.get('snr_threshold', 0.25),
+                'break_even_trigger': effective_cfg.get('break_even_trigger', 0.3),
+                'break_even_use_atr': effective_cfg.get('break_even_use_atr', False),
+                'break_even_atr_mult': effective_cfg.get('break_even_atr_mult', 0.5),
+                'partial_tp_percent': effective_cfg.get('partial_tp_percent', 50.0),
+                'trailing_trigger_pnl': effective_cfg.get('trailing_trigger_pnl', 0.15),
+                'trailing_distance': effective_cfg.get('trailing_distance', 0.15),
+                'trailing_use_atr_trigger': effective_cfg.get('trailing_use_atr_trigger', False),
+                'trailing_trigger_atr_mult': effective_cfg.get('trailing_trigger_atr_mult', 1.5),
+                'trailing_distance_atr_mult': effective_cfg.get('trailing_distance_atr_mult', 1.0),
+                'stagnation_exit_enabled': effective_cfg.get('stagnation_exit_enabled', False),
+                'stagnation_exit_timeout_seconds': effective_cfg.get('stagnation_exit_timeout_seconds', 120),
+                'stagnation_exit_min_pnl_to_stay': effective_cfg.get('stagnation_exit_min_pnl_to_stay', 0.10),
+                'stagnation_exit_max_loss_to_exit': effective_cfg.get('stagnation_exit_max_loss_to_exit', -0.05),
+                'stagnation_positive_exit_enabled': effective_cfg.get('stagnation_positive_exit_enabled', True),
+                'stagnation_positive_threshold': effective_cfg.get('stagnation_positive_threshold', 0.03),
+                'stagnation_positive_timeout_seconds': effective_cfg.get('stagnation_positive_timeout_seconds', 60),
+                'stagnation_use_mfe_tracking': effective_cfg.get('stagnation_use_mfe_tracking', True),
+                'stagnation_mfe_pullback_pct': effective_cfg.get('stagnation_mfe_pullback_pct', 0.08),
+                'trailing_mfe_enabled': effective_cfg.get('trailing_mfe_enabled', False),
+                'trailing_mfe_trigger_pct': effective_cfg.get('trailing_mfe_trigger_pct', 0.10),
+                'tp_sl_mode': effective_cfg.get('tp_sl_mode', 'FIXE'),
+                'tp_percent': effective_cfg.get('tp_percent', 0.25),
+                'sl_percent': effective_cfg.get('sl_percent', 0.25),
+                'volume_multiplier': effective_cfg.get('volume_multiplier', 0.95),
+                'min_score_required': effective_cfg.get('min_score_required', 7.5),
+                # 🔥 AJOUT: Paramètres ATR dynamiques
+                'atr_mult_sl': effective_cfg.get('atr_mult_sl'),
+                'atr_mult_tp': effective_cfg.get('atr_mult_tp'),
+                'optimal_atr_min_1m': effective_cfg.get('optimal_atr_min_1m'),
+                'optimal_atr_max_1m': effective_cfg.get('optimal_atr_max_1m')
             },
             'scanner': {
                 'is_scanning': _app_state.get('is_scanning', False),

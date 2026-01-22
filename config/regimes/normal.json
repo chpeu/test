@@ -1,7 +1,7 @@
 {
   "name": "NORMAL",
   "optimal_atr_min": 0.06,
-  "optimal_atr_max": 0.30,
+  "optimal_atr_max": 0.3,
   "min_score_required": 7.5,
   "atr_mult_sl": 1.6,
   "atr_mult_tp": 2.0,
@@ -9,12 +9,15 @@
   "trailing_trigger_atr_mult": 1.2,
   "max_position_time": 300,
   "volume_multiplier": 0.8,
-  "sl_exchange_percent": 0.30,
+  "sl_exchange_percent": 0.3,
   "stagnation_timeout": 480,
   "stagnation_min_pnl": 0.04,
-  "stagnation_max_loss": -0.10,
+  "stagnation_max_loss": -0.1,
   "optimal_atr_min_5m": 0.35,
-  "optimal_atr_max_5m": 0.80,
+  "optimal_atr_max_5m": 0.8,
   "rsi_final_long_max": 65,
-  "rsi_final_short_min": 35
+  "rsi_final_short_min": 35,
+  "scalability_spread_max": 0.06,
+  "scalability_volume_min": 100000,
+  "balance_score_min": 0.7
 }

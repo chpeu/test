@@ -85,11 +85,13 @@ async def force_regime_check():
         adx_values = []
         
         try:
-            # Essayer de récupérer depuis le scanner actif
-            from main import app_state
+            # Essayer de récupérer depuis le scanner actif via StateManager
+            from core.state_manager import get_state_manager
+            state = get_state_manager()
+            top_pairs = state.top_pairs
             
-            if 'top_pairs' in app_state and app_state['top_pairs']:
-                for pair_data in app_state['top_pairs'][:10]:
+            if top_pairs:
+                for pair_data in top_pairs[:10]:
                     if isinstance(pair_data, dict):
                         atr = pair_data.get('atr_percent') or pair_data.get('atr', 0)
                         adx = pair_data.get('adx', 25)

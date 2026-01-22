@@ -73,9 +73,8 @@ class Scheduler:
     async def _scalability_refresh_loop(self):
         """Boucle scalability refresh - toutes les 90 secondes"""
         logger.info("📊 Boucle scalability refresh démarrée")
-        # 🔥 FIX: Attendre avant le premier refresh pour éviter conflit avec scanner_loop
-        # scanner_loop démarre immédiatement, donc on attend 60s avant le premier refresh
-        await asyncio.sleep(60)
+        # 🔥 FIX: Ne pas attendre 60s au démarrage pour que le régime soit détecté immédiatement
+        # (L'attente initiale causait une confusion sur l'automatisme du régime)
         
         while self.is_running:
             try:
@@ -83,11 +82,17 @@ class Scheduler:
                     logger.info("📊 Exécution du callback scalability refresh...")
                     await self.scalability_refresh_callback()
                 
-                # Attendre 90 secondes
-                await asyncio.sleep(90)
+                # Attendre l'intervalle défini (adaptatif basé sur volatilité)
+                try:
+                    from core.callbacks.scalability_refresh import get_current_interval
+                    interval = get_current_interval()
+                except ImportError:
+                    interval = 90
+                
+                await asyncio.sleep(interval)
             except Exception as e:
                 logger.error(f"Erreur dans scalability refresh loop: {e}")
-                await asyncio.sleep(10)  # Attendre un peu avant de réessayer
+                await asyncio.sleep(10)
     
     def start(self):
         """Démarrer toutes les boucles"""

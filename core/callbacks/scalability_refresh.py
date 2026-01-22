@@ -19,6 +19,7 @@ _price_provider = None
 _app_state = None
 _sio = None  # 🔥 MIGRATION: Gardé pour compatibilité, mais utiliser _ws_manager
 _ws_manager = None  # 🔥 FIX BUG #14: Ajouter variable globale pour WebSocket natif
+_scanner_lock = None # 🔥 SPRINT 1: Lock partagé avec le setup scanner
 
 # 🔥 OPT #8: Variables pour intervalle adaptatif
 _last_refresh_time = 0
@@ -60,6 +61,12 @@ def set_websocket_manager(ws_manager):
     """🔥 FIX BUG #14: Injecter l'instance WebSocketManager"""
     global _ws_manager
     _ws_manager = ws_manager
+
+
+def set_scanner_lock(lock):
+    """🔥 SPRINT 1: Injecter le lock du scanner pour éviter les collisions"""
+    global _scanner_lock
+    _scanner_lock = lock
 
 
 def calculate_adaptive_interval(top_pairs: list) -> int:
@@ -146,45 +153,61 @@ async def scalability_refresh_loop_callback():
     """
     global _last_refresh_time, _current_interval
     
+    if _app_state:
+        logger.info(f"📊 Scalability refresh loop tick (is_scanning={_app_state.get('is_scanning')})")
+    
     if not _app_state or not _app_state.get('is_scanning'):
-        logger.debug("⏸️ Scalability refresh: scanner inactif")
         return
 
     if not _scanner:
-        logger.debug("⚠️ Scanner non disponible pour scalability_refresh")
+        logger.info("⚠️ Scanner non disponible pour scalability_refresh")
         return
 
     # 🔥 OPT #8: Vérifier intervalle adaptatif
     if not should_refresh():
-        remaining = _current_interval - (time.time() - _last_refresh_time)
-        logger.debug(f"⏳ Scalability refresh: {remaining:.0f}s restantes (intervalle={_current_interval}s)")
         return
 
     try:
-        # Vérifier qu'aucune position n'est active
-        if _app_state.get('active_position') or (
-            _position_manager and _position_manager.active_position
-        ):
-            logger.info("⏸️ Scalability refresh ignoré - Position active")
-            return
-
-        # Mettre à jour le timestamp AVANT le refresh (évite double refresh)
-        _last_refresh_time = time.time()
-        
-        top_pairs = await _refresh_top_pairs()
-        
-        # 🔥 OPT #8: Calculer nouvel intervalle basé sur volatilité
-        if top_pairs:
-            new_interval = calculate_adaptive_interval(top_pairs)
-            if new_interval != _current_interval:
-                logger.info(
-                    f"📊 Intervalle adaptatif: {_current_interval}s → {new_interval}s "
-                    f"(volatilité moyenne: {_avg_volatility:.2f}%)"
-                )
-                _current_interval = new_interval
+        # 🔥 SPRINT 1: Utiliser le lock partagé pour éviter les collisions avec le setup scanner
+        if _scanner_lock:
+            if _scanner_lock.locked():
+                logger.info("⏸️ Scalability refresh reporté: scanner déjà occupé")
+                return
+            
+            async with _scanner_lock:
+                await _perform_refresh()
+        else:
+            await _perform_refresh()
 
     except Exception as e:
         logger.error(f"❌ Erreur scalability_refresh_loop_callback: {e}")
+
+
+async def _perform_refresh():
+    """Exécution réelle du refresh après passage du lock"""
+    global _last_refresh_time, _current_interval
+    
+    # 🔥 CRITIQUE: Ne PAS bloquer le refresh du régime même si une position est active
+    # On veut savoir si le marché a changé pendant qu'on trade.
+    is_pos_active = bool(_app_state.get('active_position') or (_position_manager and _position_manager.active_position))
+    
+    if is_pos_active:
+        logger.info("Statut: Position active, refresh du régime uniquement...")
+
+    # Mettre à jour le timestamp AVANT le refresh (évite double refresh)
+    _last_refresh_time = time.time()
+    
+    top_pairs = await _refresh_top_pairs()
+    
+    # 🔥 OPT #8: Calculer nouvel intervalle basé sur volatilité
+    if top_pairs and not is_pos_active:
+        new_interval = calculate_adaptive_interval(top_pairs)
+        if new_interval != _current_interval:
+            logger.info(
+                f"📊 Intervalle adaptatif: {_current_interval}s → {new_interval}s "
+                f"(volatilité moyenne: {_avg_volatility:.2f}%)"
+            )
+            _current_interval = new_interval
 
 
 async def _refresh_top_pairs() -> list:

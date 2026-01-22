@@ -83,7 +83,8 @@ class TechnicalAnalyzer:
         self._orderbook_cache: Dict[str, Dict] = {}
         # Corrélation dynamique
         from core.correlation_dynamic import DynamicCorrelationFilter
-        dynamic_corr_config = TRADING_CONFIG.get('dynamic_correlation', {})
+        from utils.effective_config import get_effective_value
+        dynamic_corr_config = get_effective_value('dynamic_correlation') or {}
         if dynamic_corr_config.get('enabled', False):
             self.correlation_filter = DynamicCorrelationFilter(
                 period=dynamic_corr_config.get('period', 50),
@@ -95,16 +96,16 @@ class TechnicalAnalyzer:
     def _extract_indicators(self, analysis: Optional[Dict]) -> Dict:
         """
         🔥 Extraire tous les indicateurs depuis un dict analysis
-        
+
         Args:
             analysis: Dict retourné par analyze_timeframe
-            
+
         Returns:
             Dict avec tous les indicateurs extraits
         """
         if not analysis or not isinstance(analysis, dict):
             return {}
-        
+
         return {
             'rsi': analysis.get('rsi'),
             'rsi_prev': analysis.get('rsi_prev'),
@@ -203,19 +204,20 @@ class TechnicalAnalyzer:
         Returns:
             Dict avec size, risk, reason
         """
-        base_risk = 0.02  # 2%
+        from utils.effective_config import get_effective_value
+        base_risk = get_effective_value('base_risk') or 0.02  # 2%
 
         # Ajustement selon nombre de conditions
         condition_count = len(setup.get('signals', []))
 
         if condition_count >= 7:
-            quality_multiplier = 1.5
+            quality_multiplier = get_effective_value('quality_mult_7plus') or 1.5
         elif condition_count >= 6:
-            quality_multiplier = 1.2
+            quality_multiplier = get_effective_value('quality_mult_6') or 1.2
         elif condition_count >= 5:
-            quality_multiplier = 0.8
+            quality_multiplier = get_effective_value('quality_mult_5') or 0.8
         else:
-            quality_multiplier = 0.5
+            quality_multiplier = get_effective_value('quality_mult_low') or 0.5
 
         # Ajustement selon volatilité
         atr = setup.get('atr', 0)
@@ -266,8 +268,8 @@ class TechnicalAnalyzer:
             Dict avec setup ou None
         """
         try:
-            # 🔥 FIX: Vérifier si le symbole est exclu AVANT toute analyse
-            excluded_symbols = set(TRADING_CONFIG.get('excluded_symbols', []))
+            from utils.effective_config import get_effective_value
+            excluded_symbols = set(get_effective_value('excluded_symbols') or [])
             if symbol in excluded_symbols:
                 reason = f"Symbole exclu de la liste de trading (excluded_symbols)"
                 if return_reason:
@@ -474,25 +476,25 @@ class TechnicalAnalyzer:
 
             # 1. ATR Optimal (calculé d'abord)
             if timeframe == '1m':
-                optimal_atr_min = TRADING_CONFIG['optimal_atr_min_1m']
-                optimal_atr_max = TRADING_CONFIG['optimal_atr_max_1m']
+                optimal_atr_min = get_effective_value('optimal_atr_min_1m')
+                optimal_atr_max = get_effective_value('optimal_atr_max_1m')
             else:
-                optimal_atr_min = TRADING_CONFIG['optimal_atr_min_5m']
-                optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
+                optimal_atr_min = get_effective_value('optimal_atr_min_5m')
+                optimal_atr_max = get_effective_value('optimal_atr_max_5m')
             filter_metrics['atr_optimal_passed'] = optimal_atr_min <= atr_percent <= optimal_atr_max
 
             # 2. SNR (Signal-to-Noise Ratio)
             snr_value = None
-            snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
-            use_snr = TRADING_CONFIG.get('use_snr', True)
+            snr_threshold = get_effective_value('snr_threshold', 0.3)
+            use_snr = get_effective_value('use_snr', True)
             if atr and atr > 0 and ema21 is not None:
                 snr_value = abs(price - ema21) / atr
             filter_metrics['snr'] = snr_value
             filter_metrics['snr_passed'] = True if not use_snr else (snr_value is not None and snr_value >= snr_threshold)
 
             # 3. Breakout Distance
-            use_breakout = TRADING_CONFIG.get('use_breakout', True)
-            breakout_mult = TRADING_CONFIG.get('breakout_threshold', 0.3)
+            use_breakout = get_effective_value('use_breakout', True)
+            breakout_mult = get_effective_value('breakout_threshold', 0.3)
             breakout_distance = None
             if atr and atr > 0 and ema21 is not None:
                 breakout_distance = abs(price - ema21) / atr
@@ -509,8 +511,8 @@ class TechnicalAnalyzer:
             if body == 0:
                 body = 0.0001
             wick_ratio = (current_candle[2] - current_candle[3]) / body
-            wick_max = TRADING_CONFIG.get('wick_ratio_max', 2.5)
-            use_wick = TRADING_CONFIG.get('use_wick', True)
+            wick_max = get_effective_value('wick_ratio_max', 2.5)
+            use_wick = get_effective_value('use_wick', True)
             filter_metrics['wick_ratio'] = wick_ratio
             filter_metrics['wick_passed'] = True if not use_wick else wick_ratio <= wick_max
 
@@ -691,7 +693,10 @@ class TechnicalAnalyzer:
             )
 
             # Recalculer score si divergence ajoutée
-            use_weighted = TRADING_CONFIG.get('use_weighted_scoring', True)
+            use_weighted = get_effective_value('use_weighted_scoring')
+            if use_weighted is None:
+                use_weighted = True
+
             if divergence_bonus > 0 and use_weighted:
                 if temp_direction == 'LONG':
                     long_score = calculate_weighted_score(long_condition_types) + trend_score_bonus
@@ -975,15 +980,15 @@ class TechnicalAnalyzer:
         """
         try:
             start_time = time.time()  # Pour calculer scan_duration_ms
-            
+
             # : Utiliser volume_multiplier dynamique du rgime si disponible
             eff_vol_mult = get_effective_value('volume_multiplier')
             if eff_vol_mult is not None:
                 volume_multiplier = eff_vol_mult
-            
+
             # Toujours calculer trend_data (au lieu d'optionnel)
             if trend_data is None:
-                trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
+                trend_timeframe = get_effective_value('trend_timeframe') or '15m'
                 trend_data = await self.calculate_trend_data(symbol, trend_timeframe)
                 if trend_data:
                     logger.debug(f" {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
@@ -998,15 +1003,15 @@ class TechnicalAnalyzer:
             # ========================================
             scan_duration_ms = (time.time() - start_time) * 1000
             scan_uuid = None
-            
+
             try:
                 from utils.helpers import DataLoggerHelper
-                
+
                 if DataLoggerHelper.is_available():
                     # Récupérer prix actuel
                     ticker_data = await self.price_provider.get_price(symbol)
                     current_price = float(ticker_data.get('lastPrice', 0)) if ticker_data else 0
-                    
+
                     # Préparer indicateurs 1m
                     indicators_1m = {}
                     if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
@@ -1014,7 +1019,7 @@ class TechnicalAnalyzer:
                             'ema9': analysis_1m.get('ema9'),
                             'ema21': analysis_1m.get('ema21'),
                             'ema_diff_pct': (
-                                ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) 
+                                ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0))
                                  / analysis_1m.get('ema21', 1)) * 100
                                 if analysis_1m.get('ema21') else None
                             ),
@@ -1046,7 +1051,7 @@ class TechnicalAnalyzer:
                             'pattern': analysis_1m.get('pattern'),
                             'pattern_multi': analysis_1m.get('pattern_multi')
                         }
-                    
+
                     # Préparer indicateurs 5m
                     indicators_5m = {}
                     if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
@@ -1054,7 +1059,7 @@ class TechnicalAnalyzer:
                             'ema9': analysis_5m.get('ema9'),
                             'ema21': analysis_5m.get('ema21'),
                             'ema_diff_pct': (
-                                ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) 
+                                ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0))
                                  / analysis_5m.get('ema21', 1)) * 100
                                 if analysis_5m.get('ema21') else None
                             ),
@@ -1086,7 +1091,7 @@ class TechnicalAnalyzer:
                             'pattern': analysis_5m.get('pattern'),
                             'pattern_multi': analysis_5m.get('pattern_multi')
                         }
-                    
+
                     # Récupérer scalability data (sera mis à jour après spread_check)
                     scalability_data = {
                         'spread': None,
@@ -1095,7 +1100,7 @@ class TechnicalAnalyzer:
                         'bidVol': None,
                         'askVol': None
                     }
-                    
+
                     # Préparer confluence
                     confluence = {
                         'use_confluence': use_confluence,
@@ -1112,7 +1117,7 @@ class TechnicalAnalyzer:
                         'divergence_type': None,
                         'divergence_bonus': 0
                     }
-                    
+
                     # Préparer filters - 🔥 TOUJOURS extraire, même si 'reason' présent
                     filters = {
                         'snr_1m': analysis_1m.get('snr') if analysis_1m else None,
@@ -1132,7 +1137,7 @@ class TechnicalAnalyzer:
                         'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m else None,
                         'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m else None
                     }
-                    
+
                     # Logger le scan
                     scan_uuid = await DataLoggerHelper.safe_log_scan(
                         symbol=symbol,
@@ -1142,28 +1147,22 @@ class TechnicalAnalyzer:
                         confluence=confluence,
                         scalability_data=scalability_data,
                         trend_data={
-                            'timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
+                            'timeframe': get_effective_value('trend_timeframe') or '15m',
                             'direction': trend_data.get('trend') if trend_data else None,
                             'strength': trend_data.get('strength') if trend_data else None,
                             'bonus': trend_data.get('bonus', 0) if trend_data else 0
                         },
                         filters=filters,
-                        params_snapshot=TRADING_CONFIG.copy(),
+                        params_snapshot=get_effective_config(),
                         is_opportunity=False,  # Pas encore décidé
                         opportunity_direction=None,
                         reject_reason=None,
                         reject_reason_category=None,
                         scan_duration_ms=scan_duration_ms
                     )
-            # 🔥 SPRINT 1.2: log_scan - NON-BLOQUANT, distinguer erreurs DB
-            except DatabaseError as e:
-                # Erreur base de données - NON-BLOQUANT
-                if DEBUG_ENABLED:
-                    logger.warning(f"⚠️ Erreur DB log_scan (non-bloquant): {e}")
-                scan_uuid = None
             except Exception as e:
-                # Erreur inattendue - NON-BLOQUANT
-                logger.debug(f"Erreur inattendue log_scan (non-bloquant): {type(e).__name__}: {e}")
+                # Erreur log_scan - NON-BLOQUANT
+                logger.debug(f"⚠️ Erreur log_scan (non-bloquant): {e}")
                 scan_uuid = None
             # ========================================
             # FIN POINT A
@@ -1206,14 +1205,13 @@ class TechnicalAnalyzer:
                 # 🔥 FIX: Vérification RSI FINALE avant les autres vérifications (configurable)
                 rsi_filter_enabled = get_effective_value('rsi_final_filter_enabled')
                 if rsi_filter_enabled is None:
-                    rsi_filter_enabled = TRADING_CONFIG.get('rsi_final_filter_enabled', True)
-                
+                    rsi_filter_enabled = True
+
                 if rsi_filter_enabled:
-                    final_rsi = best_setup.get('rsi', 50)
                     direction = best_setup.get('direction', 'NEUTRAL')
-                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or TRADING_CONFIG.get('rsi_final_short_min', 35)
-                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
-                    
+                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or 35
+                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or 65
+
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
                         reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
                         logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec {reason}")
@@ -1351,36 +1349,40 @@ class TechnicalAnalyzer:
 
                 best_setup['spread_pct'] = spread_check['spread_pct']
                 best_setup['spread_quality'] = spread_check['quality']
-                
+
                 # ✅ Mettre à jour scalability_data pour le scan logué
                 if 'scalability_data' in locals():
                     scalability_data['spread'] = spread_check['spread_pct']
 
                 # 🔥 OPT #20: Micro-confirmation AVANT orderbook (évite les faux breakouts)
-                if TRADING_CONFIG.get('use_micro_confirmation', False):
-                    delay_ms = TRADING_CONFIG.get('micro_confirmation_delay_ms', 300)
+                use_micro_confirmation = get_effective_value('use_micro_confirmation')
+                if use_micro_confirmation is None:
+                    use_micro_confirmation = False
+
+                if use_micro_confirmation:
+                    delay_ms = get_effective_value('micro_confirmation_delay_ms') or 300
                     entry_price = best_setup.get('entry') or best_setup.get('price')
                     direction = best_setup.get('direction')
-                    
+
                     if entry_price and direction:
                         logger.info(f"⚡ {symbol} Micro-confirmation: attente {delay_ms}ms...")
                         await asyncio.sleep(delay_ms / 1000.0)  # Convertir ms en secondes
-                        
+
                         # Récupérer le prix actuel après le délai
                         try:
                             ticker = await self.client.fetch_ticker(symbol)
                             current_price = None
-                            
+
                             # 🔥 FIX: Valider que ticker n'est pas None avant d'utiliser .get()
                             if ticker is None:
                                 logger.warning(f"⚠️ {symbol} Micro-confirmation: ticker None - impossible de valider prix")
                                 # Continuer sans micro-confirmation (ne pas rejeter le trade)
                             else:
                                 current_price = ticker.get('last') or ticker.get('close')
-                            
+
                             if current_price:
                                 price_change_pct = ((current_price - entry_price) / entry_price) * 100
-                                
+
                                 # Vérifier si le prix va toujours dans la bonne direction
                                 if direction == 'LONG' and price_change_pct < -0.05:
                                     logger.info(f"⚡ {symbol} LONG rejeté par micro-confirmation: prix retombé de {price_change_pct:.3f}%")
@@ -1556,7 +1558,7 @@ class TechnicalAnalyzer:
                 best_setup['orderbook_bid_value'] = orderbook_check.get('bid_value', 0)
                 best_setup['orderbook_ask_value'] = orderbook_check.get('ask_value', 0)
                 best_setup['orderbook_check'] = orderbook_check  # Stocker l'objet complet pour fallback
-                
+
                 # ✅ Mettre à jour scalability_data pour le scan logué
                 if 'scalability_data' in locals():
                     scalability_data['bookDepth'] = orderbook_check.get('bid_value', 0) + orderbook_check.get('ask_value', 0)
@@ -1619,7 +1621,7 @@ class TechnicalAnalyzer:
                             indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
                             indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
                             return {
-                                'reason': correlation_check['reason'], 
+                                'reason': correlation_check['reason'],
                                 'symbol': symbol,
                                 'analysis_1m': analysis_1m,
                                 'analysis_5m': analysis_5m,
@@ -1638,7 +1640,7 @@ class TechnicalAnalyzer:
                             logger.info(f"⚠️ {symbol} - Corrélation (SOFT): Score {best_setup['totalScore']:.1f} après pénalité {penalty}")
 
                 # 5. Vérifier corrélation dynamique (basée sur prix réels)
-                dynamic_corr_config = TRADING_CONFIG.get('dynamic_correlation', {})
+                dynamic_corr_config = get_effective_value('dynamic_correlation') or {}
                 if dynamic_corr_config.get('enabled', False) and self.correlation_filter and active_positions:
                     current_price = best_setup.get('price', 0)
 
@@ -1655,9 +1657,8 @@ class TechnicalAnalyzer:
                             best_setup['totalScore'] = dynamic_corr_result['adjusted_score']
 
                 # === RECOVERY MODE PROGRESSIF ===
-
-                recovery_config = TRADING_CONFIG.get('recovery_mode', {})
-                min_score_required = best_setup.get('min_score_required', TRADING_CONFIG.get('min_score_required', 7.5))
+                recovery_config = get_effective_value('recovery_mode') or {}
+                min_score_required = best_setup.get('min_score_required', get_effective_value('min_score_required') or 7.5)
 
                 if recovery_config.get('enabled', False) and position_manager:
                     recovery_mode_active = position_manager.config.recovery_mode_active if hasattr(position_manager, 'config') else False
@@ -1666,7 +1667,7 @@ class TechnicalAnalyzer:
                         loss_streak = position_manager.config.loss_streak if hasattr(position_manager, 'config') else 0
                         recovery_level = position_manager.get_recovery_level(loss_streak) if hasattr(position_manager, 'get_recovery_level') else None
 
-                        if TRADING_CONFIG.get('recovery_shadow_compare', False):
+                        if get_effective_value('recovery_shadow_compare'):
                             try:
                                 recovery_state = position_manager.recovery_mode.get_state(loss_streak)
                                 legacy_boost = (
@@ -1692,7 +1693,7 @@ class TechnicalAnalyzer:
                             except Exception as e:
                                 logger.debug(f"🔎 RECOVERY SHADOW gating error: {type(e).__name__}: {e}")
 
-                        use_recovery_state = TRADING_CONFIG.get('recovery_refactor_enabled', False)
+                        use_recovery_state = get_effective_value('recovery_refactor_enabled')
                         recovery_state = None
                         if use_recovery_state:
                             try:
@@ -1728,7 +1729,7 @@ class TechnicalAnalyzer:
                                     indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
                                     indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
                                     return {
-                                        'reason': f'Recovery Mode Niveau {level_num}: Confluence requise', 
+                                        'reason': f'Recovery Mode Niveau {level_num}: Confluence requise',
                                         'symbol': symbol,
                                         'analysis_1m': analysis_1m,
                                         'analysis_5m': analysis_5m,
@@ -1772,7 +1773,7 @@ class TechnicalAnalyzer:
                         )
 
                 best_setup['min_score_required'] = min_score_required
-                
+
                 # 🔥 FIX: Ajouter indicators_1m et indicators_5m à best_setup pour qu'ils soient disponibles dans _last_setup
                 # Construire indicators_1m depuis analysis_1m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                 indicators_1m = {}
@@ -1794,7 +1795,7 @@ class TechnicalAnalyzer:
                         'ema9': analysis_1m.get('ema9'),
                         'ema21': analysis_1m.get('ema21'),
                         'ema_diff_pct': (
-                            ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0)) 
+                            ((analysis_1m.get('ema9', 0) - analysis_1m.get('ema21', 0))
                              / analysis_1m.get('ema21', 1)) * 100
                             if analysis_1m.get('ema21') else None
                         ),
@@ -1811,7 +1812,7 @@ class TechnicalAnalyzer:
                         'volume_ratio': analysis_1m.get('volumeSpike'),
                         'volume_spike': analysis_1m.get('volumeSpike'),
                     }
-                
+
                 # Construire indicators_5m depuis analysis_5m (MÊME SI REJETÉ - build_indicators_dict() inclut les indicateurs)
                 indicators_5m = {}
                 if analysis_5m and isinstance(analysis_5m, dict):
@@ -1832,7 +1833,7 @@ class TechnicalAnalyzer:
                         'ema9': analysis_5m.get('ema9'),
                         'ema21': analysis_5m.get('ema21'),
                         'ema_diff_pct': (
-                            ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0)) 
+                            ((analysis_5m.get('ema9', 0) - analysis_5m.get('ema21', 0))
                              / analysis_5m.get('ema21', 1)) * 100
                             if analysis_5m.get('ema21') else None
                         ),
@@ -1849,11 +1850,11 @@ class TechnicalAnalyzer:
                         'volume_ratio': analysis_5m.get('volumeSpike'),
                         'volume_spike': analysis_5m.get('volumeSpike'),
                     }
-                
+
                 # Ajouter les indicateurs à best_setup
                 best_setup['indicators_1m'] = indicators_1m
                 best_setup['indicators_5m'] = indicators_5m
-                
+
                 # Stocker scan_uuid pour Point B et C
                 if scan_uuid:
                     best_setup['_scan_uuid'] = scan_uuid
@@ -1863,16 +1864,16 @@ class TechnicalAnalyzer:
                 # ========================================
                 try:
                     from utils.helpers import DataLoggerHelper
-                    
+
                     if DataLoggerHelper.is_available() and best_setup.get('_scan_uuid'):
                         # Récupérer scan_uuid
                         scan_uuid_opp = best_setup.get('_scan_uuid')
-                        
+
                         # Préparer conditions matched
                         conditions_matched = []
                         if best_setup.get('signals'):
                             conditions_matched = [s.get('name', str(s)) if isinstance(s, dict) else str(s) for s in best_setup['signals']]
-                        
+
                         # Calculer scores
                         score_long = None
                         score_short = None
@@ -1880,7 +1881,7 @@ class TechnicalAnalyzer:
                             score_long = best_setup.get('totalScore')
                         elif best_setup.get('direction') == 'SHORT':
                             score_short = best_setup.get('totalScore')
-                        
+
                         # 🔥 FIX: Calculer divergence_bonus correctement
                         divergence_bonus_value = 0
                         if best_setup.get('direction') == 'LONG':
@@ -1897,14 +1898,14 @@ class TechnicalAnalyzer:
                                     conditions=long_conditions,
                                     condition_types=long_conditions
                                 )
-                        
+
                         # Construire setup_reason descriptif
                         setup_reason_text = f"Setup {best_setup.get('direction')} détecté"
                         if best_setup.get('timeframe'):
                             setup_reason_text += f" ({best_setup.get('timeframe')})"
                         if best_setup.get('confirmedBy'):
                             setup_reason_text += f" - {best_setup.get('confirmedBy')}"
-                        
+
                         # Logger l'opportunité
                         opp_id = await DataLoggerHelper.safe_log_opportunity(
                             scan_log_id=scan_uuid_opp,
@@ -1913,7 +1914,7 @@ class TechnicalAnalyzer:
                             entry_price=best_setup.get('entry', best_setup.get('price', 0)),
                             tp_suggested=best_setup.get('tp', 0),
                             sl_suggested=best_setup.get('sl', 0),
-                            tp_sl_mode=TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
+                            tp_sl_mode=get_effective_value('tp_sl_mode') or 'FIXE',
                             setup_score=best_setup.get('totalScore', 0),
                             setup_reason=setup_reason_text,
                             conditions_matched=conditions_matched,
@@ -1923,7 +1924,7 @@ class TechnicalAnalyzer:
                             trend_bonus=trend_data.get('bonus', 0) if trend_data else 0,
                             divergence_bonus=divergence_bonus_value
                         )
-                        
+
                         # Stocker opp_id pour Point C
                         best_setup['_opportunity_id'] = opp_id
                 # 🔥 SPRINT 1.2: log_opportunity - NON-BLOQUANT, distinguer erreurs DB
@@ -1937,7 +1938,7 @@ class TechnicalAnalyzer:
                 # ========================================
                 # FIN POINT B
                 # ========================================
-                
+
                 # 🔥 FIX: Ajouter les champs manquants pour scan_logs
                 # Scores par timeframe
                 if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
@@ -1946,21 +1947,21 @@ class TechnicalAnalyzer:
                 else:
                     best_setup['score_1m'] = None
                     best_setup['pattern_1m'] = None
-                    
+
                 if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
                     best_setup['score_5m'] = analysis_5m.get('totalScore') or analysis_5m.get('score_total')
                     best_setup['pattern_5m'] = analysis_5m.get('pattern') or analysis_5m.get('pattern_name')
                 else:
                     best_setup['score_5m'] = None
                     best_setup['pattern_5m'] = None
-                
+
                 # Patterns multi-timeframe
                 best_setup['pattern_multi_1m'] = analysis_1m.get('pattern_multi') if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) else None
                 best_setup['pattern_multi_5m'] = analysis_5m.get('pattern_multi') if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m) else None
-                
+
                 # Trend data
                 best_setup['trend_bonus'] = trend_data.get('bonus', 0) if trend_data else 0
-                
+
                 # 🔥 FIX: Calculer divergence_bonus si pas déjà présent
                 if 'divergence_bonus' not in best_setup or best_setup['divergence_bonus'] is None:
                     divergence_bonus_calc = 0
@@ -1983,7 +1984,7 @@ class TechnicalAnalyzer:
                     best_setup['divergence_bonus'] = divergence_bonus_calc
                     best_setup['divergence_detected'] = divergence_bonus_calc > 0
                     best_setup['divergence_type'] = 'RSI_MACD' if divergence_bonus_calc > 0 else None
-                
+
                 # 🔥 FIX: Construire setup_reason si pas déjà présent
                 if 'setup_reason' not in best_setup or best_setup['setup_reason'] is None:
                     setup_reason_text = f"Setup {best_setup.get('direction')} détecté"
@@ -2167,14 +2168,14 @@ class TechnicalAnalyzer:
                 # 🔥 FIX: Vérification RSI FINALE (configurable) - bloque LONG sur RSI suracheté, SHORT sur RSI survendu
                 rsi_filter_enabled = get_effective_value('rsi_final_filter_enabled')
                 if rsi_filter_enabled is None:
-                    rsi_filter_enabled = TRADING_CONFIG.get('rsi_final_filter_enabled', True)
-                
+                    rsi_filter_enabled = True
+
                 if rsi_filter_enabled:
                     final_rsi = best.get('rsi', 50)
                     direction = best.get('direction', 'NEUTRAL')
-                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or TRADING_CONFIG.get('rsi_final_short_min', 35)
-                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
-                    
+                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or 35
+                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or 65
+
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
                         reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
                         logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec {reason}")
@@ -2243,7 +2244,7 @@ class TechnicalAnalyzer:
 
             # 🔥 FIX: Toujours retourner un dict avec analysis_1m et analysis_5m pour que scanner_loop.py puisse construire les indicateurs
             reason = f"Aucun timeframe valide. " + " | ".join(reasons) if reasons else "Aucune raison spécifique"
-            
+
             # 🔥 Déterminer reject_category dominant (priorité au plus bloquant)
             reject_category = None
             for analysis in [analysis_1m, analysis_5m]:
@@ -2259,13 +2260,13 @@ class TechnicalAnalyzer:
                         reject_category = current_cat
                     elif not reject_category:
                         reject_category = current_cat
-            
+
             # 🔥 Si toujours aucune catégorie, assigner une par défaut pour éviter les NULL en DB
             if not reject_category:
                 if "None (pas de setup)" in reason:
                     reject_category = "no_setup_found"
                 elif "Aucune raison spécifique" in reason:
-                    reject_category = "no_setup_found" 
+                    reject_category = "no_setup_found"
                 else:
                     reject_category = "uncategorized_rejection"
 
@@ -2284,7 +2285,7 @@ class TechnicalAnalyzer:
                     analysis_5m.get('totalScore', 0) if analysis_5m and isinstance(analysis_5m, dict) else 0
                 ) or None
             }
-            
+
             # Construire indicators_1m et indicators_5m même si aucun setup n'est valide
             indicators_1m = {}
             if analysis_1m and isinstance(analysis_1m, dict):
@@ -2322,7 +2323,7 @@ class TechnicalAnalyzer:
                 }
             result['indicators_1m'] = indicators_1m
             result['indicators_5m'] = indicators_5m
-            
+
             # 🔥 FIX: Ajouter métriques de filtres même lors de rejet pour éviter colonnes vides en DB
             filters_rejection = {
                 'snr_1m': analysis_1m.get('snr') if analysis_1m and isinstance(analysis_1m, dict) else None,
@@ -2343,7 +2344,7 @@ class TechnicalAnalyzer:
                 'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m and isinstance(analysis_5m, dict) else None
             }
             result['filters'] = filters_rejection
-            
+
             return result
 
         # 🔥 SPRINT 1.2: Top-level analyze_pair - Distinguer toutes erreurs possibles

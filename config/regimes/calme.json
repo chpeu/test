@@ -1,7 +1,7 @@
 {
   "name": "CALME",
   "optimal_atr_min": 0.06,
-  "optimal_atr_max": 0.20,
+  "optimal_atr_max": 0.2,
   "min_score_required": 9.0,
   "atr_mult_sl": 1.2,
   "atr_mult_tp": 1.8,
@@ -14,7 +14,10 @@
   "stagnation_min_pnl": 0.05,
   "stagnation_max_loss": -0.08,
   "optimal_atr_min_5m": 0.35,
-  "optimal_atr_max_5m": 0.50,
+  "optimal_atr_max_5m": 0.5,
   "rsi_final_long_max": 60,
-  "rsi_final_short_min": 40
+  "rsi_final_short_min": 40,
+  "scalability_spread_max": 0.04,
+  "scalability_volume_min": 50000,
+  "balance_score_min": 0.75
 }

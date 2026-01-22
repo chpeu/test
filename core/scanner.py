@@ -18,6 +18,7 @@ import time
 from api.mexc import get_mexc_client
 from config import TRADING_CONFIG, DEBUG_ENABLED
 from utils.logger import get_logger
+from utils.effective_config import get_effective_value
 
 # 🔥 SPRINT 1.2: Exception Handling System
 try:
@@ -258,7 +259,7 @@ class ScalabilityScanner:
     
     def calculate_score(self, pair: Dict, max_volume: float, max_depth: float) -> float:
         """
-        🔥 OPT #1/#4/#5: Calcule le score de scalabilité avec paramètres configurables
+        🔥 OPT #1/#4/#5: Calcule le score de scalabilité avec paramètres dynamiques (régime)
         
         Formula: (volSpreadRatio × log10(volume) × normFactor × balanceBonus × adxBonus)
         
@@ -268,7 +269,7 @@ class ScalabilityScanner:
             max_depth: Profondeur max normalisée
             
         Returns:
-            Tuple (score, reject_reason) - reject_reason=None si accepté
+            Score final (0.0 si rejeté)
         """
         symbol = pair.get('symbol', '?')
         self._last_reject_reason = None
@@ -280,66 +281,36 @@ class ScalabilityScanner:
         funding_rate = pair.get('fundingRate', 0)
         adx = pair.get('adx', 0)
         
-        # 🔥 OPT #1: Paramètres configurables (plus hardcodés)
-        spread_min = TRADING_CONFIG.get('scalability_spread_min', 0.001)
-        try:
-            spread_min = float(spread_min)
-        except (TypeError, ValueError):
-            spread_min = 0.001
-
-        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-
-        max_spread_override = TRADING_CONFIG.get('max_spread_pct')
-        max_spread_fixe = TRADING_CONFIG.get('max_spread_pct_fixe')
-        max_spread_atr = TRADING_CONFIG.get('max_spread_pct_atr')
-
-        try:
-            max_spread_override = float(max_spread_override) if max_spread_override is not None else None
-        except (TypeError, ValueError):
-            max_spread_override = None
-
-        try:
-            max_spread_fixe = float(max_spread_fixe) if max_spread_fixe is not None else None
-        except (TypeError, ValueError):
-            max_spread_fixe = None
-
-        try:
-            max_spread_atr = float(max_spread_atr) if max_spread_atr is not None else None
-        except (TypeError, ValueError):
-            max_spread_atr = None
-
+        # 🔥 UTILISATION DE GET_EFFECTIVE_VALUE POUR LE RÉGIME DYNAMIQUE
+        spread_min = get_effective_value('scalability_spread_min') or 0.001
+        tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
+        
+        # spread_max dynamique
+        spread_max = get_effective_value('scalability_spread_max')
+        max_spread_trading = get_effective_value('max_spread_pct') or 0.05
+        
         if tp_sl_mode == 'FIXE':
-            if max_spread_fixe is not None:
-                max_spread_trading = max_spread_fixe
-            elif max_spread_override is not None:
-                max_spread_trading = max_spread_override
-            else:
-                max_spread_trading = 0.03
+            max_spread_trading = get_effective_value('max_spread_pct_fixe') or max_spread_trading
         else:
-            if max_spread_atr is not None:
-                max_spread_trading = max_spread_atr
-            elif max_spread_override is not None:
-                max_spread_trading = max_spread_override
-            else:
-                max_spread_trading = 0.06
-
-        spread_max = TRADING_CONFIG.get('scalability_spread_max', 0.02)
-        try:
-            spread_max = float(spread_max) if spread_max is not None else None
-        except (TypeError, ValueError):
-            spread_max = None
+            max_spread_trading = get_effective_value('max_spread_pct_atr') or max_spread_trading
 
         if spread_max is None:
             spread_max = max_spread_trading
         else:
             spread_max = min(spread_max, max_spread_trading)
-        volume_min = TRADING_CONFIG.get('scalability_volume_min', 100000)
-        funding_max = TRADING_CONFIG.get('scalability_funding_rate_max', 0.05)
-        balance_min = TRADING_CONFIG.get('balance_score_min', 0.7)
-        log_rejected = TRADING_CONFIG.get('scalability_log_rejected', True)
+
+        volume_min = get_effective_value('scalability_volume_min') or 100000
+        funding_max = get_effective_value('scalability_funding_rate_max') or 0.05
+        balance_min = get_effective_value('balance_score_min') or 0.7
+        log_rejected = get_effective_value('scalability_log_rejected')
+        if log_rejected is None: log_rejected = True
 
         # 🔥 OPT #5: Filtres avec logging des rejets
         reject_reason = None
+        
+        # Log détaillé pour debug (si activé)
+        if DEBUG_ENABLED and symbol in ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']:
+            logger.info(f"🔍 [SCORE-DEBUG] {symbol}: spread={spread:.4f}%, vol5={vol5:.4f}%, vol_min={volume_min}, funding={funding_rate:.4f}%")
         
         if math.isnan(spread):
             reject_reason = f"spread=NaN"
@@ -357,8 +328,8 @@ class ScalabilityScanner:
             reject_reason = f"fundingRate={funding_rate:.3f}% > max={funding_max}%"
         
         if reject_reason:
-            if log_rejected and DEBUG_ENABLED:
-                logger.debug(f"⏭️ {symbol} rejeté: {reject_reason}")
+            if log_rejected:
+                logger.info(f"⏭️ {symbol} rejeté: {reject_reason}")
             self._last_reject_reason = reject_reason
             return 0.0
         
@@ -372,8 +343,8 @@ class ScalabilityScanner:
         balance_bonus = balance_score
         
         # 🔥 OPT #4: Bonus ADX si trend fort
-        adx_threshold = TRADING_CONFIG.get('scalability_adx_bonus_threshold', 25)
-        adx_multiplier = TRADING_CONFIG.get('scalability_adx_bonus_multiplier', 1.2)
+        adx_threshold = get_effective_value('scalability_adx_bonus_threshold') or 25
+        adx_multiplier = get_effective_value('scalability_adx_bonus_multiplier') or 1.2
         adx_bonus = adx_multiplier if adx > adx_threshold else 1.0
         
         # Score brut avec bonus ADX
@@ -734,11 +705,7 @@ class ScalabilityScanner:
         Returns:
             Liste des paires triée par score décroissant
         """
-        if self.is_scanning:
-            logger.warning("Scanner déjà en cours")
-            return []
-        
-        self.is_scanning = True
+        # 🔥 SPRINT 1: Suppression du flag is_scanning interne (géré par verrou externe StateManager)
         
         # 🔥 OPT #5: Stats des rejets
         reject_stats = {
@@ -750,32 +717,41 @@ class ScalabilityScanner:
         }
         
         try:
+            # 🔥 OPT #11: Utiliser get_effective_value pour les filtres du scanner
+            volume_24h_min = get_effective_value('scalability_volume_24h_min')
+            funding_max = get_effective_value('scalability_funding_rate_max')
+            # volume_min est utilisé plus loin dans calculate_score via TRADING_CONFIG
+            
             logger.info("🔍 Recuperation details futures...")
             
             # Récupérer toutes les paires futures USDT
             markets = await self.client.exchange.load_markets()
             futures_pairs = []
             
+            # 🔥 OPT #12: Log de départ
+            logger.info(f"📡 {len(markets)} marchés chargés au total")
+            
             for symbol, market in markets.items():
-                if market['type'] == 'swap' and market['quote'] == 'USDT':
-                    # 🔥 OPT: Inclure paires majeures même avec frais minimes
+                if market.get('type') == 'swap' and market.get('quote') == 'USDT' and market.get('active'):
+                    # 🔥 RELAXED FEE FILTER: Accepter les paires avec des frais raisonnables (< 0.08% taker)
                     maker_fee = market.get('maker', 0)
                     taker_fee = market.get('taker', 0)
-                    
-                    # Liste des paires majeures à inclure absolument
                     major_pairs = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']
-                    
                     is_major = symbol in major_pairs
-                    # Accepter si 0% fees OU si c'est une paire majeure avec frais très faibles (< 0.02%)
-                    if (maker_fee == 0 and taker_fee == 0) or (is_major and taker_fee <= 0.0002):
+                    
+                    # 🔥 Augmenté à 0.0008 (0.08%) pour être plus large sur MEXC
+                    if taker_fee <= 0.0008 or is_major:
                         futures_pairs.append({
                             'symbol': symbol,
                             'maker': maker_fee,
                             'taker': taker_fee,
                             'is_major': is_major
                         })
+                    else:
+                        if DEBUG_ENABLED:
+                            logger.debug(f"⏭️ {symbol} ignoré: taker_fee={taker_fee*100:.4f}% > 0.08%")
             
-            logger.info(f"📊 {len(futures_pairs)} paires selectionnees (incluant majeures)")
+            logger.info(f"📊 {len(futures_pairs)} paires après filtrage des frais (incluant majeures)")
             
             # Exclure paires manuellement blacklistées
             excluded = set(TRADING_CONFIG.get("excluded_symbols", []))
@@ -786,33 +762,54 @@ class ScalabilityScanner:
                 if reject_stats['excluded'] > 0:
                     logger.info(f"⏭️ {reject_stats['excluded']} paires exclues manuellement")
             
-            # 🔥 OPT #3: Pré-filtrage par volume 24h (évite scan inutile)
-            volume_24h_min = TRADING_CONFIG.get('scalability_volume_24h_min', 500000)
-            funding_max = TRADING_CONFIG.get('scalability_funding_rate_max', 0.05)
-            
             logger.info(f"📈 Pré-filtrage: volume_24h >= {volume_24h_min:,.0f} USDT, funding <= {funding_max}%")
             
+            # 🔥 OPTIMISATION: Utiliser fetch_tickers() pour récupérer TOUS les volumes d'un coup
+            # C'est beaucoup plus rapide que fetch_ticker par symbole
+            logger.info("📡 Récupération de tous les tickers MEXC...")
+            all_tickers = {}
+            try:
+                all_tickers = await self.client.exchange.fetch_tickers()
+                logger.info(f"✅ {len(all_tickers)} tickers récupérés")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fetch_tickers: {e}, repli sur appels individuels")
+
+            # 🔥 DEBUG: Log config values
+            # Utiliser get_effective_value pour être raccord avec le filtrage
+            eff_spread_max = get_effective_value('scalability_spread_max')
+            eff_volume_min = get_effective_value('scalability_volume_min')
+            logger.info(f"🔍 Config Effective Scan: spread_max={eff_spread_max}, volume_min={eff_volume_min}, funding_max={funding_max}")
+            
             # Récupérer volume 24h et funding rate en batch
-            prefilter_batch_size = 10
+            prefilter_batch_size = 20 # Augmenté car on a déjà les volumes
             filtered_pairs = []
             
             for i in range(0, len(futures_pairs), prefilter_batch_size):
                 batch = futures_pairs[i:i + prefilter_batch_size]
                 
-                # Récupérer volumes et funding rates en parallèle
-                volume_tasks = [self.fetch_ticker_volume_24h(p['symbol']) for p in batch]
+                # Les volumes sont déjà dans all_tickers
+                # On ne fetch en parallèle que les funding rates (plus lent)
                 funding_tasks = [self.fetch_funding_rate(p['symbol']) for p in batch]
-                
-                volumes = await asyncio.gather(*volume_tasks, return_exceptions=True)
                 funding_rates = await asyncio.gather(*funding_tasks, return_exceptions=True)
                 
                 for j, pair in enumerate(batch):
-                    vol_24h = volumes[j] if isinstance(volumes[j], (int, float)) else 0
+                    # Récupérer volume depuis all_tickers ou fetch individuel si manquant
+                    ticker = all_tickers.get(pair['symbol'], {})
+                    vol_24h = ticker.get('quoteVolume') or ticker.get('baseVolume', 0)
+                    
+                    if vol_24h == 0:
+                        # Fallback si ticker manquant
+                        vol_24h = await self.fetch_ticker_volume_24h(pair['symbol'])
+                    
                     funding = funding_rates[j] if isinstance(funding_rates[j], (int, float)) else 0
                     
                     pair['volume24h'] = vol_24h
                     pair['fundingRate'] = funding
                     
+                    # 🔥 DEBUG: Log rejections for specific symbols
+                    if pair['symbol'] in ['BTC/USDT:USDT', 'ETH/USDT:USDT']:
+                        logger.info(f"🔍 DEBUG {pair['symbol']}: vol_24h={vol_24h:,.0f}, funding={funding:.4f}%")
+
                     # 🔥 OPT #3: Filtrer par volume 24h
                     if vol_24h < volume_24h_min:
                         reject_stats['low_volume_24h'] += 1
@@ -825,9 +822,8 @@ class ScalabilityScanner:
                     
                     filtered_pairs.append(pair)
                 
-                # Petite pause
-                if i + prefilter_batch_size < len(futures_pairs):
-                    await asyncio.sleep(0.02)
+                # Petite pause pour ne pas saturer l'API
+                await asyncio.sleep(0.05)
             
             logger.info(
                 f"✅ Pré-filtrage: {len(filtered_pairs)}/{len(futures_pairs)} paires retenues | "
@@ -894,27 +890,30 @@ class ScalabilityScanner:
                 if score == 0:
                     reject_stats['score_zero'] += 1
             
-            # Filtrer et trier
+            # Trier par score décroissant
+            filtered_pairs.sort(key=lambda x: x.get('score', 0), reverse=True)
+            
+            # Paires pour le régime (celles qui ont un ATR valide, même si score 0)
+            regime_pairs = [p for p in filtered_pairs if p.get('atr_percent') is not None and p.get('atr_percent') > 0]
+            
+            # Paires pour le trading (score > 0)
             scored_pairs = [p for p in filtered_pairs if p.get('score', 0) > 0]
-            scored_pairs.sort(key=lambda x: x['score'], reverse=True)
             top_pairs = scored_pairs[:n]
             
             # 🔥 OPT #5: Log résumé des rejets
             logger.info(
-                f"✅ {len(top_pairs)} paires scalables classées | "
+                f"✅ {len(top_pairs)} paires scalables (score>0) | {len(regime_pairs)} paires pour régime | "
                 f"Rejets: excluded={reject_stats['excluded']}, vol24h={reject_stats['low_volume_24h']}, "
                 f"funding={reject_stats['high_funding']}, scan={reject_stats['scan_failed']}, "
                 f"score0={reject_stats['score_zero']}"
             )
             
-            # Log top 5 pour debug
-            if top_pairs and DEBUG_ENABLED:
-                top5_info = ", ".join([
-                    f"{p['symbol'].split('/')[0]}({p['score']:.1f})"
-                    for p in top_pairs[:5]
-                ])
-                logger.debug(f"🏆 Top 5: {top5_info}")
-            
+            # Si on n'a pas de paires avec score > 0, on retourne quand même les paires filtrées pour le régime
+            # afin que le MarketRegimeSelector puisse travailler
+            if not top_pairs and regime_pairs:
+                logger.info(f"⚠️ Aucune paire avec score > 0, retour de {len(regime_pairs)} paires pour détection régime")
+                return regime_pairs[:n] # Retourner les meilleures paires par volume/funding même si score 0
+                
             return top_pairs
 
         # 🔥 SPRINT 1.2: Scan scalability top-level - Distinguer toutes erreurs
