@@ -55,7 +55,8 @@ class TrailingStopManager:
         self,
         position: Dict[str, Any],
         current_price: float,
-        pnl_percent: float
+        pnl_percent: float,
+        custom_distance_pct: Optional[float] = None  # 🔥 SUPPORT ADAPTATIF
     ) -> Optional[float]:
         """
         Mettre à jour trailing stop pour une position
@@ -64,6 +65,7 @@ class TrailingStopManager:
             position: Dict position avec entry, atr, sl, direction
             current_price: Prix actuel
             pnl_percent: PnL en pourcentage
+            custom_distance_pct: Distance trailing forcée (ex: calculée avec params adaptatifs)
 
         Returns:
             Nouveau SL si mis à jour, None sinon
@@ -76,16 +78,23 @@ class TrailingStopManager:
             return None
 
         # Calculer ATR en pourcentage
-        entry = position.get('entry', 0)
-        atr = position.get('atr', 0)
-
-        if entry > 0 and atr > 0:
-            atr_percent = (atr / entry) * 100
+        atr_pct_used = position.get('atr_pct_used')
+        if isinstance(atr_pct_used, (int, float)) and atr_pct_used > 0:
+            atr_percent = float(atr_pct_used)
         else:
-            atr_percent = 0.5  # Fallback
+            entry = position.get('entry', 0)
+            atr = position.get('atr', 0)
+
+            if entry > 0 and atr > 0:
+                atr_percent = (atr / entry) * 100
+            else:
+                atr_percent = 0.5  # Fallback
 
         # Calculer distance trailing adaptative
-        trailing_distance = self.calculate_adaptive_distance(atr_percent)
+        if custom_distance_pct is not None:
+            trailing_distance = custom_distance_pct
+        else:
+            trailing_distance = self.calculate_adaptive_distance(atr_percent)
 
         # Calculer nouveau SL
         direction = position.get('direction', 'LONG')

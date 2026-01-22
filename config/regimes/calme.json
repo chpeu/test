@@ -1,0 +1,20 @@
+{
+  "name": "CALME",
+  "optimal_atr_min": 0.06,
+  "optimal_atr_max": 0.20,
+  "min_score_required": 9.0,
+  "atr_mult_sl": 1.2,
+  "atr_mult_tp": 1.8,
+  "break_even_atr_mult": 0.6,
+  "trailing_trigger_atr_mult": 0.8,
+  "max_position_time": 360,
+  "volume_multiplier": 0.9,
+  "sl_exchange_percent": 0.25,
+  "stagnation_timeout": 360,
+  "stagnation_min_pnl": 0.05,
+  "stagnation_max_loss": -0.08,
+  "optimal_atr_min_5m": 0.35,
+  "optimal_atr_max_5m": 0.50,
+  "rsi_final_long_max": 60,
+  "rsi_final_short_min": 40
+}

@@ -31,7 +31,7 @@ def load_live_config() -> Dict[str, Any]:
         'max_slippage_pct': 0.15,
         'max_latency_ms': 1000,
         'max_pnl_discrepancy_pct': 20,
-        'default_leverage': 10  # 🔥 FUTURES: Levier par défaut (1-125x)
+        'default_leverage': 1   # 🔥 FUTURES: Levier par défaut (1-125x)
     }
 
     if not LIVE_CONFIG_FILE.exists():
@@ -58,6 +58,78 @@ def save_live_config(config: Dict[str, Any]) -> bool:
         return False
 
 
+@router.post("/reconcile-mexc")
+async def run_mexc_reconciliation():
+    """
+    Exécute le script de réconciliation MEXC vs DB
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+    
+    script_path = Path("verification/reconcile_exchange_export_vs_db.py")
+    excel_path = Path("export mexc.xlsx")
+    output_csv = Path("verification/reconcile_mexc_vs_db_agg.csv")
+    
+    if not excel_path.exists():
+        return JSONResponse({
+            "success": False,
+            "error": "Fichier 'export mexc.xlsx' introuvable à la racine."
+        }, status_code=404)
+        
+    try:
+        # Exécuter la commande
+        cmd = [
+            sys.executable, str(script_path),
+            "--file", str(excel_path),
+            "--mexc-fr-orders",
+            "--output-csv", str(output_csv),
+            "--sheet", "Feuil3",
+            "--auto-time-offset",
+            "--time-tolerance-seconds", "3600"
+        ]
+        
+        process = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        
+        if process.returncode != 0:
+            logger.error(f"Erreur réconciliation: {process.stderr}")
+            return JSONResponse({
+                "success": False,
+                "error": f"Erreur lors de l'exécution du script: {process.stderr}"
+            }, status_code=500)
+            
+        # Lire le résultat du CSV pour le renvoyer
+        import pandas as pd
+        if output_csv.exists():
+            df = pd.read_csv(output_csv)
+            # On ne renvoie que les colonnes intéressantes
+            results = df.to_dict(orient="records")
+            return JSONResponse({
+                "success": True,
+                "output": process.stdout,
+                "results": results,
+                "summary": {
+                    "total_mismatches": len(df),
+                    "mean_pnl_diff": float(df["pnl_diff_usdt"].mean()) if not df.empty else 0,
+                    "max_size_diff": float(df["size_diff_ratio"].max()) if not df.empty else 0
+                }
+            })
+        else:
+            return JSONResponse({
+                "success": True,
+                "output": process.stdout,
+                "results": [],
+                "message": "Aucun écart détecté."
+            })
+            
+    except Exception as e:
+        logger.error(f"Exception pendant réconciliation: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+
 @router.get("/stats")
 async def get_live_stats():
     """
@@ -71,7 +143,14 @@ async def get_live_stats():
         config = load_live_config()
 
         # Récupérer stats depuis LiveOrderManager si actif
-        from main import live_order_manager
+        from core.state_manager import get_state_manager
+
+        state = get_state_manager()
+        live_order_manager = state.get_live_order_manager()
+        if not live_order_manager:
+            from main import live_order_manager as legacy_live_order_manager
+
+            live_order_manager = legacy_live_order_manager
 
         if live_order_manager:
             stats = live_order_manager.get_stats()
@@ -253,7 +332,7 @@ async def update_live_config(data: Dict[str, Any]):
             if config.get('api_key_mexc') and config.get('api_secret_mexc'):
                 import main
                 from config import TRADING_CONFIG
-                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
+                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 1))
                 browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
                 use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
 
@@ -617,6 +696,95 @@ async def get_funding_rate(symbol: str):
     except Exception as e:
         logger.error(f"Erreur récupération funding rate: {e}")
         return JSONResponse({'success': False, 'error': str(e), 'rate': 0})
+
+
+@router.get('/token/status')
+async def get_token_status():
+    """
+    🔥 NOUVEAU: Récupérer le statut du token MEXC
+    
+    Returns:
+        - token_healthy: Token valide
+        - token_age_hours: Âge du token en heures
+        - estimated_expiry_hours: Temps restant estimé avant expiration
+        - proactive_alert_sent: Alerte proactive envoyée
+    """
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({
+                'success': False,
+                'message': 'Live trading non initialisé'
+            })
+        
+        # Récupérer le client MEXC bypass
+        if hasattr(live_order_manager, 'client') and live_order_manager.client:
+            client = live_order_manager.client
+            
+            # Récupérer le token monitor
+            if hasattr(client, '_token_monitor') and client._token_monitor:
+                status = client._token_monitor.get_status()
+                return JSONResponse({
+                    'success': True,
+                    **status
+                })
+        
+        return JSONResponse({
+            'success': False,
+            'message': 'Token monitor non disponible'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération statut token: {e}")
+        return JSONResponse({'success': False, 'error': str(e)})
+
+
+@router.post('/token/reset-timer')
+async def reset_token_timer():
+    """
+    🔥 NOUVEAU: Réinitialiser le timer du token après renouvellement manuel
+    
+    Appeler cette API après avoir:
+    1. Mis à jour MEXC_BROWSER_TOKEN dans .env
+    2. Redémarré le bot
+    
+    Cela réinitialise le compteur d'âge du token pour les alertes proactives.
+    """
+    try:
+        from main import live_order_manager
+        
+        if not live_order_manager:
+            return JSONResponse({
+                'success': False,
+                'message': 'Live trading non initialisé'
+            })
+        
+        # Récupérer le client MEXC bypass
+        if hasattr(live_order_manager, 'client') and live_order_manager.client:
+            client = live_order_manager.client
+            
+            # Récupérer le token monitor
+            if hasattr(client, '_token_monitor') and client._token_monitor:
+                client._token_monitor.reset_token_timer()
+                status = client._token_monitor.get_status()
+                
+                logger.info("✅ Timer token MEXC réinitialisé via API")
+                
+                return JSONResponse({
+                    'success': True,
+                    'message': 'Timer token réinitialisé',
+                    **status
+                })
+        
+        return JSONResponse({
+            'success': False,
+            'message': 'Token monitor non disponible'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur reset timer token: {e}")
+        return JSONResponse({'success': False, 'error': str(e)})
 
 
 # ============================================================================

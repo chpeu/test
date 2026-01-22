@@ -44,7 +44,21 @@ export const positionDuration = derived(activePosition, $pos => {
 
 // Actions
 export function updatePosition(data) {
-	activePosition.set(data);
+	// 🔥 FIX: Fusionner les données au lieu de remplacer
+	// Ne remplace pas les valeurs existantes par null/undefined
+	const nowIso = new Date().toISOString();
+	activePosition.update($pos => {
+		if (!$pos) return { ...data, last_update_at: nowIso };
+		const merged = { ...$pos };
+		for (const [key, value] of Object.entries(data)) {
+			// Ne pas écraser avec null/undefined pour préserver ml_calibrated_winrate
+			if (value !== null && value !== undefined) {
+				merged[key] = value;
+			}
+		}
+		merged.last_update_at = nowIso;
+		return merged;
+	});
 }
 
 export function clearPosition() {

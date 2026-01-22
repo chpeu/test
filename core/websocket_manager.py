@@ -114,7 +114,8 @@ class WebSocketManager:
         """Envoyer un message à un WebSocket spécifique"""
         try:
             if websocket in self.active_connections:
-                await websocket.send_text(json.dumps(message))
+                # 🔥 FIX: Utiliser un encodeur JSON personnalisé pour gérer datetime et autres types
+                await websocket.send_text(json.dumps(message, default=str))
         except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
             # 🔥 FIX: Déconnexions normales - nettoyer silencieusement
             await self.disconnect(websocket)
@@ -127,8 +128,12 @@ class WebSocketManager:
         if not self.active_connections:
             return
         
-        # 🔥 OPTIMISATION: Créer le message JSON une seule fois
-        message_json = json.dumps(message)
+        # 🔥 OPTIMISATION: Créer le message JSON une seule fois avec encodeur robuste
+        try:
+            message_json = json.dumps(message, default=str)
+        except Exception as e:
+            logger.error(f"❌ Erreur sérialisation JSON broadcast: {e}")
+            return
         
         # 🔥 FIX: Créer une copie de la liste pour éviter les modifications pendant l'itération
         connections_to_send = list(self.active_connections)
@@ -141,8 +146,10 @@ class WebSocketManager:
                 # 🔥 FIX: Vérifier que la connexion est toujours active
                 if connection not in self.active_connections:
                     return None
-                await connection.send_text(message_json)
+                await asyncio.wait_for(connection.send_text(message_json), timeout=1.0)
                 return None  # Succès
+            except asyncio.TimeoutError:
+                return connection  # Timeout - nettoyer connexion
             except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
                 # 🔥 FIX: Ignorer les erreurs de déconnexion normales
                 return connection  # Échec - retourner connexion à nettoyer
@@ -151,11 +158,16 @@ class WebSocketManager:
                 logger.debug(f"⚠️ Erreur broadcast WebSocket: {e}")
                 return connection  # Échec - retourner connexion à nettoyer
         
-        # Exécuter tous les envois en parallèle
-        results = await asyncio.gather(
-            *[send_to_connection(conn) for conn in connections_to_send],
-            return_exceptions=True
-        )
+        # Exécuter tous les envois en parallèle avec protection contre event loop fermée
+        try:
+            results = await asyncio.gather(
+                *[send_to_connection(conn) for conn in connections_to_send],
+                return_exceptions=True
+            )
+        except RuntimeError as e:
+            # Event loop fermée pendant l'envoi - ignorer silencieusement
+            logger.debug(f"⚠️ Event loop fermée pendant broadcast: {e}")
+            return
         
         # 🔥 FIX: Nettoyer les connexions déconnectées (filtrer les exceptions et None)
         disconnected = []

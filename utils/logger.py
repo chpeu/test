@@ -21,7 +21,7 @@ class WebSocketLogHandler(logging.Handler):
         self.ws_manager = ws_manager
     
     def emit(self, record):
-        """Envoyer le log au frontend"""
+        """Envoyer le log au frontend et stocker les erreurs de façon persistante"""
         try:
             if not self.ws_manager:
                 return
@@ -35,6 +35,20 @@ class WebSocketLogHandler(logging.Handler):
                 logging.CRITICAL: 'CRITICAL'
             }
             level = level_map.get(record.levelno, 'INFO')
+            
+            # 🔥 NEW: Stocker les erreurs de façon persistante
+            if level in ['ERROR', 'CRITICAL']:
+                try:
+                    from utils.error_history import get_error_history
+                    error_history = get_error_history()
+                    message_with_colors = record.getMessage()
+                    error_history.add_error(
+                        level=level,
+                        message=message_with_colors,
+                        raw_message=message_with_colors
+                    )
+                except Exception as e:
+                    print(f"⚠️ Erreur sauvegarde erreur: {e}", file=sys.stderr)
             
             # 🔥 FIX: Formater le message avec le ColoredFormatter pour préserver les couleurs ANSI et emojis
             # Utiliser le formatter pour obtenir les couleurs ANSI
@@ -69,13 +83,46 @@ class WebSocketLogHandler(logging.Handler):
                 'raw_message': message_with_colors  # Message sans couleur pour recherche
             }
             
-            # Envoyer via WebSocket (asynchrone, donc on crée une tâche)
+            # Envoyer via WebSocket (asynchrone, fire-and-forget)
+            # 🔥 FIX: Utiliser call_soon_threadsafe avec une coroutine simplifiée
             import asyncio
             try:
                 loop = asyncio.get_running_loop()
-                async def send_log():
-                    await self.ws_manager.emit('log', entry)
-                loop.create_task(send_log())
+                
+                # Vérifier que le loop est actif et pas en shutdown
+                if not loop.is_running() or loop.is_closed():
+                    return
+                
+                # Vérifier si shutdown est en cours via le module shutdown
+                try:
+                    from core.shutdown import get_shutdown_manager
+                    shutdown_mgr = get_shutdown_manager()
+                    if shutdown_mgr and shutdown_mgr.is_shutting_down:
+                        return  # Ne pas créer de nouvelles tasks pendant shutdown
+                except Exception:
+                    pass  # Module non disponible, continuer
+                
+                # Utiliser ensure_future avec une coroutine simple sans gather
+                async def send_log_direct():
+                    try:
+                        # Appel direct sans passer par broadcast/gather
+                        if hasattr(self.ws_manager, 'active_connections'):
+                            import json
+                            message = json.dumps({'type': 'log', 'data': entry})
+                            # Envoyer à une seule connexion à la fois, pas de gather
+                            for conn in list(self.ws_manager.active_connections):
+                                try:
+                                    await conn.send_text(message)
+                                except Exception:
+                                    pass  # Ignorer les erreurs de connexion
+                    except asyncio.CancelledError:
+                        pass  # Normal pendant shutdown
+                    except Exception:
+                        pass  # Ignorer toutes les erreurs
+                
+                # Créer la tâche
+                task = loop.create_task(send_log_direct())
+                task.add_done_callback(lambda t: t.cancelled() or t.exception() is None or None)
             except RuntimeError:
                 # Pas de loop en cours, ignorer
                 pass
@@ -117,6 +164,15 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     Returns:
         Logger configuré
     """
+    try:
+        if os.name == 'nt':
+            if hasattr(sys.stdout, 'reconfigure'):
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            if hasattr(sys.stderr, 'reconfigure'):
+                sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
     
@@ -154,7 +210,8 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
             )
             
             # 🎯 Niveau WARNING+ uniquement (optimisé pour production)
-            file_handler.setLevel(logging.WARNING)
+            # 🔥 DEBUG TEMPORAIRE: Passer à DEBUG pour diagnostiquer WebSocket
+            file_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else logging.INFO)
             
             # Format sans couleurs ANSI pour fichier
             file_formatter = logging.Formatter(

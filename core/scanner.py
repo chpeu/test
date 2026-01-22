@@ -19,6 +19,17 @@ from api.mexc import get_mexc_client
 from config import TRADING_CONFIG, DEBUG_ENABLED
 from utils.logger import get_logger
 
+# 🔥 SPRINT 1.2: Exception Handling System
+try:
+    from core.exceptions import (
+        NetworkError, APIError, RateLimitError, MarketDataError,
+        PriceDataError, InsufficientDataError,
+        TradeCursorError
+    )
+except ImportError:
+    # Fallback si exceptions custom non disponibles
+    NetworkError = APIError = RateLimitError = MarketDataError = Exception
+    PriceDataError = InsufficientDataError = TradeCursorError = Exception
 
 logger = get_logger()
 
@@ -34,6 +45,10 @@ class ScalabilityScanner:
         self._orderbook_cache_timestamps: Dict[str, float] = {}
         # 🔥 OPT #5: dernière raison de rejet (pour debug)
         self._last_reject_reason: Optional[str] = None
+        # 🔥 ORDER FLOW: Historique des spreads pour volatilité
+        self._spread_history: Dict[str, List[float]] = {}
+        # 🔥 ORDER FLOW: Historique des volumes pour accélération
+        self._volume_history: Dict[str, List[float]] = {}
     
     def calculate_volatility(self, closes: List[float], period: int) -> float:
         """
@@ -55,6 +70,43 @@ class ScalabilityScanner:
         std = math.sqrt(variance)
         
         return (std / mean) * 100 if mean > 0 else 0.0
+    
+    def calculate_atr(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> float:
+        """
+        Calcul Average True Range (ATR)
+        
+        Args:
+            highs: Liste des prix high
+            lows: Liste des prix low
+            closes: Liste des prix de clôture
+            period: Période de calcul (défaut: 14)
+            
+        Returns:
+            ATR en valeur absolue
+        """
+        if len(closes) < period + 1 or len(highs) < period + 1 or len(lows) < period + 1:
+            # Fallback: utiliser high - low moyen
+            if len(highs) >= 5:
+                return sum(highs[-5:][i] - lows[-5:][i] for i in range(5)) / 5
+            return 0.0
+        
+        true_ranges = []
+        for i in range(1, len(closes)):
+            high = highs[i]
+            low = lows[i]
+            prev_close = closes[i - 1]
+            
+            tr = max(
+                high - low,
+                abs(high - prev_close),
+                abs(low - prev_close)
+            )
+            true_ranges.append(tr)
+        
+        # Utiliser les dernières 'period' valeurs
+        recent_tr = true_ranges[-period:] if len(true_ranges) >= period else true_ranges
+        
+        return sum(recent_tr) / len(recent_tr) if recent_tr else 0.0
     
     async def fetch_spread_data(self, symbol: str) -> Dict:
         """
@@ -137,9 +189,54 @@ class ScalabilityScanner:
 
             return result
 
-        except Exception as e:
+        # 🔥 SPRINT 1.2: Spread calculation - Distinguer erreurs réseau, API, données
+        except NetworkError as e:
+            # Erreur réseau - fallback sur cache si disponible
             if DEBUG_ENABLED:
-                logger.error(f"Erreur spread pour {symbol}: {e}")
+                logger.warning(f"⚠️ Erreur réseau spread {symbol}: {e}")
+            if cache_entry and cache_age < cache_ttl:
+                return cache_entry
+            return {
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'note': 'Erreur réseau'
+            }
+        except APIError as e:
+            # Erreur API (symbole invalide, rate limit)
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur API spread {symbol}: {e}")
+            # Pas de fallback cache pour erreurs API
+            return {
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'note': 'Erreur API'
+            }
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ Données marché invalides spread {symbol}: {e}")
+            # 🔥 OPT #7: fallback sur cache si disponible
+            if cache_entry and cache_age < cache_ttl:
+                return cache_entry
+            return {
+                'spread': float('nan'),
+                'bookDepth': 0,
+                'balanceScore': 0,
+                'bidVol': 0,
+                'askVol': 0,
+                'directionBias': 'NEUTRAL',
+                'note': 'Données invalides'
+            }
+        except Exception as e:
+            # Erreur inattendue
+            logger.error(f"❌ Erreur inattendue spread {symbol}: {type(e).__name__}: {e}")
             # 🔥 OPT #7: fallback sur cache si disponible
             if cache_entry and cache_age < cache_ttl:
                 return cache_entry
@@ -179,7 +276,57 @@ class ScalabilityScanner:
         
         # 🔥 OPT #1: Paramètres configurables (plus hardcodés)
         spread_min = TRADING_CONFIG.get('scalability_spread_min', 0.001)
+        try:
+            spread_min = float(spread_min)
+        except (TypeError, ValueError):
+            spread_min = 0.001
+
+        tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+
+        max_spread_override = TRADING_CONFIG.get('max_spread_pct')
+        max_spread_fixe = TRADING_CONFIG.get('max_spread_pct_fixe')
+        max_spread_atr = TRADING_CONFIG.get('max_spread_pct_atr')
+
+        try:
+            max_spread_override = float(max_spread_override) if max_spread_override is not None else None
+        except (TypeError, ValueError):
+            max_spread_override = None
+
+        try:
+            max_spread_fixe = float(max_spread_fixe) if max_spread_fixe is not None else None
+        except (TypeError, ValueError):
+            max_spread_fixe = None
+
+        try:
+            max_spread_atr = float(max_spread_atr) if max_spread_atr is not None else None
+        except (TypeError, ValueError):
+            max_spread_atr = None
+
+        if tp_sl_mode == 'FIXE':
+            if max_spread_fixe is not None:
+                max_spread_trading = max_spread_fixe
+            elif max_spread_override is not None:
+                max_spread_trading = max_spread_override
+            else:
+                max_spread_trading = 0.03
+        else:
+            if max_spread_atr is not None:
+                max_spread_trading = max_spread_atr
+            elif max_spread_override is not None:
+                max_spread_trading = max_spread_override
+            else:
+                max_spread_trading = 0.06
+
         spread_max = TRADING_CONFIG.get('scalability_spread_max', 0.02)
+        try:
+            spread_max = float(spread_max) if spread_max is not None else None
+        except (TypeError, ValueError):
+            spread_max = None
+
+        if spread_max is None:
+            spread_max = max_spread_trading
+        else:
+            spread_max = min(spread_max, max_spread_trading)
         volume_min = TRADING_CONFIG.get('scalability_volume_min', 100000)
         funding_max = TRADING_CONFIG.get('scalability_funding_rate_max', 0.05)
         balance_min = TRADING_CONFIG.get('balance_score_min', 0.7)
@@ -280,11 +427,96 @@ class ScalabilityScanner:
             
             # DX et ADX
             dx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100 if (plus_di + minus_di) > 0 else 0
-            
+
             return round(dx, 2)
-            
-        except Exception:
+
+        # 🔥 SPRINT 1.2: DX calculation - Failsafe, return 0.0 sur toute erreur
+        except (ValueError, ZeroDivisionError, IndexError) as e:
+            # Erreur calcul (données insuffisantes, division par zéro)
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur calcul DX: {type(e).__name__}: {e}")
             return 0.0
+        except Exception as e:
+            # Erreur inattendue
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ Erreur inattendue calcul DX: {type(e).__name__}: {e}")
+            return 0.0
+
+    def calculate_orderflow_metrics(
+        self,
+        symbol: str,
+        bid_vol: float,
+        ask_vol: float,
+        spread: float,
+        closes: List[float],
+        volumes: List[float]
+    ) -> Dict[str, float]:
+        """
+        🔥 ORDER FLOW: Calcul des métriques avancées pour ML
+        
+        Args:
+            symbol: Symbole de la paire
+            bid_vol: Volume bid (acheteurs)
+            ask_vol: Volume ask (vendeurs)
+            spread: Spread actuel en %
+            closes: Liste des prix de clôture
+            volumes: Liste des volumes
+            
+        Returns:
+            Dict avec les 6 métriques order flow
+        """
+        # 1. Delta Volume: pression nette (+ = acheteurs dominent)
+        delta_volume = bid_vol - ask_vol
+        
+        # 2. Imbalance Normalized: ratio [-1, +1]
+        total_vol = bid_vol + ask_vol
+        imbalance_normalized = (bid_vol - ask_vol) / total_vol if total_vol > 0 else 0.0
+        
+        # 3. Spread Volatility (écart-type sur les 5 derniers spreads)
+        if symbol not in self._spread_history:
+            self._spread_history[symbol] = []
+        
+        # Ajouter le spread actuel à l'historique (max 10 valeurs)
+        if not math.isnan(spread) and spread > 0:
+            self._spread_history[symbol].append(spread)
+            if len(self._spread_history[symbol]) > 10:
+                self._spread_history[symbol] = self._spread_history[symbol][-10:]
+        
+        # Calculer écart-type sur les 5 derniers
+        spread_history = self._spread_history.get(symbol, [])
+        if len(spread_history) >= 5:
+            recent_spreads = spread_history[-5:]
+            mean_spread = sum(recent_spreads) / len(recent_spreads)
+            variance = sum((s - mean_spread) ** 2 for s in recent_spreads) / len(recent_spreads)
+            spread_volatility_5 = math.sqrt(variance)
+        else:
+            spread_volatility_5 = 0.0
+        
+        # 4. Book Depth Ratio: bid_vol / ask_vol (> 1 = plus d'acheteurs)
+        book_depth_ratio = bid_vol / ask_vol if ask_vol > 0 else 1.0
+        
+        # 5. Volume Acceleration: dérivée du volume (changement récent)
+        if len(volumes) >= 5:
+            vol_recent = sum(volumes[-3:]) / 3  # Moyenne 3 dernières
+            vol_previous = sum(volumes[-6:-3]) / 3 if len(volumes) >= 6 else vol_recent  # Moyenne précédentes
+            volume_acceleration = (vol_recent - vol_previous) / vol_previous if vol_previous > 0 else 0.0
+        else:
+            volume_acceleration = 0.0
+        
+        # 6. Price Momentum 5: % change sur 5 bougies
+        if len(closes) >= 5:
+            price_momentum_5 = ((closes[-1] - closes[-5]) / closes[-5]) * 100 if closes[-5] > 0 else 0.0
+        else:
+            price_momentum_5 = 0.0
+        
+        return {
+            'delta_volume': round(delta_volume, 4),
+            'imbalance_normalized': round(imbalance_normalized, 4),
+            'spread_volatility_5': round(spread_volatility_5, 6),
+            'book_depth_ratio': round(book_depth_ratio, 4),
+            'volume_acceleration': round(volume_acceleration, 4),
+            'price_momentum_5': round(price_momentum_5, 4)
+        }
 
     async def scan_pair(self, symbol: str) -> Optional[Dict]:
         """
@@ -321,8 +553,44 @@ class ScalabilityScanner:
             # 🔥 OPT #4: Calculer ADX pour trend strength
             adx = self.calculate_adx(highs, lows, closes)
             
+            # 🔥 FIX: Calculer ATR pour Market Regime Selector
+            atr = self.calculate_atr(highs, lows, closes)
+            current_price = closes[-1] if closes else 1
+            atr_percent = (atr / current_price) * 100 if current_price > 0 else 0.25
+
+            # 🔥 PHASE 1B: Calculer ATR 5m (approximation depuis klines 1m)
+            highs_5m = []
+            lows_5m = []
+            closes_5m = []
+            if len(closes) >= 5:
+                for i in range(0, len(closes), 5):
+                    chunk_highs = highs[i:i + 5]
+                    chunk_lows = lows[i:i + 5]
+                    chunk_closes = closes[i:i + 5]
+                    if len(chunk_closes) < 5:
+                        continue
+                    highs_5m.append(max(chunk_highs))
+                    lows_5m.append(min(chunk_lows))
+                    closes_5m.append(chunk_closes[-1])
+
+            atr_5m = None
+            atr_percent_5m = None
+            if closes_5m and len(closes_5m) >= 5:
+                atr_5m = self.calculate_atr(highs_5m, lows_5m, closes_5m)
+                atr_percent_5m = (atr_5m / current_price) * 100 if current_price > 0 else None
+            
             # Récupérer spread & depth (avec cache)
             spread_data = await self.fetch_spread_data(symbol)
+            
+            # 🔥 ORDER FLOW: Calculer les métriques avancées
+            orderflow_metrics = self.calculate_orderflow_metrics(
+                symbol=symbol,
+                bid_vol=spread_data['bidVol'],
+                ask_vol=spread_data['askVol'],
+                spread=spread_data['spread'],
+                closes=closes,
+                volumes=volumes
+            )
             
             # Construire objet paire
             pair = {
@@ -338,14 +606,50 @@ class ScalabilityScanner:
                 'askVol': spread_data['askVol'],
                 'directionBias': spread_data.get('directionBias', 'NEUTRAL'),
                 'bidAskRatio': spread_data.get('bidAskRatio', 0.5),
-                'adx': adx  # 🔥 OPT #4: ADX pour trend strength
+                'adx': adx,  # 🔥 OPT #4: ADX pour trend strength
+                'atr': atr,  # 🔥 FIX: ATR valeur absolue pour Market Regime
+                'atr_percent': atr_percent,  # 🔥 FIX: ATR en % pour Market Regime
+                'atr_5m': atr_5m,
+                'atr_percent_5m': atr_percent_5m,
+                # 🔥 ORDER FLOW: 6 nouvelles métriques pour ML
+                'delta_volume': orderflow_metrics['delta_volume'],
+                'imbalance_normalized': orderflow_metrics['imbalance_normalized'],
+                'spread_volatility_5': orderflow_metrics['spread_volatility_5'],
+                'book_depth_ratio': orderflow_metrics['book_depth_ratio'],
+                'volume_acceleration': orderflow_metrics['volume_acceleration'],
+                'price_momentum_5': orderflow_metrics['price_momentum_5']
             }
             
             return pair
-            
-        except Exception as e:
+
+        # 🔥 SPRINT 1.2: Scan pair - Distinguer erreurs données, réseau, calcul
+        except NetworkError as e:
+            # Erreur réseau (timeout fetch ticker/ohlcv)
             if DEBUG_ENABLED:
-                logger.error(f"Erreur scan pair {symbol}: {e}")
+                logger.warning(f"⚠️ Erreur réseau scan pair {symbol}: {e}")
+            return None
+        except APIError as e:
+            # Erreur API (symbole invalide, rate limit)
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur API scan pair {symbol}: {e}")
+            return None
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ Données marché invalides scan pair {symbol}: {e}")
+            return None
+        except InsufficientDataError as e:
+            # Données insuffisantes (pas assez de bougies)
+            if DEBUG_ENABLED:
+                logger.debug(f"Données insuffisantes scan pair {symbol}: {e}")
+            return None
+        except (ValueError, ZeroDivisionError, KeyError) as e:
+            # Erreur calcul métriques
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur calcul scan pair {symbol}: {type(e).__name__}: {e}")
+            return None
+        except Exception as e:
+            # Erreur inattendue
+            logger.error(f"❌ Erreur inattendue scan pair {symbol}: {type(e).__name__}: {e}", exc_info=True)
             return None
     
     async def fetch_funding_rate(self, symbol: str) -> float:
@@ -365,7 +669,21 @@ class ScalabilityScanner:
                 # Convertir en pourcentage
                 return float(funding['fundingRate']) * 100
             return 0.0
-        except Exception:
+        # 🔥 SPRINT 1.2: Funding rate - Failsafe, return 0.0 sur toute erreur
+        except NetworkError as e:
+            # Erreur réseau - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur réseau funding rate: {e}")
+            return 0.0
+        except APIError as e:
+            # Erreur API - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur API funding rate: {e}")
+            return 0.0
+        except Exception as e:
+            # Erreur inattendue - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur inattendue funding rate: {type(e).__name__}: {e}")
             return 0.0
 
     async def fetch_ticker_volume_24h(self, symbol: str) -> float:
@@ -383,7 +701,21 @@ class ScalabilityScanner:
             if ticker and 'quoteVolume' in ticker:
                 return float(ticker['quoteVolume'] or 0)
             return 0.0
-        except Exception:
+        # 🔥 SPRINT 1.2: Volume 24h - Failsafe, return 0.0 sur toute erreur
+        except NetworkError as e:
+            # Erreur réseau - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur réseau volume 24h: {e}")
+            return 0.0
+        except APIError as e:
+            # Erreur API - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur API volume 24h: {e}")
+            return 0.0
+        except Exception as e:
+            # Erreur inattendue - failsafe
+            if DEBUG_ENABLED:
+                logger.debug(f"Erreur inattendue volume 24h: {type(e).__name__}: {e}")
             return 0.0
 
     async def scan_top_pairs(self, n: int = 20) -> List[Dict]:
@@ -420,17 +752,24 @@ class ScalabilityScanner:
             
             for symbol, market in markets.items():
                 if market['type'] == 'swap' and market['quote'] == 'USDT':
-                    # Vérifier 0% fees
+                    # 🔥 OPT: Inclure paires majeures même avec frais minimes
                     maker_fee = market.get('maker', 0)
                     taker_fee = market.get('taker', 0)
-                    if maker_fee == 0 and taker_fee == 0:
+                    
+                    # Liste des paires majeures à inclure absolument
+                    major_pairs = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']
+                    
+                    is_major = symbol in major_pairs
+                    # Accepter si 0% fees OU si c'est une paire majeure avec frais très faibles (< 0.02%)
+                    if (maker_fee == 0 and taker_fee == 0) or (is_major and taker_fee <= 0.0002):
                         futures_pairs.append({
                             'symbol': symbol,
                             'maker': maker_fee,
-                            'taker': taker_fee
+                            'taker': taker_fee,
+                            'is_major': is_major
                         })
             
-            logger.info(f"📊 {len(futures_pairs)} paires 0% fees retrouvees")
+            logger.info(f"📊 {len(futures_pairs)} paires selectionnees (incluant majeures)")
             
             # Exclure paires manuellement blacklistées
             excluded = set(TRADING_CONFIG.get("excluded_symbols", []))
@@ -494,6 +833,9 @@ class ScalabilityScanner:
             total_batches = math.ceil(len(filtered_pairs) / BATCH_SIZE)
             
             for i in range(0, len(filtered_pairs), BATCH_SIZE):
+                # 🔥 FIX: Yield control to event loop to prevent WebSocket blocking
+                await asyncio.sleep(0)
+                
                 batch = filtered_pairs[i:i + BATCH_SIZE]
                 batch_num = (i // BATCH_SIZE) + 1
                 progress = f"{i + 1}-{min(i + BATCH_SIZE, len(filtered_pairs))}"
@@ -521,12 +863,17 @@ class ScalabilityScanner:
                             'askVol': 0,
                             'price': 0,
                             'adx': 0,
+                            'atr': 0,
+                            'atr_percent': 0,
                             'directionBias': 'NEUTRAL'
                         })
                 
-                # Petite pause entre batches
+                # Pause plus longue entre batches pour laisser le WS respirer
                 if i + BATCH_SIZE < len(filtered_pairs):
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.1)
+            
+            # 🔥 FIX: Yield avant calculs lourds finaux
+            await asyncio.sleep(0)
             
             # Calculer normalisations
             valid_pairs = [p for p in filtered_pairs if p.get('recentVolume', 0) > 0]
@@ -563,10 +910,30 @@ class ScalabilityScanner:
                 logger.debug(f"🏆 Top 5: {top5_info}")
             
             return top_pairs
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur scanner scalabilite: {e}")
+
+        # 🔥 SPRINT 1.2: Scan scalability top-level - Distinguer toutes erreurs
+        except NetworkError as e:
+            # Erreur réseau (timeout fetch tickers/ohlcv)
+            logger.error(f"❌ Erreur réseau scanner scalabilite: {e}")
+            return []
+        except APIError as e:
+            # Erreur API MEXC (rate limit, endpoint error)
+            logger.error(f"❌ Erreur API scanner scalabilite: {e}")
+            return []
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ Données marché invalides scanner scalabilite: {e}")
+            return []
+        except (ValueError, ZeroDivisionError, KeyError) as e:
+            # Erreur calcul métriques
             import traceback
+            logger.error(f"❌ Erreur calcul scanner scalabilite: {type(e).__name__}: {e}")
+            logger.error(traceback.format_exc())
+            return []
+        except Exception as e:
+            # Erreur totalement inattendue
+            import traceback
+            logger.error(f"❌ Erreur inattendue scanner scalabilite: {type(e).__name__}: {e}", exc_info=True)
             logger.error(traceback.format_exc())
             return []
         finally:

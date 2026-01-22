@@ -43,12 +43,17 @@ export const pnlChartData = derived(sortedTrades, $trades => {
 
 // Actions
 export function addTrade(trade) {
-	// 🔥 FIX: S'assurer que le trade a un ID unique
-	const tradeWithId = {
-		...trade,
-		id: trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at}_${Date.now()}_${Math.random()}`
-	};
-	tradeHistory.update($trades => [tradeWithId, ...$trades]);
+	const fallbackId = trade?.id || trade?.trade_id || trade?.closure_id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp || ''}`;
+	const tradeWithId = { ...trade, id: fallbackId };
+	tradeHistory.update($trades => {
+		const idx = $trades.findIndex(t => t.id === tradeWithId.id);
+		if (idx >= 0) {
+			const copy = [...$trades];
+			copy[idx] = { ...copy[idx], ...tradeWithId };
+			return copy;
+		}
+		return [tradeWithId, ...$trades];
+	});
 }
 
 export function updateTrade(tradeId, updates) {
@@ -62,10 +67,17 @@ export function clearHistory() {
 }
 
 export function setTradeHistory(trades) {
-	// 🔥 FIX: S'assurer que chaque trade a un ID unique
 	const tradesWithIds = trades.map((trade, index) => ({
 		...trade,
-		id: trade.id || `${trade.symbol}_${trade.closed_at || trade.opened_at}_${index}_${Date.now()}`
+		id: trade?.id || trade?.trade_id || trade?.closure_id || `${trade.symbol}_${trade.closed_at || trade.opened_at || trade.timestamp || ''}_${index}`
 	}));
-	tradeHistory.set(tradesWithIds);
+	// Dedup par id (garder la premiere occurrence)
+	const seen = new Set();
+	const deduped = [];
+	for (const t of tradesWithIds) {
+		if (!t.id || seen.has(t.id)) continue;
+		seen.add(t.id);
+		deduped.push(t);
+	}
+	tradeHistory.set(deduped);
 }

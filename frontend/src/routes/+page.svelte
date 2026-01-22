@@ -23,11 +23,14 @@
 	import GlobalStats from '$lib/components/GlobalStats.svelte';
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
-	import MLVersionTabs from '$lib/components/ml/MLVersionTabs.svelte';
+	import MLPanel from '$lib/components/ml/MLPanel.svelte';
 	import LiveTradingPanel from '$lib/components/LiveTradingPanel.svelte';
+	import MarketRegimeWidget from '$lib/components/MarketRegimeWidget.svelte';
+	import TradingCircuitBreaker from '$lib/components/TradingCircuitBreaker.svelte';
 	import { recentLogs } from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
+	import { activePosition, clearPosition, updatePosition } from '$lib/stores/position';
 
 	// 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages)
 	let showErrorPopup = false;
@@ -69,6 +72,132 @@
 	function stripAnsiCodes(text: string): string {
 		if (!text) return '';
 		return text.replace(/\x1b\[\d+m/g, '').replace(/\[\d+m/g, '');
+	}
+
+	function demoTimestamp(minutesAgo: number): string {
+		const now = Date.now();
+		return new Date(now - minutesAgo * 60 * 1000).toISOString();
+	}
+
+	function seedDemoPosition() {
+		if ($activePosition && !confirm('Une position est déjà affichée. Remplacer par une position fictive ?')) {
+			return;
+		}
+
+		if ($activePosition) {
+			clearPosition();
+		}
+
+		const demoPosition = {
+			symbol: 'BTCUSDT',
+			direction: 'LONG',
+			size: 150,
+			size_remaining: 90,
+			size_initial_contracts: 0.005,
+			size_remaining_contracts: 0.003,
+			entry: 63450.5,
+			current_price: 63810.2,
+			tp: 64250.0,
+			sl: 62900.0,
+			tp_sl_mode: 'FIXE',
+			pnl: 0.57,
+			pnl_usdt: 0.86,
+			opened_at: demoTimestamp(43),
+			partial_tp_sold: true,
+			partial_tp_percent: 50,
+			partial_profit_usdt: 18.4,
+			break_even_set: true,
+			break_even_triggered_at: demoTimestamp(28),
+			break_even_price: 63520.0,
+			break_even_pnl_pct: 0.18,
+			trailing_activated: true,
+			trailing_activated_at: demoTimestamp(20),
+			trailing_final_sl: 63610.0,
+			dynamic_sl: 63610.0,
+			trailing_distance_pct_effective: 0.15,
+			trailing_trigger_atr_mult_effective: 1.1,
+			trailing_distance_mult_effective: 0.8,
+			atr_percent: 0.25,
+			break_even_atr_mult_effective: 0.5,
+			trailing_mfe_enabled: true,
+			trailing_mfe_triggered: true,
+			trailing_mfe_triggered_at: demoTimestamp(15),
+			trailing_mfe_trigger_pnl_pct: 0.35,
+			max_pnl_reached: 0.8,
+			max_pnl_timestamp: demoTimestamp(10),
+			min_pnl_reached: -0.25,
+			min_pnl_timestamp: demoTimestamp(38),
+			max_price_reached: 63980.2,
+			min_price_reached: 63190.5,
+			stagnation_enabled: false,
+			ml_confidence: 62.3,
+			ml_calibrated_winrate: 58.1,
+			adaptive_sizing_multiplier: 1.15,
+			next_tp: {
+				price: 64250.0,
+				description: 'TP final',
+				color: '#10b981',
+				distance_pct: 0.4,
+				distance_atr: 0.6
+			},
+			next_sl: {
+				price: 63610.0,
+				distance_pct: -1.2,
+				distance_atr: 1.7
+			},
+			position_events: [
+				{
+					timestamp: demoTimestamp(43),
+					type: 'ENTRY',
+					price: 63450.5,
+					pnl_pct: 0,
+					pnl_usdt: 0,
+					details: {}
+				},
+				{
+					timestamp: demoTimestamp(30),
+					type: 'PARTIAL_TP',
+					price: 63720.0,
+					pnl_pct: 0.42,
+					pnl_usdt: 9.2,
+					details: { size_pct: 50 }
+				},
+				{
+					timestamp: demoTimestamp(28),
+					type: 'BE_TRIGGERED',
+					price: 63520.0,
+					pnl_pct: 0.18,
+					pnl_usdt: 3.1,
+					details: {}
+				},
+				{
+					timestamp: demoTimestamp(20),
+					type: 'TRAILING_ACTIVATED',
+					price: 63610.0,
+					pnl_pct: 0.3,
+					pnl_usdt: 5.4,
+					details: {}
+				},
+				{
+					timestamp: demoTimestamp(15),
+					type: 'TRAILING_MFE_TRIGGERED',
+					price: 63740.0,
+					pnl_pct: 0.48,
+					pnl_usdt: 8.6,
+					details: {}
+				},
+				{
+					timestamp: demoTimestamp(2),
+					type: 'TRAILING_SL_MOVED',
+					price: 63610.0,
+					pnl_pct: 0.57,
+					pnl_usdt: 10.3,
+					details: { new_sl: 63610.0 }
+				}
+			]
+		};
+
+		updatePosition(demoPosition);
 	}
 
 	let backendConnected = false;
@@ -504,6 +633,11 @@
 					<input type="checkbox" bind:checked={$debugMode} data-debug-name="debugMode" />
 					<span data-debug-name="debugMode">🐛 Debug</span>
 				</label>
+				{#if $debugMode}
+					<button class="demo-position-btn" on:click={seedDemoPosition}>
+						👁️ Position fictive
+					</button>
+				{/if}
 			</div>
 		</div>
 	</header>
@@ -541,6 +675,12 @@
 					</div>
 					<div class="status-panel" data-debug-name="dashboard.stats">
 						<StatsPanel />
+					</div>
+
+					<!-- 🔥 Sprint 1: Market Regime & Circuit Breaker Trading -->
+					<div class="regime-cb-row" data-debug-name="dashboard.regimeCB">
+						<MarketRegimeWidget />
+						<TradingCircuitBreaker />
 					</div>
 
 					<!-- Sélecteur Mode TP/SL -->
@@ -581,7 +721,7 @@
 				</div>
 			{:else if activeTab === 'ml'}
 				<div class="tab-content">
-					<MLVersionTabs />
+					<MLPanel />
 				</div>
 			{:else if activeTab === 'live'}
 				<div class="tab-content">
@@ -753,6 +893,28 @@
 		user-select: none;
 	}
 
+	.demo-position-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		background: rgba(16, 185, 129, 0.15);
+		border: 1px solid rgba(16, 185, 129, 0.4);
+		border-radius: 6px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		font-size: 13px;
+		font-weight: 600;
+		color: #10b981;
+		white-space: nowrap;
+	}
+
+	.demo-position-btn:hover {
+		background: rgba(16, 185, 129, 0.25);
+		border-color: #10b981;
+		transform: translateY(-1px);
+	}
+
 	/* Backend error banner */
 	.backend-error-banner {
 		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
@@ -861,6 +1023,19 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
 		gap: 15px;
+	}
+
+	/* 🔥 Sprint 1: Regime & Circuit Breaker row */
+	.regime-cb-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 15px;
+	}
+
+	@media (max-width: 900px) {
+		.regime-cb-row {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	/* Footer */

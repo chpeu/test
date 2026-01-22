@@ -6,6 +6,11 @@ import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+try:
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    RealDictCursor = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -129,7 +134,7 @@ def log_model_to_db(
             is_active, datetime.fromisoformat(training_info['trained_at'])
         )
         
-        result = pg._execute_query(insert_query, params, fetch=True)
+        result = pg._execute_query(insert_query, params, fetch=True, cursor_factory=RealDictCursor)
         
         if result:
             model_id = result[0]['id']
@@ -154,7 +159,7 @@ def get_active_model() -> Optional[Dict[str, Any]]:
             return None
         
         query = "SELECT * FROM ml_models WHERE is_active = TRUE LIMIT 1"
-        result = pg._execute_query(query, fetch=True)
+        result = pg._execute_query(query, fetch=True, cursor_factory=RealDictCursor)
         
         if result:
             return dict(result[0])
@@ -184,7 +189,7 @@ def list_all_models(limit: int = 10) -> list:
             LIMIT {limit}
         """
         
-        result = pg._execute_query(query, fetch=True)
+        result = pg._execute_query(query, fetch=True, cursor_factory=RealDictCursor)
         
         return [dict(row) for row in result] if result else []
     

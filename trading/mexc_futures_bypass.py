@@ -261,9 +261,22 @@ class ContractSpec:
     
     def round_price(self, price: float) -> float:
         """Arrondir le prix selon les specs du contrat"""
+        import math
+        original_price = price
+        
         if self.price_unit > 0:
             price = round(price / self.price_unit) * self.price_unit
-        return round(price, self.price_precision)
+        
+        rounded = round(price, self.price_precision)
+        
+        # 🔥 FIX: Si arrondi à 0 pour les petits prix, utiliser précision dynamique
+        if rounded <= 0 and original_price > 0:
+            # Nombre de décimales = -log10(prix) + 2 (marge de sécurité)
+            decimals_needed = max(0, int(-math.log10(original_price)) + 2)
+            decimals_needed = min(decimals_needed, 10)  # Max 10 décimales
+            return round(original_price, decimals_needed)
+        
+        return rounded
 
 
 # ============================================================================
@@ -277,6 +290,7 @@ ENDPOINTS = {
     "CANCEL_ALL_ORDERS": "/private/order/cancel_all",
     "GET_ORDER": "/private/order/get",
     "ORDER_HISTORY": "/private/order/list/history_orders",
+    "OPEN_ORDERS": "/private/order/list/open_orders",  # 🔥 Endpoint ajouté
     "OPEN_POSITIONS": "/private/position/open_positions",
     "POSITION_HISTORY": "/private/position/list/history_positions",
     "ACCOUNT_ASSET": "/private/account/asset",
@@ -440,13 +454,17 @@ class TokenHealthMonitor:
 
     Vérifie périodiquement la validité du token et envoie des alertes si expiré.
     Check toutes les 5 minutes (configurable).
+    
+    🔥 NOUVEAU: Alertes proactives basées sur l'âge du token
     """
 
     def __init__(
         self,
         client: 'MexcFuturesBypass',
         check_interval: int = 300,  # 5 minutes
-        telegram_notifier: Optional[Any] = None
+        telegram_notifier: Optional[Any] = None,
+        token_max_age_hours: float = 20.0,  # 🔥 Durée max token avant alerte (20h par défaut)
+        proactive_alert_hours: float = 4.0  # 🔥 Alerter X heures avant expiration estimée
     ):
         """
         Initialiser le moniteur
@@ -455,6 +473,8 @@ class TokenHealthMonitor:
             client: Instance du client MexcFuturesBypass
             check_interval: Intervalle de vérification en secondes (défaut 300s = 5min)
             telegram_notifier: Instance du TelegramNotifier pour alertes
+            token_max_age_hours: 🔥 Durée de vie estimée du token en heures (défaut 20h)
+            proactive_alert_hours: 🔥 Alerter X heures avant expiration estimée (défaut 4h)
         """
         self.client = client
         self.check_interval = check_interval
@@ -464,6 +484,12 @@ class TokenHealthMonitor:
         self._last_check_time = 0
         self._consecutive_failures = 0
         self._token_healthy = True
+        
+        # 🔥 NOUVEAU: Tracking de l'âge du token
+        self._token_start_time = time.time()  # Heure de démarrage du monitoring
+        self._token_max_age_seconds = token_max_age_hours * 3600
+        self._proactive_alert_seconds = proactive_alert_hours * 3600
+        self._proactive_alert_sent = False  # Éviter les alertes répétées
 
     async def start(self):
         """Démarrer le monitoring"""
@@ -503,6 +529,37 @@ class TokenHealthMonitor:
         """Vérifier la santé du token"""
         try:
             self._last_check_time = time.time()
+            
+            # 🔥 NOUVEAU: Vérification proactive de l'âge du token
+            token_age = time.time() - self._token_start_time
+            time_until_expiry = self._token_max_age_seconds - token_age
+            
+            # Alerter si le token approche de son expiration estimée
+            if time_until_expiry <= self._proactive_alert_seconds and not self._proactive_alert_sent:
+                hours_remaining = time_until_expiry / 3600
+                hours_used = token_age / 3600
+                
+                warning_msg = (
+                    f"⚠️ TOKEN MEXC - RENOUVELLEMENT RECOMMANDÉ\n\n"
+                    f"Le token est utilisé depuis {hours_used:.1f}h.\n"
+                    f"Expiration estimée dans ~{hours_remaining:.1f}h.\n\n"
+                    f"🔄 Actions recommandées:\n"
+                    f"1. Ouvrir DevTools sur mexc.com\n"
+                    f"2. Copier nouveau token (Headers > authorization)\n"
+                    f"3. Mettre à jour MEXC_BROWSER_TOKEN dans .env\n"
+                    f"4. Redémarrer le bot\n\n"
+                    f"💡 Renouvelez le token MAINTENANT pour éviter une interruption"
+                )
+                
+                logger.warning(f"⏰ {warning_msg}")
+                
+                if self.telegram_notifier and hasattr(self.telegram_notifier, 'send_message'):
+                    try:
+                        await self.telegram_notifier.send_message(warning_msg, bypass_throttle=True)
+                    except Exception as e:
+                        logger.error(f"Erreur envoi alerte proactive Telegram: {e}")
+                
+                self._proactive_alert_sent = True
 
             # Tenter de récupérer l'asset USDT (requête simple)
             response = await self.client.get_account_asset("USDT")
@@ -572,13 +629,31 @@ class TokenHealthMonitor:
 
     def get_status(self) -> Dict:
         """Récupérer le statut du moniteur"""
+        token_age_seconds = time.time() - self._token_start_time
+        time_until_expiry = max(0, self._token_max_age_seconds - token_age_seconds)
+        
         return {
             'running': self._running,
             'token_healthy': self._token_healthy,
             'consecutive_failures': self._consecutive_failures,
             'last_check_time': self._last_check_time,
-            'next_check_in': max(0, self.check_interval - (time.time() - self._last_check_time))
+            'next_check_in': max(0, self.check_interval - (time.time() - self._last_check_time)),
+            # 🔥 NOUVEAU: Info sur l'âge du token
+            'token_age_hours': round(token_age_seconds / 3600, 2),
+            'estimated_expiry_hours': round(time_until_expiry / 3600, 2),
+            'proactive_alert_sent': self._proactive_alert_sent,
+            'token_max_age_hours': round(self._token_max_age_seconds / 3600, 1)
         }
+    
+    def reset_token_timer(self):
+        """
+        🔥 NOUVEAU: Réinitialiser le timer du token après renouvellement manuel
+        
+        Appeler cette méthode après avoir mis à jour le token dans .env et redémarré.
+        """
+        self._token_start_time = time.time()
+        self._proactive_alert_sent = False
+        logger.info("✅ Timer token réinitialisé - Prochain check d'expiration dans ~16h")
 
 
 # ============================================================================
@@ -915,6 +990,9 @@ class MexcFuturesBypass:
         if position_id is not None:
             body["positionId"] = position_id
         if stop_loss_price is not None:
+            # 🔥 FIX: Ne pas ré-arrondir ici, le caller (LiveOrderManager) a déjà appliqué 
+            # le rounding correct selon les specs du contrat.
+            # L'ancien rounding dynamique (log10 + 4) était dangereux pour les prix > 0.1 avec haute précision.
             body["stopLossPrice"] = stop_loss_price
         if take_profit_price is not None:
             body["takeProfitPrice"] = take_profit_price
@@ -924,9 +1002,11 @@ class MexcFuturesBypass:
             body["externalOid"] = external_oid
         
         # 🔥 DEBUG: Log critique pour diagnostiquer les ordres qui echouent
+        # Note: valeur_usdt ici est APPROXIMATIVE (ne tient pas compte du contract_size)
+        # La vraie valeur = vol * price * contract_size (calculée par l'appelant)
         logger.warning(
-            f"🚀 SUBMIT ORDER CRITIQUE: {symbol} | side={side} | vol={vol} | price={price} | "
-            f"leverage={leverage}x | valeur_usdt={vol * price:.2f} USDT"
+            f"🚀 SUBMIT ORDER CRITIQUE: {symbol} | side={side} | vol={vol} contrats | price={price} | "
+            f"leverage={leverage}x | SL={body.get('stopLossPrice', 'N/A')}"
         )
         logger.info(f"📋 Order body: {body}")
         
@@ -1044,6 +1124,37 @@ class MexcFuturesBypass:
             "category": category,
         }
         return await self._request("GET", ENDPOINTS["ORDER_HISTORY"], params=params)
+    
+    async def get_open_orders(
+        self,
+        symbol: str,
+        page_num: int = 1,
+        page_size: int = 20
+    ) -> List[Dict]:
+        """
+        Récupérer les ordres ouverts
+        
+        Args:
+            symbol: Symbole (ex: "BTC_USDT")
+            page_num: Numéro de page
+            page_size: Taille de page
+            
+        Returns:
+            Liste des ordres ouverts
+        """
+        params = {
+            "symbol": symbol,
+            "page_num": page_num,
+            "page_size": page_size
+        }
+        
+        response = await self._request("GET", ENDPOINTS["OPEN_ORDERS"], params=params)
+        
+        if response.get("success") and response.get("code") == 0:
+            return response.get("data", {}).get("resultList", [])
+        else:
+            logger.warning(f"⚠️ Failed to get open orders for {symbol}: {response}")
+            return []
     
     # ========================================================================
     # Position Methods
@@ -1212,19 +1323,51 @@ class MexcFuturesBypass:
             vol_unit = float(data.get("volUnit", 1))
             price_unit = float(data.get("priceUnit", 0.01))
             
-            # Calculer le nombre de décimales
-            vol_precision = len(str(vol_unit).split('.')[-1]) if '.' in str(vol_unit) else 0
-            price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
+            # 🔥 FIX: Calculer le nombre de décimales avec Decimal pour supporter notation scientifique (ex: 1e-06)
+            try:
+                d_vol = Decimal(str(vol_unit))
+                vol_exponent = d_vol.as_tuple().exponent
+                vol_precision = abs(vol_exponent) if vol_exponent < 0 else 0
+            except Exception:
+                vol_precision = len(str(vol_unit).split('.')[-1]) if '.' in str(vol_unit) else 0
+
+            try:
+                d_price = Decimal(str(price_unit))
+                price_exponent = d_price.as_tuple().exponent
+                price_precision = abs(price_exponent) if price_exponent < 0 else 0
+            except Exception:
+                price_precision = len(str(price_unit).split('.')[-1]) if '.' in str(price_unit) else 0
             
             # 🔥 Récupérer contractSize (taille du contrat en tokens)
-            contract_size = float(data.get("contractSize", 1))
+            raw_contract_size = data.get("contractSize")
+            contract_size = float(raw_contract_size) if raw_contract_size is not None else 1.0
             
-            # 🔥 FIX: Corriger contractSize pour certains symboles où MEXC retourne 1.0 mais utilise 0.01
-            # Ces symboles ont des "micro-contrats" sur MEXC Futures
-            MICRO_CONTRACT_SYMBOLS = {'ZEC_USDT', 'BCH_USDT', 'ETC_USDT', 'LTC_USDT'}
-            if symbol in MICRO_CONTRACT_SYMBOLS and contract_size == 1.0:
-                contract_size = 0.01
-                logger.warning(f"⚠️ Override contractSize pour {symbol}: 1.0 → 0.01 (micro-contrat MEXC)")
+            # 🔥 VALIDATION contractSize pour éviter erreurs de sizing
+            if contract_size <= 0:
+                logger.error(
+                    f"❌ contractSize INVALIDE pour {symbol}: {contract_size} (brut: {raw_contract_size}) "
+                    f"→ Fallback à 1.0 (RISQUE DE SIZING INCORRECT!)"
+                )
+                contract_size = 1.0
+            elif contract_size == 1.0 and raw_contract_size is None:
+                # API n'a pas retourné de contractSize, on utilise le défaut
+                logger.warning(
+                    f"⚠️ contractSize ABSENT pour {symbol}, utilisation défaut 1.0 "
+                    f"(vérifier manuellement si micro-contrat)"
+                )
+            
+            # 🔥 FIX: Corriger contractSize UNIQUEMENT pour symboles où MEXC API retourne 1.0 alors que c'est faux
+            # NOTE: La plupart des symboles (SHIB, BTC, ETH, etc.) sont CORRECTS dans l'API
+            # Ces overrides sont pour les cas où l'API ment (retourne 1.0 alors que c'est différent)
+            CONTRACT_SIZE_OVERRIDES = {
+                # Micro-contrats: API dit 1.0 mais c'est faux
+                # 'SOL_USDT': 0.1,     # Désactivé: l'API retourne bien 0.1 maintenant (problème de cache)
+                # Ajouter ici d'autres symboles si nécessaire après vérification manuelle
+            }
+            if symbol in CONTRACT_SIZE_OVERRIDES and contract_size == 1.0:
+                correct_size = CONTRACT_SIZE_OVERRIDES[symbol]
+                logger.warning(f"⚠️ Override contractSize pour {symbol}: {contract_size} → {correct_size}")
+                contract_size = correct_size
             
             spec = ContractSpec(
                 symbol=symbol,

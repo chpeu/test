@@ -7,6 +7,13 @@ from typing import List, Dict, Optional
 from config import CONDITION_WEIGHTS, TRADING_CONFIG, TREND_BONUS_CONFIG
 from utils.logger import get_logger
 
+# 🔥 FIX 08/12/2025: Import pour utiliser effective_config
+try:
+    from utils.effective_config import get_effective_value
+    HAS_EFFECTIVE_CONFIG = True
+except ImportError:
+    HAS_EFFECTIVE_CONFIG = False
+
 
 logger = get_logger()
 
@@ -27,27 +34,41 @@ def calculate_weighted_score(condition_types: List[str]) -> float:
     return score
 
 
-def get_min_score_required(adx_value: float, use_weighted: bool = True) -> float:
+def get_min_score_required(
+    adx_value: float,
+    use_weighted: bool = True,
+    symbol: str = None
+) -> tuple:
     """
     Calcule le score minimum requis selon ADX (tolérance dynamique)
+    et applique l'ajustement pair scorer si disponible.
 
     Args:
         adx_value: Valeur ADX
         use_weighted: Si True, utilise scoring pondéré, sinon comptage simple
+        symbol: Symbole de la paire pour ajustement pair scorer (optionnel)
 
     Returns:
-        Score minimum requis
+        Tuple (score_minimum, pair_adjustment, effective_min_score)
+        - score_minimum: Score de base après ajustements ADX/régime
+        - pair_adjustment: Ajustement par paire [-2, +2]
+        - effective_min_score: Score effectif après tous ajustements
     """
+    pair_adjustment = 0.0
+    
     if use_weighted:
-        # 🔥 FIX: Toujours lire depuis TRADING_CONFIG (mis à jour dynamiquement)
-        base_min_score = TRADING_CONFIG.get('min_score_required', 7.5)
+        # 🔥 FIX 08/12/2025: Utiliser effective_config pour avoir les valeurs ajustées par régime
+        if HAS_EFFECTIVE_CONFIG:
+            base_min_score = get_effective_value('min_score_required') or TRADING_CONFIG.get('min_score_required', 7.5)
+        else:
+            base_min_score = TRADING_CONFIG.get('min_score_required', 7.5)
         
         # 🔥 FIX: Si l'utilisateur a modifié min_score_required (≠ 7.5), utiliser directement cette valeur
         # Sinon, appliquer les ajustements ADX selon les valeurs par défaut
         if base_min_score != 7.5:
             # Valeur modifiée par l'utilisateur → utiliser directement sans ajustement ADX
             min_score_required = base_min_score
-            logger.info(f"📊 get_min_score_required: Utilisation valeur personnalisée {min_score_required:.1f} (ADX={adx_value:.1f}, ajustement ADX désactivé)")
+            logger.debug(f"📊 get_min_score_required: Utilisation valeur personnalisée {min_score_required:.1f} (ADX={adx_value:.1f}, ajustement ADX désactivé)")
         else:
             # Valeur par défaut → appliquer ajustements ADX
             if adx_value > 30:
@@ -64,8 +85,24 @@ def get_min_score_required(adx_value: float, use_weighted: bool = True) -> float
         elif adx_value >= 25:
             min_conditions = 5.5
         min_score_required = min_conditions
+    
+    # 🔥 SPRINT 2: Appliquer ajustement Pair Scorer
+    if symbol and TRADING_CONFIG.get('pair_scorer_enabled', True):
+        try:
+            from core.pair_scorer import get_pair_scorer
+            pair_scorer = get_pair_scorer()
+            if pair_scorer.enabled:
+                pair_adjustment = pair_scorer.get_score_adjustment(symbol)
+        except Exception as e:
+            logger.debug(f"⚠️ Pair scorer non disponible: {e}")
+    
+    # Score effectif = base - pair_adjustment (bonus réduit le min, malus l'augmente)
+    effective_min_score = min_score_required - pair_adjustment
+    
+    # Borner le score effectif (minimum 4.0, pas de limite haute)
+    effective_min_score = max(4.0, effective_min_score)
 
-    return min_score_required
+    return min_score_required, pair_adjustment, effective_min_score
 
 
 def apply_trend_bonus(
@@ -191,7 +228,8 @@ def evaluate_setup_score(
     long_condition_types: List[str],
     short_condition_types: List[str],
     adx: Dict,
-    trend_data: Optional[Dict] = None
+    trend_data: Optional[Dict] = None,
+    symbol: str = None
 ) -> Dict:
     """
     Évalue les scores LONG et SHORT et détermine la direction
@@ -201,9 +239,11 @@ def evaluate_setup_score(
         short_condition_types: Types de conditions SHORT
         adx: Dict ADX
         trend_data: Données de trend (optionnel)
+        symbol: Symbole de la paire pour pair scorer (optionnel)
 
     Returns:
-        Dict avec 'direction', 'long_score', 'short_score', 'min_required'
+        Dict avec 'direction', 'long_score', 'short_score', 'min_required', 
+        'pair_adjustment', 'effective_min_score'
     """
     use_weighted = TRADING_CONFIG.get('use_weighted_scoring', True)
 
@@ -211,14 +251,23 @@ def evaluate_setup_score(
     long_score = calculate_weighted_score(long_condition_types) if use_weighted else len(long_condition_types)
     short_score = calculate_weighted_score(short_condition_types) if use_weighted else len(short_condition_types)
 
-    # Score minimum requis
-    min_score_required = get_min_score_required(adx['adx'], use_weighted)
+    # Score minimum requis (avec pair scorer si symbol fourni)
+    min_score_base, pair_adjustment, effective_min_score = get_min_score_required(
+        adx['adx'], use_weighted, symbol
+    )
 
-    # Direction
+    # Direction basée sur le score effectif (après ajustement pair)
+    # 🔥 FIX 30/12: Choisir la meilleure direction (pas LONG-first)
     temp_direction = 'NEUTRAL'
-    if long_score >= min_score_required:
+    long_passes = long_score >= effective_min_score
+    short_passes = short_score >= effective_min_score
+    
+    if long_passes and short_passes:
+        # Les deux passent le seuil → choisir le meilleur score
+        temp_direction = 'LONG' if long_score >= short_score else 'SHORT'
+    elif long_passes:
         temp_direction = 'LONG'
-    elif short_score >= min_score_required:
+    elif short_passes:
         temp_direction = 'SHORT'
 
     # Trend bonus
@@ -231,11 +280,17 @@ def evaluate_setup_score(
         elif temp_direction == 'SHORT':
             short_score += trend_bonus
 
-    # Réévaluer direction après bonus
+    # Réévaluer direction après bonus (toujours avec score effectif)
+    # 🔥 FIX 30/12: Même logique - choisir la meilleure direction
     direction = 'NEUTRAL'
-    if long_score >= min_score_required:
+    long_passes_final = long_score >= effective_min_score
+    short_passes_final = short_score >= effective_min_score
+    
+    if long_passes_final and short_passes_final:
+        direction = 'LONG' if long_score >= short_score else 'SHORT'
+    elif long_passes_final:
         direction = 'LONG'
-    elif short_score >= min_score_required:
+    elif short_passes_final:
         direction = 'SHORT'
 
     return {
@@ -243,6 +298,8 @@ def evaluate_setup_score(
         'temp_direction': temp_direction,
         'long_score': long_score,
         'short_score': short_score,
-        'min_required': min_score_required,
+        'min_required': min_score_base,  # Score de base (avant pair adjustment)
+        'pair_adjustment': pair_adjustment,  # 🔥 SPRINT 2: Ajustement pair scorer
+        'effective_min_score': effective_min_score,  # 🔥 Score effectif utilisé
         'trend_bonus': trend_bonus
     }

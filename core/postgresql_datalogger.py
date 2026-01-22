@@ -16,6 +16,9 @@ import threading
 
 from utils.pricing import get_preferred_price
 
+# 🔥 PHASE 1A: Import session detector pour contexte
+from utils.session_detector import get_current_session, get_day_info
+
 try:
     import psycopg2
     from psycopg2.extras import execute_values, RealDictCursor
@@ -87,6 +90,25 @@ def _extract_numeric_value(value: Any) -> Optional[float]:
     
     # Autre type non supporté
     return None
+
+
+def _derive_ml_threshold_type(reject_category: Optional[str]) -> Optional[str]:
+    """
+    Déduire le type de seuil ML à partir de la catégorie de rejet.
+    """
+    if not reject_category:
+        return None
+    if 'gb_confidence' in reject_category:
+        return 'gb_confidence'
+    if 'calibration' in reject_category:
+        return 'calibration_winrate'
+    if 'threshold_optimizer' in reject_category:
+        return 'threshold_optimizer'
+    if 'xgboost' in reject_category:
+        return 'xgboost_' + reject_category.split('_')[-1]
+    if 'negative' in reject_category:
+        return 'negative_filter'
+    return reject_category
 
 
 def serialize_config_safe(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -249,7 +271,7 @@ class PostgreSQLDataLogger:
             except Exception as e:
                 logger.error(f"❌ Erreur retour connexion: {e}")
     
-    def _execute_query(self, query: str, params: tuple = None, fetch: bool = False):
+    def _execute_query(self, query: str, params: tuple = None, fetch: bool = False, cursor_factory=None):
         """
         Exécuter une requête SQL
         
@@ -257,6 +279,7 @@ class PostgreSQLDataLogger:
             query: Requête SQL
             params: Paramètres (tuple)
             fetch: Si True, retourner les résultats
+            cursor_factory: Factory de curseur (ex: RealDictCursor)
         
         Returns:
             Résultats si fetch=True, sinon None
@@ -269,7 +292,7 @@ class PostgreSQLDataLogger:
             return None
         
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=cursor_factory)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "SQL exec: %s | params=%s",
@@ -300,6 +323,38 @@ class PostgreSQLDataLogger:
                 conn.rollback()
                 self._return_connection(conn)
             return None
+
+    def _update_scan_buffer(
+        self,
+        symbol: str,
+        updates: Dict[str, Any],
+        only_if_missing: Optional[Sequence[str]] = None
+    ) -> bool:
+        """
+        Mettre à jour le dernier scan en buffer pour un symbole donné.
+        Utile lorsque les scans sont encore en batch (non encore flushés).
+        """
+        if not symbol or not updates:
+            return False
+
+        if not self.scan_buffer:
+            return False
+
+        only_if_missing_set = set(only_if_missing or [])
+        with self.buffer_lock:
+            for item in reversed(self.scan_buffer):
+                if item.get('symbol') != symbol:
+                    continue
+                scan_data = item.get('scan_data')
+                if not isinstance(scan_data, dict):
+                    scan_data = {}
+                    item['scan_data'] = scan_data
+                for key, value in updates.items():
+                    if key in only_if_missing_set and scan_data.get(key) is not None:
+                        continue
+                    scan_data[key] = value
+                return True
+        return False
     
     def get_or_create_session(self, session_id: Optional[str] = None) -> Optional[str]:
         """
@@ -388,10 +443,17 @@ class PostgreSQLDataLogger:
             session_id = self.get_or_create_session()
         
         # 🔥 FIX: Vérifier le prix AVANT d'ajouter au buffer (pour éviter les scans invalides)
+        price = None
+        
+        # 1. Essayer market_data
         market_data = scan_data.get('market_data', {})
         price = get_preferred_price(market_data, None)
+        
+        # 2. Essayer price direct
         if price is None:
             price = get_preferred_price(scan_data.get('price'), None)
+            
+        # 3. Essayer analysis_1m et analysis_5m
         if price is None:
             analysis_1m = scan_data.get('analysis_1m', {})
             if isinstance(analysis_1m, dict):
@@ -400,6 +462,50 @@ class PostgreSQLDataLogger:
             analysis_5m = scan_data.get('analysis_5m', {})
             if isinstance(analysis_5m, dict):
                 price = get_preferred_price(analysis_5m, None)
+        
+        # 4. Essayer les données de scalabilité
+        if price is None:
+            scalability_data = scan_data.get('scalability_data', {})
+            if isinstance(scalability_data, dict):
+                price = get_preferred_price(scalability_data, None)
+        
+        # 5. Essayer current_price si disponible
+        if price is None:
+            current_price = scan_data.get('current_price')
+            if current_price is not None:
+                price = get_preferred_price(current_price, None)
+        
+        # 6. En dernier recours, essayer price_provider si symbol fourni
+        if price is None:
+            try:
+                from core.state_manager import StateManager
+                from api.price_provider import get_price_provider
+                import asyncio
+                
+                state = StateManager()
+                price_prov = state.get_price_provider()
+                if not price_prov:
+                    price_prov = get_price_provider()
+                
+                if price_prov:
+                    # Créer une nouvelle boucle ou utiliser l'existante
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Si dans une boucle existante, utiliser run_in_executor
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, price_prov.get_price(symbol))
+                            price_data = future.result(timeout=2.0)
+                            if price_data:
+                                price = get_preferred_price(price_data, None)
+                    except RuntimeError:
+                        # Pas de boucle en cours, utiliser asyncio.run directement
+                        price_data = asyncio.run(price_prov.get_price(symbol))
+                        if price_data:
+                            price = get_preferred_price(price_data, None)
+            except Exception:
+                # Ignorer les erreurs du price_provider
+                pass
 
         # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
         if price is None or price == 0:
@@ -439,6 +545,9 @@ class PostgreSQLDataLogger:
                     price, spread_pct, book_depth, balance_score,
                     bid_vol, ask_vol, orderbook_imbalance_ratio,
                     recent_volume, vol5, vol15, scalability_score,
+                    -- 🔥 ORDER FLOW: 6 nouvelles métriques
+                    delta_volume, imbalance_normalized, spread_volatility_5,
+                    book_depth_ratio, volume_acceleration, price_momentum_5,
                     
                     -- Indicateurs 1m
                     ema9_1m, ema21_1m, ema_diff_pct_1m,
@@ -486,6 +595,10 @@ class PostgreSQLDataLogger:
                     -- Décision ML
                     is_opportunity, opportunity_direction, reject_reason, reject_reason_category,
                     
+                    -- 🔥 ML Confidence (confiance réelle du modèle)
+                    ml_confidence,
+                    ml_threshold_used, ml_threshold_type, calibrated_winrate,
+                    
                     -- Params snapshot
                     params_snapshot,
                     
@@ -500,23 +613,32 @@ class PostgreSQLDataLogger:
                     config_retest_timeout_seconds, config_use_cooldown,
                     config_cooldown_seconds, config_cooldown_same_symbol,
                     config_use_candle_close, config_candle_close_threshold_seconds,
-                    config_use_momentum_continuity, config_momentum_lookback
+                    config_use_momentum_continuity, config_momentum_lookback,
+                    config_use_micro_confirmation, config_micro_confirmation_delay_ms,
+                    -- 🔥 SPRINT 1: Market Regime context
+                    market_regime, market_regime_avg_atr, market_regime_avg_adx,
+                    -- 🔥 PHASE 1A: Session/Heure context
+                    session_market, hour_utc, regime_at_scan, regime_confidence_at_scan
                 )
                 VALUES (
                     NOW(), %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s
                 )
                 RETURNING id
             """
@@ -557,18 +679,55 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
             
+            # 🔥 ORDER FLOW: Calcul automatique si manquant
+            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
+            imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
+            book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
+            
+            # Calculer automatiquement si manquant et bid/ask disponibles
+            if delta_volume is None and bid_vol and ask_vol:
+                delta_volume = float(bid_vol) - float(ask_vol)
+            if imbalance_normalized is None and bid_vol and ask_vol:
+                total = float(bid_vol) + float(ask_vol)
+                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+                book_depth_ratio = float(bid_vol) / float(ask_vol)
+            
             # Préparer les paramètres
+            ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
+            ml_threshold_used_value = _extract_numeric_value(scan_data.get('ml_threshold_used'))
+            if ml_threshold_used_value is not None and ml_threshold_used_value <= 1.0:
+                ml_threshold_used_value = ml_threshold_used_value * 100.0
+            calibrated_wr_value = _extract_numeric_value(scan_data.get('calibrated_winrate'))
+            if calibrated_wr_value is not None and calibrated_wr_value <= 1.0:
+                calibrated_wr_value = calibrated_wr_value * 100.0
+            ml_threshold_type = scan_data.get('ml_threshold_type')
+            if not ml_threshold_type:
+                ml_threshold_type = _derive_ml_threshold_type(scan_data.get('reject_reason_category'))
             params = (
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
-                market_data.get('bid_vol'), market_data.get('ask_vol'),
+                bid_vol, ask_vol,
                 market_data.get('orderbook_imbalance_ratio'),
                 # Paramètres du scan de scalabilité
                 market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
                 market_data.get('vol5') or scan_data.get('vol5'),
                 market_data.get('vol15') or scan_data.get('vol15'),
                 market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                
+                # 🔥 ORDER FLOW: 6 métriques (calculées auto si manquantes)
+                delta_volume,
+                imbalance_normalized,
+                market_data.get('spread_volatility_5') or scan_data.get('spread_volatility_5'),
+                book_depth_ratio,
+                market_data.get('volume_acceleration') or scan_data.get('volume_acceleration'),
+                market_data.get('price_momentum_5') or scan_data.get('price_momentum_5'),
                 
                 # 1m
                 indicators_1m.get('ema9'), indicators_1m.get('ema21'),
@@ -635,6 +794,12 @@ class PostgreSQLDataLogger:
                 scan_data.get('opportunity_direction'),
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
                 
+                # 🔥 ML Confidence (confiance réelle du modèle, si disponible)
+                ml_confidence_value,
+                ml_threshold_used_value,
+                ml_threshold_type,
+                calibrated_wr_value,
+                
                 # Params
                 json.dumps(params_snap),
                 
@@ -660,8 +825,29 @@ class PostgreSQLDataLogger:
                 params_snap.get('use_candle_close'),
                 params_snap.get('candle_close_threshold_seconds'),
                 params_snap.get('use_momentum_continuity'),
-                params_snap.get('momentum_lookback')
+                params_snap.get('momentum_lookback'),
+                params_snap.get('use_micro_confirmation'),
+                params_snap.get('micro_confirmation_delay_ms'),
+                # 🔥 SPRINT 1: Market Regime context
+                scan_data.get('market_regime'),
+                scan_data.get('market_regime_avg_atr'),
+                scan_data.get('market_regime_avg_adx'),
+                # 🔥 PHASE 1A: Session/Heure context
+                scan_data.get('session_market'),
+                scan_data.get('hour_utc'),
+                scan_data.get('regime_at_scan'),
+                scan_data.get('regime_confidence_at_scan')
             )
+
+            placeholder_count = query.count('%s')
+            if placeholder_count != len(params):
+                logger.error(
+                    "❌ Déséquilibre scan_logs INSERT: %s params pour %s placeholders | symbol=%s",
+                    len(params),
+                    placeholder_count,
+                    symbol
+                )
+                return None
             
             result = self._execute_query(query, params, fetch=True)
             if result:
@@ -674,6 +860,266 @@ class PostgreSQLDataLogger:
             logger.error(f"❌ Erreur logging scan {symbol}: {e}")
             return None
     
+    def update_ml_confidence(
+        self,
+        symbol: str,
+        ml_confidence: float,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        🔥 FIX: Mettre à jour ml_confidence pour le scan le plus récent d'un symbole
+        
+        Cette méthode est appelée APRÈS la prédiction ML pour mettre à jour
+        le scan_log qui a été créé AVANT la prédiction.
+        
+        Args:
+            symbol: Symbole de la paire
+            ml_confidence: Confiance ML en pourcentage (ex: 34.7)
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
+        
+        Returns:
+            True si mise à jour réussie, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            ml_confidence_value = _extract_numeric_value(ml_confidence)
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
+
+            buffer_updated = False
+            if ml_confidence_value is not None:
+                buffer_updated = self._update_scan_buffer(
+                    symbol,
+                    {'ml_confidence': ml_confidence_value},
+                    only_if_missing=['ml_confidence']
+                )
+
+            # Mettre à jour le scan le plus récent pour ce symbole
+            query = """
+                UPDATE scan_logs 
+                SET ml_confidence = %s
+                WHERE symbol = %s 
+                AND timestamp > NOW() - INTERVAL '%s minutes'
+                AND ml_confidence IS NULL
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            # Note: PostgreSQL ne supporte pas LIMIT dans UPDATE directement
+            # On utilise une sous-requête
+            query = """
+                UPDATE scan_logs 
+                SET ml_confidence = %s
+                WHERE id = (
+                    SELECT id FROM scan_logs 
+                    WHERE symbol = %s 
+                    AND timestamp > NOW() - INTERVAL '%s minutes'
+                    AND ml_confidence IS NULL
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                )
+            """
+            
+            result = self._execute_query(query, (ml_confidence_value, symbol, minutes_ago))
+            if result is not None:
+                logger.info(f"✅ ml_confidence mis à jour pour {symbol}: {ml_confidence_value:.1f}%")
+                return True
+            if buffer_updated:
+                logger.debug(f"📝 ml_confidence mis à jour en buffer pour {symbol}")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update ml_confidence pour {symbol}: {e}")
+            return False
+    
+    def update_ml_rejection(
+        self,
+        symbol: str,
+        reject_reason: str,
+        reject_category: str,
+        ml_confidence: Optional[float] = None,
+        ml_threshold_used: Optional[float] = None,
+        calibrated_winrate: Optional[float] = None,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        🔥 FIX 15/12: Mettre à jour reject_reason et reject_reason_category après un rejet ML
+        
+        Cette méthode est appelée quand un setup est rejeté par le filtre ML
+        (GradientBoosting, Threshold Optimizer, Calibration, etc.)
+        
+        Args:
+            symbol: Symbole de la paire
+            reject_reason: Raison du rejet (ex: "ML confidence 45.2% < seuil 57%")
+            reject_category: Catégorie du rejet (ex: "ml_gb_confidence", "ml_threshold", "ml_calibration")
+            ml_confidence: Confiance ML en pourcentage (optionnel)
+            ml_threshold_used: Seuil ML utilisé en pourcentage (ex: 55.0 pour 55%)
+            calibrated_winrate: Winrate calibré en pourcentage si applicable
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 5)
+        
+        Returns:
+            True si mise à jour réussie, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            # Normaliser les valeurs
+            ml_confidence_value = None
+            if ml_confidence is not None:
+                ml_confidence_value = _extract_numeric_value(ml_confidence)
+                if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                    ml_confidence_value = ml_confidence_value * 100.0
+            
+            ml_threshold_value = None
+            if ml_threshold_used is not None:
+                ml_threshold_value = _extract_numeric_value(ml_threshold_used)
+                if ml_threshold_value is not None and ml_threshold_value <= 1.0:
+                    ml_threshold_value = ml_threshold_value * 100.0
+            
+            calibrated_wr_value = None
+            if calibrated_winrate is not None:
+                calibrated_wr_value = _extract_numeric_value(calibrated_winrate)
+                if calibrated_wr_value is not None and calibrated_wr_value <= 1.0:
+                    calibrated_wr_value = calibrated_wr_value * 100.0
+
+            # Déterminer ml_threshold_type depuis reject_category
+            ml_threshold_type = _derive_ml_threshold_type(reject_category)
+
+            buffer_updates = {
+                'reject_reason': reject_reason,
+                'reject_reason_category': reject_category,
+                'is_opportunity': False
+            }
+            if ml_confidence_value is not None:
+                buffer_updates['ml_confidence'] = ml_confidence_value
+            if ml_threshold_value is not None:
+                buffer_updates['ml_threshold_used'] = ml_threshold_value
+            if ml_threshold_type is not None:
+                buffer_updates['ml_threshold_type'] = ml_threshold_type
+            if calibrated_wr_value is not None:
+                buffer_updates['calibrated_winrate'] = calibrated_wr_value
+
+            buffer_updated = self._update_scan_buffer(symbol, buffer_updates)
+            
+            # Construire la requête avec toutes les nouvelles colonnes
+            query = """
+                UPDATE scan_logs 
+                SET reject_reason = %s,
+                    reject_reason_category = %s,
+                    ml_confidence = %s,
+                    ml_threshold_used = %s,
+                    ml_threshold_type = %s,
+                    calibrated_winrate = %s,
+                    is_opportunity = FALSE
+                WHERE id = (
+                    SELECT id FROM scan_logs 
+                    WHERE symbol = %s 
+                    AND timestamp > NOW() - INTERVAL '%s minutes'
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                )
+            """
+            params = (reject_reason, reject_category, ml_confidence_value, 
+                     ml_threshold_value, ml_threshold_type, calibrated_wr_value,
+                     symbol, minutes_ago)
+            
+            result = self._execute_query(query, params)
+            if result is not None:
+                logger.info(f"✅ ML rejection logged for {symbol}: {reject_category} ({reject_reason[:50]}...)")
+                return True
+            if buffer_updated:
+                logger.debug(f"📝 ML rejection mis à jour en buffer pour {symbol}")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur update_ml_rejection pour {symbol}: {e}")
+            return False
+    
+    def get_ml_confidence_for_symbol(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        🔥 FIX: Récupérer ml_confidence depuis PostgreSQL pour un symbole
+        
+        Cette méthode est utilisée pour charger ml_confidence si la position
+        a été ouverte avant que le fix soit en place.
+        
+        Args:
+            symbol: Symbole de la paire (ex: 'SHIB/USDT')
+            minutes_ago: Chercher dans les N dernières minutes (défaut: 60)
+        
+        Returns:
+            ml_confidence en pourcentage ou None si non trouvé
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            query = """
+                SELECT ml_confidence FROM scan_logs 
+                WHERE symbol = %s 
+                AND timestamp > NOW() - (INTERVAL '1 minute' * %s)
+                AND ml_confidence IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            
+            result = self._execute_query(query, (symbol, minutes_ago), fetch=True)
+            if result and len(result) > 0 and result[0][0] is not None:
+                ml_conf = float(result[0][0])
+                logger.debug(f"📊 ml_confidence récupéré pour {symbol}: {ml_conf:.1f}%")
+                return round(ml_conf, 1)  # Arrondir au dixième
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get ml_confidence pour {symbol}: {e}")
+            return None
+    
+    def get_adaptive_sizing_for_symbol(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        🔥 FIX: Récupérer adaptive_sizing_multiplier depuis PostgreSQL
+        
+        Args:
+            symbol: Symbole de la paire
+            minutes_ago: Chercher dans les N dernières minutes
+        
+        Returns:
+            adaptive_sizing_multiplier ou None
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            query = """
+                SELECT adaptive_sizing_multiplier FROM trades 
+                WHERE symbol = %s 
+                AND timestamp_entry > NOW() - (INTERVAL '1 minute' * %s)
+                AND adaptive_sizing_multiplier IS NOT NULL
+                ORDER BY timestamp_entry DESC
+                LIMIT 1
+            """
+            
+            result = self._execute_query(query, (symbol, minutes_ago), fetch=True)
+            if result and len(result) > 0 and result[0][0] is not None:
+                sizing = float(result[0][0])
+                logger.debug(f"📊 sizing_multiplier récupéré pour {symbol}: {sizing:.2f}x")
+                return sizing
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur get sizing_multiplier pour {symbol}: {e}")
+            return None
+
     def log_opportunity(
         self,
         scan_id: int,
@@ -724,9 +1170,16 @@ class PostgreSQLDataLogger:
                     trend_bonus, divergence_bonus,
                     conditions_matched, condition_count,
                     entry_suggested, tp_suggested, sl_suggested,
-                    tp_sl_mode, setup_reason
+                    tp_sl_mode, setup_reason,
+                    market_regime, session_context, market_regime_score, market_regime_confidence, market_regime_reason, market_regime_details, market_regime_signal
                 )
-                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                    %s, %s, %s, NOW(),
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s
+                )
                 RETURNING id
             """
             
@@ -776,6 +1229,15 @@ class PostgreSQLDataLogger:
             condition_count = opportunity_data.get('condition_count', len(conditions_matched))
             setup_reason = opportunity_data.get('setup_reason')
             
+            # 🔥 FIX: Extraire les champs Market Regime
+            market_regime = opportunity_data.get('market_regime')
+            session_context = opportunity_data.get('session_context')
+            market_regime_score = opportunity_data.get('market_regime_score')
+            market_regime_confidence = opportunity_data.get('market_regime_confidence')
+            market_regime_reason = opportunity_data.get('market_regime_reason')
+            market_regime_details = opportunity_data.get('market_regime_details')
+            market_regime_signal = opportunity_data.get('market_regime_signal')
+
             params = (
                 scan_id, session_id, symbol,
                 str(status) if status else 'PENDING',
@@ -795,7 +1257,15 @@ class PostgreSQLDataLogger:
                 float(tp_price) if tp_price is not None else None,  # tp_suggested
                 float(sl_price) if sl_price is not None else None,  # sl_suggested
                 str(tp_sl_mode) if tp_sl_mode else 'FIXE',  # tp_sl_mode
-                str(setup_reason) if setup_reason else None  # setup_reason
+                str(setup_reason) if setup_reason else None,  # setup_reason
+                # 🔥 FIX: Ajouter les 7 paramètres Market Regime manquants
+                str(market_regime) if market_regime else None,
+                json.dumps(session_context) if session_context else None,
+                float(market_regime_score) if market_regime_score is not None else None,
+                float(market_regime_confidence) if market_regime_confidence is not None else None,
+                str(market_regime_reason) if market_regime_reason else None,
+                json.dumps(market_regime_details) if market_regime_details else None,
+                str(market_regime_signal) if market_regime_signal else None
             )
             
             if any(isinstance(p, dict) for p in params):
@@ -815,14 +1285,113 @@ class PostgreSQLDataLogger:
         except Exception as e:
             logger.error(f"❌ Erreur logging opportunité {symbol}: {e}")
             return None
+
+    def _resolve_trade_id_for_update(
+        self,
+        trade_data: Dict[str, Any],
+        session_id: Optional[str],
+        provided_trade_id: Optional[str]
+    ) -> Optional[str]:
+        symbol = trade_data.get('symbol')
+        direction = trade_data.get('direction')
+        entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+
+        is_closing = bool(
+            trade_data.get('exit_price') is not None
+            or trade_data.get('timestamp_exit')
+            or trade_data.get('reason')
+            or trade_data.get('exit_reason')
+        )
+
+        if not is_closing:
+            return provided_trade_id
+
+        if provided_trade_id:
+            try:
+                exists = self._execute_query(
+                    "SELECT id FROM trades WHERE id = %s",
+                    (provided_trade_id,),
+                    fetch=True
+                )
+                if exists:
+                    return provided_trade_id
+            except Exception:
+                pass
+
+        if not symbol or entry_price is None:
+            return provided_trade_id
+
+        symbol_candidates = list({
+            symbol,
+            symbol.replace('_', '/'),
+            symbol.replace('/', '_'),
+            symbol.replace(':USDT', ''),
+            symbol.replace(':USDT', '').replace('_', '/'),
+            symbol.replace(':USDT', '').replace('/', '_')
+        })
+
+        tolerance = max(1e-8, abs(entry_price) * 1e-8)
+
+        base_where = (
+            "symbol = ANY(%s) "
+            "AND (%s IS NULL OR direction = %s) "
+            "AND exit_reason IS NULL "
+            "AND entry_price IS NOT NULL "
+            "AND ABS(entry_price - %s) <= %s "
+            "AND timestamp_entry > NOW() - INTERVAL '2 days'"
+        )
+
+        params_common = (
+            symbol_candidates,
+            direction,
+            direction,
+            entry_price,
+            tolerance
+        )
+
+        if session_id:
+            try:
+                query = (
+                    "SELECT id FROM trades WHERE session_id = %s AND "
+                    + base_where +
+                    " ORDER BY timestamp_entry DESC LIMIT 1"
+                )
+                result = self._execute_query(query, (session_id,) + params_common, fetch=True)
+                if result:
+                    resolved_id = result[0][0]
+                    logger.debug(
+                        "Resolved trade_id for update (session match): %s -> %s",
+                        provided_trade_id,
+                        resolved_id
+                    )
+                    return resolved_id
+            except Exception:
+                pass
+
+        try:
+            query = "SELECT id FROM trades WHERE " + base_where + " ORDER BY timestamp_entry DESC LIMIT 1"
+            result = self._execute_query(query, params_common, fetch=True)
+            if result:
+                resolved_id = result[0][0]
+                logger.debug(
+                    "Resolved trade_id for update: %s -> %s",
+                    provided_trade_id,
+                    resolved_id
+                )
+                return resolved_id
+        except Exception:
+            pass
+
+        return provided_trade_id
     
     def log_trade(
         self,
         trade_data: Dict[str, Any],
         opportunity_id: Optional[int] = None,
         scan_log_id: Optional[int] = None,
-        session_id: Optional[str] = None
-    ) -> Optional[int]:
+        session_id: Optional[str] = None,
+        trade_id: Optional[str] = None
+    ) -> Optional[str]:
         """
         Logger un trade dans trades
         
@@ -856,6 +1425,8 @@ class PostgreSQLDataLogger:
             session_id = self.get_or_create_session()
         
         try:
+            provided_trade_id = self._resolve_trade_id_for_update(trade_data, session_id, trade_id)
+
             # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
             now = datetime.now(timezone.utc)
             timestamp_iso = now.isoformat()
@@ -1082,6 +1653,7 @@ class PostgreSQLDataLogger:
             config_optimal_atr_max_5m = _extract_numeric_value(config_snapshot_dict.get('optimal_atr_max_5m'))
             config_volume_multiplier = _extract_numeric_value(config_snapshot_dict.get('volume_multiplier'))
             config_use_confluence = config_snapshot_dict.get('use_confluence')
+            config_invert_signals = config_snapshot_dict.get('invert_signals')
             config_use_anti_whipsaw = config_snapshot_dict.get('use_anti_whipsaw')
             config_whipsaw_lookback = _extract_numeric_value(config_snapshot_dict.get('whipsaw_lookback'))
             config_whipsaw_threshold_pct = _extract_numeric_value(config_snapshot_dict.get('whipsaw_threshold_pct'))
@@ -1096,6 +1668,13 @@ class PostgreSQLDataLogger:
             config_candle_close_threshold_seconds = _extract_numeric_value(config_snapshot_dict.get('candle_close_threshold_seconds'))
             config_use_momentum_continuity = config_snapshot_dict.get('use_momentum_continuity')
             config_momentum_lookback = _extract_numeric_value(config_snapshot_dict.get('momentum_lookback'))
+            config_use_micro_confirmation = config_snapshot_dict.get('use_micro_confirmation')
+            config_micro_confirmation_delay_ms = _extract_numeric_value(config_snapshot_dict.get('micro_confirmation_delay_ms'))
+            
+            # 🔥 RSI Final Filter columns
+            config_rsi_filter_enabled = config_snapshot_dict.get('rsi_final_filter_enabled', False)
+            config_rsi_long_max = _extract_numeric_value(config_snapshot_dict.get('rsi_final_long_max', 70.0))
+            config_rsi_short_min = _extract_numeric_value(config_snapshot_dict.get('rsi_final_short_min', 30.0))
 
             def _normalize_bool(val):
                 if isinstance(val, str):
@@ -1108,10 +1687,28 @@ class PostgreSQLDataLogger:
             config_use_cooldown = _normalize_bool(config_use_cooldown)
             config_use_candle_close = _normalize_bool(config_use_candle_close)
             config_use_momentum_continuity = _normalize_bool(config_use_momentum_continuity)
+            config_use_micro_confirmation = _normalize_bool(config_use_micro_confirmation)
+            config_rsi_filter_enabled = _normalize_bool(config_rsi_filter_enabled)
             if isinstance(config_use_confluence, str):
                 config_use_confluence = config_use_confluence.lower() in ('true', '1', 'yes')
             elif config_use_confluence is None:
                 config_use_confluence = None
+
+            # 🛡️ Anti-Giveback / Trailing MFE config snapshot
+            config_trailing_mfe_enabled = _normalize_bool(config_snapshot_dict.get('trailing_mfe_enabled'))
+            config_trailing_mfe_trigger_pct = _extract_numeric_value(config_snapshot_dict.get('trailing_mfe_trigger_pct'))
+            config_trailing_mfe_lock_in_pct = _extract_numeric_value(config_snapshot_dict.get('trailing_mfe_lock_in_pct'))
+            config_partial_tp_be_lock_in_pct = _extract_numeric_value(config_snapshot_dict.get('partial_tp_be_lock_in_pct'))
+            
+            # 🔄 Signal Inversion config snapshot
+            config_invert_signals = _normalize_bool(config_snapshot_dict.get('invert_signals', False))
+
+            # 🎯 Trailing MFE tracking (runtime)
+            trailing_mfe_triggered = _normalize_bool(trade_data.get('trailing_mfe_triggered')) or False
+            trailing_mfe_triggered_at = trade_data.get('trailing_mfe_triggered_at')
+            trailing_mfe_trigger_pnl_pct = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_pnl_pct'))
+            trailing_mfe_trigger_price = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_price'))
+            trailing_mfe_new_sl = _extract_numeric_value(trade_data.get('trailing_mfe_new_sl'))
 
             config_snapshot = None
             if config_snapshot_dict:
@@ -1200,7 +1797,16 @@ class PostgreSQLDataLogger:
             orderbook_imbalance_entry = entry_orderbook_imbalance
             atr_at_entry = _extract_numeric_value(entry_indicators.get('atr_1m'))
 
+            # 🔥 FIX: Extraire adaptive_sizing_multiplier
+            adaptive_sizing_multiplier = _extract_numeric_value(trade_data.get('adaptive_sizing_multiplier'))
+
+            ml_confidence_value = _extract_numeric_value(trade_data.get('ml_confidence'))
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
+            
             fields = []
+            if provided_trade_id:
+                fields.append(('id', provided_trade_id))
             fields.extend([
                 ('timestamp_entry', entry_timestamp),
                 ('timestamp_exit', exit_timestamp),
@@ -1214,6 +1820,7 @@ class PostgreSQLDataLogger:
                 ('size_usdt', size_usdt),
                 ('tp_price', tp_price),
                 ('sl_price', sl_price),
+                ('adaptive_sizing_multiplier', adaptive_sizing_multiplier),
                 ('gross_pnl_usdt', gross_pnl_usdt),
                 ('pnl_pct', gross_pnl_pct),
                 ('pnl_usdt', gross_pnl_usdt),
@@ -1369,6 +1976,7 @@ class PostgreSQLDataLogger:
                 ('config_optimal_atr_max_5m', config_optimal_atr_max_5m),
                 ('config_volume_multiplier', config_volume_multiplier),
                 ('config_use_confluence', config_use_confluence),
+                ('config_invert_signals', config_invert_signals),
                 ('config_use_anti_whipsaw', config_use_anti_whipsaw),
                 ('config_whipsaw_lookback', config_whipsaw_lookback),
                 ('config_whipsaw_threshold_pct', config_whipsaw_threshold_pct),
@@ -1383,81 +1991,158 @@ class PostgreSQLDataLogger:
                 ('config_candle_close_threshold_seconds', config_candle_close_threshold_seconds),
                 ('config_use_momentum_continuity', config_use_momentum_continuity),
                 ('config_momentum_lookback', config_momentum_lookback),
+                ('config_use_micro_confirmation', config_use_micro_confirmation),
+                ('config_micro_confirmation_delay_ms', config_micro_confirmation_delay_ms),
+                # 🔥 RSI Final Filter config
+                ('config_rsi_filter_enabled', config_rsi_filter_enabled),
+                ('config_rsi_long_max', config_rsi_long_max),
+                ('config_rsi_short_min', config_rsi_short_min),
+                # 🔥 STAGNATION POSITIVE EXIT config
+                ('config_stagnation_positive_exit_enabled', config_snapshot_dict.get('stagnation_positive_exit_enabled')),
+                ('config_stagnation_positive_threshold', _extract_numeric_value(config_snapshot_dict.get('stagnation_positive_threshold'))),
+                ('config_stagnation_positive_timeout_seconds', config_snapshot_dict.get('stagnation_positive_timeout_seconds')),
+                ('config_stagnation_use_mfe_tracking', config_snapshot_dict.get('stagnation_use_mfe_tracking')),
+                ('config_stagnation_mfe_pullback_pct', _extract_numeric_value(config_snapshot_dict.get('stagnation_mfe_pullback_pct'))),
+                # 🔥 STAGNATION POSITIVE EXIT tracking
+                ('stagnation_mfe_at_exit', _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))),
+                ('stagnation_positive_triggered', trade_data.get('stagnation_positive_triggered', False)),
+                ('stagnation_pullback_at_exit', _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))),
+
+                # 🛡️ Anti-Giveback / Trailing MFE columns (trades)
+                ('config_trailing_mfe_enabled', config_trailing_mfe_enabled),
+                ('config_trailing_mfe_trigger_pct', config_trailing_mfe_trigger_pct),
+                ('config_trailing_mfe_lock_in_pct', config_trailing_mfe_lock_in_pct),
+                ('config_partial_tp_be_lock_in_pct', config_partial_tp_be_lock_in_pct),
+                # 🔄 Signal Inversion config (removed - column doesn't exist)
+                ('trailing_mfe_triggered', trailing_mfe_triggered),
+                ('trailing_mfe_triggered_at', trailing_mfe_triggered_at),
+                ('trailing_mfe_trigger_pnl_pct', trailing_mfe_trigger_pnl_pct),
+                ('trailing_mfe_trigger_price', trailing_mfe_trigger_price),
+                ('trailing_mfe_new_sl', trailing_mfe_new_sl),
                 ('config_snapshot', config_snapshot),
-                ('win', win)
+                # 🔥 SPRINT 1: Market Regime & Circuit Breaker context
+                ('entry_market_regime', trade_data.get('entry_market_regime')),
+                ('entry_market_regime_avg_atr', _extract_numeric_value(trade_data.get('entry_market_regime_avg_atr'))),
+                ('entry_market_regime_avg_adx', _extract_numeric_value(trade_data.get('entry_market_regime_avg_adx'))),
+                ('entry_min_score_required', _extract_numeric_value(trade_data.get('entry_min_score_required'))),
+                ('entry_atr_mult_sl', _extract_numeric_value(trade_data.get('entry_atr_mult_sl'))),
+                ('entry_atr_mult_tp', _extract_numeric_value(trade_data.get('entry_atr_mult_tp'))),
+                # 🔥 NOUVEAU: Paramètres dynamiques additionnels du régime
+                ('entry_volume_multiplier', _extract_numeric_value(trade_data.get('entry_volume_multiplier'))),
+                ('entry_rsi_filter_mode', trade_data.get('entry_rsi_filter_mode')),
+                ('entry_position_timeout', trade_data.get('entry_position_timeout')),
+                ('entry_optimal_atr_max_1m', _extract_numeric_value(trade_data.get('entry_optimal_atr_max_1m'))),
+                ('entry_sl_exchange_percent', _extract_numeric_value(trade_data.get('entry_sl_exchange_percent'))),
+                ('entry_cb_state', trade_data.get('entry_cb_state')),
+                ('entry_consecutive_losses', trade_data.get('entry_consecutive_losses', 0)),
+                ('entry_daily_pnl_pct', _extract_numeric_value(trade_data.get('entry_daily_pnl_pct'))),
+                ('entry_cb_score_boost', _extract_numeric_value(trade_data.get('entry_cb_score_boost'))),
+                # 🔥 SPRINT 2: Pair Scorer context
+                ('entry_pair_score_adjustment', _extract_numeric_value(trade_data.get('entry_pair_score_adjustment'))),
+                ('entry_effective_min_score', _extract_numeric_value(trade_data.get('entry_effective_min_score'))),
+                ('win', win),
+                # 🔥 FIX: ml_confidence toujours loggé (pas seulement pour live trades)
+                ('ml_confidence', ml_confidence_value)
             ])
             
-            # 🔥 LIVE TRADING COLUMNS (ajoutées conditionnellement si présentes)
-            if trade_data.get('is_live_trade') is not None:
-                fields.extend([
-                    ('is_live_trade', trade_data.get('is_live_trade', False)),
-                    ('is_dry_run', trade_data.get('is_dry_run', True)),
-                    ('live_execution_mode', trade_data.get('live_execution_mode')),
-                    # Ordre d'entrée
-                    ('entry_order_id', trade_data.get('entry_order_id')),
-                    ('entry_order_type', trade_data.get('entry_order_type')),
-                    ('entry_requested_price', _extract_numeric_value(trade_data.get('entry_requested_price'))),
-                    ('entry_fill_price', _extract_numeric_value(trade_data.get('entry_fill_price'))),
-                    ('entry_slippage_pct', _extract_numeric_value(trade_data.get('entry_slippage_pct'))),
-                    ('entry_latency_ms', trade_data.get('entry_latency_ms')),
-                    # Ordre de sortie
-                    ('exit_order_id', trade_data.get('exit_order_id')),
-                    ('exit_order_type', trade_data.get('exit_order_type')),
-                    ('exit_requested_price', _extract_numeric_value(trade_data.get('exit_requested_price'))),
-                    ('exit_fill_price', _extract_numeric_value(trade_data.get('exit_fill_price'))),
-                    ('exit_slippage_pct', _extract_numeric_value(trade_data.get('exit_slippage_pct'))),
-                    ('exit_latency_ms', trade_data.get('exit_latency_ms')),
-                    # Timestamps LIVE & API responses
-                    ('entry_timestamp_live', trade_data.get('entry_timestamp')),
-                    ('exit_timestamp_live', trade_data.get('exit_timestamp')),
-                    ('entry_api_response', json.dumps(trade_data.get('entry_api_response')) if trade_data.get('entry_api_response') else None),
-                    ('exit_api_response', json.dumps(trade_data.get('exit_api_response')) if trade_data.get('exit_api_response') else None),
-                    # Futures / Levier
-                    ('leverage_used', trade_data.get('leverage_used', 1)),
-                    ('margin_mode', trade_data.get('margin_mode', 'isolated')),
-                    ('position_size_contracts', _extract_numeric_value(trade_data.get('position_size_contracts'))),
-                    ('liquidation_price', _extract_numeric_value(trade_data.get('liquidation_price'))),
-                    ('margin_used', _extract_numeric_value(trade_data.get('margin_used'))),
-                    # Frais détaillés
-                    ('maker_fee_rate', _extract_numeric_value(trade_data.get('maker_fee_rate'))),
-                    ('taker_fee_rate', _extract_numeric_value(trade_data.get('taker_fee_rate'))),
-                    ('entry_fee_usdt', _extract_numeric_value(trade_data.get('entry_fee_usdt'))),
-                    ('exit_fee_usdt', _extract_numeric_value(trade_data.get('exit_fee_usdt'))),
-                    ('total_fees_usdt', _extract_numeric_value(trade_data.get('total_fees_usdt'))),
-                    ('funding_rate_at_entry', _extract_numeric_value(trade_data.get('funding_rate_at_entry'))),
-                    ('funding_rate_at_exit', _extract_numeric_value(trade_data.get('funding_rate_at_exit'))),
-                    ('funding_paid_usdt', _extract_numeric_value(trade_data.get('funding_paid_usdt'))),
-                    # Performance temps réel
-                    ('time_to_fill_entry_ms', trade_data.get('time_to_fill_entry_ms')),
-                    ('time_to_fill_exit_ms', trade_data.get('time_to_fill_exit_ms')),
-                    ('price_at_signal', _extract_numeric_value(trade_data.get('price_at_signal'))),
-                    ('signal_to_fill_slippage_pct', _extract_numeric_value(trade_data.get('signal_to_fill_slippage_pct'))),
-                    # API & Réseau
-                    ('api_errors', json.dumps(trade_data.get('api_errors', []))),
-                    ('retry_count', trade_data.get('retry_count', 0)),
-                    ('exchange_latency_ms', trade_data.get('exchange_latency_ms')),
-                    ('ws_latency_ms', trade_data.get('ws_latency_ms')),
-                    # Score & ML
-                    ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
-                    ('ml_confidence', _extract_numeric_value(trade_data.get('ml_confidence'))),
-                    ('ml_prediction', trade_data.get('ml_prediction')),
-                    # Analyse post-trade (risk_reward déjà ajoutés plus haut)
-                    # Notes & Tags
-                    ('trade_notes', trade_data.get('trade_notes')),
-                    ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),
-                    ('user_rating', trade_data.get('user_rating'))
-                ])
+            # 🔥 LIVE TRADING COLUMNS (toujours ajoutées, même si NULL)
+            fields.extend([
+                ('is_live_trade', trade_data.get('is_live_trade', False)),
+                ('is_dry_run', trade_data.get('is_dry_run', True)),
+                ('live_execution_mode', trade_data.get('live_execution_mode')),
+                # Ordre d'entrée
+                ('entry_order_id', trade_data.get('entry_order_id')),
+                ('entry_order_type', trade_data.get('entry_order_type')),
+                ('entry_requested_price', _extract_numeric_value(trade_data.get('entry_requested_price'))),
+                ('entry_fill_price', _extract_numeric_value(trade_data.get('entry_fill_price'))),
+                ('entry_slippage_pct', _extract_numeric_value(trade_data.get('entry_slippage_pct'))),
+                ('entry_latency_ms', trade_data.get('entry_latency_ms')),
+                # Ordre de sortie
+                ('exit_order_id', trade_data.get('exit_order_id')),
+                ('exit_order_type', trade_data.get('exit_order_type')),
+                ('exit_requested_price', _extract_numeric_value(trade_data.get('exit_requested_price'))),
+                ('exit_fill_price', _extract_numeric_value(trade_data.get('exit_fill_price'))),
+                ('exit_slippage_pct', _extract_numeric_value(trade_data.get('exit_slippage_pct'))),
+                ('exit_latency_ms', trade_data.get('exit_latency_ms')),
+                # Timestamps LIVE & API responses
+                ('entry_timestamp_live', trade_data.get('entry_timestamp')),
+                ('exit_timestamp_live', trade_data.get('exit_timestamp')),
+                ('entry_api_response', json.dumps(trade_data.get('entry_api_response')) if trade_data.get('entry_api_response') else None),
+                ('exit_api_response', json.dumps(trade_data.get('exit_api_response')) if trade_data.get('exit_api_response') else None),
+                # Futures / Levier
+                ('leverage_used', trade_data.get('leverage_used', 1)),
+                ('margin_mode', trade_data.get('margin_mode', 'isolated')),
+                ('position_size_contracts', _extract_numeric_value(trade_data.get('position_size_contracts'))),
+                ('liquidation_price', _extract_numeric_value(trade_data.get('liquidation_price'))),
+                ('margin_used', _extract_numeric_value(trade_data.get('margin_used'))),
+                # Frais détaillés
+                ('maker_fee_rate', _extract_numeric_value(trade_data.get('maker_fee_rate'))),
+                ('taker_fee_rate', _extract_numeric_value(trade_data.get('taker_fee_rate'))),
+                ('entry_fee_usdt', _extract_numeric_value(trade_data.get('entry_fee_usdt'))),
+                ('exit_fee_usdt', _extract_numeric_value(trade_data.get('exit_fee_usdt'))),
+                ('total_fees_usdt', _extract_numeric_value(trade_data.get('total_fees_usdt'))),
+                ('funding_rate_at_entry', _extract_numeric_value(trade_data.get('funding_rate_at_entry'))),
+                ('funding_rate_at_exit', _extract_numeric_value(trade_data.get('funding_rate_at_exit'))),
+                ('funding_paid_usdt', _extract_numeric_value(trade_data.get('funding_paid_usdt'))),
+                # Performance temps réel
+                ('time_to_fill_entry_ms', trade_data.get('time_to_fill_entry_ms')),
+                ('time_to_fill_exit_ms', trade_data.get('time_to_fill_exit_ms')),
+                ('price_at_signal', _extract_numeric_value(trade_data.get('price_at_signal'))),
+                ('price_at_order_sent', _extract_numeric_value(trade_data.get('price_at_order_sent'))),
+                ('signal_to_fill_slippage_pct', _extract_numeric_value(trade_data.get('signal_to_fill_slippage_pct'))),
+                # API & Réseau
+                ('api_errors', json.dumps(trade_data.get('api_errors', []))),
+                ('retry_count', trade_data.get('retry_count', 0)),
+                ('exchange_latency_ms', trade_data.get('exchange_latency_ms')),
+                ('ws_latency_ms', trade_data.get('ws_latency_ms')),
+                # Score & ML
+                ('setup_score', _extract_numeric_value(trade_data.get('setup_score'))),
+                # ml_confidence déplacé dans fields principaux
+                ('ml_prediction', trade_data.get('ml_prediction')),
+                ('ml_features', json.dumps(trade_data.get('ml_features')) if trade_data.get('ml_features') else None),
+                # Analyse post-trade (risk_reward déjà ajoutés plus haut)
+                ('optimal_exit_price', _extract_numeric_value(trade_data.get('optimal_exit_price'))),
+                ('optimal_exit_time', trade_data.get('optimal_exit_time')),
+                ('missed_profit_pct', _extract_numeric_value(trade_data.get('missed_profit_pct'))),
+                # Exit conditions si pas déjà remplies
+                ('exit_recent_volume', exit_recent_volume),
+                ('exit_vol5', exit_vol5), 
+                ('exit_vol15', exit_vol15),
+                # Notes & Tags
+                ('trade_notes', trade_data.get('trade_notes')),
+                ('trade_tags', json.dumps(trade_data.get('trade_tags', []))),
+                ('user_rating', trade_data.get('user_rating'))
+            ])
 
             columns_sql = ',\n                    '.join(name for name, _ in fields)
             placeholders_sql = ', '.join(['%s'] * len(fields))
-            query = f"""
-                INSERT INTO trades (
-                    {columns_sql}
-                ) VALUES (
-                    {placeholders_sql}
+
+            if provided_trade_id:
+                update_assignments_sql = ',\n                        '.join(
+                    f"{name} = COALESCE(EXCLUDED.{name}, trades.{name})"
+                    for name, _ in fields
+                    if name != 'id'
                 )
-                RETURNING id
-            """
+                update_assignments_sql += ',\n                        updated_at = NOW()'
+                query = f"""
+                    INSERT INTO trades (
+                        {columns_sql}
+                    ) VALUES (
+                        {placeholders_sql}
+                    )
+                    ON CONFLICT (id) DO UPDATE SET
+                        {update_assignments_sql}
+                    RETURNING id
+                """
+            else:
+                query = f"""
+                    INSERT INTO trades (
+                        {columns_sql}
+                    ) VALUES (
+                        {placeholders_sql}
+                    )
+                    RETURNING id
+                """
 
             params = [value for _, value in fields]
 
@@ -1485,13 +2170,399 @@ class PostgreSQLDataLogger:
             
             result = self._execute_query(query, params, fetch=True)
             if result:
-                trade_id = result[0][0]
-                logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {trade_id})")
-                return trade_id
+                logged_trade_id = result[0][0]
+                logger.debug(f"📊 Trade loggé: {trade_data.get('symbol')} (ID: {logged_trade_id})")
+                
+                # 🔥 ATR OPTIMIZATION: Logger les métriques ATR pour ce trade
+                if exit_price is not None:
+                    try:
+                        self.log_trade_atr_metrics(logged_trade_id, trade_data, entry_indicators, config_snapshot_dict)
+                    except Exception as atr_err:
+                        logger.warning(f"⚠️ Erreur logging ATR metrics: {atr_err}")
+                
+                return logged_trade_id
             return None
             
         except Exception as e:
             logger.error(f"❌ Erreur logging trade {trade_data.get('symbol')}: {e}")
+            return None
+    
+    def log_trade_atr_metrics(
+        self,
+        trade_id: str,
+        trade_data: Dict[str, Any],
+        entry_indicators: Dict[str, Any],
+        config_snapshot: Dict[str, Any]
+    ) -> Optional[int]:
+        """
+        Logger les métriques ATR détaillées pour un trade.
+        
+        Args:
+            trade_id: UUID du trade
+            trade_data: Données complètes du trade
+            entry_indicators: Indicateurs à l'entrée
+            config_snapshot: Snapshot de la configuration
+        
+        Returns:
+            ID de la métrique loggée ou None
+        """
+        if not self.enabled:
+            return None
+        
+        try:
+            # Extraire les paramètres ATR utilisés
+            param_atr_mult_sl = _extract_numeric_value(config_snapshot.get('atr_mult_sl'))
+            param_atr_mult_tp = _extract_numeric_value(config_snapshot.get('atr_mult_tp'))
+            param_trailing_trigger_mult = _extract_numeric_value(config_snapshot.get('trailing_trigger_atr_mult'))
+            param_trailing_distance_mult = _extract_numeric_value(
+                config_snapshot.get('trailing_distance_mult') or
+                config_snapshot.get('trailing_distance_atr_mult') or 
+                config_snapshot.get('trailing_atr_multiplier')
+            )
+            param_be_atr_mult = _extract_numeric_value(config_snapshot.get('break_even_atr_mult'))
+            param_stagnation_timeout = config_snapshot.get('stagnation_exit_timeout_seconds')
+            param_stagnation_min_pnl = _extract_numeric_value(config_snapshot.get('stagnation_exit_min_pnl_to_stay'))
+            
+            # 🎯 Stagnation Positive config
+            param_stagnation_positive_enabled = config_snapshot.get('stagnation_positive_exit_enabled', False)
+            param_stagnation_positive_threshold = _extract_numeric_value(config_snapshot.get('stagnation_positive_threshold'))
+            param_stagnation_positive_timeout = config_snapshot.get('stagnation_positive_timeout_seconds')
+            
+            # 🎯 Trailing MFE config
+            param_trailing_mfe_enabled = config_snapshot.get('trailing_mfe_enabled', False)
+            param_trailing_mfe_trigger_pct = _extract_numeric_value(config_snapshot.get('trailing_mfe_trigger_pct'))
+            
+            # 🎯 Stagnation MFE Protection config
+            param_stagnation_mfe_tracking = config_snapshot.get('stagnation_use_mfe_tracking', False)
+            param_stagnation_mfe_pullback_pct = _extract_numeric_value(config_snapshot.get('stagnation_mfe_pullback_pct'))
+            
+            # Extraire le contexte ATR à l'entrée
+            entry_atr_1m = _extract_numeric_value(entry_indicators.get('atr_1m'))
+            entry_atr_5m = _extract_numeric_value(entry_indicators.get('atr_5m'))
+            entry_atr_pct_1m = _extract_numeric_value(entry_indicators.get('atr_pct_1m'))
+            entry_atr_pct_5m = _extract_numeric_value(entry_indicators.get('atr_pct_5m'))
+            entry_adx = _extract_numeric_value(entry_indicators.get('adx_1m'))
+            
+            # 🔥 ATR effectivement utilisé (après blend + clamp)
+            entry_atr_pct_used = _extract_numeric_value(trade_data.get('entry_atr_pct_used'))
+            entry_atr_blended = _extract_numeric_value(trade_data.get('entry_atr_blended'))
+            
+            # Déterminer le régime de volatilité
+            market_volatility_state = None
+            if entry_atr_pct_1m is not None:
+                if entry_atr_pct_1m < 0.2:
+                    market_volatility_state = 'LOW'
+                elif entry_atr_pct_1m < 0.5:
+                    market_volatility_state = 'MEDIUM'
+                else:
+                    market_volatility_state = 'HIGH'
+            
+            # Déterminer le régime de trend
+            market_trend_state = None
+            if entry_adx is not None:
+                if entry_adx < 20:
+                    market_trend_state = 'RANGING'
+                elif entry_adx < 30:
+                    market_trend_state = 'TRENDING_WEAK'
+                else:
+                    market_trend_state = 'TRENDING_STRONG'
+            
+            # Niveaux calculés - 🔥 FIX: Utiliser les bonnes clés (sl_price/tp_price)
+            entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+            sl_price = _extract_numeric_value(trade_data.get('sl_price') or trade_data.get('sl'))
+            tp_price = _extract_numeric_value(trade_data.get('tp_price') or trade_data.get('tp'))
+            
+            calculated_sl_pct = None
+            calculated_tp_pct = None
+            if entry_price and sl_price:
+                calculated_sl_pct = abs(entry_price - sl_price) / entry_price * 100
+                # 🔥 FIX: Si calculated_sl_pct = 0 (sl_price == entry_price), c'est un bug de données
+                # Dans ce cas, on laisse NULL pour ne pas fausser les analyses
+                if calculated_sl_pct < 0.001:  # Moins de 0.001% = essentiellement 0
+                    calculated_sl_pct = None
+            if entry_price and tp_price:
+                calculated_tp_pct = abs(tp_price - entry_price) / entry_price * 100
+                # 🔥 FIX: Même logique pour TP
+                if calculated_tp_pct < 0.001:
+                    calculated_tp_pct = None
+            
+            # 🔥 FIX: Utiliser entry_atr_pct_used (blendé/clampé) au lieu de entry_atr_pct_1m brut
+            # pour cohérence avec les calculs runtime de BE/Trailing
+            atr_pct_for_triggers = entry_atr_pct_used or entry_atr_pct_1m
+            
+            calculated_be_trigger_pnl_pct = None
+            if param_be_atr_mult and atr_pct_for_triggers:
+                calculated_be_trigger_pnl_pct = param_be_atr_mult * atr_pct_for_triggers
+            
+            calculated_trailing_trigger_pnl_pct = None
+            if param_trailing_trigger_mult and atr_pct_for_triggers:
+                calculated_trailing_trigger_pnl_pct = param_trailing_trigger_mult * atr_pct_for_triggers
+            
+            # Événements
+            be_triggered = trade_data.get('break_even_triggered', False)
+            be_triggered_at = trade_data.get('break_even_triggered_at')
+            trailing_activated = trade_data.get('trailing_stop_triggered', False)
+            trailing_activated_at = trade_data.get('trailing_stop_triggered_at')
+            
+            # Max/Min atteints
+            max_pnl_reached = _extract_numeric_value(trade_data.get('max_pnl_reached'))
+            min_pnl_reached = _extract_numeric_value(trade_data.get('min_pnl_reached'))
+            max_price_reached = _extract_numeric_value(trade_data.get('max_price_reached'))
+            min_price_reached = _extract_numeric_value(trade_data.get('min_price_reached'))
+            time_to_max_pnl = trade_data.get('time_to_max_pnl_seconds')
+            time_to_min_pnl = trade_data.get('time_to_min_pnl_seconds')
+            
+            # 🔥 PHASE 0.5 Extended: BE, Trailing, Stagnation details
+            be_triggered_pnl_pct = _extract_numeric_value(trade_data.get('break_even_pnl_pct'))
+            be_price_at_trigger = _extract_numeric_value(trade_data.get('break_even_price'))
+            trailing_final_distance_pct = _extract_numeric_value(trade_data.get('trailing_distance_pct'))
+            trailing_final_sl_price = _extract_numeric_value(trade_data.get('trailing_final_sl'))
+            stagnation_detected = trade_data.get('stagnation_detected', False)
+            stagnation_detected_at = trade_data.get('stagnation_detected_at')
+            stagnation_duration_seconds = trade_data.get('stagnation_duration_seconds')
+            stagnation_pnl_at_exit = _extract_numeric_value(trade_data.get('stagnation_pnl_at_exit'))
+            
+            # 🎯 Trailing MFE data
+            trailing_mfe_triggered = trade_data.get('trailing_mfe_triggered', False)
+            trailing_mfe_triggered_at = trade_data.get('trailing_mfe_triggered_at')
+            trailing_mfe_trigger_pnl_pct = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_pnl_pct'))
+            trailing_mfe_trigger_price = _extract_numeric_value(trade_data.get('trailing_mfe_trigger_price'))
+            
+            # 🎯 Stagnation Positive/MFE Protect metrics
+            stagnation_positive_triggered = trade_data.get('stagnation_positive_triggered', False)
+            stagnation_mfe_at_exit = _extract_numeric_value(trade_data.get('stagnation_mfe_at_exit'))
+            stagnation_pullback_at_exit = _extract_numeric_value(trade_data.get('stagnation_pullback_at_exit'))
+            
+            # Calculer SL MEXC dynamique selon le mode TP/SL
+            sl_mexc_pct = None
+            sl_mexc_price = None
+            sl_mexc_margin = None  # 🔥 FIX: Initialiser pour éviter UnboundLocalError
+            entry_price = _extract_numeric_value(trade_data.get('entry_price'))
+            direction = trade_data.get('direction', 'LONG')
+            tp_sl_mode = config_snapshot.get('tp_sl_mode', 'FIXE')
+            
+            # Récupérer le SL bot depuis trade_data
+            sl_bot_price = _extract_numeric_value(trade_data.get('sl_price'))
+            
+            if tp_sl_mode == 'FIXE' and sl_bot_price:
+                # Mode FIXE : SL MEXC = SL bot - 0.05%
+                SL_MEXC_OFFSET_PCT = 0.05
+                if direction == 'LONG':
+                    sl_mexc_price = sl_bot_price * (1 - SL_MEXC_OFFSET_PCT / 100)
+                    if entry_price:
+                        sl_mexc_pct = abs(entry_price - sl_mexc_price) / entry_price * 100
+                else:  # SHORT
+                    sl_mexc_price = sl_bot_price * (1 + SL_MEXC_OFFSET_PCT / 100)
+                    if entry_price:
+                        sl_mexc_pct = abs(sl_mexc_price - entry_price) / entry_price * 100
+            elif entry_atr_pct_1m and param_atr_mult_sl and entry_price:
+                # Mode ATR : SL MEXC = SL ATR × 1.1 (10% de marge)
+                sl_mexc_margin = 1.1
+                sl_atr_pct = entry_atr_pct_1m * param_atr_mult_sl
+                sl_mexc_pct = sl_atr_pct * sl_mexc_margin
+                if direction == 'LONG':
+                    sl_mexc_price = entry_price * (1 - sl_mexc_pct / 100)
+                else:
+                    sl_mexc_price = entry_price * (1 + sl_mexc_pct / 100)
+            
+            # 🔥 FIX: Déterminer si le SL MEXC a été touché (basé sur exit_reason)
+            exit_reason = trade_data.get('reason') or trade_data.get('exit_reason')
+            sl_mexc_touched = exit_reason == 'SL_EXCHANGE'
+            sl_mexc_touched_at = datetime.now() if sl_mexc_touched else None
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # 🔥 PHASE 1A: Contexte Session/Heure
+            # ═══════════════════════════════════════════════════════════════════
+            
+            session_info = get_current_session()
+            day_info = get_day_info()
+            
+            session_market = session_info['name']
+            hour_utc = day_info['hour_utc']
+            day_of_week = day_info['day_of_week']
+            is_weekend = day_info['is_weekend']
+            session_atr_multiplier = session_info['atr_multiplier']
+            
+            # Méthode de détection (V1 par défaut)
+            regime_detection_method = 'RULE_BASED_V1'
+            
+            # Calculer stabilité régime
+            regime_stability_minutes = None
+            regime_confidence = None
+            try:
+                from core.market_regime_selector import get_regime_selector
+                rs = get_regime_selector()
+                if rs and hasattr(rs, 'regime_since') and rs.regime_since:
+                    delta = datetime.now() - rs.regime_since
+                    regime_stability_minutes = int(delta.total_seconds() / 60)
+            except Exception:
+                pass
+            
+            # Construire la requête
+            # 🔥 PHASE 0.5 Extended + PHASE 1A: Ajout BE, trailing, stagnation, session/heure
+            insert_sql = """
+                INSERT INTO trade_atr_metrics (
+                    trade_id,
+                    entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                    entry_atr_pct_used, entry_atr_blended,
+                    param_atr_mult_sl, param_atr_mult_tp,
+                    param_trailing_trigger_mult, param_trailing_distance_mult,
+                    param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
+                    market_volatility_state, market_trend_state, entry_adx,
+                    calculated_sl_price, calculated_tp_price,
+                    calculated_sl_pct, calculated_tp_pct,
+                    calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
+                    be_triggered, be_triggered_at, be_triggered_pnl_pct, be_price_at_trigger,
+                    trailing_activated, trailing_activated_at, trailing_final_distance_pct, trailing_final_sl_price,
+                    max_pnl_reached, min_pnl_reached,
+                    max_price_reached, min_price_reached,
+                    time_to_max_pnl_seconds, time_to_min_pnl_seconds,
+                    stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
+                    -- Trailing MFE
+                    trailing_mfe_triggered, trailing_mfe_triggered_at, trailing_mfe_trigger_pnl_pct, trailing_mfe_trigger_price,
+                    -- Exit config params (Stagnation Positive, Trailing MFE, MFE Protection)
+                    param_stagnation_positive_enabled, param_stagnation_positive_threshold, param_stagnation_positive_timeout,
+                    param_trailing_mfe_enabled, param_trailing_mfe_trigger_pct,
+                    param_stagnation_mfe_tracking, param_stagnation_mfe_pullback_pct,
+                    stagnation_positive_triggered, stagnation_mfe_at_exit, stagnation_pullback_at_exit,
+                    sl_mexc_price, sl_mexc_pct, sl_mexc_margin_used,
+                    sl_mexc_touched, sl_mexc_touched_at,
+                    -- PHASE 1A: Session/Heure context
+                    session_market, hour_utc, day_of_week, is_weekend,
+                    regime_detection_method, regime_stability_minutes, regime_confidence,
+                    session_atr_multiplier
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    -- Trailing MFE values
+                    %s, %s, %s, %s,
+                    -- Exit config params values
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    -- SL MEXC values
+                    %s, %s, %s, %s, %s,
+                    -- PHASE 1A values
+                    %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """
+
+            upsert_query = insert_sql.rstrip() + """
+                ON CONFLICT (trade_id) DO UPDATE SET
+                    entry_atr_1m = EXCLUDED.entry_atr_1m,
+                    entry_atr_5m = EXCLUDED.entry_atr_5m,
+                    entry_atr_pct_1m = EXCLUDED.entry_atr_pct_1m,
+                    entry_atr_pct_5m = EXCLUDED.entry_atr_pct_5m,
+                    entry_atr_pct_used = EXCLUDED.entry_atr_pct_used,
+                    entry_atr_blended = EXCLUDED.entry_atr_blended,
+                    param_atr_mult_sl = EXCLUDED.param_atr_mult_sl,
+                    param_atr_mult_tp = EXCLUDED.param_atr_mult_tp,
+                    param_trailing_trigger_mult = EXCLUDED.param_trailing_trigger_mult,
+                    param_trailing_distance_mult = EXCLUDED.param_trailing_distance_mult,
+                    param_be_atr_mult = EXCLUDED.param_be_atr_mult,
+                    param_stagnation_timeout = EXCLUDED.param_stagnation_timeout,
+                    param_stagnation_min_pnl = EXCLUDED.param_stagnation_min_pnl,
+                    market_volatility_state = EXCLUDED.market_volatility_state,
+                    market_trend_state = EXCLUDED.market_trend_state,
+                    entry_adx = EXCLUDED.entry_adx,
+                    calculated_sl_price = EXCLUDED.calculated_sl_price,
+                    calculated_tp_price = EXCLUDED.calculated_tp_price,
+                    calculated_sl_pct = EXCLUDED.calculated_sl_pct,
+                    calculated_tp_pct = EXCLUDED.calculated_tp_pct,
+                    calculated_be_trigger_pnl_pct = EXCLUDED.calculated_be_trigger_pnl_pct,
+                    calculated_trailing_trigger_pnl_pct = EXCLUDED.calculated_trailing_trigger_pnl_pct,
+                    be_triggered = EXCLUDED.be_triggered,
+                    be_triggered_at = EXCLUDED.be_triggered_at,
+                    be_triggered_pnl_pct = EXCLUDED.be_triggered_pnl_pct,
+                    be_price_at_trigger = EXCLUDED.be_price_at_trigger,
+                    trailing_activated = EXCLUDED.trailing_activated,
+                    trailing_activated_at = EXCLUDED.trailing_activated_at,
+                    trailing_final_distance_pct = EXCLUDED.trailing_final_distance_pct,
+                    trailing_final_sl_price = EXCLUDED.trailing_final_sl_price,
+                    max_pnl_reached = EXCLUDED.max_pnl_reached,
+                    min_pnl_reached = EXCLUDED.min_pnl_reached,
+                    max_price_reached = EXCLUDED.max_price_reached,
+                    min_price_reached = EXCLUDED.min_price_reached,
+                    time_to_max_pnl_seconds = EXCLUDED.time_to_max_pnl_seconds,
+                    time_to_min_pnl_seconds = EXCLUDED.time_to_min_pnl_seconds,
+                    stagnation_detected = EXCLUDED.stagnation_detected,
+                    stagnation_detected_at = EXCLUDED.stagnation_detected_at,
+                    stagnation_duration_seconds = EXCLUDED.stagnation_duration_seconds,
+                    stagnation_pnl_at_exit = EXCLUDED.stagnation_pnl_at_exit,
+                    trailing_mfe_triggered = EXCLUDED.trailing_mfe_triggered,
+                    trailing_mfe_triggered_at = EXCLUDED.trailing_mfe_triggered_at,
+                    trailing_mfe_trigger_pnl_pct = EXCLUDED.trailing_mfe_trigger_pnl_pct,
+                    trailing_mfe_trigger_price = EXCLUDED.trailing_mfe_trigger_price,
+                    param_stagnation_positive_enabled = EXCLUDED.param_stagnation_positive_enabled,
+                    param_stagnation_positive_threshold = EXCLUDED.param_stagnation_positive_threshold,
+                    param_stagnation_positive_timeout = EXCLUDED.param_stagnation_positive_timeout,
+                    param_trailing_mfe_enabled = EXCLUDED.param_trailing_mfe_enabled,
+                    param_trailing_mfe_trigger_pct = EXCLUDED.param_trailing_mfe_trigger_pct,
+                    param_stagnation_mfe_tracking = EXCLUDED.param_stagnation_mfe_tracking,
+                    param_stagnation_mfe_pullback_pct = EXCLUDED.param_stagnation_mfe_pullback_pct,
+                    stagnation_positive_triggered = EXCLUDED.stagnation_positive_triggered,
+                    stagnation_mfe_at_exit = EXCLUDED.stagnation_mfe_at_exit,
+                    stagnation_pullback_at_exit = EXCLUDED.stagnation_pullback_at_exit,
+                    sl_mexc_price = EXCLUDED.sl_mexc_price,
+                    sl_mexc_pct = EXCLUDED.sl_mexc_pct,
+                    sl_mexc_margin_used = EXCLUDED.sl_mexc_margin_used,
+                    sl_mexc_touched = EXCLUDED.sl_mexc_touched,
+                    sl_mexc_touched_at = EXCLUDED.sl_mexc_touched_at,
+                    session_market = EXCLUDED.session_market,
+                    hour_utc = EXCLUDED.hour_utc,
+                    day_of_week = EXCLUDED.day_of_week,
+                    is_weekend = EXCLUDED.is_weekend,
+                    regime_detection_method = EXCLUDED.regime_detection_method,
+                    regime_stability_minutes = EXCLUDED.regime_stability_minutes,
+                    regime_confidence = EXCLUDED.regime_confidence,
+                    session_atr_multiplier = EXCLUDED.session_atr_multiplier,
+                    updated_at = NOW()
+                RETURNING id
+            """
+
+            insert_query = insert_sql.rstrip() + "\n                RETURNING id\n            "
+            
+            params = (
+                trade_id,
+                entry_atr_1m, entry_atr_5m, entry_atr_pct_1m, entry_atr_pct_5m,
+                entry_atr_pct_used, entry_atr_blended,
+                param_atr_mult_sl, param_atr_mult_tp,
+                param_trailing_trigger_mult, param_trailing_distance_mult,
+                param_be_atr_mult, param_stagnation_timeout, param_stagnation_min_pnl,
+                market_volatility_state, market_trend_state, entry_adx,
+                sl_price, tp_price,
+                calculated_sl_pct, calculated_tp_pct,
+                calculated_be_trigger_pnl_pct, calculated_trailing_trigger_pnl_pct,
+                be_triggered, be_triggered_at, be_triggered_pnl_pct, be_price_at_trigger,
+                trailing_activated, trailing_activated_at, trailing_final_distance_pct, trailing_final_sl_price,
+                max_pnl_reached, min_pnl_reached,
+                max_price_reached, min_price_reached,
+                time_to_max_pnl, time_to_min_pnl,
+                stagnation_detected, stagnation_detected_at, stagnation_duration_seconds, stagnation_pnl_at_exit,
+                # Trailing MFE values
+                trailing_mfe_triggered, trailing_mfe_triggered_at, trailing_mfe_trigger_pnl_pct, trailing_mfe_trigger_price,
+                # Exit config params values
+                param_stagnation_positive_enabled, param_stagnation_positive_threshold, param_stagnation_positive_timeout,
+                param_trailing_mfe_enabled, param_trailing_mfe_trigger_pct,
+                param_stagnation_mfe_tracking, param_stagnation_mfe_pullback_pct,
+                stagnation_positive_triggered, stagnation_mfe_at_exit, stagnation_pullback_at_exit,
+                # SL MEXC values
+                sl_mexc_price, sl_mexc_pct, sl_mexc_margin,
+                sl_mexc_touched, sl_mexc_touched_at,
+                # PHASE 1A values
+                session_market, hour_utc, day_of_week, is_weekend,
+                regime_detection_method, regime_stability_minutes, regime_confidence,
+                session_atr_multiplier
+            )
+            
+            result = self._execute_query(upsert_query, params, fetch=True)
+            if not result:
+                result = self._execute_query(insert_query, params, fetch=True)
+            if result:
+                metric_id = result[0][0]
+                logger.debug(f"📊 ATR metrics loggées pour trade {trade_id[:8]}... (metric_id: {metric_id})")
+                return metric_id
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur logging ATR metrics pour trade {trade_id[:8] if trade_id else 'N/A'}: {e}")
             return None
     
     def _batch_insert_scans(self, cursor, scan_items: List[Dict[str, Any]]) -> None:
@@ -1508,6 +2579,21 @@ class PostgreSQLDataLogger:
 
             if not symbol or not isinstance(scan_data, dict):
                 continue
+
+            # 🔥 PHASE 1A: Enrichir scan_data avec session/régime si manquant
+            if 'session_market' not in scan_data or scan_data.get('session_market') is None:
+                session_info = get_current_session()
+                scan_data['session_market'] = session_info['name']
+                scan_data['hour_utc'] = session_info['hour_utc']
+            
+            if 'regime_at_scan' not in scan_data or scan_data.get('regime_at_scan') is None:
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    rs = get_regime_selector()
+                    if rs and hasattr(rs, 'current_regime') and rs.current_regime:
+                        scan_data['regime_at_scan'] = rs.current_regime.value
+                except Exception:
+                    pass
 
             market_data = scan_data.get('market_data') or {}
             indicators_1m = scan_data.get('indicators_1m') or {}
@@ -1553,18 +2639,57 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
 
+            # 🔥 ORDER FLOW: Calcul automatique si manquant
+            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
+            imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
+            book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
+            
+            # Calculer automatiquement si manquant et bid/ask disponibles
+            if delta_volume is None and bid_vol and ask_vol:
+                delta_volume = float(bid_vol) - float(ask_vol)
+            if imbalance_normalized is None and bid_vol and ask_vol:
+                total = float(bid_vol) + float(ask_vol)
+                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol and ask_vol and float(ask_vol) > 0:
+                book_depth_ratio = float(bid_vol) / float(ask_vol)
+
+            ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
+            if ml_confidence_value is not None and ml_confidence_value <= 1.0:
+                ml_confidence_value = ml_confidence_value * 100.0
+            
+            ml_threshold_used_value = _extract_numeric_value(scan_data.get('ml_threshold_used'))
+            if ml_threshold_used_value is not None and ml_threshold_used_value <= 1.0:
+                ml_threshold_used_value = ml_threshold_used_value * 100.0
+            
+            calibrated_wr_value = _extract_numeric_value(scan_data.get('calibrated_winrate'))
+            if calibrated_wr_value is not None and calibrated_wr_value <= 1.0:
+                calibrated_wr_value = calibrated_wr_value * 100.0
+                
+            # ML threshold type
+            ml_threshold_type = scan_data.get('ml_threshold_type')
+
             value_tuple = (
                 # En-tête
                 session_id, symbol, scan_duration,
                 price, market_data.get('spread_pct'),
                 market_data.get('book_depth'), market_data.get('balance_score'),
-                market_data.get('bid_vol'), market_data.get('ask_vol'),
+                bid_vol, ask_vol,
                 market_data.get('orderbook_imbalance_ratio'),
                 # Scalability
                 market_data.get('recent_volume') or scan_data.get('recent_volume') or scan_data.get('recentVolume'),
                 market_data.get('vol5') or scan_data.get('vol5'),
                 market_data.get('vol15') or scan_data.get('vol15'),
                 market_data.get('scalability_score') or scan_data.get('scalability_score') or scan_data.get('score'),
+                # 🔥 ORDER FLOW: 6 métriques (calculées auto si manquantes)
+                delta_volume,
+                imbalance_normalized,
+                market_data.get('spread_volatility_5') or scan_data.get('spread_volatility_5'),
+                book_depth_ratio,
+                market_data.get('volume_acceleration') or scan_data.get('volume_acceleration'),
+                market_data.get('price_momentum_5') or scan_data.get('price_momentum_5'),
                 # 1m
                 indicators_1m.get('ema9'), indicators_1m.get('ema21'),
                 indicators_1m.get('ema_diff_pct'),
@@ -1622,6 +2747,11 @@ class PostgreSQLDataLogger:
                 scan_data.get('is_opportunity', False),
                 scan_data.get('opportunity_direction'),
                 scan_data.get('reject_reason'), scan_data.get('reject_reason_category'),
+                # 🔥 ML Confidence (confiance réelle du modèle)
+                ml_confidence_value,
+                ml_threshold_used_value,
+                ml_threshold_type,
+                calibrated_wr_value,
                 # Params
                 json.dumps(params_snap),
                 # Config
@@ -1647,7 +2777,19 @@ class PostgreSQLDataLogger:
                 params_snap.get('use_candle_close'),
                 params_snap.get('candle_close_threshold_seconds'),
                 params_snap.get('use_momentum_continuity'),
-                params_snap.get('momentum_lookback')
+                params_snap.get('momentum_lookback'),
+                # 🔥 OPT #20: Micro-confirmation
+                params_snap.get('use_micro_confirmation'),
+                params_snap.get('micro_confirmation_delay_ms'),
+                # 🔥 SPRINT 1: Market Regime context
+                scan_data.get('market_regime'),
+                scan_data.get('market_regime_avg_atr'),
+                scan_data.get('market_regime_avg_adx'),
+                # 🔥 PHASE 1A: Session/Heure context
+                scan_data.get('session_market'),
+                scan_data.get('hour_utc'),
+                scan_data.get('regime_at_scan'),
+                scan_data.get('regime_confidence_at_scan')
             )
 
             values.append(value_tuple)
@@ -1661,6 +2803,9 @@ class PostgreSQLDataLogger:
             'price', 'spread_pct', 'book_depth', 'balance_score',
             'bid_vol', 'ask_vol', 'orderbook_imbalance_ratio',
             'recent_volume', 'vol5', 'vol15', 'scalability_score',
+            # 🔥 ORDER FLOW: 6 nouvelles colonnes
+            'delta_volume', 'imbalance_normalized', 'spread_volatility_5',
+            'book_depth_ratio', 'volume_acceleration', 'price_momentum_5',
             'ema9_1m', 'ema21_1m', 'ema_diff_pct_1m',
             'rsi_1m', 'rsi_prev_1m',
             'macd_1m', 'macd_signal_1m', 'macd_hist_1m', 'macd_hist_prev_1m',
@@ -1691,6 +2836,9 @@ class PostgreSQLDataLogger:
             'trend_timeframe', 'trend_direction', 'trend_strength', 'trend_bonus',
             'divergence_detected', 'divergence_type', 'divergence_bonus',
             'is_opportunity', 'opportunity_direction', 'reject_reason', 'reject_reason_category',
+            # 🔥 ML Confidence (confiance réelle du modèle)
+            'ml_confidence',
+            'ml_threshold_used', 'ml_threshold_type', 'calibrated_winrate',
             'params_snapshot',
             'config_min_score_required', 'config_snr_threshold',
             'config_atr_min_1m', 'config_atr_max_1m',
@@ -1703,7 +2851,12 @@ class PostgreSQLDataLogger:
             'config_retest_timeout_seconds', 'config_use_cooldown',
             'config_cooldown_seconds', 'config_cooldown_same_symbol',
             'config_use_candle_close', 'config_candle_close_threshold_seconds',
-            'config_use_momentum_continuity', 'config_momentum_lookback'
+            'config_use_momentum_continuity', 'config_momentum_lookback',
+            'config_use_micro_confirmation', 'config_micro_confirmation_delay_ms',
+            # 🔥 SPRINT 1: Market Regime context
+            'market_regime', 'market_regime_avg_atr', 'market_regime_avg_adx',
+            # 🔥 PHASE 1A: Session/Heure context
+            'session_market', 'hour_utc', 'regime_at_scan', 'regime_confidence_at_scan'
         )
 
         execute_values(
@@ -1770,6 +2923,367 @@ class PostgreSQLDataLogger:
                 conn.rollback()
                 self._return_connection(conn)
 
+    def log_trade_event(
+        self,
+        trade_id: str,
+        event_type: str,
+        price_at_event: float = None,
+        pnl_pct_at_event: float = None,
+        pnl_usdt_at_event: float = None,
+        details: Dict[str, Any] = None
+    ) -> Optional[int]:
+        """
+        Logger un événement pendant un trade (Phase 2H.6)
+        
+        Args:
+            trade_id: UUID du trade
+            event_type: Type d'événement (ENTRY, BE_TRIGGERED, TRAILING_ACTIVATED, etc.)
+            price_at_event: Prix au moment de l'événement
+            pnl_pct_at_event: PnL% au moment de l'événement
+            pnl_usdt_at_event: PnL USDT au moment de l'événement
+            details: Détails supplémentaires en JSON
+            
+        Returns:
+            ID de l'événement ou None si erreur
+        """
+        if not self.enabled:
+            return None
+        
+        # Valider event_type
+        valid_types = [
+            'ENTRY', 'BE_TRIGGERED', 'TRAILING_ACTIVATED', 'TRAILING_SL_MOVED',
+            'MAX_PNL_REACHED', 'MIN_PNL_REACHED', 'PARTIAL_TP', 'TP_ESCALIER_LEVEL',
+            'STAGNATION_DETECTED', 'STAGNATION_MFE_PROTECT', 'TRAILING_MFE_TRIGGERED',
+            'SL_EXCHANGE_SET', 'EXIT'
+        ]
+        if event_type not in valid_types:
+            logger.warning(f"⚠️ Event type invalide: {event_type}")
+            return None
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            if not conn:
+                return None
+            
+            cursor = conn.cursor()
+            
+            # Sérialiser details en JSON
+            details_json = json.dumps(details) if details else None
+            
+            query = """
+                INSERT INTO trade_events (
+                    trade_id, event_type, event_timestamp,
+                    price_at_event, pnl_pct_at_event, pnl_usdt_at_event, details
+                ) VALUES (%s, %s, NOW(), %s, %s, %s, %s)
+                RETURNING id
+            """
+            
+            cursor.execute(query, (
+                trade_id,
+                event_type,
+                price_at_event,
+                pnl_pct_at_event,
+                pnl_usdt_at_event,
+                details_json
+            ))
+            
+            result = cursor.fetchone()
+            event_id = result[0] if result else None
+            
+            conn.commit()
+            cursor.close()
+            self._return_connection(conn)
+            
+            logger.debug(f"📋 Trade event logged: {event_type} for trade {str(trade_id)[:8]}...")
+            return event_id
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur log_trade_event ({event_type}): {e}")
+            if conn:
+                try:
+                    conn.rollback()
+                    self._return_connection(conn)
+                except:
+                    pass
+            return None
+
+    def get_trade_events(self, trade_id: str) -> List[Dict[str, Any]]:
+        """
+        Récupérer les événements d'un trade (trade_events).
+
+        Args:
+            trade_id: UUID du trade
+
+        Returns:
+            Liste d'événements triés par timestamp
+        """
+        if not self.enabled or not trade_id:
+            return []
+
+        try:
+            query = """
+                SELECT id, trade_id, event_type, event_timestamp,
+                       price_at_event, pnl_pct_at_event, pnl_usdt_at_event, details
+                FROM trade_events
+                WHERE trade_id = %s
+                ORDER BY event_timestamp ASC
+            """
+            rows = self._execute_query(
+                query,
+                (str(trade_id),),
+                fetch=True,
+                cursor_factory=RealDictCursor
+            ) or []
+
+            events: List[Dict[str, Any]] = []
+            for row in rows:
+                details = row.get('details')
+                if isinstance(details, str):
+                    try:
+                        details = json.loads(details)
+                    except Exception:
+                        details = {'raw': details}
+
+                event_timestamp = row.get('event_timestamp')
+                if hasattr(event_timestamp, 'isoformat'):
+                    event_timestamp = event_timestamp.isoformat()
+
+                events.append({
+                    'id': row.get('id'),
+                    'trade_id': str(row.get('trade_id')) if row.get('trade_id') else None,
+                    'event_type': row.get('event_type'),
+                    'event_timestamp': event_timestamp,
+                    'price_at_event': _extract_numeric_value(row.get('price_at_event')),
+                    'pnl_pct_at_event': _extract_numeric_value(row.get('pnl_pct_at_event')),
+                    'pnl_usdt_at_event': _extract_numeric_value(row.get('pnl_usdt_at_event')),
+                    'details': details or {}
+                })
+
+            return events
+        except Exception as e:
+            logger.error(f"❌ Erreur get_trade_events pour trade {trade_id}: {e}")
+            return []
+
+    # =========================================================================
+    # 🔥 ASYNC WRAPPERS - Non-blocking methods for asyncio event loop
+    # =========================================================================
+    # Ces méthodes utilisent asyncio.to_thread() pour exécuter les opérations
+    # PostgreSQL synchrones dans un thread séparé, évitant de bloquer l'event loop.
+    
+    async def log_scan_async(
+        self,
+        symbol: str,
+        scan_data: Dict[str, Any],
+        session_id: Optional[str] = None,
+        use_batch: bool = True
+    ) -> Optional[int]:
+        """
+        Version async non-bloquante de log_scan.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_scan, symbol, scan_data, session_id, use_batch
+        )
+    
+    async def log_opportunity_async(
+        self,
+        scan_id: int,
+        symbol: str,
+        opportunity_data: Dict[str, Any],
+        session_id: Optional[str] = None,
+        use_batch: bool = True
+    ) -> Optional[int]:
+        """
+        Version async non-bloquante de log_opportunity.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_opportunity, scan_id, symbol, opportunity_data, session_id, use_batch
+        )
+    
+    async def log_trade_async(
+        self,
+        trade_data: Dict[str, Any],
+        opportunity_id: Optional[int] = None,
+        scan_log_id: Optional[int] = None,
+        session_id: Optional[str] = None,
+        trade_id: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Version async non-bloquante de log_trade.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_trade, trade_data, opportunity_id, scan_log_id, session_id, trade_id
+        )
+    
+    async def log_trade_event_async(
+        self,
+        trade_id: str,
+        event_type: str,
+        price_at_event: float = None,
+        pnl_pct_at_event: float = None,
+        pnl_usdt_at_event: float = None,
+        details: Dict[str, Any] = None
+    ) -> Optional[int]:
+        """
+        Version async non-bloquante de log_trade_event.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.log_trade_event, trade_id, event_type, price_at_event,
+            pnl_pct_at_event, pnl_usdt_at_event, details
+        )
+    
+    async def update_ml_confidence_async(
+        self,
+        symbol: str,
+        ml_confidence: float,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        Version async non-bloquante de update_ml_confidence.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.update_ml_confidence, symbol, ml_confidence, minutes_ago
+        )
+    
+    async def update_ml_rejection_async(
+        self,
+        symbol: str,
+        reject_reason: str,
+        reject_category: str,
+        ml_confidence: Optional[float] = None,
+        ml_threshold_used: Optional[float] = None,
+        calibrated_winrate: Optional[float] = None,
+        minutes_ago: int = 5
+    ) -> bool:
+        """
+        Version async non-bloquante de update_ml_rejection.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.update_ml_rejection, symbol, reject_reason, reject_category,
+            ml_confidence, ml_threshold_used, calibrated_winrate, minutes_ago
+        )
+    
+    async def get_ml_confidence_for_symbol_async(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        Version async non-bloquante de get_ml_confidence_for_symbol.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.get_ml_confidence_for_symbol, symbol, minutes_ago
+        )
+    
+    async def get_adaptive_sizing_for_symbol_async(
+        self,
+        symbol: str,
+        minutes_ago: int = 60
+    ) -> Optional[float]:
+        """
+        Version async non-bloquante de get_adaptive_sizing_for_symbol.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.get_adaptive_sizing_for_symbol, symbol, minutes_ago
+        )
+    
+    async def flush_buffers_async(self, force: bool = False):
+        """
+        Version async non-bloquante de _flush_buffers.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(self._flush_buffers, force)
+    
+    async def get_or_create_session_async(
+        self,
+        session_id: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Version async non-bloquante de get_or_create_session.
+        Exécute l'opération DB dans un thread séparé.
+        """
+        import asyncio
+        return await asyncio.to_thread(self.get_or_create_session, session_id)
+
+    def log_error(
+        self,
+        error_type: str,
+        error_message: str,
+        error_stack: Optional[str] = None,
+        symbol: Optional[str] = None,
+        scan_context: Optional[Dict] = None
+    ) -> bool:
+        """
+        Logger une erreur dans la table scan_errors
+        
+        Args:
+            error_type: Type d'erreur (ERROR, CRITICAL, WARNING, etc.)
+            error_message: Message d'erreur
+            error_stack: Stack trace complète (optionnel)
+            symbol: Symbole concerné (optionnel)
+            scan_context: Contexte additionnel (optionnel)
+            
+        Returns:
+            True si succès, False sinon
+        """
+        if not self.enabled:
+            return False
+        
+        conn = self._get_connection()
+        if not conn:
+            return False
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Récupérer session_id actuel si disponible
+            session_id = getattr(self, '_current_session_id', None)
+            
+            cursor.execute("""
+                INSERT INTO scan_errors (
+                    timestamp, session_id, symbol, error_type, 
+                    error_message, error_stack, scan_context
+                )
+                VALUES (NOW(), %s, %s, %s, %s, %s, %s)
+            """, (
+                session_id,
+                symbol,
+                error_type,
+                error_message,
+                error_stack,
+                json.dumps(scan_context) if scan_context else None
+            ))
+            
+            conn.commit()
+            cursor.close()
+            self._return_connection(conn)
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur log_error vers scan_errors: {e}")
+            if conn:
+                conn.rollback()
+                cursor.close() if 'cursor' in locals() else None
+                self._return_connection(conn)
+            return False
+    
     def close(self):
         """
         Fermer le pool de connexions PostgreSQL
@@ -1837,8 +3351,8 @@ def get_pg_datalogger():
             database=os.getenv('POSTGRES_DB', 'tradebot'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', ''),
-            min_conn=int(os.getenv('POSTGRES_MIN_CONN', '2')),
-            max_conn=int(os.getenv('POSTGRES_MAX_CONN', '10'))
+            min_conn=int(os.getenv('POSTGRES_MIN_CONN', '5')),
+            max_conn=int(os.getenv('POSTGRES_MAX_CONN', '20'))
         )
         
         if _pg_datalogger_instance and _pg_datalogger_instance.enabled:

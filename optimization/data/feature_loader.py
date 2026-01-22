@@ -51,10 +51,7 @@ def build_config_filter_conditions(for_trades_table: bool = True, use_alias: boo
         use_momentum_continuity = bool(TRADING_CONFIG.get('use_momentum_continuity', False))
         use_retest_confirmation = bool(TRADING_CONFIG.get('use_retest_confirmation', False))
         
-        # TP/SL
-        tp_sl_mode = str(TRADING_CONFIG.get('tp_sl_mode', 'FIXE'))
-        tp_percent = float(TRADING_CONFIG.get('tp_percent', 0.5))
-        sl_percent = float(TRADING_CONFIG.get('sl_percent', 0.2))
+        # 🔥 TP/SL EXCLUS - n'affectent pas la prédiction ML (gestion post-entrée uniquement)
         
         # Patterns techniques (flags + seuils)
         use_breakout = bool(TRADING_CONFIG.get('use_breakout', True))
@@ -73,48 +70,21 @@ def build_config_filter_conditions(for_trades_table: bool = True, use_alias: boo
         # Préfixe pour les colonnes (pour jointures)
         p = "t." if use_alias else ""
         
-        # Ajouter filtre exit_reason uniquement pour la table trades
+        # ═══════════════════════════════════════════════════════════════════
+        # 🔥 FILTRES ML STRICTS (demande utilisateur 11/12/2025)
+        # Uniquement: LIVE + ATR + exits propres
+        # Config différentes: DÉSACTIVÉ (plus de données pour l'entraînement)
+        # ═══════════════════════════════════════════════════════════════════
         if for_trades_table:
-            conditions.append(f"({p}exit_reason IS NULL OR {p}exit_reason != 'MANUAL')")
-        
-        # --- Paramètres de base (OBLIGATOIRES) ---
-        conditions.append(f"ABS(COALESCE({p}config_min_score_required, 0) - {min_score}) < 0.1")
-        conditions.append(f"ABS(COALESCE({p}config_snr_threshold, 0) - {snr_threshold}) < 0.02")
-        conditions.append(f"ABS(COALESCE({p}config_volume_multiplier, 0) - {volume_mult}) < 0.05")
-        conditions.append(f"{p}config_use_confluence = {str(use_confluence).lower()}")
-        
-        # --- ATR optimal (OBLIGATOIRES) ---
-        # Table trades utilise config_optimal_atr_*
-        conditions.append(f"ABS(COALESCE({p}config_optimal_atr_min_1m, 0) - {atr_min_1m}) < 0.05")
-        conditions.append(f"ABS(COALESCE({p}config_optimal_atr_max_1m, 0) - {atr_max_1m}) < 0.1")
-        conditions.append(f"ABS(COALESCE({p}config_optimal_atr_min_5m, 0) - {atr_min_5m}) < 0.05")
-        conditions.append(f"ABS(COALESCE({p}config_optimal_atr_max_5m, 0) - {atr_max_5m}) < 0.2")
-        
-        # --- Filtres additionnels (OPTIONNELS) ---
-        if for_trades_table:
-            conditions.append(f"({p}config_use_anti_whipsaw IS NULL OR {p}config_use_anti_whipsaw = {str(use_anti_whipsaw).lower()})")
-            conditions.append(f"({p}config_use_candle_close IS NULL OR {p}config_use_candle_close = {str(use_candle_close).lower()})")
-            conditions.append(f"({p}config_use_cooldown IS NULL OR {p}config_use_cooldown = {str(use_cooldown).lower()})")
-            conditions.append(f"({p}config_use_momentum_continuity IS NULL OR {p}config_use_momentum_continuity = {str(use_momentum_continuity).lower()})")
-            conditions.append(f"({p}config_use_retest_confirmation IS NULL OR {p}config_use_retest_confirmation = {str(use_retest_confirmation).lower()})")
-        
-        # --- TP/SL et patterns techniques (depuis config_snapshot) ---
-        if for_trades_table:
-            # TP/SL
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'tp_sl_mode' IS NULL OR {p}config_snapshot->>'tp_sl_mode' = '{tp_sl_mode}')")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'tp_percent' IS NULL OR ABS(({p}config_snapshot->>'tp_percent')::FLOAT - {tp_percent}) < 0.05)")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'sl_percent' IS NULL OR ABS(({p}config_snapshot->>'sl_percent')::FLOAT - {sl_percent}) < 0.03)")
+            # 1. Uniquement trades LIVE (pas de dry-run)
+            conditions.append(f"{p}is_live_trade = true")
             
-            # Patterns techniques (flags + seuils)
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'use_breakout' IS NULL OR ({p}config_snapshot->>'use_breakout')::BOOLEAN = {str(use_breakout).lower()})")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'breakout_threshold' IS NULL OR ABS(({p}config_snapshot->>'breakout_threshold')::FLOAT - {breakout_threshold}) < 0.05)")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'use_snr' IS NULL OR ({p}config_snapshot->>'use_snr')::BOOLEAN = {str(use_snr).lower()})")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'snr_threshold' IS NULL OR ABS(({p}config_snapshot->>'snr_threshold')::FLOAT - {snr_threshold_pat}) < 0.02)")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'use_wick' IS NULL OR ({p}config_snapshot->>'use_wick')::BOOLEAN = {str(use_wick).lower()})")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'wick_ratio_max' IS NULL OR ABS(({p}config_snapshot->>'wick_ratio_max')::FLOAT - {wick_ratio_max}) < 0.5)")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'use_divergence' IS NULL OR ({p}config_snapshot->>'use_divergence')::BOOLEAN = {str(use_divergence).lower()})")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'di_gap_min' IS NULL OR ABS(({p}config_snapshot->>'di_gap_min')::FLOAT - {di_gap_min}) < 0.5)")
-            conditions.append(f"({p}config_snapshot IS NULL OR {p}config_snapshot->>'di_gap_adx_threshold' IS NULL OR ABS(({p}config_snapshot->>'di_gap_adx_threshold')::FLOAT - {di_gap_adx_threshold}) < 2)")
+            # 2. Uniquement mode TP/SL ATR (cohérence avec config actuelle)
+            conditions.append(f"{p}tp_sl_mode = 'ATR'")
+            
+            # 3. Exclure MANUAL et STAGNATION classique (sorties non représentatives)
+            # 🔥 STAGNATION_POSITIVE et STAGNATION_MFE_PROTECT sont INCLUS (sorties contrôlées)
+            conditions.append(f"({p}exit_reason IS NULL OR {p}exit_reason NOT IN ('MANUAL', 'STAGNATION'))")
         
         logger.info(f"✅ {len(conditions)} conditions de filtrage construites")
         return conditions
@@ -299,6 +269,11 @@ def load_features_from_postgres(
             
             -- Reject category (depuis scan_logs)
             s.reject_reason_category,
+            
+            -- 🔥 Order Flow features (depuis trades)
+            COALESCE(s.delta_volume, t.delta_volume) AS delta_volume,
+            COALESCE(s.imbalance_normalized, t.imbalance_normalized) AS imbalance_normalized,
+            COALESCE(s.book_depth_ratio, t.book_depth_ratio) AS book_depth_ratio,
             
             -- Labels ML
             s.is_opportunity,

@@ -5,7 +5,7 @@ Version refactorisée - Délègue aux modules dans core/analyzer/
 """
 import asyncio
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import math
 
 from api.mexc import get_mexc_client
@@ -13,6 +13,20 @@ from api.price_provider import get_price_provider
 from core.indicators import Indicators
 from config import TRADING_CONFIG, DEBUG_ENABLED, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
 from utils.logger import get_logger
+from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
+
+# 🔥 SPRINT 1.2: Exception Handling System
+try:
+    from core.exceptions import (
+        NetworkError, APIError, RateLimitError, MarketDataError,
+        PriceDataError, InsufficientDataError,
+        DatabaseError, WebSocketError,
+        TradeCursorError
+    )
+except ImportError:
+    # Fallback si exceptions custom non disponibles
+    NetworkError = APIError = RateLimitError = MarketDataError = Exception
+    PriceDataError = InsufficientDataError = DatabaseError = WebSocketError = TradeCursorError = Exception
 
 # Imports des modules refactorisés
 from core.analyzer.filters import (
@@ -285,14 +299,45 @@ class TechnicalAnalyzer:
                 return None
 
             # Récupérer OHLCV pour indicateurs
+            # 🔥 SPRINT 1.2: OHLCV fetch - Distinguer erreurs réseau, API, données invalides
             try:
                 ohlcv = await self.client.fetch_ohlcv(symbol, timeframe, limit=100)
-            except Exception as e:
-                reason = f"Erreur fetch OHLCV: {str(e)} (symbole: {symbol})"
+            except RateLimitError as e:
+                # Rate limit - retryable par fetch_ohlcv
+                reason = f"Rate limit fetch OHLCV: {e} (symbole: {symbol})"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
                 if DEBUG_ENABLED:
-                    logger.error(f"{symbol} {timeframe}: {reason}")
+                    logger.warning(f"⚠️ {symbol} {timeframe}: {reason}")
+                return None
+            except NetworkError as e:
+                # Erreur réseau (timeout, connexion)
+                reason = f"Erreur réseau fetch OHLCV: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ {symbol} {timeframe}: {reason}")
+                return None
+            except APIError as e:
+                # Erreur API (symbole invalide, timeframe non supporté)
+                reason = f"Erreur API fetch OHLCV: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                logger.error(f"❌ {symbol} {timeframe}: {reason}")
+                return None
+            except MarketDataError as e:
+                # Données OHLCV invalides
+                reason = f"Données OHLCV invalides: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                logger.error(f"❌ {symbol} {timeframe}: {reason}")
+                return None
+            except Exception as e:
+                # Erreur inattendue
+                reason = f"Erreur inattendue fetch OHLCV: {type(e).__name__}: {e} (symbole: {symbol})"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                logger.error(f"❌ {symbol} {timeframe}: {reason}", exc_info=True)
                 return None
 
             if not ohlcv or len(ohlcv) < 20:
@@ -616,7 +661,8 @@ class TechnicalAnalyzer:
                 long_condition_types=long_condition_types,
                 short_condition_types=short_condition_types,
                 adx=adx,
-                trend_data=trend_data
+                trend_data=trend_data,
+                symbol=symbol  # 🔥 SPRINT 2: Passer le symbol pour pair scorer
             )
 
             direction = evaluation['direction']
@@ -625,6 +671,8 @@ class TechnicalAnalyzer:
             short_score = evaluation['short_score']
             min_score_required = evaluation['min_required']
             trend_score_bonus = evaluation['trend_bonus']
+            pair_adjustment = evaluation.get('pair_adjustment', 0.0)  # 🔥 SPRINT 2
+            effective_min_score = evaluation.get('effective_min_score', min_score_required)  # 🔥 SPRINT 2
 
             # Divergence RSI/MACD (calcul avant direction finale)
             divergence_bonus = apply_divergence_bonus(
@@ -645,23 +693,25 @@ class TechnicalAnalyzer:
                 else:
                     short_score = calculate_weighted_score(short_condition_types) + trend_score_bonus
 
-            # Réévaluer direction après divergence
+            # Réévaluer direction après divergence (utiliser effective_min_score)
             direction = 'NEUTRAL'
-            if long_score >= min_score_required:
+            if long_score >= effective_min_score:
                 direction = 'LONG'
-            elif short_score >= min_score_required:
+            elif short_score >= effective_min_score:
                 direction = 'SHORT'
 
             # Logs détaillés si score insuffisant
             if direction == 'NEUTRAL':
                 if use_weighted:
+                    # 🔥 SPRINT 2: Afficher l'ajustement pair si présent
+                    pair_info = f" (pair adj: {pair_adjustment:+.1f})" if pair_adjustment != 0 else ""
                     reason = (
                         f"Score insuffisant: Long={len(long_conditions)}+{trend_score_bonus:.1f} "
-                        f"[{', '.join(long_condition_types[:5])}] → Score: {long_score:.1f}/{min_score_required:.1f} ❌ | "
-                        f"Short={len(short_conditions)} [{', '.join(short_condition_types[:5])}] → Score: {short_score:.1f}/{min_score_required:.1f} ❌"
+                        f"[{', '.join(long_condition_types[:5])}] → Score: {long_score:.1f}/{effective_min_score:.1f}{pair_info} ❌ | "
+                        f"Short={len(short_conditions)} [{', '.join(short_condition_types[:5])}] → Score: {short_score:.1f}/{effective_min_score:.1f} ❌"
                     )
                 else:
-                    reason = f"Conditions insuffisantes: Long={len(long_conditions)} Short={len(short_conditions)} (min={min_score_required} requis)"
+                    reason = f"Conditions insuffisantes: Long={len(long_conditions)} Short={len(short_conditions)} (min={effective_min_score} requis)"
 
                 if return_reason:
                     result_dict = build_indicators_dict(reason, filters=filter_metrics, reject_category='score_insufficient')
@@ -804,6 +854,8 @@ class TechnicalAnalyzer:
                 'long_score': long_score if use_weighted else None,  # 🔥 FIX: Ajouter long_score pour les fallbacks
                 'short_score': short_score if use_weighted else None,  # 🔥 FIX: Ajouter short_score pour les fallbacks
                 'min_score_required': min_score_required,
+                'pair_score_adjustment': pair_adjustment,  # 🔥 SPRINT 2: Ajustement pair scorer
+                'effective_min_score': effective_min_score,  # 🔥 SPRINT 2: Score min effectif
                 'timeframe': timeframe,
                 'volatility': atr / price if price > 0 else 0,
                 'atr': atr,
@@ -848,10 +900,43 @@ class TechnicalAnalyzer:
                 'volume_filter_passed': filter_metrics['volume_filter_passed']
             }
 
-        except Exception as e:
+        # 🔥 SPRINT 1.2: Main analysis - Distinguer erreurs données, calcul, réseau
+        except InsufficientDataError as e:
+            # Données insuffisantes pour calculer indicateurs
+            error_msg = f"Données insuffisantes pour l'analyse {timeframe}: {e}"
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ {symbol} {timeframe}: {error_msg}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except PriceDataError as e:
+            # Données de prix invalides
+            error_msg = f"Données de prix invalides pour l'analyse {timeframe}: {e}"
+            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except MarketDataError as e:
+            # Données marché invalides (volume, spread, etc.)
+            error_msg = f"Données marché invalides pour l'analyse {timeframe}: {e}"
+            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except (ValueError, ZeroDivisionError, KeyError) as e:
+            # Erreur calcul indicateurs (division par zéro, clé manquante, etc.)
             import traceback
-            error_msg = f"Exception lors de l'analyse {timeframe}: {str(e)}"
-            logger.error(f"❌ Erreur analyse {symbol} {timeframe}: {e}")
+            error_msg = f"Erreur calcul indicateurs {timeframe}: {type(e).__name__}: {e}"
+            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            if return_reason:
+                return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
+            return None
+        except Exception as e:
+            # Erreur inattendue - log complet avec traceback
+            import traceback
+            error_msg = f"Exception inattendue lors de l'analyse {timeframe}: {type(e).__name__}: {e}"
+            logger.error(f"❌ Erreur inattendue analyse {symbol} {timeframe}: {type(e).__name__}: {e}", exc_info=True)
             logger.error(f"Traceback: {traceback.format_exc()}")
             if return_reason:
                 return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
@@ -867,16 +952,18 @@ class TechnicalAnalyzer:
         use_confluence: bool = False,
         return_reason: bool = False,
         active_positions: Optional[List[str]] = None,
-        position_manager = None
+        position_manager: Optional[Any] = None
     ) -> Optional[Dict]:
         """
         Analyse une paire sur 1m et 5m
 
         Args:
             symbol: Symbole de la paire
-            trend_data: Données de tendance
+            trend_data: Donnes de tendance
             volume_multiplier: Multiplicateur de volume
             use_confluence: True = 1m ET 5m, False = 1m OU 5m
+            active_positions: Liste des symboles avec positions actives (pour Correlation Filter)
+            position_manager: Instance du PositionManager (pour Recovery Mode)
 
         Returns:
             Meilleur setup ou None
@@ -884,11 +971,17 @@ class TechnicalAnalyzer:
         try:
             start_time = time.time()  # Pour calculer scan_duration_ms
             
+            # : Utiliser volume_multiplier dynamique du rgime si disponible
+            eff_vol_mult = get_effective_value('volume_multiplier')
+            if eff_vol_mult is not None:
+                volume_multiplier = eff_vol_mult
+            
             # Toujours calculer trend_data (au lieu d'optionnel)
             if trend_data is None:
                 trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
                 trend_data = await self.calculate_trend_data(symbol, trend_timeframe)
                 if trend_data:
+                    logger.debug(f" {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
                     logger.debug(f"📊 {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
 
             # Analyser 1m et 5m
@@ -902,10 +995,9 @@ class TechnicalAnalyzer:
             scan_uuid = None
             
             try:
-                from backend.ml.data_logger import DataLogger
-                data_logger = DataLogger()
+                from utils.helpers import DataLoggerHelper
                 
-                if data_logger and data_logger.is_running:
+                if DataLoggerHelper.is_available():
                     # Récupérer prix actuel
                     ticker_data = await self.price_provider.get_price(symbol)
                     current_price = float(ticker_data.get('lastPrice', 0)) if ticker_data else 0
@@ -1037,7 +1129,7 @@ class TechnicalAnalyzer:
                     }
                     
                     # Logger le scan
-                    scan_uuid = await data_logger.log_scan(
+                    scan_uuid = await DataLoggerHelper.safe_log_scan(
                         symbol=symbol,
                         price=current_price,
                         indicators_1m=indicators_1m,
@@ -1058,8 +1150,15 @@ class TechnicalAnalyzer:
                         reject_reason_category=None,
                         scan_duration_ms=scan_duration_ms
                     )
+            # 🔥 SPRINT 1.2: log_scan - NON-BLOQUANT, distinguer erreurs DB
+            except DatabaseError as e:
+                # Erreur base de données - NON-BLOQUANT
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ Erreur DB log_scan (non-bloquant): {e}")
+                scan_uuid = None
             except Exception as e:
-                logger.debug(f"Erreur log_scan (non-bloquant): {e}")
+                # Erreur inattendue - NON-BLOQUANT
+                logger.debug(f"Erreur inattendue log_scan (non-bloquant): {type(e).__name__}: {e}")
                 scan_uuid = None
             # ========================================
             # FIN POINT A
@@ -1099,6 +1198,50 @@ class TechnicalAnalyzer:
                     best_setup = analysis_5m
 
             if best_setup:
+                # 🔥 FIX: Vérification RSI FINALE avant les autres vérifications (configurable)
+                rsi_filter_enabled = get_effective_value('rsi_final_filter_enabled')
+                if rsi_filter_enabled is None:
+                    rsi_filter_enabled = TRADING_CONFIG.get('rsi_final_filter_enabled', True)
+                
+                if rsi_filter_enabled:
+                    final_rsi = best_setup.get('rsi', 50)
+                    direction = best_setup.get('direction', 'NEUTRAL')
+                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or TRADING_CONFIG.get('rsi_final_short_min', 35)
+                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
+                    
+                    if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
+                        reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
+                        return None
+                    if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
+                        reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
+                        return None
+
                 # === VÉRIFICATIONS DE MARCHÉ ===
 
                 # 1. Vérifier spread
@@ -1208,6 +1351,61 @@ class TechnicalAnalyzer:
                 if 'scalability_data' in locals():
                     scalability_data['spread'] = spread_check['spread_pct']
 
+                # 🔥 OPT #20: Micro-confirmation AVANT orderbook (évite les faux breakouts)
+                if TRADING_CONFIG.get('use_micro_confirmation', False):
+                    delay_ms = TRADING_CONFIG.get('micro_confirmation_delay_ms', 300)
+                    entry_price = best_setup.get('entry') or best_setup.get('price')
+                    direction = best_setup.get('direction')
+                    
+                    if entry_price and direction:
+                        logger.info(f"⚡ {symbol} Micro-confirmation: attente {delay_ms}ms...")
+                        await asyncio.sleep(delay_ms / 1000.0)  # Convertir ms en secondes
+                        
+                        # Récupérer le prix actuel après le délai
+                        try:
+                            ticker = await self.client.fetch_ticker(symbol)
+                            current_price = None
+                            
+                            # 🔥 FIX: Valider que ticker n'est pas None avant d'utiliser .get()
+                            if ticker is None:
+                                logger.warning(f"⚠️ {symbol} Micro-confirmation: ticker None - impossible de valider prix")
+                                # Continuer sans micro-confirmation (ne pas rejeter le trade)
+                            else:
+                                current_price = ticker.get('last') or ticker.get('close')
+                            
+                            if current_price:
+                                price_change_pct = ((current_price - entry_price) / entry_price) * 100
+                                
+                                # Vérifier si le prix va toujours dans la bonne direction
+                                if direction == 'LONG' and price_change_pct < -0.05:
+                                    logger.info(f"⚡ {symbol} LONG rejeté par micro-confirmation: prix retombé de {price_change_pct:.3f}%")
+                                    return {
+                                        'symbol': symbol,
+                                        'reason': f"Micro-confirmation échouée: prix retombé de {price_change_pct:.3f}%",
+                                        'reject_category': 'micro_confirmation_filter',
+                                        'price_change_pct': price_change_pct
+                                    }
+                                elif direction == 'SHORT' and price_change_pct > 0.05:
+                                    logger.info(f"⚡ {symbol} SHORT rejeté par micro-confirmation: prix remonté de {price_change_pct:.3f}%")
+                                    return {
+                                        'symbol': symbol,
+                                        'reason': f"Micro-confirmation échouée: prix remonté de {price_change_pct:.3f}%",
+                                        'reject_category': 'micro_confirmation_filter',
+                                        'price_change_pct': price_change_pct
+                                    }
+                                else:
+                                    logger.info(f"✅ {symbol} Micro-confirmation OK: {price_change_pct:+.3f}%")
+                        # 🔥 SPRINT 1.2: Micro-confirmation - Distinguer erreurs fetch prix
+                        except NetworkError as e:
+                            # Erreur réseau lors fetch prix micro-confirmation
+                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur réseau fetch prix: {e}")
+                        except PriceDataError as e:
+                            # Données prix invalides
+                            logger.warning(f"⚠️ {symbol} Micro-confirmation: données prix invalides: {e}")
+                        except Exception as e:
+                            # Erreur inattendue fetch prix
+                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur inattendue fetch prix: {type(e).__name__}: {e}")
+
                 # 2. Vérifier orderbook imbalance
                 orderbook_check = await check_orderbook_imbalance(
                     client=self.client,
@@ -1230,7 +1428,6 @@ class TechnicalAnalyzer:
                     try:
                         from core.websocket_manager import get_websocket_manager
                         from datetime import datetime
-                        import asyncio
                         ws_mgr = get_websocket_manager()
                         if ws_mgr:
                             try:
@@ -1249,8 +1446,14 @@ class TechnicalAnalyzer:
                             except RuntimeError:
                                 # Pas de loop en cours, ignorer (le log est déjà dans logger.info)
                                 pass
+                    # 🔥 SPRINT 1.2: Frontend log - NON-BLOQUANT, distinguer erreurs
+                    except WebSocketError as log_err:
+                        # Erreur WebSocket (emit fail) - NON-BLOQUANT
+                        if DEBUG_ENABLED:
+                            logger.debug(f"Erreur WebSocket envoi log frontend (non-bloquant): {log_err}")
                     except Exception as log_err:
-                        logger.debug(f"Impossible d'envoyer log au frontend: {log_err}")
+                        # Erreur inattendue - NON-BLOQUANT
+                        logger.debug(f"Erreur inattendue envoi log frontend (non-bloquant): {type(log_err).__name__}: {log_err}")
                     # 🔥 FIX: Retourner un dict avec les indicateurs et un reason au lieu de None
                     # pour permettre le logging des indicateurs même si le setup est rejeté
                     # Construire indicators_1m et indicators_5m depuis analysis_1m et analysis_5m
@@ -1380,10 +1583,22 @@ class TechnicalAnalyzer:
                 )
 
                 if manipulation_check['suspicious']:
+                    reason = f"Manipulation suspectée ({manipulation_check['reason']})"
                     logger.warning(
-                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : "
-                        f"Manipulation suspectée ({manipulation_check['reason']})"
+                        f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : {reason}"
                     )
+                    if return_reason:
+                        indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                        indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                        return {
+                            'reason': reason,
+                            'symbol': symbol,
+                            'analysis_1m': analysis_1m,
+                            'analysis_5m': analysis_5m,
+                            'indicators_1m': indicators_1m_reject,
+                            'indicators_5m': indicators_5m_reject,
+                            'reject_category': 'manipulation_filter'
+                        }
                     return None
 
                 # === VÉRIFICATIONS DE CORRÉLATION ===
@@ -1446,17 +1661,56 @@ class TechnicalAnalyzer:
                         loss_streak = position_manager.config.loss_streak if hasattr(position_manager, 'config') else 0
                         recovery_level = position_manager.get_recovery_level(loss_streak) if hasattr(position_manager, 'get_recovery_level') else None
 
-                        if recovery_level:
-                            recovery_boost = recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
-                            level_num = recovery_level.get('level', 1)
+                        if TRADING_CONFIG.get('recovery_shadow_compare', False):
+                            try:
+                                recovery_state = position_manager.recovery_mode.get_state(loss_streak)
+                                legacy_boost = (
+                                    recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
+                                    if recovery_level else recovery_config.get('min_score_boost', 1.5)
+                                )
+                                legacy_confluence = (
+                                    recovery_level.get('confluence_forced', False)
+                                    if recovery_level else recovery_config.get('confluence_forced', False)
+                                )
+                                if (
+                                    recovery_state.min_score_boost != legacy_boost
+                                    or recovery_state.confluence_forced != legacy_confluence
+                                    or recovery_state.active != recovery_mode_active
+                                ):
+                                    logger.debug(
+                                        "🔎 RECOVERY SHADOW gating: "
+                                        f"loss_streak={loss_streak} "
+                                        f"legacy_boost={legacy_boost:.2f} state_boost={recovery_state.min_score_boost:.2f} "
+                                        f"legacy_conf={legacy_confluence} state_conf={recovery_state.confluence_forced} "
+                                        f"active={recovery_mode_active}->{recovery_state.active} level={recovery_state.level}"
+                                    )
+                            except Exception as e:
+                                logger.debug(f"🔎 RECOVERY SHADOW gating error: {type(e).__name__}: {e}")
+
+                        use_recovery_state = TRADING_CONFIG.get('recovery_refactor_enabled', False)
+                        recovery_state = None
+                        if use_recovery_state:
+                            try:
+                                recovery_state = position_manager.recovery_mode.get_state(loss_streak)
+                            except Exception as e:
+                                logger.debug(f"🔎 RECOVERY STATE error: {type(e).__name__}: {e}")
+                                recovery_state = None
+
+                        if use_recovery_state and recovery_state and recovery_state.level is not None:
+                            recovery_boost = recovery_state.min_score_boost
+                            level_num = recovery_state.level
+                            confluence_forced = recovery_state.confluence_forced
                         else:
-                            recovery_boost = recovery_config.get('min_score_boost', 1.5)
-                            level_num = 1
+                            if recovery_level:
+                                recovery_boost = recovery_level.get('min_score_boost', recovery_config.get('min_score_boost', 1.5))
+                                level_num = recovery_level.get('level', 1)
+                            else:
+                                recovery_boost = recovery_config.get('min_score_boost', 1.5)
+                                level_num = 1
+                            # Forcer confluence si configuré
+                            confluence_forced = recovery_level.get('confluence_forced', False) if recovery_level else recovery_config.get('confluence_forced', False)
 
                         adjusted_min_score = min_score_required + recovery_boost
-
-                        # Forcer confluence si configuré
-                        confluence_forced = recovery_level.get('confluence_forced', False) if recovery_level else recovery_config.get('confluence_forced', False)
 
                         if confluence_forced:
                             use_confluence = True
@@ -1603,10 +1857,9 @@ class TechnicalAnalyzer:
                 # ✅ POINT B : LOG OPPORTUNITY
                 # ========================================
                 try:
-                    from backend.ml.data_logger import DataLogger
-                    data_logger = DataLogger()
+                    from utils.helpers import DataLoggerHelper
                     
-                    if data_logger and data_logger.is_running and best_setup.get('_scan_uuid'):
+                    if DataLoggerHelper.is_available() and best_setup.get('_scan_uuid'):
                         # Récupérer scan_uuid
                         scan_uuid_opp = best_setup.get('_scan_uuid')
                         
@@ -1648,11 +1901,11 @@ class TechnicalAnalyzer:
                             setup_reason_text += f" - {best_setup.get('confirmedBy')}"
                         
                         # Logger l'opportunité
-                        opp_id = await data_logger.log_opportunity(
+                        opp_id = await DataLoggerHelper.safe_log_opportunity(
                             scan_log_id=scan_uuid_opp,
                             symbol=symbol,
                             direction=best_setup.get('direction'),
-                            entry_suggested=best_setup.get('entry', best_setup.get('price', 0)),
+                            entry_price=best_setup.get('entry', best_setup.get('price', 0)),
                             tp_suggested=best_setup.get('tp', 0),
                             sl_suggested=best_setup.get('sl', 0),
                             tp_sl_mode=TRADING_CONFIG.get('tp_sl_mode', 'FIXE'),
@@ -1668,8 +1921,14 @@ class TechnicalAnalyzer:
                         
                         # Stocker opp_id pour Point C
                         best_setup['_opportunity_id'] = opp_id
+                # 🔥 SPRINT 1.2: log_opportunity - NON-BLOQUANT, distinguer erreurs DB
+                except DatabaseError as e:
+                    # Erreur base de données - NON-BLOQUANT
+                    if DEBUG_ENABLED:
+                        logger.warning(f"⚠️ Erreur DB log_opportunity (non-bloquant): {e}")
                 except Exception as e:
-                    logger.debug(f"Erreur log_opportunity (non-bloquant): {e}")
+                    # Erreur inattendue - NON-BLOQUANT
+                    logger.debug(f"Erreur inattendue log_opportunity (non-bloquant): {type(e).__name__}: {e}")
                 # ========================================
                 # FIN POINT B
                 # ========================================
@@ -1839,45 +2098,53 @@ class TechnicalAnalyzer:
                     return best
 
                 # Confluence demandée mais au moins un timeframe invalide
-                missing_details = []
-                if not valid_1m:
-                    reason_1m = analysis_1m.get('reason') if isinstance(analysis_1m, dict) else 'analyse 1m indisponible'
-                    missing_details.append(f"1m: {reason_1m}")
-                if not valid_5m:
-                    reason_5m = analysis_5m.get('reason') if isinstance(analysis_5m, dict) else 'analyse 5m indisponible'
-                    missing_details.append(f"5m: {reason_5m}")
-                reason = "Confluence: timeframe(s) invalide(s) - " + " | ".join(missing_details) if missing_details else "Confluence: aucune timeframe valide"
+                # 🔥 FIX: Si au moins un TF est valide, on passe en MODE PERMISSIF
+                # au lieu de rejeter (comportement de l'ancien code qui ouvrait des trades)
+                if valid_1m or valid_5m:
+                    # Au moins un TF valide → on continue vers le MODE PERMISSIF ci-dessous
+                    logger.info(f"ℹ️ {symbol}: Confluence partielle, passage en mode permissif")
+                    pass  # Continue vers ligne 1886+
+                else:
+                    # Aucun TF valide → rejet
+                    missing_details = []
+                    if not valid_1m:
+                        reason_1m = analysis_1m.get('reason') if isinstance(analysis_1m, dict) else 'analyse 1m indisponible'
+                        missing_details.append(f"1m: {reason_1m}")
+                    if not valid_5m:
+                        reason_5m = analysis_5m.get('reason') if isinstance(analysis_5m, dict) else 'analyse 5m indisponible'
+                        missing_details.append(f"5m: {reason_5m}")
+                    reason = "Confluence: timeframe(s) invalide(s) - " + " | ".join(missing_details) if missing_details else "Confluence: aucune timeframe valide"
 
-                if return_reason:
-                    indicators_1m_reject = self._extract_indicators(analysis_1m) if isinstance(analysis_1m, dict) else {}
-                    indicators_5m_reject = self._extract_indicators(analysis_5m) if isinstance(analysis_5m, dict) else {}
-                    score_1m = analysis_1m.get('totalScore') if isinstance(analysis_1m, dict) else None
-                    score_5m = analysis_5m.get('totalScore') if isinstance(analysis_5m, dict) else None
-                    return {
-                        'reason': reason,
-                        'symbol': symbol,
-                        'timeframe': '1m+5m',
-                        'analysis_1m': analysis_1m if isinstance(analysis_1m, dict) else None,
-                        'analysis_5m': analysis_5m if isinstance(analysis_5m, dict) else None,
-                        'indicators_1m': indicators_1m_reject,
-                        'indicators_5m': indicators_5m_reject,
-                        'score_1m': score_1m,
-                        'score_5m': score_5m,
-                        'score_total': max(filter(None, [score_1m, score_5m])) if any([score_1m, score_5m]) else None,
-                        'pattern_1m': analysis_1m.get('pattern') if isinstance(analysis_1m, dict) else None,
-                        'pattern_5m': analysis_5m.get('pattern') if isinstance(analysis_5m, dict) else None,
-                        'pattern_multi_1m': analysis_1m.get('pattern_multi') if isinstance(analysis_1m, dict) else None,
-                        'pattern_multi_5m': analysis_5m.get('pattern_multi') if isinstance(analysis_5m, dict) else None,
-                        'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
-                        'divergence_bonus': 0,
-                        'divergence_detected': False,
-                        'divergence_type': None,
-                        'reject_category': 'confluence'
-                    }
+                    if return_reason:
+                        indicators_1m_reject = self._extract_indicators(analysis_1m) if isinstance(analysis_1m, dict) else {}
+                        indicators_5m_reject = self._extract_indicators(analysis_5m) if isinstance(analysis_5m, dict) else {}
+                        score_1m = analysis_1m.get('totalScore') if isinstance(analysis_1m, dict) else None
+                        score_5m = analysis_5m.get('totalScore') if isinstance(analysis_5m, dict) else None
+                        return {
+                            'reason': reason,
+                            'symbol': symbol,
+                            'timeframe': '1m+5m',
+                            'analysis_1m': analysis_1m if isinstance(analysis_1m, dict) else None,
+                            'analysis_5m': analysis_5m if isinstance(analysis_5m, dict) else None,
+                            'indicators_1m': indicators_1m_reject,
+                            'indicators_5m': indicators_5m_reject,
+                            'score_1m': score_1m,
+                            'score_5m': score_5m,
+                            'score_total': max(filter(None, [score_1m, score_5m])) if any([score_1m, score_5m]) else None,
+                            'pattern_1m': analysis_1m.get('pattern') if isinstance(analysis_1m, dict) else None,
+                            'pattern_5m': analysis_5m.get('pattern') if isinstance(analysis_5m, dict) else None,
+                            'pattern_multi_1m': analysis_1m.get('pattern_multi') if isinstance(analysis_1m, dict) else None,
+                            'pattern_multi_5m': analysis_5m.get('pattern_multi') if isinstance(analysis_5m, dict) else None,
+                            'trend_bonus': trend_data.get('bonus', 0) if trend_data else 0,
+                            'divergence_bonus': 0,
+                            'divergence_detected': False,
+                            'divergence_type': None,
+                            'reject_category': 'confluence'
+                        }
 
-                if DEBUG_ENABLED:
-                    logger.debug(reason)
-                return None
+                    if DEBUG_ENABLED:
+                        logger.debug(reason)
+                    return None
 
             if strength_1m > 0 or strength_5m > 0:
                 # MODE PERMISSIF avec priorité par force
@@ -1891,6 +2158,50 @@ class TechnicalAnalyzer:
                 indicators_5m = self._extract_indicators(analysis_5m) if isinstance(analysis_5m, dict) else {}
                 best['indicators_1m'] = indicators_1m
                 best['indicators_5m'] = indicators_5m
+
+                # 🔥 FIX: Vérification RSI FINALE (configurable) - bloque LONG sur RSI suracheté, SHORT sur RSI survendu
+                rsi_filter_enabled = get_effective_value('rsi_final_filter_enabled')
+                if rsi_filter_enabled is None:
+                    rsi_filter_enabled = TRADING_CONFIG.get('rsi_final_filter_enabled', True)
+                
+                if rsi_filter_enabled:
+                    final_rsi = best.get('rsi', 50)
+                    direction = best.get('direction', 'NEUTRAL')
+                    RSI_OVERSOLD_LIMIT = get_effective_value('rsi_final_short_min') or TRADING_CONFIG.get('rsi_final_short_min', 35)
+                    RSI_OVERBOUGHT_LIMIT = get_effective_value('rsi_final_long_max') or TRADING_CONFIG.get('rsi_final_long_max', 65)
+                    
+                    if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
+                        reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
+                        return None
+                    if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
+                        reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
+                        logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec {reason}")
+                        if return_reason:
+                            indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
+                            indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
+                            return {
+                                'reason': reason,
+                                'symbol': symbol,
+                                'analysis_1m': analysis_1m,
+                                'analysis_5m': analysis_5m,
+                                'indicators_1m': indicators_1m_reject,
+                                'indicators_5m': indicators_5m_reject,
+                                'reject_category': 'rsi_final_filter'
+                            }
+                        return None
 
                 logger.info(
                     f"✅ {symbol}: SETUP (Mode permissif) - {best['direction']} | "
@@ -1944,6 +2255,15 @@ class TechnicalAnalyzer:
                     elif not reject_category:
                         reject_category = current_cat
             
+            # 🔥 Si toujours aucune catégorie, assigner une par défaut pour éviter les NULL en DB
+            if not reject_category:
+                if "None (pas de setup)" in reason:
+                    reject_category = "no_setup_found"
+                elif "Aucune raison spécifique" in reason:
+                    reject_category = "no_setup_found" 
+                else:
+                    reject_category = "uncategorized_rejection"
+
             result = {
                 'reason': reason,
                 'symbol': symbol,
@@ -1998,11 +2318,69 @@ class TechnicalAnalyzer:
             result['indicators_1m'] = indicators_1m
             result['indicators_5m'] = indicators_5m
             
+            # 🔥 FIX: Ajouter métriques de filtres même lors de rejet pour éviter colonnes vides en DB
+            filters_rejection = {
+                'snr_1m': analysis_1m.get('snr') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'snr_5m': analysis_5m.get('snr') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'snr_passed_1m': analysis_1m.get('snr_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'snr_passed_5m': analysis_5m.get('snr_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'breakout_distance_1m': analysis_1m.get('breakout_distance') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'breakout_distance_5m': analysis_5m.get('breakout_distance') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'breakout_passed_1m': analysis_1m.get('breakout_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'breakout_passed_5m': analysis_5m.get('breakout_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'wick_ratio_1m': analysis_1m.get('wick_ratio') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'wick_ratio_5m': analysis_5m.get('wick_ratio') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'wick_passed_1m': analysis_1m.get('wick_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'wick_passed_5m': analysis_5m.get('wick_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed') if analysis_5m and isinstance(analysis_5m, dict) else None,
+                'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed') if analysis_1m and isinstance(analysis_1m, dict) else None,
+                'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed') if analysis_5m and isinstance(analysis_5m, dict) else None
+            }
+            result['filters'] = filters_rejection
+            
             return result
 
-        except Exception as e:
+        # 🔥 SPRINT 1.2: Top-level analyze_pair - Distinguer toutes erreurs possibles
+        except InsufficientDataError as e:
+            # Données insuffisantes - déjà loggé dans analyze_timeframe
             if DEBUG_ENABLED:
-                logger.error(f"Erreur analyse pair {symbol}: {e}")
+                logger.debug(f"{symbol}: Données insuffisantes: {e}")
+            return None
+        except PriceDataError as e:
+            # Données prix invalides
+            logger.error(f"❌ {symbol}: Données prix invalides: {e}")
+            return None
+        except MarketDataError as e:
+            # Données marché invalides
+            logger.error(f"❌ {symbol}: Données marché invalides: {e}")
+            return None
+        except NetworkError as e:
+            # Erreur réseau (timeout, connexion)
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ {symbol}: Erreur réseau: {e}")
+            return None
+        except APIError as e:
+            # Erreur API MEXC
+            logger.error(f"❌ {symbol}: Erreur API: {e}")
+            return None
+        except DatabaseError as e:
+            # Erreur database (logging) - NON-BLOQUANT pour analyse
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ {symbol}: Erreur DB (non-bloquant): {e}")
+            # Continuer et retourner result si disponible
+            return None
+        except (ValueError, ZeroDivisionError, KeyError, AttributeError) as e:
+            # Erreur calcul/accès données
+            import traceback
+            logger.error(f"❌ {symbol}: Erreur calcul: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            return None
+        except Exception as e:
+            # Erreur totalement inattendue - log complet
+            import traceback
+            logger.error(f"❌ Erreur inattendue analyse pair {symbol}: {type(e).__name__}: {e}", exc_info=True)
+            traceback.print_exc()
             return None
 
     async def close(self):

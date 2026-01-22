@@ -14,8 +14,38 @@ from tenacity import (
     retry_if_exception_type
 )
 from pybreaker import CircuitBreaker
+try:
+    from ccxt.base.errors import ExchangeError
+except ImportError:
+    # Fallback si ccxt non installé (test mock)
+    class ExchangeError(Exception): pass
 
 from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG, DEBUG_ENABLED
+
+# 🔥 REFACTORING SPRINT 1.1: Exception Handling System
+try:
+    from core.exceptions import (
+        NetworkError, APIError, RateLimitError, MarketDataError,
+        WebSocketError, WebSocketDisconnectedError,
+        TradeCursorError
+    )
+except ImportError:
+    # Fallback si exceptions custom non disponibles - créer des classes spécifiques
+    # IMPORTANT: Ne PAS utiliser Exception directement car cela rendrait toutes les erreurs retryables
+    class NetworkError(Exception):
+        pass
+    class APIError(Exception):
+        pass
+    class RateLimitError(Exception):
+        pass
+    class MarketDataError(Exception):
+        pass
+    class WebSocketError(Exception):
+        pass
+    class WebSocketDisconnectedError(Exception):
+        pass
+    class TradeCursorError(Exception):
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +145,52 @@ class AdaptiveCircuitBreaker:
             result = await self._circuit_breaker.call_async(func, *args, **kwargs)
             self.record_success()
             return result
-        except Exception as e:
+        # 🔥 SPRINT 1.1: Circuit breaker - Distinguer erreurs réseau, API, rate limit
+        except RateLimitError as e:
+            # Rate limit atteint - retryable
             self.record_failure()
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ Circuit Breaker: Rate limit atteint: {e}")
+            raise
+        except NetworkError as e:
+            # Erreur réseau (timeout, connexion) - retryable
+            self.record_failure()
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ Circuit Breaker: Erreur réseau: {e}")
+            raise
+        except APIError as e:
+            # Erreur API (endpoint invalide, etc.) - non retryable
+            self.record_failure()
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Circuit Breaker: Erreur API: {e}")
+            raise
+        except ExchangeError as e:
+            # Erreur Exchange (CCXT)
+            is_rate_limit = False
+            # Vérifier code dans message ou attribut
+            if "510" in str(e) or "429" in str(e):
+                is_rate_limit = True
+            
+            if is_rate_limit:
+                # Rate limit (MEXC 510 ou Standard 429)
+                self.record_failure()
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ Circuit Breaker: Rate Limit Exchange: {e}")
+                raise
+            else:
+                # Autre erreur exchange (probablement critique)
+                self.record_failure()
+                logger.error(f"❌ Circuit Breaker: Erreur Exchange: {e}")
+                raise
+        except TradeCursorError as e:
+            # Erreur application (position, validation, etc.)
+            self.record_failure()
+            logger.error(f"❌ Circuit Breaker: Erreur application: {e}", exc_info=True)
+            raise
+        except Exception as e:
+            # Erreur inattendue
+            self.record_failure()
+            logger.error(f"❌ Circuit Breaker: Erreur inattendue: {type(e).__name__}: {e}", exc_info=True)
             raise
 
 
@@ -127,6 +201,13 @@ _adaptive_circuit_breaker = AdaptiveCircuitBreaker(
 )
 
 
+def _reraise_last_retry_error(retry_state):
+    """Ré-émettre la dernière exception pour éviter RetryError."""
+    if retry_state.outcome.failed:
+        raise retry_state.outcome.exception()
+    return retry_state.outcome.result()
+
+
 @retry(
     stop=stop_after_attempt(RETRY_CONFIG['max_attempts']),
     wait=wait_exponential(
@@ -134,7 +215,9 @@ _adaptive_circuit_breaker = AdaptiveCircuitBreaker(
         min=RETRY_CONFIG['wait_min'],
         max=RETRY_CONFIG['wait_max']
     ),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError, asyncio.TimeoutError))
+    retry=retry_if_exception_type((ConnectionError, TimeoutError, asyncio.TimeoutError, NetworkError, RateLimitError)),
+    reraise=True,
+    retry_error_callback=_reraise_last_retry_error
 )
 async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
     """
@@ -153,14 +236,55 @@ async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
     """
     try:
         return await func(*args, **kwargs)
+    # 🔥 SPRINT 1.1: Retry logic - Distinguer erreurs retryables et non-retryables
+    except ExchangeError as e:
+        # Exchange errors - Check if it's a rate limit error FIRST (before NetworkError)
+        is_rate_limit = False
+        if "510" in str(e) or "429" in str(e):
+            is_rate_limit = True
+        
+        if is_rate_limit:
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ MEXC rate limit (code 510/429) - conversion en RateLimitError")
+            # Lever RateLimitError pour que le circuit breaker et le retry le traitent correctement
+            raise RateLimitError(f"Exchange Rate Limit: {e}") from e
+        else:
+            # Autres erreurs Exchange - NON retryable
+            if DEBUG_ENABLED:
+                logger.error(f"❌ Erreur Exchange non-recoverable: {e}")
+            raise
     except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
+        # Erreurs réseau standard - retryables (géré par @retry decorator)
         if DEBUG_ENABLED:
-            logger.warning(f"⚠️ Retry nécessaire: {e}")
+            logger.warning(f"⚠️ Retry nécessaire (erreur réseau standard): {e}")
+        raise
+    except NetworkError as e:
+        # NetworkError custom - aussi retryable
+        if DEBUG_ENABLED:
+            logger.warning(f"⚠️ Retry nécessaire (NetworkError): {e}")
+        raise
+    except RateLimitError as e:
+        # Rate limit - retryable avec backoff
+        if DEBUG_ENABLED:
+            logger.warning(f"⚠️ Retry nécessaire (RateLimitError): {e}")
+        raise
+    except APIError as e:
+        # Erreur API (endpoint invalide, symbole non supporté) - NON retryable
+        if DEBUG_ENABLED:
+            logger.error(f"❌ Erreur API non-recoverable: {e}")
+        raise
+    except MarketDataError as e:
+        # Données marché invalides - NON retryable
+        if DEBUG_ENABLED:
+            logger.error(f"❌ Erreur données marché non-recoverable: {e}")
+        raise
+    except TradeCursorError as e:
+        # Erreur application - NON retryable
+        logger.error(f"❌ Erreur application non-recoverable: {e}", exc_info=True)
         raise
     except Exception as e:
-        # Autres erreurs ne sont pas retry
-        if DEBUG_ENABLED:
-            logger.error(f"❌ Erreur non-recoverable: {e}")
+        # Autres erreurs inattendues - NON retryable
+        logger.error(f"❌ Erreur inattendue non-recoverable: {type(e).__name__}: {e}", exc_info=True)
         raise
 
 
@@ -177,9 +301,23 @@ def with_circuit_breaker(func: Callable) -> Callable:
     async def wrapper(*args, **kwargs):
         try:
             return await _adaptive_circuit_breaker.call_async(func, *args, **kwargs)
+        # 🔥 SPRINT 1.1: Décorateur circuit breaker - Logging structuré
+        except RateLimitError as e:
+            # Rate limit - déjà loggé dans call_async
+            raise
+        except NetworkError as e:
+            # Erreur réseau - déjà loggé dans call_async
+            raise
+        except APIError as e:
+            # Erreur API - déjà loggé dans call_async
+            raise
+        except TradeCursorError as e:
+            # Erreur application - déjà loggé dans call_async
+            raise
         except Exception as e:
+            # Erreur inattendue - logging additionnel si circuit ouvert
             if DEBUG_ENABLED:
-                logger.error(f"❌ Circuit Breaker ouvert: {e}")
+                logger.error(f"❌ Circuit Breaker: Exception propagée: {type(e).__name__}: {e}")
             raise
     return wrapper
 
@@ -235,15 +373,37 @@ class WebSocketManager:
             
             self._connected = True
             self.last_message_time = time.time()
-            
+
             if DEBUG_ENABLED:
                 logger.info("✅ WebSocket connecté")
-                
-        except Exception as e:
+
+        # 🔥 SPRINT 1.1: WebSocket connection - Distinguer erreurs réseau, SSL, config
+        except ImportError as e:
+            # Module websockets non disponible
+            self._connected = False
+            logger.error(f"❌ Module websockets manquant: {e}", exc_info=True)
+            raise WebSocketError(f"Module websockets non disponible: {e}")
+        except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
+            # Erreur réseau (timeout, connexion refusée)
             self._connected = False
             if DEBUG_ENABLED:
-                logger.error(f"❌ Erreur connexion WebSocket: {e}")
-            raise
+                logger.warning(f"⚠️ Erreur réseau connexion WebSocket: {e}")
+            raise NetworkError(f"Impossible de se connecter au WebSocket: {e}")
+        except ssl.SSLError as e:
+            # Erreur SSL/certificat
+            self._connected = False
+            logger.error(f"❌ Erreur SSL WebSocket: {e}", exc_info=True)
+            raise WebSocketError(f"Erreur SSL: {e}")
+        except ValueError as e:
+            # URL invalide ou configuration incorrecte
+            self._connected = False
+            logger.error(f"❌ Configuration WebSocket invalide: {e}", exc_info=True)
+            raise WebSocketError(f"Configuration invalide: {e}")
+        except Exception as e:
+            # Erreur inattendue
+            self._connected = False
+            logger.error(f"❌ Erreur inattendue connexion WebSocket: {type(e).__name__}: {e}", exc_info=True)
+            raise WebSocketError(f"Erreur connexion WebSocket: {e}")
     
     async def disconnect(self, stop_running: bool = True):
         """
@@ -295,6 +455,10 @@ class WebSocketManager:
         """Boucle réception messages"""
         while self._running:
             try:
+                if not self._ws:
+                    await asyncio.sleep(1)
+                    continue
+
                 message = await asyncio.wait_for(
                     self._ws.recv(),
                     timeout=WEBSOCKET_CONFIG['timeout']
@@ -306,33 +470,39 @@ class WebSocketManager:
                 # Parser et appeler callback
                 import json
                 data = json.loads(message)
-                # 🔥 FIX: Le callback peut être sync ou async
-                # Si async, l'appeler directement, sinon via to_thread
+                
+                # 🔥 SPRINT 1.1: WebSocket callback - NON-BLOQUANT, distinguer erreurs
                 try:
                     if asyncio.iscoroutinefunction(self.callback):
                         await self.callback(data)
                     else:
-                        # Callback synchrone - l'exécuter dans un thread pour ne pas bloquer
-                        # ⚠️ IMPORTANT: Le callback synchrone ne doit pas accéder à des données partagées
-                        # sans synchronisation appropriée (locks, queues, etc.)
                         await asyncio.to_thread(self.callback, data)
                 except Exception as callback_err:
-                    # 🔥 FIX: Capturer les erreurs du callback sans arrêter la boucle
                     if DEBUG_ENABLED:
-                        logger.error(f"❌ Erreur dans callback WebSocket: {callback_err}")
-                    # Continuer la boucle pour recevoir les prochains messages
+                        logger.error(f"❌ Erreur callback WebSocket: {callback_err}")
                 
             except asyncio.TimeoutError:
                 # Timeout = envoyer ping MEXC
-                if DEBUG_ENABLED:
-                    logger.debug("📡 WebSocket: Ping timeout, envoi heartbeat MEXC...")
-                await self.send_ping()  # Utiliser méthode MEXC ping
-                
-            except Exception as e:
+                if self._running and self._connected:
+                    try:
+                        await self.send_ping()
+                    except Exception:
+                        pass
+
+            except (ConnectionError, asyncio.exceptions.CancelledError) as e:
                 if self._running:
                     if DEBUG_ENABLED:
-                        logger.error(f"❌ Erreur réception WebSocket: {e}")
-                    # Démarrer reconnexion
+                        logger.warning(f"⚠️ Déconnexion WebSocket ou tâche annulée: {e}")
+                    await self._reconnect()
+                break
+            except Exception as e:
+                if self._running:
+                    # Détection ConnectionClosedError même si non importé directement
+                    if "ConnectionClosed" in type(e).__name__:
+                        if DEBUG_ENABLED:
+                            logger.debug("🔌 WebSocket fermé par le serveur (ConnectionClosed)")
+                    else:
+                        logger.error(f"❌ Erreur inattendue réception WebSocket: {type(e).__name__}: {e}")
                     await self._reconnect()
                 break
     
@@ -348,12 +518,17 @@ class WebSocketManager:
             self._reconnecting = False
             return
 
+        # 🔥 SPRINT 1.1: Reconnexion task creation - Logging structuré
         try:
             self._reconnect_task = asyncio.create_task(self._reconnect_loop())
-        except Exception as e:
+        except RuntimeError as e:
+            # Event loop fermé ou pas de event loop
             self._reconnecting = False
-            if DEBUG_ENABLED:
-                logger.error(f"❌ Erreur création tâche reconnexion: {e}")
+            logger.error(f"❌ Erreur event loop pour reconnexion: {e}", exc_info=True)
+        except Exception as e:
+            # Erreur inattendue création tâche
+            self._reconnecting = False
+            logger.error(f"❌ Erreur inattendue création tâche reconnexion: {type(e).__name__}: {e}", exc_info=True)
     
     async def _reconnect_loop(self):
         """Boucle de reconnexion avec backoff exponentiel"""
@@ -389,20 +564,55 @@ class WebSocketManager:
                         logger.info("✅ WebSocket reconnecté")
 
                     # 🔥 FIX CRITIQUE: Appeler callback de reconnexion pour réabonner aux symboles
+                    # 🔥 SPRINT 1.1: Reconnect callback - NON-BLOQUANT, distinguer erreurs
                     if self.reconnect_callback:
                         try:
                             await self.reconnect_callback()
+                        except WebSocketError as e:
+                            # Erreur WebSocket dans callback - NON-BLOQUANT
+                            logger.warning(f"⚠️ Erreur WebSocket callback reconnexion (non-bloquant): {e}")
+                        except NetworkError as e:
+                            # Erreur réseau dans callback - NON-BLOQUANT
+                            logger.warning(f"⚠️ Erreur réseau callback reconnexion (non-bloquant): {e}")
+                        except TradeCursorError as e:
+                            # Erreur application dans callback - NON-BLOQUANT
+                            logger.warning(f"⚠️ Erreur application callback reconnexion (non-bloquant): {e}")
                         except Exception as e:
-                            logger.error(f"❌ Erreur callback reconnexion: {e}")
+                            # Erreur inattendue - NON-BLOQUANT
+                            logger.error(f"❌ Erreur inattendue callback reconnexion (non-bloquant): {type(e).__name__}: {e}")
 
                     break
 
-                except Exception as e:
+                # 🔥 SPRINT 1.1: Reconnection loop errors - Distinguer erreurs réseau, config, inattendue
+                except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
+                    # Erreur réseau - retry avec backoff
                     attempt += 1
-                    # Backoff exponentiel
                     reconnect_delay = min(reconnect_delay * 1.5, max_delay)
                     if DEBUG_ENABLED:
-                        logger.error(f"❌ Reconnexion échouée (tentative {attempt}): {e}, nouvelle tentative dans {reconnect_delay:.1f}s")
+                        logger.warning(f"⚠️ Reconnexion échouée - erreur réseau (tentative {attempt}): {e}, retry dans {reconnect_delay:.1f}s")
+                    await asyncio.sleep(reconnect_delay)
+                except NetworkError as e:
+                    # NetworkError custom - retry avec backoff
+                    attempt += 1
+                    reconnect_delay = min(reconnect_delay * 1.5, max_delay)
+                    if DEBUG_ENABLED:
+                        logger.warning(f"⚠️ Reconnexion échouée - NetworkError (tentative {attempt}): {e}, retry dans {reconnect_delay:.1f}s")
+                    await asyncio.sleep(reconnect_delay)
+                except WebSocketError as e:
+                    # Erreur WebSocket - retry avec backoff
+                    attempt += 1
+                    reconnect_delay = min(reconnect_delay * 1.5, max_delay)
+                    logger.warning(f"⚠️ Reconnexion échouée - WebSocketError (tentative {attempt}): {e}, retry dans {reconnect_delay:.1f}s")
+                    await asyncio.sleep(reconnect_delay)
+                except ValueError as e:
+                    # Configuration invalide - arrêter reconnexion (ne pas retry)
+                    logger.error(f"❌ Reconnexion impossible - configuration invalide: {e}", exc_info=True)
+                    break
+                except Exception as e:
+                    # Erreur inattendue - retry avec backoff
+                    attempt += 1
+                    reconnect_delay = min(reconnect_delay * 1.5, max_delay)
+                    logger.error(f"❌ Reconnexion échouée - erreur inattendue (tentative {attempt}): {type(e).__name__}: {e}, retry dans {reconnect_delay:.1f}s", exc_info=True)
                     await asyncio.sleep(reconnect_delay)
         finally:
             self._reconnecting = False
@@ -439,8 +649,15 @@ class WebSocketManager:
             except asyncio.CancelledError:
                 logger.info("🐕 Watchdog arrêté")
                 break
+            # 🔥 SPRINT 1.1: Watchdog loop - NON-BLOQUANT, distinguer erreurs
+            except WebSocketError as e:
+                # Erreur WebSocket dans watchdog - continuer surveillance
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ Erreur WebSocket dans watchdog (non-bloquant): {e}")
+                await asyncio.sleep(5)
             except Exception as e:
-                logger.error(f"❌ Erreur watchdog: {e}")
+                # Erreur inattendue - continuer surveillance
+                logger.error(f"❌ Erreur inattendue watchdog (non-bloquant): {type(e).__name__}: {e}")
                 await asyncio.sleep(5)
     
     async def start(self):
@@ -458,8 +675,19 @@ class WebSocketManager:
     async def send(self, message: dict):
         """Envoyer message"""
         if self._ws:
-            import json
-            await self._ws.send(json.dumps(message))
+            try:
+                import json
+                await self._ws.send(json.dumps(message))
+            except Exception as e:
+                if DEBUG_ENABLED:
+                    logger.debug(f"⚠️ Erreur envoi message WebSocket: {e}")
+                # Ne pas lever d'exception pour les pings/pongs ou si déjà fermé
+                if not self._running:
+                    return
+                # Si c'est une déconnexion, elle sera gérée par la boucle de réception
+                if "ConnectionClosed" in type(e).__name__:
+                    return
+                raise
     
     async def subscribe(self, topic: str):
         """S'abonner à un topic générique (legacy)"""
@@ -522,8 +750,12 @@ class WebSocketManager:
     
     async def send_ping(self):
         """Envoyer ping pour heartbeat MEXC"""
-        if self._ws:
-            await self.send({"method": "ping"})
+        try:
+            if self._ws and self._connected:
+                await self.send({"method": "ping"})
+        except Exception as e:
+            if DEBUG_ENABLED:
+                logger.debug(f"⚠️ Erreur envoi ping WebSocket (ignorer): {e}")
     
     @property
     def connected(self):

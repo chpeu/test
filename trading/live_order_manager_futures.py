@@ -63,6 +63,16 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _sleep_non_blocking(seconds: float) -> None:
+    """Pause non-bloquante via la loop dédiée (remplace time.sleep)."""
+    if not seconds or seconds <= 0:
+        return
+    try:
+        run_async_safely(asyncio.sleep(seconds), timeout=max(1.0, seconds + 1.0))
+    except Exception as e:
+        logger.debug(f"⚠️ sleep non-bloquant échoué ({seconds}s): {e}")
+
+
 # ============================================================================
 # CIRCUIT BREAKER
 # ============================================================================
@@ -237,7 +247,7 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay:
                         f"⚠️ Retry {attempt + 1}/{max_retries} après erreur: {e} | "
                         f"Attente: {delay:.1f}s"
                     )
-                    time.sleep(delay)
+                    _sleep_non_blocking(delay)
                 except Exception as e:
                     # Erreurs non-réseau: ne pas retry
                     raise e
@@ -270,6 +280,14 @@ class FuturesOrderResult:
     taker_fee_rate: Optional[float] = None
     funding_rate: Optional[float] = None
     raw_api_response: Optional[Dict[str, Any]] = None
+    # 🔥 FIX: Minimum contract amount pour TP partiel
+    min_contract_amount: Optional[float] = None
+    # 🔥 FIX: Contract size utilisé (pour éviter erreurs PNL)
+    contract_size: Optional[float] = None
+    # 🔥 FIX: Indique si un TP partiel a été forcé à 100% (position trop petite)
+    forced_full_close: bool = False
+
+    sl_exchange_percent: Optional[float] = None
 
 
 class LiveOrderManagerFutures:
@@ -361,18 +379,13 @@ class LiveOrderManagerFutures:
                 token_check_interval=300,         # 🔥 Vérif toutes les 5 minutes
                 telegram_notifier=telegram_notifier  # 🔥 Alertes Telegram
             )
-            print(
-                f"✅ LiveOrderManagerFutures initialisé en mode BYPASS | "
-                f"Mode: {'DRY_RUN' if dry_run else 'LIVE BYPASS'} | "
-                f"Levier défaut: {self.default_leverage}x"
-            )
             logger.info(
                 f"✅ LiveOrderManagerFutures initialisé en mode BYPASS | "
                 f"Mode: {'DRY_RUN' if dry_run else 'LIVE BYPASS'} | "
                 f"Levier défaut: {self.default_leverage}x"
             )
-            
-            # Initialiser WebSocket si API keys fournis
+        else:
+            # 🔥 CCXT MODE: Utiliser les API keys classiques
             if api_key and api_secret:
                 self.bypass_ws = MexcFuturesWebSocket(
                     api_key=api_key,
@@ -380,32 +393,22 @@ class LiveOrderManagerFutures:
                     auto_reconnect=True
                 )
                 logger.info("✅ WebSocket bypass initialisé (pour updates temps réel)")
-        else:
-            # Mode CCXT classique (peut être bloqué par MEXC)
-            if not api_key or not api_secret:
-                raise ValueError("api_key et api_secret requis en mode CCXT")
-            
-            self.exchange = ccxt.mexc({
-                'apiKey': api_key,
-                'secret': api_secret,
-                'enableRateLimit': True,
-                'timeout': 10000,
-                'options': {
-                    'defaultType': 'swap',
-                    'adjustForTimeDifference': True,
-                    'defaultMarginMode': 'isolated',
-                }
-            })
+                self.exchange = ccxt.mexc({
+                    'apiKey': api_key,
+                    'secret': api_secret,
+                    'enableRateLimit': True,
+                    'timeout': 3000 if dry_run else 10000,
+                    'options': {
+                        'defaultType': 'swap',
+                        'adjustForTimeDifference': True,
+                        'defaultMarginMode': 'isolated',
+                    }
+                })
 
-            if testnet:
-                self.exchange.set_sandbox_mode(True)
-                logger.warning("⚠️ MEXC Futures testnet - utiliser dry_run=True pour tests")
-            
-            print(
-                f"✅ LiveOrderManagerFutures initialisé en mode CCXT | "
-                f"Mode: {'DRY_RUN' if dry_run else 'LIVE CCXT'} | "
-                f"Levier défaut: {self.default_leverage}x"
-            )
+                if testnet:
+                    self.exchange.set_sandbox_mode(True)
+                    logger.warning("⚠️ MEXC Futures testnet - utiliser dry_run=True pour tests")
+
             logger.info(
                 f"✅ LiveOrderManagerFutures initialisé en mode CCXT | "
                 f"Mode: {'DRY_RUN' if dry_run else 'LIVE CCXT'} | "
@@ -499,13 +502,104 @@ class LiveOrderManagerFutures:
         # Remplacer / par _
         return clean.replace("/", "_")
 
+    def _verify_position_size(
+        self,
+        symbol: str,
+        reference_price: float,
+        retries: int = 3,
+        delay_sec: float = 2.0
+    ) -> Optional[Dict[str, float]]:
+        """
+        Récupérer la taille réelle ouverte sur MEXC (contrats & USDT)
+        Utilise CCXT en priorité puis fallback bypass.
+        """
+        if self.dry_run:
+            return None
+
+        def _fetch_via_ccxt() -> Optional[Dict[str, float]]:
+            if not self.exchange:
+                return None
+            try:
+                futures_symbol = self._convert_symbol_to_futures(symbol)
+                positions = self.exchange.fetch_positions([futures_symbol])
+                for pos in positions:
+                    if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                        contracts = float(pos.get('contracts', 0))
+                        entry_price = float(pos.get('entryPrice', 0)) or reference_price
+                        # 🔥 FIX: TOUJOURS calculer size_usdt = tokens × entry_price
+                        # Ne PAS utiliser notional qui peut être incorrect
+                        contract_size = float(pos.get('contractSize', 1.0))
+                        if contract_size <= 0:
+                            contract_size = float(pos.get('info', {}).get('contractSize', 1.0))
+                        if contract_size <= 0:
+                            contract_size = 1.0
+                        real_tokens = contracts * contract_size
+                        size_usdt = real_tokens * entry_price
+                        # 🔥 DEBUG
+                        logger.warning(
+                            f"🔍 DEBUG _verify_position_size CCXT: {contracts} × {contract_size} = "
+                            f"{real_tokens} tokens × {entry_price} = {size_usdt:.4f} USDT"
+                        )
+                        return {
+                            'contracts': contracts,
+                            'tokens': real_tokens,
+                            'contract_size': contract_size,
+                            'entry_price': entry_price,
+                            'size_usdt': size_usdt
+                        }
+            except Exception as ccxt_err:
+                logger.debug(f"⚠️ CCXT verify_position_size échec: {ccxt_err}")
+            return None
+
+        def _fetch_via_bypass() -> Optional[Dict[str, float]]:
+            if not (self.use_bypass and self.bypass_client):
+                return None
+            try:
+                bypass_symbol = self._convert_symbol_to_bypass(symbol)
+                positions = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                for pos in positions:
+                    if pos.symbol == bypass_symbol and pos.hold_vol > 0:
+                        hold_vol = float(pos.hold_vol)  # Contrats MEXC
+                        entry_price = float(pos.hold_avg_price or reference_price)
+                        # 🔥 FIX: Récupérer contract_size pour calculer vraie valeur USDT
+                        contract_spec = run_async_safely(self.bypass_client.get_contract_spec(bypass_symbol))
+                        contract_size = contract_spec.contract_size if contract_spec else 1.0
+                        # Tokens réels = hold_vol * contract_size
+                        real_tokens = hold_vol * contract_size
+                        size_usdt = real_tokens * entry_price
+                        return {
+                            'contracts': hold_vol,  # Contrats MEXC
+                            'tokens': real_tokens,  # Tokens réels
+                            'entry_price': entry_price,
+                            'size_usdt': size_usdt,
+                            'contract_size': contract_size
+                        }
+            except Exception as bypass_err:
+                logger.debug(f"⚠️ Bypass verify_position_size échec: {bypass_err}")
+            return None
+
+        for attempt in range(retries):
+            result = _fetch_via_ccxt()
+            if result:
+                return result
+            result = _fetch_via_bypass()
+            if result:
+                return result
+            if attempt < retries - 1:
+                logger.debug(f"⏳ verify_position_size retry {attempt + 1}/{retries-1} dans {delay_sec}s...")
+                _sleep_non_blocking(delay_sec)
+
+        logger.warning(f"⚠️ Impossible de vérifier taille réelle pour {symbol} après {retries} tentatives")
+        return None
+
     def open_position(
         self,
         symbol: str,
         direction: str,
         entry_price: float,
         size_usdt: float,
-        leverage: int = None
+        leverage: int = None,
+        bot_sl_price: float = None  # 🔥 FIX: SL calculé par le bot pour SL MEXC
     ) -> FuturesOrderResult:
         """
         Ouvrir une position futures (LONG ou SHORT)
@@ -516,6 +610,7 @@ class LiveOrderManagerFutures:
             entry_price: Prix d'entrée théorique
             size_usdt: Taille en USDT (marge × levier)
             leverage: Levier pour ce trade (défaut: self.default_leverage)
+            bot_sl_price: SL calculé par le bot (pour SL MEXC = SL bot × 1.1)
 
         Returns:
             FuturesOrderResult avec détails
@@ -550,9 +645,12 @@ class LiveOrderManagerFutures:
             # Calcul quantité en contrats
             # Pour MEXC Futures: amount = size_usdt / entry_price
             amount = size_usdt / entry_price
+            
+            # 🔥 FIX: Stocker min_amount pour validation TP partiel
+            min_amount = None
 
             # 🔢 Ajuster quantité selon la précision/limites du marché (CCXT uniquement)
-            if self.exchange:
+            if self.exchange and not self.dry_run:
                 try:
                     if not getattr(self.exchange, 'markets', None):
                         self.exchange.load_markets()
@@ -597,69 +695,141 @@ class LiveOrderManagerFutures:
             side = 'buy' if direction == 'LONG' else 'sell'
             order_type = 'market'
 
-            logger.info(
+            # 🔥 WARNING pour visibilité dans les logs
+            logger.warning(
                 f"📤 OUVERTURE FUTURES {direction}: {futures_symbol} | "
                 f"Prix théorique: {entry_price} | "
-                f"Taille: {size_usdt} USDT | "
+                f"Taille: {size_usdt:.2f} USDT | "
                 f"Levier: {leverage}x | "
-                f"Quantité: {amount:.6f} | "
+                f"Quantité: {amount:.6f} tokens | "
                 f"Mode: {'DRY_RUN' if self.dry_run else 'LIVE'}"
             )
 
-            # DRY RUN: Simuler ordre
+            # DRY RUN: Simuler ordre (SHADOW TRADING REALISTE)
             if self.dry_run:
+                # -------------------------------------------------------------
+                # 🌑 SHADOW TRADING - SIMULATION HAUTE FIDÉLITÉ
+                # -------------------------------------------------------------
+                start_shadow = time.time()
+                
+                # 1. (OPTIONNEL) Carnet d'Ordres Réel (L2 Data)
+                # ⚠️ IMPORTANT: en dry_run, on évite tout appel réseau bloquant qui pourrait geler /api/position/open
+                shadow_book = None
+
+                # 2. Calculer Prix d'Exécution Réaliste (Walking the Book)
+                shadow_filled_price = entry_price
+                shadow_slippage = 0.0
+                market_impact_usd = 0.0
+                
+                if shadow_book and 'bids' in shadow_book and 'asks' in shadow_book:
+                    bids = shadow_book['bids'] # [[price, qty], ...]
+                    asks = shadow_book['asks']
+                    
+                    # Si on ACHÈTE (LONG), on tape dans les ASKS (vendeurs)
+                    # Si on VEND (SHORT), on tape dans les BIDS (acheteurs)
+                    liquidity_side = asks if direction == 'LONG' else bids
+                    
+                    remaining_qty = amount
+                    total_cost = 0.0
+                    filled_qty = 0.0
+                    
+                    # "Walk the book"
+                    for price, qty in liquidity_side:
+                        take_qty = min(remaining_qty, qty)
+                        total_cost += take_qty * price
+                        filled_qty += take_qty
+                        remaining_qty -= take_qty
+                        
+                        if remaining_qty <= 0:
+                            break
+                            
+                    if filled_qty > 0:
+                        shadow_filled_price = total_cost / filled_qty
+                        
+                        # Calculer slippage réel vs meilleur prix
+                        best_price = liquidity_side[0][0]
+                        shadow_slippage = abs((shadow_filled_price - best_price) / best_price) * 100
+                        market_impact_usd = abs(shadow_filled_price - best_price) * filled_qty
+
+                # 3. Simuler Latence Réseau (50-150ms)
+                # On ajoute un bruit aléatoire pour simuler le temps de trajet réel
+                import random
+                network_latency = random.uniform(0.050, 0.150)
+                _sleep_non_blocking(network_latency)
+                
                 latency_ms = (time.time() - start_time) * 1000
 
-                # Calculer prix de liquidation simulé
+                # 4. Calculer prix de liquidation simulé
                 margin = size_usdt / leverage
                 if direction == 'LONG':
-                    liq_price = entry_price * (1 - 1/leverage + 0.005)  # ~0.5% buffer
+                    liq_price = shadow_filled_price * (1 - 1/leverage + 0.005)
                 else:
-                    liq_price = entry_price * (1 + 1/leverage - 0.005)
+                    liq_price = shadow_filled_price * (1 + 1/leverage - 0.005)
 
                 logger.info(
-                    f"✅ [DRY_RUN] Position {direction} simulée | "
-                    f"Latence: {latency_ms:.0f}ms | "
-                    f"Liq. price: {liq_price:.2f}"
+                    f"🌑 [SHADOW] Position {direction} simulée | "
+                    f"Prix Demandé: {entry_price} → Exécuté: {shadow_filled_price:.2f} | "
+                    f"Slippage: {shadow_slippage:.4f}% ({market_impact_usd:.2f}$) | "
+                    f"Latence: {latency_ms:.0f}ms"
                 )
 
                 return FuturesOrderResult(
                     success=True,
-                    order_id=f"dry_run_futures_{int(time.time())}",
-                    filled_price=entry_price,
+                    order_id=f"shadow_{int(time.time())}_{random.randint(1000,9999)}",
+                    filled_price=shadow_filled_price, # Prix réaliste
                     filled_amount=amount,
-                    filled_size_usdt=amount * entry_price,
+                    filled_size_usdt=amount * shadow_filled_price,
                     actual_pnl_usdt=0.0,
-                    actual_fees_usdt=0.0,
-                    actual_slippage_pct=0.0,
+                    actual_fees_usdt=amount * shadow_filled_price * 0.0002, # Simulation fees 0.02%
+                    actual_slippage_pct=shadow_slippage,
                     margin_used=margin,
                     leverage=leverage,
                     liquidation_price=liq_price,
                     latency_ms=latency_ms,
-                    executed_at=datetime.now(timezone.utc).isoformat()
+                    executed_at=datetime.now(timezone.utc).isoformat(),
+                    # Métadonnées Shadow pour ML
+                    raw_api_response={
+                        'is_shadow': True,
+                        'shadow_slippage': shadow_slippage,
+                        'market_impact': market_impact_usd,
+                        'book_depth_used': len(shadow_book['asks']) if shadow_book else 0
+                    }
                 )
 
             # 🔥 Vérifier solde disponible AVANT d'ouvrir position
             margin_required = size_usdt / leverage
             balance_free = self.get_balance('USDT')
             balance_total = self.get_balance_total('USDT')
+            original_leverage = leverage  # Garder trace du levier initial
             
             if balance_free is not None and balance_free < margin_required:
-                # Calculer le levier minimum nécessaire
-                min_leverage_needed = int(size_usdt / balance_free) + 1 if balance_free > 0 else 999
+                # Calculer le levier minimum nécessaire (avec marge de sécurité 10%)
+                min_leverage_needed = int(size_usdt / (balance_free * 0.90)) + 1 if balance_free > 0 else 999
                 margin_blocked = (balance_total or 0) - (balance_free or 0)
                 
-                logger.error(
-                    f"❌ Solde insuffisant: {balance_free:.2f} USDT disponible / {balance_total:.2f} USDT total | "
-                    f"Marge bloquée: {margin_blocked:.2f} USDT | "
-                    f"Requis: {margin_required:.2f} USDT (size={size_usdt:.2f}, leverage={leverage}x) | "
-                    f"💡 Levier min nécessaire: x{min_leverage_needed}"
-                )
-                return FuturesOrderResult(
-                    success=False,
-                    error_message=f"Solde insuffisant: {balance_free:.2f} USDT disponible (total: {balance_total:.2f}), {margin_required:.2f} USDT requis. Augmenter levier à x{min_leverage_needed} ou fermer des positions.",
-                    latency_ms=(time.time() - start_time) * 1000
-                )
+                # 🔥 FIX: Adapter automatiquement le levier si raisonnable (≤ 5x max pour limiter risque)
+                MAX_AUTO_LEVERAGE = 5
+                if min_leverage_needed <= MAX_AUTO_LEVERAGE:
+                    leverage = min_leverage_needed
+                    margin_required = size_usdt / leverage  # Recalculer marge
+                    logger.warning(
+                        f"⚡ ADAPTATION LEVIER AUTO: {original_leverage}x → {leverage}x | "
+                        f"Raison: sizing adaptatif (size={size_usdt:.2f} USDT, solde={balance_free:.2f} USDT) | "
+                        f"Nouvelle marge: {margin_required:.2f} USDT"
+                    )
+                else:
+                    # Levier trop élevé, refuser le trade
+                    logger.error(
+                        f"❌ Solde insuffisant: {balance_free:.2f} USDT disponible / {balance_total:.2f} USDT total | "
+                        f"Marge bloquée: {margin_blocked:.2f} USDT | "
+                        f"Requis: {margin_required:.2f} USDT (size={size_usdt:.2f}, leverage={leverage}x) | "
+                        f"💡 Levier min nécessaire: x{min_leverage_needed} (> max auto {MAX_AUTO_LEVERAGE}x)"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Solde insuffisant: {balance_free:.2f} USDT disponible (total: {balance_total:.2f}), {margin_required:.2f} USDT requis. Levier auto max={MAX_AUTO_LEVERAGE}x, nécessaire={min_leverage_needed}x.",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
 
             # Stocker levier dans cache pour la fermeture
             self._leverage_cache[futures_symbol] = leverage
@@ -707,9 +877,10 @@ class LiveOrderManagerFutures:
                     # 🔥 Calcul correct: amount (contrats) * entry_price * contract_size = valeur en USDT
                     actual_size_usdt = amount * entry_price * contract_spec.contract_size
                     
-                    logger.debug(
-                        f"📊 DEBUG {bypass_symbol}: amount={amount:.6f} contrats, entry_price={entry_price}, "
-                        f"contract_size={contract_spec.contract_size}, value={actual_size_usdt:.2f} USDT"
+                    # 🔥 Upgrade DEBUG → WARNING pour diagnostic sizing
+                    logger.warning(
+                        f"📊 SIZING {bypass_symbol}: {amount:.2f} contrats × {entry_price} × contract_size={contract_spec.contract_size} = "
+                        f"{actual_size_usdt:.2f} USDT (demandé: {size_usdt:.2f} USDT)"
                     )
                     
                     if actual_size_usdt < MIN_ORDER_USDT:
@@ -745,9 +916,13 @@ class LiveOrderManagerFutures:
                         )
 
                     logger.debug(f"📋 Specs {bypass_symbol}: minVol={contract_spec.min_vol}, volUnit={contract_spec.vol_unit}")
+                    
+                    # 🔥 FIX: Stocker min_vol pour validation TP partiel
+                    min_amount = contract_spec.min_vol
                 else:
                     # Fallback: arrondi basique
                     amount = round(amount, 4)
+                    min_amount = 1.0  # Fallback minimum
                     logger.warning(f"⚠️ Specs non disponibles pour {bypass_symbol}, arrondi basique")
                 
                 # Déterminer side pour bypass
@@ -804,6 +979,156 @@ class LiveOrderManagerFutures:
                     logger.warning(f"⚠️ Impossible de configurer le levier: {e} (peut déjà être configuré)")
                 
                 # Appeler le client bypass (async) via helper thread-safe
+                # 🔥 SL MEXC DYNAMIQUE: Basé sur SL bot × 1.3 (30% marge de sécurité)
+                # FIX 16/12/2025: Augmenté de 1.1 à 1.3 pour éviter que MEXC SL trigger avant le bot
+                # FIX 16/12/2025 #2: Ajout SL minimum 0.5% pour éviter triggers immédiats (spread/slippage)
+                SL_MEXC_MARGIN = 1.2  # 30% plus large que le SL bot
+                from config import TRADING_CONFIG
+                tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
+                SL_MEXC_MIN_PCT = 0.0 if tp_sl_mode == 'FIXE' else 0.005
+                
+                # 🔥 FIX 19/12: Utiliser original_entry_price (non-arrondi) pour calculer SL
+                # Sinon le SL peut être au-dessus du prix d'exécution réel (ex: JELLYJELLY)
+                sl_reference_price = original_entry_price if 'original_entry_price' in dir() else entry_price
+                
+                if bot_sl_price and bot_sl_price > 0:
+                    # 🔥 FIX: Utiliser le SL calculé par le bot + marge
+                    if direction == 'LONG':
+                        # SL bot est en dessous de entry, SL MEXC encore plus bas
+                        sl_distance_pct = abs(sl_reference_price - bot_sl_price) / sl_reference_price
+                        sl_distance_pct_final = max(sl_distance_pct * SL_MEXC_MARGIN, SL_MEXC_MIN_PCT)
+                        sl_price = sl_reference_price * (1 - sl_distance_pct_final)
+                    else:  # SHORT
+                        # SL bot est au dessus de entry, SL MEXC encore plus haut
+                        sl_distance_pct = abs(bot_sl_price - sl_reference_price) / sl_reference_price
+                        sl_distance_pct_final = max(sl_distance_pct * SL_MEXC_MARGIN, SL_MEXC_MIN_PCT)
+                        sl_price = sl_reference_price * (1 + sl_distance_pct_final)
+                    
+                    sl_exchange_percent = sl_distance_pct_final
+                    
+                    # 🔥 Log si minimum appliqué
+                    min_applied = (SL_MEXC_MIN_PCT > 0) and (sl_distance_pct * SL_MEXC_MARGIN < SL_MEXC_MIN_PCT)
+                    logger.warning(
+                        f"📐 SL MEXC MARGE: Bot_SL={bot_sl_price:.6f} ({sl_distance_pct*100:.4f}%) | "
+                        f"MEXC_SL={sl_price:.6f} ({sl_exchange_percent*100:.4f}%) | "
+                        f"{'⚠️ MIN APPLIQUÉ' if min_applied else f'Marge×{SL_MEXC_MARGIN}'}"
+                    )
+                else:
+                    # Fallback: Estimation si pas de SL bot fourni
+                    from utils.effective_config import get_effective_value
+                    from config import TRADING_CONFIG
+                    
+                    atr_mult_sl = get_effective_value('atr_mult_sl') or TRADING_CONFIG.get('atr_mult_sl', 1.2)
+                    atr_min = TRADING_CONFIG.get('atr_min', 0.15)
+                    atr_max = TRADING_CONFIG.get('atr_max', 1.5)
+                    estimated_atr_pct = (atr_min + atr_max) / 2
+                    sl_atr_distance_pct = estimated_atr_pct * atr_mult_sl
+                    sl_exchange_percent = max(sl_atr_distance_pct * SL_MEXC_MARGIN / 100, SL_MEXC_MIN_PCT)
+                    
+                    if direction == 'LONG':
+                        sl_price = sl_reference_price * (1 - sl_exchange_percent)
+                    else:  # SHORT
+                        sl_price = sl_reference_price * (1 + sl_exchange_percent)
+                    
+                    logger.warning(
+                        f"📐 SL MEXC (FALLBACK): ATR_range=[{atr_min}-{atr_max}%] | "
+                        f"SL_MEXC={sl_exchange_percent*100:.3f}% (min={SL_MEXC_MIN_PCT*100:.1f}%) ⚠️ Pas de SL bot"
+                    )
+                
+                # Arrondir selon les specs du contrat
+                sl_price_before_round = sl_price  # 🔥 DEBUG
+                if contract_spec:
+                    sl_price = contract_spec.round_price(sl_price)
+                    
+                    # 🔥 FIX: Empêcher l'arrondi du SL au prix d'entrée (ou pire)
+                    # Si SL arrondi >= Entry (LONG) ou <= Entry (SHORT), le trade ferme immédiatement!
+                    price_step = contract_spec.price_unit or (10 ** -contract_spec.price_precision)
+                    
+                    # 🔥 FIX 19/12: Comparer avec sl_reference_price (non-arrondi), pas entry_price arrondi
+                    if direction == 'LONG':
+                        # Pour un LONG, SL doit être < Entry (prix non-arrondi)
+                        if sl_price >= sl_reference_price:
+                            logger.warning(
+                                f"⚠️ SL arrondi trop haut pour LONG ({sl_price} >= {sl_reference_price}). "
+                                f"Correction forcée vers le bas..."
+                            )
+                            # Forcer SL en dessous de l'entry (au moins 1 tick)
+                            # 🔥 FIX: Utiliser floor pour garantir arrondi vers le bas
+                            import math
+                            precision = contract_spec.price_precision or 8
+                            multiplier = 10 ** precision
+                            sl_price = math.floor((sl_reference_price - price_step) * multiplier) / multiplier
+                            logger.warning(f"🔧 SL corrigé (floor): {sl_price}")
+                    else: # SHORT
+                        # Pour un SHORT, SL doit être > Entry (prix non-arrondi)
+                        if sl_price <= sl_reference_price:
+                            logger.warning(
+                                f"⚠️ SL arrondi trop bas pour SHORT ({sl_price} <= {sl_reference_price}). "
+                                f"Original: {sl_price_before_round:.6f} → Correction intelligente..."
+                            )
+                            # 🚨 FIX CRITIQUE 20/12/2025: Préserver l'intention du SL original
+                            # Au lieu de +1 tick, essayer de retrouver le SL original arrondi correctement
+                            import math
+                            precision = contract_spec.price_precision or 8
+                            multiplier = 10 ** precision
+                            
+                            # Essayer d'abord d'arrondir le SL original vers le haut
+                            if sl_price_before_round > sl_reference_price:
+                                sl_price = math.ceil(sl_price_before_round * multiplier) / multiplier
+                                logger.warning(f"🔧 SL restauré (ceil original): {sl_price}")
+                            else:
+                                # Fallback: entry + minimum 3 ticks pour éviter SL ultra-serrés
+                                min_distance = price_step * 3  # 3 ticks minimum
+                                sl_price = math.ceil((sl_reference_price + min_distance) * multiplier) / multiplier
+                                logger.warning(f"🔧 SL sécurisé (+3 ticks): {sl_price}")
+                
+                # 🚨 VALIDATION CRITIQUE 20/12/2025: SL minimum 0.05% de distance
+                if sl_reference_price > 0:
+                    if direction == 'LONG':
+                        min_sl_distance_pct = 0.0005  # 0.05% minimum
+                        min_sl_price = sl_reference_price * (1 - min_sl_distance_pct)
+                        if sl_price > min_sl_price:
+                            logger.error(
+                                f"🚨 SL ULTRA-SERRÉ détecté: LONG SL={sl_price:.6f} trop proche entry={sl_reference_price:.6f} "
+                                f"(distance={((sl_reference_price - sl_price) / sl_reference_price * 100):.3f}% < 0.05%). "
+                                f"Force SL minimum: {min_sl_price:.6f}"
+                            )
+                            sl_price = min_sl_price
+                    else:  # SHORT
+                        min_sl_distance_pct = 0.0005  # 0.05% minimum
+                        min_sl_price = sl_reference_price * (1 + min_sl_distance_pct)
+                        if sl_price < min_sl_price:
+                            logger.error(
+                                f"🚨 SL ULTRA-SERRÉ détecté: SHORT SL={sl_price:.6f} trop proche entry={sl_reference_price:.6f} "
+                                f"(distance={((sl_price - sl_reference_price) / sl_reference_price * 100):.3f}% < 0.05%). "
+                                f"Force SL minimum: {min_sl_price:.6f}"
+                            )
+                            sl_price = min_sl_price
+                
+                # 🔥 FIX CRITIQUE: Si SL arrondi à 0, arrondir avec précision dynamique
+                if sl_price <= 0:
+                    # Calculer précision nécessaire basée sur le prix (ex: 7.9e-06 → 9 décimales)
+                    import math
+                    if sl_price_before_round > 0:
+                        # Nombre de décimales = -log10(prix) + 2 (marge)
+                        decimals_needed = max(0, int(-math.log10(sl_price_before_round)) + 2)
+                        decimals_needed = min(decimals_needed, 10)  # Max 10 décimales
+                        sl_price = round(sl_price_before_round, decimals_needed)
+                        logger.warning(
+                            f"⚠️ SL arrondi à 0! Avant: {sl_price_before_round:.10f} | "
+                            f"Fallback précision dynamique: {decimals_needed} décimales → {sl_price:.10f}"
+                        )
+                    else:
+                        # Fallback ultime
+                        sl_price = entry_price * (1.01 if direction == 'SHORT' else 0.99)
+                        logger.warning(f"⚠️ SL fallback ultime: {sl_price:.10f}")
+                
+                logger.warning(
+                    f"🛡️ [SL MEXC] {direction} {bypass_symbol} | "
+                    f"Entry: {entry_price} | SL: {sl_price} ({sl_exchange_percent*100:.2f}%) | "
+                    f"TP: Géré par bot (trailing/escalier)"
+                )
+                
                 bypass_result = run_async_safely(
                     self.bypass_client.submit_order(
                         symbol=bypass_symbol,
@@ -812,7 +1137,9 @@ class LiveOrderManagerFutures:
                         price=entry_price,
                         order_type=OrderType.MARKET,
                         open_type=OpenType.ISOLATED,
-                        leverage=leverage
+                        leverage=leverage,
+                        stop_loss_price=sl_price,      # 🔥 SL MEXC (filet de sécurité)
+                        take_profit_price=None         # 🔥 Pas de TP MEXC (géré par bot)
                     )
                 )
                 
@@ -821,7 +1148,7 @@ class LiveOrderManagerFutures:
                 if bypass_result.success:
                     # 🔥 VÉRIFICATION POST-CRÉATION: S'assurer que l'ordre existe réellement
                     # Attendre 300ms pour que MEXC traite l'ordre
-                    time.sleep(0.3)
+                    _sleep_non_blocking(0.3)
 
                     # Vérifier si l'ordre existe réellement
                     order_check = run_async_safely(
@@ -932,39 +1259,25 @@ class LiveOrderManagerFutures:
                     real_filled_amount = amount * real_contract_size  # Volume réel en tokens
                     real_filled_size_usdt = real_filled_amount * final_filled_price  # Valeur USDT réelle
                     
+                    # 🔥 FIX: Définir mexc_contracts AVANT utilisation
+                    mexc_contracts = amount  # Contrats MEXC (ce que MEXC affiche)
+                    
                     logger.info(
                         f"📊 Volume RÉEL: {real_filled_amount:.4f} tokens ({amount:.2f} contrats × {real_contract_size} contract_size) = {real_filled_size_usdt:.4f} USDT"
                     )
                     
-                    # 🔥 VÉRIFICATION POST-ORDRE: Récupérer la position réelle depuis CCXT (2s délai)
-                    verified_amount = real_filled_amount
-                    try:
-                        time.sleep(2.0)  # Attendre propagation MEXC
-                        
-                        # Récupérer position réelle via bypass
-                        positions = run_async_safely(
-                            self.bypass_client.get_open_positions(bypass_symbol)
-                        )
-                        
-                        # Chercher notre position
-                        for pos in positions:
-                            if pos.symbol == bypass_symbol:
-                                # hold_vol est en contrats, convertir en tokens
-                                verified_amount = pos.hold_vol * real_contract_size
-                                verified_usdt = verified_amount * final_filled_price
-                                
-                                if abs(verified_amount - real_filled_amount) > 0.01:
-                                    logger.warning(
-                                        f"⚠️ ÉCART DÉTECTÉ: calculé={real_filled_amount:.4f} vs réel={verified_amount:.4f} tokens | "
-                                        f"({pos.hold_vol:.2f} contrats × {real_contract_size})"
-                                    )
-                                    real_filled_amount = verified_amount
-                                    real_filled_size_usdt = verified_usdt
-                                else:
-                                    logger.info(f"✅ Volume vérifié OK: {verified_amount:.4f} tokens")
-                                break
-                    except Exception as verify_err:
-                        logger.warning(f"⚠️ Impossible de vérifier position réelle: {verify_err} (utilisation valeur calculée)")
+                    # 🔁 VÉRIFICATION POST-ORDRE: Récupérer la taille réelle via CCXT/BYPASS
+                    live_sync = self._verify_position_size(symbol, final_filled_price)
+                    if live_sync:
+                        verified_contracts = live_sync['contracts']
+                        verified_size_usdt = live_sync['size_usdt']
+                        if abs(verified_contracts - mexc_contracts) > 1e-6:
+                            logger.warning(
+                                f"⚠️ CONTRATS réels ≠ demandés: {mexc_contracts:.4f} -> {verified_contracts:.4f}"
+                            )
+                        real_filled_amount = verified_contracts * real_contract_size
+                        real_filled_size_usdt = verified_size_usdt
+                        final_filled_price = live_sync['entry_price'] or final_filled_price
 
                     # Calculer prix de liquidation estimé (basé sur prix réel)
                     margin = size_usdt / leverage
@@ -988,17 +1301,17 @@ class LiveOrderManagerFutures:
                         f"Latence: {latency_ms:.0f}ms"
                     )
 
-                    # 🔥 FIX CRITIQUE: Retourner CONTRATS MEXC, pas tokens
-                    # amount = contrats MEXC (1.4 pour LINK)
-                    # real_filled_amount = tokens (14.0 pour LINK) - NE PAS UTILISER POUR AFFICHAGE
-                    mexc_contracts = amount  # C'est ce que MEXC affiche
+                    # 🔥 FIX: Retourner les VRAIS tokens pour l'affichage
+                    # mexc_contracts = contrats MEXC (2543 pour SHIB)
+                    # real_filled_amount = tokens réels (2543000 pour SHIB avec contractSize=1000)
+                    # L'affichage doit montrer les tokens, pas les contrats MEXC
                     
                     return FuturesOrderResult(
                         success=True,
                         order_id=str(bypass_result.order_id),
                         filled_price=final_filled_price,  # 🔥 Prix RÉEL rempli
-                        filled_amount=mexc_contracts,  # 🔥 FIX: CONTRATS MEXC (pas tokens!)
-                        filled_contracts=mexc_contracts,  # 🔥 Alias explicite
+                        filled_amount=real_filled_amount,  # 🔥 FIX: Tokens réels (pas contrats MEXC!)
+                        filled_contracts=real_filled_amount,  # 🔥 Tokens pour affichage dashboard
                         filled_size_usdt=real_filled_size_usdt,  # 🔥 FIX: Valeur USDT RÉELLE
                         actual_fees_usdt=0.0,  # 0% fees sur paires scannées
                         actual_slippage_pct=final_slippage_pct,  # 🔥 Slippage RÉEL calculé
@@ -1007,7 +1320,10 @@ class LiveOrderManagerFutures:
                         liquidation_price=liq_price,
                         latency_ms=latency_ms,
                         executed_at=datetime.now(timezone.utc).isoformat(),
-                        raw_api_response=bypass_result.data
+                        raw_api_response=bypass_result.data,
+                        min_contract_amount=float(min_amount) if min_amount else None,  # 🔥 FIX: Pour TP partiel
+                        contract_size=real_contract_size,  # 🔥 FIX: Contract size pour calcul PNL correct
+                        sl_exchange_percent=(sl_exchange_percent * 100.0) if 'sl_exchange_percent' in locals() and sl_exchange_percent is not None else None
                     )
                 else:
                     # 🔥 Circuit Breaker: Enregistrer échec
@@ -1070,7 +1386,7 @@ class LiveOrderManagerFutures:
                             f"Timeout/Network error (tentative {attempt + 1}/{max_retries}), "
                             f"retry dans {wait_time}s..."
                         )
-                        time.sleep(wait_time)
+                        _sleep_non_blocking(wait_time)
                     else:
                         raise last_error
             
@@ -1156,7 +1472,8 @@ class LiveOrderManagerFutures:
                 maker_fee_rate=maker_fee_rate,
                 taker_fee_rate=taker_fee_rate,
                 funding_rate=funding_rate,
-                raw_api_response=order
+                raw_api_response=order,
+                min_contract_amount=float(min_amount) if min_amount else None  # 🔥 FIX: Pour TP partiel
             )
 
         except Exception as e:
@@ -1241,7 +1558,7 @@ class LiveOrderManagerFutures:
         if time_since_last < self._min_request_interval_sec:
             wait_time = self._min_request_interval_sec - time_since_last
             logger.debug(f"⏳ Anti rate-limit: attente {wait_time:.2f}s avant close_position")
-            time.sleep(wait_time)
+            _sleep_non_blocking(wait_time)
         LiveOrderManagerFutures._last_close_request_time = time.time()
 
         # 🔥 CIRCUIT BREAKER: Ordres de fermeture TOUJOURS autorisés (is_closing_order=True)
@@ -1257,6 +1574,20 @@ class LiveOrderManagerFutures:
                 )
 
         try:
+            # 🔥 FIX: Validation current_price pour éviter division par zéro
+            if not current_price or current_price <= 0:
+                logger.error(f"❌ current_price invalide ({current_price}) pour fermeture {symbol}")
+                # Fallback: utiliser entry_price comme prix de sortie estimé
+                if entry_price and entry_price > 0:
+                    logger.warning(f"⚠️ Fallback sur entry_price: {entry_price}")
+                    current_price = entry_price
+                else:
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Prix invalide pour fermeture: current_price={current_price}, entry_price={entry_price}",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
+
             # Convertir symbole
             futures_symbol = self._convert_symbol_to_futures(symbol)
 
@@ -1339,6 +1670,14 @@ class LiveOrderManagerFutures:
             # MODE BYPASS: Utiliser les endpoints browser
             # ================================================================
             if self.use_bypass and self.bypass_client:
+                # 🔥 FIX: Recalculer amount propre pour le bypass (ignorer les modifs CCXT précédentes)
+                if partial_pct:
+                    amount = size_amount * (partial_pct / 100)
+                else:
+                    amount = size_amount
+                
+                logger.info(f"🔍 [BYPASS] Close Amount Init: {amount:.6f} tokens (Partial: {partial_pct}%)")
+
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
                 
                 # Récupérer les specs du contrat pour arrondir correctement
@@ -1346,13 +1685,111 @@ class LiveOrderManagerFutures:
                     self.bypass_client.get_contract_spec(bypass_symbol)
                 )
                 
+                # 🔥 FIX FERMETURE PARTIELLE: Pour fermeture TOTALE, récupérer taille réelle MEXC
+                used_mexc_size = False  # Flag pour savoir si on a la taille réelle MEXC
+                forced_full_close = False  # Flag pour indiquer si TP partiel forcé à 100%
+                
+                if partial_pct is None:  # Fermeture totale
+                    try:
+                        positions = run_async_safely(
+                            self.bypass_client.get_open_positions(bypass_symbol)
+                        )
+                        if positions:
+                            for pos in positions:
+                                # Trouver la position correspondante
+                                pos_symbol = getattr(pos, 'symbol', None)
+                                pos_size = getattr(pos, 'hold_vol', None) or getattr(pos, 'size', None)
+                                if pos_symbol == bypass_symbol and pos_size and pos_size > 0:
+                                    logger.info(
+                                        f"📋 [CLOSE] Taille RÉELLE MEXC: {pos_size} contrats "
+                                        f"(calculée: {amount / contract_spec.contract_size if contract_spec and contract_spec.contract_size != 1.0 else amount:.2f})"
+                                    )
+                                    # Utiliser directement la taille MEXC en contrats (pas besoin de conversion!)
+                                    amount = float(pos_size)
+                                    used_mexc_size = True
+                                    break
+                    except Exception as pos_err:
+                        logger.warning(f"⚠️ Impossible de récupérer position MEXC: {pos_err}, utilisation taille calculée")
+                
                 if contract_spec:
+                    # 🔥 FIX CRITIQUE: Convertir tokens → contrats MEXC (comme à l'ouverture!)
+                    # Sur MEXC, 1 contrat = contractSize tokens
+                    # Exemple SOL (contractSize=0.1): 0.1 token → 1 contrat
+                    # SAUF si on a récupéré la taille réelle MEXC (déjà en contrats)
+                    if contract_spec.contract_size != 1.0 and not used_mexc_size:
+                        # Conversion nécessaire si on n'a pas la taille réelle MEXC
+                        original_amount = amount
+                        amount = amount / contract_spec.contract_size
+                        logger.info(
+                            f"📋 [CLOSE] Conversion tokens→contrats {bypass_symbol}: "
+                            f"{original_amount:.6f} / {contract_spec.contract_size} = {amount:.2f} contrats"
+                        )
+                    
                     amount = contract_spec.round_volume(amount)
                     current_price = contract_spec.round_price(current_price)
+                    
+                    # 🔥 FIX CRITIQUE: Si amount arrondi = 0, récupérer la taille réelle MEXC et fermer 100%
+                    # Cela arrive quand partial_pct * position < min_contract (ex: 0.5 contrat DOGE)
+                    if amount <= 0 and partial_pct is not None:
+                        logger.warning(
+                            f"⚠️ Volume partiel arrondi à 0 pour {bypass_symbol}. "
+                            f"Récupération taille MEXC pour fermer 100%..."
+                        )
+                        try:
+                            positions = run_async_safely(
+                                self.bypass_client.get_open_positions(bypass_symbol)
+                            )
+                            if positions:
+                                for pos in positions:
+                                    pos_symbol = getattr(pos, 'symbol', None)
+                                    pos_size = getattr(pos, 'hold_vol', None) or getattr(pos, 'size', None)
+                                    if pos_symbol == bypass_symbol and pos_size and pos_size > 0:
+                                        amount = float(pos_size)
+                                        forced_full_close = True  # 🔥 Marquer comme TP 100% forcé
+                                        logger.info(
+                                            f"🔧 TP Partiel forcé à 100%: volume MEXC={amount} contrats "
+                                            f"(partiel impossible car < min)"
+                                        )
+                                        break
+                        except Exception as pos_err:
+                            logger.error(f"❌ Impossible de récupérer position MEXC: {pos_err}")
                 else:
                     amount = round(amount, 4)
                     logger.warning(f"Specs non disponibles pour {bypass_symbol}, arrondi basique")
                 
+                # 🔥 FIX: Validation finale - rejeter si volume toujours 0
+                if amount <= 0:
+                    logger.error(
+                        f"❌ [BYPASS] BLOQUE fermeture: volume={amount} <= 0 pour {bypass_symbol} | "
+                        f"partial_pct={partial_pct}"
+                    )
+                    return FuturesOrderResult(
+                        success=False,
+                        error_message=f"Volume fermeture invalide: {amount} <= 0",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
+                
+                # 🔥 FIX CRITIQUE: Vérifier si on ne ferme pas plus que ce qu'on a (via position check)
+                # Si partial_pct est set, on ne devrait pas dépasser la position totale
+                try:
+                    if partial_pct:
+                        positions = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                        if positions:
+                            for pos in positions:
+                                pos_symbol = getattr(pos, 'symbol', None)
+                                if pos_symbol == bypass_symbol:
+                                    current_qty = float(getattr(pos, 'hold_vol', 0) or 0)
+                                    if current_qty > 0 and amount > current_qty:
+                                        logger.warning(
+                                            f"⚠️ Tentative fermeture {amount} > position réelle {current_qty}. "
+                                            f"Ajustement à {current_qty} (100%)"
+                                        )
+                                        amount = current_qty
+                                        forced_full_close = True
+                                    break
+                except Exception as check_err:
+                    logger.warning(f"⚠️ Impossible de vérifier la taille max avant fermeture: {check_err}")
+
                 # Déterminer side pour bypass (fermeture)
                 # 1=open long, 2=close short, 3=open short, 4=close long
                 if direction == 'LONG':
@@ -1383,7 +1820,7 @@ class LiveOrderManagerFutures:
 
                 if bypass_result.success:
                     # 🔥 VÉRIFICATION POST-CRÉATION: S'assurer que l'ordre existe réellement
-                    time.sleep(0.3)
+                    _sleep_non_blocking(0.3)
 
                     order_check = run_async_safely(
                         self.bypass_client.get_order(bypass_result.order_id)
@@ -1397,9 +1834,27 @@ class LiveOrderManagerFutures:
                         logger.error(
                             f"❌ [BYPASS] REJET SILENCIEUX fermeture: {bypass_symbol} | "
                             f"Order ID: {bypass_result.order_id} | "
-                            f"Code: {error_code} | Message: {error_details} | "
-                            f"Vol envoyé: {amount:.6f} | Prix envoyé: {current_price}"
+                            f"Code: {error_code} | Message: {error_details}"
                         )
+                        
+                        # 🔥 RACE CONDITION: Vérifier si la position a disparu (fermée par SL Exchange ?)
+                        try:
+                            check_pos = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                            if check_pos is not None and len(check_pos) == 0:
+                                logger.warning(f"🛑 Position disparue (code {error_code}): Probablement fermée par SL Exchange ou manuellement")
+                                return FuturesOrderResult(
+                                    success=True,
+                                    order_id="sl_exchange_race_condition",
+                                    filled_price=current_price,  # Estimation
+                                    filled_amount=amount,
+                                    filled_size_usdt=amount * current_price,
+                                    actual_pnl_usdt=0.0,  # Inconnu
+                                    latency_ms=latency_ms
+                                )
+                            else:
+                                logger.error(f"❌ Position existe toujours mais ordre rejeté (code {error_code}): {error_details}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Impossible de vérifier position après échec: {e}")
 
                         # 🔥 TELEGRAM: Notifier rejet silencieux fermeture
                         if self.telegram_notifier:
@@ -1427,6 +1882,23 @@ class LiveOrderManagerFutures:
                             f"❌ [BYPASS] Fermeture REJETÉE: {bypass_symbol} | "
                             f"Order ID: {bypass_result.order_id} | State: {order_state}"
                         )
+                        
+                        # 🔥 RACE CONDITION: Même chose pour les rejets explicites
+                        try:
+                            check_pos = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                            if check_pos is not None and len(check_pos) == 0:
+                                logger.warning(f"🛑 Position disparue (Rejet explicite): Fermée par SL Exchange ?")
+                                return FuturesOrderResult(
+                                    success=True,
+                                    order_id="sl_exchange_race_condition",
+                                    filled_price=current_price,
+                                    filled_amount=amount,
+                                    filled_size_usdt=amount * current_price,
+                                    actual_pnl_usdt=0.0,
+                                    latency_ms=latency_ms
+                                )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Impossible de vérifier position après rejet: {e}")
 
                         # 🔥 TELEGRAM: Notifier fermeture rejetée
                         if self.telegram_notifier:
@@ -1452,8 +1924,12 @@ class LiveOrderManagerFutures:
                     actual_exit_price = order_data.get('dealAvgPrice') or order_data.get('avgPrice')
 
                     if actual_exit_price and actual_exit_price > 0:
-                        # Calculer slippage réel sur fermeture
-                        exit_slippage = abs((actual_exit_price - current_price) / current_price) * 100
+                        # Calculer slippage réel sur fermeture (avec protection division par zéro)
+                        if current_price and current_price > 0:
+                            exit_slippage = abs((actual_exit_price - current_price) / current_price) * 100
+                        else:
+                            exit_slippage = 0.0
+                            logger.warning(f"⚠️ current_price=0, slippage exit non calculable")
 
                         logger.info(
                             f"📊 Prix sortie RÉEL: {actual_exit_price} (théorique: {current_price}) | "
@@ -1471,11 +1947,24 @@ class LiveOrderManagerFutures:
                     if self.circuit_breaker:
                         self.circuit_breaker.record_success()
 
-                    # Calculer PnL RÉEL basé sur prix réel
+                    # 🔥 FIX: Essayer de récupérer le PnL RÉEL depuis l'historique MEXC
+                    # 🔥 FIX BUG PnL: TOUJOURS utiliser le calcul local
+                    # L'API MEXC get_position_history peut retourner un PnL incorrect:
+                    # - PnL cumulé de plusieurs ordres
+                    # - PnL d'une autre position du même symbole
+                    # Le calcul local est mathématiquement exact et cohérent
+                    real_contract_size = contract_spec.contract_size if contract_spec else 1.0
+                    
                     if direction == 'LONG':
-                        pnl_usdt = (final_exit_price - entry_price) * amount
+                        pnl_usdt = (final_exit_price - entry_price) * amount * real_contract_size
                     else:
-                        pnl_usdt = (entry_price - final_exit_price) * amount
+                        pnl_usdt = (entry_price - final_exit_price) * amount * real_contract_size
+                    
+                    logger.info(
+                        f"📊 PnL calculé: {pnl_usdt:+.4f} USDT "
+                        f"(prix: {entry_price:.6f} → {final_exit_price:.6f}, "
+                        f"qty: {amount:.4f} contrats × {real_contract_size} = {amount * real_contract_size:.6f} tokens)"
+                    )
 
                     # Mettre à jour stats
                     self.stats['orders_placed'] += 1
@@ -1497,16 +1986,36 @@ class LiveOrderManagerFutures:
                         success=True,
                         order_id=str(bypass_result.order_id),
                         filled_price=final_exit_price,  # 🔥 Prix RÉEL sortie
-                        filled_amount=amount,
-                        filled_size_usdt=amount * final_exit_price,
+                        filled_amount=amount * real_contract_size,  # 🔥 FIX: Tokens réels (comme open_position)
+                        filled_size_usdt=amount * final_exit_price * real_contract_size, # 🔥 FIX: Valeur USDT réelle
                         actual_pnl_usdt=pnl_usdt,  # 🔥 PnL basé sur prix RÉEL
                         actual_fees_usdt=0.0,  # 0% fees
                         actual_slippage_pct=final_exit_slippage,  # 🔥 Slippage RÉEL
                         latency_ms=latency_ms,
                         executed_at=datetime.now(timezone.utc).isoformat(),
-                        raw_api_response=bypass_result.data
+                        raw_api_response=bypass_result.data,
+                        forced_full_close=forced_full_close  # 🔥 Indique si TP partiel forcé à 100%
                     )
                 else:
+                    # 🔥 CHECK: Vérifier si position existe encore (code 2009 = Position is nonexistent or closed)
+                    if "nonexistent" in bypass_result.error_message.lower() or "2009" in str(bypass_result.error_message):
+                        logger.warning(f"⚠️ Position déjà fermée (code 2009): Probablement fermée par SL Exchange ou manuellement")
+                        try:
+                            check_pos = run_async_safely(self.bypass_client.get_open_positions(bypass_symbol))
+                            if check_pos is not None and len(check_pos) == 0:
+                                logger.info(f"✅ Confirmation: Position n'existe plus sur MEXC")
+                                return FuturesOrderResult(
+                                    success=True,
+                                    order_id="already_closed",
+                                    filled_price=current_price,
+                                    filled_amount=amount,
+                                    filled_size_usdt=amount * current_price,
+                                    actual_pnl_usdt=0.0,
+                                    latency_ms=latency_ms
+                                )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Impossible de vérifier position: {e}")
+                    
                     # 🔥 Circuit Breaker: Enregistrer échec
                     if self.circuit_breaker:
                         self.circuit_breaker.record_failure()
@@ -1563,7 +2072,7 @@ class LiveOrderManagerFutures:
                             f"Timeout fermeture (tentative {attempt + 1}/{max_retries}), "
                             f"retry dans {wait_time}s..."
                         )
-                        time.sleep(wait_time)
+                        _sleep_non_blocking(wait_time)
                     else:
                         raise last_error
 
@@ -1584,8 +2093,11 @@ class LiveOrderManagerFutures:
 
             pnl_usdt -= fees  # Soustraire fees
 
-            # Slippage
-            slippage_pct = abs((filled_price - current_price) / current_price) * 100 if filled_price else 0
+            # Slippage (avec protection division par zéro)
+            if filled_price and current_price and current_price > 0:
+                slippage_pct = abs((filled_price - current_price) / current_price) * 100
+            else:
+                slippage_pct = 0.0
 
             # Récupérer funding rate à la sortie
             funding_rate = None
@@ -1793,11 +2305,24 @@ class LiveOrderManagerFutures:
 
                     for pos in positions:
                         if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                            contracts = float(pos.get('contracts', 0))
+                            entry_price = float(pos.get('entryPrice', 0))
+                            # 🔥 FIX: TOUJOURS calculer size = tokens × entry (pas notional)
+                            contract_size = float(pos.get('contractSize', 1.0))
+                            if contract_size <= 0:
+                                contract_size = float(pos.get('info', {}).get('contractSize', 1.0))
+                            if contract_size <= 0:
+                                contract_size = 1.0
+                            real_tokens = contracts * contract_size
+                            size_usdt = real_tokens * entry_price
                             return {
                                 'symbol': futures_symbol,
                                 'side': pos.get('side'),
-                                'size': float(pos.get('contracts', 0)),
-                                'entry_price': float(pos.get('entryPrice', 0)),
+                                'size': size_usdt,  # 🔥 FIX: tokens × entry_price
+                                'contracts': contracts,
+                                'tokens': real_tokens,
+                                'contract_size': contract_size,
+                                'entry_price': entry_price,
                                 'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                                 'liquidation_price': float(pos.get('liquidationPrice', 0)),
                                 'margin': float(pos.get('initialMargin', 0)),
@@ -1815,7 +2340,7 @@ class LiveOrderManagerFutures:
                 if elapsed < self._read_rate_limit_sec:
                     wait_time = self._read_rate_limit_sec - elapsed
                     logger.debug(f"⏳ Rate limit lecture bypass: attente {wait_time:.2f}s")
-                    time.sleep(wait_time)
+                    _sleep_non_blocking(wait_time)
                 self._last_read_request_time = time.time()
                 
                 bypass_symbol = self._convert_symbol_to_bypass(symbol)
@@ -1826,11 +2351,22 @@ class LiveOrderManagerFutures:
                 
                 for pos in positions:
                     if pos.hold_vol > 0:
+                        hold_vol = pos.hold_vol  # Contrats MEXC
+                        entry_price = pos.hold_avg_price
+                        # 🔥 FIX: Récupérer contract_size pour calculer vraie valeur USDT
+                        contract_spec = run_async_safely(self.bypass_client.get_contract_spec(bypass_symbol))
+                        contract_size = contract_spec.contract_size if contract_spec else 1.0
+                        # Tokens réels = hold_vol (contrats MEXC) * contract_size
+                        real_tokens = hold_vol * contract_size
+                        size_usdt = real_tokens * entry_price
                         return {
                             'symbol': symbol,
                             'side': 'long' if pos.position_type == 1 else 'short',
-                            'size': pos.hold_vol,
-                            'entry_price': pos.hold_avg_price,
+                            'size': size_usdt,  # Valeur USDT réelle
+                            'contracts': hold_vol,  # Contrats MEXC
+                            'tokens': real_tokens,  # Tokens réels
+                            'contract_size': contract_size,
+                            'entry_price': entry_price,
                             'unrealized_pnl': pos.unrealized_pnl,
                             'liquidation_price': pos.liquidate_price,
                             'margin': pos.margin,
@@ -1844,11 +2380,24 @@ class LiveOrderManagerFutures:
 
             for pos in positions:
                 if pos.get('symbol') == futures_symbol and float(pos.get('contracts', 0)) > 0:
+                    contracts = float(pos.get('contracts', 0))
+                    entry_price = float(pos.get('entryPrice', 0))
+                    # 🔥 FIX: TOUJOURS calculer size = tokens × entry (pas notional)
+                    contract_size = float(pos.get('contractSize', 1.0))
+                    if contract_size <= 0:
+                        contract_size = float(pos.get('info', {}).get('contractSize', 1.0))
+                    if contract_size <= 0:
+                        contract_size = 1.0
+                    real_tokens = contracts * contract_size
+                    size_usdt = real_tokens * entry_price
                     return {
                         'symbol': futures_symbol,
                         'side': pos.get('side'),
-                        'size': float(pos.get('contracts', 0)),
-                        'entry_price': float(pos.get('entryPrice', 0)),
+                        'size': size_usdt,  # tokens × entry_price
+                        'contracts': contracts,
+                        'tokens': real_tokens,
+                        'contract_size': contract_size,
+                        'entry_price': entry_price,
                         'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                         'liquidation_price': float(pos.get('liquidationPrice', 0)),
                         'margin': float(pos.get('initialMargin', 0)),
@@ -1889,7 +2438,7 @@ class LiveOrderManagerFutures:
                 if elapsed < self._read_rate_limit_sec:
                     wait_time = self._read_rate_limit_sec - elapsed
                     logger.debug(f"⏳ Rate limit lecture bypass: attente {wait_time:.2f}s")
-                    time.sleep(wait_time)
+                    _sleep_non_blocking(wait_time)
                 self._last_read_request_time = time.time()
                 
                 asset = run_async_safely(
@@ -2364,7 +2913,7 @@ if __name__ == "__main__":
         print(f"❌ Échec: {result_open.error_message}")
 
     # Simuler attente
-    time.sleep(1)
+    _sleep_non_blocking(1)
 
     # Exemple 2: Fermer position avec profit (prix a baissé)
     print("\n=== FERMETURE SHORT ===")

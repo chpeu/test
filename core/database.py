@@ -14,8 +14,27 @@ logger = logging.getLogger(__name__)
 
 
 class TradeDatabase:
-    """Gestion base de données SQLite pour historique trades"""
-    
+    """
+    Gestion base de données SQLite pour historique trades
+
+    Utilisation recommandée avec context manager:
+    ```python
+    with TradeDatabase() as db:
+        db.insert_trade(trade)
+        trades = db.get_all_trades()
+    # Connexion automatiquement fermée, commit/rollback selon succès/erreur
+    ```
+
+    Alternativement (non recommandé):
+    ```python
+    db = TradeDatabase()
+    try:
+        db.insert_trade(trade)
+    finally:
+        db.close()  # Cleanup manuel
+    ```
+    """
+
     def __init__(self, db_path: Optional[str] = None):
         """
         Initialiser base de données
@@ -194,8 +213,46 @@ class TradeDatabase:
         row = cursor.fetchone()
         return dict(row) if row else {}
     
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Context manager exit avec cleanup automatique
+
+        Args:
+            exc_type: Type d'exception si erreur
+            exc_val: Valeur exception
+            exc_tb: Traceback exception
+
+        Returns:
+            False pour propager l'exception (si présente)
+        """
+        if self.conn:
+            try:
+                if exc_type is None:
+                    # Pas d'erreur → commit final
+                    self.conn.commit()
+                    logger.debug(f"✅ Transaction committée: {self.db_path}")
+                else:
+                    # Erreur → rollback
+                    self.conn.rollback()
+                    logger.warning(f"⚠️ Transaction rollback: {self.db_path} (exception: {exc_type.__name__})")
+            except Exception as e:
+                logger.error(f"❌ Erreur pendant cleanup DB: {e}")
+            finally:
+                # Toujours fermer la connexion
+                self.conn.close()
+                self.conn = None
+                logger.info(f"🔒 Connexion DB fermée: {self.db_path}")
+
+        # Retourner False pour propager l'exception (comportement standard)
+        return False
+
     def close(self):
-        """Fermer connexion"""
+        """Fermer connexion (deprecated: utiliser context manager)"""
         if self.conn:
             self.conn.close()
+            self.conn = None
 

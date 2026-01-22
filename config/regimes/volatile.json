@@ -1,0 +1,20 @@
+{
+  "name": "VOLATILE",
+  "optimal_atr_min": 0.20,
+  "optimal_atr_max": 0.80,
+  "min_score_required": 7.0,
+  "atr_mult_sl": 1.5,
+  "atr_mult_tp": 2.5,
+  "break_even_atr_mult": 1.5,
+  "trailing_trigger_atr_mult": 1.5,
+  "max_position_time": 180,
+  "volume_multiplier": 1.2,
+  "sl_exchange_percent": 0.35,
+  "stagnation_timeout": 600,
+  "stagnation_min_pnl": 0.02,
+  "stagnation_max_loss": -0.12,
+  "optimal_atr_min_5m": 0.50,
+  "optimal_atr_max_5m": 1.50,
+  "rsi_final_long_max": 70,
+  "rsi_final_short_min": 30
+}

@@ -8,6 +8,8 @@ import logging
 import time
 from typing import Optional, Dict, Any
 from core.postgresql_datalogger import PostgreSQLDataLogger
+from utils.effective_config import get_effective_value
+from config import ML_CONFIG
 
 # 🔥 OPT #15-19: Import des filtres avancés
 from core.analyzer.advanced_filters import (
@@ -337,6 +339,16 @@ async def _scan_top_pairs():
                     min_risk=0.005,  # 0.5%
                     max_risk=0.03   # 3%
                 )
+                
+                # 🔥 Récupérer le multiplicateur adaptatif pour affichage frontend
+                adaptive_sizing_mult = 1.0
+                if TRADING_CONFIG.get('adaptive_sizing_enabled', True):
+                    try:
+                        from core.position.adaptive_sizing import get_adaptive_sizing_manager
+                        adaptive_manager = get_adaptive_sizing_manager()
+                        adaptive_sizing_mult = adaptive_manager.get_size_multiplier(best_setup.get('symbol', ''))
+                    except Exception:
+                        pass
 
                 # BUG #5 FIX: Récupérer scalability_data depuis top_pairs
                 symbol = best_setup.get('symbol')
@@ -350,7 +362,10 @@ async def _scan_top_pairs():
                     logger.info(f"💹 DEBUG: top_pairs contient {len(_app_state['top_pairs'])} paires")
                     found_pair = False
                     for pair in _app_state['top_pairs']:
-                        if pair.get('symbol') == symbol:
+                        # 🔥 FIX: Normaliser symboles avant comparaison (BTC/USDT vs BTC/USDT:USDT)
+                        pair_symbol = (pair.get('symbol') or '').split(':')[0]
+                        lookup_symbol = (symbol or '').split(':')[0]
+                        if pair_symbol == lookup_symbol:
                             found_pair = True
                             # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
                             spread_value = pair.get('spread', 0)
@@ -397,6 +412,13 @@ async def _scan_top_pairs():
                                 'vol15': pair.get('vol15'),
                                 'scalability_score': pair.get('score'),
                                 'score': pair.get('score'),  # Alias
+                                # 🔥 ORDER FLOW: 6 nouvelles métriques
+                                'delta_volume': pair.get('delta_volume'),
+                                'imbalance_normalized': pair.get('imbalance_normalized'),
+                                'spread_volatility_5': pair.get('spread_volatility_5'),
+                                'book_depth_ratio': pair.get('book_depth_ratio'),
+                                'volume_acceleration': pair.get('volume_acceleration'),
+                                'price_momentum_5': pair.get('price_momentum_5'),
                             }
                             
                             logger.info(f"💹 Données scalabilité récupérées depuis top_pairs: spread={spread_value}%, depth={book_depth}, balance={balance_score}")
@@ -447,21 +469,22 @@ async def _scan_top_pairs():
                             }
                             logger.info(f"💹 Données scalabilité depuis best_setup: spread={scalability_data.get('spread_pct')}%, depth={scalability_data.get('depth')}")
                         else:
-                            error_msg = f"Impossible de récupérer spread_pct depuis best_setup pour {symbol}"
-                            logger.error(f"💹 ERREUR: {error_msg}")
-                            # 🔥 NOUVEAU: Notifier l'erreur via Telegram
-                            await notify_error_telegram("Scalability Data", error_msg)
+                            # ⚠️ Warning non-bloquant: spread_pct manquant (rare, ~1x/4-5h)
+                            logger.warning(f"💹 spread_pct non disponible dans best_setup pour {symbol} (non-bloquant)")
                 else:
                     logger.warning(f"💹 top_pairs non disponible pour récupérer scalability_data pour {symbol}")
 
                 logger.info(f"🎯 Tentative d'ouverture de position: {symbol} {best_setup.get('direction')} (size={position_size:.2f} USDT)")
 
                 # 🔥 NOUVEAU: Filtre ML avant ouverture de position
-                from config import ML_CONFIG, TRADING_CONFIG
+                logger.warning(f"🚨 DÉBUT SECTION GB FILTER pour {symbol} - CE LOG DOIT APPARAITRE!")
                 
                 # 🌳 FILTRE GRADIENTBOOSTING (modèle optimisé 64-69% accuracy)
-                if TRADING_CONFIG.get('gb_filter_enabled', False):
-                    logger.info(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
+                gb_enabled = TRADING_CONFIG.get('gb_filter_enabled', False)
+                logger.warning(f"🔍 DEBUG GB CONFIG: gb_filter_enabled={gb_enabled} pour {symbol}")
+                
+                if gb_enabled:
+                    logger.warning(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
                     
                     try:
                         from optimization.predictor_optimized import get_predictor
@@ -494,6 +517,26 @@ async def _scan_top_pairs():
                                 should_trade, confidence = predictor.predict(features, threshold=gb_min_confidence)
                                 
                                 logger.info(f"🌳 GradientBoosting: should_trade={should_trade}, confidence={confidence*100:.1f}% (seuil: {gb_min_confidence*100:.0f}%)")
+                                
+                                # 🔥 FIX CRITIQUE: Stocker ml_confidence comme décimal (0.0-1.0), pas pourcentage
+                                best_setup['ml_confidence'] = round(confidence, 4)  # Décimal arrondi
+                                
+                                try:
+                                    pg_logger = get_pg_datalogger()
+                                    if pg_logger and pg_logger.enabled:
+                                        ml_conf_pct = round(confidence * 100, 1)
+                                        await pg_logger.update_ml_confidence_async(symbol, ml_conf_pct)
+                                        if not should_trade:
+                                            reject_reason = f"ML confidence {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%"
+                                            await pg_logger.update_ml_rejection_async(
+                                                symbol=symbol,
+                                                reject_reason=reject_reason,
+                                                reject_category="ml_gb_confidence",
+                                                ml_confidence=ml_conf_pct,
+                                                ml_threshold_used=gb_min_confidence * 100
+                                            )
+                                except Exception as pg_err:
+                                    logger.debug(f"⚠️ Erreur update PostgreSQL ml_confidence: {type(pg_err).__name__}: {pg_err}")
                                 
                                 if not should_trade:
                                     logger.warning(f"❌ GradientBoosting REJETTE le trade: confiance {confidence*100:.1f}% < seuil {gb_min_confidence*100:.0f}%")
@@ -536,8 +579,14 @@ async def _scan_top_pairs():
                             if ml_prediction:
                                 prediction = ml_prediction.get('prediction')
                                 confidence = ml_prediction.get('confidence', 0)
+                                ml_features = ml_prediction.get('features')
 
                                 logger.info(f"🤖 Prédiction ML: {prediction} (confiance: {confidence*100:.1f}%)")
+
+                                if prediction is not None:
+                                    best_setup['ml_prediction'] = prediction
+                                if isinstance(ml_features, dict):
+                                    best_setup['ml_features'] = ml_features
 
                                 # Appliquer filtre selon mode
                                 mode = ML_CONFIG.get('mode', 'STRICT')
@@ -605,6 +654,50 @@ async def _scan_top_pairs():
 
                                 if should_reject:
                                     logger.warning(f"❌ ML REJETTE le trade: {reject_reason}")
+                                    
+                                    # 🔥 FIX 16/01: Logger le rejet ML v1 dans scan_logs
+                                    try:
+                                        pg_logger = get_pg_datalogger()
+                                        if pg_logger and pg_logger.enabled:
+                                            # Déterminer la catégorie selon le mode
+                                            if mode == 'STRICT':
+                                                reject_category = "ml_xgboost_strict"
+                                            elif mode == 'SOFT':
+                                                reject_category = "ml_xgboost_soft"
+                                            elif mode == 'NEGATIVE':
+                                                reject_category = "ml_negative_filter"
+                                            else:
+                                                reject_category = "ml_xgboost_unknown"
+                                            
+                                            # Stocker le seuil utilisé dans reject_reason
+                                            if mode == 'STRICT':
+                                                full_reason = f"{reject_reason} | seuil_min: {min_confidence*100:.1f}%"
+                                            elif mode == 'SOFT':
+                                                full_reason = f"{reject_reason} | seuil_loss: {max_loss_confidence*100:.1f}%"
+                                            elif mode == 'NEGATIVE':
+                                                full_reason = f"{reject_reason} | seuil_loss: {loss_threshold*100:.1f}%"
+                                            else:
+                                                full_reason = reject_reason
+                                            
+                                            # Déterminer le seuil utilisé selon le mode
+                                            threshold_used = None
+                                            if mode == 'STRICT':
+                                                threshold_used = min_confidence * 100
+                                            elif mode == 'SOFT':
+                                                threshold_used = max_loss_confidence * 100
+                                            elif mode == 'NEGATIVE':
+                                                threshold_used = loss_threshold * 100
+                                            
+                                            await pg_logger.update_ml_rejection_async(
+                                                symbol=symbol,
+                                                reject_reason=full_reason,
+                                                reject_category=reject_category,
+                                                ml_confidence=confidence*100 if confidence else None,
+                                                ml_threshold_used=threshold_used
+                                            )
+                                    except Exception as ml_rej_err:
+                                        logger.debug(f"⚠️ Erreur log ML v1 rejection: {ml_rej_err}")
+                                    
                                     return  # Bloquer l'ouverture de position
                                 else:
                                     logger.info(f"✅ ML APPROUVE le trade: {prediction} (confiance: {confidence*100:.1f}%)")
@@ -618,6 +711,11 @@ async def _scan_top_pairs():
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
                 _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')
                 _position_manager._last_setup_opportunity_id = best_setup.get('_opportunity_id')
+                
+                # 🔥 DEBUG: Tracer la propagation des IDs
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - scan_uuid dans best_setup={best_setup.get('_scan_uuid')}")
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - opportunity_id dans best_setup={best_setup.get('_opportunity_id')}")
+                logger.warning(f"🔍 DEBUG scanner_loop: {symbol} - _last_setup_scan_uuid={_position_manager._last_setup_scan_uuid}, _last_setup_opportunity_id={_position_manager._last_setup_opportunity_id}")
                 
                 # 🔥 DEBUG: Vérifier si best_setup contient les indicateurs
                 logger.info(f"🔍 DEBUG best_setup pour {symbol}: contient indicators_1m: {'indicators_1m' in best_setup}, indicators_5m: {'indicators_5m' in best_setup}")
@@ -646,49 +744,55 @@ async def _scan_top_pairs():
                     atr5m=atr5m,  # BUG #12: Avec fallback
                     confirmed_by=', '.join(best_setup.get('condition_types', [])),
                     scalability_data=scalability_data,  # BUG #5: Données récupérées
-                    condition_types=best_setup.get('condition_types', [])
+                    condition_types=best_setup.get('condition_types', []),
+                    ml_confidence=best_setup.get('ml_confidence'),  # 🔥 FIX: Passer ml_confidence
+                    adaptive_sizing_multiplier=adaptive_sizing_mult,  # 🔥 Multiplicateur adaptatif
+                    setup_data=best_setup
                 )
 
-                logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
+                if position_result is None:
+                    logger.info(f"⏭️ Trade {symbol} {best_setup.get('direction')} ignoré (rejeté par calibration)")
+                else:
+                    logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
 
-                # BUG #3 et #9 FIX: Utiliser to_dict() au lieu de créer manuellement
-                if _app_state is not None:
-                    _app_state['active_position'] = position_result.to_dict()
+                    # BUG #3 et #9 FIX: Utiliser to_dict() au lieu de créer manuellement
+                    if _app_state is not None:
+                        _app_state['active_position'] = position_result.to_dict()
 
-                # 🔥 FIX: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
-                # Ceci garantit que current_price sera mis à jour correctement pendant la position
-                if _price_provider:
-                    try:
-                        # Arrêter WebSocket actuel
-                        if hasattr(_price_provider, 'stop_websocket'):
-                            await _price_provider.stop_websocket()
-                            logger.debug("🔌 WebSocket arrêté pour position")
-                            # Attendre que le WebSocket soit complètement arrêté
-                            await asyncio.sleep(0.5)
+                    # 🔥 FIX: Redémarrer WebSocket UNIQUEMENT sur le symbole de la position
+                    # Ceci garantit que current_price sera mis à jour correctement pendant la position
+                    if _price_provider:
+                        try:
+                            # Arrêter WebSocket actuel
+                            if hasattr(_price_provider, 'stop_websocket'):
+                                await _price_provider.stop_websocket()
+                                logger.debug("🔌 WebSocket arrêté pour position")
+                                # Attendre que le WebSocket soit complètement arrêté
+                                await asyncio.sleep(0.5)
 
-                        # Redémarrer WebSocket uniquement sur le symbole de la position
-                        if hasattr(_price_provider, 'start_websocket'):
-                            await _price_provider.start_websocket([symbol])
-                            logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
-                        
-                        # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
-                        if hasattr(_price_provider, 'set_sl_check_callback') and position_result:
-                            try:
-                                from main import setup_realtime_sl_check
-                                await setup_realtime_sl_check(position_result, _price_provider)
-                            except ImportError:
-                                logger.warning("⚠️ Impossible d'importer setup_realtime_sl_check")
-                            except Exception as sl_err:
-                                logger.error(f"❌ Erreur configuration SL temps réel: {sl_err}")
-                    except Exception as e:
-                        logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
-                        import traceback
-                        logger.debug(traceback.format_exc())
-                        await _notify_error('restart_websocket_position', f"{symbol}: {e}")
+                            # Redémarrer WebSocket uniquement sur le symbole de la position
+                            if hasattr(_price_provider, 'start_websocket'):
+                                await _price_provider.start_websocket([symbol])
+                                logger.info(f"✅ WebSocket redémarré pour position: {symbol} uniquement")
+                            
+                            # 🔥 FIX SL MISMATCH: Configurer vérification SL temps réel
+                            if hasattr(_price_provider, 'set_sl_check_callback') and position_result:
+                                try:
+                                    from main import setup_realtime_sl_check
+                                    await setup_realtime_sl_check(position_result, _price_provider)
+                                except ImportError:
+                                    logger.warning("⚠️ Impossible d'importer setup_realtime_sl_check")
+                                except Exception as sl_err:
+                                    logger.error(f"❌ Erreur configuration SL temps réel: {sl_err}")
+                        except Exception as e:
+                            logger.error(f"❌ Erreur redémarrage WebSocket pour position {symbol}: {e}")
+                            import traceback
+                            logger.debug(traceback.format_exc())
+                            await _notify_error('restart_websocket_position', f"{symbol}: {e}")
 
-                # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-                if _ws_manager:
-                    await _ws_manager.emit('position_opened', position_result.to_dict())
+                    # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
+                    if _ws_manager:
+                        await _ws_manager.emit('position_opened', position_result.to_dict())
 
             except ValueError as e:
                 logger.error(f"❌ Erreur validation position: {e}")
@@ -1018,7 +1122,12 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             direction = analysis.get('direction')
             
             # 🔥 OPT #15: Anti-Whipsaw Filter
-            klines_1m = analysis.get('klines_1m') or analysis.get('klines')
+            klines_1m = None
+            analysis_1m = analysis.get('analysis_1m')
+            if isinstance(analysis_1m, dict):
+                klines_1m = analysis_1m.get('ohlcv') or analysis_1m.get('klines_1m') or analysis_1m.get('klines')
+            if not klines_1m:
+                klines_1m = analysis.get('ohlcv') or analysis.get('klines_1m') or analysis.get('klines')
             if klines_1m:
                 whipsaw_result = check_whipsaw_filter(klines_1m, symbol)
                 if whipsaw_result:
@@ -1050,6 +1159,30 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'reason': momentum_result.get('reason'),
                         'reject_category': 'momentum_filter'
                     }
+            
+            # 🔥 OPT #20: RSI Extreme Filter - Rejeter LONG si RSI > 70, SHORT si RSI < 30
+            indicators_1m = analysis.get('indicators_1m', {})
+            rsi_1m = indicators_1m.get('rsi')
+            if rsi_1m:
+                if direction == 'LONG' and rsi_1m > 70:
+                    logger.info(f"📈 {symbol} LONG rejeté: RSI={rsi_1m:.1f} > 70 (overbought)")
+                    return {
+                        'symbol': symbol,
+                        'reason': f"RSI trop élevé pour LONG ({rsi_1m:.1f} > 70)",
+                        'reject_category': 'rsi_extreme_filter',
+                        'rsi': rsi_1m
+                    }
+                elif direction == 'SHORT' and rsi_1m < 30:
+                    logger.info(f"📉 {symbol} SHORT rejeté: RSI={rsi_1m:.1f} < 30 (oversold)")
+                    return {
+                        'symbol': symbol,
+                        'reason': f"RSI trop bas pour SHORT ({rsi_1m:.1f} < 30)",
+                        'reject_category': 'rsi_extreme_filter',
+                        'rsi': rsi_1m
+                    }
+            
+            # 🔥 OPT #20: Micro-confirmation déplacé dans analyzer.py (AVANT orderbook check)
+            # Le code micro-confirmation est maintenant exécuté plus tôt dans le flux
             
             # 🔥 OPT #17: Vérifier cooldown spécifique au symbole
             cooldown_mgr = get_cooldown_manager()
@@ -1088,7 +1221,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                 if _app_state and _app_state.get('top_pairs'):
                     logger.info(f"💹 DEBUG log_scan: top_pairs contient {len(_app_state['top_pairs'])} paires")
                     for pair in _app_state['top_pairs']:
-                        if pair.get('symbol') == symbol:
+                        # 🔥 FIX: Normaliser symboles avant comparaison (BTC/USDT vs BTC/USDT:USDT)
+                        pair_symbol = (pair.get('symbol') or '').split(':')[0]
+                        lookup_symbol = (symbol or '').split(':')[0]
+                        if pair_symbol == lookup_symbol:
                             spread_value = pair.get('spread') or pair.get('spread_pct')
                             book_depth = pair.get('bookDepth')
                             balance_score = pair.get('balanceScore')
@@ -1112,15 +1248,26 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                                 'balance_score': balance_score,
                                 'bidVol': bid_vol,
                                 'askVol': ask_vol,
+                                'bid_vol': bid_vol,
+                                'ask_vol': ask_vol,
                                 'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
-                                'recentVolume': pair.get('recentVolume'),
+                                'recentVolume': pair.get('recentVolume'),  # Alias
                                 'vol5': pair.get('vol5'),
                                 'vol15': pair.get('vol15'),
+                                'volume_24h': pair.get('volume24h') or pair.get('volume_24h'),
+                                'volume24h': pair.get('volume24h') or pair.get('volume_24h'),
                                 'scalability_score': pair.get('score'),
-                                'score': pair.get('score')
+                                'score': pair.get('score'),
+                                # 🔥 ORDER FLOW: 6 nouvelles métriques
+                                'delta_volume': pair.get('delta_volume'),
+                                'imbalance_normalized': pair.get('imbalance_normalized'),
+                                'spread_volatility_5': pair.get('spread_volatility_5'),
+                                'book_depth_ratio': pair.get('book_depth_ratio'),
+                                'volume_acceleration': pair.get('volume_acceleration'),
+                                'price_momentum_5': pair.get('price_momentum_5'),
                             }
-                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}")
+                            logger.info(f"✅ Scalability data trouvé pour {symbol} dans top_pairs: spread={spread_value}, depth={book_depth}, delta_vol={pair.get('delta_volume')}")
                             break
                 
                 # 🔥 DEBUG: Vérifier si scalability_data a été rempli
@@ -1145,6 +1292,16 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         except Exception:
                             imbalance = None
 
+                    # 🔥 ORDER FLOW: Calculer les métriques depuis bid/ask disponibles
+                    delta_volume = None
+                    imbalance_normalized = None
+                    book_depth_ratio = None
+                    if bid_value and ask_value:
+                        delta_volume = bid_value - ask_value
+                        total_vol = bid_value + ask_value
+                        imbalance_normalized = (bid_value - ask_value) / total_vol if total_vol > 0 else 0.0
+                        book_depth_ratio = bid_value / ask_value if ask_value > 0 else 1.0
+                    
                     scalability_data = {
                         'spread': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
                         'spread_pct': analysis_obj.get('spread_pct') or analysis_obj.get('spread'),
@@ -1154,6 +1311,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'balance_score': analysis_obj.get('orderbook_balance'),
                         'bidVol': bid_value,
                         'askVol': ask_value,
+                        'bid_vol': bid_value,
+                        'ask_vol': ask_value,
                         'orderbook_imbalance_ratio': imbalance,
                         'recent_volume': analysis_obj.get('recent_volume'),
                         'recentVolume': analysis_obj.get('recent_volume'),  # Alias
@@ -1161,10 +1320,15 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'vol15': analysis_obj.get('vol15'),
                         'scalability_score': analysis_obj.get('scalability_score'),
                         'score': analysis_obj.get('scalability_score'),  # Alias
+                        # 🔥 ORDER FLOW: Métriques calculées depuis bid/ask
+                        'delta_volume': delta_volume,
+                        'imbalance_normalized': imbalance_normalized,
+                        'spread_volatility_5': None,  # Nécessite historique
+                        'book_depth_ratio': book_depth_ratio,
+                        'volume_acceleration': None,  # Nécessite historique
+                        'price_momentum_5': None,  # Nécessite historique
                     }
-                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}")
-
-                scan_duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+                    logger.info(f"⚠️ Scalability data depuis fallback (analysis) pour {symbol}: spread={scalability_data.get('spread')}, depth={book_depth}, delta_vol={delta_volume}")
 
                 scan_price = None
                 if analysis and isinstance(analysis, dict):
@@ -1200,12 +1364,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'spread_pct': scalability_data.get('spread'),
                         'book_depth': scalability_data.get('bookDepth'),
                         'balance_score': scalability_data.get('balanceScore'),
-                        'bid_vol': scalability_data.get('bidVol'),
-                        'ask_vol': scalability_data.get('askVol'),
+                        'bid_vol': scalability_data.get('bidVol') or scalability_data.get('bid_vol'),
+                        'ask_vol': scalability_data.get('askVol') or scalability_data.get('ask_vol'),
                         # Calculer imbalance ratio si bid/ask disponibles
                         'orderbook_imbalance_ratio': (
-                            scalability_data.get('bidVol') / scalability_data.get('askVol')
-                            if scalability_data.get('askVol') and scalability_data.get('askVol') > 0
+                            (scalability_data.get('bidVol') or scalability_data.get('bid_vol', 0)) / 
+                            (scalability_data.get('askVol') or scalability_data.get('ask_vol', 1))
+                            if (scalability_data.get('askVol') or scalability_data.get('ask_vol', 0)) > 0
                             else None
                         ),
                         # Paramètres du scan de scalabilité
@@ -1213,6 +1378,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'vol5': scalability_data.get('vol5'),
                         'vol15': scalability_data.get('vol15'),
                         'scalability_score': scalability_data.get('scalability_score'),
+                        # 🔥 ORDER FLOW: 6 nouvelles métriques
+                        'delta_volume': scalability_data.get('delta_volume'),
+                        'imbalance_normalized': scalability_data.get('imbalance_normalized'),
+                        'spread_volatility_5': scalability_data.get('spread_volatility_5'),
+                        'book_depth_ratio': scalability_data.get('book_depth_ratio'),
+                        'volume_acceleration': scalability_data.get('volume_acceleration'),
+                        'price_momentum_5': scalability_data.get('price_momentum_5'),
                     },
                     # Ajouter aussi au niveau racine pour les fallbacks
                     'price': scan_price,  # 🔥 FIX: Ajouter le prix au niveau racine pour les fallbacks
@@ -1275,20 +1447,20 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'reject_reason': analysis.get('reason') if analysis and 'reason' in analysis else None,
                     'reject_reason_category': analysis.get('reject_category') if analysis else None,
                     'params_snapshot': {
-                        'volume_multiplier': volume_multiplier,
+                        'volume_multiplier': get_effective_value('volume_multiplier', symbol=symbol) or volume_multiplier,
                         'use_confluence': use_confluence,
                         'trend_timeframe': trend_timeframe,
                         # Ajouter toutes les variables de TRADING_CONFIG pertinentes pour le scan
-                        'min_score_required': TRADING_CONFIG.get('min_score_required', 7.5),
+                        'min_score_required': get_effective_value('min_score_required', symbol=symbol) or TRADING_CONFIG.get('min_score_required', 7.5),
                         'min_conditions': TRADING_CONFIG.get('min_conditions', 6),
                         'use_weighted_scoring': TRADING_CONFIG.get('use_weighted_scoring', True),
                         'snr_threshold': TRADING_CONFIG.get('snr_threshold', 0.25),
                         'breakout_threshold': TRADING_CONFIG.get('breakout_threshold', 0.35),
                         'wick_ratio_max': TRADING_CONFIG.get('wick_ratio_max', 2.8),
-                        'optimal_atr_min_1m': TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
-                        'optimal_atr_max_1m': TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
-                        'optimal_atr_min_5m': TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
-                        'optimal_atr_max_5m': TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
+                        'optimal_atr_min_1m': get_effective_value('optimal_atr_min_1m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_min_1m', 0.12),
+                        'optimal_atr_max_1m': get_effective_value('optimal_atr_max_1m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_max_1m', 0.75),
+                        'optimal_atr_min_5m': get_effective_value('optimal_atr_min_5m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_min_5m', 0.22),
+                        'optimal_atr_max_5m': get_effective_value('optimal_atr_max_5m', symbol=symbol) or TRADING_CONFIG.get('optimal_atr_max_5m', 1.4),
                         'use_breakout': TRADING_CONFIG.get('use_breakout', True),
                         'use_snr': TRADING_CONFIG.get('use_snr', True),
                         'use_wick': TRADING_CONFIG.get('use_wick', True),
@@ -1308,6 +1480,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'candle_close_threshold_seconds': TRADING_CONFIG.get('candle_close_threshold_seconds'),
                         'use_momentum_continuity': TRADING_CONFIG.get('use_momentum_continuity'),
                         'momentum_lookback': TRADING_CONFIG.get('momentum_lookback'),
+                        'use_micro_confirmation': TRADING_CONFIG.get('use_micro_confirmation'),
+                        'micro_confirmation_delay_ms': TRADING_CONFIG.get('micro_confirmation_delay_ms'),
                     }
                 }
                 
@@ -1333,19 +1507,74 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                             f"indicators_1m sont NULL (ex: {null_indicators[:5]})"
                         )
                 
+                # 🔥 SPRINT 1: Ajouter le contexte Market Regime au scan
+                try:
+                    from core.market_regime_selector import get_regime_selector
+                    regime_selector = get_regime_selector()
+                    regime_status = regime_selector.get_status()
+                    scan_data['market_regime'] = regime_status.get('current_regime')
+                    scan_data['market_regime_avg_atr'] = regime_status.get('avg_atr')
+                    scan_data['market_regime_avg_adx'] = regime_status.get('avg_adx')
+
+                    if scan_data.get('regime_confidence_at_scan') is None:
+                        try:
+                            # Utiliser les vrais attributs de MarketRegimeSelector
+                            sample_count = getattr(regime_selector, 'atr_sample_count', None) or getattr(regime_selector, 'atr_sample_count', None)
+                            sample_size = getattr(regime_selector, 'atr_sample_size', None) or 10
+                            if sample_count is not None and sample_size > 0:
+                                confidence = min(1.0, float(sample_count) / float(sample_size))
+                                scan_data['regime_confidence_at_scan'] = confidence
+                                logger.debug(f"🔍 regime_confidence_at_scan: {confidence:.2f} (sample_count={sample_count}/{sample_size})")
+                        except Exception as e:
+                            logger.debug(f"⚠️ Erreur calcul regime_confidence: {e}")
+                            # Valeur par défaut si erreur
+                            scan_data['regime_confidence_at_scan'] = 0.5
+                except Exception as e:
+                    logger.debug(f"⚠️ Impossible de récupérer régime pour scan: {e}")
+                
                 # 🔥 FIX: Désactiver batch mode pour opportunities (besoin ID immédiat)
                 # Les opportunities sont rares (~1:255) donc impact performance négligeable
                 is_opportunity = scan_data.get('is_opportunity', False)
                 use_batch_mode = not is_opportunity  # False si opportunity, True sinon
-                
-                logger.info(f"📝 Appel log_scan() pour {symbol} (batch={use_batch_mode})")
-                scan_id = pg_datalogger.log_scan(symbol, scan_data, use_batch=use_batch_mode)
-                logger.info(f"✅ log_scan() terminé pour {symbol} (scan_id={scan_id})")
-                
-                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
+                logger.info(f"📝 Appel log_scan_async() pour {symbol} (batch={use_batch_mode})")
+                # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                scan_id = await pg_datalogger.log_scan_async(symbol, scan_data, use_batch=use_batch_mode)
+                logger.info(f"✅ log_scan_async() terminé pour {symbol} (scan_id={scan_id})")
+                logger.debug(f"🔍 DEBUG: scan_id={scan_id} généré pour {symbol}")
+                                # 🔥 FIX: Ajouter scan_id à analysis pour qu'il soit disponible dans best_setup
                 if analysis and isinstance(analysis, dict) and scan_id:
                     analysis['_scan_uuid'] = scan_id
-                    logger.info(f"✅ scan_id ajouté à analysis: {scan_id}")
+                    if isinstance(best_setup, dict):
+                        best_setup['_scan_uuid'] = scan_id
+                    logger.warning(f"🔥 DEBUG: scan_id={scan_id} ajouté à analysis ET best_setup pour {symbol}")
+                    logger.debug(f"🔍 DEBUG: scan_uuid propagé à analysis et best_setup pour {symbol}")
+                
+                # 🔥 Calculer ML prediction et features pour tous les setups valides (pas seulement les opportunities)
+                if best_setup and (best_setup.get('direction') in ['LONG', 'SHORT']):
+                    try:
+                        from optimization.scanner_ml_integration import get_ml_prediction_for_opportunity
+                        
+                        scan_id = best_setup.get('_scan_uuid') or best_setup.get('scan_id')
+                        ml_prediction = await get_ml_prediction_for_opportunity(
+                            klines=klines_1m,
+                            symbol=symbol,
+                            scan_id=scan_id,
+                            model_name=ML_CONFIG.get('model_name', 'xgboost_v1')
+                        )
+                        
+                        if ml_prediction:
+                            prediction = ml_prediction.get('prediction')
+                            confidence = ml_prediction.get('confidence', 0)
+                            ml_features = ml_prediction.get('features')
+                            
+                            logger.debug(f"🤖 ML Setup {symbol}: {prediction} (conf: {confidence*100:.1f}%)")
+                            
+                            if prediction is not None:
+                                best_setup['ml_prediction'] = prediction
+                            if isinstance(ml_features, dict):
+                                best_setup['ml_features'] = ml_features
+                    except Exception as e:
+                        logger.debug(f"⚠️ Erreur calcul ML setup pour {symbol}: {e}")
                 
                 # Si c'est une opportunité, logger aussi dans opportunities
                 opportunity_id = None
@@ -1358,6 +1587,29 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     divergence_bonus = scan_data.get('divergence_bonus')
                     setup_reason = analysis.get('reason')
 
+                    # 🔥 FIX: Récupérer le contexte Market Regime pour l'opportunity
+                    market_regime_data = {}
+                    try:
+                        from core.market_regime_selector import get_regime_selector
+                        regime_selector = get_regime_selector()
+                        regime_status = regime_selector.get_status()
+                        market_regime_data = {
+                            'market_regime': regime_status.get('current_regime'),
+                            'market_regime_score': regime_status.get('avg_atr'),
+                            'market_regime_confidence': regime_status.get('confidence', 0.5),
+                            'market_regime_reason': regime_status.get('reason'),
+                            'market_regime_details': {
+                                'avg_atr': regime_status.get('avg_atr'),
+                                'avg_adx': regime_status.get('avg_adx'),
+                                'sample_count': regime_status.get('sample_count')
+                            },
+                            'session_context': regime_status.get('session_context'),
+                            'market_regime_signal': regime_status.get('signal')
+                        }
+                        logger.debug(f"📊 Market regime pour opportunity: {market_regime_data.get('market_regime')}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Impossible de récupérer régime pour opportunity: {e}")
+                    
                     opportunity_data = {
                         'status': 'PENDING',
                         'direction': analysis.get('direction'),
@@ -1381,9 +1633,12 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'size_usdt': None,
                         'risk_usdt': None,
                         'reward_risk_ratio': None,
+                        # 🔥 FIX: Ajouter les champs Market Regime
+                        **market_regime_data
                     }
                     # 🔥 FIX: Mode direct (pas de batch) pour obtenir opportunity_id immédiatement
-                    opportunity_id = pg_datalogger.log_opportunity(
+                    # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
+                    opportunity_id = await pg_datalogger.log_opportunity_async(
                         scan_id,  # scan_id déjà disponible (mode direct utilisé ci-dessus)
                         symbol, 
                         opportunity_data,
@@ -1393,7 +1648,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     # 🔥 FIX: Ajouter opportunity_id à analysis pour qu'il soit disponible dans best_setup
                     if opportunity_id:
                         analysis['_opportunity_id'] = opportunity_id
-                        logger.info(f"✅ Opportunity loggée pour {symbol} (opportunity_id={opportunity_id})")
+                        if isinstance(best_setup, dict):
+                            best_setup['_opportunity_id'] = opportunity_id
+                        logger.warning(f"🔥 DEBUG: opportunity_id={opportunity_id} ajouté à analysis ET best_setup pour {symbol}")
                     else:
                         logger.warning(f"⚠️ opportunity_id est None pour {symbol} !")
                     
@@ -1408,25 +1665,8 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         logger.error(f"❌ Erreur analyse {symbol}: {e}")
         await _notify_error('scan_pair_for_setup', f"{symbol}: {e}")
         
-        # 🔥 PHASE 3: Logger l'erreur dans PostgreSQL si activé
-        # Force Initialization: Utiliser get_pg_datalogger() qui crée l'instance si nécessaire
-        pg_datalogger = get_pg_datalogger()
-        
-        if pg_datalogger and pg_datalogger.enabled:
-            try:
-                import traceback
-                error_details = {
-                    'error_type': type(e).__name__,
-                    'error_message': str(e),
-                    'stack': traceback.format_exc()
-                }
-                pg_datalogger.log_scan_error(
-                    symbol=symbol,
-                    error_type='SCAN_ERROR',
-                    error_message=str(e),
-                    error_details=error_details
-                )
-            except Exception as log_error:
-                logger.warning(f"⚠️ Erreur logging erreur scan: {log_error}")
+        # 🔥 PHASE 3: Logger l'erreur (désactivé - méthode log_scan_error n'existe pas)
+        # Le logging d'erreurs se fait déjà via logger.error ci-dessus
+        pass
         
         return None

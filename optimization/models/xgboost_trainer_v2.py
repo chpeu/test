@@ -286,7 +286,7 @@ class XGBoostTrainerV2:
                 brier_raw = brier_score_loss(y_val, y_val_proba_raw)
                 brier_cal = brier_score_loss(y_val, y_val_proba_cal)
                 
-                logger.info(f"✅ Brier score: {brier_raw:.4f} → {brier_cal:.4f} ({"-" if brier_cal < brier_raw else "+"}{abs(brier_raw - brier_cal)*100:.1f}%)")
+                logger.info(f"✅ Brier score: {brier_raw:.4f} → {brier_cal:.4f} ({'-' if brier_cal < brier_raw else '+'}{abs(brier_raw - brier_cal)*100:.1f}%)")
             except Exception as e:
                 logger.warning(f"⚠️ Calibration échouée: {e}")
 

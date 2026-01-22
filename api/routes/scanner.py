@@ -165,47 +165,107 @@ async def start_scanner(
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@router.get("/analyze/{symbol}")
-async def analyze_symbol(
-    symbol: str,
-    analyzer = Depends(get_analyzer),
-    tf: str = Query('1m', description="Timeframe (1m ou 5m)"),
-    use_confluence: Optional[bool] = Query(None, description="True = 1m ET 5m, False = 1m OU 5m"),
-    volume_multiplier: Optional[float] = Query(None, description="Multiplicateur de volume 0.1-2.0"),
-    trend_timeframe: Optional[str] = Query(None, description="Timeframe pour trend_data (5m, 15m, 30m, 1h)")
+@router.post("/stop")
+async def stop_scanner(
+    scanner = Depends(get_scanner),
+    ws_manager = Depends(get_ws_manager)
 ):
     """
-    GET /api/analyze/{symbol}
-    Analyser un symbole spécifique avec paramètres configurables
-
-    Args:
-        symbol: Symbole de la paire (ex: BTCUSDT)
-        tf: Timeframe (1m ou 5m)
-        use_confluence: True = combiner 1m ET 5m, False = utiliser 1m OU 5m
-        volume_multiplier: Multiplicateur de volume (0.1-2.0)
-        trend_timeframe: Timeframe pour trend_data (5m, 15m, 30m, 1h)
+    POST /api/scanner/stop
+    Arrêter le scanner et le scheduler
     """
     try:
-        # Récupérer valeurs depuis TRADING_CONFIG si non fournies
-        from config import TRADING_CONFIG
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
+        
+        # Arrêter le scheduler
+        sched = state.get_scheduler()
+        if sched:
+            await sched.stop_async()
+            logger.info("✅ Scheduler arrêté via /api/scanner/stop")
+        
+        # Mettre à jour l'état
+        state.set_is_scanning(False)
+        if _app_state:
+            _app_state['is_scanning'] = False
+            _app_state['scanner_running'] = False
 
-        if use_confluence is None:
-            use_confluence = TRADING_CONFIG.get('use_confluence', False)
-        if volume_multiplier is None:
-            volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
-        if trend_timeframe is None:
-            trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
+        # Arrêter le WebSocket des prix
+        price_prov = _price_provider or state.get_price_provider()
+        if price_prov:
+            try:
+                await price_prov.stop_websocket()
+                logger.info("✅ WebSocket prix arrêté")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur arrêt price provider: {e}")
 
-        # Implémenter la logique d'analyse
-        # Cette fonction sera implémentée depuis main.py
+        # Notification WebSocket
+        if ws_manager:
+            await ws_manager.emit('scan_complete', {'timestamp': time.time()})
+            await ws_manager.emit('status', {'is_scanning': False})
 
-        return JSONResponse({
-            'symbol': symbol,
-            'analyzer': str(type(analyzer).__name__),  # Preuve que DI fonctionne
-            'analysis': None,  # À implémenter
-            'status': 'pending'
-        })
+        return JSONResponse({'status': 'stopped', 'is_scanning': False})
 
     except Exception as e:
-        logger.error(f"Erreur analyse {symbol}: {e}")
+        logger.error(f"❌ Erreur arrêt scanner: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+async def perform_stop_scanner():
+    """Version interne utilisable par WebSocket sans dépendances FastAPI"""
+    from core.state_manager import get_state_manager
+    state = get_state_manager()
+    from utils.logging_utils import add_log
+    
+    # Arrêter le scheduler
+    sched = state.get_scheduler()
+    if sched:
+        await sched.stop_async()
+    
+    # Mettre à jour l'état
+    state.set_is_scanning(False)
+    
+    # Arrêter WebSocket prix
+    price_prov = state.get_price_provider()
+    if price_prov:
+        try:
+            await price_prov.stop_websocket()
+        except Exception: pass
+        
+    # Notification via manager global
+    ws_mgr = state.get_ws_manager()
+    if ws_mgr:
+        await ws_mgr.emit('scan_complete', {'timestamp': time.time()})
+        await ws_mgr.emit('status', {'is_scanning': False})
+        
+    await add_log('INFO', 'Scanner arrêté', 'Boucles automatiques désactivées')
+    return {'status': 'stopped', 'is_scanning': False}
+
+
+@router.get("/analyze/{symbol}")
+async def analyze_symbol_route(
+    symbol: str,
+    tf: str = Query('1m', description="Timeframe"),
+    use_confluence: bool = Query(True, description="Utiliser la confluence 1m/5m"),
+    volume_multiplier: float = Query(1.0, description="Multiplicateur de volume"),
+    analyzer = Depends(get_analyzer)
+):
+    """
+    GET /api/scanner/analyze/{symbol}
+    Analyser un symbole spécifique à la demande
+    """
+    try:
+        # Dans cette version simplifiée pour les tests et le dashboard, 
+        # on retourne juste un état "pending" ou on lance l'analyse.
+        # En réalité, l'analyzer.analyze_symbol() pourrait être appelé ici.
+        
+        return JSONResponse({
+            'symbol': symbol,
+            'status': 'pending',
+            'timeframe': tf,
+            'use_confluence': use_confluence,
+            'volume_multiplier': volume_multiplier
+        })
+    except Exception as e:
+        logger.error(f"Erreur analyse symbole {symbol}: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)

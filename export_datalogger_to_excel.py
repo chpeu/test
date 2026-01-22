@@ -11,6 +11,13 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import argparse
 
+# Charger les variables d'environnement depuis .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv optionnel
+
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -54,7 +61,16 @@ class DataLoggerExporter:
         'market_context',
         'scan_errors',
         'model_predictions',
-        'features_engineered'
+        'features_engineered',
+        'ml_calibration',  # 🔥 NOUVEAU: Table calibration ML
+        'ml_calibration_history',  # 🔥 NOUVEAU: Historique calibration
+        'circuit_breaker_events',  # 🔥 SPRINT 1: Événements du circuit breaker trading
+        'market_regime_history',  # 🔥 SPRINT 1: Historique des changements de régime
+        'pair_performance_stats',  # 🔥 SPRINT 2: Stats de performance par paire
+        'trade_atr_metrics',  # 🔥 ATR Optimization: Métriques ATR par trade
+        'trade_events',  # 🔥 Phase 2H.6: Événements du cycle de vie des trades
+        'trade_post_exit_analysis',  # 🔥 POST-EXIT: Métriques post-exit par trade
+        'trade_post_exit_samples'  # 🔥 POST-EXIT: Samples de prix post-exit (1Hz)
     ]
 
     def __init__(
@@ -111,6 +127,19 @@ class DataLoggerExporter:
             self.conn.close()
             logger.info("🔌 Déconnecté de PostgreSQL")
 
+    # Tables avec ORDER BY spécifique (plus récent en haut)
+    TABLE_ORDER_BY = {
+        'trades': 'created_at DESC',
+        'scan_logs': 'created_at DESC',
+        'trade_atr_metrics': 'created_at DESC',
+        'circuit_breaker_events': 'created_at DESC',
+        'market_regime_history': 'created_at DESC',
+        'opportunities': 'created_at DESC',
+        'trade_events': 'event_timestamp DESC',
+        'ml_calibration': 'model_version DESC, created_at DESC',  # 🔥 NOUVEAU: Tri par version modèle puis date
+        'ml_calibration_history': 'id DESC',
+    }
+
     def get_table_data(self, table_name: str, limit: Optional[int] = None) -> Optional[pd.DataFrame]:
         """
         Récupérer les données d'une table
@@ -124,6 +153,11 @@ class DataLoggerExporter:
         """
         try:
             query = f"SELECT * FROM {table_name}"
+            
+            # Ajouter ORDER BY si défini pour cette table
+            if table_name in self.TABLE_ORDER_BY:
+                query += f" ORDER BY {self.TABLE_ORDER_BY[table_name]}"
+            
             if limit:
                 query += f" LIMIT {limit}"
 

@@ -83,7 +83,7 @@ def apply_config_overrides(trading_config: Dict[str, Any]) -> Dict[str, Any]:
         # Appliquer chaque override
         applied_count = 0
         # Prefixes autorisés pour nouvelles clés (config UI)
-        allowed_new_prefixes = ('gb_', 'ml_', 'xgb_', 'optuna_')
+        allowed_new_prefixes = ('gb_', 'ml_', 'xgb_', 'optuna_', 'market_regime_')
         
         for key, value in overrides.items():
             if key in trading_config:
@@ -102,6 +102,74 @@ def apply_config_overrides(trading_config: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"❌ Erreur application config overrides: {e}", exc_info=True)
         return trading_config
+
+
+def get_config_value(key: str, default: Any = None) -> Any:
+    """
+    🔥 Récupérer une valeur de configuration avec priorité aux flat keys.
+    
+    Cette fonction garantit que les valeurs modifiées via le frontend (flat keys)
+    sont toujours prioritaires sur les dictionnaires imbriqués par défaut.
+    
+    Args:
+        key: Clé de configuration (flat key, ex: 'stagnation_exit_timeout_seconds')
+        default: Valeur par défaut si non trouvée
+        
+    Returns:
+        Valeur de la configuration
+    """
+    try:
+        from config import TRADING_CONFIG
+        
+        # 1. Priorité aux flat keys (mises à jour dynamiquement via frontend)
+        if key in TRADING_CONFIG:
+            return TRADING_CONFIG[key]
+        
+        # 2. Fallback sur default
+        return default
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur get_config_value({key}): {e}")
+        return default
+
+
+def get_nested_config_value(flat_key: str, nested_dict_name: str, nested_key: str, default: Any = None) -> Any:
+    """
+    🔥 Récupérer une valeur de configuration avec priorité flat key > dict imbriqué.
+    
+    Exemple:
+        get_nested_config_value('stagnation_exit_timeout_seconds', 'stagnation_exit', 'timeout_seconds', 120)
+        → Retourne TRADING_CONFIG['stagnation_exit_timeout_seconds'] si existe
+        → Sinon retourne TRADING_CONFIG['stagnation_exit']['timeout_seconds'] si existe
+        → Sinon retourne 120
+    
+    Args:
+        flat_key: Clé plate (ex: 'stagnation_exit_timeout_seconds')
+        nested_dict_name: Nom du dict imbriqué (ex: 'stagnation_exit')
+        nested_key: Clé dans le dict imbriqué (ex: 'timeout_seconds')
+        default: Valeur par défaut
+        
+    Returns:
+        Valeur de la configuration
+    """
+    try:
+        from config import TRADING_CONFIG
+        
+        # 1. Priorité aux flat keys (mises à jour dynamiquement via frontend)
+        if flat_key in TRADING_CONFIG:
+            return TRADING_CONFIG[flat_key]
+        
+        # 2. Fallback sur dict imbriqué
+        nested_dict = TRADING_CONFIG.get(nested_dict_name, {})
+        if nested_key in nested_dict:
+            return nested_dict[nested_key]
+        
+        # 3. Default
+        return default
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur get_nested_config_value({flat_key}): {e}")
+        return default
 
 
 def clear_config_overrides() -> bool:

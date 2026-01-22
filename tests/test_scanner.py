@@ -167,7 +167,7 @@ class TestScalabilityScanner:
 
         scanner = ScalabilityScanner()
         pair = {
-            'spread': 0.05,  # > 0.02%
+            'spread': 0.10,  # > 0.06% (scalability_spread_max)
             'vol5': 1.0,
             'recentVolume': 200000,
             'bookDepth': 1000,
@@ -185,7 +185,7 @@ class TestScalabilityScanner:
         pair = {
             'spread': 0.01,
             'vol5': 1.0,
-            'recentVolume': 50000,  # < 100000
+            'recentVolume': 20000,  # < 30000 (scalability_volume_min)
             'bookDepth': 1000,
             'balanceScore': 0.8
         }

@@ -1,7 +1,20 @@
 <script>
 	import { onMount, afterUpdate } from 'svelte';
-	import { recentLogs, errorLogs, errorCount, recentConfigLogs, configChangesCount } from '$lib/stores/logs';
+	import { 
+		recentLogs, 
+		errorLogs, 
+		errorCount, 
+		recentConfigLogs, 
+		configChangesCount,
+		persistentErrors,
+		persistentErrorsLoading,
+		persistentErrorsCount,
+		loadAllErrors,
+		loadMoreErrors,
+		clearAllErrors
+	} from '$lib/stores/logs';
 	import { derived } from 'svelte/store';
+	import { debugMode } from '$lib/stores/debug';
 
 	let logContainer;
 	let errorContainer;
@@ -9,6 +22,8 @@
 	let autoScroll = true;
 	let autoScrollErrors = true;
 	let autoScrollConfig = true;
+	let showAllErrors = false;
+	let isLoadingMore = false;
 	// 🔥 FIX: Tous les logs backend (INFO, DEBUG, etc.) avec couleurs (exclure ERROR, CRITICAL et WARNING)
 	const regularLogs = derived(recentLogs, $logs =>
 		$logs.filter(log => log.level !== 'ERROR' && log.level !== 'CRITICAL' && log.level !== 'WARNING')
@@ -30,14 +45,96 @@
 	function handleScroll(container, type = 'regular') {
 		if (!container) return;
 		const { scrollTop, scrollHeight, clientHeight } = container;
+		
 		// Auto-scroll if user is within 50px of bottom
 		const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
+		// Check if user is near top for loading more errors
+		const isNearTop = scrollTop < 100;
+		
 		if (type === 'error') {
 			autoScrollErrors = isAtBottom;
+			// 🔥 NEW: Charger plus d'erreurs si on scroll vers le haut et qu'on affiche tout
+			if (isNearTop && showAllErrors && !isLoadingMore && $persistentErrors.length < $persistentErrorsCount) {
+				loadMoreErrorsHandler();
+			}
 		} else if (type === 'config') {
 			autoScrollConfig = isAtBottom;
 		} else {
 			autoScroll = isAtBottom;
+		}
+	}
+	
+	// 🔥 NEW: Gestionnaire pour charger plus d'erreurs
+	async function loadMoreErrorsHandler() {
+		if (isLoadingMore) return;
+		isLoadingMore = true;
+		try {
+			await loadMoreErrors($persistentErrors.length);
+		} finally {
+			isLoadingMore = false;
+		}
+	}
+	
+	// 🔥 NEW: Basculer entre erreurs récentes et historique complet
+	async function toggleErrorView() {
+		showAllErrors = !showAllErrors;
+		if (showAllErrors) {
+			// Charger l'historique complet (50 premières)
+			await loadAllErrors(50, 0);
+		} else {
+			// Retour aux erreurs récentes
+			const { loadRecentErrors } = await import('$lib/stores/logs');
+			await loadRecentErrors(50);
+		}
+	}
+	
+	// 🔥 NEW: Vider toutes les erreurs
+	async function handleClearErrors() {
+		if (confirm('Voulez-vous vraiment vider tout l\'historique des erreurs ?')) {
+			await clearAllErrors();
+		}
+	}
+	
+	// 🧪 NOUVEAU: Déclencher une erreur fictive de test
+	async function triggerTestError() {
+		console.log('🧪 Déclenchement erreur fictive...');
+		try {
+			const response = await fetch('/api/test/trigger-error?error_type=test&message=Erreur%20fictive%20de%20test', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			});
+			
+			console.log('📡 Réponse reçue:', response.status);
+			
+			if (!response.ok) {
+				console.error('❌ Erreur HTTP:', response.status, response.statusText);
+				alert(`Erreur HTTP ${response.status}: ${response.statusText}`);
+				return;
+			}
+			
+			const data = await response.json();
+			console.log('📦 Data:', data);
+			
+			if (data.success) {
+				console.log('✅ Erreur de test déclenchée:', data.error);
+				alert('✅ Erreur fictive créée avec succès!');
+				
+				// Recharger les erreurs pour afficher la nouvelle
+				if (showAllErrors) {
+					await loadAllErrors(50, 0);
+				} else {
+					const { loadRecentErrors } = await import('$lib/stores/logs');
+					await loadRecentErrors(50);
+				}
+			} else {
+				console.error('❌ Erreur lors du déclenchement:', data.error);
+				alert(`❌ Échec: ${data.error}`);
+			}
+		} catch (error) {
+			console.error('❌ Erreur API:', error);
+			alert(`❌ Erreur réseau: ${error.message}`);
 		}
 	}
 
@@ -178,18 +275,67 @@
 		<div class="log-header" data-debug-name="logViewer.errors.header">
 			<h3 data-debug-name="logViewer.errors.title">🚨 Erreurs</h3>
 			<div class="header-controls" data-debug-name="logViewer.errors.controls">
-				<div class="error-badge" data-debug-name="errorLogs.length">{$errorLogs.length} erreurs</div>
-				<button class="export-btn" on:click={exportLogs} data-debug-name="logViewer.exportButton">📥 Export</button>
+				<div class="error-info">
+					<div class="error-badge" data-debug-name="errorLogs.length">
+						{$errorLogs.length}
+						{#if showAllErrors && $persistentErrorsCount > $errorLogs.length}
+							/ {$persistentErrorsCount}
+						{/if}
+						erreurs
+					</div>
+					{#if $persistentErrorsLoading}
+						<div class="loading-indicator">🔄</div>
+					{/if}
+				</div>
+				<div class="controls-group">
+					{#if $debugMode}
+						<button 
+							class="demo-error-btn" 
+							on:click={triggerTestError}
+							data-debug-name="triggerTestError"
+						>
+							🧪 Erreur fictive
+						</button>
+					{/if}
+					<button 
+						class="toggle-btn" 
+						class:active={showAllErrors}
+						on:click={toggleErrorView}
+						data-debug-name="toggleErrorView"
+					>
+						{showAllErrors ? '📅 Récentes' : '📜 Historique'}
+					</button>
+					<button 
+						class="clear-btn" 
+						on:click={handleClearErrors}
+						data-debug-name="clearErrors"
+						disabled={$errorLogs.length === 0}
+					>
+						🗑️ Vider
+					</button>
+					<button class="export-btn" on:click={exportLogs} data-debug-name="logViewer.exportButton">📥 Export</button>
+				</div>
 			</div>
 		</div>
 
 		<div class="log-container errors" bind:this={errorContainer} on:scroll={() => handleScroll(errorContainer, 'error')} data-debug-name="logViewer.errors.container">
-			{#if $errorLogs.length === 0}
-				<div class="no-logs" data-debug-name="logViewer.errors.empty">
-					<div class="no-logs-icon" data-debug-name="logViewer.errors.empty.icon">✅</div>
-					<div class="no-logs-text" data-debug-name="logViewer.errors.empty.text">Aucune erreur</div>
+			{#if $persistentErrorsLoading && $errorLogs.length === 0}
+			<div class="loading-state">
+				<div class="loading-icon">🔄</div>
+				<div class="loading-text">Chargement des erreurs...</div>
+			</div>
+		{:else if $errorLogs.length === 0}
+			<div class="no-logs" data-debug-name="logViewer.errors.empty">
+				<div class="no-logs-icon" data-debug-name="logViewer.errors.empty.icon">✅</div>
+				<div class="no-logs-text" data-debug-name="logViewer.errors.empty.text">Aucune erreur</div>
+			</div>
+		{:else}
+			{#if isLoadingMore}
+				<div class="load-more-indicator">
+					<div class="loading-icon">🔄</div>
+					<div class="loading-text">Chargement d'erreurs plus anciennes...</div>
 				</div>
-			{:else}
+			{/if}
 				{#each $errorLogs as log (log.id)}
 					{@const parsed = parseLogMessage(log.message || '')}
 					{@const hasAnsi = log.message && (log.message.includes('\x1b[') || log.message.includes('[32m') || log.message.includes('[31m') || log.message.includes('[33m') || log.message.includes('[36m'))}
@@ -217,7 +363,16 @@
 				<input type="checkbox" bind:checked={autoScrollErrors} data-debug-name="autoScrollErrors" />
 				<span data-debug-name="autoScrollErrors">Auto-scroll</span>
 			</label>
-			<div class="log-count" data-debug-name="errorLogs.length">{$errorLogs.length} erreurs</div>
+			<div class="log-count" data-debug-name="errorLogs.length">
+				{$errorLogs.length}
+				{#if showAllErrors && $persistentErrorsCount > $errorLogs.length}
+					/ {$persistentErrorsCount}
+				{/if}
+				erreurs
+				{#if showAllErrors}
+					<span class="scroll-hint">(Scroll ↑ pour plus)</span>
+				{/if}
+			</div>
 		</div>
 	</div>
 
@@ -268,6 +423,98 @@
 </div>
 
 <style>
+	.error-info {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	
+	.controls-group {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+	}
+	
+	.toggle-btn, .clear-btn {
+		padding: 4px 8px;
+		border: 1px solid var(--border-color, #444);
+		background: var(--bg-secondary, #2a2a2a);
+		color: var(--text-color, #ffffff);
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 12px;
+		transition: all 0.2s ease;
+	}
+	
+	.toggle-btn:hover, .clear-btn:hover {
+		background: var(--bg-hover, #3a3a3a);
+	}
+	
+	.toggle-btn.active {
+		background: var(--accent-color, #0066cc);
+		border-color: var(--accent-color, #0066cc);
+	}
+	
+	.clear-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	
+	.demo-error-btn {
+		background: rgba(255, 136, 0, 0.2);
+		color: #ff8800;
+		border: 2px solid #ff8800;
+		border-radius: 8px;
+		padding: 8px 16px;
+		cursor: pointer;
+		font-size: 12px;
+		font-weight: bold;
+		transition: all 0.2s ease;
+	}
+	
+	.demo-error-btn:hover {
+		background: rgba(255, 136, 0, 0.3);
+		border-color: #ffaa00;
+		color: #ffaa00;
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(255, 136, 0, 0.3);
+	}
+	
+	.loading-indicator {
+		animation: spin 1s linear infinite;
+		color: var(--accent-color, #0066cc);
+	}
+	
+	.loading-state, .load-more-indicator {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 16px;
+		color: var(--text-muted, #999);
+		font-size: 14px;
+	}
+	
+	.load-more-indicator {
+		border-bottom: 1px solid var(--border-color, #333);
+		background: var(--bg-secondary, #1a1a1a);
+	}
+	
+	.loading-icon {
+		animation: spin 1s linear infinite;
+	}
+	
+	.scroll-hint {
+		color: var(--text-muted, #999);
+		font-size: 11px;
+		font-style: italic;
+	}
+	
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+	
 	.log-viewer {
 		display: flex;
 		flex-direction: column;
