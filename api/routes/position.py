@@ -261,7 +261,8 @@ async def perform_close_position(reason: str = 'MANUAL', exit_price: Optional[fl
     """Version interne utilisable par WebSocket sans dépendances FastAPI"""
     from core.state_manager import get_state_manager
     state = get_state_manager()
-    from main import init_instances, save_trade_history
+    from core.bootstrap import init_instances
+    from utils.history_utils import save_trade_history
     from core.position.sl_services import cancel_pending_sl_task
     from utils.logging_utils import add_log
     from utils.pricing import get_preferred_price

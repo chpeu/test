@@ -263,6 +263,7 @@ async def handle_client_command(command: str, params: dict):
     """Exécuter une commande du client via WebSocket en utilisant les modules dédiés"""
     from core.state_manager import get_state_manager
     state = get_state_manager()
+    from core.bootstrap import init_instances, run_initial_top_pairs_scan
     from utils.logging_utils import add_log
     
     if command == 'start_scanner':
@@ -275,8 +276,7 @@ async def handle_client_command(command: str, params: dict):
         state.set_is_scanning(True)
         
         if not state.top_pairs:
-            from utils.logging_utils import add_log
-            asyncio.create_task(_run_initial_top_pairs_scan())
+            asyncio.create_task(run_initial_top_pairs_scan())
         
         sched = _scheduler or state.get_scheduler()
         if sched:

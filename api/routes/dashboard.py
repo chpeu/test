@@ -217,7 +217,7 @@ async def start_scanner(user: dict = Security(verify_api_key)):
         if not _scheduler or not _app_state:
             # Essayer d'initialiser les instances
             try:
-                from main import init_instances
+                from core.bootstrap import init_instances
                 init_instances()
             except Exception as e:
                 logger.warning(f"Impossible d'initialiser les instances: {e}")
@@ -360,7 +360,7 @@ async def get_dashboard_summary():
     
     # S'assurer que les instances sont prêtes
     try:
-        from main import init_instances
+        from core.bootstrap import init_instances
         init_instances()
     except ImportError:
         pass
@@ -464,47 +464,15 @@ async def api_reboot_backend(request: Request):
     try:
         data = await request.json() if hasattr(request, 'json') else {}
         reason = data.get('reason', 'manual')
-        return await initiate_backend_reboot(reason=reason)
+        from core.bootstrap import perform_backend_reboot
+        import asyncio
+        asyncio.create_task(perform_backend_reboot(reason=reason))
+        return JSONResponse({'status': 'rebooting', 'reason': reason})
     except Exception as e:
         logger.error(f"Erreur reboot backend: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
 
-async def initiate_backend_reboot(reason: str = 'manual') -> dict:
-    """Logique de redémarrage du backend"""
-    from core.state_manager import get_state_manager
-    state = get_state_manager()
-    from utils.logging_utils import add_log
-    import os
-    import sys
-    
-    await add_log('WARNING', 'BACKEND REBOOT', f'Raison: {reason}')
-    
-    # Notification WebSocket avant arrêt
-    ws_mgr = state.get_ws_manager()
-    if ws_mgr:
-        await ws_mgr.emit('backend_rebooting', {
-            'reason': reason,
-            'timestamp': time.time()
-        })
-    
-    # Arrêt propre des boucles
-    try:
-        sched = state.get_scheduler()
-        if sched:
-            await sched.stop_async()
-    except Exception: pass
-    
-    # Planifier le redémarrage (OS dependent)
-    # Sur Windows, on peut utiliser os.execv ou simplement laisser un process manager (pm2, etc) redémarrer
-    # Ici on simule ou on utilise une méthode standard
-    async def delayed_exit():
-        await asyncio.sleep(2)
-        logger.info(f"🛑 Arrêt du processus pour reboot (raison: {reason})")
-        os._exit(0) # Exit brutal pour forcer le restart par pm2/docker/service
-    
-    asyncio.create_task(delayed_exit())
-    
-    return {'status': 'rebooting', 'reason': reason}
+
 def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:
     """
     Calculer drawdown maximum historique (peak to trough)
@@ -516,44 +484,6 @@ def calculate_max_drawdown(trade_history: List[Dict]) -> Dict:
         return {'max_dd': 0, 'max_dd_date': None, 'current_dd': 0, 'current_peak': 0}
     
     # Calculer equity curve
-    equity_curve = []
-    cumulative = 0
-    dates = []
-    
-    for trade in trade_history:
-        cumulative += trade.get('gross_pnl_pct', 0)
-        equity_curve.append(cumulative)
-        dates.append(trade.get('timestamp', ''))
-    
-    # Trouver drawdown maximum
-    peak = equity_curve[0] if equity_curve else 0
-    peak_idx = 0
-    max_dd = 0
-    max_dd_idx = 0
-    
-    for i, equity in enumerate(equity_curve):
-        if equity > peak:
-            peak = equity
-            peak_idx = i
-        
-        dd = ((equity - peak) / peak * 100) if peak > 0 else 0
-        
-        if dd < max_dd:
-            max_dd = dd
-            max_dd_idx = i
-    
-    # Drawdown actuel
-    current_peak = max(equity_curve) if equity_curve else 0
-    current_equity = equity_curve[-1] if equity_curve else 0
-    current_dd = ((current_equity - current_peak) / current_peak * 100) if current_peak > 0 else 0
-    
-    return {
-        'max_dd': round(max_dd, 2),
-        'max_dd_date': dates[max_dd_idx] if max_dd_idx < len(dates) else None,
-        'max_dd_from_peak': dates[peak_idx] if peak_idx < len(dates) else None,
-        'current_dd': round(current_dd, 2),
-        'current_peak': round(current_peak, 2)
-    }
     equity_curve = []
     cumulative = 0
     dates = []

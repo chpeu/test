@@ -5,7 +5,7 @@ Migrated from ml_legacy.py as part of Phase 5 modularization
 
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from typing import Optional
 
