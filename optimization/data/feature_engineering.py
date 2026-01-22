@@ -33,94 +33,134 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # ========== MOMENTUM COMPOSITES ==========
     # Momentum 1m (RSI * MACD normalized)
-    df_eng['momentum_1m'] = (
-        (df_eng['rsi_1m'] / 100) * 
-        np.tanh(df_eng['macd_hist_1m'])  # tanh pour normaliser MACD
-    )
+    if all(col in df_eng.columns for col in ['rsi_1m', 'macd_hist_1m']):
+        df_eng['momentum_1m'] = (
+            (df_eng['rsi_1m'] / 100) * 
+            np.tanh(df_eng['macd_hist_1m'])  # tanh pour normaliser MACD
+        )
+    else:
+        df_eng['momentum_1m'] = 0.0
     
     # Momentum 5m
-    df_eng['momentum_5m'] = (
-        (df_eng['rsi_5m'] / 100) * 
-        np.tanh(df_eng['macd_hist_5m'])
-    )
+    if all(col in df_eng.columns for col in ['rsi_5m', 'macd_hist_5m']):
+        df_eng['momentum_5m'] = (
+            (df_eng['rsi_5m'] / 100) * 
+            np.tanh(df_eng['macd_hist_5m'])
+        )
+    else:
+        df_eng['momentum_5m'] = 0.0
     
     # Momentum cross (divergence 1m vs 5m)
     df_eng['momentum_divergence'] = df_eng['momentum_1m'] - df_eng['momentum_5m']
     
     # ========== VOLATILITY FEATURES ==========
     # Volatility ratio (1m vs 5m)
-    df_eng['volatility_ratio'] = df_eng['atr_pct_1m'] / (df_eng['atr_pct_5m'] + 1e-8)
+    if all(col in df_eng.columns for col in ['atr_pct_1m', 'atr_pct_5m']):
+        df_eng['volatility_ratio'] = df_eng['atr_pct_1m'] / (df_eng['atr_pct_5m'] + 1e-8)
+    else:
+        df_eng['volatility_ratio'] = 1.0
     
     # Volatility expansion (si ratio > 1.5 = expansion)
     df_eng['volatility_expanding'] = (df_eng['volatility_ratio'] > 1.5).astype(int)
     
     # Bollinger squeeze (BB width faible = consolidation)
-    df_eng['bb_squeeze_1m'] = (df_eng['bb_width_1m'] < 2.0).astype(int)
-    df_eng['bb_squeeze_5m'] = (df_eng['bb_width_5m'] < 2.0).astype(int)
+    df_eng['bb_squeeze_1m'] = (df_eng['bb_width_1m'] < 2.0).astype(int) if 'bb_width_1m' in df_eng.columns else 0
+    df_eng['bb_squeeze_5m'] = (df_eng['bb_width_5m'] < 2.0).astype(int) if 'bb_width_5m' in df_eng.columns else 0
     
     # ========== RSI FEATURES ==========
     # RSI momentum (variation RSI)
-    df_eng['rsi_change_1m'] = df_eng['rsi_1m'] - df_eng['rsi_prev_1m']
-    df_eng['rsi_change_5m'] = df_eng['rsi_5m'] - df_eng['rsi_prev_5m']
+    if 'rsi_1m' in df_eng.columns and 'rsi_prev_1m' in df_eng.columns:
+        df_eng['rsi_change_1m'] = df_eng['rsi_1m'] - df_eng['rsi_prev_1m']
+    else:
+        df_eng['rsi_change_1m'] = 0.0
+        
+    if 'rsi_5m' in df_eng.columns and 'rsi_prev_5m' in df_eng.columns:
+        df_eng['rsi_change_5m'] = df_eng['rsi_5m'] - df_eng['rsi_prev_5m']
+    else:
+        df_eng['rsi_change_5m'] = 0.0
     
     # RSI divergence cross-timeframe
-    df_eng['rsi_divergence'] = abs(df_eng['rsi_1m'] - df_eng['rsi_5m'])
+    if 'rsi_1m' in df_eng.columns and 'rsi_5m' in df_eng.columns:
+        df_eng['rsi_divergence'] = abs(df_eng['rsi_1m'] - df_eng['rsi_5m'])
+    else:
+        df_eng['rsi_divergence'] = 0.0
     
     # RSI zones
-    df_eng['rsi_oversold_1m'] = (df_eng['rsi_1m'] < 30).astype(int)
-    df_eng['rsi_overbought_1m'] = (df_eng['rsi_1m'] > 70).astype(int)
-    df_eng['rsi_neutral_1m'] = ((df_eng['rsi_1m'] >= 30) & (df_eng['rsi_1m'] <= 70)).astype(int)
+    if 'rsi_1m' in df_eng.columns:
+        df_eng['rsi_oversold_1m'] = (df_eng['rsi_1m'] < 30).astype(int)
+        df_eng['rsi_overbought_1m'] = (df_eng['rsi_1m'] > 70).astype(int)
+        df_eng['rsi_neutral_1m'] = ((df_eng['rsi_1m'] >= 30) & (df_eng['rsi_1m'] <= 70)).astype(int)
     
     # ========== MACD FEATURES ==========
     # MACD momentum (variation histogram)
-    df_eng['macd_momentum_1m'] = df_eng['macd_hist_1m'] - df_eng['macd_hist_prev_1m']
-    df_eng['macd_momentum_5m'] = df_eng['macd_hist_5m'] - df_eng['macd_hist_prev_5m']
+    if 'macd_hist_1m' in df_eng.columns and 'macd_hist_prev_1m' in df_eng.columns:
+        df_eng['macd_momentum_1m'] = df_eng['macd_hist_1m'] - df_eng['macd_hist_prev_1m']
+    else:
+        df_eng['macd_momentum_1m'] = 0.0
+        
+    if 'macd_hist_5m' in df_eng.columns and 'macd_hist_prev_5m' in df_eng.columns:
+        df_eng['macd_momentum_5m'] = df_eng['macd_hist_5m'] - df_eng['macd_hist_prev_5m']
+    else:
+        df_eng['macd_momentum_5m'] = 0.0
     
     # MACD cross-timeframe
-    df_eng['macd_divergence'] = abs(df_eng['macd_hist_1m'] - df_eng['macd_hist_5m'])
+    if 'macd_hist_1m' in df_eng.columns and 'macd_hist_5m' in df_eng.columns:
+        df_eng['macd_divergence'] = abs(df_eng['macd_hist_1m'] - df_eng['macd_hist_5m'])
+    else:
+        df_eng['macd_divergence'] = 0.0
     
     # MACD reversal signal (histogram change de signe)
-    df_eng['macd_bullish_cross_1m'] = (
-        (df_eng['macd_hist_prev_1m'] < 0) & (df_eng['macd_hist_1m'] > 0)
-    ).astype(int)
-    df_eng['macd_bearish_cross_1m'] = (
-        (df_eng['macd_hist_prev_1m'] > 0) & (df_eng['macd_hist_1m'] < 0)
-    ).astype(int)
+    if 'macd_hist_1m' in df_eng.columns and 'macd_hist_prev_1m' in df_eng.columns:
+        df_eng['macd_bullish_cross_1m'] = (
+            (df_eng['macd_hist_prev_1m'] < 0) & (df_eng['macd_hist_1m'] > 0)
+        ).astype(int)
+        df_eng['macd_bearish_cross_1m'] = (
+            (df_eng['macd_hist_prev_1m'] > 0) & (df_eng['macd_hist_1m'] < 0)
+        ).astype(int)
     
     # ========== ADX / TREND STRENGTH ==========
     # Trend strength (ADX * DI gap)
-    df_eng['trend_strength_1m'] = df_eng['adx_1m'] * abs(df_eng['di_gap_1m']) / 100
-    df_eng['trend_strength_5m'] = df_eng['adx_5m'] * abs(df_eng['di_gap_5m']) / 100
+    if 'adx_1m' in df_eng.columns and 'di_gap_1m' in df_eng.columns:
+        df_eng['trend_strength_1m'] = df_eng['adx_1m'] * abs(df_eng['di_gap_1m']) / 100
+    if 'adx_5m' in df_eng.columns and 'di_gap_5m' in df_eng.columns:
+        df_eng['trend_strength_5m'] = df_eng['adx_5m'] * abs(df_eng['di_gap_5m']) / 100
     
     # Strong trend detection
-    df_eng['strong_trend_1m'] = ((df_eng['adx_1m'] > 25) & (abs(df_eng['di_gap_1m']) > 10)).astype(int)
-    df_eng['strong_trend_5m'] = ((df_eng['adx_5m'] > 25) & (abs(df_eng['di_gap_5m']) > 10)).astype(int)
+    if 'adx_1m' in df_eng.columns and 'di_gap_1m' in df_eng.columns:
+        df_eng['strong_trend_1m'] = ((df_eng['adx_1m'] > 25) & (abs(df_eng['di_gap_1m']) > 10)).astype(int)
+    if 'adx_5m' in df_eng.columns and 'di_gap_5m' in df_eng.columns:
+        df_eng['strong_trend_5m'] = ((df_eng['adx_5m'] > 25) & (abs(df_eng['di_gap_5m']) > 10)).astype(int)
     
     # Trend direction
-    df_eng['trend_bullish_1m'] = (df_eng['di_gap_1m'] > 0).astype(int)
-    df_eng['trend_bearish_1m'] = (df_eng['di_gap_1m'] < 0).astype(int)
+    if 'di_gap_1m' in df_eng.columns:
+        df_eng['trend_bullish_1m'] = (df_eng['di_gap_1m'] > 0).astype(int)
+        df_eng['trend_bearish_1m'] = (df_eng['di_gap_1m'] < 0).astype(int)
     
     # ========== EMA FEATURES ==========
     # EMA trend strength
-    df_eng['ema_trend_strength_1m'] = abs(df_eng['ema_diff_pct_1m'])
-    df_eng['ema_trend_strength_5m'] = abs(df_eng['ema_diff_pct_5m'])
-    
-    # EMA bullish/bearish
-    df_eng['ema_bullish_1m'] = (df_eng['ema_diff_pct_1m'] > 0).astype(int)
-    df_eng['ema_bullish_5m'] = (df_eng['ema_diff_pct_5m'] > 0).astype(int)
+    if 'ema_diff_pct_1m' in df_eng.columns:
+        df_eng['ema_trend_strength_1m'] = abs(df_eng['ema_diff_pct_1m'])
+        df_eng['ema_bullish_1m'] = (df_eng['ema_diff_pct_1m'] > 0).astype(int)
+    if 'ema_diff_pct_5m' in df_eng.columns:
+        df_eng['ema_trend_strength_5m'] = abs(df_eng['ema_diff_pct_5m'])
+        df_eng['ema_bullish_5m'] = (df_eng['ema_diff_pct_5m'] > 0).astype(int)
     
     # EMA cross-timeframe alignment
-    df_eng['ema_aligned'] = (
-        (df_eng['ema_bullish_1m'] == df_eng['ema_bullish_5m'])
-    ).astype(int)
+    if 'ema_bullish_1m' in df_eng.columns and 'ema_bullish_5m' in df_eng.columns:
+        df_eng['ema_aligned'] = (
+            (df_eng['ema_bullish_1m'] == df_eng['ema_bullish_5m'])
+        ).astype(int)
     
     # ========== VOLUME FEATURES ==========
     # Volume surge composite
-    df_eng['volume_surge'] = (df_eng['volume_ratio_1m'] > 2.0).astype(int)
-    df_eng['volume_spike_strong'] = (df_eng['volume_spike_1m'] > 3.0).astype(int)
+    if 'volume_ratio_1m' in df_eng.columns:
+        df_eng['volume_surge'] = (df_eng['volume_ratio_1m'] > 2.0).astype(int)
+    if 'volume_spike_1m' in df_eng.columns:
+        df_eng['volume_spike_strong'] = (df_eng['volume_spike_1m'] > 3.0).astype(int)
     
     # Volume divergence
-    df_eng['volume_divergence'] = abs(df_eng['volume_ratio_1m'] - df_eng['volume_ratio_5m'])
+    if 'volume_ratio_1m' in df_eng.columns and 'volume_ratio_5m' in df_eng.columns:
+        df_eng['volume_divergence'] = abs(df_eng['volume_ratio_1m'] - df_eng['volume_ratio_5m'])
     
     # ========== QUALITY FILTERS COMPOSITE ==========
     # Quality score (sum of passed filters)

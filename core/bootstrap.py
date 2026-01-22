@@ -17,13 +17,19 @@ from core.websocket_manager import get_websocket_manager
 
 logger = logging.getLogger(__name__)
 
-def init_instances() -> None:
+async def init_instances() -> None:
     """
     Initialize all global instances required for the bot to function.
+    Separates critical startup from background services to speed up server availability.
     """
     import time
     start_total = time.time()
     state = get_state_manager()
+    
+    logger.info("🚀 Début de init_instances (async)...")
+    
+    # --- PHASE 1: CRITICAL STARTUP (Fast) ---
+    # Minimal components needed for API routes to not crash
     
     # 1. Reset error history
     start = time.time()
@@ -103,34 +109,7 @@ def init_instances() -> None:
         except Exception as e:
             logger.error(f"❌ Error init Analytics DB: {e}")
             state.set_analytics_db(None)
-            
-    # 4. Initialize PostgreSQL DataLogger
-    start = time.time()
-    if not state.get_pg_datalogger():
-        try:
-            from core.postgresql_datalogger import PostgreSQLDataLogger
-            from config import (
-                POSTGRES_ENABLED, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
-                POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_MIN_CONN, POSTGRES_MAX_CONN
-            )
-            
-            if POSTGRES_ENABLED:
-                pg_datalogger = PostgreSQLDataLogger(
-                    host=POSTGRES_HOST,
-                    port=POSTGRES_PORT,
-                    database=POSTGRES_DB,
-                    user=POSTGRES_USER,
-                    password=POSTGRES_PASSWORD,
-                    min_conn=POSTGRES_MIN_CONN,
-                    max_conn=POSTGRES_MAX_CONN
-                )
-                
-                if pg_datalogger.enabled:
-                    state.set_pg_datalogger(pg_datalogger)
-                    logger.info(f"✅ PostgreSQL DataLogger initialized ({time.time()-start:.3f}s)")
-        except Exception as e:
-            logger.warning(f"⚠️ Error initializing PostgreSQL DataLogger: {e}")
-        
+
     # 5. Initialize Notification Manager
     start = time.time()
     if not state.get_notification_manager():
@@ -180,8 +159,6 @@ def init_instances() -> None:
 
         if not state.get_position_manager():
             config = PositionConfig()
-            # PositionManager needs access to state for various checks
-            # 🔥 SYNC: Pass analytics_db and live_order_manager to constructor
             pos_mgr = PositionManager(
                 config=config,
                 analytics_db=state.get_analytics_db(),
@@ -189,32 +166,6 @@ def init_instances() -> None:
             )
             state.set_position_manager(pos_mgr)
             logger.info(f"✅ PositionManager initialized ({time.time()-start:.3f}s)")
-            
-        # 🔥 SYNC: Initialiser live_order_manager si nécessaire
-        start_lom = time.time()
-        if not state.get_live_order_manager():
-            from api.live_trading_endpoints import load_live_config
-            live_config = load_live_config()
-            if live_config.get('trading_mode') == 'LIVE' and live_config.get('api_key_mexc'):
-                try:
-                    from trading.live_order_manager_futures import LiveOrderManagerFutures
-                    lom = LiveOrderManagerFutures(
-                        api_key=live_config['api_key_mexc'],
-                        api_secret=live_config['api_secret_mexc'],
-                        dry_run=live_config.get('dry_run', True)
-                    )
-                    state.set_live_order_manager(lom)
-                    
-                    # 🔥 SYNC: Update main module global instance
-                    try:
-                        import main
-                        main.live_order_manager = lom
-                    except (ImportError, AttributeError):
-                        pass
-                        
-                    logger.info(f"✅ LiveOrderManager initialized ({time.time()-start_lom:.3f}s)")
-                except Exception as lom_err:
-                    logger.warning(f"⚠️ Could not init LiveOrderManager: {lom_err}")
             
     except Exception as e:
         logger.error(f"❌ Error initializing core trading components: {e}", exc_info=True)
@@ -254,14 +205,12 @@ def init_instances() -> None:
         )
         
         sched = Scheduler()
-        # Set callbacks from core.callbacks package
         sched.set_scanner_callback(scanner_loop_callback)
         sched.set_position_check_callback(position_check_loop_callback)
         sched.set_scalability_refresh_callback(scalability_refresh_loop_callback)
         state.set_scheduler(sched)
         
         ws_mgr = state.get_ws_manager()
-        # Inject ws_manager into callback modules if they have setters
         try:
             from core.callbacks.scanner_loop import (
                 set_websocket_manager as set_ws_scanner,
@@ -296,7 +245,6 @@ def init_instances() -> None:
                 set_ws_pos(ws_mgr)
                 set_ws_scal(ws_mgr)
 
-            # Scanner loop injections
             if state.get_scanner(): set_inst_scanner(state.get_scanner())
             if state.get_analyzer(): set_inst_analyzer(state.get_analyzer())
             if state.get_position_manager(): set_inst_pos(state.get_position_manager())
@@ -305,7 +253,6 @@ def init_instances() -> None:
             if state.get_notification_manager(): set_inst_notif(state.get_notification_manager())
             set_lock_scanner_inst(state.lock("scanner"))
             
-            # Position check loop injections
             if state.get_position_manager(): set_inst_pos_check(state.get_position_manager())
             if state.get_price_provider(): set_inst_price_check(state.get_price_provider())
             set_inst_state_check(state.get_legacy_proxy())
@@ -313,26 +260,105 @@ def init_instances() -> None:
             if state.get_analytics_db(): set_inst_analytics_check(state.get_analytics_db())
             set_lock_pos_inst(state.lock("position"))
 
-            # Scalability refresh injections
             if state.get_scanner(): set_inst_scanner_scal(state.get_scanner())
             if state.get_position_manager(): set_inst_pos_scal(state.get_position_manager())
             if state.get_price_provider(): set_inst_price_scal(state.get_price_provider())
             set_inst_state_scal(state.get_legacy_proxy())
 
-            # Use current pg_datalogger if available
-            pg_logger = state.get_pg_datalogger()
-            if pg_logger and pg_logger.enabled:
-                set_inst_pg(pg_logger)
-            
         except (ImportError, AttributeError) as e:
             logger.warning(f"⚠️ Error injecting dependencies into loops: {e}")
         
-        # Start the scheduler automatically
         sched.start()
         state.set_is_scanning(True)
         logger.info(f"✅ Scheduler started automatically ({time.time()-start:.3f}s)")
             
-    logger.info(f"🏁 init_instances terminé en {time.time()-start_total:.3f}s")
+    logger.info(f"🏁 init_instances (critical) terminé en {time.time()-start_total:.3f}s")
+    
+    # Lancer l'initialisation des services lourds en arrière-plan
+    asyncio.create_task(init_background_services())
+
+
+async def init_background_services() -> None:
+    """
+    Initialize non-critical heavy services in background.
+    Allows the API to start responding while these services connect.
+    """
+    import time
+    start_bg = time.time()
+    state = get_state_manager()
+    logger.info("⏳ Démarrage des services d'arrière-plan (PostgreSQL, Live Trading)...")
+
+    # 4. Initialize PostgreSQL DataLogger
+    start = time.time()
+    if not state.get_pg_datalogger():
+        try:
+            from core.postgresql_datalogger import PostgreSQLDataLogger
+            from config import (
+                POSTGRES_ENABLED, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
+                POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_MIN_CONN, POSTGRES_MAX_CONN
+            )
+            
+            if POSTGRES_ENABLED:
+                pg_datalogger = PostgreSQLDataLogger(
+                    host=POSTGRES_HOST,
+                    port=POSTGRES_PORT,
+                    database=POSTGRES_DB,
+                    user=POSTGRES_USER,
+                    password=POSTGRES_PASSWORD,
+                    min_conn=POSTGRES_MIN_CONN,
+                    max_conn=POSTGRES_MAX_CONN
+                )
+                
+                if pg_datalogger.enabled:
+                    state.set_pg_datalogger(pg_datalogger)
+                    # Inject into scanner loop
+                    try:
+                        from core.callbacks.scanner_loop import set_pg_datalogger
+                        set_pg_datalogger(pg_datalogger)
+                    except ImportError: pass
+                    logger.info(f"✅ PostgreSQL DataLogger initialized background ({time.time()-start:.3f}s)")
+        except Exception as e:
+            logger.warning(f"⚠️ Error initializing PostgreSQL DataLogger: {e}")
+
+    # 🔥 SYNC: Initialiser live_order_manager si nécessaire
+    start_lom = time.time()
+    if not state.get_live_order_manager():
+        from api.live_trading_endpoints import load_live_config
+        live_config = load_live_config()
+        if live_config.get('trading_mode') == 'LIVE' and live_config.get('api_key_mexc'):
+            try:
+                from trading.live_order_manager_futures import LiveOrderManagerFutures
+                lom = LiveOrderManagerFutures(
+                    api_key=live_config['api_key_mexc'],
+                    api_secret=live_config['api_secret_mexc'],
+                    dry_run=live_config.get('dry_run', True)
+                )
+                state.set_live_order_manager(lom)
+                
+                # 🔥 SYNC: Update main module global instance
+                try:
+                    import main
+                    main.live_order_manager = lom
+                except (ImportError, AttributeError):
+                    pass
+                
+                # Update position manager
+                pos_mgr = state.get_position_manager()
+                if pos_mgr:
+                    pos_mgr.live_order_manager = lom
+                    
+                # Update API routes
+                try:
+                    from api.routes import set_live_order_manager
+                    set_live_order_manager(lom)
+                except ImportError: pass
+                        
+                logger.info(f"✅ LiveOrderManager initialized background ({time.time()-start_lom:.3f}s)")
+            except Exception as lom_err:
+                logger.warning(f"⚠️ Could not init LiveOrderManager: {lom_err}")
+
+    logger.info(f"🏁 Services d'arrière-plan initialisés en {time.time()-start_bg:.3f}s")
+
 
 async def run_initial_top_pairs_scan() -> None:
     """
@@ -341,7 +367,7 @@ async def run_initial_top_pairs_scan() -> None:
     from utils.logging_utils import add_log
     from core.exceptions import MarketDataError, NetworkError, WebSocketError
     
-    init_instances()
+    # 🔥 REMOVED redundant init_instances() - already done in lifespan
     state = get_state_manager()
     
     # 🔥 Use scanner lock to avoid concurrent scans

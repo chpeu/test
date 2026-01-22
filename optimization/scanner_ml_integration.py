@@ -32,8 +32,7 @@ def calculate_technical_indicators(klines: List, symbol: str) -> Optional[Dict]:
         
         # Calculer RSI
         rsi_1m = calculate_rsi(df['close'], period=14)
-        rsi_5m_values = calculate_rsi(df['close'].iloc[::5], period=14)  # Simuler 5m
-        rsi_5m = rsi_5m_values.iloc[-1] if len(rsi_5m_values) > 0 else 50
+        rsi_5m = calculate_rsi(df['close'].iloc[::5], period=14)  # Simuler 5m
         
         # Calculer MACD
         macd_1m = calculate_macd(df['close'])

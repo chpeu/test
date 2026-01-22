@@ -119,30 +119,29 @@ def set_pg_datalogger(pg_datalogger):
 
 def get_pg_datalogger():
     """🔥 Force Initialization: Récupérer ou créer l'instance PostgreSQLDataLogger"""
-    global _pg_datalogger_instance
+    global _pg_datalogger, _pg_datalogger_instance
     
-    # Si une instance a été injectée, l'utiliser en priorité
+    # 1. Utiliser l'instance injectée si présente
     if _pg_datalogger is not None:
         return _pg_datalogger
     
-    # 🔥 FIX: Utiliser l'instance globale du StateManager si possible
+    # 2. Vérifier l'instance globale dans le StateManager
     from core.state_manager import get_state_manager
     state = get_state_manager()
     pg_logger = state.get_pg_datalogger()
     if pg_logger:
+        _pg_datalogger = pg_logger # Cache local pour performance
         return pg_logger
     
-    # Sinon, créer une instance si elle n'existe pas
+    # 3. Éviter de créer une instance synchrone si l'init background est en cours
+    # On laisse le bootstrap s'en charger. Si on arrive ici, c'est que c'est vraiment manquant.
     if _pg_datalogger_instance is None:
         try:
-            from core.postgresql_datalogger import PostgreSQLDataLogger
-            _pg_datalogger_instance = PostgreSQLDataLogger()
-            logger.info("✅ PostgreSQL DataLogger créé (Force Initialization)")
-            # Stocker dans StateManager aussi
-            state.set_pg_datalogger(_pg_datalogger_instance)
-        except Exception as e:
-            logger.error(f"❌ Erreur création PostgreSQL DataLogger: {e}")
-            return None
+            # On ne crée pas d'instance ici pour éviter de bloquer l'event loop synchrone
+            # Le bootstrap (init_background_services) s'occupera de l'injection.
+            pass
+        except Exception:
+            pass
     
     return _pg_datalogger_instance
 

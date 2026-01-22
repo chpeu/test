@@ -329,17 +329,14 @@ async def lifespan(app: FastAPI):
             logger.error(f"❌ Erreur inattendue initialisation DataLogger: {e}", exc_info=True)
             app.state.data_logger = None
 
-        # Initialiser les instances (Inclut maintenant le Scheduler et les composants core)
+        # Initialiser les instances (Phase 1 critique)
         from core.bootstrap import init_instances, run_initial_top_pairs_scan
-        init_instances()
+        await init_instances()
         
         # 🔥 FIX: Injection manuelle du session_id dans ws_manager pour garantir la cohérence
         ws_mgr = state.get_ws_manager()
         if ws_mgr:
-            # S'assurer que le session_id est bien celui du StateManager
             ws_mgr.session_id = state.session_id
-            
-            # Émettre reset_session immédiatement après init_instances
             await ws_mgr.emit('reset_session', {
                 'timestamp': time.time(),
                 'reason': 'backend_startup',
@@ -347,94 +344,56 @@ async def lifespan(app: FastAPI):
             })
             logger.info(f"✅ Événement reset_session émis (session_id: {state.session_id})")
 
-        # Lancer le scan initial en arrière-plan
+        # --- DÉMARRAGE DES SERVICES D'ARRIÈRE-PLAN ---
+        # On lance tout ce qui n'est pas critique pour l'acceptation des premières requêtes HTTP
+        
+        # 1. Scan initial des top pairs
         asyncio.create_task(run_initial_top_pairs_scan())
 
-        # 🔥 RESET HISTORY: Par défaut, on ne charge pas l'historique au démarrage pour repartir de zéro
-        # comme demandé par l'utilisateur. Décommenter pour restaurer la persistance.
-        # from utils.history_utils import load_trade_history
-        # load_trade_history()
-        # logger.info("✅ LIFESPAN: load_trade_history() (désactivé par défaut pour reset)")
-        
-        # 🔬 Vérification système HistGradientBoosting au démarrage
-        try:
-            from verification.verify_histgb_system import verify_config_overrides, verify_model_file
-            config_result = verify_config_overrides(auto_fix=True)  # Auto-repair si nécessaire
-            model_result = verify_model_file()
+        # 2. Tâche d'initialisation différée (ML, Calibration, Post-Exit)
+        async def delayed_init():
+            # Attendre un peu que le serveur soit bien UP
+            await asyncio.sleep(2.0)
             
-            if config_result.passed and model_result.passed:
-                logger.info("✅ HISTGB: Système ML vérifié et fonctionnel")
-            else:
-                if not config_result.passed:
-                    logger.warning(f"⚠️ HISTGB Config: {len(config_result.errors)} erreur(s)")
-                if not model_result.passed:
-                    logger.warning(f"⚠️ HISTGB Model: {len(model_result.errors)} erreur(s)")
-        except ImportError as e:
-            # Module verification non disponible (optionnel)
-            logger.debug(f"Module verification non disponible, skip vérification ML: {e}")
-        except ConfigurationError as e:
-            # Configuration ML invalide
-            logger.warning(f"⚠️ Configuration ML invalide: {e}")
-        except Exception as e:
-            # Erreur non-critique durant vérification ML
-            logger.warning(f"⚠️ Vérification ML non critique échouée: {type(e).__name__}: {e}")
+            # 🔬 Vérification système HistGradientBoosting
+            try:
+                from verification.verify_histgb_system import verify_config_overrides, verify_model_file
+                config_result = verify_config_overrides(auto_fix=True)
+                model_result = verify_model_file()
+                if config_result.passed and model_result.passed:
+                    logger.info("✅ HISTGB: Système ML vérifié et fonctionnel")
+            except Exception as e:
+                logger.warning(f"⚠️ Vérification ML différée échouée: {e}")
 
-        # 🔥 AUTO-SEED CALIBRATION: Initialiser la calibration ML avec l'historique des trades
-        try:
-            from config import TRADING_CONFIG
-            if TRADING_CONFIG.get('ml_calibration_enabled', True):
-                from ml.calibration import get_calibration_manager
-                calib_manager = get_calibration_manager()
+            # 🔥 AUTO-SEED CALIBRATION
+            try:
+                from config import TRADING_CONFIG
+                if TRADING_CONFIG.get('ml_calibration_enabled', True):
+                    from ml.calibration import get_calibration_manager
+                    calib_manager = get_calibration_manager()
+                    decay_days = TRADING_CONFIG.get('ml_calib_decay_days', 14)
+                    seeded_count = calib_manager.seed_from_historical_trades(days=decay_days)
+                    if seeded_count > 0:
+                        logger.info(f"✅ CALIBRATION: Auto-seed avec {seeded_count} trades")
+            except Exception as e:
+                logger.warning(f"⚠️ Auto-seed calibration différé échoué: {e}")
+
+            # 🔥 POST-EXIT ANALYSIS
+            try:
+                from core.callbacks.post_exit_loop import start_post_exit_loop, set_price_provider
+                set_post_exit_price_provider = set_price_provider # Alias local
+                set_post_exit_price_provider(state.get_price_provider())
+                await start_post_exit_loop()
                 
-                # Vérifier si la calibration a des données
-                decay_days = TRADING_CONFIG.get('ml_calib_decay_days', 14)
-                seeded_count = calib_manager.seed_from_historical_trades(days=decay_days)
-                
-                if seeded_count > 0:
-                    logger.info(f"✅ CALIBRATION: Auto-seed avec {seeded_count} trades ({decay_days} jours)")
-                else:
-                    logger.info("ℹ️ CALIBRATION: Aucun trade historique trouvé pour le seed")
-        except ImportError as e:
-            # Module calibration non disponible
-            logger.debug(f"Module calibration non disponible: {e}")
-        except ConfigurationError as e:
-            # Configuration calibration invalide
-            logger.warning(f"⚠️ Configuration calibration invalide: {e}")
-        except DatabaseError as e:
-            # Erreur lors de la lecture des trades historiques
-            logger.warning(f"⚠️ Impossible de charger trades pour calibration: {e}")
-        except Exception as e:
-            # Erreur non-bloquante durant calibration
-            logger.warning(f"⚠️ Auto-seed calibration échoué (non-bloquant): {type(e).__name__}: {e}")
+                from core.post_exit.manager import get_post_exit_manager
+                post_exit_mgr = get_post_exit_manager()
+                restored_count = await post_exit_mgr.restore_active_trackers()
+                if restored_count > 0:
+                    logger.info(f"🔄 Post-Exit: {restored_count} trackers restaurés")
+            except Exception as e:
+                logger.warning(f"⚠️ Post-Exit init différé échoué: {e}")
 
-        try:
-            await asyncio.wait_for(asyncio.sleep(1.0), timeout=2.0)
-        except asyncio.TimeoutError:
-            logger.warning("⚠️ Timeout lors de l'initialisation WebSocket")
-
-        ws_mgr = state.get_ws_manager()
-        # Bloc reset_session déjà géré plus haut après init_instances
-        
-        # 🔥 POST-EXIT ANALYSIS: Démarrer la boucle de tracking post-exit
-        try:
-            from core.callbacks.post_exit_loop import start_post_exit_loop, set_price_provider as set_post_exit_price_provider
-            set_post_exit_price_provider(state.get_price_provider())
-            await start_post_exit_loop()
-            logger.info("✅ Post-Exit Loop démarrée")
-        except Exception as e:
-            logger.warning(f"⚠️ Post-Exit Loop non démarrée (non-bloquant): {e}")
-
-        # 🔥 POST-EXIT PERSISTENCE: Restaurer les trackers actifs après redémarrage
-        try:
-            from core.post_exit.manager import get_post_exit_manager
-            post_exit_mgr = get_post_exit_manager()
-            restored_count = await post_exit_mgr.restore_active_trackers()
-            if restored_count > 0:
-                logger.info(f"🔄 Post-Exit: {restored_count} trackers restaurés depuis DB")
-            else:
-                logger.info("ℹ️ Post-Exit: Aucun tracker à restaurer")
-        except Exception as e:
-            logger.warning(f"⚠️ Post-Exit restore échoué (non-bloquant): {e}")
+        asyncio.create_task(delayed_init())
 
         yield
 
@@ -593,6 +552,18 @@ try:
 except (ImportError, ConfigurationError) as e:
     logger.debug(f"Module regime trading non disponible ou erreur config: {e}")
 
+@app.get("/api/health")
+async def health_check():
+    """Endpoint de santé pour vérifier si le backend est prêt"""
+    state = get_state_manager()
+    pg_logger = state.get_pg_datalogger()
+    return {
+        "status": "healthy",
+        "initialized": state.is_scanning,
+        "pg_logger": pg_logger.enabled if pg_logger else False,
+        "timestamp": time.time()
+    }
+
 @app.get("/favicon.ico")
 async def favicon():
     """Favicon (évite 404)"""
@@ -620,13 +591,49 @@ if __name__ == '__main__':
         finally:
             sock.close()
     
+    def kill_process_on_port(port):
+        """Tenter de tuer le processus occupant le port spécifié (Windows uniquement)"""
+        if os.name != 'nt':
+            return False
+        
+        try:
+            import subprocess
+            # Trouver le PID utilisant le port
+            cmd = f"netstat -ano | findstr :{port}"
+            try:
+                output = subprocess.check_output(cmd, shell=True).decode('utf-8', errors='ignore')
+            except subprocess.CalledProcessError:
+                return False # Port non trouvé ou erreur commande
+
+            for line in output.strip().split('\n'):
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.split()
+                    pid = parts[-1]
+                    if pid and pid.isdigit() and pid != "0":
+                        logger.warning(f"⚠️ Port {port} occupé par PID {pid}. Tentative de fermeture...")
+                        try:
+                            subprocess.run(f"taskkill /F /PID {pid}", shell=True, check=True, capture_output=True)
+                            return True
+                        except subprocess.CalledProcessError as e:
+                            logger.error(f"❌ Erreur taskkill PID {pid}: {e.stderr.decode('utf-8', errors='ignore')}")
+        except Exception as e:
+            logger.error(f"❌ Impossible de libérer le port {port}: {e}")
+        return False
+
     # 🔥 FIX: Essayer le port demandé, puis chercher un port disponible
     original_port = port
+    
+    if not is_port_available(port):
+        logger.warning(f"⚠️ Port {port} déjà utilisé.")
+        if kill_process_on_port(port):
+            logger.info(f"✅ Port {port} libéré avec succès.")
+            time.sleep(1.0) # Laisser le temps à l'OS
+    
     max_attempts = 10
     attempt = 0
     
     while not is_port_available(port) and attempt < max_attempts:
-        logger.warning(f"⚠️ Port {port} déjà utilisé, essai du port {port + 1}...")
+        logger.warning(f"⚠️ Port {port} toujours occupé, essai du port {port + 1}...")
         port += 1
         attempt += 1
     
