@@ -140,6 +140,7 @@ async def get_complete_state():
                 'trend_timeframe': TRADING_CONFIG.get('trend_timeframe', '15m'),
                 'account_size': TRADING_CONFIG.get('account_size', 1000.0),
                 'risk_per_trade': TRADING_CONFIG.get('risk_per_trade', 2.0),
+                'telegram_enabled': TRADING_CONFIG.get('telegram_enabled', False),
                 'use_confluence': TRADING_CONFIG.get('use_confluence', False),
                 'invert_signals': TRADING_CONFIG.get('invert_signals', False),
                 'break_even_trigger': TRADING_CONFIG.get('break_even_trigger', 0.3),

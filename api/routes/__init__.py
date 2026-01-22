@@ -54,6 +54,8 @@ from .config import (
 )
 from .ml_calibration import router as ml_calibration_router  # 🆕 Routes ML Calibration
 from .ml_models import router as ml_models_router
+from .ml_dashboard import router as ml_dashboard_router
+from .analytics import router as analytics_router
 from .ml_config import router as ml_config_router
 from .logs import router as logs_router
 from .test_errors import router as test_errors_router
@@ -74,10 +76,12 @@ router.include_router(export_router)
 router.include_router(metrics_router)
 router.include_router(ml_router)
 router.include_router(ml_models_router)
+router.include_router(ml_dashboard_router)
+router.include_router(analytics_router)
 router.include_router(config_router)
-router.include_router(ml_calibration_router)
+router.include_router(ml_calibration_router, prefix="/ml/calibration")
 router.include_router(ml_config_router)
-router.include_router(logs_router, prefix="/logs")
+router.include_router(logs_router)
 router.include_router(notifications_router)
 router.include_router(test_errors_router, prefix="/test/errors")
 

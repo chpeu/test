@@ -12,7 +12,7 @@ from typing import Optional, Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/ml/calibration", tags=["ML Calibration"])
+router = APIRouter(tags=["ML Calibration"])
 
 
 class CalibrationStatsResponse(BaseModel):

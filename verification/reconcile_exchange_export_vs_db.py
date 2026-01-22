@@ -757,7 +757,7 @@ def reconcile(df: pd.DataFrame, db_trades: List[Dict[str, Any]], args) -> None:
     )
 
     print("=" * 110)
-    print("Reconcile Exchange Export ↔ DB")
+    print("Reconcile Exchange Export -> DB")
     print("export_rows:", len(df2))
     print("db_rows_loaded:", len(db))
     print("matched:", len(matched_df))

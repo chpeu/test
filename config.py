@@ -613,6 +613,7 @@ except (ValueError, TypeError):
     # Si conversion échoue (username de channel), garder tel quel
     TELEGRAM_CHAT_ID = TELEGRAM_CHAT_ID_RAW
 TELEGRAM_ENABLED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+TRADING_CONFIG['telegram_enabled'] = TELEGRAM_ENABLED
 
 # Paper Trading Mode (optionnel)
 PAPER_TRADING_MODE = os.getenv("PAPER_TRADING_MODE", "False").lower() == "true"
