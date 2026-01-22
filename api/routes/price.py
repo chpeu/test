@@ -78,7 +78,7 @@ async def api_get_live_prices():
     }
     
     try:
-        from main import get_preferred_price
+        from utils.pricing import get_preferred_price
         if pp.ws_manager:
             result["websocket_connected"] = pp.ws_manager.connected
         

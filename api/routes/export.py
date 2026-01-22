@@ -135,9 +135,9 @@ async def export_datalogger_excel(
 
         # Tables à exporter
         tables = [
-            ("scans", "scan_timestamp"),
+            ("scan_logs", "timestamp"),
             ("opportunities", "timestamp"),
-            ("trades", "entry_timestamp")
+            ("trades", "timestamp_entry")
         ]
 
         for table_name, date_col in tables:

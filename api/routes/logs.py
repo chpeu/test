@@ -49,7 +49,7 @@ async def api_clear_errors():
 async def api_trigger_test_error(error_type: str = "test", message: str = "Erreur de test pour vérifier la persistance"):
     """🧪 ENDPOINT DE TEST: Déclencher une erreur fictive"""
     try:
-        from main import add_log
+        from utils.logging_utils import add_log
         await add_log('ERROR', f"Test Error: {error_type}", message)
         return {"success": True, "message": f"Erreur de test '{error_type}' déclenchée"}
     except Exception as e:

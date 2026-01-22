@@ -473,7 +473,7 @@ async def initiate_backend_reboot(reason: str = 'manual') -> dict:
     """Logique de redémarrage du backend"""
     from core.state_manager import get_state_manager
     state = get_state_manager()
-    from main import add_log
+    from utils.logging_utils import add_log
     import os
     import sys
     

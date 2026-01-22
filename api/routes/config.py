@@ -506,7 +506,7 @@ async def perform_config_update(params: dict) -> dict:
 
     # --- Finalize ---
     if updated:
-        from main import add_log
+        from utils.logging_utils import add_log
         await add_log('INFO', 'Config mise à jour', str(updated))
         try:
             from utils.config_persistence import save_config_overrides

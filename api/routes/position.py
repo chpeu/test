@@ -127,14 +127,14 @@ async def api_open_position(request: Request):
     try:
         pp = _price_provider or state.get_price_provider()
         if pp and position:
-            from main import setup_realtime_sl_check
+            from core.position.sl_services import setup_realtime_sl_check
             await setup_realtime_sl_check(position, pp)
     except Exception as e:
         logger.warning(f"⚠️ Erreur setup_realtime_sl_check: {e}")
 
     try:
         if position:
-            from main import schedule_sl_order_placement
+            from core.position.sl_services import schedule_sl_order_placement
             await schedule_sl_order_placement(position, delay_seconds=3.0)
     except Exception as e:
         logger.warning(f"⚠️ Erreur schedule_sl_order_placement: {e}")
@@ -147,7 +147,7 @@ async def api_open_position(request: Request):
         logger.warning(f"⚠️ Erreur démarrage scheduler: {e}")
 
     try:
-        from main import add_log
+        from utils.logging_utils import add_log
         asyncio.create_task(add_log('INFO', 'Position ouverte', f"{direction} {data.get('symbol', '')}"))
     except Exception:
         pass
@@ -200,7 +200,7 @@ async def api_check_position():
         return JSONResponse({'error': 'Price provider not available'}, status_code=503)
     
     try:
-        from main import get_preferred_price
+        from utils.pricing import get_preferred_price
         price_data = await pp.get_price(pos_mgr.active_position.symbol)
         current_price = get_preferred_price(price_data)
         
@@ -261,7 +261,10 @@ async def perform_close_position(reason: str = 'MANUAL', exit_price: Optional[fl
     """Version interne utilisable par WebSocket sans dépendances FastAPI"""
     from core.state_manager import get_state_manager
     state = get_state_manager()
-    from main import init_instances, get_preferred_price, save_trade_history, cancel_pending_sl_task, add_log
+    from main import init_instances, save_trade_history
+    from core.position.sl_services import cancel_pending_sl_task
+    from utils.logging_utils import add_log
+    from utils.pricing import get_preferred_price
     
     init_instances()
     pos_lock = state.lock("position")

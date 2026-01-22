@@ -215,7 +215,7 @@ async def perform_stop_scanner():
     """Version interne utilisable par WebSocket sans dépendances FastAPI"""
     from core.state_manager import get_state_manager
     state = get_state_manager()
-    from main import add_log
+    from utils.logging_utils import add_log
     
     # Arrêter le scheduler
     sched = state.get_scheduler()
