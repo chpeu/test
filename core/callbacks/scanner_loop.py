@@ -1254,10 +1254,11 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                             balance_score = pair.get('balanceScore')
                             bid_vol = pair.get('bidVol')
                             ask_vol = pair.get('askVol')
-                            if book_depth in (None, 0) and bid_vol and ask_vol:
+                            # 🔥 FIX: Vérifications None explicites pour éviter l'erreur "> not supported between NoneType and int"
+                            if book_depth in (None, 0) and bid_vol is not None and ask_vol is not None:
                                 book_depth = bid_vol + ask_vol
                             imbalance = None
-                            if bid_vol and ask_vol:
+                            if bid_vol is not None and ask_vol is not None:
                                 try:
                                     imbalance = bid_vol / ask_vol if ask_vol > 0 else None
                                 except Exception:
