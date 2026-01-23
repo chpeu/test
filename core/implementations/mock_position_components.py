@@ -154,6 +154,28 @@ class MockPositionCalculator(IPositionCalculator):
             'risk_reward_ratio': 2.0,
             'position_score': 0.75
         }
+    
+    def calculate_size(self, setup_data: Dict[str, Any]) -> float:
+        """Mock calcul size (méthode abstraite requise)"""
+        entry_price = setup_data.get('entry_price', 100.0)
+        risk_amount = setup_data.get('risk_amount', 100.0)
+        return risk_amount / entry_price
+    
+    def calculate_stop_loss(self, entry_price: float, direction: str, atr: float) -> float:
+        """Mock calcul stop loss (méthode abstraite requise)"""
+        multiplier = 1.5
+        if direction.upper() == 'LONG':
+            return entry_price - (atr * multiplier)
+        else:
+            return entry_price + (atr * multiplier)
+    
+    def calculate_take_profit(self, entry_price: float, direction: str, atr: float) -> float:
+        """Mock calcul take profit (méthode abstraite requise)"""
+        multiplier = 2.0
+        if direction.upper() == 'LONG':
+            return entry_price + (atr * multiplier)
+        else:
+            return entry_price - (atr * multiplier)
 
 
 class MockPositionValidator(IPositionValidator):
@@ -186,6 +208,33 @@ class MockPositionValidator(IPositionValidator):
             'within_limits': True,
             'risk_utilization': 0.3,
             'max_position_size': 1000.0
+        }
+    
+    def validate_market_conditions(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock validation conditions marché (méthode abstraite requise)"""
+        return {
+            'is_valid': True,
+            'market_state': 'NORMAL',
+            'volatility_acceptable': True,
+            'liquidity_sufficient': True
+        }
+    
+    def validate_risk_parameters(self, risk_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock validation paramètres risque (méthode abstraite requise)"""
+        return {
+            'is_valid': True,
+            'risk_score': 0.25,
+            'max_leverage_ok': True,
+            'stop_loss_appropriate': True
+        }
+    
+    def validate_setup(self, setup_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock validation setup (méthode abstraite requise)"""
+        return {
+            'is_valid': True,
+            'setup_quality': 0.8,
+            'signal_strength': 'STRONG',
+            'entry_conditions_met': True
         }
 
 
@@ -236,12 +285,19 @@ class MockPositionOrchestrator(IPositionOrchestrator):
             'timestamp': datetime.utcnow().isoformat()
         }
     
-    def process_trade_request(self, trade_request: Dict[str, Any]) -> Dict[str, Any]:
-        """Mock traitement demande de trade"""
+    async def process_trade_request(self, trade_request: Dict[str, Any], capital: float) -> Dict[str, Any]:
+        """Mock traitement demande de trade (async pour compatibility tests)"""
+        self.orchestration_count += 1
+        
+        # Simuler traitement avec capital
+        position_size = min(capital * 0.02, 1000.0)  # 2% du capital max 1000
+        
         return {
             'success': True,
             'trade_id': f"mock_trade_{self.orchestration_count}",
             'status': 'processed',
+            'position_size': position_size,
+            'capital_used': capital,
             'timestamp': datetime.utcnow().isoformat()
         }
     

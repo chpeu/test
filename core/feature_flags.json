@@ -2,11 +2,11 @@
   "flags": {
     "use_testable_position_manager": {
       "name": "use_testable_position_manager",
-      "enabled": true,
+      "enabled": false,
       "description": "Utiliser TestablePositionManager au lieu de PositionManager legacy",
-      "rollout_percentage": 100.0,
+      "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-23T13:33:49.341154",
+      "updated_at": "2026-01-23T15:50:54.039689",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": true,
@@ -156,14 +156,50 @@
           "new_percentage": 100.0,
           "reason": "",
           "timestamp": "2026-01-23T13:33:49.341653"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T15:48:35.306422"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": true,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Metrics threshold exceeded",
+          "timestamp": "2026-01-23T15:48:35.312947"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T15:49:59.613713"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T15:50:54.034688"
         }
       ],
-      "success_rate": 1.0,
-      "error_rate": 0.0,
-      "avg_processing_time": 0.113059,
-      "last_request_id": "req_20260123_111104_0",
-      "last_success": true,
-      "last_updated": "2026-01-23T11:11:05.024108"
+      "success_rate": 0.0,
+      "error_rate": 1.0,
+      "avg_processing_time": 0.000501,
+      "last_request_id": "req_20260123_154835_0",
+      "last_success": false,
+      "last_updated": "2026-01-23T15:48:35.309937"
     },
     "comparison_mode": {
       "changes": [
@@ -236,6 +272,15 @@
       ]
     }
   },
-  "rollback_history": [],
-  "last_saved": "2026-01-23T13:33:49.342153"
+  "rollback_history": [
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-23T15:48:35.312947",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    }
+  ],
+  "last_saved": "2026-01-23T15:50:54.040189"
 }

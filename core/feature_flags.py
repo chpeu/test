@@ -201,7 +201,7 @@ class FeatureFlagsManager:
             rollout_percentage: Pourcentage rollout (0-100)
         """
         try:
-            if flag_name not in self.flags:
+            if not self.flags or flag_name not in self.flags:
                 logger.error(f"Flag inconnu: {flag_name}")
                 return
             
@@ -231,7 +231,7 @@ class FeatureFlagsManager:
             reason: Raison désactivation
         """
         try:
-            if flag_name not in self.flags:
+            if not self.flags or flag_name not in self.flags:
                 logger.error(f"Flag inconnu: {flag_name}")
                 return
             

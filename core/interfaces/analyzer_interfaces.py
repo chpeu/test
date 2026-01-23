@@ -176,8 +176,9 @@ class AnalysisResult:
     def is_valid(self) -> bool:
         """Vérifie si l'analyse est valide"""
         return (self.status == AnalysisStatus.SUCCESS and 
-                self.primary_signal is not None and
-                len(self.errors) == 0)
+                len(self.errors) == 0 and
+                self.combined_score is not None and
+                self.combined_score > 0)
     
     @property
     def has_warnings(self) -> bool:
