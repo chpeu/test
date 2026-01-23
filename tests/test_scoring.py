@@ -61,7 +61,7 @@ class TestScoring:
         """Test bonus de tendance bullish pour LONG"""
         trend_data = {'trend': 'BULLISH', 'bonus': 25}
         bonus = apply_trend_bonus(
-            direction='LONG',
+            temp_direction='LONG',
             trend_data=trend_data
         )
         assert bonus > 0
@@ -70,7 +70,7 @@ class TestScoring:
         """Test bonus de tendance bearish pour SHORT"""
         trend_data = {'trend': 'BEARISH', 'bonus': 25}
         bonus = apply_trend_bonus(
-            direction='SHORT',
+            temp_direction='SHORT',
             trend_data=trend_data
         )
         assert bonus > 0
@@ -79,7 +79,7 @@ class TestScoring:
         """Test bonus de tendance neutre"""
         trend_data = {'trend': 'NEUTRAL', 'bonus': 0}
         bonus = apply_trend_bonus(
-            direction='LONG',
+            temp_direction='LONG',
             trend_data=trend_data
         )
         assert bonus == 0
@@ -87,7 +87,7 @@ class TestScoring:
     def test_apply_trend_bonus_no_trend_data(self):
         """Test bonus de tendance sans données"""
         bonus = apply_trend_bonus(
-            direction='LONG',
+            temp_direction='LONG',
             trend_data=None
         )
         assert bonus == 0
@@ -98,7 +98,10 @@ class TestScoring:
             rsi=50,
             rsi_prev=50,
             macd={'histogram': 0},
-            direction='LONG'
+            macd_prev={'histogram': 0},
+            temp_direction='LONG',
+            conditions=[],
+            condition_types=[]
         )
         assert bonus == 0
 
@@ -108,7 +111,10 @@ class TestScoring:
             rsi=30,
             rsi_prev=35,
             macd={'histogram': -0.01},
-            direction='LONG'
+            macd_prev={'histogram': -0.02},
+            temp_direction='LONG',
+            conditions=[],
+            condition_types=[]
         )
         # Le bonus peut être 0 ou positif selon les conditions
         assert bonus >= 0
@@ -119,7 +125,10 @@ class TestScoring:
             rsi=70,
             rsi_prev=65,
             macd={'histogram': 0.01},
-            direction='SHORT'
+            macd_prev={'histogram': 0.02},
+            temp_direction='SHORT',
+            conditions=[],
+            condition_types=[]
         )
         # Le bonus peut être 0 ou positif selon les conditions
         assert bonus >= 0

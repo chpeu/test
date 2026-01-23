@@ -291,8 +291,8 @@
     "total_samples": 1724,
     "train_samples": 1379,
     "test_samples": 345,
-    "training_time_seconds": 0.731261,
-    "trained_at": "2026-01-23T19:25:04.683732",
+    "training_time_seconds": 0.796686,
+    "trained_at": "2026-01-23T19:47:09.496894",
     "feature_names": [
       "rsi_1m",
       "rsi_prev_1m",
