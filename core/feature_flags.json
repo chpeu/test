@@ -6,7 +6,7 @@
       "description": "Utiliser TestablePositionManager au lieu de PositionManager legacy",
       "rollout_percentage": 100.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-23T11:11:34.945979",
+      "updated_at": "2026-01-23T13:33:49.341154",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": true,
@@ -14,11 +14,11 @@
     },
     "use_testable_analyzer": {
       "name": "use_testable_analyzer",
-      "enabled": false,
+      "enabled": true,
       "description": "Utiliser TestableAnalyzer au lieu de TechnicalAnalyzer legacy",
-      "rollout_percentage": 0.0,
+      "rollout_percentage": 100.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-23T11:11:32.942061",
+      "updated_at": "2026-01-23T13:33:49.342153",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": true,
@@ -46,6 +46,18 @@
       "environment": "all",
       "dependencies": [],
       "rollback_on_error": false,
+      "max_error_rate": 0.05
+    },
+    "use_testable_scanner": {
+      "name": "use_testable_scanner",
+      "enabled": true,
+      "description": "Utiliser TestableScannerOrchestrator au lieu de ScalabilityScanner legacy",
+      "rollout_percentage": 100.0,
+      "created_at": "2026-01-23T12:38:34.678325",
+      "updated_at": "2026-01-23T13:33:22.136808",
+      "environment": "development",
+      "dependencies": [],
+      "rollback_on_error": true,
       "max_error_rate": 0.05
     },
     "comparison_mode": {
@@ -126,6 +138,24 @@
           "new_percentage": 0,
           "reason": "Baseline establishment",
           "timestamp": "2026-01-23T11:11:32.942061"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 75.0,
+          "reason": "",
+          "timestamp": "2026-01-23T12:38:34.679324"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 90.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T13:33:49.341653"
         }
       ],
       "success_rate": 1.0,
@@ -207,5 +237,5 @@
     }
   },
   "rollback_history": [],
-  "last_saved": "2026-01-23T11:11:34.945979"
+  "last_saved": "2026-01-23T13:33:49.342153"
 }

@@ -30,6 +30,66 @@ class TestablePositionValidator(IPositionValidator):
         self.validation_rules = self._init_validation_rules()
         logger.info("✅ TestablePositionValidator initialisé")
     
+    def validate_position(self, position_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Interface method pour compatibilité avec les tests
+        
+        Args:
+            position_data: Données de position à valider
+            
+        Returns:
+            Dict contenant le résultat de validation
+        """
+        try:
+            # Validation basique des champs requis
+            symbol = position_data.get('symbol', '')
+            quantity = position_data.get('quantity', 0)
+            entry_price = position_data.get('entry_price', 0)
+            direction = position_data.get('direction', '')
+            
+            errors = []
+            warnings = []
+            
+            # Validations simples
+            if not symbol or len(symbol) < 3:
+                errors.append("Symbol manquant ou invalide")
+            
+            if quantity <= 0:
+                errors.append("Quantité doit être positive")
+                
+            if entry_price <= 0:
+                errors.append("Prix d'entrée doit être positif")
+                
+            if direction not in ['LONG', 'SHORT']:
+                errors.append("Direction doit être LONG ou SHORT")
+            
+            # Déterminer le niveau de risque
+            risk_level = 'LOW'
+            if quantity > 1000:
+                risk_level = 'MEDIUM'
+                warnings.append("Quantité élevée")
+            if quantity > 10000:
+                risk_level = 'HIGH'
+                warnings.append("Quantité très élevée")
+            
+            is_valid = len(errors) == 0
+            
+            return {
+                'is_valid': is_valid,
+                'validation_errors': errors,
+                'warnings': warnings,
+                'risk_level': risk_level
+            }
+            
+        except Exception as e:
+            logger.error(f"Erreur validation position: {e}")
+            return {
+                'is_valid': False,
+                'validation_errors': [f"Erreur validation: {e}"],
+                'warnings': [],
+                'risk_level': 'HIGH'
+            }
+    
     def validate_setup(self, setup: Dict[str, Any]) -> ValidationResult:
         """
         Valide la configuration complète d'un trade

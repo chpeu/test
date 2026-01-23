@@ -68,17 +68,17 @@ class FeatureFlagsManager:
         default_flags = {
             'use_testable_position_manager': FeatureFlagConfig(
                 name='use_testable_position_manager',
-                enabled=False,
+                enabled=True,
                 description='Utiliser TestablePositionManager au lieu de PositionManager legacy',
-                rollout_percentage=0.0,
+                rollout_percentage=75.0,
                 environment='development'
             ),
             
             'use_testable_analyzer': FeatureFlagConfig(
                 name='use_testable_analyzer',
-                enabled=False,
+                enabled=True,
                 description='Utiliser TestableAnalyzer au lieu de TechnicalAnalyzer legacy',
-                rollout_percentage=0.0,
+                rollout_percentage=50.0,
                 environment='development'
             ),
             
@@ -98,6 +98,14 @@ class FeatureFlagsManager:
                 rollout_percentage=100.0,
                 environment='all',
                 rollback_on_error=False
+            ),
+            
+            'use_testable_scanner': FeatureFlagConfig(
+                name='use_testable_scanner',
+                enabled=True,
+                description='Utiliser TestableScannerOrchestrator au lieu de ScalabilityScanner legacy',
+                rollout_percentage=25.0,
+                environment='development'
             ),
             
             'comparison_mode': FeatureFlagConfig(
@@ -363,6 +371,10 @@ class FeatureFlagsManager:
         except Exception as e:
             logger.error(f"Update metrics failed: {e}")
     
+    def get_flag(self, flag_name: str) -> Optional[FeatureFlagConfig]:
+        """Obtenir configuration d'un flag"""
+        return self.flags.get(flag_name)
+    
     def get_flag_status(self, flag_name: str) -> Dict[str, Any]:
         """Obtenir statut complet d'un flag"""
         try:
@@ -445,19 +457,20 @@ class FeatureFlagsManager:
             logger.error(f"Load config failed: {e}")
             # Garder defaults en cas d'erreur
     
-    def _track_flag_usage(self, flag_name: str, is_enabled: bool, user_id: str):
-        """Tracker utilisation flag pour métriques"""
-        if flag_name not in self.metrics:
-            self.metrics[flag_name] = {'usage_count': 0, 'enabled_count': 0}
-        
-        self.metrics[flag_name]['usage_count'] += 1
-        if is_enabled:
-            self.metrics[flag_name]['enabled_count'] += 1
-        
-        # Calculer taux activation
-        usage = self.metrics[flag_name]['usage_count']
-        enabled = self.metrics[flag_name]['enabled_count']
-        self.metrics[flag_name]['activation_rate'] = enabled / usage if usage > 0 else 0
+    def _track_flag_usage(self, flag_name: str, is_enabled: bool, user_id: str = None):
+        """Tracker utilisation des flags pour métriques"""
+        try:
+            # Update usage metrics
+            if hasattr(self, '_usage_metrics'):
+                if flag_name not in self._usage_metrics:
+                    self._usage_metrics[flag_name] = {'checks': 0, 'enabled_count': 0}
+                
+                self._usage_metrics[flag_name]['checks'] += 1
+                if is_enabled:
+                    self._usage_metrics[flag_name]['enabled_count'] += 1
+                    
+        except Exception as e:
+            logger.error(f"Update metrics failed: {e}")
     
     def _track_flag_change(self, flag_name: str, old_state: bool, new_state: bool, 
                            old_percentage: float, new_percentage: float, reason: str = ""):

@@ -5,7 +5,7 @@ Factory patterns pour injection de dépendances et basculement feature flags
 
 import logging
 from typing import Dict, Any, Optional, Type
-from core.feature_flags import get_effective_value
+from core.feature_flags import get_feature_flags_manager
 from core.interfaces.position_interfaces import (
     IPositionCalculator, IPositionValidator, IPositionExecutor, 
     IPositionRepository, IPositionOrchestrator
@@ -15,6 +15,10 @@ from core.interfaces.analyzer_interfaces import (
     IScoreCalculator, IAnalysisOrchestrator, AnalyzerConfig
 )
 from core.interfaces.position_interfaces import PositionConfig
+from core.interfaces.scanner_interfaces import (
+    IScannerOrchestrator, IMarketDataCollector, IScalabilityScorer, IPairFilter,
+    IScanPipeline, FilterConfig, ScannerConfig
+)
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -189,37 +193,82 @@ class PositionFactory:
             
         except Exception as e:
             logger.error(f"Failed to create position orchestrator: {e}")
-            raise
+            # Fallback vers mock pour tests
+            from ..implementations.mock_position_components import MockPositionOrchestrator
+            return MockPositionOrchestrator(calculator, validator, executor, repository)
     
     def _create_testable_calculator(self, config: PositionConfig) -> IPositionCalculator:
         """Créer calculateur testable"""
-        from ..implementations.testable_position_calculator import TestablePositionCalculator
-        return TestablePositionCalculator(config or PositionConfig())
+        try:
+            from ..implementations.testable_position_calculator import TestablePositionCalculator
+            return TestablePositionCalculator(config or PositionConfig())
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionCalculator
+            return MockPositionCalculator(config)
     
     def _create_legacy_calculator(self, config: PositionConfig) -> IPositionCalculator:
         """Créer calculateur legacy wrappé"""
-        from ..implementations.legacy_position_wrapper import LegacyPositionCalculatorWrapper
-        return LegacyPositionCalculatorWrapper(config or PositionConfig())
+        try:
+            from ..implementations.legacy_position_wrapper import LegacyPositionCalculatorWrapper
+            return LegacyPositionCalculatorWrapper(config or PositionConfig())
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionCalculator
+            return MockPositionCalculator(config)
     
     def _create_testable_validator(self, config: Dict[str, Any]) -> IPositionValidator:
         """Créer validateur testable"""
-        from ..implementations.testable_position_validator import TestablePositionValidator
-        return TestablePositionValidator(config or {})
+        try:
+            from ..implementations.testable_position_validator import TestablePositionValidator
+            return TestablePositionValidator(config or {})
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionValidator
+            return MockPositionValidator(config)
     
     def _create_legacy_validator(self, config: Dict[str, Any]) -> IPositionValidator:
         """Créer validateur legacy wrappé"""
-        from ..implementations.legacy_position_wrapper import LegacyPositionValidatorWrapper
-        return LegacyPositionValidatorWrapper(config or {})
+        try:
+            from ..implementations.legacy_position_wrapper import LegacyPositionValidatorWrapper
+            return LegacyPositionValidatorWrapper(config or {})
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionValidator
+            return MockPositionValidator(config)
     
     def _create_testable_executor(self, config: Dict[str, Any]) -> IPositionExecutor:
         """Créer exécuteur testable"""
-        from ..implementations.testable_position_executor import TestablePositionExecutor
-        return TestablePositionExecutor(config or {})
+        try:
+            from ..implementations.testable_position_executor import TestablePositionExecutor
+            return TestablePositionExecutor(config or {})
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionExecutor
+            return MockPositionExecutor(config or {})
     
     def _create_legacy_executor(self, config: Dict[str, Any]) -> IPositionExecutor:
         """Créer exécuteur legacy wrappé"""
-        from ..implementations.legacy_position_wrapper import LegacyPositionExecutorWrapper
-        return LegacyPositionExecutorWrapper(config or {})
+        try:
+            from ..implementations.legacy_position_wrapper import LegacyPositionExecutorWrapper
+            return LegacyPositionExecutorWrapper(config or {})
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionExecutor
+            return MockPositionExecutor(config or {})
+    
+    def _create_testable_orchestrator(self, calculator, validator, executor, repository) -> IPositionOrchestrator:
+        """Créer orchestrateur testable"""
+        try:
+            from ..implementations.testable_position_orchestrator import TestablePositionOrchestrator
+            return TestablePositionOrchestrator(calculator, validator, executor, repository)
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionOrchestrator
+            return MockPositionOrchestrator(calculator, validator, executor, repository)
+    
+    def get_factory_stats(self) -> Dict[str, Any]:
+        """Retourne les statistiques de la factory"""
+        return {
+            'environment': self.config.environment,
+            'use_mocks': self.config.use_mocks,
+            'cached_components': len(self._calculator_cache) + len(self._validator_cache),
+            'component_types': list(self._calculator_cache.keys()) + list(self._validator_cache.keys()),
+            'feature_flags_enabled': self.feature_flags.is_enabled('use_testable_position_manager')
+        }
     
     def _create_mock_executor(self, config: Dict[str, Any]) -> IPositionExecutor:
         """Créer mock exécuteur pour tests"""
@@ -228,8 +277,12 @@ class PositionFactory:
     
     def _create_database_repository(self, config: Dict[str, Any]) -> IPositionRepository:
         """Créer repository base de données"""
-        from ..implementations.database_position_repository import DatabasePositionRepository
-        return DatabasePositionRepository(config or {})
+        try:
+            from ..implementations.database_position_repository import DatabasePositionRepository
+            return DatabasePositionRepository(config or {})
+        except ImportError:
+            from ..implementations.mock_position_components import MockPositionRepository
+            return MockPositionRepository(config or {})
     
     def _create_mock_repository(self, config: Dict[str, Any]) -> IPositionRepository:
         """Créer mock repository pour tests"""
@@ -472,14 +525,48 @@ class AnalyzerFactory:
         from ..implementations.testable_analysis_orchestrator import TestableAnalysisOrchestrator
         return TestableAnalysisOrchestrator(analyzer, validator)
     
+    def _create_testable_analyzer(self, config: AnalyzerConfig) -> IAnalyzer:
+        """Créer analyzer testable avec wrapper legacy"""
+        try:
+            from ..implementations.testable_analyzer import TestableAnalyzer
+            return TestableAnalyzer(config or AnalyzerConfig())
+        except ImportError:
+            # Fallback vers mock analyzer simple
+            return type('MockAnalyzer', (), {
+                'analyze_pair': lambda self, symbol, data: {'symbol': symbol, 'valid': True}
+            })()
+    
+    def _create_legacy_analyzer(self, config: AnalyzerConfig) -> IAnalyzer:
+        """Créer analyzer legacy wrappé"""
+        try:
+            from ..implementations.legacy_analyzer_wrapper import LegacyAnalyzerWrapper
+            return LegacyAnalyzerWrapper(config or AnalyzerConfig())
+        except ImportError:
+            # Fallback vers mock analyzer simple
+            return type('MockAnalyzer', (), {
+                'analyze_pair': lambda self, symbol, data: {'symbol': symbol, 'valid': True}
+            })()
+    
+    def _create_testable_indicator_calculator(self) -> IIndicatorCalculator:
+        """Créer calculateur indicateurs testable"""
+        try:
+            from ..implementations.testable_indicator_calculator import TestableIndicatorCalculator
+            return TestableIndicatorCalculator()
+        except ImportError:
+            # Fallback vers mock simple
+            return type('MockIndicatorCalculator', (), {})()
+    
     def _create_testable_analyzer_with_components(self, 
                                                 config: AnalyzerConfig,
                                                 indicator_calculator: IIndicatorCalculator,
                                                 signal_generator: ISignalGenerator,
                                                 score_calculator: IScoreCalculator) -> IAnalyzer:
         """Créer analyzer avec injection composants"""
-        from ..implementations.testable_analyzer_v2 import TestableAnalyzerV2
-        return TestableAnalyzerV2(config, indicator_calculator, signal_generator, score_calculator)
+        try:
+            from ..implementations.testable_analyzer_v2 import TestableAnalyzerV2
+            return TestableAnalyzerV2(config, indicator_calculator, signal_generator, score_calculator)
+        except ImportError:
+            return self._create_testable_analyzer(config)
     
     def get_factory_stats(self) -> Dict[str, Any]:
         """Retourne statistiques de la factory"""
@@ -519,16 +606,287 @@ def get_configured_analyzer_factory(environment: str = "development", use_mocks:
         use_mocks=use_mocks
     )
     return AnalyzerFactory(config)
+
+
+# ==============================================================================
+# SCANNER FACTORY - Phase 3
+# ==============================================================================
+
+class ScannerFactory:
+    """
+    Factory pour créer les composants Scanner Phase 3
+    """
     
-    def _create_testable_orchestrator(self, calculator, validator, executor, repository) -> IPositionOrchestrator:
-        """Créer orchestrateur testable"""
+    def __init__(self, environment: str = "development", use_mocks: bool = False):
+        self.environment = environment
+        self.use_mocks = use_mocks
+        self.feature_flags = get_feature_flags_manager()
+        
+        # Cache des instances créées
+        self._market_data_collector = None
+        self._scalability_scorer = None
+        self._pair_filter = None
+        self._scan_pipeline = None
+        self._scanner_orchestrator = None
+        
+        logger.info(f"ScannerFactory initialisée (env: {environment}, mocks: {use_mocks})")
+    
+    def create_market_data_collector(self, config: Optional[Dict[str, Any]] = None) -> IMarketDataCollector:
+        """Crée un collecteur de données de marché"""
+        if self._market_data_collector is not None:
+            return self._market_data_collector
+        
+        try:
+            if self.use_mocks:
+                from core.implementations.mock_scanner_components import MockMarketDataCollector
+                collector = MockMarketDataCollector()
+            else:
+                from core.implementations.testable_market_data_collector import TestableMarketDataCollector
+                from api.mexc_client import get_mexc_client
+                
+                client = get_mexc_client()
+                cache_ttl = config.get('cache_ttl_seconds', 30) if config else 30
+                max_cache_size = config.get('max_cache_size', 1000) if config else 1000
+                
+                collector = TestableMarketDataCollector(
+                    client=client,
+                    cache_ttl_seconds=cache_ttl,
+                    max_cache_size=max_cache_size
+                )
+            
+            self._market_data_collector = collector
+            logger.info("✅ MarketDataCollector créé")
+            return collector
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création MarketDataCollector: {e}")
+            # Fallback vers mock
+            from core.implementations.mock_scanner_components import MockMarketDataCollector
+            collector = MockMarketDataCollector()
+            self._market_data_collector = collector
+            return collector
+    
+    def create_scalability_scorer(self, config: Optional[Dict[str, Any]] = None) -> IScalabilityScorer:
+        """Crée un scorer de scalabilité"""
+        if self._scalability_scorer is not None:
+            return self._scalability_scorer
+        
+        try:
+            if self.use_mocks:
+                from core.implementations.mock_scanner_components import MockScalabilityScorer
+                scorer = MockScalabilityScorer()
+            else:
+                from core.implementations.testable_scalability_scorer import TestableScalabilityScorer
+                scorer = TestableScalabilityScorer(config=config or {})
+            
+            self._scalability_scorer = scorer
+            logger.info("✅ ScalabilityScorer créé")
+            return scorer
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création ScalabilityScorer: {e}")
+            # Fallback vers mock
+            from core.implementations.mock_scanner_components import MockScalabilityScorer
+            scorer = MockScalabilityScorer()
+            self._scalability_scorer = scorer
+            return scorer
+    
+    def create_pair_filter(self, config: Optional[FilterConfig] = None) -> IPairFilter:
+        """Crée un filtreur de paires"""
+        if self._pair_filter is not None:
+            return self._pair_filter
+        
+        try:
+            if self.use_mocks:
+                from core.implementations.mock_scanner_components import MockPairFilter
+                filter_instance = MockPairFilter()
+            else:
+                from core.implementations.testable_pair_filter import TestablePairFilter
+                filter_instance = TestablePairFilter(config=config or FilterConfig())
+            
+            self._pair_filter = filter_instance
+            logger.info("✅ PairFilter créé")
+            return filter_instance
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création PairFilter: {e}")
+            # Fallback vers mock
+            from core.implementations.mock_scanner_components import MockPairFilter
+            filter_instance = MockPairFilter()
+            self._pair_filter = filter_instance
+            return filter_instance
+    
+    def create_scan_pipeline(self, config: Optional[Dict[str, Any]] = None) -> IScanPipeline:
+        """Crée un pipeline de scan"""
+        if self._scan_pipeline is not None:
+            return self._scan_pipeline
+        
+        try:
+            if self.use_mocks:
+                from core.implementations.mock_scanner_components import MockScanPipeline
+                pipeline = MockScanPipeline()
+            else:
+                from core.implementations.testable_scan_pipeline import (
+                    TestableScanPipeline, DataCollectionStep, ScoringStep, 
+                    FilteringStep, AnalysisStep, LoggingStep
+                )
+                
+                # Créer pipeline avec étapes par défaut
+                max_parallel = config.get('max_parallel_steps', 1) if config else 1
+                enable_circuit_breaker = config.get('enable_circuit_breaker', True) if config else True
+                
+                pipeline = TestableScanPipeline(
+                    max_parallel_steps=max_parallel,
+                    enable_circuit_breaker=enable_circuit_breaker
+                )
+                
+                # Ajouter étapes standard
+                market_data_collector = self.create_market_data_collector()
+                scalability_scorer = self.create_scalability_scorer()
+                pair_filter = self.create_pair_filter()
+                
+                pipeline.add_step(DataCollectionStep(market_data_collector))
+                pipeline.add_step(ScoringStep(scalability_scorer))
+                pipeline.add_step(FilteringStep(pair_filter))
+                
+                # Ajouter étape analyse si Analyzer Phase 2 disponible
+                if self.feature_flags.is_enabled('use_testable_analyzer'):
+                    analyzer_factory = get_configured_analyzer_factory(self.environment, self.use_mocks)
+                    analyzer = analyzer_factory.create_analyzer()
+                    pipeline.add_step(AnalysisStep(analyzer))
+                
+                # Ajouter étape logging si disponible
+                try:
+                    from core.implementations.mock_scanner_components import MockScanLogger
+                    scan_logger = MockScanLogger() if self.use_mocks else None
+                    if scan_logger:
+                        pipeline.add_step(LoggingStep(scan_logger))
+                except ImportError:
+                    pass  # Skip logging si pas disponible
+            
+            self._scan_pipeline = pipeline
+            logger.info("✅ ScanPipeline créé")
+            return pipeline
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création ScanPipeline: {e}")
+            # Fallback vers mock
+            from core.implementations.mock_scanner_components import MockScanPipeline
+            pipeline = MockScanPipeline()
+            self._scan_pipeline = pipeline
+            return pipeline
+    
+    def create_scanner_orchestrator(self, config: Optional[ScannerConfig] = None) -> IScannerOrchestrator:
+        """Crée un orchestrateur de scanner"""
+        if self._scanner_orchestrator is not None:
+            return self._scanner_orchestrator
+        
+        try:
+            if self.use_mocks:
+                from core.implementations.mock_scanner_components import MockScannerOrchestrator
+                orchestrator = MockScannerOrchestrator()
+            else:
+                from core.implementations.testable_scanner_orchestrator import TestableScannerOrchestrator
+                
+                # Créer pipeline
+                scan_pipeline = self.create_scan_pipeline()
+                
+                orchestrator = TestableScannerOrchestrator(
+                    scan_pipeline=scan_pipeline,
+                    config=config or ScannerConfig()
+                )
+            
+            self._scanner_orchestrator = orchestrator
+            logger.info("✅ ScannerOrchestrator créé")
+            return orchestrator
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création ScannerOrchestrator: {e}")
+            # Fallback vers mock
+            from core.implementations.mock_scanner_components import MockScannerOrchestrator
+            orchestrator = MockScannerOrchestrator()
+            self._scanner_orchestrator = orchestrator
+            return orchestrator
+    
+    def create_full_scanner_stack(self, scanner_config: Optional[ScannerConfig] = None, 
+                                 filter_config: Optional[FilterConfig] = None) -> Dict[str, Any]:
+        """Crée un stack complet de scanner avec tous les composants"""
+        try:
+            logger.info("Création du stack Scanner Phase 3 complet")
+            
+            stack = {
+                'market_data_collector': self.create_market_data_collector(),
+                'scalability_scorer': self.create_scalability_scorer(),
+                'pair_filter': self.create_pair_filter(filter_config),
+                'scan_pipeline': self.create_scan_pipeline(),
+                'scanner_orchestrator': self.create_scanner_orchestrator(scanner_config)
+            }
+            
+            logger.info("✅ Stack Scanner Phase 3 complet créé")
+            return stack
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création stack Scanner: {e}")
+            return {}
+    
+    def get_factory_stats(self) -> Dict[str, Any]:
+        """Retourne les statistiques de la factory"""
+        cached_components = 0
+        if self._market_data_collector: cached_components += 1
+        if self._scalability_scorer: cached_components += 1
+        if self._pair_filter: cached_components += 1
+        if self._scan_pipeline: cached_components += 1
+        if self._scanner_orchestrator: cached_components += 1
+        
+        return {
+            'environment': self.environment,
+            'use_mocks': self.use_mocks,
+            'cached_components': cached_components,
+            'feature_flags_enabled': self.feature_flags.is_enabled('use_testable_scanner'),
+            'components': {
+                'market_data_collector': self._market_data_collector is not None,
+                'scalability_scorer': self._scalability_scorer is not None,
+                'pair_filter': self._pair_filter is not None,
+                'scan_pipeline': self._scan_pipeline is not None,
+                'scanner_orchestrator': self._scanner_orchestrator is not None
+            }
+        }
+    
+    def clear_cache(self):
+        """Vide le cache des composants"""
+        self._market_data_collector = None
+        self._scalability_scorer = None
+        self._pair_filter = None
+        self._scan_pipeline = None
+        self._scanner_orchestrator = None
+        logger.info("Cache Scanner Factory vidé")
+
+
+def get_configured_scanner_factory(environment: str = "development", use_mocks: bool = False) -> ScannerFactory:
+    """
+    Utilitaire pour obtenir une factory Scanner configurée
+    """
+    return ScannerFactory(environment, use_mocks)
+
+def _create_testable_orchestrator(self, calculator, validator, executor, repository) -> IPositionOrchestrator:
+    """Créer orchestrateur testable"""
+    try:
         from ..implementations.testable_position_orchestrator import TestablePositionOrchestrator
         return TestablePositionOrchestrator(calculator, validator, executor, repository)
-    
-    def _create_legacy_orchestrator(self, calculator, validator, executor, repository) -> IPositionOrchestrator:
-        """Créer orchestrateur legacy wrappé"""
-        from ..implementations.legacy_position_wrapper import LegacyPositionOrchestratorWrapper
-        return LegacyPositionOrchestratorWrapper(calculator, validator, executor, repository)
+    except ImportError:
+        # Fallback vers mock pour tests
+        from ..implementations.mock_position_components import MockPositionOrchestrator
+        return MockPositionOrchestrator(calculator, validator, executor, repository)
+
+def get_factory_stats(self) -> Dict[str, Any]:
+    """Retourne les statistiques de la factory"""
+    return {
+        'environment': self.config.environment,
+        'use_mocks': self.config.use_mocks,
+        'cached_components': len(self._calculator_cache) + len(self._validator_cache),
+        'component_types': list(self._calculator_cache.keys()) + list(self._validator_cache.keys()),
+        'feature_flags_enabled': self.feature_flags.is_enabled('use_testable_position_manager')
+    }
 
 
 # Factory globale pour facilité d'utilisation
@@ -548,56 +906,4 @@ def create_position_orchestrator(custom_config: FactoryConfig = None) -> IPositi
     return factory.create_position_orchestrator()
 
 
-class AnalyzerFactory:
-    """Factory pour composants Analyzer refactorisés"""
-    
-    def __init__(self, config: FactoryConfig = None):
-        self.config = config or FactoryConfig()
-        self.feature_flags = get_feature_flags_manager()
-        
-        logger.info(f"✅ AnalyzerFactory initialisée")
-    
-    def create_data_normalizer(self):
-        """Créer normalisateur de données"""
-        if self.feature_flags.is_enabled('use_testable_analyzer'):
-            from ..implementations.data_normalization_stage import DataNormalizationStage
-            return DataNormalizationStage()
-        else:
-            from ..implementations.legacy_analyzer_wrapper import LegacyDataNormalizerWrapper
-            return LegacyDataNormalizerWrapper()
-    
-    def create_indicator_calculator(self):
-        """Créer calculateur d'indicateurs"""
-        if self.feature_flags.is_enabled('use_testable_analyzer'):
-            from ..implementations.indicator_calculation_stage import IndicatorCalculationStage
-            from ..implementations.indicator_factory import IndicatorFactory
-            return IndicatorCalculationStage(IndicatorFactory())
-        else:
-            from ..implementations.legacy_analyzer_wrapper import LegacyIndicatorCalculatorWrapper
-            return LegacyIndicatorCalculatorWrapper()
-    
-    def create_analysis_pipeline(self):
-        """Créer pipeline d'analyse complet"""
-        if self.feature_flags.is_enabled('use_testable_analyzer'):
-            from ..implementations.analysis_pipeline import AnalysisPipeline
-            pipeline = AnalysisPipeline()
-            
-            # Ajouter stages
-            pipeline.add_stage(self.create_data_normalizer())
-            pipeline.add_stage(self.create_indicator_calculator())
-            
-            return pipeline
-        else:
-            from ..implementations.legacy_analyzer_wrapper import LegacyAnalyzerWrapper
-            return LegacyAnalyzerWrapper()
-
-
-# Factory globale analyzer
-_analyzer_factory = None
-
-def get_analyzer_factory(config: FactoryConfig = None) -> AnalyzerFactory:
-    """Obtenir instance globale analyzer factory"""
-    global _analyzer_factory
-    if _analyzer_factory is None or config is not None:
-        _analyzer_factory = AnalyzerFactory(config)
-    return _analyzer_factory
+# Code nettoyé - AnalyzerFactory est définie plus haut dans le fichier

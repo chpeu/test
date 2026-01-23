@@ -362,6 +362,9 @@ class AnalyzerConfig:
     analysis_timeout_ms: int = 5000
     batch_timeout_ms: int = 30000
     
+    # Mode test pour coverage
+    test_mode: bool = False
+    
     def __post_init__(self):
         if self.ema_periods is None:
             self.ema_periods = [20, 50, 200]

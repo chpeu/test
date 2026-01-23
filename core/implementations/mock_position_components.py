@@ -9,7 +9,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from ..interfaces.position_interfaces import (
-    IPositionExecutor, IPositionRepository, PositionStatus
+    IPositionCalculator, IPositionValidator, IPositionExecutor, 
+    IPositionRepository, IPositionOrchestrator, PositionStatus
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,230 @@ class MockPositionExecutor(IPositionExecutor):
         self.execution_count = 0
         
         logger.info("✅ MockPositionExecutor initialisé")
+    
+    async def open_position(self, setup: Dict[str, Any], position_size) -> Dict[str, Any]:
+        """Mock ouverture position"""
+        self.execution_count += 1
+        position_id = f"mock_pos_{self.execution_count}"
+        
+        # Simuler succès/échec
+        success = random.random() < self.success_rate
+        
+        if success:
+            # Simuler slippage
+            entry_price = setup.get('entry_price', 100.0)
+            slipped_price = entry_price * (1 + random.uniform(-self.slippage_rate, self.slippage_rate))
+            
+            self.executed_positions[position_id] = {
+                'symbol': setup.get('symbol'),
+                'direction': setup.get('direction'),
+                'size': position_size,
+                'entry_price': slipped_price,
+                'timestamp': datetime.utcnow()
+            }
+            
+            return {
+                'success': True,
+                'position_id': position_id,
+                'execution_price': slipped_price,
+                'size': position_size,
+                'slippage_pct': abs(slipped_price - entry_price) / entry_price * 100
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Mock execution failure',
+                'position_id': None
+            }
+    
+    async def close_position(self, position_id: str, close_reason: str = "Manual") -> Dict[str, Any]:
+        """Mock fermeture position"""
+        if position_id not in self.executed_positions:
+            return {
+                'success': False,
+                'error': 'Position not found',
+                'position_id': position_id
+            }
+        
+        position = self.executed_positions[position_id]
+        
+        # Simuler PnL
+        entry_price = position['entry_price']
+        close_price = entry_price * random.uniform(0.98, 1.02)  # -2% à +2%
+        pnl = (close_price - entry_price) / entry_price * position['size']
+        
+        # Supprimer de positions actives
+        del self.executed_positions[position_id]
+        
+        return {
+            'success': True,
+            'position_id': position_id,
+            'close_price': close_price,
+            'pnl': pnl,
+            'close_reason': close_reason,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    
+    async def update_position(self, position_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock mise à jour position"""
+        if position_id not in self.executed_positions:
+            return {
+                'success': False,
+                'error': 'Position not found'
+            }
+        
+        # Simuler mise à jour
+        self.executed_positions[position_id].update(updates)
+        
+        return {
+            'success': True,
+            'position_id': position_id,
+            'updated_fields': list(updates.keys())
+        }
+
+
+class MockPositionCalculator(IPositionCalculator):
+    """Mock calculator pour tests"""
+    
+    def __init__(self, config=None):
+        self.config = config or {}
+        self.calculation_count = 0
+    
+    def calculate_position_size(self, position_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock calcul position size"""
+        self.calculation_count += 1
+        
+        # Mock calculation basique
+        entry_price = position_data.get('entry_price', 100.0)
+        quantity = position_data.get('quantity', 100)
+        leverage = position_data.get('leverage', 10)
+        
+        position_size = (quantity * entry_price) / leverage
+        
+        return {
+            'position_size': position_size,
+            'margin_required': position_size,
+            'leverage_used': leverage,
+            'risk_percent': 2.0,
+            'stop_loss_price': entry_price * 0.98,
+            'take_profit_price': entry_price * 1.04
+        }
+    
+    def calculate_risk_metrics(self, position_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock calcul métriques risque"""
+        return {
+            'max_loss_usdt': 50.0,
+            'risk_reward_ratio': 2.0,
+            'position_score': 0.75
+        }
+
+
+class MockPositionValidator(IPositionValidator):
+    """Mock validator pour tests"""
+    
+    def __init__(self, config=None):
+        self.config = config or {}
+        self.validation_count = 0
+    
+    def validate_position(self, position_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock validation position"""
+        self.validation_count += 1
+        
+        # Mock validation - accepter la plupart
+        symbol = position_data.get('symbol', '')
+        quantity = position_data.get('quantity', 0)
+        
+        is_valid = len(symbol) > 0 and quantity > 0
+        
+        return {
+            'is_valid': is_valid,
+            'validation_errors': [] if is_valid else ['Invalid symbol or quantity'],
+            'warnings': [],
+            'risk_level': 'LOW'
+        }
+    
+    def validate_risk_limits(self, position_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock validation limites risque"""
+        return {
+            'within_limits': True,
+            'risk_utilization': 0.3,
+            'max_position_size': 1000.0
+        }
+
+
+class MockPositionOrchestrator(IPositionOrchestrator):
+    """Mock orchestrator pour tests"""
+    
+    def __init__(self, calculator=None, validator=None, executor=None, repository=None):
+        self.calculator = calculator or MockPositionCalculator()
+        self.validator = validator or MockPositionValidator()
+        self.executor = executor or MockPositionExecutor({})
+        self.repository = repository or MockPositionRepository({})
+        
+        self.orchestration_count = 0
+    
+    def orchestrate_position_opening(self, setup_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock orchestration ouverture position"""
+        self.orchestration_count += 1
+        
+        # 1. Calculer position
+        calc_result = self.calculator.calculate_position_size(setup_data)
+        
+        # 2. Valider position
+        validation_result = self.validator.validate_position(setup_data)
+        
+        if not validation_result.get('is_valid'):
+            return {
+                'success': False,
+                'error': 'Position validation failed',
+                'validation_errors': validation_result.get('validation_errors', [])
+            }
+        
+        # 3. Mock exécution
+        return {
+            'success': True,
+            'position_id': f"mock_pos_{self.orchestration_count}",
+            'position_size': calc_result.get('position_size'),
+            'execution_price': setup_data.get('entry_price'),
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    
+    def orchestrate_position_closing(self, position_id: str, close_reason: str = "Manual") -> Dict[str, Any]:
+        """Mock orchestration fermeture position"""
+        return {
+            'success': True,
+            'position_id': position_id,
+            'close_reason': close_reason,
+            'pnl': 25.50,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    
+    def process_trade_request(self, trade_request: Dict[str, Any]) -> Dict[str, Any]:
+        """Mock traitement demande de trade"""
+        return {
+            'success': True,
+            'trade_id': f"mock_trade_{self.orchestration_count}",
+            'status': 'processed',
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    
+    def close_all_positions(self, reason: str = "Mass close") -> Dict[str, Any]:
+        """Mock fermeture toutes positions"""
+        return {
+            'success': True,
+            'closed_count': 0,
+            'reason': reason,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    
+    def get_positions_summary(self) -> Dict[str, Any]:
+        """Mock résumé positions"""
+        return {
+            'total_positions': 0,
+            'active_positions': 0,
+            'total_pnl': 0.0,
+            'summary_timestamp': datetime.utcnow().isoformat()
+        }
     
     async def open_position(self, setup: Dict[str, Any], position_size) -> Dict[str, Any]:
         """
