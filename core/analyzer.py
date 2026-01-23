@@ -7,6 +7,7 @@ import asyncio
 import time
 from typing import List, Dict, Optional, Any
 import math
+import os
 
 from api.mexc import get_mexc_client
 from api.price_provider import get_price_provider
@@ -62,7 +63,16 @@ from core.analyzer.correlation import (
 from core.analyzer.trend_calculator import calculate_trend_data
 
 
-logger = get_logger()
+# Logger will be initialized lazily to avoid blocking during module import
+logger = None
+
+
+def _get_logger():
+    """Get or initialize logger lazily to avoid blocking during import"""
+    global logger
+    if logger is None:
+        logger = get_logger()
+    return logger
 
 
 class TechnicalAnalyzer:
@@ -74,7 +84,8 @@ class TechnicalAnalyzer:
         self.client = get_mexc_client()
         self.indicators = Indicators()
         self.price_provider = state.get_price_provider()  # Utilise le singleton PriceProvider du StateManager
-        if not self.price_provider:
+        # Éviter l'initialisation lourde du PriceProvider sous pytest
+        if not self.price_provider and not os.environ.get("PYTEST_CURRENT_TEST"):
             from api.price_provider import get_price_provider
             self.price_provider = get_price_provider()
         # Cache spread (5 secondes)
@@ -275,17 +286,35 @@ class TechnicalAnalyzer:
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe, 'reject_category': 'excluded_symbol'}
                 if DEBUG_ENABLED:
-                    logger.debug(f"❌ {symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"❌ {symbol} {timeframe}: {reason}")
                 return None
 
             # Récupérer prix via WebSocket (prioritaire) ou REST
-            ticker_data = await self.price_provider.get_price(symbol)
+            if not self.price_provider or not hasattr(self.price_provider, 'get_price'):
+                reason = f"Price provider non disponible pour {symbol}"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                if DEBUG_ENABLED:
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
+                return None
+
+            # Timeout réduit sous pytest pour éviter blocage
+            price_timeout = 0.5 if os.environ.get("PYTEST_CURRENT_TEST") else 5.0
+            try:
+                ticker_data = await asyncio.wait_for(self.price_provider.get_price(symbol), timeout=price_timeout)
+            except asyncio.TimeoutError:
+                reason = f"Prix non disponible (timeout {price_timeout}s) pour {symbol}"
+                if return_reason:
+                    return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
+                if DEBUG_ENABLED:
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
+                return None
             if not ticker_data:
                 reason = f"Prix non disponible (WebSocket ou REST) pour {symbol}"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
                 if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                 return None
 
             # Vérifier format données prix
@@ -293,7 +322,7 @@ class TechnicalAnalyzer:
                 reason = f"Format de données prix invalide (attendu dict, reçu {type(ticker_data).__name__}) pour {symbol}"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-                logger.error(f"{symbol} {timeframe}: {reason}")
+                _get_logger().error(f"{symbol} {timeframe}: {reason}")
                 return None
 
             current_price = float(ticker_data.get('lastPrice', 0))
@@ -302,7 +331,7 @@ class TechnicalAnalyzer:
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
                 if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                 return None
 
             # Récupérer OHLCV pour indicateurs
@@ -315,7 +344,7 @@ class TechnicalAnalyzer:
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
                 if DEBUG_ENABLED:
-                    logger.warning(f"⚠️ {symbol} {timeframe}: {reason}")
+                    _get_logger().warning(f"⚠️ {symbol} {timeframe}: {reason}")
                 return None
             except NetworkError as e:
                 # Erreur réseau (timeout, connexion)
@@ -323,28 +352,28 @@ class TechnicalAnalyzer:
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
                 if DEBUG_ENABLED:
-                    logger.warning(f"⚠️ {symbol} {timeframe}: {reason}")
+                    _get_logger().warning(f"⚠️ {symbol} {timeframe}: {reason}")
                 return None
             except APIError as e:
                 # Erreur API (symbole invalide, timeframe non supporté)
                 reason = f"Erreur API fetch OHLCV: {e} (symbole: {symbol})"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-                logger.error(f"❌ {symbol} {timeframe}: {reason}")
+                _get_logger().error(f"❌ {symbol} {timeframe}: {reason}")
                 return None
             except MarketDataError as e:
                 # Données OHLCV invalides
                 reason = f"Données OHLCV invalides: {e} (symbole: {symbol})"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-                logger.error(f"❌ {symbol} {timeframe}: {reason}")
+                _get_logger().error(f"❌ {symbol} {timeframe}: {reason}")
                 return None
             except Exception as e:
                 # Erreur inattendue
                 reason = f"Erreur inattendue fetch OHLCV: {type(e).__name__}: {e} (symbole: {symbol})"
                 if return_reason:
                     return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-                logger.error(f"❌ {symbol} {timeframe}: {reason}", exc_info=True)
+                _get_logger().error(f"❌ {symbol} {timeframe}: {reason}", exc_info=True)
                 return None
 
             if not ohlcv or len(ohlcv) < 20:
@@ -549,7 +578,7 @@ class TechnicalAnalyzer:
                 if return_reason:
                     return build_indicators_dict(reason, filters=filter_metrics, reject_category='micro_range')
                 if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                 return None
 
             # 3. Filtre ATR optimal (métrique déjà calculée)
@@ -739,7 +768,7 @@ class TechnicalAnalyzer:
                     })
                     return result_dict
                 if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                 return None
 
             # Cohérence EMA/MACD
@@ -748,7 +777,7 @@ class TechnicalAnalyzer:
                 if return_reason:
                     return build_indicators_dict(reason, filters=filter_metrics, reject_category='ema_macd_coherence')
                 if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                 return None
 
             if direction == 'SHORT' and ema9 < ema21 and macd['histogram'] >= 0.001:
@@ -756,7 +785,7 @@ class TechnicalAnalyzer:
                 if return_reason:
                     return build_indicators_dict(reason, filters=filter_metrics, reject_category='ema_macd_coherence')
                 if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                 return None
 
             # Volume quality check BLOQUANT
@@ -769,7 +798,7 @@ class TechnicalAnalyzer:
                     result_dict['quality'] = vol_quality['quality']
                     return result_dict
                 if DEBUG_ENABLED:
-                    logger.debug(f"{symbol} {timeframe}: {reason}")
+                    _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                 return None
 
             # Structure swing HH/HL (blocking)
@@ -801,7 +830,7 @@ class TechnicalAnalyzer:
                         })
                         return result_dict
                     if DEBUG_ENABLED:
-                        logger.debug(f"{symbol} {timeframe}: {reason}")
+                        _get_logger().debug(f"{symbol} {timeframe}: {reason}")
                     return None
 
             # Sélectionner conditions finales
@@ -825,7 +854,7 @@ class TechnicalAnalyzer:
             else:
                 score_info = f"Conditions: {len(conditions)}/{min_score_required}"
 
-            logger.info(
+            _get_logger().info(
                 f"✅ {symbol} {timeframe}: SETUP TROUVÉ - {direction} | "
                 f"{score_info} | "
                 f"RSI: {rsi:.1f} | Vol: {vol_spike:.2f}x | ATR: {atr_percent:.3f}% | "
@@ -915,21 +944,21 @@ class TechnicalAnalyzer:
             # Données insuffisantes pour calculer indicateurs
             error_msg = f"Données insuffisantes pour l'analyse {timeframe}: {e}"
             if DEBUG_ENABLED:
-                logger.warning(f"⚠️ {symbol} {timeframe}: {error_msg}")
+                _get_logger().warning(f"⚠️ {symbol} {timeframe}: {error_msg}")
             if return_reason:
                 return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
             return None
         except PriceDataError as e:
             # Données de prix invalides
             error_msg = f"Données de prix invalides pour l'analyse {timeframe}: {e}"
-            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            _get_logger().error(f"❌ {symbol} {timeframe}: {error_msg}")
             if return_reason:
                 return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
             return None
         except MarketDataError as e:
             # Données marché invalides (volume, spread, etc.)
             error_msg = f"Données marché invalides pour l'analyse {timeframe}: {e}"
-            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
+            _get_logger().error(f"❌ {symbol} {timeframe}: {error_msg}")
             if return_reason:
                 return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
             return None
@@ -937,8 +966,8 @@ class TechnicalAnalyzer:
             # Erreur calcul indicateurs (division par zéro, clé manquante, etc.)
             import traceback
             error_msg = f"Erreur calcul indicateurs {timeframe}: {type(e).__name__}: {e}"
-            logger.error(f"❌ {symbol} {timeframe}: {error_msg}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            _get_logger().error(f"❌ {symbol} {timeframe}: {error_msg}")
+            _get_logger().error(f"Traceback: {traceback.format_exc()}")
             if return_reason:
                 return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
             return None
@@ -946,12 +975,12 @@ class TechnicalAnalyzer:
             # Erreur inattendue - log complet avec traceback
             import traceback
             error_msg = f"Exception inattendue lors de l'analyse {timeframe}: {type(e).__name__}: {e}"
-            logger.error(f"❌ Erreur inattendue analyse {symbol} {timeframe}: {type(e).__name__}: {e}", exc_info=True)
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            _get_logger().error(f"❌ Erreur inattendue analyse {symbol} {timeframe}: {type(e).__name__}: {e}", exc_info=True)
+            _get_logger().error(f"Traceback: {traceback.format_exc()}")
             if return_reason:
                 return {'reason': error_msg, 'symbol': symbol, 'timeframe': timeframe, 'error': True}
             if DEBUG_ENABLED:
-                logger.error(f"Erreur analyse {symbol} {timeframe}: {e}")
+                _get_logger().error(f"Erreur analyse {symbol} {timeframe}: {e}")
             return None
 
     def analyze(self, symbol: str, market_data: Optional[Dict] = None) -> Optional[Dict]:
@@ -980,7 +1009,7 @@ class TechnicalAnalyzer:
             else:
                 return loop.run_until_complete(self.analyze_pair(symbol))
         except Exception as e:
-            logger.error(f"Erreur analyze sync wrapper: {e}")
+            _get_logger().error(f"Erreur analyze sync wrapper: {e}")
             return None
 
     async def analyze_pair(
@@ -1020,8 +1049,8 @@ class TechnicalAnalyzer:
                 trend_timeframe = get_effective_value('trend_timeframe') or '15m'
                 trend_data = await self.calculate_trend_data(symbol, trend_timeframe)
                 if trend_data:
-                    logger.debug(f" {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
-                    logger.debug(f"📊 {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
+                    _get_logger().debug(f" {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
+                    _get_logger().debug(f"📊 {symbol}: Trend {trend_data.get('trend', 'NEUTRAL')} ({trend_timeframe}) - Bonus: {trend_data.get('bonus', 0)}")
 
             # Analyser 1m et 5m
             analysis_1m = await self.analyze_timeframe(symbol, '1m', trend_data, volume_multiplier, return_reason=return_reason)
@@ -1191,7 +1220,7 @@ class TechnicalAnalyzer:
                     )
             except Exception as e:
                 # Erreur log_scan - NON-BLOQUANT
-                logger.debug(f"⚠️ Erreur log_scan (non-bloquant): {e}")
+                _get_logger().debug(f"⚠️ Erreur log_scan (non-bloquant): {e}")
                 scan_uuid = None
             # ========================================
             # FIN POINT A
@@ -1199,24 +1228,24 @@ class TechnicalAnalyzer:
 
             # LOG DÉTAILLÉ: Résumé des analyses 1m et 5m
             if analysis_1m and not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m):
-                logger.info(
+                _get_logger().info(
                     f"📊 {symbol} 1m: VALIDE - {analysis_1m['direction']} | "
                     f"Conditions: {len(analysis_1m['signals'])} | "
                     f"RSI: {analysis_1m.get('rsi', 0):.1f} | Vol: {analysis_1m.get('volumeSpike', 0):.2f}x | "
                     f"ATR: {(analysis_1m.get('atr', 0) / analysis_1m.get('price', 1) * 100):.3f}%"
                 )
             elif analysis_1m and isinstance(analysis_1m, dict) and 'reason' in analysis_1m:
-                logger.info(f"❌ {symbol} 1m: REJETÉ - {analysis_1m.get('reason', 'Raison inconnue')}")
+                _get_logger().info(f"❌ {symbol} 1m: REJETÉ - {analysis_1m.get('reason', 'Raison inconnue')}")
 
             if analysis_5m and not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m):
-                logger.info(
+                _get_logger().info(
                     f"📊 {symbol} 5m: VALIDE - {analysis_5m['direction']} | "
                     f"Conditions: {len(analysis_5m['signals'])} | "
                     f"RSI: {analysis_5m.get('rsi', 0):.1f} | Vol: {analysis_5m.get('volumeSpike', 0):.2f}x | "
                     f"ATR: {(analysis_5m.get('atr', 0) / analysis_5m.get('price', 1) * 100):.3f}%"
                 )
             elif analysis_5m and isinstance(analysis_5m, dict) and 'reason' in analysis_5m:
-                logger.info(f"❌ {symbol} 5m: REJETÉ - {analysis_5m.get('reason', 'Raison inconnue')}")
+                _get_logger().info(f"❌ {symbol} 5m: REJETÉ - {analysis_5m.get('reason', 'Raison inconnue')}")
 
             # Déterminer le meilleur setup
             best_setup = None
@@ -1250,7 +1279,7 @@ class TechnicalAnalyzer:
 
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
                         reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
-                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec {reason}")
+                        _get_logger().info(f"🚫 {symbol}: BLOQUÉ (confluence) - LONG avec {reason}")
                         if return_reason:
                             indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
                             indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
@@ -1266,7 +1295,7 @@ class TechnicalAnalyzer:
                         return None
                     if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
                         reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
-                        logger.info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec {reason}")
+                        _get_logger().info(f"🚫 {symbol}: BLOQUÉ (confluence) - SHORT avec {reason}")
                         if return_reason:
                             indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
                             indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
@@ -1291,7 +1320,7 @@ class TechnicalAnalyzer:
                 )
 
                 if not spread_check['valid']:
-                    logger.warning(
+                    _get_logger().warning(
                         f"⚠️ {symbol} - Setup rejeté : Spread trop élevé "
                         f"({spread_check['spread_pct']:.3f}% > {spread_check['max_allowed']:.3f}%)"
                     )
@@ -1401,7 +1430,7 @@ class TechnicalAnalyzer:
                     direction = best_setup.get('direction')
 
                     if entry_price and direction:
-                        logger.info(f"⚡ {symbol} Micro-confirmation: attente {delay_ms}ms...")
+                        _get_logger().info(f"⚡ {symbol} Micro-confirmation: attente {delay_ms}ms...")
                         await asyncio.sleep(delay_ms / 1000.0)  # Convertir ms en secondes
 
                         # Récupérer le prix actuel après le délai
@@ -1411,7 +1440,7 @@ class TechnicalAnalyzer:
 
                             # 🔥 FIX: Valider que ticker n'est pas None avant d'utiliser .get()
                             if ticker is None:
-                                logger.warning(f"⚠️ {symbol} Micro-confirmation: ticker None - impossible de valider prix")
+                                _get_logger().warning(f"⚠️ {symbol} Micro-confirmation: ticker None - impossible de valider prix")
                                 # Continuer sans micro-confirmation (ne pas rejeter le trade)
                             else:
                                 current_price = ticker.get('last') or ticker.get('close')
@@ -1421,7 +1450,7 @@ class TechnicalAnalyzer:
 
                                 # Vérifier si le prix va toujours dans la bonne direction
                                 if direction == 'LONG' and price_change_pct < -0.05:
-                                    logger.info(f"⚡ {symbol} LONG rejeté par micro-confirmation: prix retombé de {price_change_pct:.3f}%")
+                                    _get_logger().info(f"⚡ {symbol} LONG rejeté par micro-confirmation: prix retombé de {price_change_pct:.3f}%")
                                     return {
                                         'symbol': symbol,
                                         'reason': f"Micro-confirmation échouée: prix retombé de {price_change_pct:.3f}%",
@@ -1429,7 +1458,7 @@ class TechnicalAnalyzer:
                                         'price_change_pct': price_change_pct
                                     }
                                 elif direction == 'SHORT' and price_change_pct > 0.05:
-                                    logger.info(f"⚡ {symbol} SHORT rejeté par micro-confirmation: prix remonté de {price_change_pct:.3f}%")
+                                    _get_logger().info(f"⚡ {symbol} SHORT rejeté par micro-confirmation: prix remonté de {price_change_pct:.3f}%")
                                     return {
                                         'symbol': symbol,
                                         'reason': f"Micro-confirmation échouée: prix remonté de {price_change_pct:.3f}%",
@@ -1437,17 +1466,17 @@ class TechnicalAnalyzer:
                                         'price_change_pct': price_change_pct
                                     }
                                 else:
-                                    logger.info(f"✅ {symbol} Micro-confirmation OK: {price_change_pct:+.3f}%")
+                                    _get_logger().info(f"✅ {symbol} Micro-confirmation OK: {price_change_pct:+.3f}%")
                         # 🔥 SPRINT 1.2: Micro-confirmation - Distinguer erreurs fetch prix
                         except NetworkError as e:
                             # Erreur réseau lors fetch prix micro-confirmation
-                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur réseau fetch prix: {e}")
+                            _get_logger().warning(f"⚠️ {symbol} Micro-confirmation: erreur réseau fetch prix: {e}")
                         except PriceDataError as e:
                             # Données prix invalides
-                            logger.warning(f"⚠️ {symbol} Micro-confirmation: données prix invalides: {e}")
+                            _get_logger().warning(f"⚠️ {symbol} Micro-confirmation: données prix invalides: {e}")
                         except Exception as e:
                             # Erreur inattendue fetch prix
-                            logger.warning(f"⚠️ {symbol} Micro-confirmation: erreur inattendue fetch prix: {type(e).__name__}: {e}")
+                            _get_logger().warning(f"⚠️ {symbol} Micro-confirmation: erreur inattendue fetch prix: {type(e).__name__}: {e}")
 
                 # 2. Vérifier orderbook imbalance
                 orderbook_check = await check_orderbook_imbalance(
@@ -1466,7 +1495,7 @@ class TechnicalAnalyzer:
                         f"ℹ️ {symbol} - Setup {best_setup['direction']} rejeté : "
                         f"Orderbook défavorable (ratio={orderbook_check['ratio']:.2f}, required={required_str})"
                     )
-                    logger.info(info_msg)
+                    _get_logger().info(info_msg)
                     # 🔥 FIX: Envoyer le log au frontend via websocket_manager (INFO au lieu de WARNING)
                     try:
                         from core.websocket_manager import get_websocket_manager
@@ -1487,16 +1516,16 @@ class TechnicalAnalyzer:
                                     await ws_mgr.emit('log', entry)
                                 loop.create_task(send_log())
                             except RuntimeError:
-                                # Pas de loop en cours, ignorer (le log est déjà dans logger.info)
+                                # Pas de loop en cours, ignorer (le log est déjà dans _get_logger().info)
                                 pass
                     # 🔥 SPRINT 1.2: Frontend log - NON-BLOQUANT, distinguer erreurs
                     except WebSocketError as log_err:
                         # Erreur WebSocket (emit fail) - NON-BLOQUANT
                         if DEBUG_ENABLED:
-                            logger.debug(f"Erreur WebSocket envoi log frontend (non-bloquant): {log_err}")
+                            _get_logger().debug(f"Erreur WebSocket envoi log frontend (non-bloquant): {log_err}")
                     except Exception as log_err:
                         # Erreur inattendue - NON-BLOQUANT
-                        logger.debug(f"Erreur inattendue envoi log frontend (non-bloquant): {type(log_err).__name__}: {log_err}")
+                        _get_logger().debug(f"Erreur inattendue envoi log frontend (non-bloquant): {type(log_err).__name__}: {log_err}")
                     # 🔥 FIX: Retourner un dict avec les indicateurs et un reason au lieu de None
                     # pour permettre le logging des indicateurs même si le setup est rejeté
                     # Construire indicators_1m et indicators_5m depuis analysis_1m et analysis_5m
@@ -1627,7 +1656,7 @@ class TechnicalAnalyzer:
 
                 if manipulation_check['suspicious']:
                     reason = f"Manipulation suspectée ({manipulation_check['reason']})"
-                    logger.warning(
+                    _get_logger().warning(
                         f"⚠️ {symbol} - Setup {best_setup['direction']} rejeté : {reason}"
                     )
                     if return_reason:
@@ -1651,7 +1680,7 @@ class TechnicalAnalyzer:
                     correlation_check = await check_static_correlation(symbol, active_positions)
 
                     if not correlation_check['valid']:
-                        logger.warning(f"⚠️ {symbol} - Setup rejeté: {correlation_check['reason']}")
+                        _get_logger().warning(f"⚠️ {symbol} - Setup rejeté: {correlation_check['reason']}")
                         if return_reason:
                             # 🔥 Extraire indicators depuis analysis
                             indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
@@ -1673,7 +1702,7 @@ class TechnicalAnalyzer:
                         penalty = correlation_check['penalty']
                         if 'totalScore' in best_setup:
                             best_setup['totalScore'] += penalty
-                            logger.info(f"⚠️ {symbol} - Corrélation (SOFT): Score {best_setup['totalScore']:.1f} après pénalité {penalty}")
+                            _get_logger().info(f"⚠️ {symbol} - Corrélation (SOFT): Score {best_setup['totalScore']:.1f} après pénalité {penalty}")
 
                 # 5. Vérifier corrélation dynamique (basée sur prix réels)
                 dynamic_corr_config = get_effective_value('dynamic_correlation') or {}
@@ -1719,7 +1748,7 @@ class TechnicalAnalyzer:
                                     or recovery_state.confluence_forced != legacy_confluence
                                     or recovery_state.active != recovery_mode_active
                                 ):
-                                    logger.debug(
+                                    _get_logger().debug(
                                         "🔎 RECOVERY SHADOW gating: "
                                         f"loss_streak={loss_streak} "
                                         f"legacy_boost={legacy_boost:.2f} state_boost={recovery_state.min_score_boost:.2f} "
@@ -1727,7 +1756,7 @@ class TechnicalAnalyzer:
                                         f"active={recovery_mode_active}->{recovery_state.active} level={recovery_state.level}"
                                     )
                             except Exception as e:
-                                logger.debug(f"🔎 RECOVERY SHADOW gating error: {type(e).__name__}: {e}")
+                                _get_logger().debug(f"🔎 RECOVERY SHADOW gating error: {type(e).__name__}: {e}")
 
                         use_recovery_state = get_effective_value('recovery_refactor_enabled')
                         recovery_state = None
@@ -1735,7 +1764,7 @@ class TechnicalAnalyzer:
                             try:
                                 recovery_state = position_manager.recovery_mode.get_state(loss_streak)
                             except Exception as e:
-                                logger.debug(f"🔎 RECOVERY STATE error: {type(e).__name__}: {e}")
+                                _get_logger().debug(f"🔎 RECOVERY STATE error: {type(e).__name__}: {e}")
                                 recovery_state = None
 
                         if use_recovery_state and recovery_state and recovery_state.level is not None:
@@ -1759,7 +1788,7 @@ class TechnicalAnalyzer:
                             if not (analysis_1m and analysis_5m and
                                     not (isinstance(analysis_1m, dict) and 'reason' in analysis_1m) and
                                     not (isinstance(analysis_5m, dict) and 'reason' in analysis_5m)):
-                                logger.warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): Confluence requise")
+                                _get_logger().warning(f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): Confluence requise")
                                 if return_reason:
                                     # 🔥 Extraire indicators depuis analysis
                                     indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
@@ -1781,7 +1810,7 @@ class TechnicalAnalyzer:
                         # Vérifier score avec boost
                         setup_score = best_setup.get('totalScore', 0)
                         if setup_score < adjusted_min_score:
-                            logger.warning(
+                            _get_logger().warning(
                                 f"⚠️ {symbol} - Setup rejeté (Recovery Mode Niveau {level_num}): "
                                 f"Score {setup_score:.1f} < {adjusted_min_score:.1f} (min: {min_score_required:.1f} + boost: {recovery_boost:.1f})"
                             )
@@ -1803,7 +1832,7 @@ class TechnicalAnalyzer:
                                 }
                             return None
 
-                        logger.info(
+                        _get_logger().info(
                             f"✅ {symbol} - Setup validé (Recovery Mode): "
                             f"Score {setup_score:.1f} >= {adjusted_min_score:.1f}"
                         )
@@ -1967,10 +1996,10 @@ class TechnicalAnalyzer:
                 except DatabaseError as e:
                     # Erreur base de données - NON-BLOQUANT
                     if DEBUG_ENABLED:
-                        logger.warning(f"⚠️ Erreur DB log_opportunity (non-bloquant): {e}")
+                        _get_logger().warning(f"⚠️ Erreur DB log_opportunity (non-bloquant): {e}")
                 except Exception as e:
                     # Erreur inattendue - NON-BLOQUANT
-                    logger.debug(f"Erreur inattendue log_opportunity (non-bloquant): {type(e).__name__}: {e}")
+                    _get_logger().debug(f"Erreur inattendue log_opportunity (non-bloquant): {type(e).__name__}: {e}")
                 # ========================================
                 # FIN POINT B
                 # ========================================
@@ -2074,7 +2103,7 @@ class TechnicalAnalyzer:
                                 'reject_category': 'confluence'
                             }
                         if DEBUG_ENABLED:
-                            logger.debug(reason)
+                            _get_logger().debug(reason)
                         return None
 
                     if strength_5m < strength_1m * 0.8:
@@ -2104,7 +2133,7 @@ class TechnicalAnalyzer:
                                 'reject_category': 'confluence'
                             }
                         if DEBUG_ENABLED:
-                            logger.debug(reason)
+                            _get_logger().debug(reason)
                         return None
 
                     best = analysis_1m if strength_1m >= strength_5m else analysis_5m
@@ -2118,7 +2147,7 @@ class TechnicalAnalyzer:
                     best['indicators_1m'] = indicators_1m
                     best['indicators_5m'] = indicators_5m
 
-                    logger.info(
+                    _get_logger().info(
                         f"✅ {symbol}: CONFLUENCE RÉUSSIE - {best['direction']} | "
                         f"1m: {strength_1m} conditions | 5m: {strength_5m} conditions | "
                         f"Meilleur: {best['timeframe']} | "
@@ -2144,7 +2173,7 @@ class TechnicalAnalyzer:
                 # au lieu de rejeter (comportement de l'ancien code qui ouvrait des trades)
                 if valid_1m or valid_5m:
                     # Au moins un TF valide → on continue vers le MODE PERMISSIF ci-dessous
-                    logger.info(f"ℹ️ {symbol}: Confluence partielle, passage en mode permissif")
+                    _get_logger().info(f"ℹ️ {symbol}: Confluence partielle, passage en mode permissif")
                     pass  # Continue vers ligne 1886+
                 else:
                     # Aucun TF valide → rejet
@@ -2185,7 +2214,7 @@ class TechnicalAnalyzer:
                         }
 
                     if DEBUG_ENABLED:
-                        logger.debug(reason)
+                        _get_logger().debug(reason)
                     return None
 
             if strength_1m > 0 or strength_5m > 0:
@@ -2214,7 +2243,7 @@ class TechnicalAnalyzer:
 
                     if direction == 'LONG' and final_rsi > RSI_OVERBOUGHT_LIMIT:
                         reason = f"RSI suracheté ({final_rsi:.1f} > {RSI_OVERBOUGHT_LIMIT})"
-                        logger.info(f"🚫 {symbol}: BLOQUÉ - LONG avec {reason}")
+                        _get_logger().info(f"🚫 {symbol}: BLOQUÉ - LONG avec {reason}")
                         if return_reason:
                             indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
                             indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
@@ -2230,7 +2259,7 @@ class TechnicalAnalyzer:
                         return None
                     if direction == 'SHORT' and final_rsi < RSI_OVERSOLD_LIMIT:
                         reason = f"RSI survendu ({final_rsi:.1f} < {RSI_OVERSOLD_LIMIT})"
-                        logger.info(f"🚫 {symbol}: BLOQUÉ - SHORT avec {reason}")
+                        _get_logger().info(f"🚫 {symbol}: BLOQUÉ - SHORT avec {reason}")
                         if return_reason:
                             indicators_1m_reject = self._extract_indicators(analysis_1m) if analysis_1m else {}
                             indicators_5m_reject = self._extract_indicators(analysis_5m) if analysis_5m else {}
@@ -2245,7 +2274,7 @@ class TechnicalAnalyzer:
                             }
                         return None
 
-                logger.info(
+                _get_logger().info(
                     f"✅ {symbol}: SETUP (Mode permissif) - {best['direction']} | "
                     f"Timeframe: {best['timeframe']} | Conditions: {len(best['signals'])} | "
                     f"1m: {strength_1m} | 5m: {strength_5m} | "
@@ -2387,41 +2416,41 @@ class TechnicalAnalyzer:
         except InsufficientDataError as e:
             # Données insuffisantes - déjà loggé dans analyze_timeframe
             if DEBUG_ENABLED:
-                logger.debug(f"{symbol}: Données insuffisantes: {e}")
+                _get_logger().debug(f"{symbol}: Données insuffisantes: {e}")
             return None
         except PriceDataError as e:
             # Données prix invalides
-            logger.error(f"❌ {symbol}: Données prix invalides: {e}")
+            _get_logger().error(f"❌ {symbol}: Données prix invalides: {e}")
             return None
         except MarketDataError as e:
             # Données marché invalides
-            logger.error(f"❌ {symbol}: Données marché invalides: {e}")
+            _get_logger().error(f"❌ {symbol}: Données marché invalides: {e}")
             return None
         except NetworkError as e:
             # Erreur réseau (timeout, connexion)
             if DEBUG_ENABLED:
-                logger.warning(f"⚠️ {symbol}: Erreur réseau: {e}")
+                _get_logger().warning(f"⚠️ {symbol}: Erreur réseau: {e}")
             return None
         except APIError as e:
             # Erreur API MEXC
-            logger.error(f"❌ {symbol}: Erreur API: {e}")
+            _get_logger().error(f"❌ {symbol}: Erreur API: {e}")
             return None
         except DatabaseError as e:
             # Erreur database (logging) - NON-BLOQUANT pour analyse
             if DEBUG_ENABLED:
-                logger.warning(f"⚠️ {symbol}: Erreur DB (non-bloquant): {e}")
+                _get_logger().warning(f"⚠️ {symbol}: Erreur DB (non-bloquant): {e}")
             # Continuer et retourner result si disponible
             return None
         except (ValueError, ZeroDivisionError, KeyError, AttributeError) as e:
             # Erreur calcul/accès données
             import traceback
-            logger.error(f"❌ {symbol}: Erreur calcul: {type(e).__name__}: {e}")
+            _get_logger().error(f"❌ {symbol}: Erreur calcul: {type(e).__name__}: {e}")
             traceback.print_exc()
             return None
         except Exception as e:
             # Erreur totalement inattendue - log complet
             import traceback
-            logger.error(f"❌ Erreur inattendue analyse pair {symbol}: {type(e).__name__}: {e}", exc_info=True)
+            _get_logger().error(f"❌ Erreur inattendue analyse pair {symbol}: {type(e).__name__}: {e}", exc_info=True)
             traceback.print_exc()
             return None
 

@@ -15,15 +15,22 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from core.position_manager import PositionManager, PositionConfig
 
-# Load TechnicalAnalyzer directly from core.analyzer module file
+# Load TechnicalAnalyzer directly from core.analyzer module file (lazy load to avoid blocking)
 import importlib.util
-spec = importlib.util.spec_from_file_location(
-    "analyzer",
-    os.path.join(os.path.dirname(__file__), '..', 'core', 'analyzer.py')
-)
-analyzer_mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(analyzer_mod)
-TechnicalAnalyzer = analyzer_mod.TechnicalAnalyzer
+analyzer_mod = None
+TechnicalAnalyzer = None
+
+def _load_analyzer_module():
+    """Lazy load analyzer module to avoid blocking at import time"""
+    global analyzer_mod, TechnicalAnalyzer
+    if analyzer_mod is None:
+        spec = importlib.util.spec_from_file_location(
+            "analyzer",
+            os.path.join(os.path.dirname(__file__), '..', 'core', 'analyzer.py')
+        )
+        analyzer_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(analyzer_mod)
+        TechnicalAnalyzer = analyzer_mod.TechnicalAnalyzer
 
 
 # ============================================================================
@@ -501,6 +508,7 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_calculate_trend_data(self, mock_client):
         """Test trend data calculation"""
+        _load_analyzer_module()
         with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client), \
              patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
@@ -515,6 +523,7 @@ class TestTechnicalAnalyzer:
 
     def test_check_volume_quality_good(self):
         """Test volume quality check with good volume"""
+        _load_analyzer_module()
         with patch.object(analyzer_mod, 'get_mexc_client'), \
              patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
@@ -531,6 +540,7 @@ class TestTechnicalAnalyzer:
 
     def test_check_volume_quality_low(self):
         """Test volume quality check with low volume"""
+        _load_analyzer_module()
         with patch.object(analyzer_mod, 'get_mexc_client'), \
              patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
@@ -547,6 +557,7 @@ class TestTechnicalAnalyzer:
 
     def test_calculate_position_size(self):
         """Test position size calculation"""
+        _load_analyzer_module()
         with patch.object(analyzer_mod, 'get_mexc_client'), \
              patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
@@ -568,20 +579,39 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_analyze_timeframe_no_data(self, mock_client):
         """Test analyze_timeframe when no price data available"""
+        # Lazy load analyzer module to avoid blocking at import time
+        _load_analyzer_module()
+        
         mock_client_no_data = AsyncMock()
         mock_client_no_data.fetch_ohlcv = AsyncMock(return_value=[])
 
-        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client_no_data), \
-             patch.object(analyzer_mod, 'get_price_provider') as mock_provider:
-            mock_provider_instance = Mock()
-            mock_provider_instance.get_price = AsyncMock(return_value=None)
-            mock_provider.return_value = mock_provider_instance
+        # Mock price provider
+        mock_provider_instance = Mock()
+        mock_provider_instance.get_price = AsyncMock(return_value=None)
 
-            analyzer = TechnicalAnalyzer()
+        # Mock state manager (retourner directement le price provider mocké)
+        mock_state_manager = Mock()
+        mock_state_manager.get_price_provider.return_value = mock_provider_instance
+        
+        # Mock indicators
+        mock_indicators = Mock()
+
+        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client_no_data), \
+             patch('api.price_provider.get_price_provider', return_value=mock_provider_instance), \
+             patch('core.state_manager.get_state_manager', return_value=mock_state_manager), \
+             patch('core.indicators.Indicators', return_value=mock_indicators), \
+             patch('utils.effective_config.get_effective_value', return_value={}):
+
+            # Bypass __init__ to avoid heavy/async side effects during tests
+            analyzer = TechnicalAnalyzer.__new__(TechnicalAnalyzer)
             analyzer.client = mock_client_no_data
+            analyzer.indicators = mock_indicators
+            analyzer.price_provider = mock_provider_instance
+            analyzer._spread_cache = {}
+            analyzer._orderbook_cache = {}
+            analyzer.correlation_filter = None
 
             result = await analyzer.analyze_timeframe('BTC/USDT', '1m')
-
             assert result is None
 
     @pytest.mark.asyncio

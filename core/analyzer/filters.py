@@ -9,7 +9,16 @@ from utils.logger import get_logger
 from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
 
 
-logger = get_logger()
+# Logger will be initialized lazily to avoid blocking during module import
+logger = None
+
+
+def _get_logger():
+    """Get or initialize logger lazily to avoid blocking during import"""
+    global logger
+    if logger is None:
+        logger = get_logger()
+    return logger
 
 
 def check_volume_filter(
@@ -41,7 +50,7 @@ def check_volume_filter(
     min_vol_ratio = base_min_vol * volume_multiplier
     min_vol_ratio = max(0.4, min(1.5, min_vol_ratio))
 
-    logger.debug(
+    _get_logger().debug(
         f"📊 {symbol} {timeframe}: Volume | "
         f"ATR%: {atr_percent:.3f} | "
         f"Base min_vol: {base_min_vol:.2f}x | "
@@ -57,7 +66,7 @@ def check_volume_filter(
         )
         if return_reason:
             return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-        logger.debug(f"{symbol} {timeframe}: {reason}")
+        _get_logger().debug(f"{symbol} {timeframe}: {reason}")
         return {'rejected': True, 'reason': reason}
 
     return None
@@ -94,7 +103,7 @@ def check_snr_filter(
     snr = abs(price - ema21) / atr if atr > 0 else 0
     snr_threshold = TRADING_CONFIG.get('snr_threshold', 0.3)
 
-    logger.debug(
+    _get_logger().debug(
         f"📊 {symbol} {timeframe}: SNR | "
         f"Price: {price:.6f} | EMA21: {ema21:.6f} | Diff: {abs(price - ema21):.6f} | "
         f"ATR: {atr:.6f} | SNR: {snr:.3f} | Seuil: {snr_threshold}"
@@ -104,7 +113,7 @@ def check_snr_filter(
         reason = f"SNR trop faible: {snr:.3f} < {snr_threshold} (signal plat)"
         if return_reason:
             return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
-        logger.debug(f"{symbol} {timeframe}: {reason}")
+        _get_logger().debug(f"{symbol} {timeframe}: {reason}")
         return {'rejected': True, 'reason': reason}
 
     return None
@@ -145,7 +154,7 @@ def check_breakout_filter(
         if return_reason:
             return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
         if DEBUG_ENABLED:
-            logger.debug(f"{symbol} {timeframe}: {reason}")
+            _get_logger().debug(f"{symbol} {timeframe}: {reason}")
         return {'rejected': True, 'reason': reason}
 
     return None
@@ -186,7 +195,7 @@ def check_wick_filter(
         if return_reason:
             return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
         if DEBUG_ENABLED:
-            logger.debug(f"{symbol} {timeframe}: {reason}")
+            _get_logger().debug(f"{symbol} {timeframe}: {reason}")
         return {'rejected': True, 'reason': reason}
 
     return None
@@ -239,7 +248,7 @@ def check_atr_filter(
         if optimal_atr_max is None: optimal_atr_max = TRADING_CONFIG['optimal_atr_max_5m']
 
     if DEBUG_ENABLED:
-        logger.debug(
+        _get_logger().debug(
             f"🔍 {symbol} {timeframe}: ATR filter thresholds | "
             f"atr={atr_percent:.3f}% | "
             f"effective={optimal_atr_min}-{optimal_atr_max}% | "
@@ -253,7 +262,7 @@ def check_atr_filter(
         if return_reason:
             return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
         if DEBUG_ENABLED:
-            logger.debug(f"{symbol} {timeframe}: {reason}")
+            _get_logger().debug(f"{symbol} {timeframe}: {reason}")
         return {'rejected': True, 'reason': reason}
     
     # 🔥 Check ATR MAX (désactivé si regime selector actif)
@@ -262,7 +271,7 @@ def check_atr_filter(
         if return_reason:
             return {'reason': reason, 'symbol': symbol, 'timeframe': timeframe}
         if DEBUG_ENABLED:
-            logger.debug(f"{symbol} {timeframe}: {reason}")
+            _get_logger().debug(f"{symbol} {timeframe}: {reason}")
         return {'rejected': True, 'reason': reason}
 
     return None

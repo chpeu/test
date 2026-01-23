@@ -57,17 +57,23 @@ class ScalabilityScanner:
         # 🔥 ORDER FLOW: Historique des volumes pour accélération
         self._volume_history: Dict[str, List[float]] = {}
     
-    def calculate_volatility(self, closes: List[float], period: int) -> float:
+    def calculate_volatility(self, data, period: int) -> float:
         """
         Calcul volatilité (écart-type normalisé)
         
         Args:
-            closes: Liste des prix de clôture
+            data: Liste des prix de clôture ou klines [[timestamp, open, high, low, close, volume]]
             period: Période de calcul
             
         Returns:
             Volatilité en %
         """
+        # Extraire les closes si data est une liste de klines
+        if data and isinstance(data[0], (list, tuple)) and len(data[0]) >= 5:
+            closes = [kline[4] for kline in data]  # Close price is at index 4
+        else:
+            closes = data
+        
         if len(closes) < period:
             return 0.0
         

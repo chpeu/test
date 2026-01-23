@@ -8,7 +8,16 @@ from config import TRADING_CONFIG
 from utils.logger import get_logger
 
 
-logger = get_logger()
+# Logger will be initialized lazily to avoid blocking during module import
+logger = None
+
+
+def _get_logger():
+    """Get or initialize logger lazily to avoid blocking during import"""
+    global logger
+    if logger is None:
+        logger = get_logger()
+    return logger
 
 
 async def check_static_correlation(
@@ -73,7 +82,7 @@ async def check_static_correlation(
         if count_in_group >= max_positions:
             penalty = correlation_config.get('penalty_score', -1.5)
             reason = f"Corrélation avec {', '.join(correlated_symbols[:2])} (groupe: {symbol_group})"
-            logger.warning(f"⚠️ {symbol} - Corrélation détectée (SOFT mode): {reason} - Pénalité: {penalty}")
+            _get_logger().warning(f"⚠️ {symbol} - Corrélation détectée (SOFT mode): {reason} - Pénalité: {penalty}")
             return {
                 'valid': True,  # Toujours valide en SOFT mode
                 'reason': reason,
@@ -87,7 +96,7 @@ async def check_static_correlation(
         # HARD mode: Rejeter si max atteint
         if count_in_group >= max_positions:
             reason = f"Corrélation avec {', '.join(correlated_symbols[:2])} (groupe: {symbol_group}, max: {max_positions})"
-            logger.warning(f"⚠️ {symbol} - Setup rejeté (HARD mode): {reason}")
+            _get_logger().warning(f"⚠️ {symbol} - Setup rejeté (HARD mode): {reason}")
             return {
                 'valid': False,
                 'reason': reason,
@@ -143,7 +152,7 @@ def check_dynamic_correlation(
 
         adjusted_score = setup_score + penalty
 
-        logger.warning(
+        _get_logger().warning(
             f"⚠️ {symbol} corrélé dynamiquement avec {corr_check['correlated_with']} "
             f"(corrélation: {corr_check['correlation']:.2f}) - "
             f"Pénalité: {penalty:.2f}, Score: {adjusted_score:.1f}"

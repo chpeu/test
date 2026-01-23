@@ -2360,6 +2360,10 @@ class PositionManager:
                 logger.debug(f"Erreur envoi notification position_opened: {e}")
 
         return self.active_position
+    
+    def _calculate_position_size(self, setup: Dict, capital: float = 1000.0) -> float:
+        """Méthode privée pour compatibilité tests - délègue vers calculate_position_size"""
+        return self.calculate_position_size(setup, capital)
 
     def calculate_position_size(
         self,

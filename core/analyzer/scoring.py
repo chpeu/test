@@ -15,7 +15,16 @@ except ImportError:
     HAS_EFFECTIVE_CONFIG = False
 
 
-logger = get_logger()
+# Logger will be initialized lazily to avoid blocking during module import
+logger = None
+
+
+def _get_logger():
+    """Get or initialize logger lazily to avoid blocking during import"""
+    global logger
+    if logger is None:
+        logger = get_logger()
+    return logger
 
 
 def calculate_weighted_score(condition_types: List[str]) -> float:
@@ -68,7 +77,7 @@ def get_min_score_required(
         if base_min_score != 7.5:
             # Valeur modifiée par l'utilisateur → utiliser directement sans ajustement ADX
             min_score_required = base_min_score
-            logger.debug(f"📊 get_min_score_required: Utilisation valeur personnalisée {min_score_required:.1f} (ADX={adx_value:.1f}, ajustement ADX désactivé)")
+            _get_logger().debug(f"📊 get_min_score_required: Utilisation valeur personnalisée {min_score_required:.1f} (ADX={adx_value:.1f}, ajustement ADX désactivé)")
         else:
             # Valeur par défaut → appliquer ajustements ADX
             if adx_value > 30:
@@ -94,7 +103,7 @@ def get_min_score_required(
             if pair_scorer.enabled:
                 pair_adjustment = pair_scorer.get_score_adjustment(symbol)
         except Exception as e:
-            logger.debug(f"⚠️ Pair scorer non disponible: {e}")
+            _get_logger().debug(f"⚠️ Pair scorer non disponible: {e}")
     
     # Score effectif = base - pair_adjustment (bonus réduit le min, malus l'augmente)
     effective_min_score = min_score_required - pair_adjustment
@@ -133,7 +142,7 @@ def apply_trend_bonus(
             elif temp_direction == 'SHORT' and trend_data.get('trend') == 'BEARISH':
                 trend_score_bonus = bonus_value / divisor
         else:
-            logger.warning(
+            _get_logger().warning(
                 f"⚠️ trend_data invalide (attendu dict, reçu {type(trend_data).__name__})"
             )
 

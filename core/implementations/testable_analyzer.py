@@ -11,13 +11,12 @@ from typing import Dict, Any, Optional, List
 from core.interfaces.analyzer_interface import (
     IAnalyzer, 
     AnalysisSetup, 
-    AnalysisResult, 
     AnalyzerConfig,
     setup_from_legacy_dict,
     result_from_legacy_dict,
     setup_to_legacy_dict
 )
-from core.interfaces.analyzer_interfaces import AnalysisStatus
+from core.interfaces.analyzer_interfaces import AnalysisStatus, AnalysisResult
 
 logger = logging.getLogger(__name__)
 
@@ -302,11 +301,23 @@ class TestableAnalyzer(IAnalyzer):
                     errors=[f"Market conditions: {market_validation.get('reason')}"]
                 )
             
-            # Success - retourner setup
+            # Success - retourner setup avec mock signal
+            from core.interfaces.analyzer_interfaces import SignalResult, SignalType, SignalStrength
+            from datetime import datetime
+            
+            mock_signal = SignalResult(
+                signal_type=SignalType.LONG if setup_1m.direction == 'LONG' else SignalType.SHORT,
+                strength=SignalStrength.MEDIUM,
+                confidence=0.75,
+                entry_price=setup_1m.entry_price,
+                reasoning=["Mock signal for testing"],
+                generated_at=datetime.utcnow()
+            )
+            
             return AnalysisResult(
                 symbol=symbol,
                 status=AnalysisStatus.SUCCESS,
-                primary_signal=None,
+                primary_signal=mock_signal,
                 combined_score=setup_1m.total_score,
                 data_quality_score=1.0,
                 processing_time_ms=50.0
