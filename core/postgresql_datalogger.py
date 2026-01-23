@@ -2250,22 +2250,30 @@ class PostgreSQLDataLogger:
             # Déterminer le régime de volatilité
             market_volatility_state = None
             if entry_atr_pct_1m is not None:
-                if entry_atr_pct_1m < 0.2:
-                    market_volatility_state = 'LOW'
-                elif entry_atr_pct_1m < 0.5:
-                    market_volatility_state = 'MEDIUM'
-                else:
-                    market_volatility_state = 'HIGH'
+                try:
+                    atr_val = float(entry_atr_pct_1m)
+                    if atr_val < 0.2:
+                        market_volatility_state = 'LOW'
+                    elif atr_val < 0.5:
+                        market_volatility_state = 'MEDIUM'
+                    else:
+                        market_volatility_state = 'HIGH'
+                except (ValueError, TypeError):
+                    pass  # Garder None si conversion échoue
             
             # Déterminer le régime de trend
             market_trend_state = None
             if entry_adx is not None:
-                if entry_adx < 20:
-                    market_trend_state = 'RANGING'
-                elif entry_adx < 30:
-                    market_trend_state = 'TRENDING_WEAK'
-                else:
-                    market_trend_state = 'TRENDING_STRONG'
+                try:
+                    adx_val = float(entry_adx)
+                    if adx_val < 20:
+                        market_trend_state = 'RANGING'
+                    elif adx_val < 30:
+                        market_trend_state = 'TRENDING_WEAK'
+                    else:
+                        market_trend_state = 'TRENDING_STRONG'
+                except (ValueError, TypeError):
+                    pass  # Garder None si conversion échoue
             
             # Niveaux calculés - 🔥 FIX: Utiliser les bonnes clés (sl_price/tp_price)
             entry_price = _extract_numeric_value(trade_data.get('entry_price'))

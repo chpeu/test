@@ -1789,8 +1789,8 @@ class PositionManager:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
                 size_amount = size / entry if entry else 0.0
 
-                # FIX: Récupérer le levier depuis ConfigHelper
-                configured_leverage = api_params.get('default_leverage', 1)  # FIX: 1x par défaut
+                # FIX: Récupérer le levier depuis effective_config (déjà utilisé plus haut)
+                configured_leverage = get_effective_value('default_leverage') or 1  # FIX: 1x par défaut
 
                 # VÉRIFICATION LEVIER: Logger pour debug
                 logger.info(

@@ -1,0 +1,211 @@
+{
+  "flags": {
+    "use_testable_position_manager": {
+      "name": "use_testable_position_manager",
+      "enabled": true,
+      "description": "Utiliser TestablePositionManager au lieu de PositionManager legacy",
+      "rollout_percentage": 100.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:34.945979",
+      "environment": "development",
+      "dependencies": [],
+      "rollback_on_error": true,
+      "max_error_rate": 0.05
+    },
+    "use_testable_analyzer": {
+      "name": "use_testable_analyzer",
+      "enabled": false,
+      "description": "Utiliser TestableAnalyzer au lieu de TechnicalAnalyzer legacy",
+      "rollout_percentage": 0.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:32.942061",
+      "environment": "development",
+      "dependencies": [],
+      "rollback_on_error": true,
+      "max_error_rate": 0.05
+    },
+    "enable_coverage_tests": {
+      "name": "enable_coverage_tests",
+      "enabled": true,
+      "description": "Activer les tests de couverture avanc\u00e9s",
+      "rollout_percentage": 100.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:04.890291",
+      "environment": "development",
+      "dependencies": [],
+      "rollback_on_error": false,
+      "max_error_rate": 0.05
+    },
+    "safe_rollback_mode": {
+      "name": "safe_rollback_mode",
+      "enabled": true,
+      "description": "Mode rollback automatique activ\u00e9",
+      "rollout_percentage": 100.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:04.890291",
+      "environment": "all",
+      "dependencies": [],
+      "rollback_on_error": false,
+      "max_error_rate": 0.05
+    },
+    "comparison_mode": {
+      "name": "comparison_mode",
+      "enabled": true,
+      "description": "Comparer r\u00e9sultats legacy vs nouveau",
+      "rollout_percentage": 100.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:32.943064",
+      "environment": "development",
+      "dependencies": [],
+      "rollback_on_error": false,
+      "max_error_rate": 0.05
+    },
+    "ab_testing_enabled": {
+      "name": "ab_testing_enabled",
+      "enabled": false,
+      "description": "Activer A/B testing progressif",
+      "rollout_percentage": 0.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:04.890291",
+      "environment": "staging",
+      "dependencies": [],
+      "rollback_on_error": true,
+      "max_error_rate": 0.02
+    },
+    "monitoring_enabled": {
+      "name": "monitoring_enabled",
+      "enabled": true,
+      "description": "Monitoring des m\u00e9triques et performances",
+      "rollout_percentage": 100.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:32.944074",
+      "environment": "all",
+      "dependencies": [],
+      "rollback_on_error": false,
+      "max_error_rate": 0.05
+    },
+    "debug_logging": {
+      "name": "debug_logging",
+      "enabled": true,
+      "description": "Logging debug d\u00e9taill\u00e9 pour refactorisation",
+      "rollout_percentage": 100.0,
+      "created_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-01-23T11:11:32.944577",
+      "environment": "development",
+      "dependencies": [],
+      "rollback_on_error": false,
+      "max_error_rate": 0.05
+    }
+  },
+  "metrics": {
+    "use_testable_position_manager": {
+      "changes": [
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T11:11:04.893314"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": true,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "Test cleanup",
+          "timestamp": "2026-01-23T11:11:05.026706"
+        },
+        {
+          "flag_name": "use_testable_position_manager",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "Baseline establishment",
+          "timestamp": "2026-01-23T11:11:32.942061"
+        }
+      ],
+      "success_rate": 1.0,
+      "error_rate": 0.0,
+      "avg_processing_time": 0.113059,
+      "last_request_id": "req_20260123_111104_0",
+      "last_success": true,
+      "last_updated": "2026-01-23T11:11:05.024108"
+    },
+    "comparison_mode": {
+      "changes": [
+        {
+          "flag_name": "comparison_mode",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T11:11:04.895326"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T11:11:32.944074"
+        }
+      ]
+    },
+    "monitoring_enabled": {
+      "changes": [
+        {
+          "flag_name": "monitoring_enabled",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T11:11:04.897846"
+        },
+        {
+          "flag_name": "monitoring_enabled",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T11:11:32.944577"
+        }
+      ]
+    },
+    "use_testable_analyzer": {
+      "changes": [
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "Baseline establishment",
+          "timestamp": "2026-01-23T11:11:32.943064"
+        }
+      ]
+    },
+    "debug_logging": {
+      "changes": [
+        {
+          "flag_name": "debug_logging",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-23T11:11:32.945577"
+        }
+      ]
+    }
+  },
+  "rollback_history": [],
+  "last_saved": "2026-01-23T11:11:34.945979"
+}

@@ -107,15 +107,29 @@ class WebSocketLogHandler(logging.Handler):
                     try:
                         # Appel direct via ws_manager.emit pour cohérence de format
                         if self.ws_manager:
-                            await self.ws_manager.emit('log', entry)
+                            await asyncio.wait_for(self.ws_manager.emit('log', entry), timeout=1.0)
                     except asyncio.CancelledError:
                         pass  # Normal pendant shutdown
+                    except asyncio.TimeoutError:
+                        pass  # Timeout, ignorer
                     except Exception:
                         pass  # Ignorer toutes les erreurs
                 
-                # Créer la tâche
-                task = loop.create_task(send_log_direct())
-                task.add_done_callback(lambda t: t.cancelled() or t.exception() is None or None)
+                # Créer la tâche avec un nom pour le debugging
+                task = loop.create_task(send_log_direct(), name=f"websocket_log_{id(entry)}")
+                
+                # Meilleure gestion du cleanup des tâches
+                def cleanup_task(t):
+                    try:
+                        if not t.cancelled():
+                            exc = t.exception()
+                            if exc and not isinstance(exc, (asyncio.CancelledError, asyncio.TimeoutError)):
+                                # Ne pas logger ici pour éviter les boucles infinies
+                                pass
+                    except Exception:
+                        pass
+                
+                task.add_done_callback(cleanup_task)
             except RuntimeError:
                 # Pas de loop en cours, ignorer
                 pass
