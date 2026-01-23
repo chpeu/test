@@ -159,6 +159,10 @@ class FeatureFlagsManager:
             bool: True si flag activé
         """
         try:
+            if not self.flags:
+                logger.warning(f"Feature flags not initialized for {flag_name}")
+                return False
+                
             flag = self.flags.get(flag_name)
             if not flag:
                 logger.warning(f"Flag inconnu: {flag_name}")

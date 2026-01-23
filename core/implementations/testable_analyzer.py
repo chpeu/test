@@ -17,6 +17,7 @@ from core.interfaces.analyzer_interface import (
     result_from_legacy_dict,
     setup_to_legacy_dict
 )
+from core.interfaces.analyzer_interfaces import AnalysisStatus
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,11 @@ class TestableAnalyzer(IAnalyzer):
     - ZÉRO RISQUE - code existant inchangé
     """
     
-    def __init__(self, config: AnalyzerConfig, legacy_analyzer=None, dependencies: Optional[Dict[str, Any]] = None):
-        self.config = config
+    def __init__(self, config: Optional[AnalyzerConfig] = None, legacy_analyzer=None, dependencies: Optional[Dict[str, Any]] = None):
+        from ..interfaces.analyzer_interfaces import AnalyzerConfig as DefaultConfig
+        self.config = config or DefaultConfig()
         self.dependencies = dependencies or {}
-        self.test_mode = config.test_mode
+        self.test_mode = getattr(self.config, 'test_mode', True)
         
         # Analyzer legacy pour délégation
         self._legacy_analyzer = legacy_analyzer
@@ -605,6 +607,56 @@ class TestableAnalyzer(IAnalyzer):
             'loss_streak': 0
         }
 
+    def batch_analyze(self, symbols: list, timeframes: list = None) -> Dict[str, Any]:
+        """
+        Analyser plusieurs symbols en batch pour compatibility tests
+        
+        Args:
+            symbols: Liste des symbols à analyser
+            timeframes: Timeframes à utiliser (optionnel)
+            
+        Returns:
+            Dict avec résultats pour chaque symbol
+        """
+        results = {}
+        for symbol in symbols:
+            try:
+                # Mock result
+                results[symbol] = {
+                    'success': True,
+                    'setup': {
+                        'symbol': symbol,
+                        'direction': 'LONG' if hash(symbol) % 2 == 0 else 'SHORT',
+                        'score': 75.0,
+                        'entry_price': 45000.0,
+                        'timeframe': '1m'
+                    }
+                }
+            except Exception as e:
+                results[symbol] = {
+                    'success': False,
+                    'error': str(e)
+                }
+        return results
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """
+        Retourner statistiques de performance pour compatibility tests
+        
+        Returns:
+            Dict avec métriques de performance
+        """
+        from datetime import datetime
+        return {
+            'total_analyses': getattr(self, 'analysis_count', 0),
+            'success_rate': 0.85,
+            'avg_processing_time_ms': 45.0,
+            'cache_hit_rate': 0.60,
+            'memory_usage_mb': 128.5,
+            'errors_count': 2,
+            'last_analysis': datetime.utcnow().isoformat()
+        }
+
 
 # =============================================================================
 # MOCKS POUR DÉPENDANCES ANALYZER
@@ -677,56 +729,6 @@ class MockRegimeSelector:
     def get_adjustment(self, symbol: str, market_data: Dict):
         """Mock get adjustment"""
         return {'score_adjustment': 0.0}
-
-
-    def batch_analyze(self, symbols: list, timeframes: list = None) -> Dict[str, Any]:
-        """
-        Analyser plusieurs symbols en batch pour compatibility tests
-        
-        Args:
-            symbols: Liste des symbols à analyser
-            timeframes: Timeframes à utiliser (optionnel)
-            
-        Returns:
-            Dict avec résultats pour chaque symbol
-        """
-        results = {}
-        for symbol in symbols:
-            try:
-                # Mock result
-                results[symbol] = {
-                    'success': True,
-                    'setup': {
-                        'symbol': symbol,
-                        'direction': 'LONG' if hash(symbol) % 2 == 0 else 'SHORT',
-                        'score': 75.0,
-                        'entry_price': 45000.0,
-                        'timeframe': '1m'
-                    }
-                }
-            except Exception as e:
-                results[symbol] = {
-                    'success': False,
-                    'error': str(e)
-                }
-        return results
-    
-    def get_performance_stats(self) -> Dict[str, Any]:
-        """
-        Retourner statistiques de performance pour compatibility tests
-        
-        Returns:
-            Dict avec métriques de performance
-        """
-        return {
-            'total_analyses': getattr(self, 'analysis_count', 0),
-            'success_rate': 0.85,
-            'avg_processing_time_ms': 45.0,
-            'cache_hit_rate': 0.60,
-            'memory_usage_mb': 128.5,
-            'errors_count': 2,
-            'last_analysis': datetime.utcnow().isoformat()
-        }
 
 
 class MockCorrelationFilter:
