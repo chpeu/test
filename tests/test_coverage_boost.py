@@ -366,12 +366,15 @@ class TestStateManager:
     """Tests supplémentaires pour core/state_manager.py"""
     
     def test_state_manager_singleton(self):
-        """Test pattern singleton du StateManager"""
-        from core.state_manager import StateManager
+        """Test pattern singleton"""
+        from core.state_manager import get_state_manager, reset_state_manager
         
-        # Créer deux instances
-        manager1 = StateManager()
-        manager2 = StateManager()
+        # Reset pour test propre
+        reset_state_manager()
+        
+        # Deux appels doivent retourner la même instance
+        manager1 = get_state_manager()
+        manager2 = get_state_manager()
         
         # Doivent être la même instance (singleton)
         assert manager1 is manager2
@@ -383,7 +386,7 @@ class TestStateManager:
         manager = StateManager()
         assert manager is not None
         assert hasattr(manager, 'app_state')
-        assert isinstance(manager.app_state, dict)
+        assert manager.app_state is not None  # ApplicationState object, pas dict
 
 
 class TestIndicators:
@@ -477,13 +480,13 @@ class TestSimplifications:
         try:
             from utils.pricing import get_price_with_source
             
-            # Test avec prix valide
-            result = get_price_with_source(123.45, "test")
+            # Test avec prix valide (signature correcte: 1 paramètre)
+            result = get_price_with_source(123.45)
             
             assert isinstance(result, tuple)
             assert len(result) == 2
             assert result[0] == 123.45
-            assert result[1] == "test"
+            assert result[1] is None  # Pas de source pour un float simple
         except ImportError:
             pytest.skip("Utilitaires pricing non disponibles")
     

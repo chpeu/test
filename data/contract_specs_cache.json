@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769178839.1082637,
+  "timestamp": 1769181093.0301404,
   "specs": {
     "CHZ_USDT": {
       "symbol": "CHZ_USDT",
@@ -40,6 +40,16 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "PENGU_USDT": {
+      "symbol": "PENGU_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2500000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-06,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
     }
   }
 }

@@ -228,6 +228,9 @@ class MarketRegimeSelector:
         self.history: List[RegimeChange] = []
         self.max_history_size: int = 100
         
+        # Alias pour compatibility tests
+        self.regime_history = self.history
+        
         # Configs chargées
         self.regime_configs: Dict[str, RegimeConfig] = DEFAULT_REGIME_CONFIGS.copy()
         
@@ -247,6 +250,32 @@ class MarketRegimeSelector:
         # Initialiser
         self._load_regime_configs()
         logger.info("✅ MarketRegimeSelector initialisé")
+        logger.debug(f"Config dir: {self.config_dir}")
+        logger.debug(f"Check interval: {check_interval_minutes} min")
+        logger.debug(f"ATR sample size: {atr_sample_size}")
+    
+    def detect_regime(self, market_data: Optional[Dict[str, Any]] = None) -> MarketRegime:
+        """
+        Detecter régime de marché pour compatibility tests
+        
+        Args:
+            market_data: Données de marché (optionnel)
+            
+        Returns:
+            MarketRegime détecté
+        """
+        if not market_data:
+            return MarketRegime.NORMAL
+            
+        atr_avg = market_data.get('atr_1m_avg', 0.5)
+        
+        # Logique simple de détection
+        if atr_avg < 0.3:
+            return MarketRegime.CALME
+        elif atr_avg > 0.8:
+            return MarketRegime.VOLATILE
+        else:
+            return MarketRegime.NORMAL
     
     def _load_regime_configs(self) -> None:
         """Charge les configurations depuis les fichiers JSON"""

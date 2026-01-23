@@ -13,8 +13,21 @@ if os.path.exists(_analyzer_file):
     _analyzer_module = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(_analyzer_module)
     TechnicalAnalyzer = _analyzer_module.TechnicalAnalyzer
+    
+    # Ajouter les méthodes manquantes pour compatibility tests
+    def get_mexc_client():
+        """Wrapper pour compatibilité tests"""
+        try:
+            from api.mexc import get_mexc_client as _get_mexc_client
+            return _get_mexc_client()
+        except ImportError:
+            return None
+    
 else:
     TechnicalAnalyzer = None
+    
+    def get_mexc_client():
+        return None
 
 from .filters import (
     check_volume_filter,
@@ -76,6 +89,7 @@ from .advanced_filters import (
 __all__ = [
     # Main Class
     'TechnicalAnalyzer',
+    'get_mexc_client',
     # Filters
     'check_volume_filter',
     'check_snr_filter',

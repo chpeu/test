@@ -14,6 +14,30 @@ class PnLCalculator:
     """Calculateur de Profit & Loss"""
 
     @staticmethod
+    def calculate_unrealized_pnl(
+        entry_price: float,
+        current_price: float,
+        position_size: float,
+        direction: str
+    ) -> float:
+        """
+        Calculer PnL non réalisé en USDT pour compatibility tests
+        
+        Args:
+            entry_price: Prix d'entrée
+            current_price: Prix actuel
+            position_size: Taille position
+            direction: 'LONG' ou 'SHORT'
+            
+        Returns:
+            PnL en USDT
+        """
+        if direction == 'LONG':
+            return (current_price - entry_price) * position_size
+        else:  # SHORT
+            return (entry_price - current_price) * position_size
+
+    @staticmethod
     def calculate_pnl_percent(
         entry: float,
         current_price: float,
@@ -39,6 +63,15 @@ class PnLCalculator:
             pnl = -pnl
 
         return pnl
+
+    @staticmethod
+    def calculate_pnl_percentage(
+        entry: float,
+        current_price: float,
+        direction: str
+    ) -> float:
+        """Alias pour calculate_pnl_percent pour compatibility tests"""
+        return PnLCalculator.calculate_pnl_percent(entry, current_price, direction)
 
     @staticmethod
     def calculate_pnl_usdt(

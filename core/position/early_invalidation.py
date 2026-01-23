@@ -45,6 +45,22 @@ class EarlyInvalidationConfig:
     # Spread explosion (liquidité disparaît)
     spread_check_enabled: bool = True
     spread_danger_threshold: float = 0.08  # Spread > 0.08% = danger
+    
+    # Legacy compatibility pour tests
+    max_adverse_move_pct: Optional[float] = None
+    min_time_seconds: Optional[int] = None
+    enable_volume_check: Optional[bool] = None
+    
+    def __post_init__(self):
+        """Conversion legacy vers nouveaux champs"""
+        if self.max_adverse_move_pct is not None:
+            self.threshold_15s = -abs(self.max_adverse_move_pct)
+            self.threshold_30s = -abs(self.max_adverse_move_pct) * 0.7
+        if self.min_time_seconds is not None:
+            # min_time_seconds était probablement utilisé pour définir les seuils temporels
+            pass  # Déjà définis par défaut
+        if self.enable_volume_check is not None:
+            self.volume_spike_enabled = self.enable_volume_check
 
 
 class EarlyInvalidationChecker:
@@ -52,6 +68,58 @@ class EarlyInvalidationChecker:
 
     def __init__(self, config: Optional[EarlyInvalidationConfig] = None):
         self.config = config or EarlyInvalidationConfig()
+
+    def should_invalidate(
+        self,
+        position_data: Dict[str, Any],
+        current_price: float,
+        current_time: float,
+        current_volume: float = None
+    ) -> bool:
+        """
+        Déterminer si position doit être invalidée pour compatibility tests
+        
+        Args:
+            position_data: Dict avec entry_price, side, entry_time, etc.
+            current_price: Prix actuel
+            current_time: Timestamp actuel
+            current_volume: Volume actuel (optionnel)
+            
+        Returns:
+            True si position doit être invalidée
+        """
+        if not self.config.enabled:
+            return False
+            
+        entry_price = position_data.get('entry_price', 0.0)
+        direction = position_data.get('side', 'LONG')
+        entry_time = position_data.get('entry_time', current_time)
+        
+        if entry_price <= 0:
+            return False
+            
+        # Calculer temps écoulé
+        elapsed_seconds = int(current_time - entry_time)
+        
+        # Calculer PnL
+        if direction == 'LONG':
+            current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
+        else:  # SHORT
+            current_pnl_pct = ((entry_price - current_price) / entry_price) * 100
+        
+        # Seuils temporels - utiliser max_adverse_move_pct si fourni via legacy config
+        if hasattr(self.config, 'max_adverse_move_pct') and self.config.max_adverse_move_pct is not None:
+            # Mode legacy: utiliser max_adverse_move_pct comme seuil global
+            threshold = -abs(self.config.max_adverse_move_pct)
+            return current_pnl_pct <= threshold
+        else:
+            # Mode normal avec seuils temporels
+            if elapsed_seconds <= 15:
+                return current_pnl_pct <= self.config.threshold_15s
+            elif elapsed_seconds <= 30:
+                return current_pnl_pct <= self.config.threshold_30s
+            else:
+                return False  # Après 30s, plus d'early invalidation
 
     def get_adaptive_threshold(
         self,

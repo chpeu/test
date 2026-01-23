@@ -153,6 +153,12 @@ class StateManager:
         logger.info("✅ StateManager initialisé")
 
     # ==================== Application State ====================
+    
+    @property 
+    def app_state(self) -> ApplicationState:
+        """Get application state (for test compatibility)"""
+        with self._thread_lock:
+            return self._app_state
 
     @property
     def is_scanning(self) -> bool:

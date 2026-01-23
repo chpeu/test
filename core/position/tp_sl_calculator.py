@@ -28,6 +28,19 @@ class TPSLConfig:
     # Streaks (pour ajustement dynamique)
     win_streak: int = 0
     loss_streak: int = 0
+    
+    # Legacy compatibility pour tests
+    tp_multiplier: Optional[float] = None
+    sl_multiplier: Optional[float] = None
+    use_atr: bool = False
+    atr_value: Optional[float] = None
+    
+    def __post_init__(self):
+        """Conversion legacy vers nouveaux champs"""
+        if self.tp_multiplier is not None:
+            self.atr_mult_tp = self.tp_multiplier
+        if self.sl_multiplier is not None:
+            self.atr_mult_sl = self.sl_multiplier
 
 
 def calculate_fixed_levels(
