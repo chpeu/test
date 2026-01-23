@@ -235,10 +235,27 @@ class HybridPriceProvider:
             # Connecter
             await self.ws_manager.start()
 
+            # 🔥 FIX: Vérifier que la connexion WebSocket est établie avant souscription
+            if not self.ws_manager or not self.ws_manager._connected:
+                logger.error("❌ WebSocket Manager non connecté - impossible de s'abonner aux symboles")
+                self.use_websocket = False
+                self.ws_manager = None
+                return
+
             # S'abonner aux symboles
             for symbol in symbols:
-                await self.ws_manager.subscribe_ticker(symbol)
-                await asyncio.sleep(0.1)  # Petit délai
+                try:
+                    # 🔥 FIX: Vérification supplémentaire avant chaque souscription
+                    if self.ws_manager and self.ws_manager._connected:
+                        await self.ws_manager.subscribe_ticker(symbol)
+                        await asyncio.sleep(0.1)  # Petit délai
+                    else:
+                        logger.warning(f"⚠️ WebSocket déconnecté pendant souscription de {symbol}")
+                        break
+                except Exception as sub_e:
+                    logger.error(f"❌ Erreur souscription {symbol}: {sub_e}")
+                    # Continue avec les autres symboles
+                    continue
 
             logger.info(f"✅ WebSocket démarré pour {len(symbols)} symboles")
             
@@ -311,14 +328,18 @@ class HybridPriceProvider:
                 logger.info(f"🔄 Réabonnement WebSocket: {len(symbols_to_subscribe)} symboles")
 
             # Réabonner avec vérification que le WebSocket est prêt
-            if not self.ws_manager._ws or not self.ws_manager._connected:
+            if not self.ws_manager or not self.ws_manager._ws or not self.ws_manager._connected:
                 logger.warning("⚠️ WebSocket pas encore prêt pour réabonnement, attente...")
                 await asyncio.sleep(0.5)
             
             for symbol in symbols_to_subscribe:
                 try:
-                    await self.ws_manager.subscribe_ticker(symbol)
-                    await asyncio.sleep(0.05)  # Petit délai
+                    # 🔥 FIX: Vérification supplémentaire avant chaque souscription
+                    if self.ws_manager and self.ws_manager._connected and self.ws_manager._ws:
+                        await self.ws_manager.subscribe_ticker(symbol)
+                        await asyncio.sleep(0.05)  # Petit délai
+                    else:
+                        logger.warning(f"⚠️ WebSocket non prêt pour {symbol}, ignoré")
                 except Exception as sub_err:
                     logger.warning(f"⚠️ Erreur souscription {symbol}: {sub_err}")
 
