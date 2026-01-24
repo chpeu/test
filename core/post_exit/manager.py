@@ -339,7 +339,7 @@ class PostExitManager:
                     # 1. Insérer les métriques agrégées
                     cur.execute("""
                         INSERT INTO trade_post_exit_analysis (
-                            trade_id, symbol, exit_price, exit_timestamp, exit_reason, direction,
+                            trade_id, exit_price, exit_timestamp, exit_reason, direction,
                             realized_pnl_pct, realized_pnl_usdt,
                             used_sl_pct, used_tp_pct, used_be_trigger, used_trailing_trigger,
                             used_trailing_min_distance, used_partial_tp_pct,
@@ -349,9 +349,9 @@ class PostExitManager:
                             post_exit_final_pct, post_exit_final_price,
                             exit_efficiency_pct, regret_pct, regret_usdt, exit_timing_grade,
                             would_have_hit_original_tp, would_have_hit_original_sl, price_returned_to_entry,
-                            ml_optimal_sl_pct, ml_optimal_trailing_trigger, ml_optimal_be_trigger, ml_optimal_trailing_distance, ml_should_use_partial
+                            ml_optimal_sl_pct, ml_optimal_trailing_trigger, ml_optimal_be_trigger, ml_should_use_partial
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s,
                             %s, %s,
                             %s, %s, %s, %s,
                             %s, %s,
@@ -361,10 +361,9 @@ class PostExitManager:
                             %s, %s,
                             %s, %s, %s, %s,
                             %s, %s, %s,
-                            %s, %s, %s, %s, %s
+                            %s, %s, %s, %s
                         )
                         ON CONFLICT (trade_id) DO UPDATE SET
-                            symbol = EXCLUDED.symbol,
                             exit_price = EXCLUDED.exit_price,
                             exit_timestamp = EXCLUDED.exit_timestamp,
                             exit_reason = EXCLUDED.exit_reason,
@@ -399,11 +398,9 @@ class PostExitManager:
                             ml_optimal_sl_pct = COALESCE(EXCLUDED.ml_optimal_sl_pct, trade_post_exit_analysis.ml_optimal_sl_pct),
                             ml_optimal_trailing_trigger = COALESCE(EXCLUDED.ml_optimal_trailing_trigger, trade_post_exit_analysis.ml_optimal_trailing_trigger),
                             ml_optimal_be_trigger = COALESCE(EXCLUDED.ml_optimal_be_trigger, trade_post_exit_analysis.ml_optimal_be_trigger),
-                            ml_optimal_trailing_distance = COALESCE(EXCLUDED.ml_optimal_trailing_distance, trade_post_exit_analysis.ml_optimal_trailing_distance),
                             ml_should_use_partial = COALESCE(EXCLUDED.ml_should_use_partial, trade_post_exit_analysis.ml_should_use_partial)
                     """, (
                         metrics['trade_id'],
-                        tracker.symbol,
                         metrics['exit_price'],
                         tracker.exit_timestamp,
                         metrics['exit_reason'],
@@ -438,7 +435,6 @@ class PostExitManager:
                         metrics.get('ml_optimal_sl_pct'),
                         metrics.get('ml_optimal_trailing_trigger'),
                         metrics.get('ml_optimal_be_trigger'),
-                        metrics.get('ml_optimal_trailing_distance'),
                         metrics.get('ml_should_use_partial'),
                     ))
                     
