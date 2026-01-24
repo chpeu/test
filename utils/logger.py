@@ -232,12 +232,16 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     except Exception:
         pass
 
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
-    
-    # Éviter les doublons
-    if logger.handlers:
-        return logger
+    global logger
+    log = logging.getLogger(name)
+    log.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
+
+    for handler in list(log.handlers):
+        try:
+            log.removeHandler(handler)
+            handler.close()
+        except Exception:
+            pass
     
     # Handler pour console
     console_handler = _NonClosingStreamHandler(sys.stdout)
@@ -250,20 +254,18 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     )
     console_handler.setFormatter(formatter)
     
-    logger.addHandler(console_handler)
+    log.addHandler(console_handler)
     
     # 🔥 NOUVEAU: File handler pour sauvegarder les logs WARNING/ERROR/CRITICAL
     if log_to_file:
         try:
             # Créer le dossier logs/ s'il n'existe pas
             log_dir = 'logs'
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
+            os.makedirs(log_dir, exist_ok=True)
             
             # 🔥 FIX Windows: TimedRotatingFileHandler au lieu de RotatingFileHandler
             # pour éviter PermissionError: [WinError 32] sur Windows
-            from logging.handlers import TimedRotatingFileHandler
-            file_handler = TimedRotatingFileHandler(
+            file_handler = logging.handlers.TimedRotatingFileHandler(
                 os.path.join(log_dir, 'app.log'),
                 when='midnight',  # Rotation quotidienne à minuit
                 interval=1,       # Tous les jours
@@ -272,8 +274,6 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
                 utc=False        # Utiliser l'heure locale
             )
             
-            # 🎯 Niveau WARNING+ uniquement (optimisé pour production)
-            # 🔥 DEBUG TEMPORAIRE: Passer à DEBUG pour diagnostiquer WebSocket
             file_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else logging.INFO)
             
             # Format sans couleurs ANSI pour fichier
@@ -284,8 +284,8 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
             file_handler.setFormatter(file_formatter)
 
             if isinstance(file_handler, logging.Handler):
-                logger.addHandler(file_handler)
-            logger.info(f"✅ File logging activé: {os.path.join(log_dir, 'app.log')} (niveau WARNING+)")
+                log.addHandler(file_handler)
+            log.info(f"✅ File logging activé: {os.path.join(log_dir, 'app.log')} (niveau WARNING+)")
         except Exception as e:
             logger.warning(f"⚠️ Impossible d'activer file logging: {e}")
     
@@ -295,9 +295,10 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
         ws_handler.set_ws_manager(ws_manager)
         ws_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
         if isinstance(ws_handler, logging.Handler):
-            logger.addHandler(ws_handler)
+            log.addHandler(ws_handler)
     
-    return logger
+    logger = log
+    return log
 
 
 async def drain_websocket_log_handlers(timeout: float = 1.0) -> None:
@@ -310,6 +311,10 @@ async def drain_websocket_log_handlers(timeout: float = 1.0) -> None:
 
 # Logger global
 _logger: logging.Logger = None
+
+
+# Exposé pour patching dans les tests
+logger: logging.Logger = logging.getLogger("TradeCursor")
 
 
 def get_logger() -> logging.Logger:

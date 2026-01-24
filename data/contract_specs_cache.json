@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769269940.069057,
+  "timestamp": 1769294791.1971889,
   "specs": {
     "CHZ_USDT": {
       "symbol": "CHZ_USDT",
@@ -70,6 +70,16 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "ADA_USDT": {
+      "symbol": "ADA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
