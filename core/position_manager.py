@@ -2333,16 +2333,18 @@ class PositionManager:
         if hasattr(self, 'notification_manager') and self.notification_manager:
             try:
                 import asyncio
+                # 🔥 FIX: Structure de données correcte pour notify_position_opened
                 position_data = {
                     'symbol': symbol,
                     'direction': direction,
-                    'entry_price': entry,
-                    'size_usdt': executed_size_usdt,
+                    'entry': entry,  # notify_position_opened attend 'entry' et pas 'entry_price'
+                    'size': executed_size_usdt,  # notify_position_opened attend 'size' et pas 'size_usdt'
                     'sl': sl,
                     'tp': tp,
                     'atr': atr,
                     'leverage': getattr(self.live_order_manager, 'leverage', 1) if self.live_order_manager else 1,
-                    'tp_escalier_levels': len(levels_config) if levels_config else 0
+                    'tp_escalier_levels': len(levels_config) if levels_config else 0,
+                    'condition_types': getattr(setup, 'condition_types', []) if 'setup' in locals() else []  # Ajouter conditions manquantes
                 }
                 # Appel async non-bloquant
                 try:
@@ -2858,7 +2860,9 @@ class PositionManager:
                     pass
 
         # 3. TP Partiel (si pas TP Escalier) - utiliser break_even_trigger comme seuil du 1er TP
-        if not self.active_position.tp_escalier_enabled:
+        if (not self.active_position.tp_escalier_enabled and 
+            get_effective_value('use_partial_tp')):  # 🔥 FIX: Vérifier que TP partiel est activé
+            
             # 🔥 FIX: Break-even déterminé par tp_sl_mode, pas par flag séparé
             tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
             break_even_use_atr = (tp_sl_mode == 'ATR') or self.config.use_atr
@@ -2875,12 +2879,15 @@ class PositionManager:
                 break_even_trigger = atr_pct * be_atr_mult
                 logger.debug(f"🎯 BE ATR: trigger={break_even_trigger:.3f}% (ATR={atr_pct:.3f}% × {be_atr_mult})")
             else:
-                # Mode FIXE: utiliser break_even_trigger directement
+                # Mode FIXE: utiliser break_even_trigger pour TP partiel
                 break_even_trigger = get_effective_value('break_even_trigger') or 0.3
+            
+            logger.debug(f"🎯 TP Partiel: Vérification trigger à {break_even_trigger:.3f}% (mode {tp_sl_mode})")
+            
             if self.partial_tp.check_trigger(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
-                trigger_pct=break_even_trigger  # Utiliser break_even_trigger au lieu de partial_tp_trigger
+                trigger_pct=break_even_trigger  # TP partiel utilise break_even_trigger en mode FIXE
             ):
                 # Calculer le pourcentage à vendre
                 partial_tp_percent = get_effective_value('partial_tp_percent') or 50.0

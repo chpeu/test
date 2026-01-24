@@ -378,6 +378,158 @@ class TestGetPriceProvider:
         assert isinstance(provider, HybridPriceProvider)
 
 
+class TestWebSocketLifecycleFixes:
+    """Tests pour les corrections du lifecycle WebSocket"""
+
+    @pytest.mark.asyncio
+    async def test_wait_for_ws_ready_success(self):
+        """Test _wait_for_ws_ready avec connexion réussie"""
+        provider = HybridPriceProvider()
+        
+        # Mock WebSocket manager connecté avec les bonnes propriétés
+        mock_ws_manager = Mock()
+        mock_ws_manager.connected = True
+        mock_ws_manager._ws = Mock()  # Simuler connexion WebSocket active
+        provider.ws_manager = mock_ws_manager  # Important pour la vérification
+        
+        # Test avec timeout
+        result = await provider._wait_for_ws_ready(mock_ws_manager, timeout=1.0)
+        assert result is True
+    
+    @pytest.mark.asyncio
+    async def test_wait_for_ws_ready_timeout(self):
+        """Test _wait_for_ws_ready avec timeout"""
+        provider = HybridPriceProvider()
+        
+        # Mock WebSocket manager non connecté
+        mock_ws_manager = Mock()
+        mock_ws_manager.connected = False
+        mock_ws_manager._ws = None
+        provider.ws_manager = mock_ws_manager
+        
+        # Test avec timeout court
+        result = await provider._wait_for_ws_ready(mock_ws_manager, timeout=0.1)
+        assert result is False
+    
+    @pytest.mark.asyncio
+    async def test_wait_for_ws_ready_connection_during_wait(self):
+        """Test _wait_for_ws_ready avec connexion pendant l'attente"""
+        provider = HybridPriceProvider()
+        
+        # Mock WebSocket manager qui se connecte après délai
+        mock_ws_manager = Mock()
+        mock_ws_manager.connected = False
+        mock_ws_manager._ws = None
+        provider.ws_manager = mock_ws_manager
+        
+        async def connect_after_delay():
+            await asyncio.sleep(0.05)
+            mock_ws_manager.connected = True
+            mock_ws_manager._ws = Mock()
+        
+        # Lancer connexion en parallèle
+        asyncio.create_task(connect_after_delay())
+        
+        # Attendre connexion
+        result = await provider._wait_for_ws_ready(mock_ws_manager, timeout=0.2)
+        assert result is True
+    
+    @pytest.mark.asyncio
+    async def test_start_websocket_with_lifecycle_lock(self):
+        """Test start_websocket avec lifecycle lock"""
+        provider = HybridPriceProvider()
+        symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+        
+        # Mock WebSocketManager
+        with patch('api.price_provider.WebSocketManager') as MockWS:
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance._connected = True
+            mock_ws_instance.start = AsyncMock()
+            mock_ws_instance.subscribe_ticker = AsyncMock()
+            mock_ws_instance.connected = True
+            MockWS.return_value = mock_ws_instance
+            
+            # Start WebSocket
+            await provider.start_websocket(symbols)
+            
+            # Vérifier que le WebSocket manager est créé
+            assert provider.ws_manager is mock_ws_instance
+            assert provider.monitored_symbols == symbols
+            assert provider.use_websocket is True
+            
+            # Vérifier que start et subscribe sont appelés
+            mock_ws_instance.start.assert_called_once()
+            assert mock_ws_instance.subscribe_ticker.call_count == len(symbols)
+    
+    @pytest.mark.asyncio
+    async def test_start_websocket_cleanup_existing_manager(self):
+        """Test start_websocket nettoie l'ancien manager"""
+        provider = HybridPriceProvider()
+        symbols = ["BTC/USDT:USDT"]
+        
+        # Créer un ancien manager
+        old_manager = AsyncMock()
+        old_manager.disconnect = AsyncMock()
+        provider.ws_manager = old_manager
+        
+        # Mock nouveau WebSocketManager
+        with patch('api.price_provider.WebSocketManager') as MockWS:
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance._connected = True
+            mock_ws_instance.start = AsyncMock()
+            mock_ws_instance.subscribe_ticker = AsyncMock()
+            mock_ws_instance.connected = True
+            MockWS.return_value = mock_ws_instance
+            
+            # Start WebSocket
+            await provider.start_websocket(symbols)
+            
+            # Vérifier que l'ancien manager est déconnecté
+            old_manager.disconnect.assert_called_once()
+            # Vérifier que le nouveau manager est assigné
+            assert provider.ws_manager is mock_ws_instance
+    
+    @pytest.mark.asyncio
+    async def test_start_websocket_not_ready_warning(self):
+        """Test start_websocket avec WebSocket pas prêt"""
+        provider = HybridPriceProvider()
+        symbols = ["BTC/USDT:USDT"]
+        
+        # Mock WebSocketManager qui ne se connecte pas
+        with patch('api.price_provider.WebSocketManager') as MockWS:
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance.connected = False  # Pas connecté
+            mock_ws_instance._ws = None  # Pas de connexion WebSocket
+            mock_ws_instance.start = AsyncMock()
+            MockWS.return_value = mock_ws_instance
+            
+            # Mock logger pour capturer warning
+            with patch('api.price_provider.logger') as mock_logger:
+                await provider.start_websocket(symbols)
+                
+                # Vérifier qu'un warning a été émis (le message peut varier)
+                mock_logger.warning.assert_called()
+    
+    @pytest.mark.asyncio
+    async def test_stop_websocket_with_lifecycle_lock(self):
+        """Test stop_websocket avec lifecycle lock"""
+        provider = HybridPriceProvider()
+        
+        # Créer un manager actif
+        mock_ws_manager = AsyncMock()
+        mock_ws_manager.disconnect = AsyncMock()
+        provider.ws_manager = mock_ws_manager
+        provider.use_websocket = True
+        
+        # Stop WebSocket
+        await provider.stop_websocket()
+        
+        # Vérifier nettoyage
+        mock_ws_manager.disconnect.assert_called_once()
+        assert provider.ws_manager is None
+        assert provider.use_websocket is True  # use_websocket reste True après stop
+
+
 # Tests d'intégration
 class TestIntegration:
     """Tests d'intégration"""
@@ -407,3 +559,33 @@ class TestIntegration:
         assert result is not None
         assert result["lastPrice"] == 1.234
         provider.rest_client.fetch_ticker.assert_called_once_with(symbol)
+    
+    @pytest.mark.asyncio
+    async def test_concurrent_websocket_operations(self):
+        """Test opérations WebSocket concurrentes (race conditions)"""
+        provider = HybridPriceProvider()
+        symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+        
+        # Mock WebSocketManager
+        with patch('api.price_provider.WebSocketManager') as MockWS:
+            mock_ws_instance = AsyncMock()
+            mock_ws_instance._connected = True
+            mock_ws_instance.start = AsyncMock()
+            mock_ws_instance.subscribe_ticker = AsyncMock()
+            mock_ws_instance.disconnect = AsyncMock()
+            mock_ws_instance.connected = True
+            MockWS.return_value = mock_ws_instance
+            
+            # Lancer plusieurs opérations en parallèle
+            tasks = [
+                asyncio.create_task(provider.start_websocket(symbols)),
+                asyncio.create_task(provider.start_websocket(symbols)),
+                asyncio.create_task(provider.stop_websocket())
+            ]
+            
+            # Attendre toutes les tâches
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Vérifier qu'aucune exception n'est levée
+            for result in results:
+                assert not isinstance(result, Exception)

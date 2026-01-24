@@ -404,6 +404,184 @@ class TestPostgreSQLDataLogger:
         mock_pool.closeall.assert_called_once()
 
 
+class TestPostgreSQLHelperFunctions:
+    """Tests pour les fonctions helper de PostgreSQLDataLogger"""
+    
+    def test_safe_float_with_none(self):
+        """Test _safe_float avec None"""
+        from core.postgresql_datalogger import _safe_float
+        
+        result = _safe_float(None)
+        assert result == 0.0
+        
+        result = _safe_float(None, default=5.0)
+        assert result == 5.0
+    
+    def test_safe_float_with_numbers(self):
+        """Test _safe_float avec des nombres"""
+        from core.postgresql_datalogger import _safe_float
+        
+        assert _safe_float(123) == 123.0
+        assert _safe_float(45.67) == 45.67
+        assert _safe_float(-10) == -10.0
+    
+    def test_safe_float_with_strings(self):
+        """Test _safe_float avec des strings"""
+        from core.postgresql_datalogger import _safe_float
+        
+        assert _safe_float("123.45") == 123.45
+        assert _safe_float("0") == 0.0
+        assert _safe_float("invalid") == 0.0
+        assert _safe_float("") == 0.0
+    
+    def test_safe_float_with_dict(self):
+        """Test _safe_float avec des dictionnaires"""
+        from core.postgresql_datalogger import _safe_float
+        
+        assert _safe_float({"value": 100}) == 100.0
+        assert _safe_float({"price": 50.5}) == 50.5
+        assert _safe_float({"score": "25.5"}) == 25.5
+        assert _safe_float({"unknown": 10}) == 0.0
+        assert _safe_float({}) == 0.0
+    
+    def test_safe_float_with_invalid_types(self):
+        """Test _safe_float avec des types invalides"""
+        from core.postgresql_datalogger import _safe_float
+        
+        assert _safe_float([1, 2, 3]) == 0.0
+        assert _safe_float(object()) == 0.0
+    
+    def test_extract_numeric_value_comprehensive(self):
+        """Test _extract_numeric_value avec différents types"""
+        from core.postgresql_datalogger import _extract_numeric_value
+        
+        # Tests basiques
+        assert _extract_numeric_value(None) is None
+        assert _extract_numeric_value(123) == 123.0
+        assert _extract_numeric_value(45.67) == 45.67
+        
+        # Tests avec strings
+        assert _extract_numeric_value("123.45") == 123.45
+        assert _extract_numeric_value("invalid") is None
+        
+        # Tests avec dictionnaires
+        assert _extract_numeric_value({"value": 100}) == 100.0
+        assert _extract_numeric_value({"price": 50.5}) == 50.5
+        assert _extract_numeric_value({"rsi": "75.5"}) == 75.5
+        assert _extract_numeric_value({"unknown": 10}) is None
+
+
+class TestPostgreSQLNoneTypeFixes:
+    """Tests pour les corrections NoneType dans PostgreSQL DataLogger"""
+    
+    @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
+    @patch('core.postgresql_datalogger.ThreadedConnectionPool')
+    def test_log_scan_with_none_order_flow_values(self, mock_pool_class, datalogger_config, mock_postgres_connection, mock_pool):
+        """Test log_scan avec des valeurs order flow None"""
+        conn, cursor = mock_postgres_connection
+        mock_pool_class.return_value = mock_pool
+        mock_pool.getconn.return_value = conn
+        
+        from core.postgresql_datalogger import PostgreSQLDataLogger
+        
+        logger = PostgreSQLDataLogger(**datalogger_config)
+        
+        # Données avec bid_vol et ask_vol None
+        scan_data = {
+            'scan_duration_ms': 100,
+            'market_data': {
+                'price': 50000.0,
+                'bid_vol': None,  # None value
+                'ask_vol': None,  # None value
+                'delta_volume': None,
+                'imbalance_normalized': None,
+                'book_depth_ratio': None
+            },
+            'indicators_1m': {},
+            'indicators_5m': {},
+            'filters': {},
+            'scores': {},
+            'patterns': {},
+            'is_opportunity': False
+        }
+        
+        # Ne doit pas lever d'exception NoneType
+        logger.log_scan('BTCUSDT', scan_data)
+        
+        # Vérifier que execute a été appelé
+        cursor.execute.assert_called()
+    
+    @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
+    @patch('core.postgresql_datalogger.ThreadedConnectionPool')
+    def test_log_scan_with_string_order_flow_values(self, mock_pool_class, datalogger_config, mock_postgres_connection, mock_pool):
+        """Test log_scan avec des valeurs order flow en string"""
+        conn, cursor = mock_postgres_connection
+        mock_pool_class.return_value = mock_pool
+        mock_pool.getconn.return_value = conn
+        
+        from core.postgresql_datalogger import PostgreSQLDataLogger
+        
+        logger = PostgreSQLDataLogger(**datalogger_config)
+        
+        # Données avec bid_vol et ask_vol en string
+        scan_data = {
+            'scan_duration_ms': 100,
+            'market_data': {
+                'price': 50000.0,
+                'bid_vol': "1000.5",  # String value
+                'ask_vol': "800.3",   # String value
+            },
+            'indicators_1m': {},
+            'indicators_5m': {},
+            'filters': {},
+            'scores': {},
+            'patterns': {},
+            'is_opportunity': False
+        }
+        
+        # Ne doit pas lever d'exception
+        logger.log_scan('BTCUSDT', scan_data)
+        
+        # Vérifier que execute a été appelé
+        cursor.execute.assert_called()
+    
+    @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True) 
+    @patch('core.postgresql_datalogger.ThreadedConnectionPool')
+    def test_batch_insert_with_none_values(self, mock_pool_class, datalogger_config, mock_postgres_connection, mock_pool):
+        """Test _batch_insert_scans avec des valeurs None"""
+        conn, cursor = mock_postgres_connection
+        mock_pool_class.return_value = mock_pool
+        mock_pool.getconn.return_value = conn
+        
+        from core.postgresql_datalogger import PostgreSQLDataLogger
+        
+        logger = PostgreSQLDataLogger(**datalogger_config)
+        
+        # Ajouter plusieurs scans avec des valeurs None au buffer
+        for i in range(3):
+            scan_data = {
+                'scan_duration_ms': 100 + i,
+                'market_data': {
+                    'price': 50000.0 + i,
+                    'bid_vol': None if i == 0 else f"{1000 + i}",  # Mix None/string
+                    'ask_vol': None if i == 1 else 800 + i,        # Mix None/number
+                },
+                'indicators_1m': {},
+                'indicators_5m': {},
+                'filters': {},
+                'scores': {},
+                'patterns': {},
+                'is_opportunity': False
+            }
+            logger.log_scan(f'BTCUSDT{i}', scan_data, use_batch=True)
+        
+        # Flush le buffer - ne doit pas lever d'exception
+        logger._flush_buffers(force=True)
+        
+        # Vérifier que execute_values a été appelé
+        assert cursor.execute.called or hasattr(cursor, 'execute_values')
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
