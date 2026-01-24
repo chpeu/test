@@ -1,12 +1,19 @@
 """
 Système de logging pour Trade Cursor
 """
+import asyncio
+import contextlib
 import logging
 import sys
 import os
+import weakref
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from config import DEBUG_ENABLED
+
+
+_ws_log_handlers = weakref.WeakSet()
+
 
 # 🔥 FIX: Handler personnalisé pour envoyer les logs au frontend
 class WebSocketLogHandler(logging.Handler):
@@ -15,15 +22,49 @@ class WebSocketLogHandler(logging.Handler):
     def __init__(self):
         super().__init__()
         self.ws_manager = None
+        self._tasks = set()
+        self._closing = False
+        _ws_log_handlers.add(self)
     
     def set_ws_manager(self, ws_manager):
         """Définir le websocket manager"""
         self.ws_manager = ws_manager
+
+    async def drain(self, timeout: float = 1.0) -> None:
+        self._closing = True
+        tasks = [t for t in list(self._tasks) if not t.done()]
+        if not tasks:
+            self._tasks.clear()
+            return
+
+        done, pending = await asyncio.wait(tasks, timeout=timeout)
+        for task in pending:
+            task.cancel()
+        if pending:
+            with contextlib.suppress(Exception):
+                await asyncio.gather(*pending, return_exceptions=True)
+
+        self._tasks.difference_update(done)
+        self._tasks.difference_update(pending)
+
+    def close(self):
+        self._closing = True
+        for task in list(self._tasks):
+            try:
+                if not task.done():
+                    task.cancel()
+            except Exception:
+                pass
+        self._tasks.clear()
+        super().close()
     
     def emit(self, record):
         """Envoyer le log au frontend et stocker les erreurs de façon persistante"""
         try:
             if not self.ws_manager:
+                return
+
+            if self._closing:
                 return
             
             # Convertir le niveau de logging en string
@@ -117,10 +158,11 @@ class WebSocketLogHandler(logging.Handler):
                 
                 # Créer la tâche avec un nom pour le debugging
                 task = loop.create_task(send_log_direct(), name=f"websocket_log_{id(entry)}")
-                
+
                 # Meilleure gestion du cleanup des tâches
                 def cleanup_task(t):
                     try:
+                        self._tasks.discard(t)
                         if not t.cancelled():
                             exc = t.exception()
                             if exc and not isinstance(exc, (asyncio.CancelledError, asyncio.TimeoutError)):
@@ -128,7 +170,8 @@ class WebSocketLogHandler(logging.Handler):
                                 pass
                     except Exception:
                         pass
-                
+
+                self._tasks.add(task)
                 task.add_done_callback(cleanup_task)
             except RuntimeError:
                 # Pas de loop en cours, ignorer
@@ -240,6 +283,14 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
         logger.addHandler(ws_handler)
     
     return logger
+
+
+async def drain_websocket_log_handlers(timeout: float = 1.0) -> None:
+    for handler in list(_ws_log_handlers):
+        try:
+            await handler.drain(timeout=timeout)
+        except Exception:
+            pass
 
 
 # Logger global

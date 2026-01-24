@@ -302,6 +302,23 @@ async def lifespan(app: FastAPI):
 
     # 🔥 SPRINT 1.3: Graceful shutdown manager
     shutdown_manager = GracefulShutdown(timeout=30.0) if GracefulShutdown else None
+    if shutdown_manager:
+        try:
+            from core.shutdown import set_shutdown_manager
+            set_shutdown_manager(shutdown_manager)
+        except Exception:
+            pass
+
+        try:
+            from utils.logger import drain_websocket_log_handlers
+            shutdown_manager.register(
+                "WebSocketLogHandler",
+                lambda: drain_websocket_log_handlers(timeout=1.0),
+                async_cleanup=True,
+                priority=90
+            )
+        except Exception:
+            pass
     data_logger = None
     try:
         try:
@@ -468,6 +485,12 @@ async def lifespan(app: FastAPI):
             # Execute graceful shutdown
             await shutdown_manager.shutdown()
 
+            try:
+                from core.shutdown import set_shutdown_manager
+                set_shutdown_manager(None)
+            except Exception:
+                pass
+
         else:
             # Fallback: Old shutdown logic if GracefulShutdown not available
             logger.warning("⚠️ GracefulShutdown non disponible, utilisation legacy cleanup")
@@ -506,8 +529,20 @@ async def lifespan(app: FastAPI):
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur fermeture MEXC client: {e}")
 
+                try:
+                    from utils.logger import drain_websocket_log_handlers
+                    await drain_websocket_log_handlers(timeout=1.0)
+                except Exception:
+                    pass
+
             except Exception as e:
                 logger.warning(f"⚠️ Erreur shutdown legacy: {e}", exc_info=True)
+
+        try:
+            from core.shutdown import set_shutdown_manager
+            set_shutdown_manager(None)
+        except Exception:
+            pass
 
         logger.info("🏁 LIFESPAN EXIT: Contexte fermé")
 

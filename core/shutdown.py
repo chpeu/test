@@ -274,3 +274,15 @@ class GracefulShutdown:
             f"timeout={self.timeout}s"
             f")"
         )
+
+
+_shutdown_manager: Optional[GracefulShutdown] = None
+
+
+def set_shutdown_manager(manager: Optional[GracefulShutdown]) -> None:
+    global _shutdown_manager
+    _shutdown_manager = manager
+
+
+def get_shutdown_manager() -> Optional[GracefulShutdown]:
+    return _shutdown_manager
