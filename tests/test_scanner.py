@@ -6,6 +6,18 @@ import math
 from unittest.mock import Mock, AsyncMock, patch
 
 
+@pytest.fixture(autouse=True)
+def _patch_scanner_singletons():
+    dummy_state = Mock()
+    dummy_state.get_price_provider.return_value = Mock()
+    dummy_client = AsyncMock()
+    with (
+        patch("core.scanner.get_mexc_client", return_value=dummy_client),
+        patch("core.state_manager.get_state_manager", return_value=dummy_state),
+    ):
+        yield
+
+
 class TestScalabilityScanner:
     """Tests pour ScalabilityScanner"""
 
@@ -60,7 +72,6 @@ class TestScalabilityScanner:
         # Volatilité nulle si prix constant
         assert vol == 0.0
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - désactivé temporairement pour coverage")
     @pytest.mark.asyncio(timeout=5)
     async def test_fetch_spread_data_empty_orderbook(self):
         """Test fetch_spread_data avec orderbook vide"""
@@ -77,7 +88,6 @@ class TestScalabilityScanner:
         assert result['bookDepth'] == 0
         assert result['balanceScore'] == 0
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_fetch_spread_data_no_bids(self):
         """Test fetch_spread_data sans bids"""
@@ -96,7 +106,6 @@ class TestScalabilityScanner:
         assert math.isnan(result['spread'])
         assert result['bookDepth'] == 0
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_fetch_spread_data_invalid_prices(self):
         """Test fetch_spread_data avec prix invalides"""
@@ -115,7 +124,6 @@ class TestScalabilityScanner:
         assert math.isnan(result['spread'])
         assert result['bookDepth'] == 0
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_fetch_spread_data_success(self):
         """Test fetch_spread_data réussi"""
@@ -150,7 +158,6 @@ class TestScalabilityScanner:
         assert result['bidVol'] == 21.0
         assert result['askVol'] == 21.0
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_fetch_spread_data_exception(self):
         """Test fetch_spread_data avec exception"""
@@ -459,7 +466,6 @@ class TestScalabilityScanner:
     
     # ===== FIN TESTS SYNCHRONES ÉQUIVALENTS =====
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_scan_pair_insufficient_klines(self):
         """Test scan_pair avec klines insuffisantes"""
@@ -475,7 +481,6 @@ class TestScalabilityScanner:
         result = await scanner.scan_pair('BTC/USDT:USDT')
         assert result is None
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=10)
     async def test_scan_pair_success(self):
         """Test scan_pair réussi"""
@@ -494,6 +499,8 @@ class TestScalabilityScanner:
         })
         scanner.client = mock_client
 
+        scanner.fetch_funding_rate = AsyncMock(return_value=0.0)
+
         result = await scanner.scan_pair('BTC/USDT:USDT')
 
         assert result is not None
@@ -504,7 +511,6 @@ class TestScalabilityScanner:
         assert 'vol15' in result
         assert 'spread' in result
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_scan_pair_exception(self):
         """Test scan_pair avec exception"""
@@ -518,7 +524,6 @@ class TestScalabilityScanner:
         result = await scanner.scan_pair('BTC/USDT:USDT')
         assert result is None
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_scan_top_pairs_already_scanning(self):
         """Test scan_top_pairs quand déjà en cours"""
@@ -527,10 +532,19 @@ class TestScalabilityScanner:
         scanner = ScalabilityScanner()
         scanner.is_scanning = True
 
+        mock_exchange = Mock()
+        mock_exchange.load_markets = AsyncMock(return_value={})
+        mock_exchange.fetch_tickers = AsyncMock(return_value={})
+
+        mock_client = AsyncMock()
+        mock_client.exchange = mock_exchange
+        scanner.client = mock_client
+
         result = await scanner.scan_top_pairs(n=5)
         assert result == []
+        mock_exchange.load_markets.assert_called_once()
+        assert scanner.is_scanning is False
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=15)
     async def test_scan_top_pairs_success(self):
         """Test scan_top_pairs réussi"""
@@ -543,18 +557,21 @@ class TestScalabilityScanner:
             'BTC/USDT:USDT': {
                 'type': 'swap',
                 'quote': 'USDT',
+                'active': True,
                 'maker': 0.0,
                 'taker': 0.0
             },
             'ETH/USDT:USDT': {
                 'type': 'swap',
                 'quote': 'USDT',
+                'active': True,
                 'maker': 0.0,
                 'taker': 0.0
             },
             'SOL/USDT:USDT': {
                 'type': 'swap',
                 'quote': 'USDT',
+                'active': True,
                 'maker': 0.0003,  # Pas 0% fees
                 'taker': 0.0
             }
@@ -565,6 +582,11 @@ class TestScalabilityScanner:
 
         mock_exchange = Mock()
         mock_exchange.load_markets = AsyncMock(return_value=mock_markets)
+        mock_exchange.fetch_tickers = AsyncMock(return_value={
+            'BTC/USDT:USDT': {'quoteVolume': 1_000_000},
+            'ETH/USDT:USDT': {'quoteVolume': 1_000_000},
+            'SOL/USDT:USDT': {'quoteVolume': 1_000_000},
+        })
 
         mock_client = AsyncMock()
         mock_client.exchange = mock_exchange
@@ -581,7 +603,6 @@ class TestScalabilityScanner:
         # Devrait retourner au moins 1 paire (BTC et ETH ont 0% fees)
         # Mais le score peut être 0 donc liste peut être vide
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=5)
     async def test_scan_top_pairs_exception(self):
         """Test scan_top_pairs avec exception"""
@@ -591,6 +612,7 @@ class TestScalabilityScanner:
 
         mock_exchange = Mock()
         mock_exchange.load_markets = AsyncMock(side_effect=Exception("Network error"))
+        mock_exchange.fetch_tickers = AsyncMock(return_value={})
 
         mock_client = AsyncMock()
         mock_client.exchange = mock_exchange
@@ -600,7 +622,6 @@ class TestScalabilityScanner:
         assert result == []
         assert scanner.is_scanning is False  # Devrait être reset
 
-    @pytest.mark.skip(reason="Test asyncio bloquant - remplacé par version synchrone équivalente")
     @pytest.mark.asyncio(timeout=15)
     async def test_scan_top_pairs_batch_processing(self):
         """Test scan_top_pairs avec traitement par batch"""
@@ -613,6 +634,7 @@ class TestScalabilityScanner:
             f'PAIR{i}/USDT:USDT': {
                 'type': 'swap',
                 'quote': 'USDT',
+                'active': True,
                 'maker': 0.0,
                 'taker': 0.0
             } for i in range(12)
@@ -667,6 +689,7 @@ class TestIntegration:
             'BTC/USDT:USDT': {
                 'type': 'swap',
                 'quote': 'USDT',
+                'active': True,
                 'maker': 0.0,
                 'taker': 0.0
             }
@@ -686,6 +709,8 @@ class TestIntegration:
             'asks': [[50010, 90.0], [50020, 60.0]]
         })
         scanner.client = mock_client
+
+        scanner.fetch_funding_rate = AsyncMock(return_value=0.0)
 
         result = await scanner.scan_top_pairs(n=1)
 
