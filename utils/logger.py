@@ -251,12 +251,16 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
             if not os.path.exists(log_dir):
                 os.makedirs(log_dir)
             
-            # RotatingFileHandler avec rotation à 10 MB, 5 fichiers max
-            file_handler = RotatingFileHandler(
+            # 🔥 FIX Windows: TimedRotatingFileHandler au lieu de RotatingFileHandler
+            # pour éviter PermissionError: [WinError 32] sur Windows
+            from logging.handlers import TimedRotatingFileHandler
+            file_handler = TimedRotatingFileHandler(
                 os.path.join(log_dir, 'app.log'),
-                maxBytes=10*1024*1024,  # 10 MB
-                backupCount=5,  # Garder 5 fichiers de rotation
-                encoding='utf-8'
+                when='midnight',  # Rotation quotidienne à minuit
+                interval=1,       # Tous les jours
+                backupCount=7,    # Garder 7 jours d'historique
+                encoding='utf-8',
+                utc=False        # Utiliser l'heure locale
             )
             
             # 🎯 Niveau WARNING+ uniquement (optimisé pour production)
