@@ -1,6 +1,14 @@
+import os
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':
+    raise ImportError('analyze_regime_performance is a script-only module')
+
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+except Exception:
+    pass
 
 import sqlite3
 import json

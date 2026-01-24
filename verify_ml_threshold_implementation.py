@@ -16,7 +16,9 @@ import requests
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Ajouter le répertoire racine au PYTHONPATH
+if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':
+    raise ImportError('verify_ml_threshold_implementation is a script-only module')
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.postgresql_datalogger import PostgreSQLDataLogger

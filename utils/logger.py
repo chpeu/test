@@ -15,6 +15,15 @@ from config import DEBUG_ENABLED
 _ws_log_handlers = weakref.WeakSet()
 
 
+class _NonClosingStreamHandler(logging.StreamHandler):
+    def close(self):
+        try:
+            self.flush()
+        except Exception:
+            pass
+        logging.Handler.close(self)
+
+
 # 🔥 FIX: Handler personnalisé pour envoyer les logs au frontend
 class WebSocketLogHandler(logging.Handler):
     """Handler qui envoie les logs au frontend via WebSocket"""
@@ -216,9 +225,9 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     """
     try:
         if os.name == 'nt':
-            if hasattr(sys.stdout, 'reconfigure'):
+            if sys.stdout is sys.__stdout__ and hasattr(sys.stdout, 'reconfigure'):
                 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-            if hasattr(sys.stderr, 'reconfigure'):
+            if sys.stderr is sys.__stderr__ and hasattr(sys.stderr, 'reconfigure'):
                 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
@@ -231,7 +240,7 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
         return logger
     
     # Handler pour console
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = _NonClosingStreamHandler(sys.stdout)
     console_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
     
     # Format avec timestamp et couleurs
@@ -273,8 +282,9 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
             file_handler.setFormatter(file_formatter)
-            
-            logger.addHandler(file_handler)
+
+            if isinstance(file_handler, logging.Handler):
+                logger.addHandler(file_handler)
             logger.info(f"✅ File logging activé: {os.path.join(log_dir, 'app.log')} (niveau WARNING+)")
         except Exception as e:
             logger.warning(f"⚠️ Impossible d'activer file logging: {e}")
@@ -284,7 +294,8 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
         ws_handler = WebSocketLogHandler()
         ws_handler.set_ws_manager(ws_manager)
         ws_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
-        logger.addHandler(ws_handler)
+        if isinstance(ws_handler, logging.Handler):
+            logger.addHandler(ws_handler)
     
     return logger
 

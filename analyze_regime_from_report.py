@@ -1,11 +1,21 @@
+import os
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':
+    raise ImportError('analyze_regime_from_report is a script-only module')
+
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+except Exception:
+    pass
 
 import json
 from collections import defaultdict
 
 print('=' * 120)
+
+
 print('ANALYSE DES PERFORMANCES PAR RÉGIME - BASÉE SUR LES 43 TRADES PRÉCÉDENTS')
 print('=' * 120)
 print()

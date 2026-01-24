@@ -3,9 +3,66 @@ Configuration pytest - Fixtures globales
 """
 
 import asyncio
+import logging
+import sys
 
 import pytest
 from fastapi.testclient import TestClient
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _prevent_pytest_capture_stream_close():
+    class _NonClosingStream:
+        def __init__(self, stream):
+            self._stream = stream
+
+        def close(self):
+            return None
+
+        def __getattr__(self, name):
+            return getattr(self._stream, name)
+
+        def write(self, s):
+            try:
+                return self._stream.write(s)
+            except ValueError:
+                # Si un code tiers a fermé le flux sous-jacent (FD fermé),
+                # ne pas faire planter pytest en fin de session.
+                return 0
+
+        def flush(self):
+            try:
+                return self._stream.flush()
+            except ValueError:
+                return None
+
+    sys.stdout = _NonClosingStream(sys.stdout)
+    sys.stderr = _NonClosingStream(sys.stderr)
+
+    try:
+        from colorama.ansitowin32 import AnsiToWin32
+
+        original_colorama_write = AnsiToWin32.write
+
+        def safe_colorama_write(self, text):
+            try:
+                return original_colorama_write(self, text)
+            except ValueError:
+                return 0
+
+        AnsiToWin32.write = safe_colorama_write
+    except Exception:
+        pass
+
+    def non_closing_close(self):
+        try:
+            self.flush()
+        except Exception:
+            pass
+        logging.Handler.close(self)
+
+    logging.StreamHandler.close = non_closing_close
+    yield
 
 
 @pytest.fixture

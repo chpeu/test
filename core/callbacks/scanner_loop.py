@@ -391,11 +391,43 @@ async def _scan_top_pairs():
                         if pair_symbol == lookup_symbol:
                             found_pair = True
                             # 🔥 FIX: Utiliser les bonnes clés depuis le scanner (spread, bookDepth, balanceScore, bidVol, askVol)
-                            spread_value = pair.get('spread', 0)
-                            book_depth = pair.get('bookDepth', 0)
-                            balance_score = pair.get('balanceScore', 1.0)
-                            bid_vol = pair.get('bidVol', 0)
-                            ask_vol = pair.get('askVol', 0)
+                            spread_value = pair.get('spread')
+                            book_depth = pair.get('bookDepth')
+                            balance_score = pair.get('balanceScore')
+                            bid_vol = pair.get('bidVol')
+                            ask_vol = pair.get('askVol')
+
+                            if spread_value is None:
+                                spread_value = 0.0
+                            if book_depth is None:
+                                book_depth = 0.0
+                            if balance_score is None:
+                                balance_score = 1.0
+                            if bid_vol is None:
+                                bid_vol = 0.0
+                            if ask_vol is None:
+                                ask_vol = 0.0
+
+                            try:
+                                spread_value = float(spread_value)
+                            except (TypeError, ValueError):
+                                spread_value = 0.0
+                            try:
+                                book_depth = float(book_depth)
+                            except (TypeError, ValueError):
+                                book_depth = 0.0
+                            try:
+                                balance_score = float(balance_score)
+                            except (TypeError, ValueError):
+                                balance_score = 1.0
+                            try:
+                                bid_vol = float(bid_vol)
+                            except (TypeError, ValueError):
+                                bid_vol = 0.0
+                            try:
+                                ask_vol = float(ask_vol)
+                            except (TypeError, ValueError):
+                                ask_vol = 0.0
                             
                             logger.info(f"💹 DEBUG: Données brutes depuis top_pairs: spread={spread_value}, bookDepth={book_depth}, balanceScore={balance_score}, bidVol={bid_vol}, askVol={ask_vol}")
                             

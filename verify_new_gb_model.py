@@ -10,9 +10,16 @@ import sys
 import json
 from pathlib import Path
 
+if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':
+    raise ImportError('verify_new_gb_model is a script-only module')
+
 # Force UTF-8 for Windows
 if sys.platform == 'win32':
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    try:
+        if sys.stdout is sys.__stdout__ and hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 # Ajouter le projet au path
 sys.path.insert(0, str(Path(__file__).parent))

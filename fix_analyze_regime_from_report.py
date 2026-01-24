@@ -1,0 +1,49 @@
+from pathlib import Path
+
+
+def main() -> None:
+    path = Path(__file__).with_name('analyze_regime_from_report.py')
+    text = path.read_text(encoding='utf-8', errors='replace')
+    lines = text.splitlines()
+
+    try:
+        idx_json = next(i for i, l in enumerate(lines) if l.strip() == 'import json')
+    except StopIteration as e:
+        raise SystemExit("ERROR: could not find 'import json'") from e
+
+    new_head = [
+        'import os',
+        'import sys',
+        'import io',
+        '',
+        "if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':",
+        "    raise ImportError('analyze_regime_from_report is a script-only module')",
+        '',
+        'try:',
+        "    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')",
+        'except Exception:',
+        '    pass',
+        '',
+    ]
+
+    out = new_head + lines[idx_json:]
+
+    fixed: list[str] = []
+    skip_next = False
+
+    for l in out:
+        s = l.strip()
+        if s == "if __name__ == '__main__':":
+            skip_next = True
+            continue
+        if skip_next and s == 'main()':
+            skip_next = False
+            continue
+        skip_next = False
+        fixed.append(l)
+
+    path.write_text('\n'.join(fixed).rstrip() + '\n', encoding='utf-8')
+
+
+if __name__ == '__main__':
+    main()

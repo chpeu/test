@@ -1,4 +1,8 @@
+import os
 import sqlite3
+
+if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':
+    raise ImportError('verify_ml_fields is a script-only module')
 
 conn = sqlite3.connect('data/analytics.db')
 cursor = conn.cursor()

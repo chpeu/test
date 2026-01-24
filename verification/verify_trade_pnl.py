@@ -16,8 +16,14 @@ import os
 import sys
 import io
 
+if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':
+    raise ImportError('verify_trade_pnl is a script-only module')
+
 # Force UTF-8 output
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+except Exception:
+    pass
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional

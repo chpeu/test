@@ -8,11 +8,14 @@ Ce script verifie que tous les parametres sont correctement configures et foncti
 import json
 import os
 import sys
-import io
 from typing import Dict, List, Tuple
 
-# Fix encoding pour Windows
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+def _setup_stdout_utf8() -> None:
+    try:
+        if sys.platform == 'win32' and sys.stdout is sys.__stdout__ and hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 # Couleurs console (sans emojis pour compatibilite Windows)
 GREEN = "\033[92m"
@@ -439,5 +442,6 @@ def run_all_tests():
 
 
 if __name__ == "__main__":
+    _setup_stdout_utf8()
     success = run_all_tests()
     sys.exit(0 if success else 1)
