@@ -98,6 +98,7 @@ export class BidirectionalWebSocket {
         this.ws.onmessage = (event) => {
             try {
                 const message: WebSocketMessage = JSON.parse(event.data);
+                this.lastPing = Date.now();
                 // console.log('⬇️ Message WebSocket reçu:', message);
 
                 if (message.type === 'event' && message.event) {

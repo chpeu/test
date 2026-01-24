@@ -98,6 +98,45 @@ def _derive_ml_threshold_type(reject_category: Optional[str]) -> Optional[str]:
     """
     if not reject_category:
         return None
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """
+    🔥 FIX: Convertir une valeur en float de manière sécurisée.
+    
+    Args:
+        value: Valeur à convertir
+        default: Valeur par défaut si conversion échoue ou valeur est None
+    
+    Returns:
+        float ou default
+    """
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    if isinstance(value, dict):
+        # Essayer d'extraire une valeur numérique du dict
+        for key in ['value', 'price', 'score']:
+            if key in value:
+                nested = _safe_float(value[key], default=None)
+                if nested is not None:
+                    return nested
+        return default
+    return default
+
+
+def _derive_ml_threshold_type(reject_category: Optional[str]) -> Optional[str]:
+    """
+    Déduire le type de seuil ML à partir de la catégorie de rejet.
+    """
+    if not reject_category:
+        return None
     if 'gb_confidence' in reject_category:
         return 'gb_confidence'
     if 'calibration' in reject_category:
@@ -679,22 +718,34 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
             
-            # 🔥 ORDER FLOW: Calcul automatique si manquant
-            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
-            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            # 🔥 FIX: Extraction sécurisée des valeurs order flow avec vérification None explicite
+            bid_vol_raw = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol_raw = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            # Utiliser _safe_float pour convertir de manière sécurisée
+            bid_vol = _safe_float(bid_vol_raw, default=None)
+            ask_vol = _safe_float(ask_vol_raw, default=None)
             
             delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
             imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
             book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
             
-            # Calculer automatiquement si manquant et bid/ask disponibles
+            # Calculer automatiquement si manquant et bid/ask disponibles et non None
             if delta_volume is None and bid_vol is not None and ask_vol is not None:
-                delta_volume = float(bid_vol) - float(ask_vol)
+                delta_volume = bid_vol - ask_vol
             if imbalance_normalized is None and bid_vol is not None and ask_vol is not None:
-                total = float(bid_vol) + float(ask_vol)
-                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
-            if book_depth_ratio is None and bid_vol is not None and ask_vol is not None and float(ask_vol) > 0:
-                book_depth_ratio = float(bid_vol) / float(ask_vol)
+                total = bid_vol + ask_vol
+                imbalance_normalized = (bid_vol - ask_vol) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol is not None and ask_vol is not None and ask_vol > 0:
+                book_depth_ratio = bid_vol / ask_vol
+            
+            # Fallback vers 0.0 si les calculs ont échoué
+            if delta_volume is None:
+                delta_volume = 0.0
+            if imbalance_normalized is None:
+                imbalance_normalized = 0.0
+            if book_depth_ratio is None:
+                book_depth_ratio = 0.0
             
             # Préparer les paramètres
             ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
@@ -2647,22 +2698,34 @@ class PostgreSQLDataLogger:
             if not params_snap or not isinstance(params_snap, dict):
                 params_snap = {}
 
-            # 🔥 ORDER FLOW: Calcul automatique si manquant
-            bid_vol = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
-            ask_vol = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            # 🔥 FIX: Extraction sécurisée des valeurs order flow avec vérification None explicite
+            bid_vol_raw = market_data.get('bid_vol') or market_data.get('bidVol') or scan_data.get('bid_vol') or scan_data.get('bidVol')
+            ask_vol_raw = market_data.get('ask_vol') or market_data.get('askVol') or scan_data.get('ask_vol') or scan_data.get('askVol')
+            
+            # Utiliser _safe_float pour convertir de manière sécurisée
+            bid_vol = _safe_float(bid_vol_raw, default=None)
+            ask_vol = _safe_float(ask_vol_raw, default=None)
             
             delta_volume = market_data.get('delta_volume') or scan_data.get('delta_volume')
             imbalance_normalized = market_data.get('imbalance_normalized') or scan_data.get('imbalance_normalized')
             book_depth_ratio = market_data.get('book_depth_ratio') or scan_data.get('book_depth_ratio')
             
-            # Calculer automatiquement si manquant et bid/ask disponibles
+            # Calculer automatiquement si manquant et bid/ask disponibles et non None
             if delta_volume is None and bid_vol is not None and ask_vol is not None:
-                delta_volume = float(bid_vol) - float(ask_vol)
+                delta_volume = bid_vol - ask_vol
             if imbalance_normalized is None and bid_vol is not None and ask_vol is not None:
-                total = float(bid_vol) + float(ask_vol)
-                imbalance_normalized = (float(bid_vol) - float(ask_vol)) / total if total > 0 else 0.0
-            if book_depth_ratio is None and bid_vol is not None and ask_vol is not None and float(ask_vol) > 0:
-                book_depth_ratio = float(bid_vol) / float(ask_vol)
+                total = bid_vol + ask_vol
+                imbalance_normalized = (bid_vol - ask_vol) / total if total > 0 else 0.0
+            if book_depth_ratio is None and bid_vol is not None and ask_vol is not None and ask_vol > 0:
+                book_depth_ratio = bid_vol / ask_vol
+            
+            # Fallback vers 0.0 si les calculs ont échoué
+            if delta_volume is None:
+                delta_volume = 0.0
+            if imbalance_normalized is None:
+                imbalance_normalized = 0.0
+            if book_depth_ratio is None:
+                book_depth_ratio = 0.0
 
             ml_confidence_value = _extract_numeric_value(scan_data.get('ml_confidence'))
             if ml_confidence_value is not None and ml_confidence_value <= 1.0:

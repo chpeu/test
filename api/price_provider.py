@@ -48,6 +48,7 @@ class HybridPriceProvider:
         # Cache des derniers prix reçus
         self.price_cache: Dict[str, Dict] = {}
         self._cache_lock: Optional[asyncio.Lock] = None  # 🔥 Lazy initialization
+        self._ws_lifecycle_lock: Optional[asyncio.Lock] = None
 
         # 🔥 v6.6.1 Phase 2A: Buffer pour backpressure (optionnel)
         self.message_buffer = deque(maxlen=100)
@@ -70,6 +71,31 @@ class HybridPriceProvider:
         if self._cache_lock is None:
             self._cache_lock = asyncio.Lock()
         return self._cache_lock
+
+    @property
+    def ws_lifecycle_lock(self) -> asyncio.Lock:
+        if self._ws_lifecycle_lock is None:
+            self._ws_lifecycle_lock = asyncio.Lock()
+        return self._ws_lifecycle_lock
+
+    async def _wait_for_ws_ready(
+        self,
+        ws_manager: WebSocketManager,
+        timeout: float = 2.0,
+        poll_interval: float = 0.05,
+    ) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.ws_manager is not ws_manager:
+                return False
+            if getattr(ws_manager, 'connected', False) and getattr(ws_manager, '_ws', None):
+                return True
+            await asyncio.sleep(poll_interval)
+        return bool(
+            self.ws_manager is ws_manager
+            and getattr(ws_manager, 'connected', False)
+            and getattr(ws_manager, '_ws', None)
+        )
 
     def _handle_mexc_message(self, data: dict):
         """
@@ -221,71 +247,85 @@ class HybridPriceProvider:
 
         # 🔥 FIX CRITIQUE: Stocker symboles pour réabonnement après reconnexion
         self.monitored_symbols = symbols
-
-        try:
-            # Créer WebSocket Manager
-            self.ws_manager = WebSocketManager(
-                url=WEBSOCKET_CONFIG['url'],
-                callback=self._handle_mexc_message
-            )
-
-            # Configurer callback de reconnexion pour réabonner aux symboles
-            self.ws_manager.reconnect_callback = self._resubscribe_after_reconnect
-
-            # Connecter
-            await self.ws_manager.start()
-
-            # 🔥 FIX: Vérifier que la connexion WebSocket est établie avant souscription
-            if not self.ws_manager or not self.ws_manager._connected:
-                logger.error("❌ WebSocket Manager non connecté - impossible de s'abonner aux symboles")
-                self.use_websocket = False
-                self.ws_manager = None
-                return
-
-            # S'abonner aux symboles
-            for symbol in symbols:
+        self.use_websocket = True
+        async with self.ws_lifecycle_lock:
+            if self.ws_manager:
                 try:
-                    # 🔥 FIX: Vérification supplémentaire avant chaque souscription
-                    if self.ws_manager and self.ws_manager._connected:
-                        await self.ws_manager.subscribe_ticker(symbol)
-                        await asyncio.sleep(0.1)  # Petit délai
-                    else:
-                        logger.warning(f"⚠️ WebSocket déconnecté pendant souscription de {symbol}")
-                        break
-                except Exception as sub_e:
-                    logger.error(f"❌ Erreur souscription {symbol}: {sub_e}")
-                    # Continue avec les autres symboles
-                    continue
+                    await self.ws_manager.disconnect()
+                except Exception:
+                    pass
+                self.ws_manager = None
 
-            logger.info(f"✅ WebSocket démarré pour {len(symbols)} symboles")
-            
-            # 🔥 JOUR 5: Métriques
             try:
-                from core.metrics import get_metrics_collector
-                metrics = get_metrics_collector()
-                if metrics:
-                    metrics.ws_connected = True
-            except:
-                pass
-            
-        except Exception as e:
-            # Code 1000 = fermeture normale WebSocket (pas une vraie erreur)
-            error_msg = str(e)
-            if "1000" in error_msg and ("OK" in error_msg or "Normal" in error_msg):
-                logger.info(f"ℹ️ WebSocket fermé normalement: {e}")
-            else:
-                logger.error(f"❌ Erreur démarrage WebSocket: {e}")
-            self.use_websocket = False
-            self.ws_manager = None
-            
-            # 🔥 JOUR 5: Métriques
-            try:
-                from core.metrics import get_metrics_collector
-                metrics = get_metrics_collector()
-                if metrics:
-                    metrics.ws_connected = False
-            except:
-                pass
+                # Créer WebSocket Manager
+                ws_manager = WebSocketManager(
+                    url=WEBSOCKET_CONFIG['url'],
+                    callback=self._handle_mexc_message
+                )
+                self.ws_manager = ws_manager
+
+                # Configurer callback de reconnexion pour réabonner aux symboles
+                ws_manager.reconnect_callback = self._resubscribe_after_reconnect
+
+                # Connecter
+                await ws_manager.start()
+
+                if self.ws_manager is not ws_manager:
+                    return
+
+                # 🔥 FIX: Vérifier que la connexion WebSocket est établie avant souscription
+                if not await self._wait_for_ws_ready(ws_manager, timeout=2.0):
+                    logger.warning("⚠️ WebSocket pas encore prêt - abonnement différé")
+                    return
+
+                # S'abonner aux symboles
+                for symbol in symbols:
+                    try:
+                        # 🔥 FIX: Vérification supplémentaire avant chaque souscription
+                        if self.ws_manager is ws_manager and ws_manager.connected:
+                            await ws_manager.subscribe_ticker(symbol)
+                            await asyncio.sleep(0.1)  # Petit délai
+                        else:
+                            logger.warning(f"⚠️ WebSocket déconnecté pendant souscription de {symbol}")
+                            break
+                    except Exception as sub_e:
+                        logger.error(f"❌ Erreur souscription {symbol}: {sub_e}")
+                        continue
+
+                logger.info(f"✅ WebSocket démarré pour {len(symbols)} symboles")
+
+                # 🔥 JOUR 5: Métriques
+                try:
+                    from core.metrics import get_metrics_collector
+                    metrics = get_metrics_collector()
+                    if metrics:
+                        metrics.ws_connected = True
+                except:
+                    pass
+
+            except Exception as e:
+                # Code 1000 = fermeture normale WebSocket (pas une vraie erreur)
+                error_msg = str(e)
+                if "1000" in error_msg and ("OK" in error_msg or "Normal" in error_msg):
+                    logger.info(f"ℹ️ WebSocket fermé normalement: {e}")
+                else:
+                    logger.error(f"❌ Erreur démarrage WebSocket: {e}")
+                self.use_websocket = False
+                if self.ws_manager:
+                    try:
+                        await self.ws_manager.disconnect()
+                    except Exception:
+                        pass
+                self.ws_manager = None
+
+                # 🔥 JOUR 5: Métriques
+                try:
+                    from core.metrics import get_metrics_collector
+                    metrics = get_metrics_collector()
+                    if metrics:
+                        metrics.ws_connected = False
+                except:
+                    pass
     
     async def _resubscribe_after_reconnect(self):
         """
@@ -300,6 +340,8 @@ class HybridPriceProvider:
         """
         if not self.ws_manager:
             return
+
+        ws_manager = self.ws_manager
 
         try:
             # Déterminer quels symboles réabonner
@@ -327,16 +369,18 @@ class HybridPriceProvider:
                 symbols_to_subscribe = self.monitored_symbols
                 logger.info(f"🔄 Réabonnement WebSocket: {len(symbols_to_subscribe)} symboles")
 
+            if not symbols_to_subscribe:
+                return
+
             # Réabonner avec vérification que le WebSocket est prêt
-            if not self.ws_manager or not self.ws_manager._ws or not self.ws_manager._connected:
-                logger.warning("⚠️ WebSocket pas encore prêt pour réabonnement, attente...")
-                await asyncio.sleep(0.5)
+            if not await self._wait_for_ws_ready(ws_manager, timeout=5.0):
+                logger.warning("⚠️ WebSocket pas encore prêt pour réabonnement")
+                return
             
             for symbol in symbols_to_subscribe:
                 try:
-                    # 🔥 FIX: Vérification supplémentaire avant chaque souscription
-                    if self.ws_manager and self.ws_manager._connected and self.ws_manager._ws:
-                        await self.ws_manager.subscribe_ticker(symbol)
+                    if self.ws_manager is ws_manager and ws_manager.connected:
+                        await ws_manager.subscribe_ticker(symbol)
                         await asyncio.sleep(0.05)  # Petit délai
                     else:
                         logger.warning(f"⚠️ WebSocket non prêt pour {symbol}, ignoré")
@@ -352,11 +396,12 @@ class HybridPriceProvider:
 
     async def stop_websocket(self):
         """Arrêter WebSocket"""
-        if self.ws_manager:
-            await self.ws_manager.disconnect()
-            self.ws_manager = None
-            self.monitored_symbols = []  # Vider les symboles monitorés
-            logger.info("🔌 WebSocket arrêté")
+        async with self.ws_lifecycle_lock:
+            if self.ws_manager:
+                await self.ws_manager.disconnect()
+                self.ws_manager = None
+                self.monitored_symbols = []  # Vider les symboles monitorés
+                logger.info("🔌 WebSocket arrêté")
     
     async def get_price(self, symbol: str) -> Optional[Dict]:
         """

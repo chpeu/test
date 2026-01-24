@@ -120,9 +120,8 @@ class WebSocketManager:
     async def send_personal_message(self, message: dict, websocket: WebSocket):
         """Envoyer un message à un WebSocket spécifique"""
         try:
-            if websocket in self.active_connections:
-                # 🔥 FIX: Utiliser un encodeur JSON personnalisé pour gérer datetime et autres types
-                await websocket.send_text(json.dumps(message, default=str))
+            # 🔥 FIX: Utiliser un encodeur JSON personnalisé pour gérer datetime et autres types
+            await websocket.send_text(json.dumps(message, default=str))
         except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
             # 🔥 FIX: Déconnexions normales - nettoyer silencieusement
             await self.disconnect(websocket)
@@ -153,7 +152,7 @@ class WebSocketManager:
                 # 🔥 FIX: Vérifier que la connexion est toujours active
                 if connection not in self.active_connections:
                     return None
-                await asyncio.wait_for(connection.send_text(message_json), timeout=1.0)
+                await asyncio.wait_for(connection.send_text(message_json), timeout=5.0)
                 return None  # Succès
             except asyncio.TimeoutError:
                 return connection  # Timeout - nettoyer connexion
