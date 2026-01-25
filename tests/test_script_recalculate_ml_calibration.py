@@ -214,21 +214,13 @@ def test_recalculate_ml_calibration_main_execution(monkeypatch, tmp_path):
     """Test pour couvrir ligne 171: if __name__ == '__main__': sys.exit(main())"""
     mod = _load_script_module(tmp_path)
     
-    # Mock sys.exit pour capturer l'appel
     exit_called = {'code': None}
     def fake_exit(code):
         exit_called['code'] = code
-        
-    monkeypatch.setattr('sys.exit', fake_exit)
     
-    # Mock main() pour retourner 0
+    monkeypatch.setattr('sys.exit', fake_exit)
     monkeypatch.setattr(mod, 'main', lambda: 0)
     
-    # Simuler l'exécution comme script principal
-    mod.__name__ = '__main__'
+    mod._main_entry()
     
-    # Exécuter le code __main__ en important le module comme script
-    exec(compile(open(mod.__file__).read(), mod.__file__, 'exec'), {'__name__': '__main__'})
-    
-    # Vérifier que sys.exit a été appelé avec le bon code
     assert exit_called['code'] == 0

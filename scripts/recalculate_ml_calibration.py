@@ -167,8 +167,14 @@ def main():
         traceback.print_exc()
         return 1
 
-if __name__ == '__main__':
+
+def _main_entry():
+    """Entry point for __main__ block (testable)"""
     _imported_mod = sys.modules.get('scripts.recalculate_ml_calibration')
     if _imported_mod is not None and hasattr(_imported_mod, 'main'):
         sys.exit(_imported_mod.main())
     sys.exit(main())
+
+
+if __name__ == '__main__':
+    _main_entry()
