@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769344399.5952265,
+  "timestamp": 1769351409.725444,
   "specs": {
     "CHZ_USDT": {
       "symbol": "CHZ_USDT",
@@ -120,6 +120,16 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 1000.0
+    },
+    "ASTER_USDT": {
+      "symbol": "ASTER_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1650000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
