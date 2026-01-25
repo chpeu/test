@@ -24,24 +24,24 @@ class TestLoggerWindowsFix:
         os.chdir(self.original_cwd)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    def test_setup_logger_with_timed_rotating_handler(self):
-        """Test setup_logger utilise TimedRotatingFileHandler"""
-        with patch('logging.handlers.TimedRotatingFileHandler') as MockHandler:
+    def test_setup_logger_with_safe_rotating_handler(self):
+        """Test setup_logger utilise SafeRotatingFileHandler"""
+        with patch('utils.logger.SafeRotatingFileHandler') as MockHandler:
             mock_handler = Mock()
             MockHandler.return_value = mock_handler
             
             logger = setup_logger(log_to_file=True, level='INFO')
             
-            # Vérifier que TimedRotatingFileHandler est utilisé
+            # Vérifier que SafeRotatingFileHandler est utilisé
             MockHandler.assert_called_once()
             args, kwargs = MockHandler.call_args
             
             # Vérifier les paramètres de rotation
-            assert kwargs['when'] == 'midnight'
-            assert kwargs['interval'] == 1
-            assert kwargs['backupCount'] == 7
+            assert 'maxBytes' in kwargs
+            assert kwargs['maxBytes'] == 10*1024*1024  # 10 MB
+            assert kwargs['backupCount'] == 5
             assert kwargs['encoding'] == 'utf-8'
-            assert kwargs['utc'] is False
+            assert kwargs['delay'] is True
             
             # Vérifier que le handler est ajouté
             mock_handler.setLevel.assert_called()
@@ -52,7 +52,7 @@ class TestLoggerWindowsFix:
         logs_dir = os.path.join(self.temp_dir, 'logs')
         assert not os.path.exists(logs_dir)
         
-        with patch('logging.handlers.TimedRotatingFileHandler'):
+        with patch('utils.logger.SafeRotatingFileHandler'):
             setup_logger(log_to_file=True)
             
         # Le dossier logs devrait être créé
@@ -60,10 +60,10 @@ class TestLoggerWindowsFix:
     
     def test_setup_logger_no_file_logging(self):
         """Test setup_logger sans logging fichier"""
-        with patch('logging.handlers.TimedRotatingFileHandler') as MockHandler:
+        with patch('utils.logger.SafeRotatingFileHandler') as MockHandler:
             logger = setup_logger(log_to_file=False)
             
-            # TimedRotatingFileHandler ne devrait pas être appelé
+            # SafeRotatingFileHandler ne devrait pas être appelé
             MockHandler.assert_not_called()
             
             # Logger devrait quand même être créé
@@ -72,7 +72,7 @@ class TestLoggerWindowsFix:
     
     def test_setup_logger_handles_file_logging_exception(self):
         """Test que setup_logger gère les exceptions de file logging"""
-        with patch('logging.handlers.TimedRotatingFileHandler') as MockHandler:
+        with patch('utils.logger.SafeRotatingFileHandler') as MockHandler:
             # Simuler une exception lors de la création du handler
             MockHandler.side_effect = Exception("Permission denied")
             
@@ -113,7 +113,7 @@ class TestLoggerWindowsFix:
     def test_setup_logger_debug_mode(self):
         """Test setup_logger en mode debug"""
         with patch('utils.logger.DEBUG_ENABLED', True):
-            with patch('logging.handlers.TimedRotatingFileHandler') as MockHandler:
+            with patch('utils.logger.SafeRotatingFileHandler') as MockHandler:
                 mock_handler = Mock()
                 MockHandler.return_value = mock_handler
                 
@@ -125,7 +125,7 @@ class TestLoggerWindowsFix:
     def test_setup_logger_production_mode(self):
         """Test setup_logger en mode production"""
         with patch('utils.logger.DEBUG_ENABLED', False):
-            with patch('logging.handlers.TimedRotatingFileHandler') as MockHandler:
+            with patch('utils.logger.SafeRotatingFileHandler') as MockHandler:
                 mock_handler = Mock()
                 MockHandler.return_value = mock_handler
                 
@@ -133,6 +133,94 @@ class TestLoggerWindowsFix:
                 
                 # En mode production, le niveau devrait être INFO
                 mock_handler.setLevel.assert_called_with(logging.INFO)
+
+    def test_safe_rotating_file_handler_permission_error(self):
+        """Test que SafeRotatingFileHandler gère les PermissionError correctement"""
+        from utils.logger import SafeRotatingFileHandler
+        import tempfile
+        import os
+        
+        # Créer un fichier temporaire pour le test
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+        
+        try:
+            # Créer le handler
+            handler = SafeRotatingFileHandler(
+                temp_file.name,
+                maxBytes=1024,
+                backupCount=1
+            )
+            
+            # Mocker doRollover de la classe parent pour lever PermissionError
+            with patch.object(handler.__class__.__bases__[0], 'doRollover') as mock_parent_rollover:
+                mock_parent_rollover.side_effect = PermissionError("Windows file lock")
+                
+                # Capturer stderr pour vérifier le message d'erreur
+                with patch('sys.stderr') as mock_stderr:
+                    # Déclencher la rotation (qui devrait échouer gracieusement)
+                    handler.doRollover()
+                    
+                    # Vérifier que l'erreur est capturée et logged
+                    assert handler._rollover_failed is True
+                    assert handler._last_rollover_attempt > 0
+                    
+            # Vérifier que shouldRollover respecte le cooldown après échec
+            import time
+            handler._last_rollover_attempt = time.time() - 1800  # 30 min ago
+            handler._rollover_retry_delay = 3600  # 1h cooldown
+            
+            # Simuler un record qui nécessiterait normalement une rotation
+            mock_record = Mock()
+            with patch.object(handler.__class__.__bases__[0], 'shouldRollover', return_value=True):
+                should_rollover = handler.shouldRollover(mock_record)
+                # Devrait retourner False à cause du cooldown
+                assert should_rollover is False
+                
+        finally:
+            # Cleanup
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+
+    def test_safe_rotating_file_handler_retry_after_cooldown(self):
+        """Test que SafeRotatingFileHandler retry après le cooldown"""
+        from utils.logger import SafeRotatingFileHandler
+        import tempfile
+        import os
+        import time
+        
+        # Créer un fichier temporaire pour le test
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+        
+        try:
+            # Créer le handler avec un cooldown très court pour le test
+            handler = SafeRotatingFileHandler(
+                temp_file.name,
+                maxBytes=1024,
+                backupCount=1
+            )
+            handler._rollover_retry_delay = 1  # 1 seconde pour le test
+            
+            # Simuler un échec initial
+            handler._rollover_failed = True
+            handler._last_rollover_attempt = time.time() - 2  # 2 sec ago
+            
+            # Maintenant shouldRollover devrait permettre un retry
+            mock_record = Mock()
+            with patch.object(handler.__class__.__bases__[0], 'shouldRollover', return_value=True):
+                should_rollover = handler.shouldRollover(mock_record)
+                # Devrait retourner True car le cooldown est expiré
+                assert should_rollover is True
+                
+        finally:
+            # Cleanup
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
 
 
 class TestLoggerIntegration:
