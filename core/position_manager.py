@@ -2884,11 +2884,21 @@ class PositionManager:
             
             logger.debug(f"🎯 TP Partiel: Vérification trigger à {break_even_trigger:.3f}% (mode {tp_sl_mode})")
             
-            if self.partial_tp.check_trigger(
+            # 🔥 DEBUG: Vérifier conditions TP partiel
+            tp_partial_should_trigger = self.partial_tp.check_trigger(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
                 trigger_pct=break_even_trigger  # TP partiel utilise break_even_trigger en mode FIXE
-            ):
+            )
+            
+            logger.warning(
+                f"💰 TP Partiel Check {self.active_position.symbol}: "
+                f"pnl={pnl:.3f}%, trigger={break_even_trigger:.3f}%, "
+                f"already_sold={getattr(self.active_position, 'partial_tp_sold', False)} → "
+                f"should_trigger={tp_partial_should_trigger}"
+            )
+            
+            if tp_partial_should_trigger:
                 # Calculer le pourcentage à vendre
                 partial_tp_percent = get_effective_value('partial_tp_percent') or 50.0
 
@@ -3012,11 +3022,19 @@ class PositionManager:
 
             trailing_should_activate = self.active_position.partial_tp_sold or pnl >= trailing_trigger
 
+            # 🔥 DEBUG: Log trailing decision
+            logger.warning(
+                f"🎢 Trailing Check {self.active_position.symbol}: "
+                f"partial_sold={self.active_position.partial_tp_sold}, "
+                f"pnl={pnl:.3f}%, trigger={trailing_trigger:.3f}% → activate={trailing_should_activate}"
+            )
+
             if trailing_should_activate:
                 # 🔥 PHASE 0.5: Enregistrer timestamp trailing activation
                 if not self.active_position.trailing_activated:
                     self.active_position.trailing_activated = True
                     self.active_position.trailing_activated_at = datetime.now().timestamp()
+                    logger.warning(f"✅ Trailing ACTIVÉ pour {self.active_position.symbol} à {pnl:.3f}%")
                     # Phase 2H.6: Log trade event
                     self._log_trade_event('TRAILING_ACTIVATED', current_price, pnl, details={
                         'trigger_pct': trailing_trigger
@@ -3381,18 +3399,31 @@ class PositionManager:
             and getattr(self.active_position, 'partial_tp_sold', False)
         )
 
+        # 🔥 DEBUG: Logs pour vérification des niveaux
+        logger.warning(
+            f"🎯 Check Levels {self.active_position.symbol} {direction}: "
+            f"price={current_price}, sl={sl}, tp={tp}, pnl={pnl:.3f}%"
+        )
+
         # Vérification standard TP/SL
         if direction == 'LONG':
             if current_price <= sl:
-                return 'TS' if pnl >= 0 else 'SL'
+                close_reason = 'TS' if pnl >= 0 else 'SL'
+                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} <= SL {sl} → {close_reason}")
+                return close_reason
             if not skip_final_tp and current_price >= tp:
+                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} >= TP {tp} → TP")
                 return 'TP'
         else:  # SHORT
             if current_price >= sl:
-                return 'TS' if pnl >= 0 else 'SL'
+                close_reason = 'TS' if pnl >= 0 else 'SL'
+                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} >= SL {sl} → {close_reason}")
+                return close_reason
             if not skip_final_tp and current_price <= tp:
+                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} <= TP {tp} → TP")
                 return 'TP'
 
+        logger.debug(f"➡️ {self.active_position.symbol}: Position continue (aucun niveau touché)")
         return None
 
     def close_position(self, exit_price: float, reason: str, skip_order: bool = False) -> Dict[str, Any]:

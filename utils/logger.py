@@ -7,12 +7,61 @@ import logging
 import sys
 import os
 import weakref
+import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from config import DEBUG_ENABLED
 
 
 _ws_log_handlers = weakref.WeakSet()
+
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler sécurisé pour Windows qui gère les PermissionError"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._rollover_failed = False
+        self._last_rollover_attempt = 0
+        self._rollover_retry_delay = 3600  # Retry après 1h si rotation échoue
+    
+    def doRollover(self):
+        """Rotation sécurisée qui ne crash pas sur PermissionError"""
+        try:
+            # Marquer qu'on tente une rotation
+            self._last_rollover_attempt = time.time()
+            
+            # Essayer la rotation standard
+            super().doRollover()
+            
+            # Si succès, reset le flag d'échec
+            self._rollover_failed = False
+            
+        except (PermissionError, OSError) as e:
+            # Si rotation échoue, marquer l'échec et continuer à logger
+            self._rollover_failed = True
+            
+            # Log l'erreur vers stderr pour éviter les boucles
+            print(f"⚠️ Rotation logs échouée (continuant sans rotation): {e}", 
+                  file=sys.stderr, flush=True)
+            
+            # Le fichier existant continuera à être utilisé
+            # Pas de crash, juste pas de rotation
+        except Exception as e:
+            # Autres erreurs inattendues
+            self._rollover_failed = True
+            print(f"🔴 Erreur rotation logs inattendue: {e}", 
+                  file=sys.stderr, flush=True)
+    
+    def shouldRollover(self, record):
+        """Décider si rotation est nécessaire, en tenant compte des échecs précédents"""
+        # Si rotation a échoué récemment, ne pas réessayer immédiatement
+        if (self._rollover_failed and 
+            time.time() - self._last_rollover_attempt < self._rollover_retry_delay):
+            return False
+        
+        # Sinon, utiliser la logique standard
+        return super().shouldRollover(record)
 
 
 class _NonClosingStreamHandler(logging.StreamHandler):
@@ -263,15 +312,14 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
             log_dir = 'logs'
             os.makedirs(log_dir, exist_ok=True)
             
-            # 🔥 FIX Windows: TimedRotatingFileHandler au lieu de RotatingFileHandler
-            # pour éviter PermissionError: [WinError 32] sur Windows
-            file_handler = logging.handlers.TimedRotatingFileHandler(
+            # 🔥 FIX Windows: Utilisez RotatingFileHandler avec gestion robuste des erreurs
+            # TimedRotatingFileHandler cause des PermissionError sur Windows
+            file_handler = SafeRotatingFileHandler(
                 os.path.join(log_dir, 'app.log'),
-                when='midnight',  # Rotation quotidienne à minuit
-                interval=1,       # Tous les jours
-                backupCount=7,    # Garder 7 jours d'historique
+                maxBytes=10*1024*1024,  # 10 MB par fichier
+                backupCount=5,          # Garder 5 fichiers de backup
                 encoding='utf-8',
-                utc=False        # Utiliser l'heure locale
+                delay=True              # 🔥 KEY: delay=True évite la création immédiate
             )
             
             file_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else logging.INFO)

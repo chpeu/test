@@ -997,67 +997,98 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
             
             # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
-            if not indicators_1m:
+            if not indicators_1m or not any(v is not None for v in indicators_1m.values()):
                 logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
-                # Si analysis contient 'reason' (aucun setup valide), extraire depuis analysis_1m
-                if 'reason' in analysis and 'analysis_1m' in analysis and analysis['analysis_1m']:
-                    analysis_1m = analysis['analysis_1m']
-                    indicators_1m = {
-                        'rsi': analysis_1m.get('rsi'),
-                        'rsi_prev': analysis_1m.get('rsi_prev'),
-                        'macd': analysis_1m.get('macd'),
-                        'macd_signal': analysis_1m.get('macd_signal'),
-                        'macd_hist': analysis_1m.get('macd_hist'),
-                        'macd_hist_prev': analysis_1m.get('macd_hist_prev'),
-                        'adx': analysis_1m.get('adx'),
-                        'di_plus': analysis_1m.get('di_plus'),
-                        'di_minus': analysis_1m.get('di_minus'),
+                
+                # Essayer d'abord depuis analysis_1m (priorité haute)
+                constructed_indicators = {}
+                analysis_1m = analysis.get('analysis_1m')
+                if analysis_1m and isinstance(analysis_1m, dict):
+                    logger.info(f"🔍 Tentative extraction depuis analysis_1m pour {symbol}")
+                    # Essayer les noms standards et alternatifs
+                    constructed_indicators = {
+                        'rsi': (analysis_1m.get('rsi') or analysis_1m.get('rsi_1m') or 
+                               analysis_1m.get('RSI') or analysis_1m.get('current', {}).get('rsi')),
+                        'rsi_prev': (analysis_1m.get('rsi_prev') or analysis_1m.get('rsi_previous') or
+                                    analysis_1m.get('previous', {}).get('rsi')),
+                        'macd': (analysis_1m.get('macd') or analysis_1m.get('MACD') or 
+                                analysis_1m.get('macd_line') or analysis_1m.get('current', {}).get('macd')),
+                        'macd_signal': (analysis_1m.get('macd_signal') or analysis_1m.get('macd_signal_line') or
+                                       analysis_1m.get('current', {}).get('macd_signal')),
+                        'macd_hist': (analysis_1m.get('macd_hist') or analysis_1m.get('macd_histogram') or
+                                     analysis_1m.get('current', {}).get('macd_hist')),
+                        'macd_hist_prev': (analysis_1m.get('macd_hist_prev') or analysis_1m.get('macd_histogram_prev') or
+                                          analysis_1m.get('previous', {}).get('macd_hist')),
+                        'adx': (analysis_1m.get('adx') or analysis_1m.get('ADX') or 
+                               analysis_1m.get('current', {}).get('adx')),
+                        'di_plus': (analysis_1m.get('di_plus') or analysis_1m.get('+DI') or analysis_1m.get('di_pos') or
+                                   analysis_1m.get('current', {}).get('di_plus')),
+                        'di_minus': (analysis_1m.get('di_minus') or analysis_1m.get('-DI') or analysis_1m.get('di_neg') or
+                                    analysis_1m.get('current', {}).get('di_minus')),
                         'di_gap': analysis_1m.get('di_gap'),
-                        'ema9': analysis_1m.get('ema9'),
-                        'ema21': analysis_1m.get('ema21'),
+                        'ema9': (analysis_1m.get('ema9') or analysis_1m.get('EMA9') or analysis_1m.get('ema_fast') or
+                                analysis_1m.get('current', {}).get('ema9')),
+                        'ema21': (analysis_1m.get('ema21') or analysis_1m.get('EMA21') or analysis_1m.get('ema_slow') or
+                                 analysis_1m.get('current', {}).get('ema21')),
                         'ema_diff_pct': analysis_1m.get('ema_diff_pct'),
-                        'atr': analysis_1m.get('atr'),
-                        'atr_pct': analysis_1m.get('atr_pct'),
-                        'bb_upper': analysis_1m.get('bb_upper'),
-                        'bb_middle': analysis_1m.get('bb_middle'),
-                        'bb_lower': analysis_1m.get('bb_lower'),
+                        'atr': (analysis_1m.get('atr') or analysis_1m.get('ATR') or 
+                               analysis_1m.get('current', {}).get('atr')),
+                        'atr_pct': (analysis_1m.get('atr_pct') or analysis_1m.get('atr_percentage') or
+                                   analysis_1m.get('current', {}).get('atr_pct')),
+                        'bb_upper': (analysis_1m.get('bb_upper') or analysis_1m.get('bollinger_upper') or
+                                    analysis_1m.get('current', {}).get('bb_upper')),
+                        'bb_middle': (analysis_1m.get('bb_middle') or analysis_1m.get('bollinger_middle') or
+                                     analysis_1m.get('current', {}).get('bb_middle')),
+                        'bb_lower': (analysis_1m.get('bb_lower') or analysis_1m.get('bollinger_lower') or
+                                    analysis_1m.get('current', {}).get('bb_lower')),
                         'bb_width': analysis_1m.get('bb_width'),
                         'bb_distance_to_lower': analysis_1m.get('bb_distance_to_lower'),
                         'bb_distance_to_upper': analysis_1m.get('bb_distance_to_upper'),
-                        'volume': analysis_1m.get('volume'),
-                        'volume_avg': analysis_1m.get('volume_avg'),
-                        'volume_ratio': analysis_1m.get('volumeSpike'),
-                        'volume_spike': analysis_1m.get('volumeSpike'),
+                        'volume': (analysis_1m.get('volume') or analysis_1m.get('Volume') or
+                                  analysis_1m.get('current', {}).get('volume')),
+                        'volume_avg': (analysis_1m.get('volume_avg') or analysis_1m.get('volume_average') or
+                                      analysis_1m.get('avg_volume')),
+                        'volume_ratio': (analysis_1m.get('volumeSpike') or analysis_1m.get('volume_ratio') or
+                                        analysis_1m.get('volume_spike')),
+                        'volume_spike': (analysis_1m.get('volumeSpike') or analysis_1m.get('volume_spike')),
                     }
-                else:
+                
+                # Si pas assez d'indicateurs depuis analysis_1m, essayer depuis analysis racine
+                valid_count = sum(1 for v in constructed_indicators.values() if v is not None)
+                if valid_count < 5:  # Si moins de 5 indicateurs valides
+                    logger.info(f"🔧 Fallback vers analysis racine pour {symbol} (seulement {valid_count} indicateurs depuis analysis_1m)")
                     # Construire indicators_1m depuis les données disponibles dans analysis
-                    indicators_1m = {
-                        'rsi': analysis.get('rsi'),
-                        'rsi_prev': analysis.get('rsi_prev'),
-                        'macd': analysis.get('macd'),
-                        'macd_signal': analysis.get('macd_signal'),
-                        'macd_hist': analysis.get('macd_hist'),
-                        'macd_hist_prev': analysis.get('macd_hist_prev'),
-                        'adx': analysis.get('adx'),
-                        'di_plus': analysis.get('di_plus'),
-                        'di_minus': analysis.get('di_minus'),
-                        'di_gap': analysis.get('di_gap'),
-                        'ema9': analysis.get('ema9'),
-                        'ema21': analysis.get('ema21'),
-                        'ema_diff_pct': analysis.get('ema_diff_pct'),
-                        'atr': analysis.get('atr'),
-                        'atr_pct': analysis.get('atr_pct'),
-                        'bb_upper': analysis.get('bb_upper'),
-                        'bb_middle': analysis.get('bb_middle'),
-                        'bb_lower': analysis.get('bb_lower'),
-                        'bb_width': analysis.get('bb_width'),
-                        'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
-                        'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
-                        'volume': analysis.get('volume'),
-                        'volume_avg': analysis.get('volume_avg'),
-                        'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
-                        'volume_spike': analysis.get('volume_spike'),
-                    }
+                    constructed_indicators.update({
+                        k: v or analysis.get(k) for k, v in {
+                            'rsi': analysis.get('rsi'),
+                            'rsi_prev': analysis.get('rsi_prev'),
+                            'macd': analysis.get('macd'),
+                            'macd_signal': analysis.get('macd_signal'),
+                            'macd_hist': analysis.get('macd_hist'),
+                            'macd_hist_prev': analysis.get('macd_hist_prev'),
+                            'adx': analysis.get('adx'),
+                            'di_plus': analysis.get('di_plus'),
+                            'di_minus': analysis.get('di_minus'),
+                            'di_gap': analysis.get('di_gap'),
+                            'ema9': analysis.get('ema9'),
+                            'ema21': analysis.get('ema21'),
+                            'ema_diff_pct': analysis.get('ema_diff_pct'),
+                            'atr': analysis.get('atr'),
+                            'atr_pct': analysis.get('atr_pct'),
+                            'bb_upper': analysis.get('bb_upper'),
+                            'bb_middle': analysis.get('bb_middle'),
+                            'bb_lower': analysis.get('bb_lower'),
+                            'bb_width': analysis.get('bb_width'),
+                            'bb_distance_to_lower': analysis.get('bb_distance_to_lower'),
+                            'bb_distance_to_upper': analysis.get('bb_distance_to_upper'),
+                            'volume': analysis.get('volume'),
+                            'volume_avg': analysis.get('volume_avg'),
+                            'volume_ratio': analysis.get('volume_ratio') or analysis.get('volumeSpike'),
+                            'volume_spike': analysis.get('volume_spike'),
+                        }.items()
+                    })
+                
+                indicators_1m = constructed_indicators
             
             # Si indicators_5m n'est pas présent, essayer de le construire depuis les données disponibles
             if not indicators_5m:

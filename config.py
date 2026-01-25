@@ -360,7 +360,8 @@ TRADING_CONFIG = {
     "adaptive_sizing_reset_big_loss": True, # Reset si grosse perte
     "adaptive_sizing_big_loss_threshold": -2.0, # Seuil grosse perte %
 
-    # ✅ TP Escalier / Multi-Level TP (paramètres individuels pour frontend)
+    # ✅ TP Partiel et TP Escalier / Multi-Level TP (paramètres individuels pour frontend)
+    "use_partial_tp": True,  # 🔥 FIX: Activer TP partiel (était manquant)
     "partial_tp_percent": 40,  # % de position vendue au 1er TP (mode FIXE)
     "partial_tp_disable_final_tp": False,  # Si True: ignorer TP final après TP partiel (mode FIXE)
     "escalier_level1_pnl": 0.20,

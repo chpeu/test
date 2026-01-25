@@ -397,18 +397,54 @@ async def lifespan(app: FastAPI):
 
             # 🔥 POST-EXIT ANALYSIS
             try:
-                from core.callbacks.post_exit_loop import start_post_exit_loop, set_price_provider
+                logger.info("🔄 Initialisation Post-Exit Analysis...")
+                from core.callbacks.post_exit_loop import start_post_exit_loop, set_price_provider, is_running
+                
+                # Diagnostic PriceProvider
+                price_provider = state.get_price_provider()
+                logger.warning(f"📊 PostExit: PriceProvider disponible = {price_provider is not None}")
+                
+                if price_provider is None:
+                    logger.error("❌ PostExit: PriceProvider manquant - tentative création forcée")
+                    try:
+                        from api.price_provider import get_price_provider
+                        price_provider = get_price_provider()
+                        if price_provider:
+                            state.set_price_provider(price_provider)
+                            logger.warning("✅ PostExit: PriceProvider créé et injecté en urgence")
+                        else:
+                            logger.error("❌ PostExit: Impossible de créer PriceProvider - Loop ne démarrera pas")
+                    except Exception as force_e:
+                        logger.error(f"❌ PostExit: Échec création forcée PriceProvider: {force_e}")
+                
+                # Injection PriceProvider dans PostExitLoop
                 set_post_exit_price_provider = set_price_provider # Alias local
                 set_post_exit_price_provider(state.get_price_provider())
+                
+                # Démarrage PostExitLoop
                 await start_post_exit_loop()
+                
+                # Vérification démarrage
+                loop_status = is_running()
+                logger.warning(f"📊 PostExit: Loop démarrée = {loop_status}")
+                
+                if not loop_status:
+                    logger.error("❌ PostExit: Loop n'a pas démarré - Prix ne seront pas collectés")
                 
                 from core.post_exit.manager import get_post_exit_manager
                 post_exit_mgr = get_post_exit_manager()
+                manager_status = post_exit_mgr.get_tracker_status()
+                logger.info(f"📊 PostExit Manager: enabled={manager_status['enabled']}")
+                
                 restored_count = await post_exit_mgr.restore_active_trackers()
                 if restored_count > 0:
                     logger.info(f"🔄 Post-Exit: {restored_count} trackers restaurés")
+                    
+                logger.info("✅ Post-Exit Analysis initialisé")
             except Exception as e:
-                logger.warning(f"⚠️ Post-Exit init différé échoué: {e}")
+                logger.error(f"❌ Post-Exit init différé échoué: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
 
         asyncio.create_task(delayed_init())
 

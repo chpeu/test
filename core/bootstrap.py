@@ -143,9 +143,26 @@ async def init_instances() -> None:
         from api.price_provider import get_price_provider
         
         if not state.get_price_provider():
-            price_provider = get_price_provider()
-            state.set_price_provider(price_provider)
-            logger.info("✅ PriceProvider initialized")
+            logger.info("🔄 Initialisation PriceProvider...")
+            try:
+                price_provider = get_price_provider()
+                if price_provider:
+                    state.set_price_provider(price_provider)
+                    logger.info("✅ PriceProvider initialized and injected into StateManager")
+                else:
+                    logger.error("❌ get_price_provider() returned None - PostExit will not work")
+                    # Essayer de créer directement pour diagnostic
+                    from api.price_provider import HybridPriceProvider
+                    try:
+                        direct_provider = HybridPriceProvider()
+                        state.set_price_provider(direct_provider)
+                        logger.warning("⚠️ PriceProvider créé directement comme fallback")
+                    except Exception as direct_e:
+                        logger.error(f"❌ Échec création directe PriceProvider: {direct_e}")
+            except Exception as e:
+                logger.error(f"❌ Erreur initialisation PriceProvider: {e}")
+        else:
+            logger.info("✅ PriceProvider already exists in StateManager")
 
         if not state.get_analyzer():
             analyzer = TechnicalAnalyzer()
