@@ -557,7 +557,6 @@ async def _scan_top_pairs():
                         # Construire les 20 features exactes attendues par le modèle GB
                         features = build_gb_features(
                             best_setup=best_setup,
-                            analysis=analysis,
                             scalability_data=scalability_data
                         )
                         
@@ -874,51 +873,128 @@ def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Unified filters dictionary with all filter metrics with proper suffixes
     """
-    if not analysis or not isinstance(analysis, dict):
+    filters: Dict[str, Any] = {
+        'volume_filter_passed_1m': False,
+        'snr_1m': 0.0,
+        'snr_passed_1m': False,
+        'breakout_distance_1m': 0.0,
+        'breakout_passed_1m': False,
+        'wick_ratio_1m': 0.0,
+        'wick_passed_1m': False,
+        'atr_optimal_passed_1m': False,
+        'volume_filter_passed_5m': False,
+        'snr_5m': 0.0,
+        'snr_passed_5m': False,
+        'breakout_distance_5m': 0.0,
+        'breakout_passed_5m': False,
+        'wick_ratio_5m': 0.0,
+        'wick_passed_5m': False,
+        'atr_optimal_passed_5m': False,
+    }
+
+    if analysis is None or not isinstance(analysis, dict):
         logger.warning("⚠️ _extract_filter_metrics: analysis est None ou pas un dict")
-        return {}
+        return filters
+
+    if not analysis:
+        logger.debug("_extract_filter_metrics: analysis vide")
+        return filters
     
-    filters = {}
+    existing_filters = analysis.get('filters')
+    if isinstance(existing_filters, dict) and existing_filters:
+        for key in filters.keys():
+            if key in existing_filters and existing_filters.get(key) is not None:
+                filters[key] = existing_filters.get(key)
+        return filters
+    
+    for key in filters.keys():
+        if key in analysis and analysis.get(key) is not None:
+            filters[key] = analysis.get(key)
     
     # Extract from analysis_1m with _1m suffix
-    analysis_1m = analysis.get('analysis_1m', {})
-    logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_1m présent={bool(analysis_1m)}, type={type(analysis_1m)}")
-    if analysis_1m and isinstance(analysis_1m, dict):
-        logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_1m keys (premiers 20): {list(analysis_1m.keys())[:20]}")
-        filters.update({
-            'volume_filter_passed_1m': analysis_1m.get('volume_filter_passed'),
-            'snr_1m': analysis_1m.get('snr'),
-            'snr_passed_1m': analysis_1m.get('snr_passed'),
-            'breakout_distance_1m': analysis_1m.get('breakout_distance'),
-            'breakout_passed_1m': analysis_1m.get('breakout_passed'),
-            'wick_ratio_1m': analysis_1m.get('wick_ratio'),
-            'wick_passed_1m': analysis_1m.get('wick_passed'),
-            'atr_optimal_passed_1m': analysis_1m.get('atr_optimal_passed')
-        })
-        logger.info(f"✅ Filters 1m extraits: snr_1m={filters.get('snr_1m')}, wick_ratio_1m={filters.get('wick_ratio_1m')}, volume_filter_passed_1m={filters.get('volume_filter_passed_1m')}")
+    analysis_1m = analysis.get('analysis_1m')
+    logger.debug(f"🔍 DEBUG _extract_filter_metrics: analysis_1m présent={bool(analysis_1m)}, type={type(analysis_1m)}")
+    if isinstance(analysis_1m, dict) and analysis_1m:
+        if analysis_1m.get('volume_filter_passed') is not None:
+            filters['volume_filter_passed_1m'] = analysis_1m.get('volume_filter_passed')
+        if analysis_1m.get('snr') is not None:
+            filters['snr_1m'] = analysis_1m.get('snr')
+        if analysis_1m.get('snr_passed') is not None:
+            filters['snr_passed_1m'] = analysis_1m.get('snr_passed')
+        if analysis_1m.get('breakout_distance') is not None:
+            filters['breakout_distance_1m'] = analysis_1m.get('breakout_distance')
+        if analysis_1m.get('breakout_passed') is not None:
+            filters['breakout_passed_1m'] = analysis_1m.get('breakout_passed')
+        if analysis_1m.get('wick_ratio') is not None:
+            filters['wick_ratio_1m'] = analysis_1m.get('wick_ratio')
+        if analysis_1m.get('wick_passed') is not None:
+            filters['wick_passed_1m'] = analysis_1m.get('wick_passed')
+        if analysis_1m.get('atr_optimal_passed') is not None:
+            filters['atr_optimal_passed_1m'] = analysis_1m.get('atr_optimal_passed')
     else:
-        logger.warning(f"⚠️ _extract_filter_metrics: analysis_1m invalide ou vide")
+        logger.debug("_extract_filter_metrics: analysis_1m invalide ou vide")
     
     # Extract from analysis_5m with _5m suffix
-    analysis_5m = analysis.get('analysis_5m', {})
-    logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_5m présent={bool(analysis_5m)}, type={type(analysis_5m)}")
-    if analysis_5m and isinstance(analysis_5m, dict):
-        logger.info(f"🔍 DEBUG _extract_filter_metrics: analysis_5m keys (premiers 20): {list(analysis_5m.keys())[:20]}")
-        filters.update({
-            'volume_filter_passed_5m': analysis_5m.get('volume_filter_passed'),
-            'snr_5m': analysis_5m.get('snr'),
-            'snr_passed_5m': analysis_5m.get('snr_passed'),
-            'breakout_distance_5m': analysis_5m.get('breakout_distance'),
-            'breakout_passed_5m': analysis_5m.get('breakout_passed'),
-            'wick_ratio_5m': analysis_5m.get('wick_ratio'),
-            'wick_passed_5m': analysis_5m.get('wick_passed'),
-            'atr_optimal_passed_5m': analysis_5m.get('atr_optimal_passed')
-        })
-        logger.info(f"✅ Filters 5m extraits: snr_5m={filters.get('snr_5m')}, wick_ratio_5m={filters.get('wick_ratio_5m')}, volume_filter_passed_5m={filters.get('volume_filter_passed_5m')}")
+    analysis_5m = analysis.get('analysis_5m')
+    logger.debug(f"🔍 DEBUG _extract_filter_metrics: analysis_5m présent={bool(analysis_5m)}, type={type(analysis_5m)}")
+    if isinstance(analysis_5m, dict) and analysis_5m:
+        if analysis_5m.get('volume_filter_passed') is not None:
+            filters['volume_filter_passed_5m'] = analysis_5m.get('volume_filter_passed')
+        if analysis_5m.get('snr') is not None:
+            filters['snr_5m'] = analysis_5m.get('snr')
+        if analysis_5m.get('snr_passed') is not None:
+            filters['snr_passed_5m'] = analysis_5m.get('snr_passed')
+        if analysis_5m.get('breakout_distance') is not None:
+            filters['breakout_distance_5m'] = analysis_5m.get('breakout_distance')
+        if analysis_5m.get('breakout_passed') is not None:
+            filters['breakout_passed_5m'] = analysis_5m.get('breakout_passed')
+        if analysis_5m.get('wick_ratio') is not None:
+            filters['wick_ratio_5m'] = analysis_5m.get('wick_ratio')
+        if analysis_5m.get('wick_passed') is not None:
+            filters['wick_passed_5m'] = analysis_5m.get('wick_passed')
+        if analysis_5m.get('atr_optimal_passed') is not None:
+            filters['atr_optimal_passed_5m'] = analysis_5m.get('atr_optimal_passed')
     else:
-        logger.warning(f"⚠️ _extract_filter_metrics: analysis_5m invalide ou vide")
+        logger.debug("_extract_filter_metrics: analysis_5m invalide ou vide")
     
-    logger.info(f"📊 Filters finaux retournés (total {len(filters)} clés)")
+    timeframe = analysis.get('timeframe')
+    if isinstance(timeframe, str):
+        if timeframe == '1m':
+            if analysis.get('volume_filter_passed') is not None:
+                filters['volume_filter_passed_1m'] = analysis.get('volume_filter_passed')
+            if analysis.get('snr') is not None:
+                filters['snr_1m'] = analysis.get('snr')
+            if analysis.get('snr_passed') is not None:
+                filters['snr_passed_1m'] = analysis.get('snr_passed')
+            if analysis.get('breakout_distance') is not None:
+                filters['breakout_distance_1m'] = analysis.get('breakout_distance')
+            if analysis.get('breakout_passed') is not None:
+                filters['breakout_passed_1m'] = analysis.get('breakout_passed')
+            if analysis.get('wick_ratio') is not None:
+                filters['wick_ratio_1m'] = analysis.get('wick_ratio')
+            if analysis.get('wick_passed') is not None:
+                filters['wick_passed_1m'] = analysis.get('wick_passed')
+            if analysis.get('atr_optimal_passed') is not None:
+                filters['atr_optimal_passed_1m'] = analysis.get('atr_optimal_passed')
+        elif timeframe == '5m':
+            if analysis.get('volume_filter_passed') is not None:
+                filters['volume_filter_passed_5m'] = analysis.get('volume_filter_passed')
+            if analysis.get('snr') is not None:
+                filters['snr_5m'] = analysis.get('snr')
+            if analysis.get('snr_passed') is not None:
+                filters['snr_passed_5m'] = analysis.get('snr_passed')
+            if analysis.get('breakout_distance') is not None:
+                filters['breakout_distance_5m'] = analysis.get('breakout_distance')
+            if analysis.get('breakout_passed') is not None:
+                filters['breakout_passed_5m'] = analysis.get('breakout_passed')
+            if analysis.get('wick_ratio') is not None:
+                filters['wick_ratio_5m'] = analysis.get('wick_ratio')
+            if analysis.get('wick_passed') is not None:
+                filters['wick_passed_5m'] = analysis.get('wick_passed')
+            if analysis.get('atr_optimal_passed') is not None:
+                filters['atr_optimal_passed_5m'] = analysis.get('atr_optimal_passed')
+    
+    logger.debug(f"📊 Filters finaux retournés (total {len(filters)} clés)")
     return filters
 
 
@@ -981,6 +1057,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): analysis type: {type(analysis)}, keys: {list(analysis.keys())[:15] if isinstance(analysis, dict) else 'N/A'}")
         else:
             logger.warning(f"⚠️ scan_pair_for_setup({symbol}): analysis est None ou False")
+
+        if not analysis or not isinstance(analysis, dict):
+            analysis = {
+                'symbol': symbol,
+                'reason': 'Analyse indisponible',
+                'reject_category': 'analysis_failed'
+            }
 
         # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
         # pour qu'ils soient disponibles dans _last_setup
@@ -1489,7 +1572,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                     'indicators_1m': analysis.get('indicators_1m', {}) if analysis else {},
                     'indicators_5m': analysis.get('indicators_5m', {}) if analysis else {},
                     # 🔥 FIX: Extract filter metrics from analysis_1m and analysis_5m and construct unified filters dict
-                    'filters': _extract_filter_metrics(analysis) if analysis else {},
+                    'filters': _extract_filter_metrics(analysis),
                     'scores': {
                         # 🔥 Extraire scores depuis analysis_1m/5m si présents, sinon fallback
                         'score_1m': (
