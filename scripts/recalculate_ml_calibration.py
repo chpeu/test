@@ -168,4 +168,7 @@ def main():
         return 1
 
 if __name__ == '__main__':
+    _imported_mod = sys.modules.get('scripts.recalculate_ml_calibration')
+    if _imported_mod is not None and hasattr(_imported_mod, 'main'):
+        sys.exit(_imported_mod.main())
     sys.exit(main())
