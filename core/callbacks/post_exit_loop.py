@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 _price_provider = None
 _is_running = False
 _task: Optional[asyncio.Task] = None
+_started_event: Optional[asyncio.Event] = None
 
 # Configuration
 POST_EXIT_LOOP_INTERVAL_SEC = 1.0  # 1 seconde entre chaque cycle
@@ -33,6 +34,10 @@ async def post_exit_loop():
     """
     global _is_running
     _is_running = True
+
+    global _started_event
+    if _started_event is not None:
+        _started_event.set()
     
     logger.warning("\ud83d\udd04 Post-Exit Loop démarrée")
     
@@ -110,19 +115,33 @@ async def post_exit_loop():
 
 async def start_post_exit_loop():
     """Démarrer la boucle post-exit"""
-    global _task
+    global _task, _started_event
     
     if _task and not _task.done():
         logger.warning("⚠️ Post-Exit Loop déjà en cours")
         return
-    
-    _task = asyncio.create_task(post_exit_loop())
-    logger.warning("\u2705 Post-Exit Loop task créée")
+
+    _started_event = asyncio.Event()
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.error("❌ Post-Exit Loop: aucun event loop actif (impossible de démarrer)")
+        _started_event = None
+        return
+
+    _task = loop.create_task(post_exit_loop())
+    logger.warning("✅ Post-Exit Loop task créée")
+
+    try:
+        await asyncio.wait_for(_started_event.wait(), timeout=2.0)
+    except asyncio.TimeoutError:
+        logger.warning("⚠️ Post-Exit Loop: démarrage non confirmé (timeout)")
 
 
 async def stop_post_exit_loop():
     """Arrêter la boucle post-exit"""
-    global _is_running, _task
+    global _is_running, _task, _started_event
     
     _is_running = False
     
@@ -134,9 +153,12 @@ async def stop_post_exit_loop():
             pass
     
     _task = None
+    _started_event = None
     logger.info("🛑 Post-Exit Loop stoppée")
 
 
 def is_running() -> bool:
     """Vérifier si la boucle est en cours"""
-    return _is_running
+    if _is_running:
+        return True
+    return _task is not None and not _task.done()

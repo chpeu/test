@@ -180,8 +180,8 @@ class OptimizedPredictor:
                     if not self.feature_cols:
                         self.preprocessor = candidate
                         self.feature_cols = candidate_features
-                        logger.info(f"✅ Features extraites du Preprocessor: {len(self.feature_cols)}")
-                        logger.info(f"✅ Preprocessor chargé: {prep_path.name}")
+                        logger.info(f" Features extraites du Preprocessor: {len(self.feature_cols)}")
+                        logger.info(f" Preprocessor chargé: {prep_path.name}")
                         break
 
                     if candidate_features == list(self.feature_cols):
@@ -265,7 +265,8 @@ class OptimizedPredictor:
                     model_input = model_input.values
 
             proba = self.model.predict_proba(model_input)[0, 1]  # Probabilité de WIN
-            should_trade = proba >= threshold
+            # IMPORTANT: forcer un bool Python (sinon numpy.bool_ casse `is True/False`)
+            should_trade = bool(proba >= threshold)
             
             # 🔥 Logging détaillé pour debug
             if should_trade:

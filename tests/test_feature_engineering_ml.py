@@ -5,12 +5,10 @@ from optimization.data.feature_engineering import calculate_derived_features, se
 
 
 def test_calculate_derived_features_minimal_defaults():
-    df = pd.DataFrame([
-        {
-            'timestamp': '2026-01-25T10:00:00Z',
-            'reject_reason_category': None,
-        }
-    ])
+    df = pd.DataFrame({
+        'timestamp': ['2026-01-25T10:00:00Z'],
+        'reject_reason_category': [None],
+    })
 
     df_eng = calculate_derived_features(df)
 
@@ -27,52 +25,50 @@ def test_calculate_derived_features_minimal_defaults():
 
 
 def test_calculate_derived_features_full_pipeline_no_nan_inf_and_one_hot():
-    df = pd.DataFrame([
-        {
-            'timestamp': '2026-01-25 12:34:56',
-            'rsi_1m': 65.0,
-            'rsi_prev_1m': 60.0,
-            'rsi_5m': 55.0,
-            'rsi_prev_5m': 54.0,
-            'macd_hist_1m': 0.12,
-            'macd_hist_prev_1m': 0.10,
-            'macd_hist_5m': -0.05,
-            'macd_hist_prev_5m': -0.06,
-            'atr_pct_1m': 0.45,
-            'atr_pct_5m': 0.30,
-            'bb_width_1m': 1.2,
-            'bb_width_5m': 2.4,
-            'adx_1m': 22.0,
-            'adx_5m': 18.0,
-            'di_gap_1m': 8.0,
-            'di_gap_5m': -12.0,
-            'ema_diff_pct_1m': 0.35,
-            'ema_diff_pct_5m': -0.20,
-            'volume_ratio_1m': 2.5,
-            'volume_ratio_5m': 1.1,
-            'volume_spike_1m': 3.2,
-            'snr_passed_1m': 'true',
-            'breakout_passed_1m': 'false',
-            'wick_passed_1m': True,
-            'atr_optimal_passed_1m': 't',
-            'volume_filter_passed_1m': 'f',
-            'snr_passed_5m': True,
-            'breakout_passed_5m': False,
-            'wick_passed_5m': 'true',
-            'atr_optimal_passed_5m': 'false',
-            'volume_filter_passed_5m': 'true',
-            'reject_reason_category': 'volume_filter',
-            'price': 42000.0,
-            'atr_1m': 120.0,
-            'spread_pct': 0.03,
-            'volume_1m': 1234.0,
-            'macd_1m': 0.2,
-            'macd_signal_1m': 0.1,
-            'bb_position_1m': 0.15,
-            'macd_5m': 0.05,
-            'macd_signal_5m': 0.06,
-        }
-    ])
+    df = pd.DataFrame({
+            'timestamp': ['2026-01-25 12:34:56'],
+            'rsi_1m': [65.0],
+            'rsi_prev_1m': [60.0],
+            'rsi_5m': [55.0],
+            'rsi_prev_5m': [54.0],
+            'macd_hist_1m': [0.12],
+            'macd_hist_prev_1m': [0.10],
+            'macd_hist_5m': [-0.05],
+            'macd_hist_prev_5m': [-0.06],
+            'atr_pct_1m': [0.45],
+            'atr_pct_5m': [0.30],
+            'bb_width_1m': [1.2],
+            'bb_width_5m': [2.4],
+            'adx_1m': [22.0],
+            'adx_5m': [18.0],
+            'di_gap_1m': [8.0],
+            'di_gap_5m': [-12.0],
+            'ema_diff_pct_1m': [0.35],
+            'ema_diff_pct_5m': [-0.20],
+            'volume_ratio_1m': [2.5],
+            'volume_ratio_5m': [1.1],
+            'volume_spike_1m': [3.2],
+            'snr_passed_1m': ['true'],
+            'breakout_passed_1m': ['false'],
+            'wick_passed_1m': [True],
+            'atr_optimal_passed_1m': ['t'],
+            'volume_filter_passed_1m': ['f'],
+            'snr_passed_5m': [True],
+            'breakout_passed_5m': [False],
+            'wick_passed_5m': ['true'],
+            'atr_optimal_passed_5m': ['false'],
+            'volume_filter_passed_5m': ['true'],
+            'reject_reason_category': ['volume_filter'],
+            'price': [42000.0],
+            'atr_1m': [120.0],
+            'spread_pct': [0.03],
+            'volume_1m': [1234.0],
+            'macd_1m': [0.2],
+            'macd_signal_1m': [0.1],
+            'bb_position_1m': [0.15],
+            'macd_5m': [0.05],
+            'macd_signal_5m': [0.06],
+        })
 
     df_eng = calculate_derived_features(df)
 
@@ -126,9 +122,9 @@ def test_calculate_derived_features_full_pipeline_no_nan_inf_and_one_hot():
 
 
 def test_select_top_features_raises_when_target_missing():
-    df = pd.DataFrame([
-        {'f1': 1.0, 'f2': 2.0}
-    ])
+    df = pd.DataFrame({
+        'f1': [1.0], 'f2': [2.0]
+    })
 
     try:
         select_top_features(df, target_col='target_win')
@@ -138,12 +134,11 @@ def test_select_top_features_raises_when_target_missing():
 
 
 def test_select_top_features_correlation_skips_constant_columns():
-    df = pd.DataFrame([
-        {'f_const': 1.0, 'f_good': 0.0, 'target_win': 0},
-        {'f_const': 1.0, 'f_good': 1.0, 'target_win': 1},
-        {'f_const': 1.0, 'f_good': 2.0, 'target_win': 1},
-        {'f_const': 1.0, 'f_good': 3.0, 'target_win': 1},
-    ])
+    df = pd.DataFrame({
+        'f_const': [1.0, 1.0, 1.0, 1.0],
+        'f_good': [0.0, 1.0, 2.0, 3.0],
+        'target_win': [0, 1, 1, 1],
+    })
 
     top = select_top_features(df, target_col='target_win', n_features=5, method='correlation')
 
@@ -161,22 +156,21 @@ def test_select_top_features_mutual_info_uses_mocked_scores(monkeypatch):
 
     monkeypatch.setattr('sklearn.feature_selection.mutual_info_classif', fake_mi)
 
-    df = pd.DataFrame([
-        {'f1': 0.0, 'f2': 0.0, 'target_win': 0},
-        {'f1': 1.0, 'f2': 1.0, 'target_win': 1},
-        {'f1': 2.0, 'f2': 2.0, 'target_win': 1},
-        {'f1': 3.0, 'f2': 3.0, 'target_win': 1},
-    ])
+    df = pd.DataFrame({
+        'f1': [0.0, 1.0, 2.0, 3.0],
+        'f2': [0.0, 1.0, 2.0, 3.0],
+        'target_win': [0, 1, 1, 1],
+    })
 
     top = select_top_features(df, target_col='target_win', n_features=1, method='mutual_info')
     assert top == ['f2']
 
 
 def test_select_top_features_invalid_method_raises():
-    df = pd.DataFrame([
-        {'f1': 1.0, 'target_win': 1},
-        {'f1': 2.0, 'target_win': 0},
-    ])
+    df = pd.DataFrame({
+        'f1': [1.0, 2.0],
+        'target_win': [1, 0],
+    })
 
     try:
         select_top_features(df, target_col='target_win', method='nope')

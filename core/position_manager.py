@@ -2348,16 +2348,14 @@ class PositionManager:
                 }
                 # Appel async non-bloquant
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.create_task(
-                            self.notification_manager.notify('position_opened', position_data, priority='info')
-                        )
-                    else:
-                        asyncio.run(self.notification_manager.notify('position_opened', position_data, priority='info'))
+                    loop = asyncio.get_running_loop()
                 except RuntimeError:
-                    # Pas de loop, ignorer notification
-                    pass
+                    # Pas de loop dans ce thread -> exécuter dans un event loop dédié
+                    asyncio.run(self.notification_manager.notify('position_opened', position_data, priority='info'))
+                else:
+                    loop.create_task(
+                        self.notification_manager.notify('position_opened', position_data, priority='info')
+                    )
             except Exception as e:
                 logger.debug(f"Erreur envoi notification position_opened: {e}")
 

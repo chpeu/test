@@ -22,6 +22,15 @@ from core.analyzer.advanced_filters import (
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 # Variables globales injectées par init_instances()
 _scanner = None
 _analyzer = None
@@ -1318,12 +1327,14 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                             bid_vol = pair.get('bidVol')
                             ask_vol = pair.get('askVol')
                             # 🔥 FIX: Vérifications None explicites pour éviter l'erreur "> not supported between NoneType and int"
-                            if book_depth in (None, 0) and bid_vol is not None and ask_vol is not None:
-                                book_depth = bid_vol + ask_vol
+                            bid_vol_f = _safe_float(bid_vol, default=0.0)
+                            ask_vol_f = _safe_float(ask_vol, default=0.0)
+                            if book_depth in (None, 0) and (bid_vol_f > 0 or ask_vol_f > 0):
+                                book_depth = bid_vol_f + ask_vol_f
                             imbalance = None
-                            if bid_vol is not None and ask_vol is not None:
+                            if bid_vol_f > 0 and ask_vol_f > 0:
                                 try:
-                                    imbalance = bid_vol / ask_vol if ask_vol > 0 else None
+                                    imbalance = bid_vol_f / ask_vol_f if ask_vol_f > 0 else None
                                 except Exception:
                                     imbalance = None
 
@@ -1334,10 +1345,10 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                                 'book_depth': book_depth,
                                 'balanceScore': balance_score,
                                 'balance_score': balance_score,
-                                'bidVol': bid_vol,
-                                'askVol': ask_vol,
-                                'bid_vol': bid_vol,
-                                'ask_vol': ask_vol,
+                                'bidVol': bid_vol_f,
+                                'askVol': ask_vol_f,
+                                'bid_vol': bid_vol_f,
+                                'ask_vol': ask_vol_f,
                                 'orderbook_imbalance_ratio': imbalance,
                                 'recent_volume': pair.get('recentVolume'),
                                 'recentVolume': pair.get('recentVolume'),  # Alias
@@ -1456,9 +1467,9 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         'ask_vol': scalability_data.get('askVol') or scalability_data.get('ask_vol'),
                         # Calculer imbalance ratio si bid/ask disponibles
                         'orderbook_imbalance_ratio': (
-                            (scalability_data.get('bidVol') or scalability_data.get('bid_vol', 0)) / 
-                            (scalability_data.get('askVol') or scalability_data.get('ask_vol', 1))
-                            if (scalability_data.get('askVol') or scalability_data.get('ask_vol', 0)) > 0
+                            (_safe_float(scalability_data.get('bidVol') if scalability_data.get('bidVol') is not None else scalability_data.get('bid_vol'), 0.0)) /
+                            (_safe_float(scalability_data.get('askVol') if scalability_data.get('askVol') is not None else scalability_data.get('ask_vol'), 0.0))
+                            if (_safe_float(scalability_data.get('askVol') if scalability_data.get('askVol') is not None else scalability_data.get('ask_vol'), 0.0)) > 0
                             else None
                         ),
                         # Paramètres du scan de scalabilité

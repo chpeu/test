@@ -16,9 +16,53 @@ from tenacity import (
 from pybreaker import CircuitBreaker
 try:
     from ccxt.base.errors import ExchangeError
+    try:
+        from ccxt.base.errors import RequestTimeout as CCXTRequestTimeout
+    except Exception:
+        CCXTRequestTimeout = None
+    try:
+        from ccxt.base.errors import NetworkError as CCXTNetworkError
+    except Exception:
+        CCXTNetworkError = None
+    try:
+        from ccxt.base.errors import ExchangeNotAvailable as CCXTExchangeNotAvailable
+    except Exception:
+        CCXTExchangeNotAvailable = None
+    try:
+        from ccxt.base.errors import DDoSProtection as CCXTDDoSProtection
+    except Exception:
+        CCXTDDoSProtection = None
 except ImportError:
     # Fallback si ccxt non installé (test mock)
     class ExchangeError(Exception): pass
+    CCXTRequestTimeout = None
+    CCXTNetworkError = None
+    CCXTExchangeNotAvailable = None
+    CCXTDDoSProtection = None
+
+
+_CCXT_NETWORK_EXCEPTIONS = tuple(
+    exc
+    for exc in (
+        CCXTRequestTimeout,
+        CCXTNetworkError,
+        CCXTExchangeNotAvailable,
+        CCXTDDoSProtection,
+    )
+    if exc is not None
+)
+
+
+def _is_ccxt_network_exception(exc: Exception) -> bool:
+    if _CCXT_NETWORK_EXCEPTIONS and isinstance(exc, _CCXT_NETWORK_EXCEPTIONS):
+        return True
+    # Fallback robuste si ccxt est partiellement mocké / si l'import a échoué
+    return type(exc).__name__ in {
+        "RequestTimeout",
+        "NetworkError",
+        "ExchangeNotAvailable",
+        "DDoSProtection",
+    }
 
 from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG, DEBUG_ENABLED
 
@@ -170,6 +214,12 @@ class AdaptiveCircuitBreaker:
             # Vérifier code dans message ou attribut
             if "510" in str(e) or "429" in str(e):
                 is_rate_limit = True
+
+            if not is_rate_limit and _is_ccxt_network_exception(e):
+                self.record_failure()
+                if DEBUG_ENABLED:
+                    logger.warning(f"⚠️ Circuit Breaker: Erreur réseau Exchange: {e}")
+                raise NetworkError(f"Exchange Network Error: {e}") from e
             
             if is_rate_limit:
                 # Rate limit (MEXC 510 ou Standard 429)
@@ -242,6 +292,11 @@ async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
         is_rate_limit = False
         if "510" in str(e) or "429" in str(e):
             is_rate_limit = True
+
+        if not is_rate_limit and _is_ccxt_network_exception(e):
+            if DEBUG_ENABLED:
+                logger.warning(f"⚠️ Erreur réseau Exchange (timeout/connexion) - conversion en NetworkError")
+            raise NetworkError(f"Exchange Network Error: {e}") from e
         
         if is_rate_limit:
             if DEBUG_ENABLED:

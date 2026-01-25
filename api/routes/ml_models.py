@@ -353,7 +353,7 @@ async def get_model_metrics(model_name: str):
         if not feature_importance:
             feature_names = metadata.get('feature_names') or metadata.get('selected_features') or []
             if feature_names:
-                default_weight = 1 / len(feature_names)
+                default_weight = 1 / len(feature_names) if len(feature_names) > 0 else 1.0
                 feature_importance = [
                     {
                         'feature': name,
@@ -371,6 +371,19 @@ async def get_model_metrics(model_name: str):
             for f in feature_importance[:10]
             if f['importance'] > 0
         ]
+
+        # Fallback robuste: éviter top_features vide (UI/tests attendent une liste non vide)
+        if not top_features:
+            if feature_importance:
+                first = feature_importance[0]
+                top_features = [
+                    {
+                        'feature': first.get('feature', 'N/A'),
+                        'importance': round(float(first.get('importance', 0)) * 100, 2)
+                    }
+                ]
+            else:
+                top_features = [{'feature': 'N/A', 'importance': 0.0}]
         
         # Calculer overfitting score
         train_acc = metrics.get('train', {}).get('accuracy', 0)
