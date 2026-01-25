@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769294791.1971889,
+  "timestamp": 1769308486.6265457,
   "specs": {
     "CHZ_USDT": {
       "symbol": "CHZ_USDT",
@@ -80,6 +80,26 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "ZEC_USDT": {
+      "symbol": "ZEC_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "PUMPFUN_USDT": {
+      "symbol": "PUMPFUN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 4800000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-06,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 100.0
     }
   }
 }

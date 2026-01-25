@@ -36,6 +36,11 @@ class TestTPSLConfig:
         assert config.fixed_sl_pct == 0.5
         assert config.win_streak == 3
 
+    def test_legacy_multipliers_override_atr_multipliers(self):
+        config = TPSLConfig(tp_multiplier=2.5, sl_multiplier=1.7)
+        assert config.atr_mult_tp == 2.5
+        assert config.atr_mult_sl == 1.7
+
 
 class TestCalculateFixedLevels:
     """Tests pour calculate_fixed_levels"""
@@ -120,6 +125,47 @@ class TestCalculateFixedLevels:
         # Devrait forcer un minimum de 0.15% ou 0.2%
         assert abs(sl - 0.000001) > 0
         assert abs(tp - 0.000001) > 0
+
+    def test_short_rounding_safeguard_prevents_widening(self):
+        config = TPSLConfig(fixed_sl_pct=0.25, fixed_tp_pct=0.6)
+        entry = 1.23456789
+        sl_target = entry * (1 + config.fixed_sl_pct / 100)
+        naive_sl = round(sl_target, 8)
+        assert naive_sl > sl_target
+
+        sl, tp = calculate_fixed_levels(entry, 'SHORT', config)
+        assert sl < naive_sl
+        assert tp < entry
+
+    def test_short_rounding_safeguard_exception_is_ignored(self, monkeypatch):
+        config = TPSLConfig(fixed_sl_pct=0.25, fixed_tp_pct=0.6)
+        entry = 1.23456789
+        sl_target = entry * (1 + config.fixed_sl_pct / 100)
+        naive_sl = round(sl_target, 8)
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("core.position.tp_sl_calculator.math.floor", _boom)
+
+        sl, _tp = calculate_fixed_levels(entry, 'SHORT', config)
+        assert sl == naive_sl
+
+    def test_short_min_diff_recalculation_debug_branch(self):
+        config = TPSLConfig(fixed_sl_pct=0.005, fixed_tp_pct=0.005)
+        entry = 50000
+        sl, tp = calculate_fixed_levels(entry, 'SHORT', config)
+
+        assert sl == pytest.approx(50050, rel=1e-12)
+        assert tp == pytest.approx(49950, rel=1e-12)
+
+    def test_short_min_diff_final_fallback_branch(self):
+        config = TPSLConfig(fixed_sl_pct=0.01, fixed_tp_pct=0.01)
+        entry = 0.000001
+        sl, tp = calculate_fixed_levels(entry, 'SHORT', config)
+
+        assert sl > entry
+        assert tp < entry
 
 
 class TestCalculateATRLevels:
@@ -268,6 +314,44 @@ class TestCalculateATRLevels:
         # Devrait utiliser precision=9
         assert sl < 0.005
         assert tp > 0.005
+
+    def test_return_atr_used_includes_percent_and_blended(self):
+        config = TPSLConfig(atr_min=0.1, atr_max=2.0)
+        entry = 50000
+        atr1m = 100
+        atr5m = 200
+
+        sl, tp, atr_percent_used, atr_blended = calculate_atr_levels(
+            entry,
+            atr1m,
+            atr5m,
+            'LONG',
+            config,
+            return_atr_used=True,
+        )
+
+        assert sl < entry
+        assert tp > entry
+        assert atr_blended == pytest.approx(130)
+        assert atr_percent_used == pytest.approx((130 / entry) * 100)
+
+    def test_inverted_tp_sl_detection_long_branch(self):
+        config = TPSLConfig(atr_mult_tp=-1.0, atr_mult_sl=-1.0)
+        entry = 50000
+        atr = 250
+
+        sl, tp = calculate_atr_levels(entry, atr, None, 'LONG', config)
+        assert sl > entry
+        assert tp < entry
+
+    def test_inverted_tp_sl_detection_short_branch(self):
+        config = TPSLConfig(atr_mult_tp=-1.0, atr_mult_sl=-1.0)
+        entry = 50000
+        atr = 250
+
+        sl, tp = calculate_atr_levels(entry, atr, None, 'SHORT', config)
+        assert sl < entry
+        assert tp > entry
 
 
 class TestValidateLevels:
