@@ -5,7 +5,7 @@ import pytest
 import os
 import tempfile
 import shutil
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from utils.logger import setup_logger, get_logger
 import logging
 
@@ -221,6 +221,119 @@ class TestLoggerWindowsFix:
                 os.unlink(temp_file.name)
             except:
                 pass
+
+    def test_safe_rotating_file_handler_success_resets_failure(self):
+        from utils.logger import SafeRotatingFileHandler
+        import tempfile
+        import os
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+
+        try:
+            handler = SafeRotatingFileHandler(
+                temp_file.name,
+                maxBytes=1024,
+                backupCount=1
+            )
+
+            handler._rollover_failed = True
+            handler._last_rollover_attempt = 0
+
+            with patch.object(handler.__class__.__bases__[0], 'doRollover') as mock_parent_rollover:
+                mock_parent_rollover.return_value = None
+                handler.doRollover()
+                assert handler._rollover_failed is False
+                assert handler._last_rollover_attempt > 0
+        finally:
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+
+    def test_safe_rotating_file_handler_should_rollover_calls_parent(self):
+        from utils.logger import SafeRotatingFileHandler
+        import tempfile
+        import os
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+
+        try:
+            handler = SafeRotatingFileHandler(
+                temp_file.name,
+                maxBytes=1024,
+                backupCount=1
+            )
+
+            handler._rollover_failed = False
+
+            record = logging.LogRecord(
+                name='test',
+                level=logging.INFO,
+                pathname=__file__,
+                lineno=1,
+                msg='x',
+                args=(),
+                exc_info=None,
+            )
+
+            with patch.object(handler.__class__.__bases__[0], 'shouldRollover', return_value=True) as mock_parent_should:
+                assert handler.shouldRollover(record) is True
+                mock_parent_should.assert_called_once()
+        finally:
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+
+    def test_websocket_log_handler_emit_no_ws_manager(self):
+        from utils.logger import WebSocketLogHandler
+
+        handler = WebSocketLogHandler()
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg='hello',
+            args=(),
+            exc_info=None,
+        )
+
+        handler.emit(record)
+
+    def test_websocket_log_handler_emit_when_closing(self):
+        from utils.logger import WebSocketLogHandler
+
+        handler = WebSocketLogHandler()
+        handler.set_ws_manager(Mock())
+        handler._closing = True
+
+        record = logging.LogRecord(
+            name='test',
+            level=logging.ERROR,
+            pathname=__file__,
+            lineno=1,
+            msg='error',
+            args=(),
+            exc_info=None,
+        )
+
+        handler.emit(record)
+
+    @pytest.mark.asyncio
+    async def test_drain_websocket_log_handlers(self):
+        import utils.logger as logger_module
+        from utils.logger import WebSocketLogHandler, drain_websocket_log_handlers
+
+        handler = WebSocketLogHandler()
+        handler.drain = AsyncMock(return_value=None)
+        try:
+            await drain_websocket_log_handlers(timeout=0.01)
+            handler.drain.assert_called()
+        finally:
+            logger_module._ws_log_handlers.discard(handler)
 
 
 class TestLoggerIntegration:

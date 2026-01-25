@@ -308,3 +308,58 @@ def test_get_threshold_optimizer_singleton_reads_config(monkeypatch, tmp_path):
     assert opt_2.min_threshold == pytest.approx(0.42)
 
     reset_threshold_optimizer()
+
+
+def test_get_threshold_optimizer_swaps_min_max_when_inverted(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    reset_threshold_optimizer()
+
+    values = {
+        "threshold_min": 0.70,
+        "threshold_max": 0.40,
+        "gb_min_confidence": 0.52,
+        "threshold_exploration_bonus": 0.01,
+        "threshold_exploration_rate": 0.02,
+        "threshold_optimizer_enabled": True,
+    }
+
+    def fake_get_config_value(key, default=None):
+        return values.get(key, default)
+
+    monkeypatch.setattr("utils.config_persistence.get_config_value", fake_get_config_value)
+
+    opt = get_threshold_optimizer()
+    assert opt.min_threshold == pytest.approx(0.40)
+    assert opt.max_threshold == pytest.approx(0.70)
+
+    reset_threshold_optimizer()
+
+
+def test_reset_context_removes_specific_context(tmp_path):
+    optimizer = ContextualThresholdOptimizer(persistence_path=str(tmp_path / "state.json"))
+    optimizer._context_stats["CALME_EUROPE_2"] = ContextStats(total_trades=5, total_wins=3)
+    optimizer._context_stats["CALME_US_2"] = ContextStats(total_trades=5, total_wins=3)
+
+    optimizer.reset_context("CALME", "EUROPE", 8)
+
+    assert "CALME_EUROPE_2" not in optimizer._context_stats
+    assert "CALME_US_2" in optimizer._context_stats
+
+
+def test_get_status_includes_exploration_stats(tmp_path):
+    optimizer = ContextualThresholdOptimizer(persistence_path=str(tmp_path / "state.json"))
+
+    # Create a context with exploration trades
+    key = optimizer._get_context_key("CALME", "EUROPE", 10)
+    stats = optimizer._context_stats[key]
+    stats.total_trades = 10
+    stats.total_wins = 6
+    stats.exploration_trades = 4
+    stats.exploration_wins = 3
+
+    status = optimizer.get_status()
+    assert status["total_contexts"] >= 1
+    assert status["contexts_with_data"] >= 1
+    assert status["exploration_trades"] == 4
+    assert status["exploration_wins"] == 3
+    assert status["exploration_winrate"] == pytest.approx(3 / 4)

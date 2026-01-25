@@ -175,9 +175,11 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # Convertir en int (gère bool, object/string depuis PostgreSQL)
     for col in filter_cols_1m + filter_cols_5m:
-        if col in df_eng.columns:
-            # Convertir True/False strings ou bools en 1/0
-            df_eng[col] = df_eng[col].astype(str).str.lower().map({'true': 1, 'false': 0, 't': 1, 'f': 0}).fillna(0).astype(int)
+        if col not in df_eng.columns:
+            df_eng[col] = 0
+
+        # Convertir True/False strings ou bools en 1/0
+        df_eng[col] = df_eng[col].astype(str).str.lower().map({'true': 1, 'false': 0, 't': 1, 'f': 0}).fillna(0).astype(int)
     
     df_eng['quality_score_1m'] = df_eng[filter_cols_1m].sum(axis=1)
     df_eng['quality_score_5m'] = df_eng[filter_cols_5m].sum(axis=1)
@@ -188,36 +190,56 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # ========== CONFLUENCE FEATURES ==========
     # Multi-timeframe confluence (tous les signaux alignés)
-    df_eng['bullish_confluence'] = (
-        (df_eng['ema_bullish_1m'] == 1) &
-        (df_eng['ema_bullish_5m'] == 1) &
-        (df_eng['trend_bullish_1m'] == 1) &
-        (df_eng['rsi_1m'] < 70) &
-        (df_eng['macd_hist_1m'] > 0)
-    ).astype(int)
-    
-    df_eng['bearish_confluence'] = (
-        (df_eng['ema_bullish_1m'] == 0) &
-        (df_eng['ema_bullish_5m'] == 0) &
-        (df_eng['trend_bearish_1m'] == 1) &
-        (df_eng['rsi_1m'] > 30) &
-        (df_eng['macd_hist_1m'] < 0)
-    ).astype(int)
+    confluence_cols = [
+        'ema_bullish_1m',
+        'ema_bullish_5m',
+        'trend_bullish_1m',
+        'trend_bearish_1m',
+        'rsi_1m',
+        'macd_hist_1m',
+    ]
+    if all(col in df_eng.columns for col in confluence_cols):
+        df_eng['bullish_confluence'] = (
+            (df_eng['ema_bullish_1m'] == 1) &
+            (df_eng['ema_bullish_5m'] == 1) &
+            (df_eng['trend_bullish_1m'] == 1) &
+            (df_eng['rsi_1m'] < 70) &
+            (df_eng['macd_hist_1m'] > 0)
+        ).astype(int)
+        
+        df_eng['bearish_confluence'] = (
+            (df_eng['ema_bullish_1m'] == 0) &
+            (df_eng['ema_bullish_5m'] == 0) &
+            (df_eng['trend_bearish_1m'] == 1) &
+            (df_eng['rsi_1m'] > 30) &
+            (df_eng['macd_hist_1m'] < 0)
+        ).astype(int)
+    else:
+        df_eng['bullish_confluence'] = 0
+        df_eng['bearish_confluence'] = 0
     
     # ========== RISK INDICATORS ==========
     # High volatility risk
-    df_eng['high_volatility_risk'] = (
-        (df_eng['volatility_ratio'] > 2.0) |
-        (df_eng['atr_pct_1m'] > 5.0)
-    ).astype(int)
+    if 'volatility_ratio' in df_eng.columns and 'atr_pct_1m' in df_eng.columns:
+        df_eng['high_volatility_risk'] = (
+            (df_eng['volatility_ratio'] > 2.0) |
+            (df_eng['atr_pct_1m'] > 5.0)
+        ).astype(int)
+    elif 'volatility_ratio' in df_eng.columns:
+        df_eng['high_volatility_risk'] = (df_eng['volatility_ratio'] > 2.0).astype(int)
+    else:
+        df_eng['high_volatility_risk'] = 0
     
     # Low quality risk
     df_eng['low_quality_risk'] = (df_eng['quality_score_total'] < 4).astype(int)
     
     # Choppy market (ADX faible)
-    df_eng['choppy_market'] = (
-        (df_eng['adx_1m'] < 20) & (df_eng['adx_5m'] < 20)
-    ).astype(int)
+    if 'adx_1m' in df_eng.columns and 'adx_5m' in df_eng.columns:
+        df_eng['choppy_market'] = (
+            (df_eng['adx_1m'] < 20) & (df_eng['adx_5m'] < 20)
+        ).astype(int)
+    else:
+        df_eng['choppy_market'] = 0
     
     # ========== REJECT CATEGORY ONE-HOT ENCODING ==========
     # 🔥 Encoder reject_reason_category en features booléennes

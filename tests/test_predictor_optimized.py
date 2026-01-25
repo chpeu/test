@@ -159,3 +159,155 @@ def test_predict_pipeline_converts_to_numpy_when_scaler_has_no_feature_names(mon
     assert pipeline.predict_proba.call_count == 1
     called_arg = pipeline.predict_proba.call_args[0][0]
     assert isinstance(called_arg, np.ndarray)
+
+
+def test_prepare_features_fills_missing_expected_and_computes_derived(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    model_file = tmp_path / "model.pkl"
+    model_file.write_bytes(b"x")
+
+    feature_cols = [
+        'hour',
+        'day_of_week',
+        'rsi_momentum',
+        'macd_momentum',
+        'ema_trend_strength_1m',
+        'di_gap_1m',
+        'momentum_1m',
+        'volatility_ratio',
+        'missing_feature',
+    ]
+
+    dummy_model = _DummyModel(proba=0.6, feature_names=feature_cols)
+
+    monkeypatch.setattr(
+        "optimization.predictor_optimized.joblib.load",
+        lambda _p: {"model": dummy_model, "feature_names": feature_cols},
+    )
+
+    predictor = OptimizedPredictor(model_path=str(model_file))
+    assert predictor.is_loaded is True
+    assert predictor.feature_cols == feature_cols
+
+    df = predictor._prepare_features(
+        {
+            'timestamp': '2026-01-25T12:00:00Z',
+            'rsi_1m': 55.0,
+            'rsi_5m': 50.0,
+            'macd_hist_1m': 0.02,
+            'macd_hist_5m': -0.01,
+            'ema_diff_pct_1m': -0.3,
+            'di_plus_1m': 20.0,
+            'di_minus_1m': 10.0,
+            'atr_pct_1m': 0.4,
+            'atr_pct_5m': 0.2,
+        }
+    )
+
+    # Filtrage strict + remplissage manquants
+    assert list(df.columns) == feature_cols
+    assert df.shape == (1, len(feature_cols))
+    assert float(df.loc[0, 'missing_feature']) == 0.0
+
+    # Vérifier quelques dérivées
+    assert float(df.loc[0, 'rsi_momentum']) == pytest.approx(5.0)
+    assert float(df.loc[0, 'macd_momentum']) == pytest.approx(0.03)
+    assert float(df.loc[0, 'ema_trend_strength_1m']) == pytest.approx(0.3)
+    assert float(df.loc[0, 'di_gap_1m']) == pytest.approx(10.0)
+    assert float(df.loc[0, 'volatility_ratio']) == pytest.approx(0.4 / (0.2 + 1e-8))
+
+
+def test_load_model_ignores_mismatching_preprocessor(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    models_dir = tmp_path / "optimization" / "saved_models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    model_file = tmp_path / "model.pkl"
+    model_file.write_bytes(b"x")
+
+    # Create inferred preprocessor file
+    prep_file = models_dir / "model_preprocessor.pkl"
+    prep_file.write_bytes(b"x")
+
+    feature_cols = ['a', 'b']
+    dummy_model = _DummyModel(proba=0.51, feature_names=feature_cols)
+
+    def fake_joblib_load(path):
+        path_str = str(path)
+        if path_str.endswith('model.pkl'):
+            return {'model': dummy_model, 'feature_names': feature_cols}
+        if path_str.endswith('model_preprocessor.pkl'):
+            # mismatch features => doit être ignoré
+            return {'feature_names': ['a'], 'imputer': _IdentityTransformer(), 'scaler': _IdentityTransformer()}
+        raise FileNotFoundError(path_str)
+
+    monkeypatch.setattr('optimization.predictor_optimized.joblib.load', fake_joblib_load)
+
+    predictor = OptimizedPredictor(model_path=str(model_file))
+    assert predictor.is_loaded is True
+    assert predictor.feature_cols == feature_cols
+    assert predictor.preprocessor is None
+
+
+def test_get_predictor_and_predict_trade_singleton(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    models_dir = tmp_path / "optimization" / "saved_models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    model_file = models_dir / "gradient_boosting_optimized.pkl"
+    model_file.write_bytes(b"x")
+
+    feature_cols = ['rsi_1m', 'macd_hist_1m']
+    dummy_model = _DummyModel(proba=0.9, feature_names=feature_cols)
+
+    def fake_joblib_load(path):
+        path_str = str(path)
+        if path_str.endswith('gradient_boosting_optimized.pkl'):
+            return {'model': dummy_model, 'feature_names': feature_cols}
+        raise FileNotFoundError(path_str)
+
+    monkeypatch.setattr('optimization.predictor_optimized.joblib.load', fake_joblib_load)
+
+    # Reset singleton
+    import optimization.predictor_optimized as mod
+    mod._predictor_instance = None
+
+    p1 = mod.get_predictor()
+    p2 = mod.get_predictor()
+    assert p2 is p1
+
+    should_trade, confidence = mod.predict_trade({'rsi_1m': 50.0, 'macd_hist_1m': 0.01}, threshold=0.8)
+    assert bool(should_trade) is True
+    assert confidence == pytest.approx(0.9)
+
+
+def test_mlpredictor_alias_predict_and_info(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    models_dir = tmp_path / "optimization" / "saved_models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    model_file = models_dir / "gradient_boosting_optimized.pkl"
+    model_file.write_bytes(b"x")
+
+    feature_cols = ['rsi_1m', 'macd_hist_1m']
+    dummy_model = _DummyModel(proba=0.7, feature_names=feature_cols)
+
+    def fake_joblib_load(path):
+        path_str = str(path)
+        if path_str.endswith('gradient_boosting_optimized.pkl'):
+            return {'model': dummy_model, 'feature_names': feature_cols}
+        raise FileNotFoundError(path_str)
+
+    monkeypatch.setattr('optimization.predictor_optimized.joblib.load', fake_joblib_load)
+
+    import optimization.predictor_optimized as mod
+    mod._predictor_instance = None
+
+    alias = mod.MLPredictor()
+    should_trade, confidence = alias.predict({'rsi_1m': 55.0, 'macd_hist_1m': 0.02})
+    assert confidence == pytest.approx(0.7)
+
+    info = alias.get_info()
+    assert info['status'] in ['loaded', 'not_loaded']

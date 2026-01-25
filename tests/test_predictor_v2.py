@@ -247,6 +247,84 @@ class TestMLPredictorV2Predict:
         # Doit réussir en remplaçant NaN/Inf par 0
         assert prediction is not None
 
+    def test_predict_with_dict_preprocessor_imputer_and_scaler(self, mock_features, mock_model):
+        """Couvre la branche preprocessor dict (imputer + scaler)."""
+        predictor = MLPredictorV2()
+        predictor.model = mock_model
+        predictor.feature_names = ['rsi_1m', 'macd_1m']
+        predictor.loaded = True
+
+        mock_imputer = Mock()
+        mock_imputer.transform = Mock(return_value=np.array([[1.0, 2.0]]))
+
+        mock_scaler = Mock()
+        mock_scaler.transform = Mock(return_value=np.array([[10.0, 20.0]]))
+
+        predictor.preprocessor = {
+            'imputer': mock_imputer,
+            'scaler': mock_scaler,
+        }
+
+        with patch('optimization.predictor_v2.calculate_derived_features') as mock_fe:
+            mock_fe.return_value = pd.DataFrame([mock_features])
+            prediction = predictor.predict(mock_features)
+
+        assert prediction is not None
+        mock_imputer.transform.assert_called_once()
+        mock_scaler.transform.assert_called_once()
+        mock_model.predict.assert_called_once()
+
+    def test_predict_with_dict_preprocessor_no_scaler_uses_values(self, mock_features, mock_model):
+        """Couvre la branche preprocessor dict avec scaler=None => df.values."""
+        predictor = MLPredictorV2()
+        predictor.model = mock_model
+        predictor.feature_names = ['rsi_1m', 'macd_1m']
+        predictor.loaded = True
+
+        mock_imputer = Mock()
+        mock_imputer.transform = Mock(return_value=np.array([[1.0, 2.0]]))
+
+        predictor.preprocessor = {
+            'imputer': mock_imputer,
+            'scaler': None,
+        }
+
+        with patch('optimization.predictor_v2.calculate_derived_features') as mock_fe:
+            mock_fe.return_value = pd.DataFrame([mock_features])
+            prediction = predictor.predict(mock_features)
+
+        assert prediction is not None
+        mock_imputer.transform.assert_called_once()
+        mock_model.predict.assert_called_once()
+
+    def test_predict_without_preprocessor_uses_raw_values(self, mock_features, mock_model):
+        """Couvre la branche sans preprocessor (X=df.values)."""
+        predictor = MLPredictorV2()
+        predictor.model = mock_model
+        predictor.preprocessor = None
+        predictor.feature_names = ['rsi_1m', 'macd_1m']
+        predictor.loaded = True
+
+        with patch('optimization.predictor_v2.calculate_derived_features') as mock_fe:
+            mock_fe.return_value = pd.DataFrame([mock_features])
+            prediction = predictor.predict(mock_features)
+
+        assert prediction is not None
+        mock_model.predict.assert_called_once()
+
+    def test_predict_feature_engineering_exception_fallback_to_raw(self, mock_features, mock_model, mock_preprocessor):
+        """Couvre le fallback quand calculate_derived_features lève."""
+        predictor = MLPredictorV2()
+        predictor.model = mock_model
+        predictor.preprocessor = mock_preprocessor
+        predictor.feature_names = ['rsi_1m']
+        predictor.loaded = True
+
+        with patch('optimization.predictor_v2.calculate_derived_features', side_effect=Exception('boom')):
+            prediction = predictor.predict(mock_features)
+
+        assert prediction is not None
+
 
 class TestMLPredictorV2ShouldReject:
     """Tests filtrage trades"""

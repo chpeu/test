@@ -219,6 +219,21 @@ class TestCalculateCurrentPerformance:
             # Exception is acceptable for NaN data
             pass
 
+    def test_calculate_performance_trims_mismatched_lengths(self, detector):
+        pytest.importorskip('sklearn')
+
+        predictions_df = pd.DataFrame({
+            'predicted_pnl': [1.0, 2.0, 3.0, 4.0],
+            'timestamp': [datetime.now()] * 4,
+        })
+        actuals_df = pd.DataFrame({
+            'actual_pnl': [1.1, 2.1],
+            'timestamp': [datetime.now()] * 2,
+        })
+
+        metrics = detector.calculate_current_performance(predictions_df, actuals_df)
+        assert metrics.predictions_count == 2
+
 
 class TestDetectDrift:
     """Tests detect_drift()"""
@@ -360,6 +375,11 @@ class TestGetSeverity:
 
         assert severity is None
 
+    def test_severity_unknown_metric_returns_none(self, detector):
+        # Metric inconnue => thresholds {} => None
+        severity = detector._get_severity('unknown', 999)
+        assert severity is None
+
 
 class TestShouldRetrain:
     """Tests should_retrain()"""
@@ -426,6 +446,39 @@ class TestShouldRetrain:
         should_retrain = detector.should_retrain(alerts)
 
         assert should_retrain is False
+
+    def test_should_retrain_more_than_two_medium(self, detector):
+        alerts = [
+            DriftAlert(
+                metric_name='m1',
+                current_value=0.0,
+                baseline_value=0.0,
+                drift_magnitude=0.0,
+                severity='medium',
+                detected_at=datetime.now(),
+                message='m1'
+            ),
+            DriftAlert(
+                metric_name='m2',
+                current_value=0.0,
+                baseline_value=0.0,
+                drift_magnitude=0.0,
+                severity='medium',
+                detected_at=datetime.now(),
+                message='m2'
+            ),
+            DriftAlert(
+                metric_name='m3',
+                current_value=0.0,
+                baseline_value=0.0,
+                drift_magnitude=0.0,
+                severity='medium',
+                detected_at=datetime.now(),
+                message='m3'
+            ),
+        ]
+
+        assert detector.should_retrain(alerts) is True
 
     def test_should_not_retrain_no_alerts(self, detector):
         """Test pas de retrain sans alertes"""
@@ -561,3 +614,36 @@ class TestEdgeCases:
 
         # Pas d'alertes (amélioration n'est pas un drift)
         assert len(alerts) == 0
+
+    def test_detect_drift_loads_baseline_when_missing(self, detector):
+        # Baseline absente => doit essayer load_baseline_from_postgres
+        current_metrics = ModelPerformanceMetrics(
+            r2_score=0.10,
+            mae=0.80,
+            mse=0.60,
+            predictions_count=100,
+            profitable_pct=40.0,
+            avg_error=0.50,
+            timestamp=datetime.now(),
+            period_start=datetime.now() - timedelta(days=7),
+            period_end=datetime.now()
+        )
+
+        def fake_load():
+            detector.baseline_metrics = ModelPerformanceMetrics(
+                r2_score=0.35,
+                mae=0.40,
+                mse=0.25,
+                predictions_count=1000,
+                profitable_pct=60.0,
+                avg_error=0.30,
+                timestamp=datetime.now(),
+                period_start=datetime.now() - timedelta(days=30),
+                period_end=datetime.now(),
+            )
+            return True
+
+        with patch.object(detector, 'load_baseline_from_postgres', side_effect=fake_load):
+            alerts = detector.detect_drift(current_metrics)
+
+        assert len(alerts) > 0
