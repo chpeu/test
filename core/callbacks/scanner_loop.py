@@ -552,27 +552,14 @@ async def _scan_top_pairs():
                     
                     try:
                         from optimization.predictor_optimized import get_predictor
+                        from optimization.gb_feature_builder import build_gb_features
                         
-                        # Obtenir les features depuis best_setup
-                        features = {}
-                        
-                        # Extraire indicateurs 1m
-                        indicators_1m = best_setup.get('indicators_1m', {})
-                        for key, value in indicators_1m.items():
-                            if isinstance(value, (int, float)):
-                                features[f"{key}_1m" if not key.endswith('_1m') else key] = value
-                        
-                        # Extraire indicateurs 5m
-                        indicators_5m = best_setup.get('indicators_5m', {})
-                        for key, value in indicators_5m.items():
-                            if isinstance(value, (int, float)):
-                                features[f"{key}_5m" if not key.endswith('_5m') else key] = value
-                        
-                        # Ajouter scores et autres métriques
-                        if 'score_1m' in best_setup:
-                            features['score_1m'] = best_setup['score_1m']
-                        if 'score_5m' in best_setup:
-                            features['score_5m'] = best_setup['score_5m']
+                        # Construire les 20 features exactes attendues par le modèle GB
+                        features = build_gb_features(
+                            best_setup=best_setup,
+                            analysis=analysis,
+                            scalability_data=scalability_data
+                        )
                         
                         if features:
                             predictor = get_predictor()
@@ -1442,6 +1429,12 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         analysis_5m = analysis.get('analysis_5m', {})
                         if isinstance(analysis_5m, dict):
                             scan_price = analysis_5m.get('price')
+                if scan_price is None and isinstance(best_setup, dict):
+                    scan_price = (
+                        best_setup.get('price')
+                        or best_setup.get('entry')
+                        or best_setup.get('entry_price')
+                    )
                 
                 # Extraire la valeur numérique si scan_price est un dict
                 if isinstance(scan_price, dict):

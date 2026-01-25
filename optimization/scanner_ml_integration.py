@@ -339,8 +339,10 @@ async def get_ml_prediction_for_opportunity(
         # 🔥 NOUVEAU: Utiliser le predictor optimisé (GradientBoosting 64-69% accuracy)
         if model_name in ["optimized", "gradientboosting", "best"]:
             from optimization.predictor_optimized import predict_trade
+            from optimization.gb_feature_builder import build_gb_features
             
-            should_trade, confidence = predict_trade(features, threshold=0.5)
+            gb_features = build_gb_features(best_setup=features)
+            should_trade, confidence = predict_trade(gb_features, threshold=0.5)
             
             return {
                 'prediction': 'win' if should_trade else 'loss',
@@ -348,7 +350,7 @@ async def get_ml_prediction_for_opportunity(
                 'model': 'GradientBoosting_Optimized',
                 'symbol': symbol,
                 'scan_id': scan_id,
-                'features': features
+                'features': gb_features
             }
         
         # Fallback: ancien predictor XGBoost V1
