@@ -19,6 +19,9 @@ Usage:
 import logging
 import json
 import os
+
+if os.name == 'nt':
+    os.environ.setdefault('LOKY_MAX_CPU_COUNT', str(os.cpu_count() or 4))
 import numpy as np
 import pandas as pd
 import joblib
@@ -28,9 +31,6 @@ from datetime import datetime
 from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
-
-if os.name == 'nt':
-    os.environ.setdefault('LOKY_MAX_CPU_COUNT', str(os.cpu_count() or 4))
 
 
 class OptimizedPredictor:

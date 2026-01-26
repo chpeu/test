@@ -2946,7 +2946,7 @@ class PositionManager:
                 trigger_pct=break_even_trigger  # TP partiel utilise break_even_trigger en mode FIXE
             )
             
-            logger.warning(
+            logger.debug(
                 f"💰 TP Partiel Check {self.active_position.symbol}: "
                 f"pnl={pnl:.3f}%, trigger={break_even_trigger:.3f}%, "
                 f"already_sold={getattr(self.active_position, 'partial_tp_sold', False)} → "
@@ -3162,7 +3162,7 @@ class PositionManager:
             trailing_should_activate = self.active_position.partial_tp_sold or pnl >= trailing_trigger
 
             # 🔥 DEBUG: Log trailing decision
-            logger.warning(
+            logger.debug(
                 f"🎢 Trailing Check {self.active_position.symbol}: "
                 f"partial_sold={self.active_position.partial_tp_sold}, "
                 f"pnl={pnl:.3f}%, trigger={trailing_trigger:.3f}% → activate={trailing_should_activate}"
@@ -3310,7 +3310,7 @@ class PositionManager:
         )
 
         # 🔥 DEBUG: Logs pour vérification des niveaux
-        logger.warning(
+        logger.debug(
             f"🎯 Check Levels {self.active_position.symbol} {direction}: "
             f"price={current_price}, sl={sl}, tp={tp}, pnl={pnl:.3f}%"
         )
