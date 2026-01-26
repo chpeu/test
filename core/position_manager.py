@@ -2771,7 +2771,7 @@ class PositionManager:
                         size_contracts = self.active_position.position_size_contracts
                         if not size_contracts:
                             entry_price = self.active_position.entry or 1
-                            size_contracts = self.active_position.size / entry_price
+                            size_contracts = (self.active_position.size / entry_price) if entry_price else 0
 
                         # Calculer le % à vendre pour ce niveau
                         level_pct = level_result['size_pct'] * 100  # Convertir en %
@@ -2857,6 +2857,30 @@ class PositionManager:
                 except Exception:
                     pass
 
+                if hasattr(self, 'notification_manager') and self.notification_manager:
+                    try:
+                        import asyncio
+                        notification_data = {
+                            'symbol': self.active_position.symbol,
+                            'level': level_result.get('level'),
+                            'total_levels': len(getattr(self.active_position, 'tp_escalier_levels', []) or []),
+                            'profit_usdt': level_result.get('profit_usdt', 0.0),
+                            'profit_pct': level_result.get('profit_pct', 0.0),
+                            'size_remaining_pct': (getattr(self.active_position, 'tp_escalier_size_remaining', 0.0) or 0.0) * 100.0
+                        }
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                loop.create_task(
+                                    self.notification_manager.notify('tp_escalier_level', notification_data, priority='info')
+                                )
+                            else:
+                                asyncio.run(self.notification_manager.notify('tp_escalier_level', notification_data, priority='info'))
+                        except RuntimeError:
+                            pass
+                    except Exception as e:
+                        logger.debug(f"Erreur envoi notification tp_escalier_level: {e}")
+
         # 3. TP Partiel (si pas TP Escalier) - utiliser break_even_trigger comme seuil du 1er TP
         if (not self.active_position.tp_escalier_enabled and 
             get_effective_value('use_partial_tp')):  # 🔥 FIX: Vérifier que TP partiel est activé
@@ -2909,6 +2933,88 @@ class PositionManager:
                     partial_tp_percent = 100.0
 
                 # ... (rest of the code remains the same)
+
+                size_amount = self.active_position.position_size_contracts
+                if not size_amount:
+                    entry_price = self.active_position.entry or 1
+                    size_amount = (self.active_position.size / entry_price) if entry_price else 0
+
+                order_success = False
+                filled_amount = None
+                partial_pnl_usdt = None
+                if self.live_order_manager:
+                    try:
+                        order_result = self.live_order_manager.close_position(
+                            symbol=self.active_position.symbol,
+                            direction=self.active_position.direction,
+                            entry_price=self.active_position.entry,
+                            current_price=current_price,
+                            size_amount=size_amount,
+                            partial_pct=partial_tp_percent
+                        )
+                        if order_result and order_result.success:
+                            order_success = True
+                            filled_amount = order_result.filled_amount
+                            partial_pnl_usdt = getattr(order_result, 'actual_pnl_usdt', None)
+                        else:
+                            error_msg = getattr(order_result, 'error_message', None) if order_result else None
+                            logger.error(f"❌ [LIVE] Échec TP Partiel: {error_msg or 'unknown'}")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur TP Partiel LIVE: {e}")
+
+                size_pct = float(partial_tp_percent) / 100.0
+                effective_entry = self.active_position.entry_fill_price or self.active_position.entry
+                profit_pct = 0.0
+                if effective_entry and effective_entry > 0:
+                    if self.active_position.direction == 'LONG':
+                        profit_pct = ((current_price - effective_entry) / effective_entry) * 100
+                    else:
+                        profit_pct = ((effective_entry - current_price) / effective_entry) * 100
+                sold_usdt = (self.active_position.size or 0.0) * size_pct
+                profit_usdt = sold_usdt * (profit_pct / 100.0)
+                if partial_pnl_usdt is not None:
+                    profit_usdt = float(partial_pnl_usdt)
+
+                remaining_usdt = (self.active_position.size or 0.0) * (1.0 - size_pct)
+                self.active_position.size_remaining = remaining_usdt
+                self.active_position.partial_tp_sold = True
+                self.active_position.partial_tp_percent = float(partial_tp_percent)
+                self.active_position.partial_profit_usdt = (self.active_position.partial_profit_usdt or 0.0) + profit_usdt
+
+                filled_fallback = size_amount * size_pct
+                filled_used = filled_amount if filled_amount is not None else filled_fallback
+                try:
+                    remaining_contracts = max(0.0, float(size_amount) - float(filled_used))
+                except Exception:
+                    remaining_contracts = None
+                if remaining_contracts is not None:
+                    self.active_position.position_size_contracts = remaining_contracts
+                    self.active_position.size_remaining_contracts = remaining_contracts
+
+                pos_dict = self.active_position.to_dict()
+                try:
+                    new_sl = self.partial_tp.update_sl_after_partial_tp(pos_dict, current_price=current_price)
+                    if new_sl:
+                        self.active_position.sl = float(new_sl)
+                        self.active_position.break_even_set = True
+                except Exception:
+                    pass
+                self._enforce_fixe_sl_not_wider(context='PARTIAL_TP')
+                self._log_trade_event('PARTIAL_TP', current_price, pnl, pnl_usdt=profit_usdt, details={
+                    'sold_pct': float(partial_tp_percent),
+                    'sold_usdt': sold_usdt,
+                    'remaining_usdt': remaining_usdt,
+                    'filled_qty': filled_used,
+                    'order_success': order_success
+                })
+
+                if float(partial_tp_percent) >= 99.9:
+                    try:
+                        self.active_position.size_remaining_contracts = 0
+                        self.active_position.position_size_contracts = 0
+                    except Exception:
+                        pass
+                    return 'TP'
 
         # 3.5 🎯 TRAILING MFE: Déplacer SL à break-even quand MFE atteint le seuil
         # Complémentaire au trailing stop existant - protection précoce du capital
@@ -3112,239 +3218,6 @@ class PositionManager:
         self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_PRE_CHECK_LEVELS')
         return self._check_levels(current_price)
 
-    def _update_trailing_stop_fixe(
-        self,
-        current_price: float,
-        trailing_distance: float
-    ) -> Optional[float]:
-        """
-        Mettre à jour trailing stop en mode FIXE avec distance fixe
-
-        Args:
-            current_price: Prix actuel
-            trailing_distance: Distance trailing en %
-
-        Returns:
-            Nouveau SL si mis à jour, None sinon
-        """
-        if not self.active_position:
-            return None
-
-        direction = self.active_position.direction
-        current_sl = self.active_position.sl
-
-        if direction == 'LONG':
-            new_sl = current_price * (1 - trailing_distance / 100)
-            # Monter SL uniquement (jamais descendre)
-            if new_sl > current_sl:
-                new_sl = round(new_sl, 8)
-                logger.info(
-                    f"🔄 Trailing SL LONG {self.active_position.symbol} (FIXE): "
-                    f"{current_sl:.8f} → {new_sl:.8f} (-{trailing_distance:.2f}%)"
-                )
-                return new_sl
-        else:  # SHORT
-            new_sl = current_price * (1 + trailing_distance / 100)
-            # Descendre SL uniquement (jamais monter)
-            if new_sl < current_sl:
-                new_sl = round(new_sl, 8)
-                logger.info(
-                    f"🔄 Trailing SL SHORT {self.active_position.symbol} (FIXE): "
-                    f"{current_sl:.8f} → {new_sl:.8f} (+{trailing_distance:.2f}%)"
-                )
-                return new_sl
-
-        return None
-
-    def _get_position_atr_percent(self) -> float:
-        """
-        🔥 HYBRID: Obtenir ATR% pour la position active
-
-        Returns:
-            ATR en pourcentage du prix d'entrée (ex: 0.35 pour 0.35%)
-        """
-        from utils.effective_config import get_effective_value
-
-        if not self.active_position:
-            return 0.5  # Fallback
-
-        atr_pct_used = getattr(self.active_position, 'atr_pct_used', None)
-        if atr_pct_used is not None and atr_pct_used > 0:
-            return atr_pct_used
-
-        entry = self.active_position.entry
-        atr = getattr(self.active_position, 'atr', None)
-        atr5m = getattr(self.active_position, 'atr5m', None)
-
-        if entry and entry > 0 and atr and atr > 0:
-            atr_blended = atr
-            if atr5m and atr5m > 0:
-                atr_blended = (atr * 0.7) + (atr5m * 0.3)
-
-            atr_pct = (atr_blended / entry) * 100
-
-            tpsl_config = getattr(self, 'tpsl_config', None)
-            atr_min = getattr(tpsl_config, 'atr_min', None) or get_effective_value('atr_min') or 0.10
-            atr_max = getattr(tpsl_config, 'atr_max', None) or get_effective_value('atr_max') or 1.0
-            atr_pct = max(atr_min, min(atr_max, atr_pct))
-            return atr_pct
-
-        return 0.35
-
-    def _check_stagnation_exit(self, pnl: float) -> Optional[str]:
-        """
-        🔥 HYBRID: Vérifier si le trade doit être fermé pour stagnation (Time Decay)
-        """
-        if not self.active_position:
-            return None
-
-        # 🔥 FIX: Stagnation ne s'applique QU'EN MODE ATR
-        # On utilise le mode stocké dans la position s'il existe (priorité absolue)
-        # On gère le cas où active_position est un dict ou un objet
-        pos = self.active_position
-        symbol = getattr(pos, 'symbol', pos.get('symbol') if isinstance(pos, dict) else 'Unknown')
-
-        if isinstance(pos, dict):
-            tp_sl_mode = pos.get('tp_sl_mode', 'FIXE')
-            start_time = pos.get('start_time')
-            trailing_activated = pos.get('trailing_activated', False)
-        else:
-            tp_sl_mode = getattr(pos, 'tp_sl_mode', 'FIXE')
-            start_time = getattr(pos, 'start_time', None)
-            trailing_activated = getattr(pos, 'trailing_activated', False)
-
-        if tp_sl_mode != 'ATR':
-            # logger.debug(f"🚫 [{symbol}] Stagnation ignorée: mode={tp_sl_mode} (requis: ATR)")
-            return None
-
-        from utils.effective_config import get_effective_value
-
-        enabled = get_effective_value('stagnation_exit_enabled')
-        if enabled is None:
-            stagnation_config = get_effective_value('stagnation_exit') or {}
-            enabled = stagnation_config.get('enabled', False)
-
-        if not enabled:
-            # logger.debug(f"🚫 [{symbol}] Stagnation désactivée globalement")
-            return None
-
-        if not start_time:
-            return None
-
-        elapsed = time.time() - start_time
-
-        # 🔥 Configuration dynamique par régime
-        effective_config_local = {}
-        if not isinstance(pos, dict):
-            effective_config_local = getattr(pos, 'effective_config', {})
-        else:
-            effective_config_local = pos.get('effective_config', {})
-
-        effective_timeout = effective_config_local.get('stagnation_exit_timeout_seconds')
-        if effective_timeout is None:
-            effective_timeout = get_effective_value('stagnation_exit_timeout_seconds')
-
-        timeout = effective_timeout if effective_timeout is not None else 120
-
-        # Stagnation Positive settings
-        stagnation_positive_enabled = get_effective_value('stagnation_positive_exit_enabled')
-        if stagnation_positive_enabled is None:
-            stagnation_positive_enabled = True
-
-        stagnation_positive_threshold = get_effective_value('stagnation_positive_threshold') or 0.03
-
-        effective_stagnation_positive_timeout = effective_config_local.get('stagnation_positive_timeout_seconds')
-        if effective_stagnation_positive_timeout is None:
-            effective_stagnation_positive_timeout = get_effective_value('stagnation_positive_timeout_seconds')
-        stagnation_positive_timeout = effective_stagnation_positive_timeout if effective_stagnation_positive_timeout is not None else 60
-
-        # Détection initiale
-        stagnation_detection_threshold = min(stagnation_positive_timeout, timeout)
-        if elapsed >= stagnation_detection_threshold:
-            if not isinstance(pos, dict):
-                if not getattr(pos, 'stagnation_detected_at', None):
-                    pos.stagnation_detected_at = time.time()
-                    pos.stagnation_pnl_at_detection = pnl
-                    logger.info(f"⏱️ [{symbol}] Détection stagnation à {elapsed:.0f}s (PnL={pnl:.2f}%)")
-            else:
-                if not pos.get('stagnation_detected_at'):
-                    pos['stagnation_detected_at'] = time.time()
-                    pos['stagnation_pnl_at_detection'] = pnl
-                    logger.info(f"⏱️ [{symbol}] Détection stagnation (dict) à {elapsed:.0f}s (PnL={pnl:.2f}%)")
-
-        # 🔥 FIX 15/12: Si trailing déjà activé, on laisse le trailing gérer la sortie
-        if trailing_activated:
-            return None
-
-        # ═══════════════════════════════════════════════════════════════════
-        # 🔥 PHASE 1: MFE PROTECTION (Si pullback depuis MFE trop important)
-        # ═══════════════════════════════════════════════════════════════════
-        stagnation_use_mfe_tracking = get_effective_value('stagnation_use_mfe_tracking')
-        if stagnation_use_mfe_tracking is None:
-            stagnation_use_mfe_tracking = True
-
-        stagnation_mfe_pullback_pct = get_effective_value('stagnation_mfe_pullback_pct') or 0.08
-
-        # Refresh current stagnation_detected_at after possible update above
-        curr_stagnation_detected_at = stagnation_detected_at
-        if not curr_stagnation_detected_at:
-            if isinstance(pos, dict):
-                curr_stagnation_detected_at = pos.get('stagnation_detected_at')
-            else:
-                curr_stagnation_detected_at = getattr(pos, 'stagnation_detected_at', None)
-
-        if stagnation_use_mfe_tracking and curr_stagnation_detected_at:
-            if isinstance(pos, dict):
-                mfe = pos.get('max_pnl_reached', 0)
-            else:
-                mfe = getattr(pos, 'max_pnl_reached', 0) or 0
-
-            if mfe > stagnation_positive_threshold:
-                pullback = mfe - pnl
-                if pullback >= stagnation_mfe_pullback_pct:
-                    if isinstance(pos, dict):
-                        pos['stagnation_mfe_at_exit'] = mfe
-                        pos['stagnation_pullback_at_exit'] = pullback
-                    else:
-                        pos.stagnation_mfe_at_exit = mfe
-                        pos.stagnation_pullback_at_exit = pullback
-                    logger.info(f"📈 [{symbol}] STAGNATION_MFE_PROTECT: MFE={mfe:.2f}% → PnL={pnl:.2f}% (pullback={pullback:.2f}%)")
-                    return 'STAGNATION_MFE_PROTECT'
-
-        # ═══════════════════════════════════════════════════════════════════
-        # 🔥 PHASE 2: STAGNATION POSITIVE (Profit stagne trop longtemps)
-        # ═══════════════════════════════════════════════════════════════════
-        if stagnation_positive_enabled and pnl >= stagnation_positive_threshold:
-            if elapsed >= stagnation_positive_timeout:
-                if isinstance(pos, dict):
-                    pos['stagnation_positive_triggered'] = True
-                    pos['stagnation_mfe_at_exit'] = pos.get('max_pnl_reached', pnl)
-                else:
-                    pos.stagnation_positive_triggered = True
-                    pos.stagnation_mfe_at_exit = getattr(pos, 'max_pnl_reached', None) or pnl
-                logger.info(f"✅ [{symbol}] STAGNATION_POSITIVE: PnL={pnl:.2f}% après {elapsed:.0f}s (timeout={stagnation_positive_timeout}s)")
-                return 'STAGNATION_POSITIVE'
-
-        # ═══════════════════════════════════════════════════════════════════
-        # 🔥 PHASE 3: STAGNATION NORMALE (Timeout général)
-        # ═══════════════════════════════════════════════════════════════════
-        if elapsed >= timeout:
-            effective_min_pnl = effective_config_local.get('stagnation_exit_min_pnl_to_stay')
-            if effective_min_pnl is None:
-                effective_min_pnl = get_effective_value('stagnation_exit_min_pnl_to_stay')
-
-            min_pnl_to_stay = effective_min_pnl if effective_min_pnl is not None else 0.10
-
-            if pnl < min_pnl_to_stay:
-                if isinstance(pos, dict):
-                    pos['stagnation_mfe_at_exit'] = pos.get('max_pnl_reached', pnl)
-                else:
-                    pos.stagnation_mfe_at_exit = getattr(pos, 'max_pnl_reached', None) or pnl
-                logger.warning(f"⏰ [{symbol}] STAGNATION EXIT: PnL={pnl:.2f}% après {elapsed:.0f}s (timeout={timeout}s, min_pnl={min_pnl_to_stay}%)")
-                return 'STAGNATION'
-
-        return None
-
     def _check_levels(self, current_price: float) -> Optional[str]:
         """Vérifier si TP ou SL est touché"""
         from utils.effective_config import get_effective_value
@@ -3362,13 +3235,17 @@ class PositionManager:
         # TP Escalier - Gestion spéciale
         if self.active_position.tp_escalier_enabled:
             if self.active_position.tp_escalier_current_level >= len(self.active_position.tp_escalier_levels):
-                # Tous niveaux passés, vérifier seulement SL (trailing)
+                # Tous niveaux passés, vérifier SL et TP final
                 if direction == 'LONG':
                     if current_price <= sl:
                         return 'TS'
+                    if tp is not None and current_price >= tp:
+                        return 'TP'
                 else:
                     if current_price >= sl:
                         return 'TS'
+                    if tp is not None and current_price <= tp:
+                        return 'TP'
                 return None
             else:
                 # Niveaux restants, vérifier seulement SL

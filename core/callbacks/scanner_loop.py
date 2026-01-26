@@ -1512,11 +1512,11 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
                         analysis_5m = analysis.get('analysis_5m', {})
                         if isinstance(analysis_5m, dict):
                             scan_price = analysis_5m.get('price')
-                if scan_price is None and isinstance(best_setup, dict):
+                if scan_price is None and isinstance(analysis, dict):
                     scan_price = (
-                        best_setup.get('price')
-                        or best_setup.get('entry')
-                        or best_setup.get('entry_price')
+                        analysis.get('price')
+                        or analysis.get('entry')
+                        or analysis.get('entry_price')
                     )
                 
                 # Extraire la valeur numérique si scan_price est un dict

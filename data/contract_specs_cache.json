@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769351409.725444,
+  "timestamp": 1769378604.9393668,
   "specs": {
     "CHZ_USDT": {
       "symbol": "CHZ_USDT",
@@ -125,6 +125,26 @@
       "symbol": "ASTER_USDT",
       "min_vol": 1.0,
       "max_vol": 1650000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "WLD_USDT": {
+      "symbol": "WLD_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "OP_USDT": {
+      "symbol": "OP_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1200000.0,
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,

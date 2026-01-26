@@ -181,6 +181,10 @@ async def init_instances() -> None:
                 analytics_db=state.get_analytics_db(),
                 live_order_manager=state.get_live_order_manager()
             )
+            try:
+                pos_mgr.notification_manager = state.get_notification_manager()
+            except Exception:
+                pass
             state.set_position_manager(pos_mgr)
             logger.info(f"✅ PositionManager initialized ({time.time()-start:.3f}s)")
             
